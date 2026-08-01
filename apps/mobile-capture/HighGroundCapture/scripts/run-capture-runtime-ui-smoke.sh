@@ -45,6 +45,10 @@ TEST_PROJECT_RETAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL:-}"
 TEST_CLIENT_FOLLOW_UP_ID="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_ID:-}"
 TEST_CLIENT_FOLLOW_UP_TITLE="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_TITLE:-}"
 TEST_CLIENT_FOLLOW_UP_SHA256="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256:-}"
+TEST_COACH_FOLLOW_UP_TITLE="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_TITLE:-}"
+TEST_COACH_FOLLOW_UP_INTRO="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_INTRO:-}"
+TEST_COACH_FOLLOW_UP_REVISED_INTRO="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_REVISED_INTRO:-}"
+TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
@@ -82,6 +86,13 @@ case "$TEST_MODE" in
     TEST_CASE="testReleasedClientFollowUpAppearsAndAcknowledgesInCapture"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_ID" || -z "$TEST_CLIENT_FOLLOW_UP_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_SHA256" ]]; then
       echo "Client-follow-up mode requires exact Session, released output, title, and content-hash identities." >&2
+      exit 2
+    fi
+    ;;
+  coach-follow-up-authoring)
+    TEST_CASE="testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_COACH_FOLLOW_UP_TITLE" || -z "$TEST_COACH_FOLLOW_UP_INTRO" || -z "$TEST_COACH_FOLLOW_UP_REVISED_INTRO" || -z "$TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS" ]]; then
+      echo "Coach follow-up authoring mode requires exact Session identity and unique initial/revised draft copy." >&2
       exit 2
     fi
     ;;
@@ -236,7 +247,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, client-follow-up, coaching-continuity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, client-follow-up, coach-follow-up-authoring, coaching-continuity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -310,11 +321,11 @@ if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
     exit 3
   fi
   umask 077
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" "$TEST_CLIENT_FOLLOW_UP_ID" "$TEST_CLIENT_FOLLOW_UP_TITLE" "$TEST_CLIENT_FOLLOW_UP_SHA256" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" "$TEST_CLIENT_FOLLOW_UP_ID" "$TEST_CLIENT_FOLLOW_UP_TITLE" "$TEST_CLIENT_FOLLOW_UP_SHA256" "$TEST_COACH_FOLLOW_UP_TITLE" "$TEST_COACH_FOLLOW_UP_INTRO" "$TEST_COACH_FOLLOW_UP_REVISED_INTRO" "$TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label, client_follow_up_id, client_follow_up_title, client_follow_up_sha256 = sys.argv[1:40]
+path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label, client_follow_up_id, client_follow_up_title, client_follow_up_sha256, coach_follow_up_title, coach_follow_up_intro, coach_follow_up_revised_intro, coach_follow_up_next_session_focus = sys.argv[1:44]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -356,6 +367,10 @@ with open(path, "w", encoding="utf-8") as handle:
             "clientFollowUpID": client_follow_up_id or None,
             "clientFollowUpTitle": client_follow_up_title or None,
             "clientFollowUpSHA256": client_follow_up_sha256 or None,
+            "coachFollowUpTitle": coach_follow_up_title or None,
+            "coachFollowUpIntro": coach_follow_up_intro or None,
+            "coachFollowUpRevisedIntro": coach_follow_up_revised_intro or None,
+            "coachFollowUpNextSessionFocus": coach_follow_up_next_session_focus or None,
         },
         handle,
     )

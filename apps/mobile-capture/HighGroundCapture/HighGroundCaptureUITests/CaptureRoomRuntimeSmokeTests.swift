@@ -105,6 +105,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let clientFollowUpID: String?
         let clientFollowUpTitle: String?
         let clientFollowUpSHA256: String?
+        let coachFollowUpTitle: String?
+        let coachFollowUpIntro: String?
+        let coachFollowUpRevisedIntro: String?
+        let coachFollowUpNextSessionFocus: String?
     }
 
     private func runtimeSmokeCredentials() throws -> RuntimeSmokeCredentials {
@@ -152,7 +156,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"],
                 clientFollowUpID: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_ID"],
                 clientFollowUpTitle: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_TITLE"],
-                clientFollowUpSHA256: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256"]
+                clientFollowUpSHA256: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256"],
+                coachFollowUpTitle: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_TITLE"],
+                coachFollowUpIntro: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_INTRO"],
+                coachFollowUpRevisedIntro: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_REVISED_INTRO"],
+                coachFollowUpNextSessionFocus: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS"]
             )
         }
 
@@ -213,7 +221,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             planBlockID: payload["planBlockID"] as? String,
             clientFollowUpID: payload["clientFollowUpID"] as? String,
             clientFollowUpTitle: payload["clientFollowUpTitle"] as? String,
-            clientFollowUpSHA256: payload["clientFollowUpSHA256"] as? String
+            clientFollowUpSHA256: payload["clientFollowUpSHA256"] as? String,
+            coachFollowUpTitle: payload["coachFollowUpTitle"] as? String,
+            coachFollowUpIntro: payload["coachFollowUpIntro"] as? String,
+            coachFollowUpRevisedIntro: payload["coachFollowUpRevisedIntro"] as? String,
+            coachFollowUpNextSessionFocus: payload["coachFollowUpNextSessionFocus"] as? String
         )
     }
 
@@ -316,7 +328,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         while Date() < deadline {
             if element.exists { return true }
             if attempts < swipeAttempts {
-                let recorderSurface = app.scrollViews.firstMatch
+                let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                let recorderSurface = namedRecorderSurface.exists
+                    ? namedRecorderSurface
+                    : app.scrollViews.firstMatch
                 if recorderSurface.exists && recorderSurface.isHittable {
                     recorderSurface.swipeUp()
                 } else {
@@ -519,6 +534,33 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication) {
+        XCTAssertTrue(element.waitForExistence(timeout: 8))
+        for _ in 0..<12 where !element.isHittable { appSwipeUp(app) }
+        XCTAssertTrue(element.isHittable)
+        element.tap()
+        element.typeKey("a", modifierFlags: .command)
+        element.typeKey(.delete, modifierFlags: [])
+        // SwiftUI can replace the TextEditor accessibility node after clearing its
+        // binding. Route the new text through the application so XCTest targets the
+        // currently focused replacement instead of a stale element snapshot.
+        app.typeText(value)
+        let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
+        let keyboardDone = app.keyboards.buttons["Done"].firstMatch
+        if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
+        else if keyboardDone.exists { keyboardDone.tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
+    }
+
+    private func appSwipeUp(_ app: XCUIApplication) {
+        let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+        let surface = namedRecorderSurface.exists
+            ? namedRecorderSurface
+            : app.scrollViews.firstMatch
+        if surface.exists { surface.swipeUp() }
+        else { app.swipeUp() }
     }
 
     private func saveQuickEntry(
@@ -2420,6 +2462,104 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Provider recording should remain a separate receipt-backed section after the readiness disclosure opens."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
+    }
+
+    func testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let title = credentials.coachFollowUpTitle, !title.isEmpty,
+              let intro = credentials.coachFollowUpIntro, !intro.isEmpty,
+              let revisedIntro = credentials.coachFollowUpRevisedIntro, !revisedIntro.isEmpty,
+              let nextSessionFocus = credentials.coachFollowUpNextSessionFocus,
+              !nextSessionFocus.isEmpty else {
+            throw XCTSkip("The coach follow-up journey requires exact Session and unique draft-copy identities.")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let card = app.descendants(matching: .any)["CaptureCoachClientFollowUp"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(card, in: app, timeout: 45, swipeAttempts: 20),
+            "The assigned coach should receive the canonical private follow-up workspace on the exact Session."
+        )
+        XCTAssertTrue(app.staticTexts["Assigned coach · canonical Nest state"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "never emails, texts, publishes, schedules, bills, changes consent")
+            ).firstMatch.exists
+        )
+
+        let titleField = app.descendants(matching: .any)["CaptureCoachFollowUpTitle"].firstMatch
+        replaceText(in: titleField, with: title, app: app)
+        let introField = app.descendants(matching: .any)["CaptureCoachFollowUpIntro"].firstMatch
+        replaceText(in: introField, with: intro, app: app)
+        let focusField = app.descendants(matching: .any)["CaptureCoachFollowUpNextSession"].firstMatch
+        replaceText(in: focusField, with: nextSessionFocus, app: app)
+
+        let save = app.buttons["CaptureCoachFollowUpSave"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(save, in: app, timeout: 12, swipeAttempts: 12))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        let revisionOne = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                "CaptureClientFollowUpSnapshot_",
+                "_r1"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(revisionOne, in: app, timeout: 40, swipeAttempts: 16),
+            "Nest should return the exact immutable private revision 1 before any release is possible."
+        )
+        XCTAssertTrue(app.staticTexts[title].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts[intro].firstMatch.exists)
+
+        let reloadedIntro = app.descendants(matching: .any)["CaptureCoachFollowUpIntro"].firstMatch
+        replaceText(in: reloadedIntro, with: revisedIntro, app: app)
+        let revise = app.buttons["CaptureCoachFollowUpSave"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(revise, in: app, timeout: 12, swipeAttempts: 12))
+        XCTAssertTrue(revise.isEnabled)
+        revise.tap()
+        let revisionTwo = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND identifier ENDSWITH %@",
+                "CaptureClientFollowUpSnapshot_",
+                "_r2"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(revisionTwo, in: app, timeout: 40, swipeAttempts: 16),
+            "A second save should return immutable private revision 2 instead of rewriting revision 1."
+        )
+        XCTAssertTrue(app.staticTexts[revisedIntro].firstMatch.exists)
+
+        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(confirmation, in: app, timeout: 15, swipeAttempts: 12))
+        turnOn(confirmation, in: app)
+        let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(release, in: app, timeout: 8, swipeAttempts: 8))
+        XCTAssertTrue(release.isEnabled)
+        release.tap()
+
+        let released = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Latest released server snapshot")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(released, in: app, timeout: 40, swipeAttempts: 16),
+            "The coach should read back the exact released server snapshot after the explicit confirmation."
+        )
+        XCTAssertFalse(app.buttons["CaptureCoachFollowUpRelease"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts[revisedIntro].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "No email, message, calendar event, or publication occurred")
+            ).firstMatch.exists
+        )
+        attachRecordingIdentity(
+            "\(sessionID)|\(title)|revision-2|released-in-quipsly",
+            name: "Retained iPhone coach follow-up authoring"
+        )
     }
 
     func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture() throws {

@@ -5160,7 +5160,12 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
-                    if session.clientFollowUp != nil {
+                    if session.clientFollowUpWorkspace?.isCoach == true {
+                        MobileCoachClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient
+                        )
+                    } else if session.clientFollowUp != nil {
                         MobileClientFollowUpCard(
                             session: session,
                             sessionClient: model.sessionClient

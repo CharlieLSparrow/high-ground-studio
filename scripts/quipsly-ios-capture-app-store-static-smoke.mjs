@@ -373,6 +373,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smok
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'client-follow-up)', "runtime UI smoke can select the retained client follow-up delivery proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime UI smoke can select the assigned-coach draft, revision, and release proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
@@ -384,6 +385,7 @@ requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOc
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
 requireIncludes(runtimeUISmokeTestsText, "func testPrivateSourceInboxFilesIntoCanonicalResearch", "runtime UI smoke files one exact private iPhone source into canonical Nest Research");
 requireIncludes(runtimeUISmokeTestsText, "func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture", "runtime UI smoke reads and acknowledges one exact released client follow-up");
+requireIncludes(runtimeUISmokeTestsText, "func testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture", "runtime UI smoke operates assigned-coach draft, revision, and explicit in-app release");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUp_", "runtime UI smoke addresses the exact released follow-up artifact");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpAcknowledge_", "runtime UI smoke addresses the explicit client open acknowledgement");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
@@ -400,9 +402,17 @@ requireIncludes(capturePhoneShellText, "Internal review only · no note, task, g
 requireIncludes(capturePhoneShellText, "Preview shows the production review workflow without changing saved packet state.", "packet lane preview remains demonstrative and read-only");
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
 requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
+requireIncludes(capturePhoneShellText, "MobileCoachClientFollowUpCard(", "the production phone recorder reaches the assigned-coach follow-up editor");
 requireIncludes(mobileText, "CaptureClientFollowUpAcknowledge_", "the native follow-up card exposes an explicit acknowledgement control");
+requireIncludes(mobileText, "CaptureCoachFollowUpSave", "the native coach editor exposes an explicit private revision save");
+requireIncludes(mobileText, "CaptureCoachFollowUpKeyboardDone", "the native coach editor exposes a reachable keyboard dismissal action across its long form");
+requireIncludes(mobileText, "CaptureCoachFollowUpReleaseConfirmation", "the native coach editor requires exact-revision release confirmation");
+requireIncludes(mobileText, "CaptureCoachFollowUpRelease", "the native coach editor exposes the bounded in-app release action");
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
+requireIncludes(bridgeText, '"action": action', "the native bridge uses canonical create-or-revise follow-up actions");
+requireIncludes(bridgeText, '"action": "RELEASE"', "the native bridge uses the canonical bounded release action");
+requireIncludes(bridgeText, '"expectedRevision"', "the native bridge binds revisions and release to current canonical truth");
 requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");
 requireIncludes(bridgeText, "func reviewPacketLane", "the native bridge owns the bounded packet lane review mutation");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");

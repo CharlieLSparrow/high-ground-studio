@@ -511,6 +511,76 @@ struct MobileCaptureClientFollowUp: Codable, Identifiable, Hashable {
     let tasks: [MobileCaptureClientFollowUpTask]
 }
 
+struct MobileCaptureClientFollowUpRoom: Codable, Hashable {
+    let id: String
+    let title: String
+    let scheduledStart: String?
+    let coach: MobileCaptureClientFollowUpParty?
+    let client: MobileCaptureClientFollowUpParty
+}
+
+struct MobileCaptureClientFollowUpParty: Codable, Hashable {
+    let id: String
+    let label: String
+}
+
+struct MobileCaptureClientFollowUpEligible: Codable, Hashable {
+    let notes: [MobileCaptureClientFollowUpNote]
+    let goals: [MobileCaptureClientFollowUpGoal]
+    let tasks: [MobileCaptureClientFollowUpTask]
+}
+
+struct MobileCaptureClientFollowUpWorkspace: Codable, Hashable {
+    let role: String
+    let room: MobileCaptureClientFollowUpRoom
+    let eligible: MobileCaptureClientFollowUpEligible?
+    let output: MobileCaptureClientFollowUp?
+
+    var isCoach: Bool { role == "COACH" }
+}
+
+struct MobileCaptureClientFollowUpDraft: Hashable {
+    var title: String
+    var intro: String
+    var nextSessionFocus: String
+    var noteIDs: Set<String>
+    var goalIDs: Set<String>
+    var taskIDs: Set<String>
+
+    var selectedCount: Int { noteIDs.count + goalIDs.count + taskIDs.count }
+
+    var isValid: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (selectedCount > 0
+                || !intro.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !nextSessionFocus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    static func make(from workspace: MobileCaptureClientFollowUpWorkspace) -> Self {
+        let eligibleNoteIDs = Set(workspace.eligible?.notes.map(\.id) ?? [])
+        let eligibleGoalIDs = Set(workspace.eligible?.goals.map(\.id) ?? [])
+        let eligibleTaskIDs = Set(workspace.eligible?.tasks.map(\.id) ?? [])
+        guard let output = workspace.output, output.status == "DRAFT" else {
+            return Self(
+                title: "Follow-up — \(workspace.room.title)",
+                intro: "",
+                nextSessionFocus: "",
+                noteIDs: eligibleNoteIDs,
+                goalIDs: eligibleGoalIDs,
+                taskIDs: eligibleTaskIDs
+            )
+        }
+        return Self(
+            title: output.title,
+            intro: output.intro ?? "",
+            nextSessionFocus: output.nextSessionFocus ?? "",
+            noteIDs: Set(output.notes.map(\.id)).intersection(eligibleNoteIDs),
+            goalIDs: Set(output.goals.map(\.id)).intersection(eligibleGoalIDs),
+            taskIDs: Set(output.tasks.map(\.id)).intersection(eligibleTaskIDs)
+        )
+    }
+}
+
 struct MobileCapturePriorContinuityRoom: Codable, Hashable {
     let id: String
     let title: String
@@ -691,6 +761,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketStatus: String?
     var coachingPacketReviewLanes: [MobileCapturePacketReviewLane]? = nil
     var clientFollowUp: MobileCaptureClientFollowUp? = nil
+    var clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     var priorContinuity: MobileCapturePriorContinuity? = nil
     var priorFollowThrough: MobileCapturePriorFollowThrough? = nil
     var canUseProjectTeamNotes: Bool? = nil
@@ -1116,7 +1187,16 @@ private struct MobileCaptureClientFollowUpMutationResponse: Codable {
 
 private struct MobileCaptureClientFollowUpReadResponse: Decodable {
     struct Party: Decodable {
+        let id: String
         let label: String
+    }
+
+    struct Room: Decodable {
+        let id: String
+        let title: String
+        let scheduledStart: String?
+        let coach: Party?
+        let client: Party
     }
 
     struct Delivery: Decodable {
@@ -1147,10 +1227,12 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
     let ok: Bool
     let error: String?
     let role: String?
+    let room: Room?
+    let eligible: MobileCaptureClientFollowUpEligible?
     let output: Output?
 
-    var followUp: MobileCaptureClientFollowUp? {
-        guard let output, output.status == "RELEASED" else { return nil }
+    private var mappedOutput: MobileCaptureClientFollowUp? {
+        guard let output else { return nil }
         return MobileCaptureClientFollowUp(
             id: output.id,
             status: output.status,
@@ -1167,6 +1249,27 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
             goals: output.body.goals,
             tasks: output.body.tasks
         )
+    }
+
+    var workspace: MobileCaptureClientFollowUpWorkspace? {
+        guard let role, let room else { return nil }
+        return MobileCaptureClientFollowUpWorkspace(
+            role: role,
+            room: MobileCaptureClientFollowUpRoom(
+                id: room.id,
+                title: room.title,
+                scheduledStart: room.scheduledStart,
+                coach: room.coach.map { MobileCaptureClientFollowUpParty(id: $0.id, label: $0.label) },
+                client: MobileCaptureClientFollowUpParty(id: room.client.id, label: room.client.label)
+            ),
+            eligible: eligible,
+            output: mappedOutput
+        )
+    }
+
+    var releasedClientFollowUp: MobileCaptureClientFollowUp? {
+        guard role == "CLIENT", mappedOutput?.status == "RELEASED" else { return nil }
+        return mappedOutput
     }
 }
 
@@ -6625,6 +6728,156 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
+    func saveClientFollowUpDraft(
+        for session: MobileCaptureSession,
+        draft: MobileCaptureClientFollowUpDraft
+    ) async -> Bool {
+        guard AuthManager.shared.networkActionsAllowed else {
+            status = "Offline snapshot"
+            errorMessage = "Reconnect to Nest before saving this recipient-bound private draft. No local release is inferred."
+            return false
+        }
+        guard let workspace = session.clientFollowUpWorkspace, workspace.isCoach else {
+            status = "Coach access required"
+            errorMessage = "Only the currently assigned coach can prepare this client follow-up."
+            return false
+        }
+        guard draft.isValid else {
+            status = "Draft needs content"
+            errorMessage = "Add a title and at least one client-safe record, opening note, or next-Session focus."
+            return false
+        }
+        guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(
+                string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
+              ) else {
+            status = "Bad Nest URL"
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        let currentDraft = workspace.output?.status == "DRAFT" ? workspace.output : nil
+        let action = currentDraft == nil ? "CREATE_DRAFT" : "UPDATE_DRAFT"
+        let requestID = Self.clientFollowUpMutationRequestID(
+            action: action,
+            roomID: session.callRoomId,
+            outputID: workspace.output?.id,
+            expectedRevision: workspace.output?.revision,
+            draft: draft
+        )
+        var body: [String: Any] = [
+            "action": action,
+            "clientRequestId": requestID,
+            "title": draft.title,
+            "intro": draft.intro,
+            "nextSessionFocus": draft.nextSessionFocus,
+            "noteIds": draft.noteIDs.sorted(),
+            "goalIds": draft.goalIDs.sorted(),
+            "taskIds": draft.taskIDs.sorted(),
+        ]
+        if let currentDraft {
+            body["outputId"] = currentDraft.id
+            body["expectedRevision"] = currentDraft.revision
+        }
+
+        status = currentDraft == nil ? "Creating private follow-up" : "Saving private follow-up revision"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: 36,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The private client follow-up revision was not confirmed.",
+                    ]
+                )
+            }
+            status = payload.idempotentReplay == true
+                ? "Private follow-up already saved"
+                : currentDraft == nil
+                    ? "Private follow-up created"
+                    : "Private follow-up revised"
+            errorMessage = "The client still cannot see this draft. Inspect the exact server snapshot before release."
+            await refreshClientFollowUp(forSessionID: session.id)
+            return true
+        } catch {
+            status = "Needs attention"
+            errorMessage = error.localizedDescription
+            await refreshClientFollowUp(forSessionID: session.id)
+            return false
+        }
+    }
+
+    func releaseClientFollowUp(for session: MobileCaptureSession) async -> Bool {
+        guard AuthManager.shared.networkActionsAllowed else {
+            status = "Offline snapshot"
+            errorMessage = "Reconnect to Nest before changing client visibility. Nothing was released."
+            return false
+        }
+        guard let workspace = session.clientFollowUpWorkspace,
+              workspace.isCoach,
+              let output = workspace.output,
+              output.status == "DRAFT" else {
+            status = "Private draft required"
+            errorMessage = "Save and inspect one current private draft before releasing it."
+            return false
+        }
+        guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(
+                string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
+              ) else {
+            status = "Bad Nest URL"
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        status = "Releasing inside Quipsly"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "action": "RELEASE",
+                "outputId": output.id,
+                "expectedRevision": output.revision,
+                "clientRequestId": Self.clientFollowUpVisibilityRequestID(
+                    action: "RELEASE",
+                    outputID: output.id,
+                    revision: output.revision
+                ),
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: 37,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The in-app client release was not confirmed.",
+                    ]
+                )
+            }
+            status = payload.idempotentReplay == true ? "Follow-up already released" : "Follow-up released in Quipsly"
+            errorMessage = "No email, message, calendar event, or publication action occurred."
+            await refreshClientFollowUp(forSessionID: session.id)
+            return true
+        } catch {
+            status = "Needs attention"
+            errorMessage = error.localizedDescription
+            await refreshClientFollowUp(forSessionID: session.id)
+            return false
+        }
+    }
+
     func refreshClientFollowUp(forSessionID sessionID: String) async {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         let roomID = sessions[index].callRoomId
@@ -6647,6 +6900,7 @@ final class CaptureSessionClient: ObservableObject {
             if response.statusCode == 404 {
                 var refreshedSession = sessions[index]
                 refreshedSession.clientFollowUp = nil
+                refreshedSession.clientFollowUpWorkspace = nil
                 sessions[index] = refreshedSession
                 return
             }
@@ -6661,7 +6915,8 @@ final class CaptureSessionClient: ObservableObject {
                 )
             }
             var refreshedSession = sessions[index]
-            refreshedSession.clientFollowUp = payload.followUp
+            refreshedSession.clientFollowUp = payload.releasedClientFollowUp
+            refreshedSession.clientFollowUpWorkspace = payload.workspace
             sessions[index] = refreshedSession
         } catch {
             errorMessage = "Session loaded, but its private follow-up could not be refreshed: \(error.localizedDescription)"
@@ -6672,7 +6927,49 @@ final class CaptureSessionClient: ObservableObject {
         let owner = AuthManager.shared.userEmail?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? "signed-in-account"
-        var bytes = Array(SHA256.hash(data: Data("client-follow-up-open|\(owner)|\(outputID)".utf8)).prefix(16))
+        return clientFollowUpStableUUID("client-follow-up-open|\(owner)|\(outputID)")
+    }
+
+    private static func clientFollowUpMutationRequestID(
+        action: String,
+        roomID: String,
+        outputID: String?,
+        expectedRevision: Int?,
+        draft: MobileCaptureClientFollowUpDraft
+    ) -> String {
+        let owner = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "signed-in-account"
+        let fields = [
+            "client-follow-up-draft-v1",
+            owner,
+            action,
+            roomID,
+            outputID ?? "none",
+            expectedRevision.map(String.init) ?? "none",
+            draft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+            draft.intro.trimmingCharacters(in: .whitespacesAndNewlines),
+            draft.nextSessionFocus.trimmingCharacters(in: .whitespacesAndNewlines),
+            draft.noteIDs.sorted().joined(separator: "\u{001E}"),
+            draft.goalIDs.sorted().joined(separator: "\u{001E}"),
+            draft.taskIDs.sorted().joined(separator: "\u{001E}"),
+        ]
+        return clientFollowUpStableUUID(fields.joined(separator: "\u{001F}"))
+    }
+
+    private static func clientFollowUpVisibilityRequestID(
+        action: String,
+        outputID: String,
+        revision: Int
+    ) -> String {
+        let owner = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "signed-in-account"
+        return clientFollowUpStableUUID("client-follow-up-visibility-v1|\(owner)|\(action)|\(outputID)|\(revision)")
+    }
+
+    private static func clientFollowUpStableUUID(_ material: String) -> String {
+        var bytes = Array(SHA256.hash(data: Data(material.utf8)).prefix(16))
         bytes[6] = (bytes[6] & 0x0F) | 0x50
         bytes[8] = (bytes[8] & 0x3F) | 0x80
         let uuid = UUID(uuid: (
