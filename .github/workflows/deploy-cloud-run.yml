@@ -277,10 +277,33 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Build Studio Image
+      - name: Resolve Existing Studio Image
         run: |
           set -euo pipefail
-          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/high-ground-studio/studio:${RELEASE_SOURCE_SHA}"
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/high-ground-studio/studio:source-${RELEASE_SOURCE_SHA}"
+          error_file="$(mktemp)"
+          trap 'rm -f "$error_file"' EXIT
+          if digest="$(gcloud artifacts docker images describe "$IMAGE_URI" --format='value(image_summary.digest)' 2>"$error_file")"; then
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "Artifact Registry returned an invalid Studio digest." >&2
+              exit 1
+            }
+            echo "STUDIO_IMAGE_EXISTS=1" >> "$GITHUB_ENV"
+            echo "Reusing exact-source Studio image ${IMAGE_URI} at ${digest}."
+          elif grep -Eqi 'NOT_FOUND|not found|does not exist|was not found' "$error_file"; then
+            echo "STUDIO_IMAGE_EXISTS=0" >> "$GITHUB_ENV"
+            echo "No exact-source Studio image exists; one build is required."
+          else
+            echo "Artifact Registry readback failed before the build decision." >&2
+            sed -n '1,12p' "$error_file" >&2
+            exit 1
+          fi
+
+      - name: Build Studio Image
+        if: env.STUDIO_IMAGE_EXISTS != '1'
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/high-ground-studio/studio:source-${RELEASE_SOURCE_SHA}"
           test -f "${QUIPSLY_RELEASE_CONTEXT}/quipsly-release-source.json"
           docker buildx build \
             --file "${QUIPSLY_RELEASE_CONTEXT}/apps/quipsly/Dockerfile" \
@@ -299,7 +322,7 @@ jobs:
           DEPLOYED_BY: "GitHub Actions"
           SKIP_BUILD: "1"
         run: |
-          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
+          IMAGE_TAG="source-$RELEASE_SOURCE_SHA" \
             SOURCE_SHA="$RELEASE_SOURCE_SHA" \
             SOURCE_REF="$RELEASE_SOURCE_SHA" \
             bash scripts/release/quipsly-deploy-preview.sh

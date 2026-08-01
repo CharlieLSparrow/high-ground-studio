@@ -118,7 +118,7 @@ const plan = [
   {
     label: "Deploy Nest no-traffic preview",
     command:
-      "PROJECT_ID=high-ground-odyssey LOCAL_VALIDATE=1 NO_TRAFFIC=1 PREVIEW_TAG=quipsly-web-preview scripts/quipsly-web-deploy.sh",
+      "PROJECT_ID=high-ground-odyssey PREVIEW_TAG=quipsly-web-preview SOURCE_REF=HEAD bash scripts/release/quipsly-deploy-preview.sh",
   },
   {
     label: "Deploy HGO no-traffic preview",

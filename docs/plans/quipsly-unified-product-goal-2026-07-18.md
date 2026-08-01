@@ -6090,3 +6090,33 @@ was restored.
   operation remain the provider acceptance gate. No provider account, event, or
   calendar was read or mutated here. Full evidence is in
   `docs/coordination/2026-08-01-google-calendar-conflict-review.md`.
+
+### Cloud-cost pipeline consolidation checkpoint — 2026-08-01
+
+- Credentialed 30-day readback attributes the billing chart's deployment spend
+  to `high-ground-odyssey`: 111 builds, including 83 `E2_HIGHCPU_32` builds
+  estimated at $36.14 of $37.77 priced compute. The similarly named separate
+  project carried Gemini API spend, not Cloud Build/Run/Artifact deployment.
+- The actual ownership defect was two Nest deploy systems. The canonical
+  committed-source/digest-reuse preview existed, while package scripts,
+  conductor, readiness, and coaching runway still pointed to an older
+  dirty-tree/timestamp-tag builder. Every supported Nest entry point now owns
+  the same canonical pipeline; the old script is a non-building compatibility
+  shim that refuses positional image tags.
+- HGO web and the manual GitHub Studio workflow now read Artifact Registry
+  before building, reuse a verified exact-source image, fail closed on registry
+  errors, and verify the final digest. Workflow retries no longer need to build
+  and push the same SHA again.
+- Artifact Registry readback found 14 packages, 927 versions, 177 untagged, 536
+  older than 30 days, and roughly 229 GB across versions with reported sizes.
+  A conservative untagged-after-45-days plus keep-ten-per-package policy is now
+  configured in Google dry-run mode. Readback explicitly says dry-run enabled;
+  no artifact was deleted and the post-policy audit still counts 927 versions.
+- Six cost/entrypoint tests and 26 adjacent release/readiness tests pass; all
+  changed scripts parse; the exact committed 1,283-file Nest context
+  materializes; and diff checks pass.
+- Wait at least one day for `validateOnly` audit evidence. Enabling active
+  cleanup remains a separately approved destructive action. A real non-urgent
+  Nest build must benchmark `E2_HIGHCPU_8` before changing the 32-core default.
+  Full evidence is in
+  `docs/coordination/2026-08-01-cloud-cost-pipeline-consolidation.md`.

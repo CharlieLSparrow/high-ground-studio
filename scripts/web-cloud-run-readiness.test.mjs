@@ -144,6 +144,12 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /parsed\.sourceSha === sourceSha/);
   assert.doesNotMatch(deployScript, /ALLOW_DIRTY_DEPLOY/);
   assert.match(deployScript, /WEB_IMAGE_BUILD_STRATEGY/);
+  assert.match(deployScript, /WEB_REUSE_EXISTING_IMAGE must be 0 or 1/);
+  assert.match(deployScript, /Reusing exact-source HGO image/);
+  assert.match(deployScript, /Cloud Build skipped: this committed source already has a verified image/);
+  assert.match(deployScript, /Refusing to replace an existing immutable HGO image tag/);
+  assert.match(deployScript, /Artifact Registry readback failed before the HGO image cost decision/);
+  assert.match(deployScript, /Could not verify the HGO release image after the build\/reuse decision/);
   assert.match(deployScript, /apps\/web\/Dockerfile/);
   assert.match(domainScript, /app\.highgroundodyssey\.com/);
   assert.match(domainScript, /ghs\.googlehosted\.com\./);

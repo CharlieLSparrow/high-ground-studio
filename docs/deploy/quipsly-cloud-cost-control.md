@@ -126,18 +126,42 @@ destructive.
 
 [Cloud Run pricing and free-tier behavior](https://cloud.google.com/run/pricing)
 
-## Current external gate
+## Current measured state — 2026-08-01
 
-The audit currently stops before cloud reads because the local user and ADC
-tokens need reauthentication:
+Credentialed readback of `high-ground-odyssey` found:
+
+- 111 builds in 30 days: 87 succeeded, 18 failed, and 6 were canceled;
+- 83 `E2_HIGHCPU_32` builds with an estimated $36.14 of the $37.77 priced
+  build-compute total;
+- 14 Artifact Registry packages and 927 versions, including 177 untagged and
+  536 older than 30 days;
+- approximately 229 GB across versions with reported sizes;
+- 396 Cloud Run revisions, only two traffic-serving revisions, and zero
+  minimum instances; and
+- four repeated committed-source build groups detected from available source
+  identities.
+
+The repository still exposed a second timestamp-tag deployment path through
+package scripts, the HGO/Quipsly conductor, readiness output, and coaching
+runway. Those entry points now route through the single committed-source Nest
+preview pipeline. HGO web and the GitHub Studio workflow also read back the
+exact source tag before deciding to build. Registry errors fail closed instead
+of being treated as a missing image.
+
+Artifact Registry now has this conservative policy in **dry-run** mode:
+
+- evaluate only untagged versions older than 45 days for deletion; and
+- keep at least the ten newest versions of every package.
+
+Dry-run cannot delete artifacts. Wait at least one day and inspect
+`validateOnly=true` audit logs before considering active cleanup. Active
+deletion still requires exact traffic/rollback digest protection and explicit
+approval.
 
 ```bash
-gcloud auth login --update-adc --brief
-gcloud auth application-default set-quota-project quipsly-reef
-cd /Users/wall-e/Dev/high-ground-studio-product
-bash scripts/release/quipsly-gcloud-auth-check.sh
-pnpm quipsly:cloud:cost-audit -- --days 30
+pnpm quipsly:cloud:cleanup-dry-run
+pnpm quipsly:cloud:cleanup-dry-run -- --apply-dry-run
 ```
 
-Reauthentication enables readback; it does not authorize image deletion or a
-cleanup-policy mutation.
+The first command is plan-only. The second can only configure dry-run; the
+operator intentionally has no active-deletion flag.

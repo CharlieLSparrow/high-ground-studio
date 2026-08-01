@@ -477,7 +477,7 @@ const promotionPlan = [
     step: "nest-preview",
     why: "Deploy Nest/apps/quipsly without moving live traffic so /api/coaching/public, mobile capture readiness, and review digest routes can be smoked on a tagged revision first.",
     command:
-      "PROJECT_ID=high-ground-odyssey LOCAL_VALIDATE=1 NO_TRAFFIC=1 PREVIEW_TAG=quipsly-web-preview scripts/quipsly-web-deploy.sh",
+      "PROJECT_ID=high-ground-odyssey PREVIEW_TAG=quipsly-web-preview SOURCE_REF=HEAD bash scripts/release/quipsly-deploy-preview.sh",
   },
   {
     step: "hgo-preview",
@@ -547,7 +547,7 @@ const report = {
           "node scripts/hgo-quipsly-release-readiness.mjs --json",
         ]
       : [
-          "PROJECT_ID=high-ground-odyssey LOCAL_VALIDATE=1 NO_TRAFFIC=1 PREVIEW_TAG=quipsly-web-preview scripts/quipsly-web-deploy.sh",
+          "PROJECT_ID=high-ground-odyssey PREVIEW_TAG=quipsly-web-preview SOURCE_REF=HEAD bash scripts/release/quipsly-deploy-preview.sh",
           "WEB_CLOUD_RUN_PROJECT=high-ground-odyssey WEB_CLOUD_RUN_SERVICE=web node scripts/web-cloud-run-deploy.mjs",
           "node scripts/hgo-quipsly-coaching-release-runway.mjs --smoke-previews --json",
         ],

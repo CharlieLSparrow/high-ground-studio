@@ -27,15 +27,10 @@ const nestService = args.get("nest-service") || process.env.NEST_SERVICE_NAME ||
 const hgoService = args.get("hgo-service") || process.env.HGO_SERVICE_NAME || "web";
 const nestPreviewTag = args.get("nest-tag") || process.env.NEST_PREVIEW_TAG || "quipsly-web-preview";
 const hgoPreviewTag = args.get("hgo-tag") || process.env.HGO_PREVIEW_TAG || "web-preview";
-const nestImageTag = args.get("nest-image-tag") || process.env.NEST_IMAGE_TAG || `quipsly-web-${stamp()}`;
-const hgoImageTag = args.get("hgo-image-tag") || process.env.WEB_IMAGE_TAG || `web-${stamp()}`;
+const sourceRef = args.get("source-ref") || process.env.SOURCE_REF || "HEAD";
+const hgoImageTag = args.get("hgo-image-tag") || process.env.WEB_IMAGE_TAG || "";
 const allowDirtyWebDeploy = args.get("allow-dirty-web-deploy") === "1" || process.env.ALLOW_DIRTY_DEPLOY === "1";
 const skipLocalChecks = args.get("skip-local-checks") === "1";
-const runPublicIntegrationSmokeDuringNestDeploy = args.get("nest-deploy-public-smoke") === "1";
-
-function stamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "-");
-}
 
 function run(step, command, commandArgs, options = {}) {
   const startedAt = new Date().toISOString();
@@ -84,7 +79,7 @@ addPlanCommand(plan, "Check operator auth and local contracts", "node scripts/hg
 addPlanCommand(
   plan,
   "Deploy Nest no-traffic preview",
-  `PROJECT_ID=${projectId} LOCAL_VALIDATE=1 NO_TRAFFIC=1 PREVIEW_TAG=${nestPreviewTag} IMAGE_TAG=${nestImageTag} scripts/quipsly-web-deploy.sh`,
+  `PROJECT_ID=${projectId} PREVIEW_TAG=${nestPreviewTag} SOURCE_REF=${sourceRef} bash scripts/release/quipsly-deploy-preview.sh`,
   { mutatesCloud: true, requiresFlag: "--deploy-previews" },
 );
 addPlanCommand(
@@ -125,19 +120,15 @@ const readinessBlocked = !steps.at(-1)?.ok || readiness?.deployBlocked === true;
 
 if (!readinessBlocked && deployPreviews) {
   steps.push(
-    run("deploy-nest-preview", "scripts/quipsly-web-deploy.sh", [nestImageTag], {
+    run("deploy-nest-preview", "bash", ["scripts/release/quipsly-deploy-preview.sh"], {
       mutatesCloud: true,
       maxOutput: 24000,
       env: {
         PROJECT_ID: projectId,
         REGION: region,
         SERVICE_NAME: nestService,
-        LOCAL_VALIDATE: skipLocalChecks ? "0" : "1",
-        NO_TRAFFIC: "1",
         PREVIEW_TAG: nestPreviewTag,
-        IMAGE_TAG: nestImageTag,
-        RUN_PUBLIC_INTEGRATION_SMOKE: runPublicIntegrationSmokeDuringNestDeploy ? "1" : "0",
-        RUN_PREVIEW_SMOKE: "1",
+        SOURCE_REF: sourceRef,
       },
     }),
   );
@@ -153,7 +144,8 @@ if (!readinessBlocked && nestDeployOk && deployPreviews) {
         WEB_CLOUD_RUN_PROJECT: projectId,
         WEB_CLOUD_RUN_REGION: region,
         WEB_CLOUD_RUN_SERVICE: hgoService,
-        WEB_IMAGE_TAG: hgoImageTag,
+        ...(hgoImageTag ? { WEB_IMAGE_TAG: hgoImageTag } : {}),
+        WEB_SOURCE_REF: sourceRef,
         SKIP_LOCAL_CHECKS: skipLocalChecks ? "1" : "0",
         ALLOW_DIRTY_DEPLOY: allowDirtyWebDeploy ? "1" : "0",
       },
@@ -284,7 +276,7 @@ const report = {
   tags: {
     nestPreviewTag,
     hgoPreviewTag,
-    nestImageTag,
+    nestSourceRef: sourceRef,
     hgoImageTag,
   },
   plan,

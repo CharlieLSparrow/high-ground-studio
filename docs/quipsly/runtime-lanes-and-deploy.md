@@ -89,16 +89,15 @@ pnpm quipsly:web:stage
 Build and deploy the Nest Web service:
 
 ```bash
-pnpm quipsly:web:deploy
+SOURCE_REF=<committed-sha> pnpm quipsly:web:deploy
 ```
 
-Optional local validation before remote build:
-
-```bash
-LOCAL_VALIDATE=1 pnpm quipsly:web:deploy
-```
-
-The deploy script stages only the files needed for a Linux Next build, but it includes all public assets. It intentionally excludes `apps/quipsly-mac`, `apps/local-engine`, local build products, local media, docs, and reports.
+The canonical deploy pipeline always materializes and validates that exact
+committed source before it decides whether Cloud Build is necessary. If the
+same source image already exists with a valid registry digest, it reuses the
+image instead of paying to build it again. The bounded context includes all
+required public assets and intentionally excludes `apps/quipsly-mac`,
+`apps/local-engine`, local build products, local media, docs, and reports.
 
 ## Anti-patterns we are retiring
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
@@ -313,6 +313,33 @@ function buildImage() {
   );
 }
 
+function inspectImageDigest() {
+  const result = spawnSync("gcloud", [
+    "artifacts",
+    "docker",
+    "images",
+    "describe",
+    imageUri,
+    "--project",
+    project,
+    "--format=value(image_summary.digest)",
+  ], { encoding: "utf8" });
+  if (result.status === 0) {
+    const digest = (result.stdout || "").trim();
+    if (!/^sha256:[0-9a-f]{64}$/.test(digest)) {
+      throw new Error(`Artifact Registry returned an invalid digest for ${imageUri}.`);
+    }
+    return { state: "available", digest };
+  }
+  const diagnostic = `${result.stderr || ""}\n${result.stdout || ""}`;
+  if (/NOT_FOUND|not found|does not exist|was not found/i.test(diagnostic)) {
+    return { state: "missing", digest: "" };
+  }
+  throw new Error(
+    `Artifact Registry readback failed before the HGO image cost decision. ${diagnostic.trim().slice(0, 500)}`,
+  );
+}
+
 async function assertHttpOk(url, matcher) {
   const response = await fetch(url, {
     redirect: "manual",
@@ -364,6 +391,10 @@ const imageName = process.env.WEB_IMAGE_NAME || DEFAULT_IMAGE_NAME;
 const sourceRef = process.env.WEB_SOURCE_REF || "HEAD";
 const sourceSha = read("git", ["rev-parse", "--verify", `${sourceRef}^{commit}`]);
 const imageTag = process.env.WEB_IMAGE_TAG || sourceSha;
+const reuseExistingImage = process.env.WEB_REUSE_EXISTING_IMAGE ?? "1";
+if (!["0", "1"].includes(reuseExistingImage)) {
+  throw new Error("WEB_REUSE_EXISTING_IMAGE must be 0 or 1.");
+}
 const serviceAccount =
   process.env.WEB_CLOUD_RUN_SERVICE_ACCOUNT ||
   `web-cloud-run@${project}.iam.gserviceaccount.com`;
@@ -457,7 +488,23 @@ if (process.env.SKIP_LOCAL_CHECKS !== "1") {
   });
 }
 
-buildImage();
+const imageBefore = inspectImageDigest();
+if (imageBefore.state === "available" && reuseExistingImage === "1") {
+  console.log(`Reusing exact-source HGO image ${imageUri} (${imageBefore.digest}).`);
+  console.log("Cloud Build skipped: this committed source already has a verified image.");
+} else if (imageBefore.state === "available") {
+  throw new Error(
+    "Refusing to replace an existing immutable HGO image tag. Use a new explicit WEB_IMAGE_TAG for a diagnostic rebuild.",
+  );
+} else {
+  buildImage();
+}
+
+const verifiedImage = inspectImageDigest();
+if (verifiedImage.state !== "available") {
+  throw new Error(`Could not verify the HGO release image after the build/reuse decision: ${imageUri}.`);
+}
+console.log(`HGO release image digest: ${verifiedImage.digest}`);
 
 const deployArgs = [
   "run",
