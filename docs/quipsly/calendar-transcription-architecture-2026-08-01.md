@@ -164,11 +164,56 @@ Quipsly also provides:
 - a standards-compliant `.ics` download for one appointment or milestone;
 - revocable `webcal` subscription feeds for a coaching calendar, production
   project, or “my Quipsly commitments”;
-- stable `UID`, `DTSTAMP`, `SEQUENCE`, timezone, and `VALARM` behavior;
+- stable `UID`, `DTSTAMP`, `SEQUENCE`, UTC interval, cancellation, and
+  free/busy behavior;
 - `RECURRENCE-ID` only when Quipsly owns an actual recurring series;
 - CRLF line endings, UTF-8 escaping, and RFC line folding;
 - no secrets or private notes in calendar fields;
 - a capability token stored hashed, scoped to one feed, and revocable.
+
+The first subscription release does not emit `VALARM`. Quipsly reminder intent,
+device-local notification delivery, and provider-calendar reminders remain
+separate truths; a feed must not silently create a second reminder policy.
+
+Subscription lifecycle is database-owned rather than UI-conventional:
+
+- a partial unique index permits exactly one active capability per collection
+  and owner, after deterministically revoking any older race-created rows;
+- rotation and revocation take the same PostgreSQL advisory lock before changing
+  state;
+- each render rechecks that the owner is active and, for a podcast feed, still
+  has an active grant to the exact Nest;
+- production event and capability links use the configured canonical Nest
+  origin, never a request-controlled host;
+- a domain-separated content digest is the strong HTTP entity tag;
+- conditional requests may return `304`, and successful polling writes no row;
+- `FEED_RENDER` is an append-only publication receipt for a new content digest,
+  not an access log entry for every calendar-client poll;
+- Next request logging excludes the bearer route while retaining ordinary app
+  request logs; and
+- release preflight requires a narrow `_Default` Cloud Logging sink exclusion
+  for the matching Cloud Run request-log route before a revision may ship.
+
+Cloud Run creates request logs independently of application logging. The sink
+exclusion therefore protects future long-term Cloud Logging storage; it does
+not redact entries that were already stored and it does not prevent the chosen
+calendar provider from receiving the subscription URL it must fetch. The URL
+is a bearer secret: share it only with the intended provider, rotate it after
+accidental disclosure, and revoke it when the subscription is no longer used.
+
+- [Google Cloud: Logging and viewing logs in Cloud Run](https://cloud.google.com/run/docs/logging)
+- [Google Cloud: Route log entries and exclusions](https://cloud.google.com/logging/docs/routing/overview)
+
+Apple allows an external read-only calendar to be added from its subscription
+URL or by tapping an iCalendar link. Google Calendar's documented URL flow is a
+desktop-web **Other calendars → From URL** action. Outlook on the web uses
+**Add calendar → Subscribe from web** and warns that provider refresh can take
+hours. Quipsly therefore distinguishes immediate server-side revocation from a
+calendar client's possibly stale last-downloaded copy.
+
+- [Apple: Set up multiple calendars on iPhone](https://support.apple.com/en-ca/guide/iphone/iph3d1110d4/ios)
+- [Google: Add a calendar from a URL](https://support.google.com/calendar/answer/37100?hl=en-uk)
+- [Microsoft: Import or subscribe to a calendar](https://support.microsoft.com/en-us/outlook/import-or-subscribe-to-a-calendar-in-outlook-com-or-outlook-on-the-web)
 
 ICS subscriptions are read-only in the first release. Quipsly does not pretend
 that inbound ICS edits can be reconciled safely. CalDAV is deferred until real
@@ -202,7 +247,7 @@ CalendarSyncReceipt
   requestDigest, responseDigest, providerStatus, occurredAt, metadataJson
 
 CalendarFeed
-  id, nestId/userId, purpose, tokenDigest, status, timezone
+  id, collectionId, ownerUserId, tokenDigest, status, timezone
   lastGeneratedAt, revokedAt
 ```
 
@@ -339,8 +384,11 @@ model version, reviewer, review time, and the final human-edited text.
   notes, or unreviewed goals.
 - Private coaching notes are excluded from shared packets and provider events by
   construction, not just by UI convention.
-- OAuth tokens and feed bearer tokens never appear in database receipts, logs,
-  analytics, URLs shown in screenshots, or Git.
+- OAuth tokens and raw feed bearer tokens never appear in database receipts,
+  analytics, checked-in evidence, screenshots, or Git. Application request
+  logging ignores feed paths, and production release is gated on the Cloud
+  Logging request-route exclusion. The selected calendar provider necessarily
+  receives the capability URL in order to subscribe.
 - Feed tokens are high-entropy, stored as digests, scoped, revocable, and
   rotatable.
 - Every model-produced item is visibly a candidate and retains provenance.
@@ -464,8 +512,9 @@ scopes: one person's accepted commitments, one person's coaching appointments,
 or scheduled podcast rooms in one accessible episode Nest. Creating a feed
 returns 256 bits of bearer material once; Quipsly stores only its domain-
 separated SHA-256 digest. Replacing or revoking the feed makes the old URL return
-the same non-enumerable 404. Every successful render records a no-external-
-mutation receipt. Feed events use stable UIDs, monotonic integer revisions,
+the same non-enumerable 404. Each new content revision records one no-external-
+mutation receipt; unchanged conditional polling records nothing. Feed events use
+stable UIDs, monotonic integer revisions,
 CRLF, UTF-8 folding, one-hour refresh hints, and transparent task/goal due
 markers so a deadline does not pretend to reserve availability. Private notes,
 transcript text, recordings, participant addresses, and provider identifiers

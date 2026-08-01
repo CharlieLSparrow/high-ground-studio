@@ -6,6 +6,7 @@ import {
   rotateCalendarFeed,
   type SupportedCalendarFeedPurpose,
 } from "@/lib/server/calendar-feed";
+import { resolveCalendarPublicOrigin } from "@/lib/server/calendar-public-origin";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -126,6 +127,10 @@ export async function POST(request: Request) {
     );
   }
   try {
+    // Resolve and validate the externally returned URL before rotating the
+    // capability. A configuration failure must not revoke the last usable
+    // link and then strand the replacement token in an error response.
+    const publicOrigin = resolveCalendarPublicOrigin(request.url);
     const rotated = await rotateCalendarFeed({
       prisma,
       actorUserId: session.user.id,
@@ -137,7 +142,7 @@ export async function POST(request: Request) {
           ? body.displayName.slice(0, 120)
           : null,
     });
-    const url = new URL(`/api/calendar/feeds/${rotated.token}`, request.url);
+    const url = new URL(`/api/calendar/feeds/${rotated.token}`, publicOrigin);
     const webcalUrl = url.toString().replace(/^https?:/, "webcal:");
     return privateJson(
       {

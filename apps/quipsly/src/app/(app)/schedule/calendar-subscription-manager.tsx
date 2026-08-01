@@ -62,7 +62,6 @@ export function CalendarSubscriptionManager({
     if (!response.ok || !body?.ok)
       throw new Error(body?.error || "Could not read calendar subscriptions.");
     setFeeds(body.feeds);
-    setMessage("");
   }
 
   const active = useMemo(
@@ -291,10 +290,28 @@ export function CalendarSubscriptionManager({
           {message}
         </p>
       )}
+      <div className="mt-4 grid gap-2 text-[11px] font-semibold leading-relaxed text-[#526b7c] md:grid-cols-3">
+        <p className="rounded-xl border border-sky-200 bg-white p-3">
+          <strong className="block text-[#26394a]">Apple Calendar</strong>
+          Use <em>Subscribe in Calendar</em>, review the read-only subscription,
+          then add it.
+        </p>
+        <p className="rounded-xl border border-sky-200 bg-white p-3">
+          <strong className="block text-[#26394a]">Google Calendar</strong>
+          Copy the HTTPS link. On a computer, open Google Calendar, then choose
+          <em> Other calendars → From URL</em>.
+        </p>
+        <p className="rounded-xl border border-sky-200 bg-white p-3">
+          <strong className="block text-[#26394a]">Outlook on the web</strong>
+          Copy the HTTPS link, then choose{" "}
+          <em>Add calendar → Subscribe from web</em>.
+        </p>
+      </div>
       <p className="mt-4 text-[11px] font-semibold leading-relaxed text-[#647887]">
         Replacing a link revokes the previous one immediately. Calendar apps
-        choose their own refresh timing; Quipsly publishes a one-hour refresh
-        hint and records each successful feed render without storing the private
+        choose their own refresh timing and may retain their last downloaded
+        copy. Quipsly publishes a one-hour refresh hint and records only a new
+        content revision—not every polling request—without storing the private
         link.
       </p>
     </section>

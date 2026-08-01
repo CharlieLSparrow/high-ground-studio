@@ -7,8 +7,11 @@ import {
   buildIcsFeed,
   type QuipslyCalendarEvent,
 } from "@/lib/server/calendar-ics";
+import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const CALENDAR_FEED_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const CALENDAR_FEED_COLLECTION_SOURCE = "quipsly-icalendar-subscription-v1";
 export type SupportedCalendarFeedPurpose =
   | "COACHING"
   | "PODCAST_PRODUCTION"
@@ -18,6 +21,31 @@ function digestToken(token: string) {
   return createHash("sha256")
     .update(`quipsly-calendar-feed-v1\0${token}`)
     .digest("hex");
+}
+
+function digestCalendar(calendar: string) {
+  return createHash("sha256")
+    .update(`quipsly-calendar-feed-content-v1\0${calendar}`)
+    .digest("hex");
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function feedLockKey(input: {
+  actorUserId: string;
+  purpose: SupportedCalendarFeedPurpose;
+  projectId?: string | null;
+}) {
+  return [
+    "quipsly:calendar-feed",
+    input.actorUserId,
+    input.purpose,
+    input.projectId || "personal",
+  ].join(":");
 }
 
 export function isCalendarFeedToken(value: string) {
@@ -65,6 +93,7 @@ export async function rotateCalendarFeed(input: {
   const { token, tokenDigest } = createCalendarFeedToken();
   const now = new Date();
   return input.prisma.$transaction(async (transaction) => {
+    await acquirePrismaAdvisoryTransactionLock(transaction, feedLockKey(input));
     const ownerBoundary =
       input.purpose === "PODCAST_PRODUCTION"
         ? { nestId: input.projectId || "" }
@@ -73,7 +102,26 @@ export async function rotateCalendarFeed(input: {
       throw new Error("A podcast production feed requires a project.");
     }
     let collection = await transaction.calendarCollection.findFirst({
-      where: { ...ownerBoundary, purpose: input.purpose, status: "ACTIVE" },
+      where: {
+        ...ownerBoundary,
+        purpose: input.purpose,
+        status: "ACTIVE",
+        feeds: {
+          some: { ownerUserId: input.actorUserId, status: "ACTIVE" },
+        },
+      },
+    });
+    collection ??= await transaction.calendarCollection.findFirst({
+      where: {
+        ...ownerBoundary,
+        purpose: input.purpose,
+        status: "ACTIVE",
+        connectionId: null,
+        metadataJson: {
+          path: ["source"],
+          equals: CALENDAR_FEED_COLLECTION_SOURCE,
+        },
+      },
     });
     if (!collection) {
       collection = await transaction.calendarCollection.create({
@@ -84,11 +132,19 @@ export async function rotateCalendarFeed(input: {
           timezone: input.timezone,
           visibility:
             input.purpose === "PODCAST_PRODUCTION" ? "TEAM" : "PRIVATE",
-          metadataJson: { source: "quipsly-icalendar-subscription-v1" },
+          metadataJson: { source: CALENDAR_FEED_COLLECTION_SOURCE },
         },
       });
     }
-    await transaction.calendarFeed.updateMany({
+    const priorFeedIds = await transaction.calendarFeed.findMany({
+      where: {
+        collectionId: collection.id,
+        ownerUserId: input.actorUserId,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
+    const priorFeeds = await transaction.calendarFeed.updateMany({
       where: {
         collectionId: collection.id,
         ownerUserId: input.actorUserId,
@@ -96,6 +152,24 @@ export async function rotateCalendarFeed(input: {
       },
       data: { status: "REVOKED", revokedAt: now },
     });
+    if (priorFeeds.count > 0) {
+      await transaction.calendarSyncReceipt.create({
+        data: {
+          collectionId: collection.id,
+          actorUserId: input.actorUserId,
+          operation: "FEED_REVOKE",
+          outcome: "SUCCEEDED",
+          externalMutated: false,
+          occurredAt: now,
+          metadataJson: {
+            source: "icalendar-feed-rotation",
+            revokedCount: priorFeeds.count,
+            feedIds: priorFeedIds.map((feed) => feed.id).sort(),
+            replacementPending: true,
+          },
+        },
+      });
+    }
     const feed = await transaction.calendarFeed.create({
       data: {
         collectionId: collection.id,
@@ -132,16 +206,29 @@ export async function revokeCalendarFeeds(input: {
 }) {
   const now = new Date();
   return input.prisma.$transaction(async (transaction) => {
+    await acquirePrismaAdvisoryTransactionLock(transaction, feedLockKey(input));
     const collection = await transaction.calendarCollection.findFirst({
       where: {
         purpose: input.purpose,
+        status: "ACTIVE",
         ...(input.purpose === "PODCAST_PRODUCTION"
           ? { nestId: input.projectId || "" }
           : { ownerUserId: input.actorUserId }),
+        feeds: {
+          some: { ownerUserId: input.actorUserId, status: "ACTIVE" },
+        },
       },
       select: { id: true },
     });
     if (!collection) return { revoked: 0 };
+    const activeFeedIds = await transaction.calendarFeed.findMany({
+      where: {
+        collectionId: collection.id,
+        ownerUserId: input.actorUserId,
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    });
     const result = await transaction.calendarFeed.updateMany({
       where: {
         collectionId: collection.id,
@@ -162,6 +249,7 @@ export async function revokeCalendarFeeds(input: {
           metadataJson: {
             source: "icalendar-feed-revoke",
             revokedCount: result.count,
+            feedIds: activeFeedIds.map((feed) => feed.id).sort(),
           },
         },
       });
@@ -183,10 +271,31 @@ export async function renderCalendarFeed(input: {
   const until = new Date(now.getTime() + 730 * 86_400_000);
   const feed = await input.prisma.calendarFeed.findUnique({
     where: { tokenDigest },
-    include: { collection: true },
+    include: {
+      collection: true,
+      owner: { select: { primaryEmail: true, isActive: true } },
+    },
   });
-  if (!feed || feed.status !== "ACTIVE" || feed.collection.status !== "ACTIVE")
+  if (
+    !feed ||
+    feed.status !== "ACTIVE" ||
+    feed.collection.status !== "ACTIVE" ||
+    !feed.owner?.isActive
+  )
     return null;
+
+  if (feed.collection.purpose === "PODCAST_PRODUCTION") {
+    if (!feed.collection.nestId) return null;
+    const visibleProjects = await listProjectsVisibleToEmail(
+      feed.owner.primaryEmail,
+      input.prisma,
+    );
+    if (
+      !visibleProjects.some((project) => project.id === feed.collection.nestId)
+    ) {
+      return null;
+    }
+  }
 
   const events: QuipslyCalendarEvent[] = [];
   if (feed.collection.purpose === "COACHING" && feed.ownerUserId) {
@@ -391,30 +500,77 @@ export async function renderCalendarFeed(input: {
     events,
     generatedAt: now,
   });
-  await input.prisma.$transaction([
-    input.prisma.calendarFeed.update({
-      where: { id: feed.id },
-      data: { lastGeneratedAt: now },
-    }),
-    input.prisma.calendarSyncReceipt.create({
-      data: {
-        collectionId: feed.collectionId,
-        actorUserId: feed.ownerUserId,
-        operation: "FEED_RENDER",
-        outcome: "SUCCEEDED",
-        externalMutated: false,
-        occurredAt: now,
-        metadataJson: {
-          source: "icalendar-feed-render",
-          feedId: feed.id,
-          eventCount: events.length,
-        },
-      },
-    }),
-  ]);
+  const contentDigest = digestCalendar(calendar);
+  const stillActive = await recordCalendarFeedContentRevision({
+    prisma: input.prisma,
+    feedId: feed.id,
+    collectionId: feed.collectionId,
+    actorUserId: feed.ownerUserId,
+    contentDigest,
+    eventCount: events.length,
+    now,
+  });
+  if (!stillActive) return null;
   return {
     calendar,
     name: feedName(feed.collection.purpose, feed.collection.displayName),
     eventCount: events.length,
+    contentDigest,
   };
+}
+
+async function recordCalendarFeedContentRevision(input: {
+  prisma: PrismaClient;
+  feedId: string;
+  collectionId: string;
+  actorUserId: string | null;
+  contentDigest: string;
+  eventCount: number;
+  now: Date;
+}) {
+  return input.prisma.$transaction(async (transaction) => {
+    await acquirePrismaAdvisoryTransactionLock(
+      transaction,
+      `quipsly:calendar-feed-content:${input.feedId}`,
+    );
+    const current = await transaction.calendarFeed.findUnique({
+      where: { id: input.feedId },
+      select: { status: true, metadataJson: true },
+    });
+    if (!current || current.status !== "ACTIVE") return false;
+
+    const metadata = metadataRecord(current.metadataJson);
+    if (metadata.lastContentDigest === input.contentDigest) return true;
+
+    await transaction.calendarFeed.update({
+      where: { id: input.feedId },
+      data: {
+        lastGeneratedAt: input.now,
+        metadataJson: {
+          ...metadata,
+          lastContentDigest: input.contentDigest,
+          lastEventCount: input.eventCount,
+          contentVersion: 1,
+        },
+      },
+    });
+    await transaction.calendarSyncReceipt.create({
+      data: {
+        collectionId: input.collectionId,
+        actorUserId: input.actorUserId,
+        operation: "FEED_RENDER",
+        outcome: "SUCCEEDED",
+        responseDigest: input.contentDigest,
+        externalMutated: false,
+        occurredAt: input.now,
+        metadataJson: {
+          source: "icalendar-feed-content-revision",
+          feedId: input.feedId,
+          eventCount: input.eventCount,
+          pollingRequestStored: false,
+        },
+      },
+    });
+    return true;
+  });
 }

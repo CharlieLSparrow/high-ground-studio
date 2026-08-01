@@ -258,6 +258,16 @@ else
   fail "Could not describe Cloud Run service ${SERVICE_NAME} in ${REGION}."
 fi
 
+print_step "Calendar capability request-log privacy"
+
+if node "${release_source_root}/scripts/release/quipsly-calendar-capability-log-exclusion.mjs" \
+  --project "${PROJECT_ID}" \
+  --service "${SERVICE_NAME}"; then
+  pass "Cloud Logging excludes Nest calendar bearer request URLs from the _Default sink."
+else
+  fail "Calendar bearer request URLs can enter Cloud Logging. Apply the named exclusion before release."
+fi
+
 print_step "Mobile capture media access"
 
 if PROJECT_ID="${PROJECT_ID}" \

@@ -130,4 +130,30 @@ describe("calendar subscription management API", () => {
     expect(denied.status).toBe(403);
     expect(revokeCalendarFeeds).not.toHaveBeenCalled();
   });
+
+  it("does not rotate away the last link when the canonical public origin is invalid", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session);
+    jest.mocked(getPrismaClient).mockReturnValue({} as never);
+    const previousHost = process.env.QUIPSLY_APP_HOST;
+    process.env.QUIPSLY_APP_HOST = "https://nest.quipsly.com/not-an-origin";
+    const consoleError = jest.spyOn(console, "error").mockImplementation();
+    try {
+      const response = await POST(
+        new Request("https://nest.quipsly.com/api/calendar/feeds", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            purpose: "PERSONAL_COMMITMENTS",
+            timezone: "America/Denver",
+          }),
+        }),
+      );
+      expect(response.status).toBe(503);
+      expect(rotateCalendarFeed).not.toHaveBeenCalled();
+    } finally {
+      if (previousHost === undefined) delete process.env.QUIPSLY_APP_HOST;
+      else process.env.QUIPSLY_APP_HOST = previousHost;
+      consoleError.mockRestore();
+    }
+  });
 });

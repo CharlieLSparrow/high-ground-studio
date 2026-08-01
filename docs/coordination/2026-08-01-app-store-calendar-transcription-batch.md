@@ -100,6 +100,38 @@ External evidence:
   it: share the HTTPS URL from Capture, then finish **Other calendars > From
   URL** at calendar.google.com on a computer. Apple receives the `webcal:` form
   directly.
+- A production-hardening follow-up closes the capability-boundary defects.
+  The database and advisory-lock layer now guarantee one active link per owner
+  and collection; inactive users and former Nest collaborators receive the same
+  non-enumerable not-found response as a revoked token; generated event links
+  use the canonical Nest origin; and calendar polling records a receipt only
+  when the content digest changes. Strong ETags and private conditional caching
+  avoid returning an unchanged body without turning an anonymous capability
+  route into a shared-cache object.
+- Next's request logger now ignores only the bearer subscription path. Cloud
+  Run creates its own request logs, so release preflight also requires a named,
+  exact-route exclusion on the project's `_Default` Cloud Logging sink. The
+  calendar provider still necessarily receives the private URL it subscribes
+  to; accidental disclosure requires rotation.
+- The migration replayed all 37 migrations in a fresh PostgreSQL database,
+  reported zero schema diff, denied a second simultaneous active link at the
+  database boundary, allowed an explicit revoke-and-replace, backfilled safe
+  revocation receipts, and left the daily database schema current. The isolated
+  fixture was removed after readback.
+- A retained `.test` product operator completed the rendered phone-width
+  create, conditional-fetch, replace, and revoke journey against loopback Nest
+  and PostgreSQL. Readback proved one publication receipt per content revision,
+  `304` for unchanged polling, immediate `404` for both revoked links, exactly
+  one active link during rotation, zero active links at completion, no provider
+  contact, and a cleared browser session. The first failed selector run mutated
+  nothing; both evidence directories were preserved.
+- Local Nest logging proof retained 27 ordinary calendar-management request
+  entries while recording zero bearer subscription paths. The Cloud Logging
+  exclusion could not be read or applied because the current gcloud user token
+  is expired. Reauthenticate with `gcloud auth login --update-adc --brief`, run
+  `pnpm quipsly:release:calendar-log-privacy:apply`, and require the read-only
+  `pnpm quipsly:release:calendar-log-privacy` check to pass before the next
+  preview or production release.
 
 ## Transcription and packet slice
 
@@ -125,6 +157,14 @@ External evidence:
 
 ## Verification
 
+- Final calendar-focused web suite: 47/47.
+- Final calendar operation/release contracts: 9/9.
+- Full Nest Jest suite: 1,033 passed across 205 active suites; 100 tests in 34
+  suites remained intentionally skipped.
+- Quipsly TypeScript, Prisma schema validation, 37-migration local status, and
+  optimized 152-route production build: pass.
+- Generated build output was moved to the macOS Trash after verification so it
+  cannot create a duplicate-package Jest warning in later development runs.
 - App Store metadata validation: pass, four explicit blockers.
 - App Store listing operator tests: 4/4.
 - Transcript worker tests: 10/10.

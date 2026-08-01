@@ -4,9 +4,16 @@ import test from "node:test";
 
 const quipslyConfig = readFileSync("apps/quipsly/next.config.mjs", "utf8");
 const webConfig = readFileSync("apps/web/next.config.mjs", "utf8");
-const releaseGate = readFileSync("scripts/hgo-quipsly-release-readiness.mjs", "utf8");
-const quipslyTypeScript = JSON.parse(readFileSync("apps/quipsly/tsconfig.json", "utf8"));
-const webTypeScript = JSON.parse(readFileSync("apps/web/tsconfig.json", "utf8"));
+const releaseGate = readFileSync(
+  "scripts/hgo-quipsly-release-readiness.mjs",
+  "utf8",
+);
+const quipslyTypeScript = JSON.parse(
+  readFileSync("apps/quipsly/tsconfig.json", "utf8"),
+);
+const webTypeScript = JSON.parse(
+  readFileSync("apps/web/tsconfig.json", "utf8"),
+);
 
 test("release builds use isolated Next output directories", () => {
   assert.match(
@@ -19,7 +26,10 @@ test("release builds use isolated Next output directories", () => {
   );
   assert.match(releaseGate, /QUIPSLY_BUILD_DIST_DIR: "\.next-release"/);
   assert.match(releaseGate, /WEB_BUILD_DIST_DIR: "\.next-release"/);
-  assert.doesNotMatch(releaseGate, /cleanPaths: \["apps\/(?:quipsly|web)\/\.next"\]/);
+  assert.doesNotMatch(
+    releaseGate,
+    /cleanPaths: \["apps\/(?:quipsly|web)\/\.next"\]/,
+  );
 });
 
 test("build output overrides stay confined to project-local generated directories", () => {
@@ -34,4 +44,24 @@ test("TypeScript includes both developer and isolated release route types", () =
     assert.ok(config.include.includes(".next-release/types/**/*.ts"));
     assert.ok(config.include.includes(".next-release/dev/types/**/*.ts"));
   }
+});
+
+test("Quipsly request logging excludes only bearer calendar subscription paths", async () => {
+  const { default: config } = await import("../apps/quipsly/next.config.mjs");
+  const ignoredPaths = config.logging?.incomingRequests?.ignore;
+
+  assert.equal(ignoredPaths?.length, 1);
+  assert.equal(
+    ignoredPaths[0].test("/api/calendar/feeds/bearer-capability"),
+    true,
+  );
+  assert.equal(
+    ignoredPaths[0].test("/api/calendar/feeds/bearer-capability?refresh=1"),
+    true,
+  );
+  assert.equal(ignoredPaths[0].test("/api/calendar/feeds"), false);
+  assert.equal(
+    ignoredPaths[0].test("/api/coaching/bookings/example/calendar"),
+    false,
+  );
 });
