@@ -272,12 +272,19 @@ state on a trusted APFS volume:
 
 ```bash
 export QUIPSLY_CAPTURE_RELEASE_DIR='/Volumes/<trusted-volume>/Quipsly QA Artifacts/Capture Releases'
-export QUIPSLY_CAPTURE_UI_TEST_DIR="$QUIPSLY_CAPTURE_RELEASE_DIR/ui-tests"
+export QUIPSLY_CAPTURE_UI_TEST_DIR='/Volumes/<trusted-volume>/Quipsly QA Artifacts/Capture UI Tests'
 export QUIPSLY_CAPTURE_DERIVED_DATA_DIR='/Volumes/<trusted-volume>/Quipsly QA Artifacts/Temporary/Capture DerivedData'
 ```
 
-Each lane appends its own `ui-tests` or `archive` directory. Do not point this
-at a shared active Xcode DerivedData directory.
+These values are base directories. The release lane automatically appends the
+exact source label and invocation ID before its `ui-tests` or `archive`
+directory, so a later run cannot overwrite earlier evidence or reuse another
+release's active build state. Do not pre-append a source or run directory and
+do not point these variables at a shared active Xcode DerivedData directory.
+The upload lane keeps the verified IPA and receipt on that trusted volume but
+temporarily bounds Fastlane transporter scratch state to `/private/tmp`; this
+avoids the transporter's shell adapter misparsing an external volume name that
+contains spaces.
 
 Retain the receipt and SHA-256, not signing secrets or provisioning material,
 with the release record.

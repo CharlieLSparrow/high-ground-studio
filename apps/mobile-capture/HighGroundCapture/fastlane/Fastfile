@@ -49,10 +49,17 @@ def release_receipt_path(paths)
   )
 end
 
-def capture_derived_data_path(default_root, lane_name)
+def capture_derived_data_path(default_root, lane_name, source_label: "", run_id: "")
   configured_root = ENV["QUIPSLY_CAPTURE_DERIVED_DATA_DIR"].to_s.strip
-  base_root = configured_root.empty? ? File.join(default_root, "DerivedData") : configured_root
-  File.expand_path(File.join(base_root, lane_name))
+  if configured_root.empty?
+    return File.expand_path(File.join(default_root, "DerivedData", lane_name))
+  end
+
+  path_segments = [configured_root]
+  path_segments << source_label unless source_label.to_s.empty?
+  path_segments << run_id unless run_id.to_s.empty?
+  path_segments << lane_name
+  File.expand_path(File.join(*path_segments))
 end
 
 def write_release_receipt(receipt_path, receipt)
@@ -101,11 +108,20 @@ platform :ios do
     test_run_id = ENV["QUIPSLY_CAPTURE_UI_TEST_RUN_ID"].to_s
     test_run_id = ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"].to_s if test_run_id.empty?
     test_run_id = "#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}-#{Process.pid}" if test_run_id.empty?
-    explicit_output_root = options[:output_directory] || ENV["QUIPSLY_CAPTURE_UI_TEST_DIR"]
-    output_root = File.expand_path(
-      explicit_output_root || File.join("/tmp/quipsly-capture-ui-tests", source_label, test_run_id),
+    explicit_output_directory = options[:output_directory]
+    output_base_root = ENV["QUIPSLY_CAPTURE_UI_TEST_DIR"].to_s.strip
+    output_base_root = "/tmp/quipsly-capture-ui-tests" if output_base_root.empty?
+    output_root = if explicit_output_directory
+      File.expand_path(explicit_output_directory)
+    else
+      File.expand_path(File.join(output_base_root, source_label, test_run_id))
+    end
+    derived_data_path = capture_derived_data_path(
+      output_root,
+      "ui-tests",
+      source_label: source_label,
+      run_id: test_run_id,
     )
-    derived_data_path = capture_derived_data_path(output_root, "ui-tests")
     FileUtils.mkdir_p(output_root)
     FileUtils.mkdir_p(derived_data_path)
     UI.message("Capture UI evidence: #{output_root}")
@@ -158,7 +174,14 @@ platform :ios do
     end
     ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"] = source_revision
     paths = release_paths(options)
-    derived_data_path = capture_derived_data_path(paths[:output_directory], "archive")
+    source_label = ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"].to_s[0, 12]
+    release_run_id = ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"].to_s
+    derived_data_path = capture_derived_data_path(
+      paths[:output_directory],
+      "archive",
+      source_label: source_label,
+      run_id: release_run_id,
+    )
     FileUtils.mkdir_p(paths[:output_directory])
     FileUtils.mkdir_p(derived_data_path)
     UI.message("Capture archive DerivedData: #{derived_data_path}")
@@ -267,6 +290,14 @@ platform :ios do
     UI.user_error!("TestFlight staging changed the verified IPA bytes.") unless
       Digest::SHA256.file(upload_ipa_path).hexdigest == Digest::SHA256.file(paths[:ipa_path]).hexdigest
 
+    # Fastlane's altool adapter still assembles part of its transporter command
+    # as a shell string. A trusted external build volume may legitimately have
+    # spaces in its path, but allowing that TMPDIR to reach the adapter causes
+    # the command to split before Apple receives the upload. Keep all retained
+    # evidence on the configured volume while bounding only the transporter's
+    # disposable state to Apple's space-free system temporary directory.
+    previous_tmpdir = ENV["TMPDIR"]
+    ENV["TMPDIR"] = "/private/tmp"
     begin
       upload_to_testflight(
         api_key_path: File.expand_path(api_key_path),
@@ -279,6 +310,11 @@ platform :ios do
         notify_external_testers: false,
       )
     ensure
+      if previous_tmpdir.nil?
+        ENV.delete("TMPDIR")
+      else
+        ENV["TMPDIR"] = previous_tmpdir
+      end
       FileUtils.rm_rf(upload_staging_root)
     end
     receipt_path = update_release_receipt(paths) do |receipt|
