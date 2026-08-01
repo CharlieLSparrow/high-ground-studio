@@ -9,6 +9,7 @@ const files = {
   helper: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-session-context.ts"),
   readinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   components: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift"),
+  phoneShell: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift"),
   bridge: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift"),
   auth: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift"),
 };
@@ -34,6 +35,7 @@ const route = read(files.route);
 const helper = read(files.helper);
 const readinessRoute = read(files.readinessRoute);
 const components = read(files.components);
+const phoneShell = read(files.phoneShell);
 const bridge = read(files.bridge);
 const auth = read(files.auth);
 
@@ -78,7 +80,6 @@ assertIncludes("readiness route", readinessRoute, "sessionContext: \"/api/mobile
 assertIncludes("readiness route", readinessRoute, "sessionContextBoundary", "readiness should explain local draft vs Nest truth");
 
 for (const needle of [
-  "CaptureSessionContextPanel(session: session, sessionClient: sessionClient)",
   "Load Nest",
   "Save Nest",
   "Local changes not synced",
@@ -91,6 +92,16 @@ for (const needle of [
   "rebaseRevision",
 ]) {
   assertIncludes("native components", components, needle, "native UI should keep the phone draft visible while resolving a stale Nest revision");
+}
+
+for (const needle of [
+  "CaptureSessionContextPanel(",
+  "session: session",
+  "sessionClient: model.sessionClient",
+  "Session plan",
+  "Notes, goals & tasks",
+]) {
+  assertIncludes("native phone shell", phoneShell, needle, "the current iPhone shell must mount the shared session-context panel in the selected Session workflow");
 }
 
 for (const needle of [
