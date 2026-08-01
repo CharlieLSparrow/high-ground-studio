@@ -187,6 +187,84 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.queryByText(/audio spine \(placeholder\)/i)).not.toBeInTheDocument();
   });
 
+  it("projects receipt-backed Shared Watch spans into the production timeline", async () => {
+    const user = userEvent.setup();
+    mockEpisodeProduction({
+      timelineJson: {
+        payloadVersion: 2,
+        contentFingerprint: "saved-base-fingerprint",
+        projectSlug: "high-ground-odyssey-manuscript",
+        episodeSlug: "current-episode",
+        timelineClips: [{
+          id: "primary-camera",
+          assetId: "camera-asset",
+          trackId: "V1",
+          kind: "video",
+          startIn: 0,
+          duration: 60,
+          sourceStart: 0,
+          sourceEnd: 60,
+          name: "Primary camera",
+          color: "#2563eb",
+        }],
+        transcript: [],
+      },
+      productionJson: {
+        episodeRoom: { timelineSync: { sourceRevision: 7, segmentCount: 1 } },
+        timelineClips: [{
+          id: "episode-room-watch-segment-1",
+          assetId: "vault-curiosity",
+          trackId: "V9",
+          kind: "video",
+          startIn: 12,
+          duration: 8,
+          sourceStart: 2,
+          sourceEnd: 10,
+          name: "Watched · Be Curious",
+          color: "#d37b43",
+          generatedFrom: "quipsly-episode-room-watch.v1",
+          recordingSync: {
+            episodeRoomSessionId: "episode-room-session-1",
+            recordingRoomId: "capture-room-1",
+            recordingStartedAt: "2026-07-31T12:00:00.000Z",
+            watchSegmentId: "segment-1",
+            startReceiptId: "receipt-play-1",
+            endReceiptId: "receipt-pause-1",
+            watchedAt: "2026-07-31T12:00:12.000Z",
+          },
+        }],
+      },
+    });
+
+    render(<CloudEditor />);
+
+    expect(await screen.findByText(
+      "Loaded Current Episode from saved timeline with 1 Shared Watch span",
+    )).toBeInTheDocument();
+    expect((await screen.findAllByText("Watched · Be Curious")).length).toBeGreaterThan(0);
+    expect(screen.getByText("1 receipt-backed")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    await waitFor(() => {
+      const saveCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return body.action === "save-timeline";
+      });
+      expect(saveCall).toBeDefined();
+      const body = JSON.parse(String(saveCall?.[1]?.body));
+      expect(body.expectedTimelineFingerprint).toBe("saved-base-fingerprint");
+      expect(body.timelineJson.timelineClips[1]).toMatchObject({
+        id: "episode-room-watch-segment-1",
+        generatedFrom: "quipsly-episode-room-watch.v1",
+        recordingSync: {
+          watchSegmentId: "segment-1",
+          startReceiptId: "receipt-play-1",
+          endReceiptId: "receipt-pause-1",
+        },
+      });
+    });
+  });
+
   it("loads a transcript-only saved artifact without borrowing demo clips", async () => {
     mockEpisodeProduction({
       timelineJson: {

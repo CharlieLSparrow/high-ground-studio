@@ -31,6 +31,7 @@ import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimeline
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
+import { projectSharedWatchTimeline } from "@/lib/episode-production/shared-watch-timeline";
 import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
 import {
   captureGroupEditorFocusPlan,
@@ -39,7 +40,7 @@ import {
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
-type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "empty episode" | "error";
+type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "shared watch" | "empty episode" | "error";
 
 type AiEditSuggestion =
   | { type: "deactivate"; blockId: string }
@@ -1342,6 +1343,20 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
   const safeSourceStart = Math.max(0, sourceStart);
   const safeSourceDuration = Math.max(RECORDER_SEGMENT_MIN_DURATION_SECONDS, safeDuration);
 
+  const recordingSync = asObject(record.recordingSync);
+  const episodeRoomSessionId = coerceString(recordingSync?.episodeRoomSessionId);
+  const watchSegmentId = coerceString(recordingSync?.watchSegmentId);
+  const startReceiptId = coerceString(recordingSync?.startReceiptId);
+  const endReceiptId = coerceString(recordingSync?.endReceiptId);
+  const watchedAt = coerceString(recordingSync?.watchedAt);
+  const hasRecordingSync = Boolean(
+    episodeRoomSessionId
+    && watchSegmentId
+    && startReceiptId
+    && endReceiptId
+    && watchedAt
+  );
+
   return {
     id: coerceString(record.id, makeId("clip")),
     assetId: explicitSourceId || "unknown-asset",
@@ -1353,6 +1368,22 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
     sourceEnd: roundSeconds(Math.max(safeSourceStart, sourceEnd)),
     name: coerceString(record.name, "Clip"),
     color: coerceString(record.color, "#2563eb"),
+    generatedFrom: coerceOptionalString(record.generatedFrom),
+    ...(hasRecordingSync ? {
+      recordingSync: {
+        episodeRoomSessionId,
+        watchSegmentId,
+        startReceiptId,
+        endReceiptId,
+        watchedAt,
+        ...(coerceString(recordingSync?.recordingRoomId)
+          ? { recordingRoomId: coerceString(recordingSync?.recordingRoomId) }
+          : {}),
+        ...(coerceString(recordingSync?.recordingStartedAt)
+          ? { recordingStartedAt: coerceString(recordingSync?.recordingStartedAt) }
+          : {}),
+      },
+    } : {}),
   };
 }
 
@@ -2480,6 +2511,8 @@ function buildEpisodeArtifactPayload(
       name: clip.name,
       color: clip.color,
       kind: clip.kind,
+      generatedFrom: clip.generatedFrom,
+      recordingSync: clip.recordingSync,
     })),
     transcript: timeline.transcript.map((block) => ({
       id: block.id,
@@ -2510,6 +2543,8 @@ function timelineContentFingerprint(timeline: TimelineState): string {
       name: clip.name,
       color: clip.color,
       kind: clip.kind,
+      generatedFrom: clip.generatedFrom,
+      recordingSync: clip.recordingSync,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
 
@@ -3032,23 +3067,42 @@ function CloudEditorContent() {
         .find((candidate) => Boolean(candidate.timeline)) as { label: TimelineHydrationSource; timeline: TimelineState } | undefined;
 
       if (persistedTimelineEntry) {
-        const persistedTimeline = persistedTimelineEntry.timeline;
+        const sharedWatchProjection = projectSharedWatchTimeline(
+          persistedTimelineEntry.timeline,
+          state.productionJson,
+        );
+        const persistedTimeline = sharedWatchProjection.timeline;
         replaceTimeline(persistedTimeline);
         hasHydratedProductionTimeline.current = true;
         setIsTimelineHydrated(true);
-        timelineSavedFingerprintRef.current = timelineContentFingerprint(persistedTimeline);
         const persistedRecord = asObject(state.timelineJson);
+        timelineSavedFingerprintRef.current = coerceString(
+          persistedRecord?.contentFingerprint,
+          timelineContentFingerprint(persistedTimelineEntry.timeline),
+        );
         const persistedSavedAt = coerceString(persistedRecord?.savedAt);
         setTimelineLastSavedAt(persistedSavedAt || null);
         setTimelineHydrationSource(persistedTimelineEntry.label);
-        setSessionSummary(`Loaded ${state.title} from ${persistedTimelineEntry.label}`);
+        setSessionSummary(
+          sharedWatchProjection.derivativeCount
+            ? `Loaded ${state.title} from ${persistedTimelineEntry.label} with ${sharedWatchProjection.derivativeCount} Shared Watch ${sharedWatchProjection.derivativeCount === 1 ? "span" : "spans"}`
+            : `Loaded ${state.title} from ${persistedTimelineEntry.label}`,
+        );
         setViewMode("timeline");
       } else {
-        replaceTimeline(EMPTY_TIMELINE_STATE);
-        timelineSavedFingerprintRef.current = timelineContentFingerprint(EMPTY_TIMELINE_STATE);
+        const sharedWatchProjection = projectSharedWatchTimeline(
+          EMPTY_TIMELINE_STATE,
+          state.productionJson,
+        );
+        replaceTimeline(sharedWatchProjection.timeline);
+        timelineSavedFingerprintRef.current = timelineContentFingerprint(sharedWatchProjection.timeline);
         setTimelineLastSavedAt(null);
-        setTimelineHydrationSource("empty episode");
-        setSessionSummary(`${state.title} has no saved timeline or playable recording media yet.`);
+        setTimelineHydrationSource(sharedWatchProjection.derivativeCount ? "shared watch" : "empty episode");
+        setSessionSummary(
+          sharedWatchProjection.derivativeCount
+            ? `Loaded ${sharedWatchProjection.derivativeCount} receipt-backed Shared Watch ${sharedWatchProjection.derivativeCount === 1 ? "span" : "spans"} for ${state.title}`
+            : `${state.title} has no saved timeline or playable recording media yet.`,
+        );
       }
       setIsTimelineHydrated(true);
     }).catch((error) => {
@@ -6079,6 +6133,10 @@ function CloudEditorContent() {
                 <span className="text-right">{formatClock(productionDiagnostics.timelineEndSeconds)}</span>
                 <span>Clips</span>
                 <span className="text-right">{productionDiagnostics.totalClips} ({productionDiagnostics.videoClips}V / {productionDiagnostics.audioClips}A)</span>
+                <span>Shared Watch</span>
+                <span className="text-right">
+                  {timelineState.clips.filter((clip) => Boolean(clip.recordingSync)).length} receipt-backed
+                </span>
                 <span>Transcript</span>
                 <span className="text-right">{productionDiagnostics.transcriptBlocks} blocks</span>
                 <span>Paper cuts</span>

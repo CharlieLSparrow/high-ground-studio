@@ -27,6 +27,22 @@ export type TimelineClip = {
   deactivated?: boolean;
   aiSuggested?: boolean;
   transforms?: TransformKeyframe[];
+  /**
+   * Identifies a deterministic projection rather than hand-authored media.
+   * Editors preserve this so a projection can be refreshed by stable identity
+   * without mutating the protected source recording.
+   */
+  generatedFrom?: string;
+  /** Receipt-backed Episode Room clock evidence for Shared Watch spans. */
+  recordingSync?: {
+    episodeRoomSessionId: string;
+    recordingRoomId?: string;
+    recordingStartedAt?: string;
+    watchSegmentId: string;
+    startReceiptId: string;
+    endReceiptId: string;
+    watchedAt: string;
+  };
 };
 
 export type TranscriptBlock = {

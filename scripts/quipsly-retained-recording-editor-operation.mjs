@@ -25,6 +25,9 @@ const CLIP_START = "0:02";
 const CLIP_END = "0:18";
 const CLIP_NOTE = "QA Retained · Verify exact watched-source evidence in the editor";
 const CLIP_EVENT_LABEL = `Played ${CLIP_TITLE} ${CLIP_START}-${CLIP_END}`;
+const SHARED_WATCH_PROJECT_SLUG = "home-quipsly-media-ms8ct81g-at-example-test";
+const SHARED_WATCH_EPISODE_SLUG = "current-episode";
+const SHARED_WATCH_CLIP_TITLE = "Watched · Canonical tag focus QA";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -154,6 +157,35 @@ async function verifyEditor(page, baseURL) {
   };
 }
 
+async function verifySharedWatchEditor(page, baseURL) {
+  const editorURL = `${baseURL}/editor?project=${encodeURIComponent(SHARED_WATCH_PROJECT_SLUG)}&episode=${encodeURIComponent(SHARED_WATCH_EPISODE_SLUG)}`;
+  await page.goto(editorURL, { waitUntil: "load" });
+  await page.getByRole("heading", { name: /Episode Editor/i }).waitFor({ timeout: 20_000 });
+  await page.getByText(
+    "Loaded 1 receipt-backed Shared Watch span for Current Episode",
+    { exact: true },
+  ).waitFor({ timeout: 20_000 });
+  await page.getByText("1 receipt-backed", { exact: true }).waitFor({ timeout: 20_000 });
+
+  const editorMain = mainContent(page);
+  const editorText = await editorMain.innerText();
+  for (const expected of [SHARED_WATCH_CLIP_TITLE]) {
+    assert(editorText.includes(expected), `Rendered Shared Watch editor lost ${expected}.`);
+  }
+  for (const forbidden of ["audio spine (placeholder)", "B-Roll: Coffee Pour", "Episode 4 Intro Audio"]) {
+    assert(!editorText.includes(forbidden), `Rendered Shared Watch editor injected forbidden placeholder content: ${forbidden}`);
+  }
+  await assertNoHorizontalOverflow(editorMain, "retained Shared Watch editor");
+
+  return {
+    sharedWatchEditor: "passed",
+    sharedWatchHydrationSource: "shared watch",
+    sharedWatchDerivativeCount: 1,
+    sharedWatchSourceRange: "00:04-00:12",
+    sharedWatchReceiptsVisible: true,
+  };
+}
+
 async function main() {
   const baseURL = requireLoopbackOrigin(
     process.env.QUIPSLY_RETAINED_PRODUCT_BASE_URL || "http://127.0.0.1:3012",
@@ -188,6 +220,7 @@ async function main() {
     });
     const recorder = await operateRecorder(page, baseURL);
     const editor = await verifyEditor(page, baseURL);
+    const sharedWatchEditor = await verifySharedWatchEditor(page, baseURL);
     assert(pageErrors.length === 0, `Recorder/editor operation raised browser exceptions: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, identity.role);
 
@@ -203,6 +236,7 @@ async function main() {
       externalSideEffects: false,
       ...recorder,
       ...editor,
+      ...sharedWatchEditor,
       sessionClear: "passed",
       browserExceptions: 0,
     }, null, 2));
