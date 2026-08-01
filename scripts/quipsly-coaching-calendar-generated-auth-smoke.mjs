@@ -68,14 +68,30 @@ async function requestJson(url, options = {}) {
   return { response, body, text };
 }
 
-async function firebaseSignup(email, password) {
+function firebaseAdmin() {
+  if (!getApps().length) {
+    initializeApp({
+      projectId: process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "quipsly-reef",
+    });
+  }
+  return getAuth();
+}
+
+async function firebaseVerifiedTestSignup(email, password) {
+  await firebaseAdmin().createUser({
+    email,
+    password,
+    displayName: "Codex Generated Calendar Smoke",
+    emailVerified: true,
+    disabled: false,
+  });
   const config = await requestJson(`${baseUrl}/api/mac/firebase-client-config`);
   if (!config.response.ok || !config.body?.firebase?.apiKey) {
     throw new Error(`Firebase config unavailable: HTTP ${config.response.status}`);
   }
 
   const signup = await requestJson(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(config.body.firebase.apiKey)}`,
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.body.firebase.apiKey)}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -84,7 +100,7 @@ async function firebaseSignup(email, password) {
   );
 
   if (!signup.response.ok || !signup.body?.idToken) {
-    throw new Error(`Firebase signup failed: HTTP ${signup.response.status}`);
+    throw new Error(`Firebase verified test login failed: HTTP ${signup.response.status}`);
   }
 
   return signup.body.idToken;
@@ -158,7 +174,7 @@ async function main() {
   let idToken = null;
 
   try {
-    idToken = await firebaseSignup(email, password);
+    idToken = await firebaseVerifiedTestSignup(email, password);
     const session = await requestJson(`${baseUrl}/api/auth/session`, {
       method: "POST",
       headers: { "content-type": "application/json" },

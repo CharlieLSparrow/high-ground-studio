@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createRequire } from "node:module";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 
 const repoRoot = process.cwd();
 const requireFromQuipsly = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
@@ -117,6 +119,15 @@ function createPrisma(env) {
   });
 }
 
+function firebaseProjectId(env) {
+  return env.FIREBASE_PROJECT_ID || env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "quipsly-reef";
+}
+
+function ensureFirebaseAdmin(env) {
+  if (!getApps().length) initializeApp({ projectId: firebaseProjectId(env) });
+  return getAuth();
+}
+
 function slugifyEmailForHomeNest(email) {
   return email
     .toLowerCase()
@@ -145,6 +156,93 @@ async function requestJson(url, options = {}) {
     body = { unparsedBodyPrefix: text.slice(0, 160) };
   }
   return { response, body, text };
+}
+
+function unfoldIcs(value) {
+  return String(value || "").replace(/\r\n[ \t]/g, "");
+}
+
+function calendarProperty(value, name) {
+  const match = unfoldIcs(value).match(new RegExp(`^${name}:(.+)$`, "m"));
+  return match?.[1]?.trim() || "";
+}
+
+function assertPrivateCalendarExport(result, {
+  expectedStatus = "CONFIRMED",
+  forbiddenValues = [],
+} = {}) {
+  const contentType = result.response.headers.get("content-type") || "";
+  const cacheControl = result.response.headers.get("cache-control") || "";
+  const contentDisposition = result.response.headers.get("content-disposition") || "";
+  const unfolded = unfoldIcs(result.text);
+  assert(
+    result.response.status === 200 && contentType.includes("text/calendar"),
+    `Private coaching calendar export failed. HTTP ${result.response.status}`,
+    { contentType, bodyPrefix: result.text.slice(0, 160) },
+  );
+  assert(cacheControl === "private, no-store", "Coaching calendar export must never be cached.", {
+    cacheControl,
+  });
+  assert(
+    /attachment;\s*filename="quipsly-coaching-[^"]+\.ics"/i.test(contentDisposition),
+    "Coaching calendar export did not provide a safe .ics attachment filename.",
+    { contentDisposition },
+  );
+  assert(result.text.includes("\r\n"), "Coaching calendar export must use CRLF line endings.");
+  assert(unfolded.includes("BEGIN:VCALENDAR") && unfolded.includes("END:VCALENDAR"), "Calendar envelope is incomplete.");
+  assert(calendarProperty(result.text, "UID"), "Calendar export has no stable UID.");
+  assert(calendarProperty(result.text, "DTSTART"), "Calendar export has no start time.");
+  assert(calendarProperty(result.text, "DTEND"), "Calendar export has no end time.");
+  assert(
+    calendarProperty(result.text, "STATUS") === expectedStatus,
+    `Calendar export status was not ${expectedStatus}.`,
+    { actual: calendarProperty(result.text, "STATUS") },
+  );
+  assert(
+    unfolded.includes("Private notes\\, transcript text\\, goals\\, and recordings are not included"),
+    "Calendar export lost its private-content boundary notice.",
+  );
+  for (const forbiddenValue of forbiddenValues.filter(Boolean)) {
+    assert(
+      !result.text.toLowerCase().includes(String(forbiddenValue).toLowerCase()),
+      "Calendar export leaked a forbidden private value.",
+      { forbiddenValueKind: "generated-test-identity" },
+    );
+  }
+  return {
+    uid: calendarProperty(result.text, "UID"),
+    startsAt: calendarProperty(result.text, "DTSTART"),
+    status: calendarProperty(result.text, "STATUS"),
+  };
+}
+
+async function discoverCurrentConsentPresentation(baseUrl, idToken, callRoomId, participantId) {
+  const result = await requestJson(`${baseUrl}/api/mobile/capture/consent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ callRoomId, participantId, consentAction: "GRANT" }),
+  });
+  const policy = result.body?.currentPolicy || {};
+  assert(
+    result.response.status === 409 &&
+      result.body?.errorCode === "CURRENT_CONSENT_PRESENTATION_REQUIRED" &&
+      policy.version &&
+      policy.text &&
+      /^[a-f0-9]{64}$/i.test(String(policy.sha256 || "")) &&
+      policy.surface === "quipsly-capture-consent-v2" &&
+      policy.presentationVersion === 1,
+    "Generated client could not discover the current consent presentation contract.",
+    {
+      status: result.response.status,
+      errorCode: result.body?.errorCode || null,
+      policyVersionPresent: Boolean(policy.version),
+      policyTextHashPresent: /^[a-f0-9]{64}$/i.test(String(policy.sha256 || "")),
+    },
+  );
+  return policy;
 }
 
 async function assertServerFirebaseAdminPreflight(baseUrl) {
@@ -181,10 +279,17 @@ async function fetchFirebaseApiKey(env, baseUrl) {
   return config.body.firebase.apiKey;
 }
 
-async function firebaseSelfServeSignup(env, baseUrl, email, password) {
+async function firebaseVerifiedTestSignup(env, baseUrl, email, password) {
+  await ensureFirebaseAdmin(env).createUser({
+    email,
+    password,
+    displayName: "Codex Generated Coaching Smoke",
+    emailVerified: true,
+    disabled: false,
+  });
   const firebaseApiKey = await fetchFirebaseApiKey(env, baseUrl);
   const response = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(firebaseApiKey)}`,
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseApiKey)}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -194,7 +299,7 @@ async function firebaseSelfServeSignup(env, baseUrl, email, password) {
   const body = await response.json();
   assert(
     response.ok && body.idToken && body.localId,
-    `Firebase generated coaching signup failed with HTTP ${response.status}`,
+    `Firebase generated verified coaching login failed with HTTP ${response.status}`,
     { firebaseErrorCode: body?.error?.message || undefined },
   );
   return body;
@@ -427,10 +532,16 @@ async function main() {
   let paidCheckoutUrl = null;
   let paidCheckoutLivemode = null;
   let clientMobileSessionsAfterCancelBody = null;
+  let calendarBeforeReschedule = null;
+  let calendarForClient = null;
+  let calendarAfterReschedule = null;
+  let calendarAfterCancel = null;
+  let currentStaffConsentPolicy = null;
+  let currentConsentPolicy = null;
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
-    const firebaseBody = await firebaseSelfServeSignup(env, baseUrl, staffEmail, password);
+    const firebaseBody = await firebaseVerifiedTestSignup(env, baseUrl, staffEmail, password);
     firebaseDeleteIdToken = firebaseBody.idToken;
 
     const sessionStart = await requestJson(`${baseUrl}/api/auth/session`, {
@@ -568,6 +679,14 @@ async function main() {
     convertBookingId = convert.body.result.bookingId;
     convertCallRoomId = convert.body.result.callRoomId;
 
+    const calendarBeforeRescheduleResponse = await requestJson(
+      `${baseUrl}/api/coaching/bookings/${encodeURIComponent(convertBookingId)}/calendar`,
+      { headers: { authorization: `Bearer ${firebaseBody.idToken}` } },
+    );
+    calendarBeforeReschedule = assertPrivateCalendarExport(calendarBeforeRescheduleResponse, {
+      forbiddenValues: [staffEmail, clientEmail],
+    });
+
     const fourthRunway = await requestJson(`${baseUrl}/api/coaching/runway`, {
       headers: { authorization: `Bearer ${firebaseBody.idToken}` },
     });
@@ -675,7 +794,7 @@ async function main() {
       runwayAfterPaidCheckout = paidCheckoutRunway.body;
     }
 
-    const clientFirebaseBody = await firebaseSelfServeSignup(env, baseUrl, clientEmail, password);
+    const clientFirebaseBody = await firebaseVerifiedTestSignup(env, baseUrl, clientEmail, password);
     clientFirebaseDeleteIdToken = clientFirebaseBody.idToken;
     const clientSessionStart = await requestJson(`${baseUrl}/api/auth/session`, {
       method: "POST",
@@ -697,6 +816,20 @@ async function main() {
       },
     );
     clientSessionBody = clientSessionStart.body;
+
+    const clientCalendarResponse = await requestJson(
+      `${baseUrl}/api/coaching/bookings/${encodeURIComponent(convertBookingId)}/calendar`,
+      { headers: { authorization: `Bearer ${clientFirebaseBody.idToken}` } },
+    );
+    calendarForClient = assertPrivateCalendarExport(clientCalendarResponse, {
+      forbiddenValues: [staffEmail, clientEmail],
+    });
+    assert(
+      calendarForClient.uid === calendarBeforeReschedule.uid &&
+        calendarForClient.startsAt === calendarBeforeReschedule.startsAt,
+      "Coach and client calendar exports did not describe the same stable event.",
+      { coach: calendarBeforeReschedule, client: calendarForClient },
+    );
 
     const clientMobileSessions = await requestJson(`${baseUrl}/api/mobile/capture/sessions`, {
       headers: { authorization: `Bearer ${clientFirebaseBody.idToken}` },
@@ -820,6 +953,64 @@ async function main() {
     );
     clientMobileSessionsAfterDeclineBody = clientMobileSessionsAfterDecline.body;
 
+    const staffMobileSessionsForConsent = await requestJson(`${baseUrl}/api/mobile/capture/sessions`, {
+      headers: { authorization: `Bearer ${firebaseBody.idToken}` },
+    });
+    const staffConvertedSession = (staffMobileSessionsForConsent.body?.sessions || []).find(
+      (candidate) => candidate.callRoomId === convertCallRoomId,
+    );
+    assert(
+      staffMobileSessionsForConsent.response.status === 200 && staffConvertedSession?.participantId,
+      "Generated coach could not resolve their participant row for all-party consent.",
+      { status: staffMobileSessionsForConsent.response.status, callRoomId: convertCallRoomId },
+    );
+    currentStaffConsentPolicy = await discoverCurrentConsentPresentation(
+      baseUrl,
+      firebaseBody.idToken,
+      convertCallRoomId,
+      staffConvertedSession.participantId,
+    );
+    const grantStaffConsent = await requestJson(`${baseUrl}/api/mobile/capture/consent`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${firebaseBody.idToken}`,
+      },
+      body: JSON.stringify({
+        callRoomId: convertCallRoomId,
+        participantId: staffConvertedSession.participantId,
+        consentAction: "GRANT",
+        canRecordAudio: true,
+        canRecordVideo: true,
+        canTranscribe: true,
+        allAudibleParticipantsNotifiedAndAgreed: true,
+        consentPolicyVersion: currentStaffConsentPolicy.version,
+        consentText: currentStaffConsentPolicy.text,
+        consentTextHash: currentStaffConsentPolicy.sha256,
+        presentationEvidence: {
+          version: currentStaffConsentPolicy.presentationVersion,
+          surface: currentStaffConsentPolicy.surface,
+          presentedAt: new Date().toISOString(),
+          recordingChoicePresented: true,
+          transcriptionChoicePresented: true,
+          audibleParticipantAttestationPresented: true,
+        },
+      }),
+    });
+    assert(
+      grantStaffConsent.response.status === 200 &&
+        grantStaffConsent.body?.ok === true &&
+        grantStaffConsent.body?.session?.recordingConsentStatus === "GRANTED",
+      `Generated coach consent grant failed. HTTP ${grantStaffConsent.response.status}`,
+      { body: grantStaffConsent.body },
+    );
+
+    currentConsentPolicy = await discoverCurrentConsentPresentation(
+      baseUrl,
+      clientFirebaseBody.idToken,
+      convertCallRoomId,
+      convertedMobileSession.participantId,
+    );
     const grantConsent = await requestJson(`${baseUrl}/api/mobile/capture/consent`, {
       method: "POST",
       headers: {
@@ -830,6 +1021,21 @@ async function main() {
         callRoomId: convertCallRoomId,
         participantId: convertedMobileSession.participantId,
         consentAction: "GRANT",
+        canRecordAudio: true,
+        canRecordVideo: true,
+        canTranscribe: true,
+        allAudibleParticipantsNotifiedAndAgreed: true,
+        consentPolicyVersion: currentConsentPolicy.version,
+        consentText: currentConsentPolicy.text,
+        consentTextHash: currentConsentPolicy.sha256,
+        presentationEvidence: {
+          version: currentConsentPolicy.presentationVersion,
+          surface: currentConsentPolicy.surface,
+          presentedAt: new Date().toISOString(),
+          recordingChoicePresented: true,
+          transcriptionChoicePresented: true,
+          audibleParticipantAttestationPresented: true,
+        },
       }),
     });
     assert(
@@ -903,6 +1109,24 @@ async function main() {
     );
     runwayAfterReschedule = fifthRunway.body;
 
+    const calendarAfterRescheduleResponse = await requestJson(
+      `${baseUrl}/api/coaching/bookings/${encodeURIComponent(convertBookingId)}/calendar`,
+      { headers: { authorization: `Bearer ${firebaseBody.idToken}` } },
+    );
+    calendarAfterReschedule = assertPrivateCalendarExport(calendarAfterRescheduleResponse, {
+      forbiddenValues: [staffEmail, clientEmail],
+    });
+    assert(
+      calendarAfterReschedule.uid === calendarBeforeReschedule.uid,
+      "Rescheduling changed the calendar event UID instead of updating the same event.",
+      { before: calendarBeforeReschedule, after: calendarAfterReschedule },
+    );
+    assert(
+      calendarAfterReschedule.startsAt !== calendarBeforeReschedule.startsAt,
+      "Rescheduling did not change the exported calendar start time.",
+      { before: calendarBeforeReschedule, after: calendarAfterReschedule },
+    );
+
     const cancel = await requestJson(`${baseUrl}/api/coaching/runway`, {
       method: "POST",
       headers: {
@@ -963,6 +1187,20 @@ async function main() {
       { convertCallRoomId, canceledMobileSession },
     );
     clientMobileSessionsAfterCancelBody = clientMobileSessionsAfterCancel.body;
+
+    const calendarAfterCancelResponse = await requestJson(
+      `${baseUrl}/api/coaching/bookings/${encodeURIComponent(convertBookingId)}/calendar`,
+      { headers: { authorization: `Bearer ${clientFirebaseBody.idToken}` } },
+    );
+    calendarAfterCancel = assertPrivateCalendarExport(calendarAfterCancelResponse, {
+      expectedStatus: "CANCELLED",
+      forbiddenValues: [staffEmail, clientEmail],
+    });
+    assert(
+      calendarAfterCancel.uid === calendarBeforeReschedule.uid,
+      "Cancellation changed the calendar event UID instead of canceling the same event.",
+      { before: calendarBeforeReschedule, after: calendarAfterCancel },
+    );
     smokeSucceeded = true;
   } finally {
     let cleanup = null;
@@ -1054,6 +1292,28 @@ async function main() {
           )
           : false,
       },
+      privateCalendarExport: {
+        coachExportedConfirmedEvent: calendarBeforeReschedule?.status === "CONFIRMED",
+        clientExportMatchesCoach: Boolean(
+          calendarForClient?.uid &&
+            calendarForClient.uid === calendarBeforeReschedule?.uid &&
+            calendarForClient.startsAt === calendarBeforeReschedule?.startsAt,
+        ),
+        reschedulePreservedUid: Boolean(
+          calendarAfterReschedule?.uid &&
+            calendarAfterReschedule.uid === calendarBeforeReschedule?.uid,
+        ),
+        rescheduleChangedStart: Boolean(
+          calendarAfterReschedule?.startsAt &&
+            calendarAfterReschedule.startsAt !== calendarBeforeReschedule?.startsAt,
+        ),
+        cancellationPreservedUid: Boolean(
+          calendarAfterCancel?.uid &&
+            calendarAfterCancel.uid === calendarBeforeReschedule?.uid,
+        ),
+        cancellationExportedCancelledStatus: calendarAfterCancel?.status === "CANCELLED",
+        privateContentBoundaryChecked: Boolean(calendarAfterCancel),
+      },
       mobileCapture: {
         invitedClientSessionLoaded: clientMobileSessionsBody?.ok === true,
         coacheeSessionsRouteReachable: clientCoacheeSessionsRouteReachable,
@@ -1121,6 +1381,17 @@ async function main() {
               candidate.callRoomId === convertCallRoomId &&
               candidate.recordingConsentStatus === "GRANTED" &&
               candidate.recordingConsentGranted === true,
+          )
+          : false,
+        currentConsentPolicyDiscovered: Boolean(
+          currentStaffConsentPolicy?.version && currentConsentPolicy?.version,
+        ),
+        allPartyConsentGateSatisfied: Array.isArray(clientMobileSessionsAfterConsentBody?.sessions)
+          ? clientMobileSessionsAfterConsentBody.sessions.some(
+            (candidate) =>
+              candidate.callRoomId === convertCallRoomId &&
+              candidate.consentGrantedParticipantCount === candidate.consentRequiredParticipantCount &&
+              candidate.allRegisteredParticipantConsentGranted === true,
           )
           : false,
         localRecordingUnlockedAfterConsent: Array.isArray(clientMobileSessionsAfterConsentBody?.sessions)
