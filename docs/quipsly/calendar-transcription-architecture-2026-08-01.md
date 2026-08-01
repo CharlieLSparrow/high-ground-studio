@@ -174,11 +174,11 @@ an additive migration and backfill existing Google receipts:
 
 ```text
 CalendarConnection
-  id, nestId/userId, provider, connectionKind, credentialRef
+  id, workspaceId/nestId/userId, provider, connectionKind, credentialRef
   grantedScopes, status, verifiedAt, revokedAt, metadataJson
 
 CalendarCollection
-  id, connectionId?, nestId, ownerUserId?, purpose
+  id, connectionId?, workspaceId/nestId/ownerUserId, purpose
   displayName, timezone, providerCalendarId?, visibility, isDefault
 
 CalendarProjection
@@ -420,7 +420,7 @@ schema migration and an authenticated Schedule read model:
   credentials, selected calendars, canonical projections, provider cursors,
   append-only effects, and revocable subscriptions;
 - database checks require every connection and collection to have exactly one
-  Quipsly owner boundary (person or Nest);
+  Quipsly owner boundary (workspace, Nest, or person);
 - credentials and provider sync tokens remain opaque references, while feed
   bearer material is represented only by a digest;
 - `/api/calendar/overview` authenticates before database access, reads only the

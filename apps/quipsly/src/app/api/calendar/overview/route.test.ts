@@ -34,7 +34,7 @@ describe("GET /api/calendar/overview", () => {
     } as never);
     jest.mocked(getPrismaClient).mockReturnValue(prisma);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
-      { id: "project-1" },
+      { id: "project-1", workspaceId: "workspace-1" },
     ] as never);
     jest.mocked(loadCalendarOverviewForActor).mockResolvedValue(overview);
 
@@ -47,6 +47,7 @@ describe("GET /api/calendar/overview", () => {
     expect(loadCalendarOverviewForActor).toHaveBeenCalledWith({
       actor: { id: "user-1" },
       visibleProjectIds: ["project-1"],
+      visibleWorkspaceIds: ["workspace-1"],
       prisma,
     });
     expect(payload).toEqual({ ok: true, overview });

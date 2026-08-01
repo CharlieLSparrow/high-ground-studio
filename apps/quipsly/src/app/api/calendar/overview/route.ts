@@ -19,9 +19,11 @@ export async function GET(request: Request) {
   try {
     const prisma = getPrismaClient();
     const visibleProjects = await listProjectsVisibleToEmail(session.user.primaryEmail, prisma);
+    const visibleWorkspaceIds = [...new Set(visibleProjects.map((project) => project.workspaceId).filter(Boolean))];
     const overview = await loadCalendarOverviewForActor({
       actor: { id: session.user.id },
       visibleProjectIds: visibleProjects.map((project) => project.id),
+      visibleWorkspaceIds,
       prisma,
     });
 

@@ -195,6 +195,7 @@ export async function listProjectsVisibleToEmail(
       project: {
         select: {
           id: true,
+          workspaceId: true,
           slug: true,
           name: true,
           sourceLabel: true,
@@ -211,6 +212,7 @@ export async function listProjectsVisibleToEmail(
 
   const byId = new Map<string, {
     id: string;
+    workspaceId: string;
     slug: string;
     name: string;
     sourceLabel: string | null;

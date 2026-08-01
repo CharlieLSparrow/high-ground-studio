@@ -5709,7 +5709,8 @@ was restored.
   adds provider-independent connection, collection, projection, cursor,
   append-only receipt, and hashed feed-capability models without replacing the
   existing coaching calendar evidence. Database constraints require each
-  connection and collection to have exactly one person or Nest owner boundary.
+  connection and collection to have exactly one workspace, Nest, or person
+  owner boundary.
 - The authenticated calendar overview reads only the signed-in person's and
   accessible Nests' safe status fields. It authenticates before database
   access, forbids shared caching, fails closed, and never returns credentials,

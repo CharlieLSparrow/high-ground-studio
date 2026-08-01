@@ -201,14 +201,17 @@ export function buildCalendarOverview(input: {
 export async function loadCalendarOverviewForActor(input: {
   actor: { id: string };
   visibleProjectIds: string[];
+  visibleWorkspaceIds: string[];
   prisma: PrismaClient;
 }): Promise<CalendarOverview> {
   const access = [
     { userId: input.actor.id },
+    ...(input.visibleWorkspaceIds.length > 0 ? [{ workspaceId: { in: input.visibleWorkspaceIds } }] : []),
     ...(input.visibleProjectIds.length > 0 ? [{ nestId: { in: input.visibleProjectIds } }] : []),
   ];
   const collectionAccess = [
     { ownerUserId: input.actor.id },
+    ...(input.visibleWorkspaceIds.length > 0 ? [{ workspaceId: { in: input.visibleWorkspaceIds } }] : []),
     ...(input.visibleProjectIds.length > 0 ? [{ nestId: { in: input.visibleProjectIds } }] : []),
   ];
 

@@ -27,6 +27,8 @@ The Schedule experience communicates three separate promises:
 - additive Prisma models and migration for connection, collection, projection,
   sync cursor, receipt, and hashed subscription-feed capability;
 - exact-one-owner database checks for connection and collection scopes;
+- organization-managed connections and collections belong to the Quipsly
+  workspace instead of being assigned to an arbitrary person or Nest;
 - authenticated, no-store calendar overview API;
 - access filtered through the existing person and Nest authorization model;
 - redacted client contract with no credential, token, external calendar ID,

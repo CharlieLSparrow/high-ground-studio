@@ -1241,6 +1241,7 @@ model CalendarEventLink {
 
 model CalendarConnection {
   id                 String                   @id @default(cuid())
+  workspaceId        String?
   nestId             String?
   userId             String?
   provider           CalendarProvider
@@ -1256,12 +1257,14 @@ model CalendarConnection {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
+  workspace   StudioWorkspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
   user        User?                 @relation("CalendarConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
   collections CalendarCollection[]
   receipts    CalendarSyncReceipt[]
 
   @@unique([provider, providerAccountKey])
+  @@index([workspaceId, provider, status])
   @@index([nestId, provider, status])
   @@index([userId, provider, status])
   @@index([status, updatedAt])
@@ -1270,6 +1273,7 @@ model CalendarConnection {
 model CalendarCollection {
   id                 String                       @id @default(cuid())
   connectionId       String?
+  workspaceId        String?
   nestId             String?
   ownerUserId        String?
   purpose            CalendarCollectionPurpose
@@ -1284,6 +1288,7 @@ model CalendarCollection {
   updatedAt          DateTime                     @updatedAt
 
   connection  CalendarConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  workspace   StudioWorkspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
   owner       User?                 @relation("CalendarCollectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   projections CalendarProjection[]
@@ -1292,6 +1297,7 @@ model CalendarCollection {
   feeds       CalendarFeed[]
 
   @@unique([connectionId, providerCalendarId])
+  @@index([workspaceId, purpose, status])
   @@index([nestId, purpose, status])
   @@index([ownerUserId, purpose, status])
   @@index([connectionId, status])
@@ -2566,7 +2572,9 @@ model StudioWorkspace {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  projects StudioProject[]
+  projects            StudioProject[]
+  calendarConnections CalendarConnection[]
+  calendarCollections CalendarCollection[]
 }
 
 model StudioProject {

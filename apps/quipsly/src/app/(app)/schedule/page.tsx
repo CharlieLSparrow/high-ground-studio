@@ -91,6 +91,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
   try {
     const projects = signedInEmail ? await listProjectsVisibleToEmail(signedInEmail, prisma) : [];
     const projectIds = projects.map((project) => project.id);
+    const workspaceIds = [...new Set(projects.map((project) => project.workspaceId).filter(Boolean))];
     const userId = session.user.id;
     const roomAccess = accessibleRoomWhere(userId);
     const visibleTagLinks = {
@@ -186,6 +187,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       loadCalendarOverviewForActor({
         actor: { id: userId },
         visibleProjectIds: projectIds,
+        visibleWorkspaceIds: workspaceIds,
         prisma,
       }),
     ]);

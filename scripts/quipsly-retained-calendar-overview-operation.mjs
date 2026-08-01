@@ -96,13 +96,21 @@ async function assertCalendarSchema(client) {
   assert(tables.rowCount === tableNames.length, "The loopback database is missing calendar projection tables.");
 
   const constraints = await client.query(
-    `SELECT conname FROM pg_constraint
+    `SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
      WHERE conname = ANY($1::text[])
      ORDER BY conname`,
     [["CalendarConnection_scope_exactly_one", "CalendarCollection_scope_exactly_one"]],
   );
   assert(constraints.rowCount === 2, "Calendar owner-scope constraints are missing.");
-  return { tableCount: tables.rowCount, ownerScopeConstraintCount: constraints.rowCount };
+  assert(
+    constraints.rows.every((row) => String(row.definition).includes("workspaceId")),
+    "Calendar owner-scope constraints do not include organization workspace ownership.",
+  );
+  return {
+    tableCount: tables.rowCount,
+    ownerScopeConstraintCount: constraints.rowCount,
+    workspaceOwnerScopeVerified: true,
+  };
 }
 
 async function main() {
