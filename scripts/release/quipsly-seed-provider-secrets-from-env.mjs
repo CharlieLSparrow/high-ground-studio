@@ -16,6 +16,10 @@ const SECRET_MAPPINGS = [
   ["GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON", "quipsly-google-calendar-service-account-json"],
   ["GOOGLE_CALENDAR_REFRESH_TOKEN", "quipsly-google-calendar-refresh-token"],
   ["GOOGLE_CALENDAR_IMPERSONATION_EMAIL", "quipsly-google-calendar-impersonation-email"],
+  ["GOOGLE_CALENDAR_OAUTH_CLIENT_ID", "quipsly-google-calendar-oauth-client-id"],
+  ["GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET", "quipsly-google-calendar-oauth-client-secret"],
+  ["GOOGLE_CALENDAR_OAUTH_STATE_SECRET", "quipsly-google-calendar-oauth-state-secret"],
+  ["GOOGLE_CALENDAR_OAUTH_TOKEN_ENCRYPTION_KEY", "quipsly-google-calendar-oauth-token-encryption-key"],
 ];
 
 function run(command, args, options = {}) {

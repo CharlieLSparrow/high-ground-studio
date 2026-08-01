@@ -17,7 +17,7 @@ import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-product";
 const MEDIA_OPERATOR_EMAIL = "quipsly-media-ms8ct81g@example.test";
-const RECEIPT_SCHEMA = "quipsly-retained-calendar-overview-v1";
+const RECEIPT_SCHEMA = "quipsly-retained-calendar-overview-v2";
 const EXPECTED_PURPOSES = ["COACHING", "PODCAST_PRODUCTION", "PERSONAL_COMMITMENTS"];
 const FORBIDDEN_CLIENT_FIELDS = [
   "credentialRef",
@@ -26,6 +26,9 @@ const FORBIDDEN_CLIENT_FIELDS = [
   "tokenDigest",
   "grantedScopes",
   "attendees",
+  "encryptedPayload",
+  "refreshToken",
+  "accessToken",
 ];
 
 const requireFromQuipsly = createRequire(
@@ -86,6 +89,7 @@ async function assertCalendarSchema(client) {
     "CalendarSyncCursor",
     "CalendarSyncReceipt",
     "CalendarFeed",
+    "CalendarOAuthCredential",
   ];
   const tables = await client.query(
     `SELECT table_name FROM information_schema.tables
@@ -178,12 +182,15 @@ calendar/provider mutation.`);
 
     await page.getByRole("heading", { name: "Time for the work you actually chose." }).waitFor({ timeout: 30_000 });
     await page.getByRole("heading", { name: "One schedule, three clear boundaries." }).waitFor();
+    await page.getByRole("heading", { name: "Connect Google Calendar on purpose." }).waitFor();
+    await page.getByRole("link", { name: "Connect Google Calendar" }).waitFor();
     for (const heading of ["Coaching calendar", "Podcast production", "My calendar"]) {
       await page.getByRole("heading", { name: heading, exact: true }).waitFor();
     }
     await page.getByText("External writes held", { exact: true }).waitFor();
     await page.getByText(/No provider credentials, calendar identifiers, attendee lists, or sync tokens are exposed here/).waitFor();
     const calendarSystem = page.locator('section[aria-labelledby="calendar-system-heading"]');
+    const googleCalendarConnection = page.locator('section[aria-labelledby="google-calendar-connection-heading"]');
     await assertNoHorizontalOverflow(page.getByRole("main").last(), "desktop Schedule");
 
     const api = await page.evaluate(async () => {
@@ -213,17 +220,41 @@ calendar/provider mutation.`);
       assert(!serializedOverview.includes(forbidden), `Calendar overview exposed forbidden field ${forbidden}.`);
     }
 
+    const googleConnection = await page.evaluate(async () => {
+      const response = await fetch("/api/calendar/connections/google", { headers: { accept: "application/json" } });
+      return {
+        status: response.status,
+        cacheControl: response.headers.get("cache-control"),
+        body: await response.json(),
+      };
+    });
+    assert(googleConnection.status === 200 && googleConnection.body?.ok === true, "Google Calendar connection status failed.");
+    assert(googleConnection.cacheControl === "private, no-store", "Google Calendar connection status permitted shared caching.");
+    assert(googleConnection.body.connection === null, "The local operation unexpectedly found a real Google Calendar connection.");
+    const serializedGoogleConnection = JSON.stringify(googleConnection.body);
+    for (const forbidden of FORBIDDEN_CLIENT_FIELDS) {
+      assert(!serializedGoogleConnection.includes(forbidden), `Google Calendar status exposed forbidden field ${forbidden}.`);
+    }
+
     const desktopScreenshot = path.join(options.outputDir, "schedule-calendar-system-desktop.png");
     await calendarSystem.screenshot({ path: desktopScreenshot });
     await chmod(desktopScreenshot, 0o600);
+    const googleDesktopScreenshot = path.join(options.outputDir, "schedule-google-calendar-connection-desktop.png");
+    await googleCalendarConnection.screenshot({ path: googleDesktopScreenshot });
+    await chmod(googleDesktopScreenshot, 0o600);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload({ waitUntil: "load" });
     await page.getByRole("heading", { name: "One schedule, three clear boundaries." }).waitFor({ timeout: 30_000 });
+    await page.getByRole("heading", { name: "Connect Google Calendar on purpose." }).waitFor();
     await assertNoHorizontalOverflow(page.getByRole("main").last(), "phone-width Schedule");
     const phoneScreenshot = path.join(options.outputDir, "schedule-calendar-system-phone.png");
     await page.screenshot({ path: phoneScreenshot });
     await chmod(phoneScreenshot, 0o600);
+    await googleCalendarConnection.scrollIntoViewIfNeeded();
+    const googlePhoneScreenshot = path.join(options.outputDir, "schedule-google-calendar-connection-phone.png");
+    await googleCalendarConnection.screenshot({ path: googlePhoneScreenshot });
+    await chmod(googlePhoneScreenshot, 0o600);
 
     assert(pageErrors.length === 0, `Rendered Schedule raised browser errors: ${pageErrors.join(" | ")}`);
     assert(serverFailures.length === 0, `Rendered Schedule received server failures: ${JSON.stringify(serverFailures)}`);
@@ -245,9 +276,19 @@ calendar/provider mutation.`);
         externalWritesEnabled: false,
         digest: sha256(serializedOverview),
       },
+      googleConnection: {
+        configuredLocally: false,
+        realConnectionPresent: false,
+        credentialFieldsExposed: false,
+      },
       database: schema,
       identity: { emailSha256: sha256(MEDIA_OPERATOR_EMAIL), renderedLogin: true },
-      evidence: ["schedule-calendar-system-desktop.png", "schedule-calendar-system-phone.png"],
+      evidence: [
+        "schedule-calendar-system-desktop.png",
+        "schedule-calendar-system-phone.png",
+        "schedule-google-calendar-connection-desktop.png",
+        "schedule-google-calendar-connection-phone.png",
+      ],
       boundaries: {
         browserSessionCleared: true,
         browserExceptions: 0,
@@ -261,7 +302,8 @@ calendar/provider mutation.`);
       },
     });
     const modes = await Promise.all(
-      [receiptPath, desktopScreenshot, phoneScreenshot].map(async (target) => (await stat(target)).mode & 0o777),
+      [receiptPath, desktopScreenshot, phoneScreenshot, googleDesktopScreenshot, googlePhoneScreenshot]
+        .map(async (target) => (await stat(target)).mode & 0o777),
     );
     assert(modes.every((mode) => mode === 0o600), "Calendar evidence artifacts are not all private mode 0600.");
 

@@ -1258,17 +1258,31 @@ model CalendarConnection {
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
-  workspace   StudioWorkspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
-  user        User?                 @relation("CalendarConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
-  collections CalendarCollection[]
-  receipts    CalendarSyncReceipt[]
+  workspace       StudioWorkspace?         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  nest            StudioProject?           @relation(fields: [nestId], references: [id], onDelete: Cascade)
+  user            User?                    @relation("CalendarConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
+  collections     CalendarCollection[]
+  receipts        CalendarSyncReceipt[]
+  oauthCredential CalendarOAuthCredential?
 
   @@unique([provider, providerAccountKey])
   @@index([workspaceId, provider, status])
   @@index([nestId, provider, status])
   @@index([userId, provider, status])
   @@index([status, updatedAt])
+}
+
+model CalendarOAuthCredential {
+  id                String   @id @default(cuid())
+  connectionId      String   @unique
+  encryptedPayload  String
+  encryptionVersion String   @default("aes-256-gcm-v1")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connection CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
 }
 
 model CalendarCollection {

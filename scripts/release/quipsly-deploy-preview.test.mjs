@@ -19,7 +19,7 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{google_calendar_oauth_secrets\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);

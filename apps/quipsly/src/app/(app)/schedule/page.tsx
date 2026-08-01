@@ -37,6 +37,7 @@ import {
 } from "./schedule-model";
 import { SchedulePlanner } from "./schedule-planner";
 import { CalendarSubscriptionManager } from "./calendar-subscription-manager";
+import { GoogleCalendarConnectionManager } from "./google-calendar-connection-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -499,6 +500,8 @@ export default async function SchedulePage() {
           </div>
 
           <CalendarSystemOverview overview={snapshot.calendarOverview} />
+
+          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects} />
 
           <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
 
