@@ -5637,6 +5637,22 @@ was restored.
   consented recordings, uploads, transcripts, and editor timelines. It does not
   substitute for Build 25 installation and operation on a CoreDevice-visible
   physical iPhone.
+- Advanced only the dedicated synthetic participant through Quipsly's current
+  consent presentation: audio/video granted, transcription off. Before/after
+  diagnostics and a redacted 600-second join token proved the room ready while
+  provider join, recording, media/storage, Stripe, Calendar, invites, and
+  publication remained untouched. Independent readback retained ten Sessions
+  and showed the exact target `GRANTED`, `canRecordNow=true`,
+  `ready-to-capture`, and `ready-provider`.
+- Fixed the underlying corpus-growth defect: visible-session and consent-room
+  wrappers now default to read-only reuse, with new Session creation available
+  only through explicit opt-in. Both evidence paths preserve the previous good
+  receipt on failure and publish private mode-`0600` JSON atomically.
+- The real operation caught a server-owned UX contradiction: the ready Session
+  still told Capture that recording required consent. Provider preparation copy
+  is now consent-neutral and says that joining alone does not start recording;
+  regression coverage projects a granted, first-capture Session and refuses
+  that stale instruction.
 
 ### 2026-08-01 retained iPhone tagging and runtime-quality checkpoint
 

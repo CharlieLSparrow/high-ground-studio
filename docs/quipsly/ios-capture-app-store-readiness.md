@@ -153,9 +153,11 @@ bash scripts/quipsly-capture-live-reviewer-proof.sh
 
 That wrapper is the preferred local operator path. It checks the static reviewer
 runway contract, reads the reviewer password from macOS Keychain, and then runs
-the live visible-session proof. By default it also creates a harmless
-Quipsly-owned reviewer session when needed. It does not charge, invite, publish,
-start recording, or create external calendar events.
+the live visible-session proof. It is read-only by default and reuses retained
+private QA Sessions. If the account has no suitable Session, creation must be
+explicit with `QUIPSLY_CAPTURE_REVIEWER_CREATE_SESSION=1`; do not grow the
+retained corpus on every proof run. It does not charge, invite, publish, start
+recording, or create external calendar events.
 
 When the visible session is proved and the LiveKit room seam needs deeper
 evidence, run:

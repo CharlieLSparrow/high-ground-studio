@@ -210,7 +210,26 @@ const liveKitServerReady = providerReadinessForMobileCaptureSession(room, {
 
 assert.equal(liveKitServerReady.providerReadiness, "livekit-ready");
 assert.equal(liveKitServerReady.providerCanJoin, true);
-assert.match(liveKitServerReady.providerNextAction, /Recording still requires consent/i);
+assert.match(liveKitServerReady.providerNextAction, /Joining alone does not start recording/i);
+
+const readyForFirstCapture = mapOne({
+  ...room,
+  recordingAssets: [],
+  transcriptJobs: [],
+  notes: [],
+  actionItems: [],
+}, {
+  LIVEKIT_URL: "wss://example.livekit.cloud",
+  LIVEKIT_API_KEY: "dev-key",
+  LIVEKIT_API_SECRET: "dev-secret",
+});
+
+assert.equal(readyForFirstCapture.recordingConsentStatus, "GRANTED");
+assert.equal(readyForFirstCapture.canRecordNow, true);
+assert.equal(readyForFirstCapture.captureReadiness.status, "ready-provider");
+assert.match(readyForFirstCapture.nextAction, /Joining alone does not start recording/i);
+assert.doesNotMatch(readyForFirstCapture.nextAction, /still requires consent/i,
+  "a consented ready Session must not tell the native app that consent is still missing");
 
 const transcriptCompleteNoPacket = mapOne({
       ...room,

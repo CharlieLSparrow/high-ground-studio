@@ -103,8 +103,11 @@ bash scripts/quipsly-capture-live-reviewer-proof.sh
 
 This is the preferred local operator command. It runs the static reviewer runway
 contract first, reads the reviewer password from macOS Keychain, and then runs
-the live visible-session proof with the standard reviewer defaults. If the
-Keychain item is missing, run:
+the live visible-session proof with the standard reviewer defaults. The wrapper
+is read-only by default and reuses retained private QA Sessions. Create a new
+Session only when the account has none by setting
+`QUIPSLY_CAPTURE_REVIEWER_CREATE_SESSION=1`. If the Keychain item is missing,
+run:
 
 ```bash
 bash scripts/quipsly-store-capture-reviewer-password.sh

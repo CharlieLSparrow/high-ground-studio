@@ -33,9 +33,11 @@ invite, create a calendar event, charge Stripe, or publish anything.
 - Purpose/status: `PODCAST` / `PLANNED`
 - Participant ID: `cmsa2xxp5001j01s6s7bo95a4`
 - Consent receipt ID: `cmsa2xxpt001k01s6wf55prxq`
-- Consent state: `REQUESTED`
-- Capture state: `needs-consent`; `canRecordNow=false`
-- Provider readiness: `livekit-ready`; no provider token was requested
+- Consent state: `GRANTED` for the dedicated synthetic participant; transcript
+  consent remains off
+- Capture state: `ready-provider`; `canRecordNow=true`
+- Provider readiness: `livekit-ready`; one redacted 600-second join token was
+  prepared without joining the provider and has expired
 - Recordings/transcripts: zero / none
 
 The account currently sees ten retained Sessions. The live proof no longer
@@ -56,9 +58,24 @@ retained title, and passed Firebase sign-in, account lookup, verified-email,
 native-session, Home Nest, mobile Sessions, participant, consent, lifecycle,
 and safe-recording-boundary checks. It created no duplicate Session.
 
+The synthetic participant then accepted the server's current consent
+presentation for audio/video capture with transcription disabled. Before/after
+diagnostics and short-lived token preparation proved no provider join,
+recording, media/storage mutation, invite, Stripe, or Calendar effect. Fresh
+Sessions readback retained exactly ten Sessions and showed `GRANTED`,
+`canRecordNow=true`, `ready-to-capture`, and `ready-provider`.
+
+That real operation exposed one contradictory top-level next action: a ready,
+consented Session still said that recording required consent. The server copy
+now keeps provider preparation neutral—joining alone does not start
+recording—and regression coverage exercises an exact consented, first-capture
+projection.
+
 - Private receipt:
   `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-reviewer-session.json`
-- Receipt mode/size at readback: `-rw-------`, 16,186 bytes
+- Consent/room receipt:
+  `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-consent-room.json`
+- Receipt modes at readback: `-rw-------`
 
 ## Operating policy
 

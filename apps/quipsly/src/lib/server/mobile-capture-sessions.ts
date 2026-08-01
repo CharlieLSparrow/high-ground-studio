@@ -127,7 +127,7 @@ export function providerReadinessForMobileCaptureSession(room: any, env: NodeJS.
       providerRoomId,
       providerCanJoin: true,
       providerReadiness: "livekit-ready",
-      providerNextAction: "Prepare call room to mint a short-lived LiveKit join token. Recording still requires consent.",
+      providerNextAction: "Prepare the call room to mint a short-lived LiveKit join token. Joining alone does not start recording.",
     };
   }
 
