@@ -6462,8 +6462,9 @@ struct CaptureQuickEntrySheet: View {
 
                 Section(kind == .note ? "Note" : kind.title) {
                     if kind != .note || savesNoteToHomeNest || selectedProject != nil {
-                        TextField(kind == .note ? "Title (optional)" : kind == .task ? "What needs doing?" : kind == .goal ? "What does better look like?" : "Source title (optional)", text: $title, axis: .vertical)
-                            .lineLimit(1...3)
+                        TextField(kind == .note ? "Title (optional)" : kind == .task ? "What needs doing?" : kind == .goal ? "What does better look like?" : "Source title (optional)", text: $title)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .body }
                             .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureQuickEntryTitle")
                     }
@@ -8436,15 +8437,28 @@ private struct InputLevelMeter: View {
     let level: Double
     let isActive: Bool
 
+    private var safeLevel: Double {
+        guard level.isFinite else { return 0 }
+        return min(max(level, 0), 1)
+    }
+
     var body: some View {
         ZStack {
             GeometryReader { proxy in
+                let availableWidth = proxy.size.width.isFinite
+                    ? max(0, proxy.size.width)
+                    : 0
+                let minimumVisibleWidth = min(8, availableWidth)
+                let fillWidth = min(
+                    availableWidth,
+                    max(minimumVisibleWidth, availableWidth * safeLevel)
+                )
                 ZStack(alignment: .leading) {
                     Capsule().fill(.secondary.opacity(0.14))
                     Capsule()
                         .fill(isActive ? CapturePalette.meterGradient : LinearGradient(colors: [.secondary.opacity(0.35)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(8, proxy.size.width * min(max(level, 0), 1)))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: level)
+                        .frame(width: fillWidth)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: safeLevel)
                 }
             }
             .frame(height: 9)
@@ -8456,7 +8470,7 @@ private struct InputLevelMeter: View {
         .contentShape(Rectangle())
         .accessibilityElement()
         .accessibilityLabel("Microphone level")
-        .accessibilityValue(isActive ? "\(Int(level * 100)) percent" : "Inactive")
+        .accessibilityValue(isActive ? "\(Int((safeLevel * 100).rounded())) percent" : "Inactive")
     }
 }
 

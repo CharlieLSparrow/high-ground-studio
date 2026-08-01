@@ -8,11 +8,12 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (23)**
+- App: **Quipsly Capture 1.0 (24)**
 - Exact native source:
-  `949139db3b2aca69b63414bd6874e4212c2f7ebc`
-- Qualified upload-bound IPA: 21,343,893 bytes, SHA-256
-  `13deeb865879b1c0e03011aa20131bcb280fa534ff8130bde1131e05efa6cf85`
+  `9fdfeb761f82558fea97c4c03879aa020ac307b4`
+- Qualified upload-bound IPA: 21,444,234 bytes, SHA-256
+  `51a03c5a025066a2223c5b7a8e2c0f59e2984bfd39438d0a99d6727b1738a8d8`
+- App Store Connect build ID: `dac9688d-2158-4794-82ea-ccfa00e39ed5`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`

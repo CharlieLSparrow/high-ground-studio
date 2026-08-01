@@ -5566,3 +5566,38 @@ was restored.
   recovery gate passes all 111 Capture contracts.
 - Physical-iPhone TestFlight capture remains open. Build 24 remains the
   canonical public TestFlight target.
+
+### 2026-08-01 retained iPhone tagging and runtime-quality checkpoint
+
+- Confirmed the intended taxonomy boundary instead of adding a circular
+  project-tag relation: each private Nest owns one canonical vocabulary reused
+  across its Task, Note, Goal, Session, document, and anchored-evidence graph;
+  Nest type/workflow classifies the project itself.
+- Operated the compiled Quipsly Capture app as the Keychain-backed retained
+  `.test` media operator. Final project
+  `QA Retained · Tag system 2026-08-01 F` contains one canonical shared tag,
+  one Task, one private document-kernel Note, and one active Goal created
+  through the shipping iPhone Work flow. Independent PostgreSQL readback
+  verified exact private ownership, same-tag identity, human-capture
+  provenance, stable record IDs, and zero external effects.
+- The A–F controlled operation corpus remains intentionally retained. Aggregate
+  readback found all six private projects with their expected Tasks, Goals,
+  documents, and canonical tags; failed warning-gate experiments did not become
+  falsely certified even though their useful product state remains available
+  for longitudinal testing.
+- The operation exposed one iOS 26.3.1 SwiftUI `Form` keyboard runtime warning.
+  Four isolation runs disproved Quipsly meter, multiline-title, safe-area, and
+  hidden-Recorder geometry as its source. App-owned meter geometry and level
+  normalization are still finite-safe; quick-entry title **Next** now focuses
+  detail. The XCResult runner reports the exact known framework warning and
+  fails on every other runtime warning.
+- Final native journey passes 1/1 with zero unexpected runtime warnings and a
+  complete canonical readback. Retained-operation tests pass 3/3, the native
+  source contract passes 79/79, and App Store/static checks pass 902/902 after
+  repairing the TestFlight operator runbook's stale Build 23 marker to the
+  canonical Build 24 source, artifact, and provider identity. Exact evidence
+  and Apple-source links are in
+  `docs/coordination/2026-08-01-capture-retained-tagging-runtime-quality.md`.
+- This is local simulator product proof, not physical-iPhone TestFlight proof.
+  Actual microphone/camera capture, interruption recovery, upload, playback,
+  timeline alignment, and same-ID production readback remain open.

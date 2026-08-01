@@ -1344,9 +1344,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             inputLevelDB = snapshot.averagePowerDB
             peakInputLevelDB = snapshot.peakPowerDB
             let floorDB: Float = -60
-            normalizedInputLevel = Double(
-                min(max((snapshot.averagePowerDB - floorDB) / -floorDB, 0), 1)
-            )
+            let normalized = min(max((snapshot.averagePowerDB - floorDB) / -floorDB, 0), 1)
+            normalizedInputLevel = normalized.isFinite ? Double(normalized) : 0
             if let receivedPCMAt = snapshot.receivedPCMAt,
                Date().timeIntervalSince(receivedPCMAt) > 1.5 {
                 pauseRecording(
@@ -1379,7 +1378,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         inputLevelDB = average
         peakInputLevelDB = peak
         let floorDB: Float = -60
-        normalizedInputLevel = Double(min(max((average - floorDB) / -floorDB, 0), 1))
+        let normalized = min(max((average - floorDB) / -floorDB, 0), 1)
+        normalizedInputLevel = normalized.isFinite ? Double(normalized) : 0
     }
 
     private func refreshInputRoute() {

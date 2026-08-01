@@ -195,8 +195,16 @@ exact project names. It retrieves the fixed media operator password from the
 same dedicated Keychain service, operates the compiled app, and independently
 checks the complete canonical graph. Successful and failed product artifacts
 are retained; only hashes and the local result-bundle path are printed.
+The runner also inspects the XCResult runtime-warning tree. The documented
+iOS 26.3.1 SwiftUI `Form` keyboard warning is printed as known platform
+evidence; every other runtime warning fails the operation before canonical
+certification. Do not broaden that allowlist without a controlled isolation
+run and an Apple-owned source documenting the framework boundary.
 The first exact-commit operation and its retained fixture chronology are in
 `docs/coordination/2026-07-31-retained-native-project-operation.md`.
+The tagging/runtime-quality isolation and final certified retained project are
+in
+`docs/coordination/2026-08-01-capture-retained-tagging-runtime-quality.md`.
 
 ## Environment boundaries
 

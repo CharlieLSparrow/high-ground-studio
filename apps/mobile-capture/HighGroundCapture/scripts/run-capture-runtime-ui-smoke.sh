@@ -433,3 +433,46 @@ process.stdin.on("end", () => {
   }, null, 2));
 });
 ' "$TEST_CLASS" "$TEST_CASE"
+
+"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results tests \
+  --path "$RESULT_BUNDLE_PATH" |
+  node -e '
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => {
+  const tree = JSON.parse(raw);
+  const warnings = [];
+  // Xcode 17 / iOS 26.3.1 emits this SwiftUI framework warning on the
+  // supported Form text-input path when it first presents the keyboard.
+  // Keep it visible in every receipt while failing closed on any new warning.
+  const knownFrameworkWarnings = new Set([
+    "Invalid frame dimension (negative or non-finite).",
+  ]);
+  function visit(node) {
+    if (!node || typeof node !== "object") return;
+    if (node.nodeType === "Runtime Warning") {
+      warnings.push(typeof node.name === "string" ? node.name : "Unnamed runtime warning");
+    }
+    if (Array.isArray(node.children)) node.children.forEach(visit);
+    if (Array.isArray(node.testNodes)) node.testNodes.forEach(visit);
+  }
+  visit(tree);
+  const unexpectedWarnings = warnings.filter(
+    (warning) => !knownFrameworkWarnings.has(warning),
+  );
+  if (unexpectedWarnings.length > 0) {
+    console.error(JSON.stringify({
+      error: "Capture runtime UI proof emitted unexpected runtime warnings.",
+      knownFrameworkWarnings: warnings.filter((warning) => knownFrameworkWarnings.has(warning)),
+      unexpectedWarnings,
+    }, null, 2));
+    process.exit(5);
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    knownFrameworkWarnings: warnings,
+    unexpectedRuntimeWarnings: 0,
+  }, null, 2));
+});
+'
