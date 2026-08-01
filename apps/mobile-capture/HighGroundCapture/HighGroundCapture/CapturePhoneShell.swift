@@ -5385,6 +5385,16 @@ private struct CaptureSessionTruthPanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                CaptureStatusPill(
+                    label: model.providerRoom.providerRuntimeLabel,
+                    systemImage: model.providerRoom.providerRuntimeAvailable ? "checkmark.circle.fill" : "xmark.circle",
+                    tint: model.providerRoom.providerRuntimeAvailable ? .green : .orange
+                )
+                Text(model.providerRoom.providerRuntimeDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
                 if let readiness = model.readinessClient.readiness {
                     CaptureStatusPill(
                         label: readiness.providerEgressLabel,

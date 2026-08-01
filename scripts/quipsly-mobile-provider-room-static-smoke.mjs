@@ -9,9 +9,9 @@ const files = {
     root,
     "apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomController.swift",
   ),
-  components: path.join(
+  phoneShell: path.join(
     root,
-    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift",
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift",
   ),
   bridge: path.join(
     root,
@@ -43,7 +43,7 @@ function assertMatches(name, haystack, regex, explanation) {
 }
 
 const controller = read(files.controller);
-const components = read(files.components);
+const phoneShell = read(files.phoneShell);
 const bridge = read(files.bridge);
 const runtimeUISmokeRunner = read(files.runtimeUISmokeRunner);
 const joinRoute = read(files.joinRoute);
@@ -57,13 +57,31 @@ assertIncludes("ProviderRoomController", controller, "providerRuntimeAvailable",
 assertIncludes("ProviderRoomController", controller, "didActivate audioSession", "CallKit audio activation should not be ignored");
 assertIncludes("ProviderRoomController", controller, "didDeactivate audioSession", "CallKit audio cleanup should be visible");
 
-assertIncludes("QuipslyMobileComponents", components, "ProviderRuntimeBoundaryCard", "UI must show server-ready vs app-runtime-ready separately");
-assertIncludes("QuipslyMobileComponents", components, "accessibilityIdentifier(\"RecorderControlBoard\")", "recorder board must be addressable by runtime UI smoke");
-assertIncludes("QuipslyMobileComponents", components, "accessibilityIdentifier(\"RoomSpinePanel\")", "meeting spine must be addressable by runtime UI smoke");
-assertIncludes("QuipslyMobileComponents", components, "accessibilityIdentifier(\"ProviderRoomView\")", "provider room must be addressable by runtime UI smoke");
-assertIncludes("QuipslyMobileComponents", components, "Operator start", "provider egress start must be an explicit human/operator action");
-assertIncludes("QuipslyMobileComponents", components, "Operator stop", "provider egress stop must be an explicit human/operator action");
-assertIncludes("QuipslyMobileComponents", components, "joining the live room", "joining and recording must stay separate in copy");
+for (const needle of [
+  'accessibilityIdentifier("CaptureRecorderView")',
+  'accessibilityIdentifier("CaptureSessionTruthPanel")',
+  'accessibilityIdentifier("CaptureLiveRoomDisclosure")',
+  'accessibilityIdentifier("CaptureProviderRoomControls")',
+  'accessibilityIdentifier("ProviderJoinRoomButton")',
+  'accessibilityIdentifier("ProviderToggleMuteButton")',
+  'accessibilityIdentifier("ProviderLeaveRoomButton")',
+  "model.providerRoom.providerRuntimeLabel",
+  "model.providerRoom.providerRuntimeAvailable",
+  "model.providerRoom.providerRuntimeDetail",
+  "readiness.providerEgressLabel",
+  "readiness.providerEgressDetail",
+  "Joining, CallKit, consent, local recording, and server recording remain separate states in Nest.",
+  "Creates only the Nest receipt slot. It does not join the room or start recording.",
+  "remote provider audio requires separate participant tracks or verified provider egress",
+]) {
+  assertIncludes("CapturePhoneShell", phoneShell, needle, "the shipping Session workflow must distinguish app runtime, server egress, receipt, live-room, and local-recording truth");
+}
+
+for (const forbidden of ["Operator start", "Operator stop", "START_EGRESS", "STOP_EGRESS"]) {
+  if (phoneShell.includes(forbidden)) {
+    throw new Error(`CapturePhoneShell should not expose ${JSON.stringify(forbidden)}: staff-gated provider egress remains a Nest operator action`);
+  }
+}
 
 assertIncludes("BridgeModels", bridge, "providerRecordingAction", "native app should call the shared provider-recording route");
 assertIncludes("BridgeModels", bridge, "ProcessInfo.processInfo.environment[\"QUIPSLY_API_BASE_URL\"]", "DEBUG simulator/UI proof should target the intended Nest backend");
