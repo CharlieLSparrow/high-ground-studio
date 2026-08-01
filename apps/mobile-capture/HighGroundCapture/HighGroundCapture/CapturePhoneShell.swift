@@ -8706,6 +8706,11 @@ private struct StudioHandoffCard: View {
                     .accessibilityIdentifier("CaptureAttachToStudioButton_\(session.id)")
                 }
             }
+
+            Text("Attaching prepares immutable source material for Studio review. It never publishes, trims, or deletes your recording.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .captureCard()
         .accessibilityElement(children: .contain)

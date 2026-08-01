@@ -11,7 +11,8 @@ const files = {
   promotionHelper: path.join(root, "apps/quipsly/src/lib/server/recording-media-promotion.ts"),
   reviewDigestRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/review-digest/route.ts"),
   bridge: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift"),
-  components: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift"),
+  phoneShell: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift"),
+  experienceModel: path.join(root, "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift"),
   policy: path.join(root, "docs/quipsly/capture-recording-to-podcast-editor-flow.md"),
   core: path.join(root, "apps/quipsly/src/lib/server/quipsly-core.ts"),
 };
@@ -128,17 +129,30 @@ for (const needle of [
 }
 
 for (const needle of [
-  "isPromotingRecording",
-  "promoteRecordingToStudioMedia",
+  "StudioHandoffCard(",
+  "Continue in Studio",
+  "model.isPromotingRecordingToStudio",
+  "await model.promoteSelectedRecordingToStudio()",
   "Attach to Studio",
   "Studio media",
-  "CapturePostCaptureRunwayCard",
-  "Source evidence",
-  "Studio attachment",
-  "Attach to Studio does not publish",
-  "CaptureRunwayStep",
+  "CaptureStudioHandoffCard_",
+  "CaptureAttachToStudioButton_",
+  "without deleting or changing any original",
+  "Attaching prepares immutable source material for Studio review. It never publishes, trims, or deletes your recording.",
 ]) {
-  assertIncludes("native components", text.components, needle, "native UI should expose the post-capture attach action");
+  assertIncludes("native phone shell", text.phoneShell, needle, "the reachable iPhone Session workflow should expose an explicit, source-safe Studio handoff");
+}
+
+for (const needle of [
+  "isPromotingRecordingToStudio",
+  "promoteSelectedRecordingToStudio",
+  "activeCaptureSession == nil, activeVideoCaptureSession == nil",
+  "stableOwnerSnapshot",
+  "matchesStableOwnerSnapshot",
+  "sessionClient.promoteRecordingToStudioMedia",
+  "Every immutable original and server receipt remains preserved.",
+]) {
+  assertIncludes("native experience model", text.experienceModel, needle, "Studio promotion must stop active capture, preserve account authority, and keep immutable source evidence");
 }
 
 for (const needle of [
