@@ -5866,3 +5866,33 @@ was restored.
   parity, separately administered disaster recovery, physical-iPhone/TestFlight
   operation, real HGO/coaching completion, transcript activation, Studio proof
   acceptance, or App Store submission.
+
+### Studio canonical transcript identity and provenance checkpoint — 2026-08-01
+
+- Studio now reconciles Nest canonical transcript segments and words by stable
+  external IDs, preserving local segment, word, and transcript-job UUIDs across
+  a provider-to-human-reviewed refresh. This prevents later notes, tasks,
+  chapters, quotes, and edit decisions from losing their transcript anchors.
+- The handoff contract carries provider speaker, accepted-correction ID, raw
+  word, speaker, channel, provider word index, timing, and provider evidence.
+  Provider rows cannot masquerade as reviewed rows, and reviewed rows require a
+  non-empty accepted-correction ID.
+- Privacy-safe edit-ledger receipts record identifiers and review state without
+  transcript text or signed handoff URLs. Exact replay is a no-op; a legacy
+  same-job session missing a receipt receives one backfill and then becomes
+  idempotent.
+- The macOS Capture handoff now performs an independent saved-session readback
+  for exact external-ID sets, correction mapping, stable local UUIDs, canonical
+  job identity, and the expected receipt-count change.
+- The full QuipslyVideoCore suite passes 106 XCTest plus 4 Swift Testing cases;
+  the Nest handoff route passes 3/3; the local doctor passes; and a clean signed
+  `com.highground.QuipslyMac` build verifies under Team ID `585GUXMY5M`.
+- A real retained 60-second HGO provider corpus was imported, saved, and loaded
+  again through the shipping app-owned control surface. The retained session
+  contains five segments and twelve words and has SHA-256
+  `ac8859723e94aec6693cbd001805d8c9c1b06735fc26aa764ef3d2d7bfa9fbbf`.
+- The AI speaker proposal remains rejected and was not counted as human review.
+  The open proof is one person-listened accepted correction imported twice into
+  Studio, demonstrating one reviewed-refresh receipt, stable persisted UUIDs,
+  and a no-op replay. Full evidence and the exact boundary are in
+  `docs/coordination/2026-08-01-studio-canonical-transcript-identity-checkpoint.md`.

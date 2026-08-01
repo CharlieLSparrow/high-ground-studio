@@ -60,6 +60,14 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
             "human-reviewed"
         )
         XCTAssertEqual(
+            handoff.segments?.first?.providerSpeaker,
+            "speaker_0"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.acceptedCorrectionId,
+            "correction-1"
+        )
+        XCTAssertEqual(
             handoff.segments?.first?.words.first?
                 .providerWordIndex,
             0
@@ -67,6 +75,18 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
         XCTAssertEqual(
             handoff.segments?.first?.words.first?.source,
             "deepgram-word-anchor"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.words.first?.rawWord,
+            "reviewed"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.words.first?.speaker,
+            "speaker_0"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.words.first?.channel,
+            0
         )
         XCTAssertEqual(
             handoff.source?.immutableProviderWords,

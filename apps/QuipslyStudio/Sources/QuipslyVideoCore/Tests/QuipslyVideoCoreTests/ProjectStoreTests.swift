@@ -350,26 +350,30 @@ final class ProjectStoreTests: XCTestCase {
                 sequences: [MediaSequence(title: "Main")]
             )
         )
-        let segment = TranscriptSegment(
+        let providerSegment = TranscriptSegment(
             sourceExternalID: "segment-server-1",
             sourceTranscriptJobID: "transcript-job-1",
-            speaker: "Charlie",
+            speaker: "speaker_0",
             startTime: 1.2,
             endTime: 2.4,
-            text: "This is reviewed.",
+            text: "This is reviewd.",
             providerText: "This is reviewd.",
+            providerSpeaker: "speaker_0",
             words: [
                 TranscriptWordTiming(
                     sourceExternalID: "word-server-1",
                     providerWordIndex: 0,
                     word: "This",
+                    rawWord: "This",
                     startTime: 1.2,
                     endTime: 1.5,
                     confidence: 0.99,
+                    speaker: "speaker_0",
+                    channel: 0,
                     source: "deepgram-word-anchor"
                 ),
             ],
-            reviewStatus: "human-reviewed"
+            reviewStatus: "provider"
         )
 
         XCTAssertFalse(
@@ -377,8 +381,22 @@ final class ProjectStoreTests: XCTestCase {
                 transcriptJobID: "transcript-job-1",
                 provider: "deepgram",
                 sourcePath: "https://nest.example/handoff",
-                segments: [segment]
+                segments: [providerSegment]
             )
+        )
+        let importedSegmentID = try XCTUnwrap(
+            store.activeSequence?.transcriptSegments.first?.id
+        )
+        let importedWordID = try XCTUnwrap(
+            store.activeSequence?.transcriptSegments.first?
+                .words.first?.id
+        )
+        let importedJobID = try XCTUnwrap(
+            store.activeSequence?.transcriptJobs.first?.id
+        )
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.count,
+            1
         )
         XCTAssertEqual(
             store.activeSequence?.transcriptSegments.first?
@@ -395,13 +413,136 @@ final class ProjectStoreTests: XCTestCase {
                 .sourceExternalID,
             "transcript-job-1"
         )
+        let reviewedSegment = TranscriptSegment(
+            sourceExternalID: "segment-server-1",
+            sourceTranscriptJobID: "transcript-job-1",
+            speaker: "Charlie",
+            startTime: 1.2,
+            endTime: 2.4,
+            text: "This is reviewed.",
+            providerText: "This is reviewd.",
+            providerSpeaker: "speaker_0",
+            acceptedCorrectionExternalID: "correction-server-1",
+            words: [
+                TranscriptWordTiming(
+                    sourceExternalID: "word-server-1",
+                    providerWordIndex: 0,
+                    word: "This",
+                    rawWord: "This",
+                    startTime: 1.2,
+                    endTime: 1.5,
+                    confidence: 0.99,
+                    speaker: "speaker_0",
+                    channel: 0,
+                    source: "deepgram-word-anchor"
+                ),
+            ],
+            reviewStatus: "human-reviewed"
+        )
+        XCTAssertFalse(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath:
+                    "https://nest.example/handoff?token=secret",
+                segments: [reviewedSegment]
+            )
+        )
+        let refreshedSegment = try XCTUnwrap(
+            store.activeSequence?.transcriptSegments.first
+        )
+        XCTAssertEqual(refreshedSegment.id, importedSegmentID)
+        XCTAssertEqual(refreshedSegment.words.first?.id, importedWordID)
+        XCTAssertEqual(
+            store.activeSequence?.transcriptJobs.first?.id,
+            importedJobID
+        )
+        XCTAssertEqual(
+            refreshedSegment.providerSpeaker,
+            "speaker_0"
+        )
+        XCTAssertEqual(
+            refreshedSegment.acceptedCorrectionExternalID,
+            "correction-server-1"
+        )
+        XCTAssertEqual(refreshedSegment.words.first?.rawWord, "This")
+        XCTAssertEqual(refreshedSegment.words.first?.speaker, "speaker_0")
+        XCTAssertEqual(refreshedSegment.words.first?.channel, 0)
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.count,
+            2
+        )
+        let refreshReceipt = try XCTUnwrap(
+            store.activeSequence?.editActionLedger.last
+        )
+        XCTAssertEqual(
+            refreshReceipt.endpoint,
+            "nest-canonical-transcript"
+        )
+        XCTAssertTrue(
+            refreshReceipt.afterJson.contains(
+                "correction-server-1"
+            )
+        )
+        XCTAssertTrue(
+            refreshReceipt.afterJson.contains("word-server-1")
+        )
+        XCTAssertFalse(
+            refreshReceipt.afterJson.contains("This is reviewed")
+        )
+        XCTAssertFalse(refreshReceipt.endpoint.contains("secret"))
+
         XCTAssertTrue(
             try store.applyCanonicalTranscriptHandoff(
                 transcriptJobID: "transcript-job-1",
                 provider: "deepgram",
                 sourcePath: "https://nest.example/handoff",
-                segments: [segment]
+                segments: [reviewedSegment]
             )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.count,
+            2
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptSegments.first?.id,
+            importedSegmentID
+        )
+
+        var legacySequence = try XCTUnwrap(store.activeSequence)
+        legacySequence.editActionLedger = []
+        store.updateSequence(
+            legacySequence,
+            undoManager: nil,
+            actionName: "Simulate Legacy Transcript Session"
+        )
+        XCTAssertFalse(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [reviewedSegment]
+            )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.count,
+            1
+        )
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.first?.actionLabel,
+            "Record canonical transcript handoff"
+        )
+        XCTAssertTrue(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [reviewedSegment]
+            )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.editActionLedger.count,
+            1
         )
 
         XCTAssertThrowsError(
@@ -459,6 +600,80 @@ final class ProjectStoreTests: XCTestCase {
                 .invalidHandoff
             )
         }
+    }
+
+    func testCanonicalTranscriptImportRejectsReviewWithoutAcceptedCorrection() {
+        let store = ProjectStore(
+            project: VideoProject(
+                title: "Episode",
+                sequences: [MediaSequence(title: "Main")]
+            )
+        )
+        let malformedReview = TranscriptSegment(
+            sourceExternalID: "segment-server-1",
+            sourceTranscriptJobID: "transcript-job-1",
+            startTime: 0,
+            endTime: 1,
+            text: "Unproven review",
+            words: [
+                TranscriptWordTiming(
+                    sourceExternalID: "word-server-1",
+                    providerWordIndex: 0,
+                    word: "Unproven",
+                    startTime: 0,
+                    endTime: 0.5
+                ),
+            ],
+            reviewStatus: "human-reviewed"
+        )
+
+        XCTAssertThrowsError(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [malformedReview]
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? CanonicalTranscriptImportError,
+                .invalidHandoff
+            )
+        }
+    }
+
+    func testTranscriptModelsDecodeSessionsSavedBeforeProviderProvenanceFields() throws {
+        let segment = try JSONDecoder().decode(
+            TranscriptSegment.self,
+            from: Data(
+                """
+                {
+                  "sourceExternalID": "segment-legacy",
+                  "sourceTranscriptJobID": "job-legacy",
+                  "speaker": "Speaker",
+                  "startTime": 0,
+                  "endTime": 1,
+                  "text": "Legacy session",
+                  "words": [{
+                    "sourceExternalID": "word-legacy",
+                    "providerWordIndex": 0,
+                    "word": "Legacy",
+                    "startTime": 0,
+                    "endTime": 0.5,
+                    "source": "provider"
+                  }],
+                  "reviewStatus": "provider"
+                }
+                """.utf8
+            )
+        )
+
+        XCTAssertNil(segment.providerSpeaker)
+        XCTAssertNil(segment.acceptedCorrectionExternalID)
+        XCTAssertNil(segment.words.first?.rawWord)
+        XCTAssertNil(segment.words.first?.speaker)
+        XCTAssertNil(segment.words.first?.channel)
+        XCTAssertEqual(segment.words.first?.sourceExternalID, "word-legacy")
     }
 
     func testAttachmentEvidenceFailsClosedOnInvalidAlignmentClaims() {

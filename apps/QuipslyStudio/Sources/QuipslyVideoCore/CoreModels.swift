@@ -610,6 +610,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public var endTime: Double
     public var text: String
     public var providerText: String?
+    public var providerSpeaker: String?
+    public var acceptedCorrectionExternalID: String?
     public var words: [TranscriptWordTiming]
     public var confidence: Double?
     public var reviewStatus: String
@@ -626,6 +628,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         endTime: Double,
         text: String,
         providerText: String? = nil,
+        providerSpeaker: String? = nil,
+        acceptedCorrectionExternalID: String? = nil,
         words: [TranscriptWordTiming] = [],
         confidence: Double? = nil,
         reviewStatus: String = "draft",
@@ -641,6 +645,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         self.endTime = max(max(0, startTime), endTime)
         self.text = text
         self.providerText = providerText
+        self.providerSpeaker = providerSpeaker
+        self.acceptedCorrectionExternalID = acceptedCorrectionExternalID
         self.words = words
         self.confidence = confidence
         self.reviewStatus = reviewStatus
@@ -658,6 +664,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         case endTime
         case text
         case providerText
+        case providerSpeaker
+        case acceptedCorrectionExternalID
         case words
         case confidence
         case reviewStatus
@@ -678,6 +686,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         endTime = max(startTime, decodedEnd)
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         providerText = try container.decodeIfPresent(String.self, forKey: .providerText)
+        providerSpeaker = try container.decodeIfPresent(String.self, forKey: .providerSpeaker)
+        acceptedCorrectionExternalID = try container.decodeIfPresent(String.self, forKey: .acceptedCorrectionExternalID)
         words = try container.decodeIfPresent([TranscriptWordTiming].self, forKey: .words) ?? []
         confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
         reviewStatus = try container.decodeIfPresent(String.self, forKey: .reviewStatus) ?? "draft"
@@ -691,9 +701,12 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
     public var sourceExternalID: String?
     public var providerWordIndex: Int?
     public var word: String
+    public var rawWord: String?
     public var startTime: Double
     public var endTime: Double
     public var confidence: Double?
+    public var speaker: String?
+    public var channel: Int?
     public var source: String
 
     public init(
@@ -701,18 +714,24 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
         sourceExternalID: String? = nil,
         providerWordIndex: Int? = nil,
         word: String,
+        rawWord: String? = nil,
         startTime: Double,
         endTime: Double,
         confidence: Double? = nil,
+        speaker: String? = nil,
+        channel: Int? = nil,
         source: String = "estimated"
     ) {
         self.id = id
         self.sourceExternalID = sourceExternalID
         self.providerWordIndex = providerWordIndex
         self.word = word
+        self.rawWord = rawWord
         self.startTime = max(0, startTime)
         self.endTime = max(max(0, startTime), endTime)
         self.confidence = confidence
+        self.speaker = speaker
+        self.channel = channel
         self.source = source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "estimated" : source
     }
 
@@ -721,9 +740,12 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
         case sourceExternalID
         case providerWordIndex
         case word
+        case rawWord
         case startTime
         case endTime
         case confidence
+        case speaker
+        case channel
         case source
     }
 
@@ -735,9 +757,12 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
             sourceExternalID: try container.decodeIfPresent(String.self, forKey: .sourceExternalID),
             providerWordIndex: try container.decodeIfPresent(Int.self, forKey: .providerWordIndex),
             word: try container.decodeIfPresent(String.self, forKey: .word) ?? "",
+            rawWord: try container.decodeIfPresent(String.self, forKey: .rawWord),
             startTime: decodedStart,
             endTime: try container.decodeIfPresent(Double.self, forKey: .endTime) ?? decodedStart,
             confidence: try container.decodeIfPresent(Double.self, forKey: .confidence),
+            speaker: try container.decodeIfPresent(String.self, forKey: .speaker),
+            channel: try container.decodeIfPresent(Int.self, forKey: .channel),
             source: try container.decodeIfPresent(String.self, forKey: .source) ?? "estimated"
         )
     }

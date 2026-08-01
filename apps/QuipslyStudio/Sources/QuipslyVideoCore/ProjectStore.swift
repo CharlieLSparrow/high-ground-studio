@@ -194,6 +194,151 @@ public class ProjectStore: ObservableObject {
     /// Installs one Nest-owned transcript spine without discarding another
     /// transcript version. Re-importing the same canonical job is idempotent;
     /// importing a different job requires an explicit branch or clear action.
+    private func canonicalTranscriptWordSemanticsMatch(
+        _ left: TranscriptWordTiming,
+        _ right: TranscriptWordTiming
+    ) -> Bool {
+        left.sourceExternalID == right.sourceExternalID
+            && left.providerWordIndex == right.providerWordIndex
+            && left.word == right.word
+            && left.rawWord == right.rawWord
+            && left.startTime == right.startTime
+            && left.endTime == right.endTime
+            && left.confidence == right.confidence
+            && left.speaker == right.speaker
+            && left.channel == right.channel
+            && left.source == right.source
+    }
+
+    private func canonicalTranscriptSegmentSemanticsMatch(
+        _ left: TranscriptSegment,
+        _ right: TranscriptSegment
+    ) -> Bool {
+        left.sourceExternalID == right.sourceExternalID
+            && left.sourceTranscriptJobID
+                == right.sourceTranscriptJobID
+            && left.speaker == right.speaker
+            && left.providerSpeaker == right.providerSpeaker
+            && left.startTime == right.startTime
+            && left.endTime == right.endTime
+            && left.text == right.text
+            && left.providerText == right.providerText
+            && left.acceptedCorrectionExternalID
+                == right.acceptedCorrectionExternalID
+            && left.confidence == right.confidence
+            && left.reviewStatus == right.reviewStatus
+            && left.words.count == right.words.count
+            && zip(left.words, right.words).allSatisfy { pair in
+                canonicalTranscriptWordSemanticsMatch(
+                    pair.0,
+                    pair.1
+                )
+            }
+    }
+
+    private func reconcileCanonicalTranscriptSegments(
+        _ incoming: [TranscriptSegment],
+        against existing: [TranscriptSegment]
+    ) -> [TranscriptSegment] {
+        let existingSegments = existing.reduce(
+            into: [String: TranscriptSegment]()
+        ) { result, segment in
+            guard let externalID = segment.sourceExternalID,
+                  result[externalID] == nil else {
+                return
+            }
+            result[externalID] = segment
+        }
+        return incoming.map { segment in
+            guard let externalID = segment.sourceExternalID,
+                  let prior = existingSegments[externalID] else {
+                return segment
+            }
+            let priorWords = prior.words.reduce(
+                into: [String: TranscriptWordTiming]()
+            ) { result, word in
+                guard let externalID = word.sourceExternalID,
+                      result[externalID] == nil else {
+                    return
+                }
+                result[externalID] = word
+            }
+            let reconciledWords = segment.words.map { word in
+                guard let wordExternalID = word.sourceExternalID,
+                      let priorWord = priorWords[wordExternalID] else {
+                    return word
+                }
+                return TranscriptWordTiming(
+                    id: priorWord.id,
+                    sourceExternalID: word.sourceExternalID,
+                    providerWordIndex: word.providerWordIndex,
+                    word: word.word,
+                    rawWord: word.rawWord,
+                    startTime: word.startTime,
+                    endTime: word.endTime,
+                    confidence: word.confidence,
+                    speaker: word.speaker,
+                    channel: word.channel,
+                    source: word.source
+                )
+            }
+            let semanticsUnchanged =
+                canonicalTranscriptSegmentSemanticsMatch(prior, segment)
+            return TranscriptSegment(
+                id: prior.id,
+                sourceAssetId:
+                    prior.sourceAssetId ?? segment.sourceAssetId,
+                sourceExternalID: segment.sourceExternalID,
+                sourceTranscriptJobID:
+                    segment.sourceTranscriptJobID,
+                speaker: segment.speaker,
+                startTime: segment.startTime,
+                endTime: segment.endTime,
+                text: segment.text,
+                providerText: segment.providerText,
+                providerSpeaker: segment.providerSpeaker,
+                acceptedCorrectionExternalID:
+                    segment.acceptedCorrectionExternalID,
+                words: reconciledWords,
+                confidence: segment.confidence,
+                reviewStatus: segment.reviewStatus,
+                createdAt: prior.createdAt,
+                updatedAt:
+                    semanticsUnchanged ? prior.updatedAt : Date()
+            )
+        }
+    }
+
+    private func canonicalTranscriptLedgerJSON(
+        transcriptJobID: String,
+        segments: [TranscriptSegment]
+    ) -> String {
+        let payload: [String: Any] = [
+            "schema": "quipsly-studio-transcript-import-receipt-v1",
+            "transcriptJobId": transcriptJobID,
+            "segments": segments.map { segment in
+                [
+                    "segmentId": segment.sourceExternalID ?? "",
+                    "reviewStatus": segment.reviewStatus,
+                    "acceptedCorrectionId":
+                        segment.acceptedCorrectionExternalID
+                        ?? NSNull(),
+                    "wordIds": segment.words.compactMap(
+                        \.sourceExternalID
+                    ),
+                ] as [String: Any]
+            },
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(
+                withJSONObject: payload,
+                options: [.sortedKeys]
+              ) else {
+            return "{}"
+        }
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
     @discardableResult
     public func applyCanonicalTranscriptHandoff(
         transcriptJobID: String,
@@ -224,6 +369,12 @@ public class ProjectStore: ObservableObject {
         wordIndexes == Array(0 ..< words.count),
         segments.allSatisfy({ segment in
             segment.sourceTranscriptJobID == transcriptJobID
+                && ((segment.acceptedCorrectionExternalID == nil
+                        && segment.reviewStatus == "provider")
+                    || (segment.acceptedCorrectionExternalID?.isEmpty
+                            == false
+                        && segment.reviewStatus
+                            == "human-reviewed"))
                 && segment.startTime.isFinite
                 && segment.endTime.isFinite
                 && segment.startTime >= 0
@@ -249,25 +400,45 @@ public class ProjectStore: ObservableObject {
             throw CanonicalTranscriptImportError
                 .existingTranscriptHasDifferentIdentity
         }
-        let unchanged =
-            sequence.transcriptSegments == segments
-            && sequence.transcriptJobs.contains {
+        let reconciledSegments = reconcileCanonicalTranscriptSegments(
+            segments,
+            against: sequence.transcriptSegments
+        )
+        let segmentsUnchanged =
+            sequence.transcriptSegments == reconciledSegments
+        let hasCompletedJob = sequence.transcriptJobs.contains {
                 $0.sourceExternalID == transcriptJobID
                     && $0.status == "completed"
             }
+        let hasHandoffReceipt = sequence.editActionLedger.contains {
+            $0.category == "transcript-handoff"
+                && $0.endpoint == "nest-canonical-transcript"
+                && $0.afterJson.contains(transcriptJobID)
+        }
+        let unchanged = segmentsUnchanged
+            && hasCompletedJob
+            && hasHandoffReceipt
         if unchanged {
             return true
         }
 
-        sequence.transcriptSegments = segments
+        let priorSegments = sequence.transcriptSegments
+        sequence.transcriptSegments = reconciledSegments
+        let priorJob = sequence.transcriptJobs.first {
+            $0.sourceExternalID == transcriptJobID
+        }
+        let now = Date()
         let job = TranscriptJobRecord(
+            id: priorJob?.id ?? UUID(),
             sourceExternalID: transcriptJobID,
+            sourceLaneId: priorJob?.sourceLaneId,
             sourceLaneName: "Nest canonical transcript",
             sourcePath: sourcePath,
             provider: provider,
             status: "completed",
-            completedAt: Date(),
-            segmentCount: segments.count
+            startedAt: priorJob?.startedAt ?? now,
+            completedAt: priorJob?.completedAt ?? now,
+            segmentCount: reconciledSegments.count
         )
         if let index = sequence.transcriptJobs.firstIndex(where: {
             $0.sourceExternalID == transcriptJobID
@@ -276,6 +447,32 @@ public class ProjectStore: ObservableObject {
         } else {
             sequence.transcriptJobs.append(job)
         }
+        sequence.editActionLedger.append(
+            EditActionLedgerRecord(
+                actor: "Nest",
+                actorType: "system",
+                actionId:
+                    "canonical-transcript-import-\(UUID().uuidString)",
+                actionLabel: priorSegments.isEmpty
+                    ? "Import canonical transcript"
+                    : segmentsUnchanged
+                        ? "Record canonical transcript handoff"
+                        : "Refresh reviewed transcript",
+                category: "transcript-handoff",
+                endpoint: "nest-canonical-transcript",
+                sequenceTime: 0,
+                beforeJson: canonicalTranscriptLedgerJSON(
+                    transcriptJobID: transcriptJobID,
+                    segments: priorSegments
+                ),
+                afterJson: canonicalTranscriptLedgerJSON(
+                    transcriptJobID: transcriptJobID,
+                    segments: reconciledSegments
+                ),
+                note:
+                    "Provider words remain immutable; accepted corrections are provenance-linked overlays."
+            )
+        )
         updateSequence(
             sequence,
             undoManager: nil,

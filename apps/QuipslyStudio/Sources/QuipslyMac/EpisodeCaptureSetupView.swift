@@ -1193,6 +1193,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                   !remoteSegments.isEmpty,
                   remoteSegments.allSatisfy({ segment in
                       !segment.id.isEmpty
+                          && ((segment.acceptedCorrectionId == nil
+                                  && segment.reviewStatus == "provider")
+                              || (segment.acceptedCorrectionId?.isEmpty == false
+                                  && segment.reviewStatus == "human-reviewed"))
                           && segment.startTime.isFinite
                           && segment.endTime.isFinite
                           && segment.startTime >= 0
@@ -1235,15 +1239,21 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     endTime: segment.endTime,
                     text: segment.text,
                     providerText: segment.providerText,
+                    providerSpeaker: segment.providerSpeaker,
+                    acceptedCorrectionExternalID:
+                        segment.acceptedCorrectionId,
                     words: segment.words.map { word in
                         TranscriptWordTiming(
                             sourceExternalID: word.id,
                             providerWordIndex:
                                 word.providerWordIndex,
                             word: word.word,
+                            rawWord: word.rawWord,
                             startTime: word.startTime,
                             endTime: word.endTime,
                             confidence: word.confidence,
+                            speaker: word.speaker,
+                            channel: word.channel,
                             source: word.source
                         )
                     },
@@ -1251,6 +1261,27 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     reviewStatus: segment.reviewStatus
                 )
             }
+            let priorSequence = projectStore.activeSequence
+            let priorSegmentsByExternalID =
+                (priorSequence?.transcriptSegments ?? []).reduce(
+                    into: [String: TranscriptSegment]()
+                ) { result, segment in
+                    guard let externalID = segment.sourceExternalID,
+                          result[externalID] == nil else {
+                        return
+                    }
+                    result[externalID] = segment
+                }
+            let priorJobID = priorSequence?.transcriptJobs.first {
+                $0.sourceExternalID == transcriptJobID
+            }?.id
+            let priorReceiptCount = priorSequence?
+                .editActionLedger.filter {
+                    $0.category == "transcript-handoff"
+                        && $0.endpoint
+                            == "nest-canonical-transcript"
+                        && $0.afterJson.contains(transcriptJobID)
+                }.count ?? 0
             let replay = try projectStore
                 .applyCanonicalTranscriptHandoff(
                     transcriptJobID: transcriptJobID,
@@ -1267,14 +1298,103 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             let readback = try await projectStore.readNativeSession(
                 named: sessionName
             )
-            let imported = readback.session.project.sequences
-                .flatMap(\.transcriptSegments)
+            guard let importedSequence = readback.session.project
+                .sequences.first(where: { sequence in
+                    sequence.transcriptSegments.contains {
+                        $0.sourceTranscriptJobID == transcriptJobID
+                    }
+                }) else {
+                throw NSError(
+                    domain: "QuipslyCanonicalTranscript",
+                    code: 409,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The saved Studio session did not contain the canonical transcript job.",
+                    ]
+                )
+            }
+            let imported = importedSequence.transcriptSegments
                 .filter {
                     $0.sourceTranscriptJobID == transcriptJobID
                 }
+            let expectedSegmentIDs = Set(
+                segments.compactMap(\.sourceExternalID)
+            )
+            let importedSegmentIDs = Set(
+                imported.compactMap(\.sourceExternalID)
+            )
+            let expectedWordIDs = Set(
+                segments.flatMap(\.words)
+                    .compactMap(\.sourceExternalID)
+            )
+            let importedWordIDs = Set(
+                imported.flatMap(\.words)
+                    .compactMap(\.sourceExternalID)
+            )
+            let expectedCorrections = segments.reduce(
+                into: [String: String]()
+            ) { result, segment in
+                guard let externalID = segment.sourceExternalID else {
+                    return
+                }
+                result[externalID] =
+                    segment.acceptedCorrectionExternalID ?? ""
+            }
+            let importedCorrections = imported.reduce(
+                into: [String: String]()
+            ) { result, segment in
+                guard let externalID = segment.sourceExternalID else {
+                    return
+                }
+                result[externalID] =
+                    segment.acceptedCorrectionExternalID ?? ""
+            }
+            let importedJob = importedSequence.transcriptJobs.first {
+                $0.sourceExternalID == transcriptJobID
+            }
+            let importedReceiptCount = importedSequence
+                .editActionLedger.filter {
+                    $0.category == "transcript-handoff"
+                        && $0.endpoint
+                            == "nest-canonical-transcript"
+                        && $0.afterJson.contains(transcriptJobID)
+                }.count
+            let stableSegmentIDs = priorSegmentsByExternalID
+                .allSatisfy { externalID, priorSegment in
+                    guard let refreshed = imported.first(where: {
+                        $0.sourceExternalID == externalID
+                    }), refreshed.id == priorSegment.id else {
+                        return false
+                    }
+                    let priorWordsByExternalID = priorSegment.words
+                        .reduce(
+                            into: [String: TranscriptWordTiming]()
+                        ) { result, word in
+                            guard let wordID = word.sourceExternalID,
+                                  result[wordID] == nil else {
+                                return
+                            }
+                            result[wordID] = word
+                        }
+                    return priorWordsByExternalID.allSatisfy {
+                        wordID,
+                        priorWord in
+                        refreshed.words.first {
+                            $0.sourceExternalID == wordID
+                        }?.id == priorWord.id
+                    }
+                }
             guard imported.count == segments.count,
                   imported.flatMap(\.words).count
-                    == segments.flatMap(\.words).count else {
+                    == segments.flatMap(\.words).count,
+                  importedSegmentIDs == expectedSegmentIDs,
+                  importedWordIDs == expectedWordIDs,
+                  importedCorrections == expectedCorrections,
+                  importedJob != nil,
+                  priorJobID == nil || importedJob?.id == priorJobID,
+                  stableSegmentIDs,
+                  importedReceiptCount
+                    == priorReceiptCount + (replay ? 0 : 1) else {
                 throw NSError(
                     domain: "QuipslyCanonicalTranscript",
                     code: 409,
