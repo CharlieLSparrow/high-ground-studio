@@ -1,8 +1,9 @@
 /** @jest-environment node */
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
-jest.mock("@/lib/server/account-deletion-executor", () => ({
-  executeAccountDeletion: jest.fn(),
+jest.mock("@/lib/server/account-deletion-worker-client", () => ({
+  accountDeletionWorkerConfiguration: jest.fn(() => ({ enabled: true })),
+  invokeAccountDeletionWorker: jest.fn(),
 }));
 jest.mock("@/lib/server/account-deletion-inventory", () => ({
   buildAccountDeletionInventory: jest.fn(),
@@ -12,14 +13,14 @@ jest.mock("@/lib/server/quipsly-session", () => ({
 }));
 
 import { getPrismaClient } from "@/lib/prisma";
-import { executeAccountDeletion } from "@/lib/server/account-deletion-executor";
 import { buildAccountDeletionInventory } from "@/lib/server/account-deletion-inventory";
+import { invokeAccountDeletionWorker } from "@/lib/server/account-deletion-worker-client";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { GET, POST } from "./route";
 
 const mockedPrisma = jest.mocked(getPrismaClient);
-const mockedExecute = jest.mocked(executeAccountDeletion);
+const mockedExecute = jest.mocked(invokeAccountDeletionWorker);
 const mockedInventory = jest.mocked(buildAccountDeletionInventory);
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);
 

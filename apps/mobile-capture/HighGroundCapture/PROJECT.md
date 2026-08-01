@@ -41,7 +41,7 @@ QuipslyStudio owns deep media editing, review, export, and publishing handoff.
 | Durable server ledgers | Transactional `CaptureRoomStateReceipt` replay plus `MediaVaultUploadReservation` quotas/completion evidence | Apply and verify additive schema sync before backend deployment |
 | Privacy | iPhone-only target, iOS 17 floor, purpose strings, privacy manifest, explicit local-original deletion, and in-app account-deletion request | Static App Store checks pass; full account-deletion fulfillment remains a release blocker |
 
-The local-original action and account deletion are intentionally different. Local deletion removes only one source file from the current iPhone after explicit confirmation, preserves a protected audit tombstone, and leaves cloud/account evidence untouched. The account screen currently submits a deletion request; it does not yet prove whole-account execution, required retention handling, completion timing, or completion confirmation.
+The local-original action and account deletion are intentionally different. Local deletion removes only one source file from the current iPhone after explicit confirmation, preserves a protected audit tombstone, and leaves cloud/account evidence untouched. The account screen submits and reopens a deletion request. Destructive execution is now isolated behind a dedicated private worker boundary, but provider provisioning and one disposable production completion proof remain required before whole-account deletion can be claimed.
 
 ## Release sequence
 
@@ -62,7 +62,7 @@ The local-original action and account deletion are intentionally different. Loca
 - The reviewed private-bucket CORS policy is not proved applied/read back; browser create-only upload requires `x-goog-if-generation-match` to be allowed.
 - Production provider-egress START is deliberately interlocked until the durable command/outbox, per-room lock, and provider reconciliation design is implemented and deployed. This is a release blocker only if provider recording enters submission scope; local-first v1 keeps end-user egress deferred and proves the interlock and honest UI instead.
 - No reachable physical iPhone is available for microphone/camera, route/interruption, 4K/thermal/storage, lock/background, and background-transfer acceptance testing.
-- The account-deletion route records a request but the approved retention matrix, disclosed completion timeframe, executor/anonymizer, and completion confirmation are incomplete. Production Terms and Privacy surfaces must be finalized and reachable.
+- The account-deletion flow records/reopens a request and routes destructive work only to the dedicated private worker. Provider secrets/IAM, approved retention review, and one independently verified disposable production completion remain open; the healthy public policy pages do not substitute for that proof.
 
 ## Sequenced production increments
 

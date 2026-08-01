@@ -41,7 +41,7 @@ type ExecutionProgress = {
   confirmationSentAt?: string;
 };
 
-type CompletionReceipt = {
+export type AccountDeletionCompletionReceipt = {
   schemaVersion: 1;
   outcome: "completed";
   requestId: string;
@@ -207,7 +207,7 @@ export async function executeAccountDeletion(input: {
     request.status === UserAccountDeletionRequestStatus.COMPLETED &&
     jsonObject(request.executionReceiptJson).outcome === "completed"
   ) {
-    return request.executionReceiptJson as CompletionReceipt;
+    return request.executionReceiptJson as AccountDeletionCompletionReceipt;
   }
 
   let execution = await prisma.userAccountDeletionExecution.findUnique({
@@ -228,7 +228,7 @@ export async function executeAccountDeletion(input: {
       execution.status === UserAccountDeletionExecutionStatus.SUCCEEDED &&
       jsonObject(execution.receiptJson).outcome === "completed"
     ) {
-      return execution.receiptJson as CompletionReceipt;
+      return execution.receiptJson as AccountDeletionCompletionReceipt;
     }
     if (
       execution.status === UserAccountDeletionExecutionStatus.FAILED &&
@@ -460,7 +460,7 @@ export async function executeAccountDeletion(input: {
     }
 
     const completedAt = new Date();
-    const receipt: CompletionReceipt = {
+    const receipt: AccountDeletionCompletionReceipt = {
       schemaVersion: 1,
       outcome: "completed",
       requestId: request.id,

@@ -33,6 +33,47 @@ export type GcsObjectLocation = {
   objectPath: string;
 };
 
+const GCS_BUCKET_PATTERN = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
+
+export function accountDeletionStorageBucketAllowlist(
+  configured = process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS,
+) {
+  const buckets = [
+    ...new Set(
+      (configured ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (buckets.length === 0) {
+    throw new Error(
+      "Account deletion storage is disabled. QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS must name the exact approved bucket or buckets.",
+    );
+  }
+  const invalid = buckets.find((bucket) => !GCS_BUCKET_PATTERN.test(bucket));
+  if (invalid) {
+    throw new Error(
+      `Account deletion storage bucket is invalid: ${invalid}.`,
+    );
+  }
+  return buckets;
+}
+
+export function requireAllowedAccountDeletionStorageLocation(
+  reference: AccountDeletionStorageObject,
+  configured?: string,
+) {
+  const location = parseGcsObjectLocation(reference);
+  const allowed = accountDeletionStorageBucketAllowlist(configured);
+  if (!allowed.includes(location.bucket)) {
+    throw new Error(
+      `Account deletion refuses storage outside the approved bucket allowlist: ${location.bucket}.`,
+    );
+  }
+  return location;
+}
+
 export function parseGcsObjectLocation(
   reference: AccountDeletionStorageObject,
 ): GcsObjectLocation {
@@ -154,7 +195,7 @@ export function createAccountDeletionExternalServices(): AccountDeletionExternal
       }
     },
     async deleteStorageObject(object) {
-      const location = parseGcsObjectLocation(object);
+      const location = requireAllowedAccountDeletionStorageLocation(object);
       await storage
         .bucket(location.bucket)
         .file(location.objectPath)

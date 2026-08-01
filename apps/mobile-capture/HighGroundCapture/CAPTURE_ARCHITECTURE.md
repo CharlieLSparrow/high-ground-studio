@@ -294,7 +294,7 @@ Every capture mutation validates the authenticated actor and the requested objec
 - Recording requires explicit consent and a persistent visible and accessible indication.
 - Keychain stores credentials. Recording files use iOS data protection.
 - `PrivacyInfo.xcprivacy` and App Store privacy answers must match actual name, email, user ID, audio, content, diagnostics, and device-ID behavior. The capture storage preflight declares Apple's disk-space required-reason category with reason `E174.1`.
-- Account deletion initiation remains available in the app, but it is not the local-original deletion described above. Submission also requires an approved retention policy, stated completion timeframe, destructive/anonymizing executor, and completion confirmation; the request ledger alone is not final deletion proof.
+- Account deletion initiation remains available in the app, but it is not the local-original deletion described above. The destructive executor is isolated behind a dedicated private worker and explicit storage allowlist; submission still requires provider provisioning, an approved retention policy, the stated completion timeframe, and independently read-back completion against a disposable production account. The request ledger alone is not final deletion proof.
 - One-to-one real-time coaching payment and any IAP-requiring products remain separately classified.
 
 ## Observability
@@ -354,7 +354,7 @@ Simulator proof is necessary for layout, state, auth shell, and API fixtures, bu
 - The reviewed media-vault CORS policy has not been applied and read back from the live private bucket; browser create-only uploads require the `x-goog-if-generation-match` header to be allowed.
 - Production LiveKit provider START is intentionally interlocked until a durable command/outbox, per-room lock, and provider reconciliation exist. This blocks release only if provider recording is included in submission scope; local-first v1 keeps end-user egress deferred and must prove the interlock plus honest UI. STOP/reconcile remain safety operations; only non-production integration can opt into START with both explicit unsafe-local flags.
 - No available physical iPhone is currently reachable for microphone fidelity, route/interruption, lock/background, and direct-GCS background-transfer proof. Simulator and unsigned-device builds do not satisfy that gate.
-- The app can submit an account-deletion request, but the approved retention matrix, disclosed fulfillment timeframe, executor/anonymizer, and completion confirmation are incomplete. Production Terms and Privacy surfaces must also be finalized and reachable.
+- The app can submit and reopen an account-deletion request, and destructive execution is now isolated behind a dedicated private worker contract. Resend/sender setup, worker deployment/IAM, approved retention review, and one independently verified disposable production completion remain open.
 
 ## External references
 

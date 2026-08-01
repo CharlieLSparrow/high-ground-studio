@@ -104,6 +104,7 @@ steps:
           ["/api/mac/session-check/route", "/api/mac/session-check"],
           ["/api/mobile/capture/rooms/join/diagnostics/route", "/api/mobile/capture/rooms/join/diagnostics"],
           ["/api/mobile/capture/rooms/join/route", "/api/mobile/capture/rooms/join"],
+          ["/api/internal/account-deletion/execute/route", "/api/internal/account-deletion/execute"],
         ]);
         for (const [entry, route] of requiredRoutes) {
           if (routes[entry] !== route) {

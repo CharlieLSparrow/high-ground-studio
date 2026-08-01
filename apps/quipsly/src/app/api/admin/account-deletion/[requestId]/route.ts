@@ -3,11 +3,14 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
-  executeAccountDeletion,
   type AccountDeletionExecutionPlan,
 } from "@/lib/server/account-deletion-executor";
 import { buildAccountDeletionInventory } from "@/lib/server/account-deletion-inventory";
 import { projectAccountDeletionRequest } from "@/lib/server/account-deletion-policy";
+import {
+  accountDeletionWorkerConfiguration,
+  invokeAccountDeletionWorker,
+} from "@/lib/server/account-deletion-worker-client";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 export const dynamic = "force-dynamic";
@@ -87,8 +90,7 @@ export async function GET(request: Request, context: RouteContext) {
         }
       : null,
     controls: {
-      executorEnabled:
-        process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED === "true",
+      executorEnabled: accountDeletionWorkerConfiguration().enabled,
       confirmationPhrase: `DELETE ${deletionRequest.id}`,
       canExecute:
         deletionRequest.status ===
@@ -139,7 +141,7 @@ export async function POST(request: Request, context: RouteContext) {
   };
 
   try {
-    const receipt = await executeAccountDeletion({ requestId, plan });
+    const receipt = await invokeAccountDeletionWorker({ requestId, plan });
     return NextResponse.json({
       ok: true,
       message: "Account deletion completed with a durable executor receipt.",
@@ -150,7 +152,8 @@ export async function POST(request: Request, context: RouteContext) {
       executionError instanceof Error
         ? executionError.message
         : "Account deletion could not be executed.";
-    const disabled = message.includes("executor is disabled");
+    const disabled = message.includes("worker") &&
+      (message.includes("disabled") || message.includes("missing") || message.includes("unavailable"));
     const reviewRequired = message.includes("reviewed retention plan");
     return error(message, disabled ? 503 : reviewRequired ? 409 : 500);
   }

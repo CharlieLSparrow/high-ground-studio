@@ -2,6 +2,34 @@
 
 Date: 2026-08-01
 
+## Production account-deletion worker checkpoint
+
+- In-process account-deletion execution no longer belongs to public Nest. Staff
+  review remains in Nest, which invokes a dedicated private concurrency-1 Cloud
+  Run worker with an identity token and a second shared-secret check. Nest's
+  legacy executor is forced false.
+- The worker combines Cloud SQL, Firebase Authentication Admin, exact-bucket
+  GCS deletion, and Resend access behind one private route. Nest retains the
+  database and Firebase permissions its existing authentication/admin features
+  require, but its deletion executor stays off. The GCS adapter rejects any
+  otherwise-valid object URL outside
+  `QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS`.
+- Read-only readiness and explicit-confirmation deployment operators now prove
+  exact source image, private service/IAM, dedicated identity, secrets,
+  provider roles, concurrency, zero minimum instances, public policy pages,
+  and Nest invocation. Neither operator can delete an account.
+- Live readback proves both public policy pages are healthy and the public Nest
+  executor is off. The dedicated worker, Resend/sender/shared secrets, worker
+  IAM, exact-source image, schema readback, and disposable production proof are
+  genuinely absent. No cloud or account state changed.
+- Focused worker/client/route/allowlist coverage passes 16/16, broader deletion
+  coverage passes 24/24, release operator coverage passes 11/11, strict
+  TypeScript passes, the release-limit production
+  build produces 157 routes including the internal worker, the Capture/App
+  Store contract passes 949/949, and the live receipt is redacted mode `0600`.
+  Full evidence is in
+  `docs/coordination/2026-08-01-account-deletion-worker-boundary.md`.
+
 ## Capture App Store submission-readiness checkpoint
 
 - A new credentialed read-only operator audits App Store submission state from

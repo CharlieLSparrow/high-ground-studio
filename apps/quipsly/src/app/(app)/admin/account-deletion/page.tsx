@@ -13,6 +13,7 @@ import {
   type AccountDeletionInventory,
 } from "@/lib/server/account-deletion-inventory";
 import { projectAccountDeletionRequest } from "@/lib/server/account-deletion-policy";
+import { accountDeletionWorkerConfiguration } from "@/lib/server/account-deletion-worker-client";
 import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
 import {
@@ -103,8 +104,7 @@ export default async function AccountDeletionConsolePage({
       "FAILED",
     ].includes(request.status),
   ).length;
-  const executorEnabled =
-    process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED === "true";
+  const executorEnabled = accountDeletionWorkerConfiguration().enabled;
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 pb-16 text-[#3d3122]">
@@ -119,8 +119,11 @@ export default async function AccountDeletionConsolePage({
             </h1>
             <p className="mt-4 text-sm leading-7 text-[#6f5a43] md:text-base">
               Review account-owned and shared records before access is revoked.
-              “Completed” is only written by the deletion executor after its
-              database, storage, Firebase, and confirmation receipts succeed.
+              “Completed” is only written by the dedicated deletion worker
+              after its database, storage, Firebase, and confirmation receipts
+              succeed. Nest keeps its in-process deletion executor disabled;
+              only the private worker combines the required deletion-provider
+              authority.
             </p>
           </div>
           <div className="grid gap-2 text-right text-xs font-black uppercase tracking-[0.14em]">

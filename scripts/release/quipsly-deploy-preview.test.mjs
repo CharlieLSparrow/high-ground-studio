@@ -19,11 +19,31 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{google_calendar_oauth_secrets\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{google_calendar_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
   assert.doesNotMatch(source, /set -x/);
+});
+
+test("account deletion activation requires a private dedicated worker and keeps Nest non-destructive", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_ACCOUNT_DELETION_WORKER must be 0 or 1/);
+  assert.match(source, /Account deletion worker shared secret .* is missing or disabled/);
+  assert.match(source, /dedicated worker identity/);
+  assert.match(source, /concurrency 1/);
+  assert.match(source, /maximum 1 instance/);
+  assert.match(source, /900-second timeout/);
+  assert.match(source, /private IAM boundary/);
+  assert.match(source, /Nest invoker grant/);
+  assert.match(source, /Nest shared-secret access/);
+  assert.match(source, /exact storage allowlist/);
+  assert.match(source, /exact source identity/);
+  assert.match(source, /QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED=true/);
+  assert.match(source, /QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=false/);
+  assert.match(source, /account_deletion_worker_secret/);
+  assert.match(source, /account_deletion_worker_env_vars/);
 });
 
 test("preview deploy reuses one verified image for one committed source", () => {

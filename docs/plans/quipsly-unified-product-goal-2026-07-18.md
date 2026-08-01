@@ -6177,3 +6177,35 @@ was restored.
   mode-`0600` receipt with expected readiness exit 2. No App Store record or
   review submission changed. Full evidence is in
   `docs/coordination/2026-08-01-capture-app-store-submission-readiness.md`.
+
+### Production account-deletion worker checkpoint — 2026-08-01
+
+- Removed in-process account-deletion execution from the public Nest process.
+  Staff review still produces the exact immutable approval plan, but Nest invokes a
+  dedicated private concurrency-1 worker through Cloud Run IAM plus a separate
+  shared-secret boundary. The legacy Nest executor is always false. Existing
+  Nest database and Firebase permissions remain required by authentication and
+  admin workflows, so the claim is specifically about combined deletion
+  authority rather than all provider mutation.
+- The worker deployment contract scopes its identity to Cloud SQL, Firebase
+  Authentication Admin, allowlisted GCS object deletion, and Resend secrets.
+  The storage adapter also rejects any bucket not explicitly listed, so a
+  valid but unrelated GCS URL cannot broaden deletion scope.
+- Added redacted read-only provider readiness plus an explicit-confirmation
+  worker deployment operator. The operators verify exact source image,
+  dedicated identity, private IAM, secret references/access, provider roles,
+  concurrency, zero minimum instances, Nest invoker, and both public policy
+  pages; neither operator can delete an account.
+- Live readback proves the policy pages are healthy and the public Nest
+  executor is off. It also proves the worker, Resend/sender/shared secrets,
+  worker IAM, current exact-source image, schema proof, and disposable
+  production completion are absent. No external state changed.
+- Worker/client/route/allowlist coverage passes 16/16, broader deletion coverage
+  passes 24/24, release operator coverage passes 11/11, strict TypeScript
+  passes, the optimized release-limit
+  build emits all 157 routes including the worker, the Capture/App Store static
+  gate passes 949/949, and the live receipt is mode `0600`. App Store
+  account-deletion readiness remains red until a
+  verified sender is configured and one disposable production account is
+  independently proven deleted. Full evidence is in
+  `docs/coordination/2026-08-01-account-deletion-worker-boundary.md`.

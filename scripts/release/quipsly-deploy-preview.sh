@@ -20,6 +20,11 @@ IMAGE_PROXY_TOKEN_SECRET_NAME="${IMAGE_PROXY_TOKEN_SECRET_NAME:-reefball-image-p
 IMAGE_PROXY_TOKEN_SECRET_VERSION="${IMAGE_PROXY_TOKEN_SECRET_VERSION:-latest}"
 ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
+ENABLE_ACCOUNT_DELETION_WORKER="${ENABLE_ACCOUNT_DELETION_WORKER:-0}"
+ACCOUNT_DELETION_WORKER_SERVICE="${ACCOUNT_DELETION_WORKER_SERVICE:-quipsly-account-deletion-worker}"
+ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT="${ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT:-quipsly-account-deletion-worker@${PROJECT_ID}.iam.gserviceaccount.com}"
+ACCOUNT_DELETION_WORKER_SECRET_NAME="${ACCOUNT_DELETION_WORKER_SECRET_NAME:-quipsly-account-deletion-worker-shared-secret}"
+ACCOUNT_DELETION_WORKER_BUCKET="${ACCOUNT_DELETION_WORKER_BUCKET:-high-ground-odyssey-media}"
 TRANSCRIPT_WORKER_PROJECT_ID="${TRANSCRIPT_WORKER_PROJECT_ID:-${PROJECT_ID}}"
 TRANSCRIPT_WORKER_REGION="${TRANSCRIPT_WORKER_REGION:-${REGION}}"
 TRANSCRIPT_WORKER_JOB="${TRANSCRIPT_WORKER_JOB:-quipsly-transcript-worker}"
@@ -48,6 +53,16 @@ fi
 
 if [[ "${ENABLE_TRANSCRIPT_WORKER}" != "0" && "${ENABLE_TRANSCRIPT_WORKER}" != "1" ]]; then
   echo "ENABLE_TRANSCRIPT_WORKER must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_ACCOUNT_DELETION_WORKER}" != "0" && "${ENABLE_ACCOUNT_DELETION_WORKER}" != "1" ]]; then
+  echo "ENABLE_ACCOUNT_DELETION_WORKER must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_ACCOUNT_DELETION_WORKER}" == "1" && ! "${ACCOUNT_DELETION_WORKER_BUCKET}" =~ ^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$ ]]; then
+  echo "ACCOUNT_DELETION_WORKER_BUCKET is unsafe." >&2
   exit 2
 fi
 
@@ -192,6 +207,94 @@ NODE
   echo "Transcript worker passed immutable job, provider-secret, and Nest executor readback."
 fi
 
+account_deletion_worker_secret=""
+account_deletion_worker_env_vars=",QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED=false,QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=false"
+if [[ "${ENABLE_ACCOUNT_DELETION_WORKER}" == "1" ]]; then
+  if ! gcloud secrets versions describe latest \
+    --secret="${ACCOUNT_DELETION_WORKER_SECRET_NAME}" \
+    --project="${PROJECT_ID}" \
+    --format='value(state)' | grep -qx 'ENABLED'; then
+    echo "Account deletion worker shared secret ${ACCOUNT_DELETION_WORKER_SECRET_NAME}:latest is missing or disabled." >&2
+    exit 2
+  fi
+
+  nest_service_account="$(
+    gcloud run services describe "${SERVICE_NAME}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format='value(spec.template.spec.serviceAccountName)'
+  )"
+  deletion_worker_json="$(
+    gcloud run services describe "${ACCOUNT_DELETION_WORKER_SERVICE}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format=json
+  )"
+  deletion_worker_policy="$(
+    gcloud run services get-iam-policy "${ACCOUNT_DELETION_WORKER_SERVICE}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format=json
+  )"
+  deletion_worker_secret_policy="$(
+    gcloud secrets get-iam-policy "${ACCOUNT_DELETION_WORKER_SECRET_NAME}" \
+      --project="${PROJECT_ID}" \
+      --format=json
+  )"
+  account_deletion_source_sha="$(git rev-parse --verify "${SOURCE_REF}^{commit}")"
+  WORKER_JSON="${deletion_worker_json}" \
+  WORKER_POLICY="${deletion_worker_policy}" \
+  WORKER_SECRET_POLICY="${deletion_worker_secret_policy}" \
+  EXPECTED_WORKER_ACCOUNT="${ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT}" \
+  EXPECTED_NEST_MEMBER="serviceAccount:${nest_service_account}" \
+  EXPECTED_WORKER_SECRET="${ACCOUNT_DELETION_WORKER_SECRET_NAME}" \
+  EXPECTED_WORKER_BUCKET="${ACCOUNT_DELETION_WORKER_BUCKET}" \
+  EXPECTED_SOURCE_SHA="${account_deletion_source_sha}" \
+  node <<'NODE'
+const service = JSON.parse(process.env.WORKER_JSON || "{}");
+const policy = JSON.parse(process.env.WORKER_POLICY || "{}");
+const secretPolicy = JSON.parse(process.env.WORKER_SECRET_POLICY || "{}");
+const spec = service.spec?.template?.spec || {};
+const annotations = service.spec?.template?.metadata?.annotations || {};
+const container = spec.containers?.[0] || {};
+const env = Object.fromEntries((container.env || []).map((entry) => [entry.name, entry]));
+const secretName = (entry) => entry?.valueFrom?.secretKeyRef?.name
+  || entry?.valueSource?.secretKeyRef?.secret
+  || "";
+const failures = [];
+if (spec.serviceAccountName !== process.env.EXPECTED_WORKER_ACCOUNT) failures.push("dedicated worker identity");
+if (Number(spec.containerConcurrency) !== 1) failures.push("concurrency 1");
+if (Number(annotations["autoscaling.knative.dev/maxScale"]) !== 1) failures.push("maximum 1 instance");
+if (Number(spec.timeoutSeconds) < 900) failures.push("900-second timeout");
+if (env.QUIPSLY_ACCOUNT_DELETION_WORKER_MODE?.value !== "true") failures.push("worker mode");
+if (env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED?.value !== "true") failures.push("executor gate");
+if (env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS?.value !== process.env.EXPECTED_WORKER_BUCKET) failures.push("exact storage allowlist");
+if (env.QUIPSLY_SOURCE_SHA?.value !== process.env.EXPECTED_SOURCE_SHA) failures.push("exact source identity");
+if (secretName(env.QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET) !== process.env.EXPECTED_WORKER_SECRET) failures.push("shared-secret binding");
+const bindings = policy.bindings || [];
+const allUsers = bindings.some((binding) => (binding.members || []).includes("allUsers"));
+if (allUsers) failures.push("private IAM boundary");
+const invoker = bindings.some((binding) =>
+  ["roles/run.invoker", "roles/run.admin"].includes(binding.role)
+  && (binding.members || []).includes(process.env.EXPECTED_NEST_MEMBER));
+if (!invoker) failures.push("Nest invoker grant");
+const secretAccessor = (secretPolicy.bindings || []).some((binding) =>
+  ["roles/secretmanager.secretAccessor", "roles/owner"].includes(binding.role)
+  && (binding.members || []).includes(process.env.EXPECTED_NEST_MEMBER));
+if (!secretAccessor) failures.push("Nest shared-secret access");
+const workerUrl = service.status?.url;
+if (!/^https:\/\/[a-z0-9-]+-[a-z0-9]+\.[a-z0-9-]+\.run\.app$/.test(workerUrl || "")) failures.push("stable HTTPS worker URL");
+if (failures.length) throw new Error(`Account deletion worker activation mismatch: ${failures.join(", ")}`);
+process.stdout.write(`${workerUrl}\n`);
+NODE
+  account_deletion_worker_url="$(
+    WORKER_JSON="${deletion_worker_json}" node -e 'const service=JSON.parse(process.env.WORKER_JSON); process.stdout.write(service.status.url)'
+  )"
+  account_deletion_worker_secret=",QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${ACCOUNT_DELETION_WORKER_SECRET_NAME}:latest"
+  account_deletion_worker_env_vars=",QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED=true,QUIPSLY_ACCOUNT_DELETION_WORKER_URL=${account_deletion_worker_url},QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=false"
+  echo "Account deletion worker passed private-service, dedicated-identity, gate, allowlist, and Nest-invoker readback."
+fi
+
 if ! gcloud secrets versions describe "${IMAGE_PROXY_TOKEN_SECRET_VERSION}" \
   --secret="${IMAGE_PROXY_TOKEN_SECRET_NAME}" \
   --project="${PROJECT_ID}" \
@@ -318,8 +421,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
-  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${google_calendar_oauth_secrets}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app${transcript_worker_env_vars}" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${google_calendar_oauth_secrets}${account_deletion_worker_secret}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app${transcript_worker_env_vars}${account_deletion_worker_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

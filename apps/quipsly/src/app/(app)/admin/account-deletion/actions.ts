@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { executeAccountDeletion } from "@/lib/server/account-deletion-executor";
 import {
   buildAccountDeletionInventory,
   explainAccountDeletionBlockers,
 } from "@/lib/server/account-deletion-inventory";
+import { invokeAccountDeletionWorker } from "@/lib/server/account-deletion-worker-client";
 import { requireQuipslyAdminActor } from "@/lib/server/user-management";
 
 function text(value: FormDataEntryValue | null) {
@@ -145,7 +145,7 @@ export async function executeAccountDeletionAction(formData: FormData) {
       throw new Error("Record the account export disposition.");
     }
 
-    await executeAccountDeletion({
+    await invokeAccountDeletionWorker({
       requestId,
       plan: {
         schemaVersion: 1,

@@ -7,7 +7,11 @@ jest.mock("@/lib/firebase/firebase-admin", () => ({
   adminAuth: {},
 }));
 
-import { parseGcsObjectLocation } from "./account-deletion-external";
+import {
+  accountDeletionStorageBucketAllowlist,
+  parseGcsObjectLocation,
+  requireAllowedAccountDeletionStorageLocation,
+} from "./account-deletion-external";
 
 describe("account deletion GCS references", () => {
   it("parses canonical gs references without changing the object path", () => {
@@ -58,5 +62,42 @@ describe("account deletion GCS references", () => {
         url: "/Volumes/Media/private.wav",
       }),
     ).toThrow("Unsupported account-deletion storage provider");
+  });
+
+  it("requires an explicit, validated deletion bucket allowlist", () => {
+    expect(() => accountDeletionStorageBucketAllowlist("")).toThrow(
+      "QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS",
+    );
+    expect(() => accountDeletionStorageBucketAllowlist("UPPER CASE"))
+      .toThrow("storage bucket is invalid");
+    expect(
+      accountDeletionStorageBucketAllowlist(
+        "quipsly-media, quipsly-private,quipsly-media",
+      ),
+    ).toEqual(["quipsly-media", "quipsly-private"]);
+  });
+
+  it("refuses a syntactically valid GCS object outside the approved buckets", () => {
+    const reference = {
+      assetId: "asset-1",
+      kind: "asset" as const,
+      provider: "gcs",
+      url: "gs://unrelated-bucket/users/person/original.wav",
+    };
+    expect(() =>
+      requireAllowedAccountDeletionStorageLocation(
+        reference,
+        "quipsly-media",
+      ),
+    ).toThrow("outside the approved bucket allowlist");
+    expect(
+      requireAllowedAccountDeletionStorageLocation(
+        { ...reference, url: "gs://quipsly-media/users/person/original.wav" },
+        "quipsly-media",
+      ),
+    ).toEqual({
+      bucket: "quipsly-media",
+      objectPath: "users/person/original.wav",
+    });
   });
 });

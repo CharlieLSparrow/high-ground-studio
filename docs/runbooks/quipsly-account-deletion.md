@@ -88,15 +88,35 @@ An OWNER or configured Quipsly admin can:
 - execute or resume deletion with the exact phrase `DELETE <request-id>` and
   an explicit export disposition.
 
-The final Execute button remains disabled unless:
+The final Execute button remains disabled unless Nest has a verified private
+worker connection:
 
 ```bash
-QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=true
+QUIPSLY_ACCOUNT_DELETION_WORKER_ENABLED=true
+QUIPSLY_ACCOUNT_DELETION_WORKER_URL=https://PRIVATE-WORKER.run.app
+QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=...
 ```
 
-That variable is a production safety gate, not authorization. The signed-in
-staff check, fresh inventory, ready state, immutable plan, and exact
-confirmation are still required.
+Nest receives only `roles/run.invoker` on that private service and accessor on
+the shared secret. It must always retain
+`QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=false`. Nest still has the database
+and Firebase permissions required by existing product authentication and admin
+workflows; only the dedicated worker combines those with allowlisted GCS
+deletion and completion-email authority.
+
+The worker requires:
+
+```bash
+QUIPSLY_ACCOUNT_DELETION_WORKER_MODE=true
+QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=true
+QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=high-ground-odyssey-media
+QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=...
+```
+
+These variables are safety gates, not authorization. Cloud Run IAM, the
+defense-in-depth shared secret, signed-in staff check, fresh inventory, ready
+state, immutable plan, exact confirmation, and provider-scoped worker identity
+are all still required.
 
 Runtime dependencies:
 
@@ -105,9 +125,22 @@ RESEND_API_KEY=...
 HGO_EMAIL_FROM='Quipsly <support@quipsly.com>'
 ```
 
-The Cloud Run runtime identity also needs Firebase Authentication user
-update/delete permission and deletion permission for the exact GCS buckets
-referenced by eligible Home Nest media.
+The dedicated worker identity also needs Firebase Authentication user
+update/delete permission and deletion permission for only the exact GCS
+buckets in `QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS`. The adapter refuses valid
+GCS URLs outside that allowlist.
+
+Read the complete machine boundary without mutation:
+
+```bash
+pnpm quipsly:account-deletion:worker-readiness -- \
+  --source COMMITTED_SHA \
+  --output /absolute/private/account-deletion-worker-readiness.json
+```
+
+The deployment wrapper is read-only by default. Its explicit apply path is
+documented by `--help` and requires exact target confirmation; it provisions no
+account and performs no deletion.
 
 ## Local verification
 
@@ -161,12 +194,15 @@ pnpm --filter quipsly build
 1. Take a database backup and run migration status against the intended target.
 2. Apply `20260724060000_add_account_deletion_execution_receipts` before
    deploying code that emits `EXECUTING` or `FAILED`.
-3. Deploy to the no-traffic preview revision with the executor gate off.
+3. Deploy Nest to a no-traffic preview with both worker invocation and the
+   legacy in-process executor off.
 4. Verify request creation/status, staff denial, staff inventory, TypeScript 7,
    production build, and exact migration state.
-5. Verify Firebase, GCS, and Resend permissions using a disposable preview
-   account. Never use Charlie's real account as the first proof.
-6. Enable the executor only on the reviewed runtime revision.
+5. Verify the dedicated worker's Cloud SQL, Firebase, allowlisted GCS, Resend,
+   private IAM, concurrency-1, and secret boundaries. Never grant GCS delete or
+   Resend to the public Nest identity.
+6. Deploy the dedicated worker, then enable only its invocation on the reviewed
+   no-traffic Nest revision. Keep Nest's in-process executor false.
 7. Complete one disposable end-to-end deletion and confirm the email, detached
    request, successful execution row, deleted Firebase identity, deleted GCS
    objects, and outsider denial.
