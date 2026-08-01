@@ -103,6 +103,14 @@ describe("EpisodeRoomClient shared writing", () => {
       "href",
       "/create?project=high-ground-odyssey&document=document-episode-5",
     );
+    expect(screen.getByRole("link", { name: "Edit timeline" })).toHaveAttribute(
+      "href",
+      "/editor?project=high-ground-odyssey&episode=episode-5",
+    );
+    expect(screen.getByRole("link", { name: "Live cut" })).toHaveAttribute(
+      "href",
+      "/nests/high-ground-odyssey/episode-editor?episode=episode-5",
+    );
     expect(screen.getByText("Original run-of-show sentence.")).toBeInTheDocument();
 
     await act(async () => {
@@ -344,6 +352,10 @@ describe("EpisodeRoomClient shared writing", () => {
 
     expect(screen.getByRole("button", { name: "Timeline up to date" })).toBeDisabled();
     expect(screen.getByText(/Timeline current · last synced by Episode Host/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review production timeline" })).toHaveAttribute(
+      "href",
+      "/editor?project=high-ground-odyssey&episode=episode-5",
+    );
     expect(screen.getByRole("button", { name: "Start new rehearsal pass" })).toBeEnabled();
   });
 

@@ -613,8 +613,11 @@ export default function EpisodeRoomClient({
               <Link href={`/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
                 <Clock3 size={15} /> Record
               </Link>
+              <Link href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
+                <Scissors size={15} /> Edit timeline
+              </Link>
               <Link href={`/nests/${encodeURIComponent(projectSlug)}/episode-editor?episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
-                <Scissors size={15} /> Edit
+                <Gauge size={15} /> Live cut
               </Link>
               <Link href={`/publishing?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
                 <ExternalLink size={15} /> Publish
@@ -1228,21 +1231,31 @@ export default function EpisodeRoomClient({
                     </p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  disabled={!canEdit || room.status === "playing" || !hasTimelineWork || timelineUpToDate}
-                  onClick={() => void sendCommand(
-                    { type: "SYNC_TIMELINE" },
-                    {
-                      success: currentPassTimelineClipCount > 0
-                        ? "Watched spans are aligned on the episode timeline."
-                        : "The previous Watch pass was removed from the episode timeline. Its receipts remain in history.",
-                    },
-                  )}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#d8ad56] px-4 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <CheckCircle2 size={16} /> {timelineActionLabel}
-                </button>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  {canEdit && timelineClipCount > 0 ? (
+                    <Link
+                      href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#07110d] px-4 text-xs font-black text-[#f6d68f]"
+                    >
+                      <Scissors size={16} /> Review production timeline
+                    </Link>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!canEdit || room.status === "playing" || !hasTimelineWork || timelineUpToDate}
+                    onClick={() => void sendCommand(
+                      { type: "SYNC_TIMELINE" },
+                      {
+                        success: currentPassTimelineClipCount > 0
+                          ? "Watched spans are aligned on the episode timeline."
+                          : "The previous Watch pass was removed from the episode timeline. Its receipts remain in history.",
+                      },
+                    )}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#d8ad56] px-4 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <CheckCircle2 size={16} /> {timelineActionLabel}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
