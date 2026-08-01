@@ -6,12 +6,20 @@ const subscribe = () => () => {};
 
 type LocalDateTimeProps = {
   value: string;
-  mode?: "date-time" | "time";
+  mode?: "date" | "date-time" | "time";
   className?: string;
 };
 
 function formatUtc(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
-  return new Intl.DateTimeFormat("en-US", mode === "time"
+  return new Intl.DateTimeFormat("en-US", mode === "date"
+    ? {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+        timeZoneName: "short",
+      }
+    : mode === "time"
     ? {
         hour: "numeric",
         minute: "2-digit",
@@ -30,7 +38,9 @@ function formatUtc(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
 }
 
 function formatLocal(date: Date, mode: NonNullable<LocalDateTimeProps["mode"]>) {
-  return mode === "time"
+  return mode === "date"
+    ? date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })
+    : mode === "time"
     ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : date.toLocaleString();
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 
 import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, createWorkVocabularyTag, editTaskRecurrence, editWorkGoal, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
@@ -49,12 +50,65 @@ const snapshot: WorkSnapshot = {
 describe("Work Queue interactions", () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it("server-renders task, goal, and commitment dates from deterministic UTC snapshots", () => {
+    const instant = "2026-07-19T00:30:00.000Z";
+    const html = renderToString(<WorkClient initialSnapshot={{
+      ...snapshot,
+      tasks: [{ ...snapshot.tasks[0]!, dueAt: instant }],
+      goals: [{
+        id: "goal-date",
+        title: "Keep dates stable through hydration",
+        description: null,
+        status: "ACTIVE",
+        targetAt: instant,
+        achievedAt: null,
+        progressPercent: null,
+        progressNote: null,
+        provenance: "Canonical goal",
+        updatedAt: instant,
+        roomId: null,
+        sessionTitle: null,
+        sessionStart: null,
+        project: null,
+        tags: [],
+        canManageTags: true,
+        parent: null,
+        childCount: 0,
+        linkedTasks: [],
+        sourceAnchor: null,
+      }],
+      commitments: [{
+        id: "commitment-date",
+        weekStartsAt: instant,
+        status: "ACTIVE",
+        commitments: ["Verify the rendered boundary"],
+        supportNeeded: null,
+        progressNotes: null,
+        clientReviewedAt: instant,
+        coachNotes: null,
+        clientLabel: "QA",
+        reviewerLabel: null,
+        updatedAt: instant,
+        isOwnedByActor: true,
+      }],
+      counts: { ...snapshot.counts, activeGoals: 1, activeCommitments: 1 },
+    }} />);
+
+    expect(html).toContain("Jul 19, 2026, UTC");
+    expect(html).toContain("Jul 19, 2026, 12:30 AM UTC");
+    expect(html).not.toContain("Invalid date");
+  });
+
   it("returns a reviewed transcript task to its exact segment", () => {
     render(<WorkClient initialSnapshot={snapshot} />);
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText(/Charlie: Welcome, everybody/i)).toBeInTheDocument();
-    expect(screen.getByText(/^Reminder .+2026/)).toBeInTheDocument();
+    expect(screen.getByText((_, element) => (
+      element?.tagName === "SPAN"
+      && element.textContent?.startsWith("Reminder ") === true
+      && element.textContent.includes("2026")
+    ))).toBeInTheDocument();
   });
 
   it("moves canonical reminder intent without claiming device delivery", async () => {
