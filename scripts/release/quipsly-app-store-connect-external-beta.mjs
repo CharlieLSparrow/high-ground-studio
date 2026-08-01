@@ -358,6 +358,10 @@ export function resolveExternalBetaTargets({
   };
 }
 
+export function relationshipDocumentIncludes(document, resourceId) {
+  return (document?.data || []).some((resource) => resource?.id === resourceId);
+}
+
 function localizationForLocale(document, locale) {
   const matches = (document.data || []).filter(
     (candidate) => candidate.attributes?.locale === locale,
@@ -528,6 +532,12 @@ async function discover(options, key) {
     groupDocument: groups,
     testerDocument: testers,
   });
+  requests.groupBuildRelationships = targets.groupId
+    ? makeRequest(
+      `/v1/betaGroups/${targets.groupId}/relationships/builds`,
+      [["limit", "200"]],
+    )
+    : null;
   requests.buildLocalizations = makeRequest("/v1/betaBuildLocalizations", [
     ["filter[build]", targets.buildId],
     ["filter[locale]", options.locale],
@@ -537,10 +547,19 @@ async function discover(options, key) {
     ["filter[build]", targets.buildId],
     ["limit", "10"],
   ]);
-  const [buildLocalizations, submissions] = await Promise.all([
+  const [buildLocalizations, submissions, groupBuildRelationships] = await Promise.all([
     requestJson(requests.buildLocalizations, key),
     requestJson(requests.submissions, key),
+    requests.groupBuildRelationships
+      ? requestJson(requests.groupBuildRelationships, key)
+      : Promise.resolve({ data: [] }),
   ]);
+  if (targets.groupId) {
+    targets.groupHasBuild = relationshipDocumentIncludes(
+      groupBuildRelationships,
+      targets.buildId,
+    );
+  }
 
   const reviewDetailsForApp = reviewDetails.data || [];
   if (reviewDetailsForApp.length !== 1) {
@@ -555,6 +574,7 @@ async function discover(options, key) {
     buildLocalizations,
     reviewDetails,
     submissions,
+    groupBuildRelationships,
     targets,
     appLocalization: localizationForLocale(appLocalizations, options.locale),
     buildLocalization: localizationForLocale(buildLocalizations, options.locale),

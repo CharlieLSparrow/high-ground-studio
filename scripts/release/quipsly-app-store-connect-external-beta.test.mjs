@@ -9,6 +9,7 @@ import {
   buildPlan,
   buildTesterBody,
   parseExternalBetaArguments,
+  relationshipDocumentIncludes,
   resolveExternalBetaTargets,
 } from "./quipsly-app-store-connect-external-beta.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
@@ -219,6 +220,23 @@ test("resolves the exact external group, build, and tester idempotently", () => 
   assert.equal(targets.groupHasBuild, true);
   assert.equal(targets.testerId, "homer");
   assert.equal(targets.testerInGroup, true);
+});
+
+test("reads exact group membership from the relationship document", () => {
+  assert.equal(
+    relationshipDocumentIncludes(
+      { data: [{ type: "builds", id: "build-23" }] },
+      "build-23",
+    ),
+    true,
+  );
+  assert.equal(
+    relationshipDocumentIncludes(
+      { data: [{ type: "builds", id: "build-22" }] },
+      "build-23",
+    ),
+    false,
+  );
 });
 
 test("creates only an external, private group and assigns tester by relationship", () => {

@@ -5371,3 +5371,37 @@ was restored.
   physical iPhone currently enumerates, so TestFlight installation, real
   capture, interruption recovery, upload, playback, and same-ID Nest readback
   remain explicit human/device gates.
+
+### 2026-07-31 Quipsly Capture Build 23 TestFlight checkpoint
+
+- Exact pushed native source `949139db3b2aca69b63414bd6874e4212c2f7ebc`
+  passed the complete serialized shipping UI and Share Extension suite twice:
+  47/47 as an isolated no-upload candidate and 47/47 again in the upload-bound
+  lane. Both runs used separate retained `.xcresult`, DerivedData, archive, IPA,
+  and receipt locations on the external QA volume.
+- The upload-bound 21,343,893-byte IPA has SHA-256
+  `13deeb865879b1c0e03011aa20131bcb280fa534ff8130bde1131e05efa6cf85`.
+  App and extension distribution signatures, App Store profiles, entitlements,
+  privacy manifests, camera/microphone disclosure, audio/VoIP modes, export
+  compliance, and matching 1.0 (23) versions all passed exact artifact
+  inspection before upload.
+- App Store Connect accepted and processed Build 23 as provider build
+  `f62118c4-032e-42a5-8756-eea73165a5b0`. Exact API readback reports `VALID`,
+  external `IN_BETA_TESTING`, beta review `APPROVED`, no non-exempt encryption,
+  automatic notification enabled, and inclusion in the existing public-link
+  **Quipsly Capture Rehearsal** group. The anonymous 100-person Apple handoff at
+  `https://testflight.apple.com/join/XwRRcYUm` returns the exact app title,
+  beta heading, and `itms-beta` handoff.
+- Release operation found a provider-readback defect: Apple's beta-group list
+  response kept a stale embedded `builds` relationship after two successful
+  idempotent additions, even while the build was approved and in beta testing.
+  The release operators now use the exact group `/relationships/builds`
+  endpoint with a separate least-privilege read token. That authoritative read
+  proves Build 23 is attached, and the resulting external plan is a complete
+  no-op.
+- Build 23 is now the canonical public TestFlight target; Build 22 remains
+  rollback history. This is provider delivery proof, not physical-iPhone proof.
+  CoreDevice still sees no available iPhone, so installation, audio/video
+  capture, camera switching, pause/resume, interruption recovery, protected
+  upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
+  open and must be operated on a real device.

@@ -252,6 +252,7 @@ export function summarizeReadback({
   appDocument,
   buildDocument,
   groupDocument,
+  groupBuildRelationshipDocument,
   testerDocument,
   auditedAt = new Date().toISOString(),
 }) {
@@ -297,7 +298,9 @@ export function summarizeReadback({
   if (!group) {
     fail(`TestFlight group "${options.groupName}" was not found.`);
   }
-  const groupBuildIds = relationshipIds(group, "builds");
+  const groupBuildIds = groupBuildRelationshipDocument
+    ? (groupBuildRelationshipDocument.data || []).map(({ id }) => id)
+    : relationshipIds(group, "builds");
   const groupTesterIds = new Set(relationshipIds(group, "betaTesters"));
 
   const assignedTesters = (testerDocument.data || []).filter((tester) => {
@@ -467,11 +470,30 @@ async function main() {
       requestJson(requests.groups, token),
       requestJson(requests.testers, token),
     ]);
+  const matchingGroup = (groupDocument.data || []).find(
+    (candidate) => candidate.attributes?.name === options.groupName,
+  );
+  if (!matchingGroup) {
+    fail(`TestFlight group "${options.groupName}" was not found.`);
+  }
+  requests.groupBuildRelationships = makeRequest(
+    `/v1/betaGroups/${matchingGroup.id}/relationships/builds`,
+    [["limit", "200"]],
+  );
+  const relationshipToken = createScopedToken({
+    ...key,
+    scopes: [requests.groupBuildRelationships.scope],
+  });
+  const groupBuildRelationshipDocument = await requestJson(
+    requests.groupBuildRelationships,
+    relationshipToken,
+  );
   const receipt = summarizeReadback({
     options,
     appDocument,
     buildDocument,
     groupDocument,
+    groupBuildRelationshipDocument,
     testerDocument,
   });
   const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
