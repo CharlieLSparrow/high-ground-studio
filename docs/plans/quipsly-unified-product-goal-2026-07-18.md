@@ -5505,6 +5505,19 @@ was restored.
   for all 150 routes. The retained operation is idempotent and its latest run
   truthfully reported `mutationsPerformed: false` because the corpus was already
   current.
-- This is local rendered-product and optimized-build proof. A guarded Cloud Run
-  preview/promotion for this exact source and physical-iPhone TestFlight capture
-  remain open; Build 24 stays the canonical public TestFlight build.
+- Exact release source `c008c1bc6ede00f6e9ad27fe9a37af91fc2d1854`
+  passed a second dependency-closed materialized build, 30/30 Session-evidence
+  tests, all 150 production routes, container route-bundle inspection, and the
+  complete recovery gate. Cloud Build
+  `4279ff4f-d4f9-4faa-8049-1ce19f0f52b7` produced manifest-list digest
+  `sha256:8014c271514d700b612126084983d593c72636f4096f8b548dec9b2bd17b3edf`;
+  Cloud Run imports the ready platform image as
+  `sha256:6bed8d35bfcda656e405633efdabbd7fba62be2180494e7b057a32d2b61e6e87`.
+- Zero-traffic revision `studio-00482-lon` passed public, signed, Firebase,
+  native-session, Projects, account, writing, editor, recorder, research, and
+  publishing checks. The generated reviewer then promoted that immutable
+  revision to 100% traffic and independently removed its Firebase identity,
+  grants, membership, user, and Home Nest. Production `/api/healthz` reads back
+  the exact source and revision, and the post-promotion recovery gate passes all
+  111 Capture contracts. Physical-iPhone TestFlight capture remains open; Build
+  24 stays the canonical public TestFlight build.
