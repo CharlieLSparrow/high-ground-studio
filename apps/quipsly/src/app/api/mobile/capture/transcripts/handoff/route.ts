@@ -32,6 +32,7 @@ type CanonicalDeskSegment = {
   providerText: string;
   confidence: number | null;
   acceptedCorrection: { id: string } | null;
+  acceptedVerification: { id: string } | null;
   words: CanonicalDeskWord[];
 };
 
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      schema: "quipsly-canonical-transcript-handoff-v1",
+      schema: "quipsly-canonical-transcript-handoff-v2",
       roomId,
       transcriptJobId,
       source: {
@@ -114,7 +115,8 @@ export async function GET(request: Request) {
         text: segment.text,
         providerText: segment.providerText,
         confidence: segment.confidence,
-        reviewStatus: segment.acceptedCorrection ? "human-reviewed" : "provider",
+        reviewStatus: segment.acceptedCorrection || segment.acceptedVerification ? "human-reviewed" : "provider",
+        acceptedReviewId: segment.acceptedCorrection?.id ?? segment.acceptedVerification?.id ?? null,
         acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
         words: segment.words.map((word: CanonicalDeskWord) => ({
           id: word.id,

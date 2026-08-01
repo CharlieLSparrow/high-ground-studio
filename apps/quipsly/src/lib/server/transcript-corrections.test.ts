@@ -8,6 +8,7 @@ jest.mock("./mobile-capture-processing-policy.js", () => ({
 import { createHash } from "node:crypto";
 
 import {
+  confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
   TRANSCRIPT_CORRECTION_SCHEMA,
@@ -41,7 +42,7 @@ function recordingAsset(promoted = true) {
   };
 }
 
-function segment(corrections: any[] = []) {
+function segment(corrections: any[] = [], verifications: any[] = []) {
   return {
     id: "segment-1",
     text: providerText,
@@ -61,10 +62,11 @@ function segment(corrections: any[] = []) {
       channel: 0,
     }],
     corrections,
+    verifications,
   };
 }
 
-function accessibleRoom(options: { promoted?: boolean; corrections?: any[] } = {}) {
+function accessibleRoom(options: { promoted?: boolean; corrections?: any[]; verifications?: any[] } = {}) {
   return {
     id: "room-1",
     title: "Episode review",
@@ -72,7 +74,7 @@ function accessibleRoom(options: { promoted?: boolean; corrections?: any[] } = {
       id: "job-1",
       status: "COMPLETED",
       asset: recordingAsset(options.promoted !== false),
-      segments: [segment(options.corrections)],
+      segments: [segment(options.corrections, options.verifications)],
     }],
   };
 }
@@ -90,10 +92,12 @@ function correctionRecord(data: Record<string, any>, revisions: any[] = []) {
   };
 }
 
-function mutationHarness(options: { promoted?: boolean; active?: { id: string } | null } = {}) {
+function mutationHarness(options: { promoted?: boolean; active?: { id: string } | null; existingVerification?: any | null } = {}) {
   let created: any = null;
+  let verificationCreated: any = null;
   const revisionCreate = jest.fn(async ({ data }: any) => ({ id: `revision-${data.revision}`, ...data, createdAt: new Date() }));
   const tx = {
+    $queryRaw: jest.fn(async () => [{ lock: null }]),
     transcriptCorrection: {
       findFirst: jest.fn(async () => options.active ?? null),
       create: jest.fn(async ({ data }: any) => {
@@ -107,6 +111,13 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
       create: revisionCreate,
       count: jest.fn(async () => 1),
     },
+    transcriptSegmentVerification: {
+      findFirst: jest.fn(async () => options.existingVerification ?? null),
+      create: jest.fn(async ({ data }: any) => {
+        verificationCreated = { id: "verification-1", ...data, createdAt: new Date("2026-08-01T23:30:00.000Z") };
+        return verificationCreated;
+      }),
+    },
   };
   const prisma = {
     callRoom: {
@@ -117,6 +128,9 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
     transcriptCorrection: {
       findUnique: jest.fn(async () => null),
       findFirst: jest.fn(async () => options.active ?? null),
+    },
+    transcriptSegmentVerification: {
+      findUnique: jest.fn(async () => null),
     },
     $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
   };
@@ -174,6 +188,36 @@ describe("transcript correction desk", () => {
       }],
     });
     expect(result.boundaries).toMatchObject({ providerSegmentsImmutable: true, mediaTimeAnchorsPreserved: true });
+  });
+
+  it("surfaces a current playback-backed provider verification as reviewed without a correction", async () => {
+    const verification = {
+      id: "verification-1",
+      segmentId: "segment-1",
+      reviewKind: "confirmed-as-is",
+      providerTextSha256: sha256(providerText),
+      providerSpeakerLabel,
+      createdAt: new Date("2026-08-01T23:30:00.000Z"),
+    };
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ verifications: [verification] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    expect(result.segments[0]).toMatchObject({
+      acceptedCorrection: null,
+      acceptedVerification: {
+        id: "verification-1",
+        segmentId: "segment-1",
+        reviewKind: "confirmed-as-is",
+        reviewedAt: "2026-08-01T23:30:00.000Z",
+      },
+    });
   });
 
   it("shows one decision for duplicate AI proposals while preserving complete history", async () => {
@@ -270,6 +314,7 @@ describe("transcript correction desk", () => {
     });
 
     expect(result).toMatchObject({ ok: true, idempotentReplay: false, correction: { status: "accepted" } });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: "accepted",
       baseTextSha256: sha256(providerText),
@@ -280,6 +325,89 @@ describe("transcript correction desk", () => {
       provenanceJson: expect.objectContaining({ schema: TRANSCRIPT_CORRECTION_SCHEMA }),
     }) }));
     expect(revisionCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ revision: 1, operation: "created-and-accepted-after-playback" }) }));
+  });
+
+  it("records a reviewed-as-is receipt only after protected playback at the segment time", async () => {
+    const { prisma, tx } = mutationHarness();
+    const result = await confirmTranscriptSegmentAsIs({
+      prisma,
+      actor,
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "verify-1",
+      expectedText: providerText,
+      expectedSpeakerLabel: providerSpeakerLabel,
+      expectedAcceptedCorrectionId: null,
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: 13.5,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      verification: { id: "verification-1", reviewKind: "confirmed-as-is" },
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.transcriptSegmentVerification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      recordingAssetId: "asset-1",
+      reviewerUserId: actor.id,
+      providerTextSha256: sha256(providerText),
+      providerSpeakerLabel,
+      playbackSourceId: "source-1",
+      playbackPositionSeconds: 13.5,
+    }) }));
+    expect(tx.transcriptCorrection.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to confirm provider text as-is when a reviewed correction is active", async () => {
+    const { prisma, tx } = mutationHarness({ active: { id: "accepted-1" } });
+    await expect(confirmTranscriptSegmentAsIs({
+      prisma,
+      actor,
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "verify-stale",
+      expectedText: providerText,
+      expectedSpeakerLabel: providerSpeakerLabel,
+      expectedAcceptedCorrectionId: "accepted-1",
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: 13.5,
+    })).rejects.toMatchObject<Partial<TranscriptCorrectionError>>({ status: 409, code: "CORRECTION_ALREADY_ACTIVE" });
+    expect(tx.transcriptSegmentVerification.create).not.toHaveBeenCalled();
+  });
+
+  it("serializes review writers and reuses an already-current verification", async () => {
+    const existingVerification = {
+      id: "verification-current",
+      segmentId: "segment-1",
+      reviewKind: "confirmed-as-is",
+      providerTextSha256: sha256(providerText),
+      providerSpeakerLabel,
+      createdAt: new Date("2026-08-01T23:31:00.000Z"),
+    };
+    const { prisma, tx } = mutationHarness({ existingVerification });
+    const result = await confirmTranscriptSegmentAsIs({
+      prisma,
+      actor,
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "verify-concurrent-retry",
+      expectedText: providerText,
+      expectedSpeakerLabel: providerSpeakerLabel,
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: 13.5,
+    });
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      verification: { id: "verification-current" },
+    });
+    expect(tx.transcriptSegmentVerification.create).not.toHaveBeenCalled();
   });
 
   it("refuses paperwork-only acceptance when protected playback is unavailable", async () => {

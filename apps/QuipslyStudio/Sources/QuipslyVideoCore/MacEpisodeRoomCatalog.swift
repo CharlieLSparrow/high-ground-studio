@@ -58,6 +58,7 @@ public struct MacCanonicalTranscriptSegment:
     public let providerText: String
     public let confidence: Double?
     public let reviewStatus: String
+    public let acceptedReviewId: String?
     public let acceptedCorrectionId: String?
     public let words: [MacCanonicalTranscriptWord]
 }

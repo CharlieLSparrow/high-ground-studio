@@ -23,6 +23,13 @@ struct CaptureTranscriptCorrection: Codable, Identifiable, Equatable {
     let revisions: [CaptureTranscriptCorrectionRevision]
 }
 
+struct CaptureTranscriptSegmentVerification: Codable, Identifiable, Equatable {
+    let id: String
+    let segmentId: String
+    let reviewKind: String
+    let reviewedAt: String
+}
+
 struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
     let speakerLabel: String?
@@ -34,6 +41,7 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let providerTextSha256: String
     let confidence: Double?
     let acceptedCorrection: CaptureTranscriptCorrection?
+    let acceptedVerification: CaptureTranscriptSegmentVerification?
     let proposals: [CaptureTranscriptCorrection]
     let correctionHistory: [CaptureTranscriptCorrection]
 }
@@ -86,6 +94,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             providerTextSha256: "preview-provider-sha256",
             confidence: 0.94,
             acceptedCorrection: nil,
+            acceptedVerification: nil,
             proposals: [proposal],
             correctionHistory: [proposal]
         )
@@ -379,6 +388,37 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             "playbackPositionSeconds": playbackPosition,
         ]
         await mutate(roomID: roomID, body: body, success: "Playback-reviewed correction saved.")
+    }
+
+    func confirmSegmentAsIs(
+        roomID: String,
+        segment: CaptureTranscriptSegment,
+        playbackPosition: TimeInterval,
+        previewOnly: Bool
+    ) async {
+        guard !previewOnly, !isUsingProtectedCache else {
+            errorMessage = isUsingProtectedCache
+                ? "Reconnect to Nest before confirming this transcript segment. The protected snapshot was not modified."
+                : "Preview transcript review is intentionally disabled."
+            return
+        }
+        let body: [String: Any] = [
+            "operation": "confirm-segment-as-is",
+            "roomId": roomID,
+            "segmentId": segment.id,
+            "clientRequestId": "iphone-transcript-verify-\(segment.id)-\(UUID().uuidString)",
+            "expectedText": segment.providerText,
+            "expectedSpeakerLabel": captureTranscriptJSONNullable(segment.providerSpeakerLabel),
+            "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(segment.acceptedCorrection?.id),
+            "confirmedAgainstPlayback": true,
+            "playbackPositionSeconds": playbackPosition,
+            "reviewNote": "Confirmed as-is in Quipsly Capture against the exact retained local recording.",
+        ]
+        await mutate(
+            roomID: roomID,
+            body: body,
+            success: "Segment confirmed as heard. Provider evidence stayed unchanged."
+        )
     }
 
     func reviewAIProposal(
@@ -1638,6 +1678,21 @@ private struct CaptureTranscriptSegmentCard: View {
                 .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
             }
 
+            if segment.acceptedCorrection == nil,
+               segment.acceptedVerification != nil {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Reviewed as heard · provider text confirmed", systemImage: "checkmark.shield.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.green)
+                    Text("This exact local timestamp was played and confirmed without inventing a no-op correction.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("CaptureTranscriptVerifiedAsIs_\(segment.id)")
+            }
+
             ForEach(segment.proposals) { proposal in
                 proposalReview(proposal)
             }
@@ -1645,6 +1700,25 @@ private struct CaptureTranscriptSegmentCard: View {
             if isEditing {
                 correctionEditor
             } else {
+                if segment.acceptedCorrection == nil,
+                   segment.acceptedVerification == nil {
+                    Button("Confirm correct as heard") {
+                        guard let playbackPosition else { return }
+                        Task {
+                            await client.confirmSegmentAsIs(
+                                roomID: roomID,
+                                segment: segment,
+                                playbackPosition: playbackPosition,
+                                previewOnly: previewOnly
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
+                    .accessibilityIdentifier("CaptureTranscriptConfirmAsIsButton_\(segment.id)")
+                    .accessibilityHint("Plays no media and saves only after this exact timestamp was already played.")
+                }
                 Button(segment.acceptedCorrection == nil ? "Correct against playback" : "Revise reviewed correction") {
                     beginEditing()
                 }

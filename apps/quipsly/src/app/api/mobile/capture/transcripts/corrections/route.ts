@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
+  confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
   reviewTranscriptCorrectionProposal,
@@ -100,6 +101,22 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor = actorFromSession(session);
   try {
+    if (operation === "confirm-segment-as-is") {
+      const result = await confirmTranscriptSegmentAsIs({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        segmentId: text(input.segmentId),
+        clientRequestId: text(input.clientRequestId),
+        expectedText: typeof input.expectedText === "string" ? input.expectedText : "",
+        expectedSpeakerLabel: nullableText(input.expectedSpeakerLabel),
+        expectedAcceptedCorrectionId: nullableText(input.expectedAcceptedCorrectionId),
+        confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
+        playbackPositionSeconds: number(input.playbackPositionSeconds),
+        reviewNote: nullableText(input.reviewNote),
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (operation === "accept-human-correction") {
       const result = await createTranscriptCorrection({
         prisma,

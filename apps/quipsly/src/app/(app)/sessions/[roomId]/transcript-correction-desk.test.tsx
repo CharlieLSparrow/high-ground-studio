@@ -39,6 +39,7 @@ const segment = {
     },
   ],
   acceptedCorrection: null,
+  acceptedVerification: null,
   proposals: [],
   correctionHistory: [],
 };
@@ -122,6 +123,39 @@ describe("TranscriptCorrectionDesk", () => {
     const button = await screen.findByRole("button", { name: /correct against playback/i });
     expect(button).toBeDisabled();
     expect(screen.getByText(/prevents “I listened” from becoming a paperwork checkbox/i)).toBeInTheDocument();
+  });
+
+  it("records a playback-backed reviewed-as-is decision without fabricating a correction", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: false, verification: { id: "verification-1" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        ...desk(true),
+        segments: [{
+          ...segment,
+          acceptedVerification: { id: "verification-1", segmentId: "segment-1", reviewKind: "confirmed-as-is", reviewedAt: "2026-08-01T23:30:00.000Z" },
+        }],
+      }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: /play transcript segment/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm correct as heard/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      operation: "confirm-segment-as-is",
+      roomId: "room-1",
+      segmentId: "segment-1",
+      expectedText: "Welcome, everybody.",
+      expectedSpeakerLabel: "Speaker",
+      expectedAcceptedCorrectionId: null,
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: 3.66,
+    });
+    expect(await screen.findByText(/reviewed as heard/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /confirm correct as heard/i })).not.toBeInTheDocument();
   });
 
   it("opens precise word anchors and seeks protected playback to the selected word", async () => {

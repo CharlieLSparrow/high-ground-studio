@@ -3,9 +3,11 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
+import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock.js";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
+export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
 
 export type TranscriptCorrectionActor = {
   id: string;
@@ -157,6 +159,17 @@ function publicCorrection(correction: any) {
   };
 }
 
+function publicVerification(verification: any) {
+  return {
+    id: verification.id as string,
+    segmentId: verification.segmentId as string,
+    reviewKind: verification.reviewKind as "confirmed-as-is",
+    reviewedAt: verification.createdAt instanceof Date
+      ? verification.createdAt.toISOString()
+      : verification.createdAt,
+  };
+}
+
 function proposalIdentity(correction: any) {
   return JSON.stringify([
     nullableLabel(correction.correctedSpeakerLabel),
@@ -262,6 +275,18 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
                   },
                 },
               },
+              verifications: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: {
+                  id: true,
+                  segmentId: true,
+                  reviewKind: true,
+                  providerTextSha256: true,
+                  providerSpeakerLabel: true,
+                  createdAt: true,
+                },
+              },
             },
           },
         },
@@ -334,6 +359,11 @@ export async function readTranscriptCorrectionDesk(input: {
     playback: playbackFromAsset(job.asset),
     segments: job.segments.map((segment: any) => {
       const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;
+      const acceptedVerification = !accepted
+        && segment.verifications[0]?.providerTextSha256 === sha256(segment.text)
+        && (segment.verifications[0]?.providerSpeakerLabel ?? null) === (segment.speakerLabel ?? null)
+        ? segment.verifications[0]
+        : null;
       const proposals = visibleTranscriptProposals(segment.corrections);
       return {
         id: segment.id,
@@ -357,6 +387,7 @@ export async function readTranscriptCorrectionDesk(input: {
           channel: word.channel ?? null,
         })),
         acceptedCorrection: accepted ? publicCorrection(accepted) : null,
+        acceptedVerification: acceptedVerification ? publicVerification(acceptedVerification) : null,
         proposals: proposals.map(publicCorrection),
         correctionHistory: segment.corrections.map(publicCorrection),
       };
@@ -370,6 +401,7 @@ export function transcriptCorrectionBoundaries() {
     providerSegmentsImmutable: true,
     correctionOverlayVersioned: true,
     acceptedHumanCorrectionRequiresPlaybackConfirmation: true,
+    confirmedAsIsRequiresPlaybackConfirmation: true,
     aiOutputRequiresHumanReview: true,
     mediaTimeAnchorsPreserved: true,
     providerWordTimeAnchorsImmutable: true,
@@ -505,6 +537,107 @@ async function loadMutationEvidence(prisma: any, input: {
   return { room, job, segment, playback: playbackFromAsset(job.asset) };
 }
 
+export async function confirmTranscriptSegmentAsIs(input: {
+  prisma: any;
+  actor: TranscriptCorrectionActor;
+  roomId: string;
+  segmentId: string;
+  clientRequestId: string;
+  expectedText: string;
+  expectedSpeakerLabel?: string | null;
+  expectedAcceptedCorrectionId?: string | null;
+  confirmedAgainstPlayback?: boolean;
+  playbackPositionSeconds?: number;
+  reviewNote?: string | null;
+}) {
+  const roomId = text(input.roomId);
+  const segmentId = text(input.segmentId);
+  const clientRequestId = text(input.clientRequestId);
+  if (!roomId || !segmentId || !clientRequestId || clientRequestId.length > 160) {
+    throw new TranscriptCorrectionError("roomId, segmentId, and a bounded clientRequestId are required.", 400, "INVALID_REQUEST");
+  }
+
+  const evidence = await loadMutationEvidence(input.prisma, { roomId, segmentId, actor: input.actor });
+  const replay = await input.prisma.transcriptSegmentVerification.findUnique({
+    where: { reviewerUserId_clientRequestId: { reviewerUserId: input.actor.id, clientRequestId } },
+  });
+  if (replay) {
+    if (replay.roomId !== roomId || replay.segmentId !== segmentId) {
+      throw new TranscriptCorrectionError("That request id is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
+    }
+    return { ok: true, idempotentReplay: true, verification: publicVerification(replay), boundaries: transcriptCorrectionBoundaries() };
+  }
+
+  const expectedSpeakerLabel = nullableLabel(input.expectedSpeakerLabel);
+  if (input.expectedText !== evidence.segment.text || expectedSpeakerLabel !== (evidence.segment.speakerLabel ?? null)) {
+    throw new TranscriptCorrectionError("The provider transcript changed. Refresh before confirming it.", 409, "STALE_PROVIDER_EVIDENCE");
+  }
+  const expectedAcceptedCorrectionId = text(input.expectedAcceptedCorrectionId) || null;
+  const active = await input.prisma.transcriptCorrection.findFirst({
+    where: { segmentId, status: "accepted" },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true },
+  });
+  if ((active?.id ?? null) !== expectedAcceptedCorrectionId) {
+    throw new TranscriptCorrectionError("The reviewed overlay changed. Refresh before confirming this segment.", 409, "STALE_CORRECTION_OVERLAY");
+  }
+  if (active) {
+    throw new TranscriptCorrectionError("This segment already has a reviewed correction. Confirm the displayed correction through its review history instead of marking provider text as-is.", 409, "CORRECTION_ALREADY_ACTIVE");
+  }
+  const playbackPositionSeconds = assertPlaybackConfirmation({
+    playback: evidence.playback,
+    confirmedAgainstPlayback: input.confirmedAgainstPlayback,
+    playbackPositionSeconds: input.playbackPositionSeconds,
+    startSeconds: evidence.segment.startSeconds,
+    endSeconds: evidence.segment.endSeconds,
+  });
+
+  const saved = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
+    const transactionActive = await tx.transcriptCorrection.findFirst({
+      where: { segmentId, status: "accepted" },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true },
+    });
+    if (transactionActive) {
+      throw new TranscriptCorrectionError("A reviewed correction won the save race. Refresh before confirming this segment.", 409, "STALE_CORRECTION_OVERLAY");
+    }
+    const currentVerification = await tx.transcriptSegmentVerification.findFirst({
+      where: {
+        segmentId,
+        providerTextSha256: sha256(evidence.segment.text),
+        providerSpeakerLabel: evidence.segment.speakerLabel ?? null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (currentVerification) {
+      return { verification: currentVerification, idempotentReplay: true };
+    }
+    const verification = await tx.transcriptSegmentVerification.create({
+      data: {
+        roomId,
+        transcriptJobId: evidence.job.id,
+        segmentId,
+        recordingAssetId: evidence.playback!.recordingAssetId,
+        reviewerUserId: input.actor.id,
+        reviewerEmailSnapshot: text(input.actor.email) || null,
+        clientRequestId,
+        reviewKind: "confirmed-as-is",
+        providerTextSha256: sha256(evidence.segment.text),
+        providerSpeakerLabel: evidence.segment.speakerLabel ?? null,
+        startSecondsSnapshot: evidence.segment.startSeconds,
+        endSecondsSnapshot: evidence.segment.endSeconds,
+        playbackSourceId: evidence.playback!.sourceId,
+        playbackPositionSeconds,
+        reviewNote: text(input.reviewNote) || "Reviewer confirmed the provider segment as-is against protected playback.",
+      },
+    });
+    return { verification, idempotentReplay: false };
+  });
+
+  return { ok: true, idempotentReplay: saved.idempotentReplay, verification: publicVerification(saved.verification), boundaries: transcriptCorrectionBoundaries() };
+}
+
 export async function createTranscriptCorrection(input: {
   prisma: any;
   actor: TranscriptCorrectionActor;
@@ -600,6 +733,9 @@ export async function createTranscriptCorrection(input: {
   };
 
   const correction = await input.prisma.$transaction(async (tx: any) => {
+    if (accepted) {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
+    }
     const transactionActive = accepted
       ? await tx.transcriptCorrection.findFirst({
           where: { segmentId, status: "accepted" },
@@ -723,6 +859,9 @@ export async function reviewTranscriptCorrectionProposal(input: {
     : null;
   const now = new Date();
   const reviewed = await input.prisma.$transaction(async (tx: any) => {
+    if (input.decision === "accept") {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${correction.segmentId}`);
+    }
     const transactionActive = input.decision === "accept"
       ? await tx.transcriptCorrection.findFirst({
           where: { segmentId: correction.segmentId, status: "accepted" },

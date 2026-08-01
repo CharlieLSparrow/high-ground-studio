@@ -8,7 +8,7 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
             """
             {
               "ok": true,
-              "schema": "quipsly-canonical-transcript-handoff-v1",
+              "schema": "quipsly-canonical-transcript-handoff-v2",
               "roomId": "room-1",
               "transcriptJobId": "job-1",
               "source": {
@@ -27,6 +27,7 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
                 "providerText": "Reviewd sentence.",
                 "confidence": 0.96,
                 "reviewStatus": "human-reviewed",
+                "acceptedReviewId": "correction-1",
                 "acceptedCorrectionId": "correction-1",
                 "words": [{
                   "id": "word-1",
@@ -52,7 +53,7 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             handoff.schema,
-            "quipsly-canonical-transcript-handoff-v1"
+            "quipsly-canonical-transcript-handoff-v2"
         )
         XCTAssertEqual(handoff.transcriptJobId, "job-1")
         XCTAssertEqual(
@@ -62,6 +63,10 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
         XCTAssertEqual(
             handoff.segments?.first?.providerSpeaker,
             "speaker_0"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.acceptedReviewId,
+            "correction-1"
         )
         XCTAssertEqual(
             handoff.segments?.first?.acceptedCorrectionId,

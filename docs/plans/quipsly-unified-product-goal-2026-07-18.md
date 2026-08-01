@@ -5896,3 +5896,31 @@ was restored.
   Studio, demonstrating one reviewed-refresh receipt, stable persisted UUIDs,
   and a no-op replay. Full evidence and the exact boundary are in
   `docs/coordination/2026-08-01-studio-canonical-transcript-identity-checkpoint.md`.
+
+### Transcript reviewed-as-is architecture checkpoint — 2026-08-01
+
+- Fixed the canonical review defect that required changing correct provider
+  text before a segment could become human-reviewed. An append-only
+  `TranscriptSegmentVerification` now records a playback-backed
+  confirmed-as-is decision without altering provider evidence.
+- Nest web and Quipsly Capture expose **Confirm correct as heard** only through
+  the exact segment playback boundary. Changed text still uses the accepted
+  correction path; unchanged text uses a verification receipt.
+- Canonical handoff v2 separates `acceptedReviewId` from optional
+  `acceptedCorrectionId`. Studio imports both meanings, preserves stable local
+  transcript identities, independently reads them back, and remains compatible
+  with v1 handoffs.
+- A full 38-migration disposable PostgreSQL replay caught and then closed an
+  index-name truncation drift. The clean replay reports current/no-difference,
+  and the disposable database was removed.
+- Focused Nest review tests pass 3 suites / 21 tests; the full Nest suite passes
+  205 suites / 1,041 tests; TypeScript, optimized Next build, 107 XCTest plus 4
+  Swift Testing cases, the iPhone simulator build, 946/946 App Store static
+  checks, and signed macOS build all pass.
+- A real authenticated local operation loaded the retained five-segment,
+  twelve-word HGO fixture. An invalid position-zero confirmation returned HTTP
+  409 `PLAYBACK_POSITION_MISMATCH`; handoff and PostgreSQL readback retained
+  zero verification receipts. No listening judgment was invented.
+- Human playback review and the subsequent double Studio import remain open.
+  Full evidence is in
+  `docs/coordination/2026-08-01-transcript-reviewed-as-is-architecture.md`.

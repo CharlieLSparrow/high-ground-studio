@@ -61,6 +61,7 @@ describe("canonical transcript handoff", () => {
           providerText: "Reviewd sentence.",
           confidence: 0.96,
           acceptedCorrection: { id: "correction-1" },
+          acceptedVerification: null,
           words: [
             {
               id: "word-1",
@@ -89,7 +90,7 @@ describe("canonical transcript handoff", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(payload).toMatchObject({
       ok: true,
-      schema: "quipsly-canonical-transcript-handoff-v1",
+      schema: "quipsly-canonical-transcript-handoff-v2",
       roomId: "room-1",
       transcriptJobId: "job-1",
       source: {
@@ -103,6 +104,7 @@ describe("canonical transcript handoff", () => {
           text: "Reviewed sentence.",
           providerText: "Reviewd sentence.",
           reviewStatus: "human-reviewed",
+          acceptedReviewId: "correction-1",
           acceptedCorrectionId: "correction-1",
           words: [
             {

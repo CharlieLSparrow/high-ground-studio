@@ -1506,6 +1506,21 @@ requireIncludes(
   "reduceMotion ? nil : .easeOut(duration: 0.3)",
   "transcript evidence return has a non-animated reduced-motion path",
 );
+requireIncludes(
+  transcriptReviewText,
+  '"operation": "confirm-segment-as-is"',
+  "native transcript review records an explicit confirmed-as-is operation",
+);
+requireIncludes(
+  transcriptReviewText,
+  "Confirm correct as heard",
+  "native transcript review exposes an honest playback-backed confirmation action",
+);
+requireIncludes(
+  transcriptReviewText,
+  "CaptureTranscriptSegmentVerification",
+  "native transcript review decodes the append-only verification receipt",
+);
 requireIncludes(bridgeText, "visibleRecordingIndicatorRequired", "readiness recording policy");
 requireIncludes(bridgeText, "api/account/deletion-request", "native deletion request client");
 requireIncludes(bridgeText, "prepareRoomJoin", "provider room join prep");

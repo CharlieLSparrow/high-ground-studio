@@ -1179,8 +1179,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             )
             guard (200 ..< 300).contains(response.statusCode),
                   handoff.ok,
-                  handoff.schema
-                    == "quipsly-canonical-transcript-handoff-v1",
+                  [
+                      "quipsly-canonical-transcript-handoff-v1",
+                      "quipsly-canonical-transcript-handoff-v2",
+                  ].contains(handoff.schema ?? ""),
                   let transcriptJobID = handoff.transcriptJobId,
                   transcriptJobID == transcript.id,
                   handoff.source?.recordingAssetId
@@ -1193,9 +1195,12 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                   !remoteSegments.isEmpty,
                   remoteSegments.allSatisfy({ segment in
                       !segment.id.isEmpty
-                          && ((segment.acceptedCorrectionId == nil
+                          && (((segment.acceptedReviewId
+                                    ?? segment.acceptedCorrectionId) == nil
+                                  && segment.acceptedCorrectionId == nil
                                   && segment.reviewStatus == "provider")
-                              || (segment.acceptedCorrectionId?.isEmpty == false
+                              || ((segment.acceptedReviewId
+                                    ?? segment.acceptedCorrectionId)?.isEmpty == false
                                   && segment.reviewStatus == "human-reviewed"))
                           && segment.startTime.isFinite
                           && segment.endTime.isFinite
@@ -1240,6 +1245,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     text: segment.text,
                     providerText: segment.providerText,
                     providerSpeaker: segment.providerSpeaker,
+                    acceptedReviewExternalID:
+                        segment.acceptedReviewId
+                        ?? segment.acceptedCorrectionId,
                     acceptedCorrectionExternalID:
                         segment.acceptedCorrectionId,
                     words: segment.words.map { word in
@@ -1349,6 +1357,24 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 result[externalID] =
                     segment.acceptedCorrectionExternalID ?? ""
             }
+            let expectedReviews = segments.reduce(
+                into: [String: String]()
+            ) { result, segment in
+                guard let externalID = segment.sourceExternalID else {
+                    return
+                }
+                result[externalID] =
+                    segment.acceptedReviewExternalID ?? ""
+            }
+            let importedReviews = imported.reduce(
+                into: [String: String]()
+            ) { result, segment in
+                guard let externalID = segment.sourceExternalID else {
+                    return
+                }
+                result[externalID] =
+                    segment.acceptedReviewExternalID ?? ""
+            }
             let importedJob = importedSequence.transcriptJobs.first {
                 $0.sourceExternalID == transcriptJobID
             }
@@ -1389,6 +1415,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     == segments.flatMap(\.words).count,
                   importedSegmentIDs == expectedSegmentIDs,
                   importedWordIDs == expectedWordIDs,
+                  importedReviews == expectedReviews,
                   importedCorrections == expectedCorrections,
                   importedJob != nil,
                   priorJobID == nil || importedJob?.id == priorJobID,

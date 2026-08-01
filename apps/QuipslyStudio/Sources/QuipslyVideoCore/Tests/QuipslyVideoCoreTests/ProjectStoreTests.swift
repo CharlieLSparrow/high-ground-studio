@@ -422,6 +422,7 @@ final class ProjectStoreTests: XCTestCase {
             text: "This is reviewed.",
             providerText: "This is reviewd.",
             providerSpeaker: "speaker_0",
+            acceptedReviewExternalID: "correction-server-1",
             acceptedCorrectionExternalID: "correction-server-1",
             words: [
                 TranscriptWordTiming(
@@ -460,6 +461,10 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertEqual(
             refreshedSegment.providerSpeaker,
             "speaker_0"
+        )
+        XCTAssertEqual(
+            refreshedSegment.acceptedReviewExternalID,
+            "correction-server-1"
         )
         XCTAssertEqual(
             refreshedSegment.acceptedCorrectionExternalID,
@@ -602,7 +607,56 @@ final class ProjectStoreTests: XCTestCase {
         }
     }
 
-    func testCanonicalTranscriptImportRejectsReviewWithoutAcceptedCorrection() {
+    func testCanonicalTranscriptImportAcceptsReviewedAsIsWithoutFabricatingCorrection() throws {
+        let store = ProjectStore(
+            project: VideoProject(
+                title: "Episode",
+                sequences: [MediaSequence(title: "Main")]
+            )
+        )
+        let reviewedAsIs = TranscriptSegment(
+            sourceExternalID: "segment-server-1",
+            sourceTranscriptJobID: "transcript-job-1",
+            speaker: "Charlie",
+            startTime: 0,
+            endTime: 1,
+            text: "Already correct",
+            providerText: "Already correct",
+            providerSpeaker: "Charlie",
+            acceptedReviewExternalID: "verification-server-1",
+            acceptedCorrectionExternalID: nil,
+            words: [
+                TranscriptWordTiming(
+                    sourceExternalID: "word-server-1",
+                    providerWordIndex: 0,
+                    word: "Already",
+                    startTime: 0,
+                    endTime: 0.5
+                ),
+            ],
+            reviewStatus: "human-reviewed"
+        )
+
+        XCTAssertFalse(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [reviewedAsIs]
+            )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptSegments.first?
+                .acceptedReviewExternalID,
+            "verification-server-1"
+        )
+        XCTAssertNil(
+            store.activeSequence?.transcriptSegments.first?
+                .acceptedCorrectionExternalID
+        )
+    }
+
+    func testCanonicalTranscriptImportRejectsReviewWithoutAcceptedReviewReceipt() {
         let store = ProjectStore(
             project: VideoProject(
                 title: "Episode",
@@ -669,6 +723,7 @@ final class ProjectStoreTests: XCTestCase {
         )
 
         XCTAssertNil(segment.providerSpeaker)
+        XCTAssertNil(segment.acceptedReviewExternalID)
         XCTAssertNil(segment.acceptedCorrectionExternalID)
         XCTAssertNil(segment.words.first?.rawWord)
         XCTAssertNil(segment.words.first?.speaker)

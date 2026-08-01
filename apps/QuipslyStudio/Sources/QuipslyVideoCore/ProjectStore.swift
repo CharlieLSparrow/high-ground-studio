@@ -223,6 +223,8 @@ public class ProjectStore: ObservableObject {
             && left.endTime == right.endTime
             && left.text == right.text
             && left.providerText == right.providerText
+            && left.acceptedReviewExternalID
+                == right.acceptedReviewExternalID
             && left.acceptedCorrectionExternalID
                 == right.acceptedCorrectionExternalID
             && left.confidence == right.confidence
@@ -297,6 +299,8 @@ public class ProjectStore: ObservableObject {
                 text: segment.text,
                 providerText: segment.providerText,
                 providerSpeaker: segment.providerSpeaker,
+                acceptedReviewExternalID:
+                    segment.acceptedReviewExternalID,
                 acceptedCorrectionExternalID:
                     segment.acceptedCorrectionExternalID,
                 words: reconciledWords,
@@ -320,6 +324,9 @@ public class ProjectStore: ObservableObject {
                 [
                     "segmentId": segment.sourceExternalID ?? "",
                     "reviewStatus": segment.reviewStatus,
+                    "acceptedReviewId":
+                        segment.acceptedReviewExternalID
+                        ?? NSNull(),
                     "acceptedCorrectionId":
                         segment.acceptedCorrectionExternalID
                         ?? NSNull(),
@@ -369,10 +376,10 @@ public class ProjectStore: ObservableObject {
         wordIndexes == Array(0 ..< words.count),
         segments.allSatisfy({ segment in
             segment.sourceTranscriptJobID == transcriptJobID
-                && ((segment.acceptedCorrectionExternalID == nil
+                && ((segment.acceptedReviewExternalID == nil
+                        && segment.acceptedCorrectionExternalID == nil
                         && segment.reviewStatus == "provider")
-                    || (segment.acceptedCorrectionExternalID?.isEmpty
-                            == false
+                    || (segment.acceptedReviewExternalID?.isEmpty == false
                         && segment.reviewStatus
                             == "human-reviewed"))
                 && segment.startTime.isFinite

@@ -611,6 +611,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public var text: String
     public var providerText: String?
     public var providerSpeaker: String?
+    public var acceptedReviewExternalID: String?
     public var acceptedCorrectionExternalID: String?
     public var words: [TranscriptWordTiming]
     public var confidence: Double?
@@ -629,6 +630,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         text: String,
         providerText: String? = nil,
         providerSpeaker: String? = nil,
+        acceptedReviewExternalID: String? = nil,
         acceptedCorrectionExternalID: String? = nil,
         words: [TranscriptWordTiming] = [],
         confidence: Double? = nil,
@@ -646,6 +648,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         self.text = text
         self.providerText = providerText
         self.providerSpeaker = providerSpeaker
+        self.acceptedReviewExternalID = acceptedReviewExternalID
         self.acceptedCorrectionExternalID = acceptedCorrectionExternalID
         self.words = words
         self.confidence = confidence
@@ -665,6 +668,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         case text
         case providerText
         case providerSpeaker
+        case acceptedReviewExternalID
         case acceptedCorrectionExternalID
         case words
         case confidence
@@ -687,6 +691,7 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         providerText = try container.decodeIfPresent(String.self, forKey: .providerText)
         providerSpeaker = try container.decodeIfPresent(String.self, forKey: .providerSpeaker)
+        acceptedReviewExternalID = try container.decodeIfPresent(String.self, forKey: .acceptedReviewExternalID)
         acceptedCorrectionExternalID = try container.decodeIfPresent(String.self, forKey: .acceptedCorrectionExternalID)
         words = try container.decodeIfPresent([TranscriptWordTiming].self, forKey: .words) ?? []
         confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)

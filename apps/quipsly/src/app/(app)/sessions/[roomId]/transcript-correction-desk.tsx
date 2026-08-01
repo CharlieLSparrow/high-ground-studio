@@ -20,6 +20,13 @@ type Correction = {
   revisions: Array<{ revision: number; operation: string; createdAt: string }>;
 };
 
+type Verification = {
+  id: string;
+  segmentId: string;
+  reviewKind: "confirmed-as-is";
+  reviewedAt: string;
+};
+
 type Segment = {
   id: string;
   speakerLabel: string | null;
@@ -42,6 +49,7 @@ type Segment = {
     channel: number | null;
   }>;
   acceptedCorrection: Correction | null;
+  acceptedVerification: Verification | null;
   proposals: Correction[];
   correctionHistory: Correction[];
 };
@@ -235,6 +243,35 @@ function CorrectionEditor({
     }
   }
 
+  async function confirmAsIs() {
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "confirm-segment-as-is",
+          roomId,
+          segmentId: segment.id,
+          clientRequestId: requestId(`verify-${segment.id}`),
+          expectedText: segment.providerText,
+          expectedSpeakerLabel: segment.providerSpeakerLabel,
+          expectedAcceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+          confirmedAgainstPlayback: true,
+          playbackPositionSeconds: currentPlaybackPosition(),
+          reviewNote: "Confirmed as-is in the Nest transcript review desk.",
+        }),
+      });
+      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
+      if (!response.ok || !body.ok) throw new Error(body.error || "The review decision was not saved.");
+      await onSaved(body.idempotentReplay
+        ? "This provider segment was already confirmed; no duplicate review receipt was created."
+        : "Segment confirmed as heard. Quipsly preserved the provider text and added a playback-backed review receipt.");
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : "The review decision was not saved.");
+    }
+  }
+
   async function createTask() {
     setError(null);
     try {
@@ -355,6 +392,13 @@ function CorrectionEditor({
         </div>
       )}
 
+      {!segment.acceptedCorrection && segment.acceptedVerification && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-emerald-800"><ShieldCheck size={15} aria-hidden="true" />Reviewed as heard · provider text confirmed</p>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-emerald-950">A person played this exact timestamp and confirmed the provider words and speaker without inventing a no-op correction.</p>
+        </div>
+      )}
+
       {segment.proposals.map((proposal) => (
         <ProposalReview
           key={proposal.id}
@@ -393,6 +437,9 @@ function CorrectionEditor({
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          {!segment.acceptedCorrection && !segment.acceptedVerification && (
+            <button type="button" onClick={() => void confirmAsIs()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />Confirm correct as heard</button>
+          )}
           <button type="button" onClick={() => setEditing(true)} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:cursor-not-allowed disabled:opacity-50"><FilePenLine size={15} aria-hidden="true" />{segment.acceptedCorrection ? "Revise reviewed correction" : "Correct against playback"}</button>
           {segment.correctionHistory.length > 0 && <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#8a7354]"><History size={14} aria-hidden="true" />{segment.correctionHistory.length} correction record(s) preserved</span>}
         </div>
@@ -497,6 +544,8 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
   if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading protected playback and correction history…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
+  const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
+
   return (
     <section aria-labelledby="transcript-correction-heading" className="space-y-5">
       <div className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm">
@@ -505,6 +554,7 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Playback-verified evidence</p>
             <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Listen, correct, preserve the source</h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Corrections sit above provider output as reviewable revisions. Media timing never moves, and AI proposals never become transcript truth without a person listening here.</p>
+            {desk.segments.length > 0 && <p className="mt-3 text-sm font-black text-emerald-800">{reviewedSegmentCount} of {desk.segments.length} segments playback-reviewed</p>}
           </div>
           <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
         </div>
