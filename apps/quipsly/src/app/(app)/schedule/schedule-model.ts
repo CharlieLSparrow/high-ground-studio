@@ -1,4 +1,5 @@
 import type { TranscriptDerivedGoalSourceAnchor, TranscriptDerivedTaskSourceAnchor } from "@high-ground/quipsly-domain/transcript-derived-task";
+import type { CalendarOverview } from "@/lib/server/calendar-overview";
 
 export type ScheduleTranscriptSourceAnchor = TranscriptDerivedTaskSourceAnchor | TranscriptDerivedGoalSourceAnchor;
 
@@ -69,6 +70,7 @@ export type ScheduleSnapshot =
       state: "ready";
       authState: "signed-in";
       accessibleNestCount: number;
+      calendarOverview: CalendarOverview;
       sessions: ScheduleSession[];
       tasks: ScheduleTask[];
       planBlocks: SchedulePlanBlock[];

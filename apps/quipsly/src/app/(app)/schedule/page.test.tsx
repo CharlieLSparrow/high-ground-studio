@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { loadCalendarOverviewForActor } from "@/lib/server/calendar-overview";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
@@ -9,12 +10,80 @@ import SchedulePage from "./page";
 import { formatScheduleDateTime } from "./schedule-model";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/calendar-overview", () => ({ loadCalendarOverviewForActor: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 jest.mock("./schedule-planner", () => ({ SchedulePlanner: () => <div>Personal planning surface</div> }));
 
 describe("Schedule page truth states", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(loadCalendarOverviewForActor).mockResolvedValue({
+      generatedAt: "2026-08-01T12:00:00.000Z",
+      sourceOfTruth: "Quipsly owns appointments, work, and production milestones.",
+      providerSecretsExposed: false,
+      externalWritesEnabled: false,
+      managedCoaching: {
+        provider: "google-calendar",
+        configured: true,
+        configurationStatus: "metadata-token-candidate",
+        verificationRecommended: true,
+        externallyVerified: false,
+        state: "attention",
+        message: "Google Calendar configuration is present, but provider access still needs verification before writes are enabled.",
+      },
+      purposes: [
+        {
+          purpose: "COACHING",
+          title: "Coaching calendar",
+          description: "Appointments shared by coaches and clients.",
+          includes: ["Confirmed coaching appointments"],
+          excludes: ["Private notes"],
+          sourceOfTruth: "Quipsly owns booking truth.",
+          recommendedProvider: "Managed Google Calendar",
+          externalAccess: "Explicit appointments only.",
+          fallback: "Download a stable iCalendar event.",
+          state: "attention",
+          stateLabel: "Provider attention needed",
+          collectionCount: 0,
+          verifiedConnectionCount: 0,
+          latestReceipt: null,
+        },
+        {
+          purpose: "PODCAST_PRODUCTION",
+          title: "Podcast production",
+          description: "A shared production runway.",
+          includes: ["Recording sessions"],
+          excludes: ["Manuscript text"],
+          sourceOfTruth: "Quipsly owns episode work.",
+          recommendedProvider: "Shared Google Calendar",
+          externalAccess: "Explicit milestones only.",
+          fallback: "Subscription support follows reconciliation.",
+          state: "quipsly-only",
+          stateLabel: "Quipsly only",
+          collectionCount: 0,
+          verifiedConnectionCount: 0,
+          latestReceipt: null,
+        },
+        {
+          purpose: "PERSONAL_COMMITMENTS",
+          title: "My calendar",
+          description: "Private focus blocks.",
+          includes: ["Private focus blocks"],
+          excludes: ["Provider event titles"],
+          sourceOfTruth: "Quipsly owns work plans.",
+          recommendedProvider: "iCalendar or device calendar",
+          externalAccess: "Read-only busy time.",
+          fallback: "Quipsly works without a provider.",
+          state: "quipsly-only",
+          stateLabel: "Quipsly only",
+          collectionCount: 0,
+          verifiedConnectionCount: 0,
+          latestReceipt: null,
+        },
+      ],
+    });
+  });
 
   it("requires a real signed-in account before reading private planning", async () => {
     jest.mocked(getQuipslySession).mockResolvedValue(null as any);
@@ -74,6 +143,12 @@ describe("Schedule page truth states", () => {
       formatScheduleDateTime(scheduledStart, "America/Denver"),
     )).toBeInTheDocument();
     expect(screen.getByText("Quipsly schedule only")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "One schedule, three clear boundaries." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Coaching calendar" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Podcast production" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "My calendar" })).toBeInTheDocument();
+    expect(screen.getByText("External writes held")).toBeInTheDocument();
+    expect(screen.getByText(/No provider credentials, calendar identifiers, attendee lists, or sync tokens/)).toBeInTheDocument();
   });
 
   it("returns an accepted transcript-derived task to its exact reviewed segment", async () => {

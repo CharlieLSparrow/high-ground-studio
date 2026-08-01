@@ -410,6 +410,35 @@ show:
 - provider/source/model/build IDs and external effects are preserved in redacted
   receipts.
 
+## 2026-08-01 implementation checkpoint
+
+The first provider-independent calendar spine is implemented as an additive
+schema migration and an authenticated Schedule read model:
+
+- `CalendarConnection`, `CalendarCollection`, `CalendarProjection`,
+  `CalendarSyncCursor`, `CalendarSyncReceipt`, and `CalendarFeed` separate
+  credentials, selected calendars, canonical projections, provider cursors,
+  append-only effects, and revocable subscriptions;
+- database checks require every connection and collection to have exactly one
+  Quipsly owner boundary (person or Nest);
+- credentials and provider sync tokens remain opaque references, while feed
+  bearer material is represented only by a digest;
+- `/api/calendar/overview` authenticates before database access, reads only the
+  signed-in person's collections and accessible Nests, forbids shared caching,
+  and returns no provider calendar IDs, credentials, tokens, attendee lists, or
+  provider error details;
+- `/schedule` now explains coaching, podcast-production, and personal-calendar
+  boundaries independently, including what is copied, what is never copied,
+  the recommended provider, the honest fallback, current verification state,
+  and the latest redacted receipt;
+- external writes remain held unless a relevant provider connection is
+  `VERIFIED`; configuration or token availability alone does not display as
+  connected.
+
+This checkpoint does not claim Google OAuth, subscription-feed delivery,
+provider reconciliation, or production deployment. Those remain in Slices 2
+and 3 and must pass the real-calendar acceptance gates above before release.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:

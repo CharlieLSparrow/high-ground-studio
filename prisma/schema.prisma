@@ -316,6 +316,87 @@ enum WorkPlanBlockStatus {
   CANCELED
 }
 
+enum CalendarProvider {
+  GOOGLE
+  ICALENDAR
+  APPLE_EVENTKIT
+  QUIPSLY
+}
+
+enum CalendarConnectionKind {
+  MANAGED_ORGANIZATION
+  USER_OAUTH
+  DEVICE_LOCAL
+  SUBSCRIPTION
+}
+
+enum CalendarConnectionStatus {
+  PENDING
+  VERIFIED
+  DEGRADED
+  REVOKED
+}
+
+enum CalendarCollectionPurpose {
+  COACHING
+  PODCAST_PRODUCTION
+  PERSONAL_COMMITMENTS
+}
+
+enum CalendarCollectionVisibility {
+  PRIVATE
+  TEAM
+  CLIENT_VISIBLE
+}
+
+enum CalendarCollectionStatus {
+  ACTIVE
+  PAUSED
+  REVOKED
+}
+
+enum CalendarProjectionStatus {
+  PLANNED
+  SYNCED
+  CONFLICT
+  MISSING
+  CANCELED
+  REVOKED
+}
+
+enum CalendarConflictState {
+  NONE
+  EXTERNAL_CHANGED
+  QUIPSLY_CHANGED
+  BOTH_CHANGED
+  RESOLUTION_REQUIRED
+}
+
+enum CalendarSyncOperation {
+  VERIFY
+  FULL_SYNC
+  INCREMENTAL_SYNC
+  CREATE_EVENT
+  UPDATE_EVENT
+  CANCEL_EVENT
+  DELETE_EVENT
+  READ_EVENT
+  FEED_RENDER
+  FEED_REVOKE
+}
+
+enum CalendarSyncOutcome {
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  CONFLICT
+}
+
+enum CalendarFeedStatus {
+  ACTIVE
+  REVOKED
+}
+
 enum TaskRecurrenceCadence {
   FIXED
   COMPLETION
@@ -503,6 +584,10 @@ model User {
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
   taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
+  calendarConnections           CalendarConnection[]                 @relation("CalendarConnectionUser")
+  calendarCollectionsOwned      CalendarCollection[]                 @relation("CalendarCollectionOwner")
+  calendarSyncReceiptsActed     CalendarSyncReceipt[]                @relation("CalendarSyncReceiptActor")
+  calendarFeedsOwned            CalendarFeed[]                       @relation("CalendarFeedOwner")
   goalsOwned                    Goal[]                               @relation("GoalOwner")
   goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
   goalProgressAuthored          GoalProgressReceipt[]                @relation("GoalProgressActor")
@@ -1152,6 +1237,160 @@ model CalendarEventLink {
   @@index([roomId, createdAt])
   @@index([provider, providerEventId])
   @@index([status, scheduledStart])
+}
+
+model CalendarConnection {
+  id                 String                   @id @default(cuid())
+  nestId             String?
+  userId             String?
+  provider           CalendarProvider
+  connectionKind     CalendarConnectionKind
+  providerAccountKey String?
+  credentialRef      String?
+  grantedScopes      String[]                 @default([])
+  status             CalendarConnectionStatus @default(PENDING)
+  verifiedAt         DateTime?
+  lastCheckedAt      DateTime?
+  revokedAt          DateTime?
+  metadataJson       Json                     @default("{}")
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
+  user        User?                 @relation("CalendarConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
+  collections CalendarCollection[]
+  receipts    CalendarSyncReceipt[]
+
+  @@unique([provider, providerAccountKey])
+  @@index([nestId, provider, status])
+  @@index([userId, provider, status])
+  @@index([status, updatedAt])
+}
+
+model CalendarCollection {
+  id                 String                       @id @default(cuid())
+  connectionId       String?
+  nestId             String?
+  ownerUserId        String?
+  purpose            CalendarCollectionPurpose
+  displayName        String
+  timezone           String                       @default("UTC")
+  providerCalendarId String?
+  visibility         CalendarCollectionVisibility @default(PRIVATE)
+  isDefault          Boolean                      @default(false)
+  status             CalendarCollectionStatus     @default(ACTIVE)
+  metadataJson       Json                         @default("{}")
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  connection  CalendarConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
+  owner       User?                 @relation("CalendarCollectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  projections CalendarProjection[]
+  cursor      CalendarSyncCursor?
+  receipts    CalendarSyncReceipt[]
+  feeds       CalendarFeed[]
+
+  @@unique([connectionId, providerCalendarId])
+  @@index([nestId, purpose, status])
+  @@index([ownerUserId, purpose, status])
+  @@index([connectionId, status])
+  @@index([purpose, isDefault])
+}
+
+model CalendarProjection {
+  id                String                   @id @default(cuid())
+  collectionId      String
+  sourceType        String
+  sourceId          String
+  sourceRevision    String
+  providerEventId   String?
+  providerEtag      String?
+  providerUpdatedAt DateTime?
+  uid               String                   @unique
+  sequence          Int                      @default(0)
+  status            CalendarProjectionStatus @default(PLANNED)
+  conflictState     CalendarConflictState    @default(NONE)
+  lastSyncedAt      DateTime?
+  metadataJson      Json                     @default("{}")
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  collection CalendarCollection    @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  receipts   CalendarSyncReceipt[]
+
+  @@unique([collectionId, sourceType, sourceId])
+  @@unique([collectionId, providerEventId])
+  @@index([sourceType, sourceId])
+  @@index([collectionId, status, updatedAt])
+  @@index([conflictState, updatedAt])
+}
+
+model CalendarSyncCursor {
+  id                    String    @id @default(cuid())
+  collectionId          String    @unique
+  syncTokenRef          String?
+  channelId             String?
+  channelResourceId     String?
+  channelExpiresAt      DateTime?
+  lastFullSyncAt        DateTime?
+  lastIncrementalSyncAt DateTime?
+  metadataJson          Json      @default("{}")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  collection CalendarCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([channelExpiresAt])
+}
+
+model CalendarSyncReceipt {
+  id              String                @id @default(cuid())
+  connectionId    String?
+  collectionId    String?
+  projectionId    String?
+  actorUserId     String?
+  operation       CalendarSyncOperation
+  outcome         CalendarSyncOutcome
+  requestDigest   String?
+  responseDigest  String?
+  providerStatus  String?
+  externalMutated Boolean               @default(false)
+  occurredAt      DateTime              @default(now())
+  metadataJson    Json                  @default("{}")
+  createdAt       DateTime              @default(now())
+
+  connection CalendarConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  collection CalendarCollection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  projection CalendarProjection? @relation(fields: [projectionId], references: [id], onDelete: SetNull)
+  actor      User?               @relation("CalendarSyncReceiptActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([connectionId, occurredAt])
+  @@index([collectionId, occurredAt])
+  @@index([projectionId, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([outcome, occurredAt])
+}
+
+model CalendarFeed {
+  id              String             @id @default(cuid())
+  collectionId    String
+  ownerUserId     String?
+  tokenDigest     String             @unique
+  status          CalendarFeedStatus @default(ACTIVE)
+  timezone        String             @default("UTC")
+  lastGeneratedAt DateTime?
+  revokedAt       DateTime?
+  metadataJson    Json               @default("{}")
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  collection CalendarCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  owner      User?              @relation("CalendarFeedOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, status])
+  @@index([ownerUserId, status])
+  @@index([status, updatedAt])
 }
 
 model PaymentRecord {
@@ -2378,6 +2617,8 @@ model StudioProject {
   actionItems           ActionItem[]
   taskRecurrenceSeries  TaskRecurrenceSeries[]
   callRooms             CallRoom[]
+  calendarConnections   CalendarConnection[]
+  calendarCollections   CalendarCollection[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]

@@ -12,6 +12,11 @@ import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from
 
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  loadCalendarOverviewForActor,
+  type CalendarOverview,
+  type CalendarPurposeOverview,
+} from "@/lib/server/calendar-overview";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
 import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
@@ -95,7 +100,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       select: { tag: { select: { id: true, label: true, isActive: true } } },
     };
 
-    const [roomRows, taskRows, goalRows, planBlockRows] = await Promise.all([
+    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview] = await Promise.all([
       prisma.callRoom.findMany({
             where: {
               ...roomAccess,
@@ -177,6 +182,11 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           actionItem: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } }, tagLinks: visibleTagLinks } },
           goal: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } }, tagLinks: visibleTagLinks } },
         },
+      }),
+      loadCalendarOverviewForActor({
+        actor: { id: userId },
+        visibleProjectIds: projectIds,
+        prisma,
       }),
     ]);
 
@@ -309,6 +319,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       state: "ready",
       authState: "signed-in",
       accessibleNestCount: projects.length,
+      calendarOverview,
       sessions,
       tasks,
       planBlocks,
@@ -342,6 +353,70 @@ function EmptyCard({ children }: { children: React.ReactNode }) {
     <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold leading-relaxed text-[#7a6548]">
       {children}
     </div>
+  );
+}
+
+function purposeDestination(purpose: CalendarPurposeOverview["purpose"]) {
+  if (purpose === "COACHING") return { href: "/coaching/sessions", label: "Open coaching sessions" };
+  if (purpose === "PODCAST_PRODUCTION") return { href: "/projects", label: "Open episode Nests" };
+  return { href: "#personal-planning", label: "Plan private time" };
+}
+
+function calendarStateClasses(state: CalendarPurposeOverview["state"]) {
+  if (state === "connected") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (state === "attention") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (state === "setup-needed") return "border-sky-200 bg-sky-50 text-sky-800";
+  return "border-[#decfb4] bg-[#f8f1e4] text-[#725938]";
+}
+
+function CalendarSystemOverview({ overview }: { overview: CalendarOverview }) {
+  return (
+    <section aria-labelledby="calendar-system-heading" className="rounded-3xl border border-[#ddc9a5] bg-[#fffaf0] p-5 shadow-sm lg:p-7">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Calendar system</p>
+          <h2 id="calendar-system-heading" className="mt-1 font-serif text-3xl font-black text-[#3d3122]">One schedule, three clear boundaries.</h2>
+          <p className="mt-2 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">{overview.sourceOfTruth}</p>
+        </div>
+        <span className={`w-fit rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${overview.externalWritesEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+          {overview.externalWritesEnabled ? "Verified writes available" : "External writes held"}
+        </span>
+      </div>
+
+      <div className="mt-6 grid gap-4 xl:grid-cols-3">
+        {overview.purposes.map((purpose) => {
+          const destination = purposeDestination(purpose.purpose);
+          return (
+            <article key={purpose.purpose} className="flex h-full flex-col rounded-2xl border border-[#e5d5b7] bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-serif text-2xl font-black text-[#3d3122]">{purpose.title}</h3>
+                <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${calendarStateClasses(purpose.state)}`}>{purpose.stateLabel}</span>
+              </div>
+              <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">{purpose.description}</p>
+              <dl className="mt-4 space-y-3 text-xs leading-relaxed">
+                <div><dt className="font-black uppercase tracking-wide text-[#987443]">Includes</dt><dd className="mt-1 font-semibold text-[#5f4b32]">{purpose.includes.join(" · ")}</dd></div>
+                <div><dt className="font-black uppercase tracking-wide text-[#987443]">Never copied</dt><dd className="mt-1 font-semibold text-[#5f4b32]">{purpose.excludes.join(" · ")}</dd></div>
+                <div><dt className="font-black uppercase tracking-wide text-[#987443]">Recommended</dt><dd className="mt-1 font-semibold text-[#5f4b32]">{purpose.recommendedProvider}</dd></div>
+              </dl>
+              <p className="mt-4 rounded-xl bg-[#f8f3e9] p-3 text-xs font-semibold leading-relaxed text-[#725938]">{purpose.fallback}</p>
+              {purpose.latestReceipt && (
+                <p className="mt-3 text-[11px] font-bold text-[#80694a]">
+                  Latest receipt: {humanizeScheduleValue(purpose.latestReceipt.operation)} · {humanizeScheduleValue(purpose.latestReceipt.outcome)}
+                  {purpose.latestReceipt.externalMutated ? " · provider changed" : " · no provider change"}
+                </p>
+              )}
+              <Link href={destination.href} className="mt-auto pt-5 text-xs font-black text-[#76522c] hover:underline">{destination.label} <span aria-hidden="true">→</span></Link>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className={`mt-4 rounded-2xl border p-4 ${overview.managedCoaching.state === "ready" ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`} role="status">
+        <p className="text-xs font-black uppercase tracking-wide text-[#5f4b32]">Managed Google Calendar</p>
+        <p className="mt-1 text-sm font-semibold leading-relaxed text-[#765f40]">{overview.managedCoaching.message}</p>
+        <p className="mt-1 text-xs font-bold text-[#80694a]">No provider credentials, calendar identifiers, attendee lists, or sync tokens are exposed here.</p>
+      </div>
+    </section>
   );
 }
 
@@ -399,7 +474,11 @@ export default async function SchedulePage() {
             <span className="rounded-full border border-[#e2d2b4] bg-white px-3 py-1.5">Signed in</span>
           </div>
 
-          <SchedulePlanner initialBlocks={snapshot.planBlocks} targets={snapshot.planTargets} />
+          <CalendarSystemOverview overview={snapshot.calendarOverview} />
+
+          <div id="personal-planning">
+            <SchedulePlanner initialBlocks={snapshot.planBlocks} targets={snapshot.planTargets} />
+          </div>
 
           <section aria-labelledby="agenda-heading">
             <div className="mb-4 flex items-center gap-3">
