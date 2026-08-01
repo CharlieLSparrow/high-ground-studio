@@ -116,7 +116,8 @@ export function buildSessionCalendarProjectionPreview(input: {
     status: input.existing.status,
   } : null;
   let action: SessionCalendarProjectionPreview["action"];
-  if (existing?.conflictState && existing.conflictState !== "NONE") action = "BLOCKED";
+  if (existing?.status === "REVOKED") action = "BLOCKED";
+  else if (existing?.conflictState && existing.conflictState !== "NONE") action = "BLOCKED";
   else if (input.snapshot.status === "CANCELLED") {
     action = existing?.status === "CANCELED" || !existing?.providerEventId
       ? "NOOP"
@@ -135,7 +136,9 @@ export function buildSessionCalendarProjectionPreview(input: {
     snapshot: input.snapshot,
     existing,
     warning: action === "BLOCKED"
-      ? "Google or Quipsly changed after the last verified sync. Review the conflict before writing either side."
+      ? existing?.status === "REVOKED"
+        ? "This Session is no longer linked to that Google calendar. Checking or reconnecting it requires a new explicit projection decision."
+        : "Google or Quipsly changed after the last verified sync. Review the conflict before writing either side."
       : action === "CANCEL"
         ? "Cancellation is held for its own explicit confirmation; this action will not delete the Google event."
         : action === "NOOP"

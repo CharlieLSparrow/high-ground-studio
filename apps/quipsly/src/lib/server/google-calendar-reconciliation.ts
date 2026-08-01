@@ -45,6 +45,7 @@ export type CalendarProjectionReconciliationInput = {
   sourceRevision: string;
   status: string;
   conflictState: string;
+  metadataJson?: unknown;
 };
 
 export type CalendarProjectionReconciliationDecision = {
@@ -324,6 +325,12 @@ function digest(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function metadataRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 export async function persistGoogleCalendarReconciliation(input: {
   prisma: any;
   actorUserId: string;
@@ -423,7 +430,10 @@ export async function persistGoogleCalendarReconciliation(input: {
         return { superseded: true as const };
       }
       const projections = await transaction.calendarProjection.findMany({
-        where: { collectionId: currentCollection.id },
+        where: {
+          collectionId: currentCollection.id,
+          status: { not: "REVOKED" },
+        },
         select: {
           id: true,
           providerEventId: true,
@@ -434,6 +444,7 @@ export async function persistGoogleCalendarReconciliation(input: {
           sourceRevision: true,
           status: true,
           conflictState: true,
+          metadataJson: true,
         },
       });
       const reconciliation = reconcileGoogleCalendarProjectionStates({
@@ -442,6 +453,9 @@ export async function persistGoogleCalendarReconciliation(input: {
         projections,
       });
       for (const decision of reconciliation.decisions) {
+        const priorProjection = projections.find(
+          (projection: CalendarProjectionReconciliationInput) => projection.id === decision.projectionId,
+        );
         await transaction.calendarProjection.update({
           where: { id: decision.projectionId },
           data: {
@@ -450,6 +464,15 @@ export async function persistGoogleCalendarReconciliation(input: {
             status: decision.status,
             conflictState: decision.conflictState,
             lastSyncedAt: occurredAt,
+            metadataJson: {
+              ...metadataRecord(priorProjection?.metadataJson),
+              reconciliation: {
+                schema: "quipsly-google-calendar-reconciliation-observation-v1",
+                reason: decision.providerStatus,
+                observedAt: occurredAt.toISOString(),
+                providerContentImported: false,
+              },
+            },
           },
         });
         await transaction.calendarSyncReceipt.create({

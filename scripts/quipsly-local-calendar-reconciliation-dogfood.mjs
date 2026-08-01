@@ -20,6 +20,11 @@ const {
 const { persistGoogleCalendarReconciliation } = await import(
   "../apps/quipsly/src/lib/server/google-calendar-reconciliation.ts"
 );
+const {
+  googleCalendarConflictReason,
+  googleCalendarConflictVersion,
+  resolveGoogleCalendarProjectionConflict,
+} = await import("../apps/quipsly/src/lib/server/google-calendar-conflict-review.ts");
 const { resolveStudioProjectAccess } = await import(
   "../apps/quipsly/src/lib/server/studio-project-access.ts"
 );
@@ -243,11 +248,158 @@ try {
   assert(!JSON.stringify(receipts).includes("full-sync-token"), "A plaintext provider cursor leaked into receipts.");
   assert(!JSON.stringify(receipts).includes(`${prefix}-event`), "A provider event identity leaked into receipts.");
 
+  const firstReason = googleCalendarConflictReason({ metadataJson: savedProjection.metadataJson });
+  assert(firstReason === "provider-version-changed", "The provider edit reason was not retained on the projection.");
+  const firstConflictVersion = googleCalendarConflictVersion({ ...savedProjection, reason: firstReason });
+  const editorActor = {
+    id: editor.id,
+    email: editorEmail,
+    primaryEmail: editorEmail,
+    isStaff: false,
+  };
+  const prepared = await resolveGoogleCalendarProjectionConflict({
+    prisma,
+    actor: editorActor,
+    projectionId: projection.id,
+    expectedConflictVersion: firstConflictVersion,
+    intent: "PREPARE_QUIPSLY_UPDATE",
+    occurredAt: new Date("2026-08-01T03:10:00.000Z"),
+  });
+  const preparedReplay = await resolveGoogleCalendarProjectionConflict({
+    prisma,
+    actor: editorActor,
+    projectionId: projection.id,
+    expectedConflictVersion: firstConflictVersion,
+    intent: "PREPARE_QUIPSLY_UPDATE",
+    occurredAt: new Date("2026-08-01T03:10:01.000Z"),
+  });
+  const afterPrepare = await prisma.calendarProjection.findUniqueOrThrow({ where: { id: projection.id } });
+  assert(prepared.status === "PLANNED" && prepared.externalMutated === false, "Quipsly update preparation did not stay local-only.");
+  assert(preparedReplay.idempotentReplay === true && preparedReplay.receiptId === prepared.receiptId, "Exact conflict review replay did not reuse its receipt.");
+  assert(afterPrepare.status === "PLANNED" && afterPrepare.conflictState === "NONE", "Prepared projection did not unlock the separate preview boundary.");
+
+  const deletionCursorRef = encryptGoogleCalendarSyncToken("deletion-sync-token", encryptionKey);
+  const externalDeletion = await persistGoogleCalendarReconciliation({
+    prisma,
+    actorUserId: editor.id,
+    actorEmail: editorEmail,
+    revalidateTeamWriteAccess: ({ prisma, projectSlug, actorEmail }) => resolveStudioProjectAccess({
+      projectSlug,
+      email: actorEmail,
+      action: "write",
+      prisma,
+    }),
+    connectionId: connection.id,
+    collectionId: collection.id,
+    providerCalendarId: collection.providerCalendarId,
+    priorCursorRef: incrementalCursorRef,
+    priorSyncToken: "incremental-sync-token",
+    nextCursorRef: deletionCursorRef,
+    providerRead: {
+      status: "SYNCED",
+      mode: "INCREMENTAL",
+      events: [{
+        id: `${prefix}-event`,
+        etag: '"etag-cancelled"',
+        status: "cancelled",
+        updatedAt: "2026-08-01T04:00:00.000Z",
+        quipslySourceType: "CallRoom",
+        quipslySourceId: room.id,
+        quipslySourceRevision: "source-revision-1",
+        quipslySchema: "quipsly-session-calendar-snapshot-v1",
+      }],
+      nextSyncToken: "deletion-sync-token",
+      pageCount: 1,
+    },
+    resetFromExpiredToken: false,
+    occurredAt: new Date("2026-08-01T04:00:01.000Z"),
+  });
+  assert(externalDeletion.conflictCount === 1, "External cancellation did not produce one new review conflict.");
+  const deletionProjection = await prisma.calendarProjection.findUniqueOrThrow({ where: { id: projection.id } });
+  const deletionReason = googleCalendarConflictReason({ metadataJson: deletionProjection.metadataJson });
+  assert(deletionReason === "provider-event-cancelled", "External cancellation reason was not retained.");
+  const deletionConflictVersion = googleCalendarConflictVersion({ ...deletionProjection, reason: deletionReason });
+  let unrelatedActorDenied = false;
+  try {
+    await resolveGoogleCalendarProjectionConflict({
+      prisma,
+      actor: { id: owner.id, email: ownerEmail, primaryEmail: ownerEmail, isStaff: false },
+      projectionId: projection.id,
+      expectedConflictVersion: deletionConflictVersion,
+      intent: "STOP_PROJECTING",
+    });
+  } catch (error) {
+    unrelatedActorDenied = error?.code === "calendar-conflict-not-found";
+  }
+  assert(unrelatedActorDenied, "An actor who does not own the Google connection reached conflict persistence.");
+  const stopped = await resolveGoogleCalendarProjectionConflict({
+    prisma,
+    actor: editorActor,
+    projectionId: projection.id,
+    expectedConflictVersion: deletionConflictVersion,
+    intent: "STOP_PROJECTING",
+    occurredAt: new Date("2026-08-01T04:10:00.000Z"),
+  });
+  assert(stopped.status === "REVOKED" && stopped.externalMutated === false, "Stopping projection claimed a provider mutation.");
+
+  const afterStopCursorRef = encryptGoogleCalendarSyncToken("post-stop-sync-token", encryptionKey);
+  const afterStopRead = await persistGoogleCalendarReconciliation({
+    prisma,
+    actorUserId: editor.id,
+    actorEmail: editorEmail,
+    revalidateTeamWriteAccess: ({ prisma, projectSlug, actorEmail }) => resolveStudioProjectAccess({
+      projectSlug,
+      email: actorEmail,
+      action: "write",
+      prisma,
+    }),
+    connectionId: connection.id,
+    collectionId: collection.id,
+    providerCalendarId: collection.providerCalendarId,
+    priorCursorRef: deletionCursorRef,
+    priorSyncToken: "deletion-sync-token",
+    nextCursorRef: afterStopCursorRef,
+    providerRead: {
+      status: "SYNCED",
+      mode: "INCREMENTAL",
+      events: [{
+        id: `${prefix}-event`,
+        etag: '"etag-after-stop"',
+        status: "confirmed",
+        updatedAt: "2026-08-01T05:00:00.000Z",
+        quipslySourceType: "CallRoom",
+        quipslySourceId: room.id,
+        quipslySourceRevision: "source-revision-1",
+        quipslySchema: "quipsly-session-calendar-snapshot-v1",
+      }],
+      nextSyncToken: "post-stop-sync-token",
+      pageCount: 1,
+    },
+    resetFromExpiredToken: false,
+    occurredAt: new Date("2026-08-01T05:00:01.000Z"),
+  });
+  const finalProjection = await prisma.calendarProjection.findUniqueOrThrow({ where: { id: projection.id } });
+  const finalReceipts = await prisma.calendarSyncReceipt.findMany({ where: { collectionId: collection.id } });
+  assert(afterStopRead.conflictCount === 0, "A stopped projection re-entered reconciliation.");
+  assert(finalProjection.status === "REVOKED" && finalProjection.conflictState === "NONE", "Stopped projection did not remain detached from reconciliation.");
+  assert(object(finalProjection.metadataJson).immutableFixtureMarker === prefix, "Conflict review overwrote projection provenance.");
+  assert(finalReceipts.length === 8, `Expected eight reconciliation/review receipts; found ${finalReceipts.length}.`);
+  assert(finalReceipts.every((receipt) => receipt.externalMutated === false), "A local read/review receipt claimed provider mutation.");
+  assert(!JSON.stringify(finalReceipts).includes(`${prefix}-event`), "Conflict review receipts leaked provider event identity.");
+
   operation = {
     full: { mode: full.mode, conflictCount: full.conflictCount, encryptedCursor: fullCursorRef.startsWith("sync-v1.") },
     incremental: { mode: incremental.mode, conflictCount: incremental.conflictCount, projectionStatus: savedProjection.status },
     staleRetrySuperseded: staleRetry.superseded,
-    receiptCount: receipts.length,
+    conflictReview: {
+      preparedStatus: prepared.status,
+      exactReplayReusedReceipt: preparedReplay.receiptId === prepared.receiptId,
+      externalDeletionReason: deletionReason,
+      unrelatedActorDenied,
+      stoppedStatus: stopped.status,
+      stoppedProjectionIgnoredByLaterRead: afterStopRead.conflictCount === 0,
+    },
+    receiptCount: finalReceipts.length,
     providerCallsPerformed: false,
     plaintextCursorStored: savedCursor.syncTokenRef.includes("incremental-sync-token"),
     existingProjectionMetadataPreserved: object(savedProjection.metadataJson).immutableFixtureMarker === prefix,

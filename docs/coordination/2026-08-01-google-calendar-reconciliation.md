@@ -69,6 +69,34 @@ On 410, Quipsly discards the provider-derived cursor and obtains a fresh full
 snapshot. It preserves canonical Sessions and projections, marking discrepancies
 for human review rather than deleting either side.
 
+## Human conflict review
+
+Schedule now exposes each unresolved provider-version conflict as a bounded,
+canonical Session decision. The response includes the Session and selected
+calendar lane, a safe reason, observation time, opaque conflict version, and
+the intents the current actor may use. It never returns the Google event ID,
+etag, event body, attendee list, or credential.
+
+There are deliberately only two decisions:
+
+- **Prepare Quipsly preview** is available only for an active projected event
+  whose Google etag changed. It clears the local conflict to `PLANNED`, leaves
+  Google unchanged, and places that exact Session and calendar lane into the
+  existing preview-before-write surface. The later update remains a separate,
+  explicit action using Google's stored etag as `If-Match`; a second provider
+  edit therefore fails closed as another conflict.
+- **Stop linking · leave Google unchanged** is available for every conflict.
+  It changes the local projection to `REVOKED / NONE`, preserves provider
+  identity/version evidence for audit, and excludes the projection from future
+  reconciliation. It neither deletes nor updates the Google event.
+
+Quipsly does not offer an “accept Google” decision because provider content is
+intentionally outside the adapter. A person may inspect or edit the canonical
+Session separately. Read-only collaborators can inspect a conflict but cannot
+resolve it. Decisions are actor-owned, permission-rechecked inside a serializable
+transaction, version-bound, idempotent, advisory-locked, and append a local-only
+`VERIFY` receipt with `externalMutated=false`.
+
 ## Authority, concurrency, and receipts
 
 The route authenticates the actor and proves that the Google connection is
@@ -104,7 +132,12 @@ Observed readback:
 - incremental provider etag change: exactly one conflict;
 - stale concurrent retry: superseded with no extra receipt;
 - durable projection: `CONFLICT / EXTERNAL_CHANGED` with new provider etag;
-- receipt count: three (full, event conflict, incremental);
+- provider-version review: local `PLANNED`, with an exact retry reusing the
+  same receipt;
+- provider cancellation review: unrelated connection owner denied, then local
+  `REVOKED` with Google unchanged;
+- a later provider read ignored the stopped projection;
+- receipt count: eight across reconciliation and human review;
 - plaintext cursor stored: false;
 - provider event identity present in receipts: false;
 - existing projection provenance preserved: true;
@@ -112,19 +145,26 @@ Observed readback:
 - cleanup: zero connections, cursors, receipts, Sessions, projects,
   workspaces, or people remained.
 
+A rendered client-component journey supplied a connected/conflicted provider
+response, operated **Prepare Quipsly preview**, and proved that an older Session
+remains selected and reachable after the conflict list refreshes. The real
+authenticated local Calendar page was also operated under a retained QA account;
+because no Calendar OAuth configuration was present, it correctly rendered the
+unconfigured boundary rather than manufacturing provider state.
+
 No real Google account, event, or calendar was read or changed.
 
 ## Verification
 
-- focused OAuth, reconciliation, connection, Session projection, and shared
-  project-access coverage: 7 suites / 49 tests pass;
-- complete Nest regression: 215 suites / 1,106 tests pass; 35 suites / 105
+- focused conflict review, reconciliation route, Session projection, and
+  rendered UX coverage: 6 suites / 37 tests pass;
+- complete Nest regression: 218 suites / 1,118 tests pass; 35 suites / 105
   tests remain explicitly skipped by existing repository contracts;
 - strict Quipsly TypeScript: pass;
 - shared iPhone/Nest source contract: 81/81 pass;
 - operated PostgreSQL reconciliation and cleanup: pass;
-- optimized Next.js production build: pass, with 156 static pages generated and
-  the reconciliation route collected;
+- optimized Next.js production build: pass, with 157 static pages generated and
+  both reconciliation and conflict-review routes collected;
 - Capture App Store static contract: 949/949 pass; and
 - App Store Connect operator/readback contracts: 11/11 pass.
 

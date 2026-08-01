@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarCheck2, CalendarX2, Link2, RefreshCcw, ShieldOff } from "lucide-react";
+import { AlertTriangle, CalendarCheck2, CalendarX2, Link2, RefreshCcw, ShieldOff, Unlink } from "lucide-react";
 
 type Purpose = "COACHING" | "PODCAST_PRODUCTION" | "PERSONAL_COMMITMENTS";
 type Project = { id: string; name: string };
@@ -61,6 +61,25 @@ type ProjectionPreview = {
     privateSessionContentIncluded: false;
   };
 };
+type CalendarConflict = {
+  projectionId: string;
+  collection: { id: string; displayName: string; purpose: Purpose };
+  session: {
+    id: string;
+    title: string;
+    purpose: string;
+    projectId: string | null;
+    status: string;
+    scheduledStart: string | null;
+    scheduledEnd: string | null;
+    timezone: string | null;
+  };
+  reason: string;
+  observedAt: string;
+  conflictVersion: string;
+  allowedIntents: Array<"PREPARE_QUIPSLY_UPDATE" | "STOP_PROJECTING">;
+  providerContentImported: false;
+};
 
 const RESULT_MESSAGES: Record<string, string> = {
   connected: "Google Calendar connected. Choose exactly where each Quipsly lane may project events.",
@@ -91,6 +110,8 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
   const [projectionSessionId, setProjectionSessionId] = useState(sessions[0]?.id ?? "");
   const [projectionCollectionId, setProjectionCollectionId] = useState("");
   const [projectionPreview, setProjectionPreview] = useState<ProjectionPreview | null>(null);
+  const [conflicts, setConflicts] = useState<CalendarConflict[]>([]);
+  const [preparedConflictSession, setPreparedConflictSession] = useState<SessionChoice | null>(null);
 
   async function refresh() {
     setBusy(true);
@@ -99,7 +120,17 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not read Google Calendar.");
       const next = body as State & { ok: true };
+      let nextConflicts: CalendarConflict[] = [];
+      if (next.connection) {
+        const conflictResponse = await fetch("/api/calendar/connections/google/conflicts", { cache: "no-store" });
+        const conflictBody = await conflictResponse.json().catch(() => null);
+        if (!conflictResponse.ok || !conflictBody?.ok) {
+          throw new Error(conflictBody?.error || "Could not load Google Calendar conflicts.");
+        }
+        nextConflicts = conflictBody.conflicts;
+      }
       setState({ connection: next.connection, calendars: next.calendars, selections: next.selections });
+      setConflicts(nextConflicts);
       setCalendarId((current) => current || next.calendars.find((calendar) => calendar.primary)?.id || next.calendars[0]?.id || "");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not read Google Calendar.");
@@ -116,7 +147,24 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
   }, []);
 
   const selectedCalendar = state.calendars.find((calendar) => calendar.id === calendarId);
-  const projectionSession = sessions.find((session) => session.id === projectionSessionId) || null;
+  const sessionChoices = [...sessions];
+  if (preparedConflictSession && !sessionChoices.some((session) => session.id === preparedConflictSession.id)) {
+    sessionChoices.push(preparedConflictSession);
+  }
+  for (const conflict of conflicts) {
+    if (!conflict.session.scheduledStart || sessionChoices.some((session) => session.id === conflict.session.id)) continue;
+    sessionChoices.push({
+      id: conflict.session.id,
+      title: conflict.session.title,
+      purpose: conflict.session.purpose,
+      projectId: conflict.session.projectId,
+      status: conflict.session.status,
+      scheduledStart: conflict.session.scheduledStart,
+      scheduledEnd: conflict.session.scheduledEnd,
+      scheduledTimezone: conflict.session.timezone,
+    });
+  }
+  const projectionSession = sessionChoices.find((session) => session.id === projectionSessionId) || null;
   const eligibleProjectionCollections = state.selections.filter((selection) => {
     if (!projectionSession) return false;
     if (projectionSession.purpose === "PODCAST") {
@@ -162,6 +210,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not disconnect Google Calendar.");
       setState({ connection: null, calendars: [], selections: [] });
+      setConflicts([]);
       setCalendarId("");
       setMessage("Google Calendar disconnected. The provider grant was revoked and the saved credential was erased.");
     } catch (error) {
@@ -196,6 +245,73 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
     } finally {
       setBusy(false);
     }
+  }
+
+  async function reviewConflict(
+    conflict: CalendarConflict,
+    intent: "PREPARE_QUIPSLY_UPDATE" | "STOP_PROJECTING",
+  ) {
+    if (
+      intent === "STOP_PROJECTING"
+      && !window.confirm("Stop linking this Session to the selected Google calendar? Quipsly will leave the Google event unchanged and retain an audit receipt.")
+    ) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/calendar/connections/google/conflicts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectionId: conflict.projectionId,
+          expectedConflictVersion: conflict.conflictVersion,
+          intent,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not record the conflict decision.");
+      if (intent === "PREPARE_QUIPSLY_UPDATE") {
+        if (!conflict.session.scheduledStart) {
+          throw new Error("This Session no longer has a scheduled start, so Quipsly cannot prepare a calendar preview.");
+        }
+        setPreparedConflictSession({
+          id: conflict.session.id,
+          title: conflict.session.title,
+          purpose: conflict.session.purpose,
+          projectId: conflict.session.projectId,
+          status: conflict.session.status,
+          scheduledStart: conflict.session.scheduledStart,
+          scheduledEnd: conflict.session.scheduledEnd,
+          scheduledTimezone: conflict.session.timezone,
+        });
+        setProjectionSessionId(conflict.session.id);
+        setProjectionCollectionId(conflict.collection.id);
+        setProjectionPreview(null);
+        setMessage("Conflict reviewed. Google is unchanged. Preview the current Quipsly Session below before deciding whether to update Google.");
+      } else {
+        setMessage("Projection stopped. Google was not changed; Quipsly retained the provider version and a local review receipt for audit.");
+      }
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not record the conflict decision.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function conflictExplanation(reason: string) {
+    if (["provider-version-changed", "etag-conflict"].includes(reason)) {
+      return "Google has a newer event version. Quipsly did not import its title, description, or attendees.";
+    }
+    if (["provider-event-cancelled", "provider-event-missing"].includes(reason)) {
+      return "The projected Google event is absent or canceled. The Quipsly Session remains intact.";
+    }
+    if (reason === "provider-event-restored") {
+      return "Google has an active event after Quipsly recorded cancellation. Neither side was overwritten.";
+    }
+    if (reason === "provider-identity-mismatch") {
+      return "The provider event no longer carries the exact Quipsly linkage. Quipsly will not overwrite an uncertain identity.";
+    }
+    return "Google or Quipsly changed after the last verified projection. Review is required before another provider write.";
   }
 
   async function previewSessionProjection() {
@@ -368,6 +484,52 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
         </div>
       )}
 
+      {state.connection && conflicts.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4" role="region" aria-labelledby="google-calendar-conflicts-heading">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 shrink-0 text-amber-800" size={20} aria-hidden="true" />
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-900">Human review required</p>
+              <h3 id="google-calendar-conflicts-heading" className="mt-1 font-serif text-2xl font-black text-[#493914]">Google Calendar changes need a decision</h3>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-[#6f5a24]">Quipsly read only provider identity and version evidence. It did not import event content or change either calendar.</p>
+            </div>
+          </div>
+          <ul className="mt-4 space-y-3">
+            {conflicts.map((conflict) => (
+              <li key={conflict.projectionId} className="rounded-2xl border border-amber-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{conflict.collection.displayName}</p>
+                    <h4 className="mt-1 font-black text-[#493914]">{conflict.session.title}</h4>
+                    {conflict.session.scheduledStart && (
+                      <p className="mt-1 text-xs font-semibold text-[#6f5a24]">{new Date(conflict.session.scheduledStart).toLocaleString()} · {conflict.session.timezone || "Session timezone"}</p>
+                    )}
+                  </div>
+                  <a href={`/sessions/${encodeURIComponent(conflict.session.id)}`} className="inline-flex min-h-11 items-center rounded-full border border-amber-200 px-3 py-2 text-[11px] font-black text-[#6f5a24]">Open Session</a>
+                </div>
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-relaxed text-[#6f5a24]">{conflictExplanation(conflict.reason)}</p>
+                {conflict.allowedIntents.length === 0 ? (
+                  <p className="mt-3 text-xs font-bold text-amber-900">You can inspect this conflict, but current Session edit access is required to resolve it.</p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {conflict.allowedIntents.includes("PREPARE_QUIPSLY_UPDATE") && (
+                      <button type="button" onClick={() => void reviewConflict(conflict, "PREPARE_QUIPSLY_UPDATE")} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#493914] px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+                        <CalendarCheck2 size={14} aria-hidden="true" />Prepare Quipsly preview
+                      </button>
+                    )}
+                    {conflict.allowedIntents.includes("STOP_PROJECTING") && (
+                      <button type="button" onClick={() => void reviewConflict(conflict, "STOP_PROJECTING")} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black text-[#6f5a24] disabled:opacity-50">
+                        <Unlink size={14} aria-hidden="true" />Stop linking · leave Google unchanged
+                      </button>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {state.connection && (
         <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-800">Preview before provider write</p>
@@ -378,8 +540,8 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="text-[10px] font-black uppercase tracking-wide text-[#4e685d]">Scheduled Session
               <select value={projectionSessionId} onChange={(event) => setProjectionSessionId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-[#263f34]">
-                {sessions.length === 0 && <option value="">No upcoming Sessions</option>}
-                {sessions.map((session) => (
+                {sessionChoices.length === 0 && <option value="">No upcoming Sessions</option>}
+                {sessionChoices.map((session) => (
                   <option key={session.id} value={session.id}>{session.status === "CANCELED" ? "Canceled · " : ""}{session.title} · {new Date(session.scheduledStart).toLocaleString()}</option>
                 ))}
               </select>

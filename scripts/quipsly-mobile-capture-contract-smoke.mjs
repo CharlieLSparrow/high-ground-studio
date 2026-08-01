@@ -1674,6 +1674,8 @@ function checkGoogleCalendarReconciliationContractSources() {
   const oauthText = sourceText("apps/quipsly/src/lib/server/google-calendar-oauth.ts");
   const reconciliationText = sourceText("apps/quipsly/src/lib/server/google-calendar-reconciliation.ts");
   const routeText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/reconcile/route.ts");
+  const conflictReviewText = sourceText("apps/quipsly/src/lib/server/google-calendar-conflict-review.ts");
+  const conflictRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/conflicts/route.ts");
   const connectionRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/route.ts");
   const managerText = sourceText("apps/quipsly/src/app/(app)/schedule/google-calendar-connection-manager.tsx");
   const dogfoodText = sourceText("scripts/quipsly-local-calendar-reconciliation-dogfood.mjs");
@@ -1688,16 +1690,34 @@ function checkGoogleCalendarReconciliationContractSources() {
       && reconciliationText.includes("revalidateTeamWriteAccess")
       && reconciliationText.includes("(cursor?.syncTokenRef || null) !== input.priorCursorRef")
       && reconciliationText.includes("importedProviderContent: false")
+      && reconciliationText.includes('status: { not: "REVOKED" }')
       && routeText.includes('action: "write"')
       && routeText.includes('code: "calendar-reconciliation-superseded"')
       && routeText.includes("externalSideEffects: false")
+      && conflictReviewText.includes('"PREPARE_QUIPSLY_UPDATE"')
+      && conflictReviewText.includes('"STOP_PROJECTING"')
+      && conflictReviewText.includes("sessionMutationAccessWhere")
+      && conflictReviewText.includes("google-calendar-conflict:${input.projectionId}")
+      && conflictReviewText.includes('operation: "VERIFY"')
+      && conflictReviewText.includes("idempotentReplay: true")
+      && conflictReviewText.includes("providerContentImported: false")
+      && conflictRouteText.includes("sessionAccessWhere")
+      && conflictRouteText.includes("sessionMutationAccessWhere")
+      && conflictRouteText.includes("providerContentImported: false")
+      && conflictRouteText.includes("externalSideEffects: false")
       && connectionRouteText.includes("lastIncrementalSyncAt: true")
       && !connectionRouteText.includes("syncTokenRef: true")
       && managerText.includes("Check Google changes")
       && managerText.includes("no Google event was changed")
+      && managerText.includes("Human review required")
+      && managerText.includes("Prepare Quipsly preview")
+      && managerText.includes("Stop linking · leave Google unchanged")
       && dogfoodText.includes("persistGoogleCalendarReconciliation")
       && dogfoodText.includes("staleRetrySuperseded")
       && dogfoodText.includes("providerCallsPerformed: false")
+      && dogfoodText.includes("exactReplayReusedReceipt")
+      && dogfoodText.includes("unrelatedActorDenied")
+      && dogfoodText.includes("stoppedProjectionIgnoredByLaterRead")
       && dogfoodText.includes("plaintextCursorStored"),
     "googleCalendarReconciliationAuthority",
     "Google Calendar reconciliation persists encrypted cursors, imports only provider identity/version state, handles deletions and expired cursors, rechecks team authority, rejects stale writes, exposes an explicit non-mutating check, and is proven against disposable PostgreSQL fixtures.",

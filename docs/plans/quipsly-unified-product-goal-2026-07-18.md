@@ -6056,3 +6056,37 @@ was restored.
   channels remain a later renewable wake-up for this exact reconciliation
   path. Full evidence is in
   `docs/coordination/2026-08-01-google-calendar-reconciliation.md`.
+
+### Google Calendar conflict review checkpoint — 2026-08-01
+
+- Schedule now turns unresolved provider-version evidence into a bounded human
+  review queue over canonical Sessions rather than stopping at a count.
+- **Prepare Quipsly preview** is limited to active etag/version conflicts. It
+  changes only local projection state, keeps Google unchanged, and routes the
+  exact Session and calendar lane into the existing preview-before-write flow.
+  Even an older Session outside the ordinary upcoming list remains reachable
+  after the conflict list refreshes.
+- **Stop linking · leave Google unchanged** records `REVOKED / NONE`, preserves
+  provider identity/version evidence for audit, and prevents future
+  reconciliation or preview from reactivating that projection.
+- Quipsly intentionally does not offer “accept Google”: reconciliation never
+  imports provider titles, descriptions, attendees, or other event content.
+  Conflict responses and receipts likewise omit provider event identity, etag,
+  credentials, and cursors.
+- Decisions are actor-connection-owned, conflict-version-bound, idempotent,
+  advisory-locked, and mutation-authority-rechecked inside one serializable
+  transaction. Read-only collaborators can inspect but not resolve.
+- Disposable PostgreSQL operation proved prepare, exact replay, cancellation,
+  unrelated-actor denial, stop, later-read exclusion, eight local-only receipts,
+  metadata preservation, and complete cleanup. The rendered component journey
+  proved the older-Session preview path; authenticated local Calendar operation
+  truthfully stopped at missing OAuth configuration rather than fabricating a
+  provider.
+- Verification passes 6 focused suites / 37 tests, the complete 218-suite /
+  1,118-test Nest regression, strict TypeScript, the 157-page optimized build,
+  the shared iPhone/Nest source contract, 949/949 App Store static checks, and
+  11/11 App Store Connect operator contracts.
+- Dedicated QA Google Calendar consent and real edit/delete/conditional-update
+  operation remain the provider acceptance gate. No provider account, event, or
+  calendar was read or mutated here. Full evidence is in
+  `docs/coordination/2026-08-01-google-calendar-conflict-review.md`.

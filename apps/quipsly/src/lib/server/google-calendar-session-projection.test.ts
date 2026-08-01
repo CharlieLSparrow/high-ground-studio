@@ -55,6 +55,9 @@ describe("Session Google Calendar projection", () => {
     expect(buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED"), existing: existing() }).action).toBe("CANCEL");
     expect(buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED"), existing: existing({ status: "CANCELED" }) }).action).toBe("NOOP");
     expect(buildSessionCalendarProjectionPreview({ snapshot: current, existing: existing({ conflictState: "EXTERNAL_CHANGED" }) }).action).toBe("BLOCKED");
+    const stopped = buildSessionCalendarProjectionPreview({ snapshot: current, existing: existing({ status: "REVOKED" }) });
+    expect(stopped.action).toBe("BLOCKED");
+    expect(stopped.warning).toContain("no longer linked");
   });
 
   it("creates one deterministic event with notifications off and no attendees", async () => {
