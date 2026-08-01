@@ -5924,3 +5924,33 @@ was restored.
 - Human playback review and the subsequent double Studio import remain open.
   Full evidence is in
   `docs/coordination/2026-08-01-transcript-reviewed-as-is-architecture.md`.
+
+### Reviewed transcript packet snapshot checkpoint — 2026-08-01
+
+- Packet v3 now builds coaching and podcast summaries, highlights, review
+  lanes, goal candidates, and task candidates from the canonical reviewed
+  transcript projection. Accepted corrections change packet text/speaker;
+  confirmed-as-is receipts advance review state without altering provider text.
+- Each packet stores a cryptographic snapshot over provider/resolved hashes,
+  timing, speaker, review status, and accepted review/correction identities.
+  Correction, verification, packet build, lane review, goal review, and task
+  review writers share a transcript-job advisory lock.
+- When transcript review changes, the old packet becomes
+  `TRANSCRIPT_REVIEW_CHANGED`. It stays inspectable but all decision controls
+  lock until **Build current packet** creates a new append-only version. Exact
+  replay reuses the current packet.
+- A real retained HGO operation exposed and fixed packet POST's missing Nest
+  project-grant authorization. The same account that could read the Session can
+  now build its packet through the shared access predicate.
+- Local packet `a5ca88af-81bd-4749-9758-1c355ac9b824` rebuilt the legacy source
+  into packet v3 with snapshot
+  `4fe2cb95937443aea6f35ad0b837a7ad035ecae156ae643dd9c23b5f057c643d`.
+  Readback retained five provider-only segments, zero invented reviews,
+  `packetStale=false`, and an idempotent same-ID replay.
+- Focused coverage passes 6 suites / 63 tests, the full Nest suite passes 205
+  suites / 1,047 tests, TypeScript and the 152-page optimized build pass, and
+  the Capture contract smoke passes. No goal, task, assignment, delivery,
+  calendar event, message, or publication was created.
+- Human playback review followed by stale-lock/new-packet/canonical-work
+  acceptance remains open. Full evidence is in
+  `docs/coordination/2026-08-01-reviewed-transcript-packet-snapshots.md`.

@@ -314,7 +314,7 @@ describe("transcript correction desk", () => {
     });
 
     expect(result).toMatchObject({ ok: true, idempotentReplay: false, correction: { status: "accepted" } });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.transcriptCorrection.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: "accepted",
       baseTextSha256: sha256(providerText),
@@ -347,7 +347,7 @@ describe("transcript correction desk", () => {
       idempotentReplay: false,
       verification: { id: "verification-1", reviewKind: "confirmed-as-is" },
     });
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.transcriptSegmentVerification.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       roomId: "room-1",
       transcriptJobId: "job-1",
@@ -401,7 +401,7 @@ describe("transcript correction desk", () => {
       playbackPositionSeconds: 13.5,
     });
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
       ok: true,
       idempotentReplay: true,

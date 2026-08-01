@@ -1,12 +1,17 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
+
 import {
   buildCoachingPacketFromTranscriptJob,
   buildTranscriptPacketBrief,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
+  packetSnapshotMatches,
+  projectTranscriptSegmentsForPacket,
   reviewLaneDefinitionsForPurpose,
   selectLatestCorrelatedPacketNotes,
+  transcriptPacketSnapshot,
 } from "./coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "./mobile-capture-processing-gates";
 
@@ -93,7 +98,7 @@ describe("transcript coaching packet action review boundary", () => {
     expect(summaryWrite).toMatchObject({ visibility: "AUTHOR_PRIVATE" });
     expect(summaryWrite?.sourceJson).toMatchObject({
       packetPurpose: "COACHING",
-      packetTemplateVersion: "quipsly-session-packet-v2",
+      packetTemplateVersion: "quipsly-session-packet-v3",
     });
     expect(summaryWrite?.sourceJson.packetBrief).toMatchObject({
       kind: "quipsly-transcript-packet-brief-v1",
@@ -133,6 +138,69 @@ describe("transcript coaching packet action review boundary", () => {
     ]);
     expect(coaching).not.toContain("podcast-production");
     expect(podcast).not.toContain("client-follow-up");
+  });
+
+  it("builds packet text from accepted review overlays and hashes the exact review snapshot", () => {
+    const providerText = "I will send the outline before next time.";
+    const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
+    const segments = [{
+      id: "segment-action",
+      speakerLabel: "Speaker 0",
+      startSeconds: 12,
+      endSeconds: 18,
+      text: providerText,
+      confidence: 0.98,
+      corrections: [{
+        id: "correction-1",
+        status: "accepted",
+        baseTextSha256: providerTextSha256,
+        expectedSpeakerLabel: "Speaker 0",
+        correctedText: "I will send the finished outline before next time.",
+        correctedSpeakerLabel: "Charlie",
+        updatedAt: new Date("2026-08-01T23:40:00.000Z"),
+      }],
+      verifications: [],
+    }];
+
+    expect(projectTranscriptSegmentsForPacket(segments)).toEqual([expect.objectContaining({
+      text: "I will send the finished outline before next time.",
+      speakerLabel: "Charlie",
+      providerText,
+      providerTextSha256,
+      reviewStatus: "human-reviewed",
+      acceptedReviewId: "correction-1",
+      acceptedCorrectionId: "correction-1",
+    })]);
+    const snapshot = transcriptPacketSnapshot(segments);
+    const persisted = { transcriptSnapshot: { ...snapshot, projected: undefined } };
+    expect(snapshot).toMatchObject({ segmentCount: 1, humanReviewedSegmentCount: 1, providerOnlySegmentCount: 0 });
+    expect(packetSnapshotMatches(persisted, segments)).toBe(true);
+    expect(packetSnapshotMatches(persisted, [{ ...segments[0], corrections: [] }])).toBe(false);
+  });
+
+  it("records confirmed-as-is as reviewed without changing provider packet text", () => {
+    const providerText = "That gives the episode a much clearer shape.";
+    const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
+    const projected = projectTranscriptSegmentsForPacket([{
+      id: "segment-context",
+      speakerLabel: "Homer",
+      startSeconds: 19,
+      endSeconds: 24,
+      text: providerText,
+      verifications: [{
+        id: "verification-1",
+        reviewKind: "confirmed-as-is",
+        providerTextSha256,
+        providerSpeakerLabel: "Homer",
+        createdAt: new Date("2026-08-01T23:41:00.000Z"),
+      }],
+    }]);
+    expect(projected[0]).toMatchObject({
+      text: providerText,
+      reviewStatus: "human-reviewed",
+      acceptedReviewId: "verification-1",
+      acceptedCorrectionId: null,
+    });
   });
 
   it("keeps decisions, goals, questions, commitments, and key moments in separate source-linked candidate lanes", () => {
@@ -300,5 +368,44 @@ describe("transcript coaching packet action review boundary", () => {
     ]);
     expect(legacySelected.correlationMode).toBe("LEGACY_TRANSCRIPT_FALLBACK");
     expect(legacySelected.highlights.map((note) => note.id)).toEqual(["legacy-highlight"]);
+  });
+
+  it("reuses an identical snapshot but automatically versions the packet after transcript review changes", async () => {
+    const job = completedTranscriptJob();
+    const summaries: any[] = [];
+    let latestSummary: any = null;
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => {
+      const note = { id: `note-${summaries.length + 1}`, ...data, createdAt: new Date(), updatedAt: new Date() };
+      if (data.kind === "SUMMARY") {
+        latestSummary = { ...note, actionItems: [] };
+        summaries.push(latestSummary);
+      }
+      return note;
+    });
+    const prisma = {
+      transcriptJob: { findUnique: jest.fn(async () => job) },
+      coachingNote: { findFirst: jest.fn(async () => latestSummary), create: coachingNoteCreate },
+    };
+
+    const first = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" }) as any;
+    const replay = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" }) as any;
+    expect(replay).toMatchObject({ reusedExistingPacket: true, packetBuildId: first.packetBuildId });
+
+    const provider = job.segments[0];
+    (provider as any).corrections = [{
+      id: "correction-later",
+      status: "accepted",
+      baseTextSha256: createHash("sha256").update(provider.text).digest("hex"),
+      expectedSpeakerLabel: provider.speakerLabel,
+      correctedText: "I will send the finished outline before next time.",
+      correctedSpeakerLabel: provider.speakerLabel,
+      updatedAt: new Date("2026-08-01T23:50:00.000Z"),
+    }];
+    const rebuilt = await buildCoachingPacketFromTranscriptJob({ prisma, transcriptJobId: job.id, authorUserId: "coach-1" }) as any;
+    expect(rebuilt).toMatchObject({ reusedExistingPacket: false, rebuiltForTranscriptReviewChange: true });
+    expect(rebuilt.packetBuildId).not.toBe(first.packetBuildId);
+    expect(summaries).toHaveLength(2);
+    expect(summaries[1].body).toContain("I will send the finished outline before next time.");
+    expect(summaries[1].sourceJson.transcriptReviewCoverage).toMatchObject({ humanReviewedSegmentCount: 1, providerOnlySegmentCount: 1 });
   });
 });

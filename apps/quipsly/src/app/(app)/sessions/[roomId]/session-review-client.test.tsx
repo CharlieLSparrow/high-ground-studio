@@ -267,6 +267,41 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Inspect exact saved packet text")).toBeInTheDocument();
   });
 
+  it("locks stale packet decisions and offers an append-only rebuild from current transcript review", async () => {
+    const stale = packet();
+    stale.packet = {
+      ...stale.packet!,
+      status: "TRANSCRIPT_REVIEW_CHANGED",
+      transcriptReview: {
+        snapshotSha256: "b".repeat(64),
+        segmentCount: 1,
+        humanReviewedSegmentCount: 1,
+        providerOnlySegmentCount: 0,
+        fullyHumanReviewed: true,
+        packetStale: true,
+      },
+      safeActions: [{
+        id: "build-review-packet",
+        label: "Build review packet",
+        enabled: true,
+        risk: "medium",
+        why: "Transcript review changed.",
+        boundary: "Creates a new internal review packet only.",
+      }],
+      nextAction: "Build a new packet before accepting any candidate.",
+    };
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse(stale));
+    global.fetch = fetchMock as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findByText("Transcript review changed after this packet was built.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build current packet" })).toBeInTheDocument();
+    expect(screen.getByText(/Task review is held because this packet predates/i)).toBeInTheDocument();
+    expect(screen.getByText(/Goal review is held because this packet predates/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();
+  });
+
   it("accepts only through the packet review ledger and preserves its success readback", async () => {
     const accepted: SessionReviewGoalCandidate = { ...candidate, reviewStatus: "ACCEPTED_AS_GOAL", humanApprovalRequired: false, committedGoalId: "goal-1" };
     const fetchMock = jest.fn()

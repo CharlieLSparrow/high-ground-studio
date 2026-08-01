@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { POST } from "./route";
@@ -44,6 +45,17 @@ function actionCandidate() {
 }
 
 function createPrismaHarness() {
+  const segments = [{
+    id: "segment-1",
+    segmentIndex: 0,
+    speakerLabel: "Charlie",
+    startSeconds: 12,
+    endSeconds: 18,
+    text: "I will send the revised episode outline.",
+    corrections: [],
+    verifications: [],
+  }];
+  const { projected: _projected, ...transcriptSnapshot } = transcriptPacketSnapshot(segments);
   const summary = {
     id: SUMMARY_NOTE_ID,
     kind: "SUMMARY",
@@ -57,6 +69,7 @@ function createPrismaHarness() {
       recordingAssetId: RECORDING_ASSET_ID,
       roomId: ROOM_ID,
       packetBuildId: PACKET_BUILD_ID,
+      transcriptSnapshot,
       actionCandidates: [actionCandidate()],
       actionCandidateReviewReceipts: [],
     } as Record<string, unknown>,
@@ -78,6 +91,7 @@ function createPrismaHarness() {
               assetId: RECORDING_ASSET_ID,
               status: "COMPLETED",
               asset: { id: RECORDING_ASSET_ID, roomId: ROOM_ID },
+              segments,
             }
           : null
       )),

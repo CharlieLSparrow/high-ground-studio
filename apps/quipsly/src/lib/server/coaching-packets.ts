@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
   TRANSCRIPT_PACKET_SOURCE,
@@ -21,7 +21,8 @@ type BuildCoachingPacketArgs = {
 
 type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
 
-const SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v2";
+const SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v3";
+export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1";
 
 const ACTION_PATTERNS = [
   /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
@@ -117,6 +118,110 @@ export function reviewLaneDefinitionsForPurpose(value: unknown) {
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function packetSha256(value: string) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function reviewTime(value: unknown) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value !== "string" && typeof value !== "number") return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export type PacketTranscriptSegment = {
+  id: string;
+  speakerLabel: string | null;
+  startSeconds: number;
+  endSeconds: number;
+  text: string;
+  confidence: number | null;
+  providerText: string;
+  providerSpeakerLabel: string | null;
+  providerTextSha256: string;
+  reviewStatus: "provider" | "human-reviewed";
+  acceptedReviewId: string | null;
+  acceptedCorrectionId: string | null;
+};
+
+/**
+ * Resolves immutable provider segments into the exact text packet builders may
+ * read. Accepted corrections are overlays; a current confirmed-as-is receipt
+ * advances review status without changing provider text.
+ */
+export function projectTranscriptSegmentsForPacket(segments: unknown): PacketTranscriptSegment[] {
+  return (Array.isArray(segments) ? segments : []).map((segment) => {
+    const providerText = typeof segment?.text === "string" ? segment.text : "";
+    const providerSpeakerLabel = cleanText(segment?.speakerLabel) || null;
+    const providerTextSha256 = packetSha256(providerText);
+    const acceptedCorrection = [...(Array.isArray(segment?.corrections) ? segment.corrections : [])]
+      .filter((correction) => correction?.status === "accepted"
+        && correction?.baseTextSha256 === providerTextSha256
+        && (cleanText(correction?.expectedSpeakerLabel) || null) === providerSpeakerLabel)
+      .sort((left, right) => reviewTime(right?.updatedAt) - reviewTime(left?.updatedAt))[0] ?? null;
+    const acceptedVerification = acceptedCorrection ? null : [...(Array.isArray(segment?.verifications) ? segment.verifications : [])]
+      .filter((verification) => verification?.reviewKind === "confirmed-as-is"
+        && verification?.providerTextSha256 === providerTextSha256
+        && (cleanText(verification?.providerSpeakerLabel) || null) === providerSpeakerLabel)
+      .sort((left, right) => reviewTime(right?.createdAt) - reviewTime(left?.createdAt))[0] ?? null;
+    const correctedText = cleanText(acceptedCorrection?.correctedText);
+    const correctedSpeaker = cleanText(acceptedCorrection?.correctedSpeakerLabel);
+    const acceptedReviewId = cleanText(acceptedCorrection?.id) || cleanText(acceptedVerification?.id) || null;
+
+    return {
+      id: String(segment?.id ?? ""),
+      speakerLabel: correctedSpeaker || providerSpeakerLabel,
+      startSeconds: Number(segment?.startSeconds),
+      endSeconds: Number(segment?.endSeconds),
+      text: correctedText || cleanText(providerText),
+      confidence: typeof segment?.confidence === "number" ? segment.confidence : null,
+      providerText,
+      providerSpeakerLabel,
+      providerTextSha256,
+      reviewStatus: acceptedReviewId ? "human-reviewed" : "provider",
+      acceptedReviewId,
+      acceptedCorrectionId: cleanText(acceptedCorrection?.id) || null,
+    };
+  });
+}
+
+export function transcriptPacketSnapshot(segments: unknown) {
+  const projected = projectTranscriptSegmentsForPacket(segments);
+  const segmentReviews = projected.map((segment) => ({
+    segmentId: segment.id,
+    providerTextSha256: segment.providerTextSha256,
+    resolvedTextSha256: packetSha256(segment.text),
+    resolvedSpeakerLabel: segment.speakerLabel,
+    acceptedReviewId: segment.acceptedReviewId,
+    acceptedCorrectionId: segment.acceptedCorrectionId,
+    reviewStatus: segment.reviewStatus,
+    startSeconds: segment.startSeconds,
+    endSeconds: segment.endSeconds,
+  }));
+  const sha256 = packetSha256(JSON.stringify(segmentReviews));
+  return {
+    schema: TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA,
+    sha256,
+    segmentCount: projected.length,
+    humanReviewedSegmentCount: projected.filter((segment) => segment.reviewStatus === "human-reviewed").length,
+    providerOnlySegmentCount: projected.filter((segment) => segment.reviewStatus === "provider").length,
+    segmentReviews,
+    projected,
+  };
+}
+
+export function packetSnapshotMatches(sourceJson: unknown, segments: unknown) {
+  const source = typeof sourceJson === "object" && sourceJson !== null && !Array.isArray(sourceJson)
+    ? sourceJson as Record<string, unknown>
+    : {};
+  const snapshot = typeof source.transcriptSnapshot === "object" && source.transcriptSnapshot !== null && !Array.isArray(source.transcriptSnapshot)
+    ? source.transcriptSnapshot as Record<string, unknown>
+    : {};
+  const current = transcriptPacketSnapshot(segments);
+  return snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA
+    && snapshot.sha256 === current.sha256;
 }
 
 function noteTime(value: unknown) {
@@ -419,7 +524,16 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     include: {
       room: { include: { booking: true } },
       asset: true,
-      segments: { orderBy: { startSeconds: "asc" } },
+      segments: {
+        orderBy: { startSeconds: "asc" },
+        include: {
+          corrections: {
+            where: { status: "accepted" },
+            orderBy: { updatedAt: "desc" },
+          },
+          verifications: { orderBy: { createdAt: "desc" } },
+        },
+      },
     },
   });
 
@@ -453,6 +567,10 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     return { ok: false, status: 409, error: "Transcript has no segments to turn into a coaching packet." };
   }
 
+  const transcriptSnapshot = transcriptPacketSnapshot(job.segments);
+  const packetSegments = transcriptSnapshot.projected;
+  const { projected: _projected, ...transcriptSnapshotEvidence } = transcriptSnapshot;
+
   const packetTitle = `Transcript packet: ${job.id}`;
   const purpose = packetPurpose(job.room?.purpose);
   const existing = await args.prisma.coachingNote.findFirst({
@@ -465,7 +583,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     orderBy: { createdAt: "desc" },
   });
 
-  if (existing && !args.force) {
+  if (existing && !args.force && packetSnapshotMatches(existing.sourceJson, job.segments)) {
     const existingSource = typeof existing.sourceJson === "object" && existing.sourceJson !== null
       ? existing.sourceJson as Record<string, any>
       : {};
@@ -491,16 +609,19 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       reviewLaneCount: existingReviewLanes.length,
       reviewLaneReadyCount: existingReviewLanes.filter((lane: any) => lane?.status === "READY_FOR_HUMAN_REVIEW").length,
       reusedExistingPacket: true,
+      transcriptSnapshotSha256: transcriptSnapshot.sha256,
+      humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
+      providerOnlySegmentCount: transcriptSnapshot.providerOnlySegmentCount,
     };
   }
 
-  const highlights = [...job.segments]
+  const highlights = [...packetSegments]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
     .sort((left, right) => right.score - left.score)
     .slice(0, 6)
     .map((entry) => entry.segment);
 
-  const actionSegments = job.segments
+  const actionSegments = packetSegments
     .filter((segment: any) => ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text))))
     .slice(0, 10);
 
@@ -517,10 +638,17 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     generatedAt: new Date().toISOString(),
     deterministic: true,
     reviewRequired: true,
+    transcriptSnapshot: transcriptSnapshotEvidence,
+    transcriptReviewCoverage: {
+      segmentCount: transcriptSnapshot.segmentCount,
+      humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
+      providerOnlySegmentCount: transcriptSnapshot.providerOnlySegmentCount,
+      fullyHumanReviewed: transcriptSnapshot.providerOnlySegmentCount === 0,
+    },
   };
 
-  const reviewLanes = buildTranscriptPacketReviewLanes(purpose, job.segments, highlights, actionSegments);
-  const packetBrief = buildTranscriptPacketBrief(job.segments, highlights, actionSegments);
+  const reviewLanes = buildTranscriptPacketReviewLanes(purpose, packetSegments, highlights, actionSegments);
+  const packetBrief = buildTranscriptPacketBrief(packetSegments, highlights, actionSegments);
   const actionCandidates: TranscriptActionCandidate[] = actionSegments.map((segment: any) => transcriptActionCandidate({
     segment,
     transcriptJobId: job.id,
@@ -537,7 +665,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       kind: "SUMMARY",
       visibility: "AUTHOR_PRIVATE",
       title: packetTitle,
-      body: summarizeSegments(purpose, job.segments, packetBrief),
+      body: summarizeSegments(purpose, packetSegments, packetBrief),
       sourceJson: {
         ...sourceJson,
         packetBrief,
@@ -593,5 +721,9 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     reviewLaneCount: reviewLanes.length,
     reviewLaneReadyCount: reviewLanes.filter((lane) => lane.status === "READY_FOR_HUMAN_REVIEW").length,
     reusedExistingPacket: false,
+    rebuiltForTranscriptReviewChange: Boolean(existing && !args.force),
+    transcriptSnapshotSha256: transcriptSnapshot.sha256,
+    humanReviewedSegmentCount: transcriptSnapshot.humanReviewedSegmentCount,
+    providerOnlySegmentCount: transcriptSnapshot.providerOnlySegmentCount,
   };
 }

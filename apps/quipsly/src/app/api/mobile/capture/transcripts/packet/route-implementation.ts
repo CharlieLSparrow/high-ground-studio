@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
   isTranscriptGoalReviewDecision,
@@ -6,11 +5,15 @@ import {
 } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import {
   buildCoachingPacketFromTranscriptJob,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
+  packetSnapshotMatches,
+  projectTranscriptSegmentsForPacket,
   selectLatestCorrelatedPacketNotes,
+  transcriptPacketSnapshot,
 } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -23,6 +26,12 @@ const REVIEW_LANE_STATUSES = new Set([
   "NEEDS_REVISION",
   "REJECTED_BY_HUMAN",
 ]);
+
+class PacketReviewBoundaryError extends Error {
+  constructor(readonly status: number, readonly errorCode: string, message: string) {
+    super(message);
+  }
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,10 +47,6 @@ function sourceJson(value: unknown): Record<string, unknown> {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
-}
-
-function sha256(value: string) {
-  return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 const GOAL_REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
@@ -65,7 +70,8 @@ export function buildPacketGoalCandidates(input: {
   if (brief.kind !== "quipsly-transcript-packet-brief-v1" || brief.candidateOnly !== true || brief.humanApprovalRequired !== true) return [];
   const goalsSection = asArray(brief.sections).filter(isObject).find((section) => section.id === "goals");
   if (!goalsSection) return [];
-  const segments = new Map(asArray(input.latestTranscriptJob.segments).filter(isObject).map((segment) => [text(segment.id), segment]));
+  const projectedSegments = projectTranscriptSegmentsForPacket(asArray(input.latestTranscriptJob.segments));
+  const segments = new Map(projectedSegments.map((segment) => [segment.id, segment]));
   const committedByRequest = new Map(input.goals.flatMap((goal) => {
     const source = sourceJson(goal.sourceJson);
     const requestId = text(source.clientRequestId);
@@ -106,7 +112,10 @@ export function buildPacketGoalCandidates(input: {
       startSeconds,
       endSeconds,
       sourceText: transcriptText,
-      providerTextSha256: sha256(transcriptText),
+      providerTextSha256: segment.providerTextSha256,
+      acceptedReviewId: segment.acceptedReviewId,
+      acceptedCorrectionId: segment.acceptedCorrectionId,
+      transcriptReviewStatus: segment.reviewStatus,
       suggestedTitle,
       suggestedDescription,
       reviewStatus: committedGoal ? "ACCEPTED_AS_GOAL" : goalReviewStatus(latestReceipt?.decision),
@@ -148,7 +157,7 @@ async function readJson(request: Request) {
   }
 }
 
-function roomAccessConditions(userId: string, email: string) {
+export function roomAccessConditions(userId: string, email: string) {
   return [
     { createdByUserId: userId },
     { participants: { some: { userId } } },
@@ -193,6 +202,7 @@ function packetSafeActions(input: {
   actionCandidates: any[];
   actionItems: any[];
   transcriptProcessingAllowed: boolean;
+  packetStale: boolean;
 }) {
   const transcriptCompleted = input.transcriptProcessingAllowed && input.latestTranscriptJob?.status === "COMPLETED";
   const transcriptRunning = input.latestTranscriptJob?.status === "RUNNING";
@@ -202,9 +212,11 @@ function packetSafeActions(input: {
     {
       id: "build-review-packet",
       label: "Build review packet",
-      enabled: transcriptCompleted && !packetReady,
       risk: "medium",
-      why: packetReady
+      enabled: transcriptCompleted && (!packetReady || input.packetStale),
+      why: input.packetStale
+        ? "Transcript review changed after this packet was built. Build a new append-only packet before reviewing candidates."
+        : packetReady
         ? "A packet already exists. Use force only when intentionally creating a new review artifact from the same transcript."
         : transcriptCompleted
           ? "Completed transcript evidence is ready to become a reviewable summary, highlights, and uncommitted action candidates."
@@ -217,9 +229,11 @@ function packetSafeActions(input: {
     {
       id: "review-packet",
       label: "Review packet",
-      enabled: input.transcriptProcessingAllowed && packetReady,
+      enabled: input.transcriptProcessingAllowed && packetReady && !input.packetStale,
       risk: "human-approval-required",
-      why: packetReady
+      why: input.packetStale
+        ? "This packet is pinned to an older transcript-review snapshot and cannot be reviewed into canonical work."
+        : packetReady
         ? `A packet exists with ${input.highlights.length} highlight(s), ${input.actionCandidates.length} action candidate(s), and ${input.actionItems.length} accepted action item(s).`
         : "Review waits until a packet exists.",
       boundary:
@@ -464,7 +478,13 @@ export async function GET(request: Request) {
         segments: {
           orderBy: { startSeconds: "asc" },
           take: 1000,
-          select: { id: true, speakerLabel: true, startSeconds: true, endSeconds: true, text: true },
+          include: {
+            corrections: {
+              where: { status: "accepted" },
+              orderBy: { updatedAt: "desc" },
+            },
+            verifications: { orderBy: { createdAt: "desc" } },
+          },
         },
         _count: { select: { segments: true } },
       },
@@ -493,6 +513,11 @@ export async function GET(request: Request) {
   const selectedPacketBuild = selectLatestCorrelatedPacketNotes(packetNotes);
   const summary = selectedPacketBuild.summary;
   const highlights = selectedPacketBuild.highlights;
+  const currentTranscriptSnapshot = latestTranscriptJob
+    ? transcriptPacketSnapshot(latestTranscriptJob.segments)
+    : null;
+  const packetStale = Boolean(summary && latestTranscriptJob
+    && !packetSnapshotMatches(summary.sourceJson, latestTranscriptJob.segments));
   const allPacketActionItems = transcriptProcessingAllowed
     ? actionItems.filter((item: any) => {
         const source = sourceJson(item.sourceJson);
@@ -517,6 +542,7 @@ export async function GET(request: Request) {
     actionCandidates,
     actionItems: packetActionItems,
     transcriptProcessingAllowed,
+    packetStale,
   });
   const reviewLanes = transcriptProcessingAllowed
     ? fallbackReviewLanes({ summary, highlights, actionCandidates })
@@ -595,6 +621,8 @@ export async function GET(request: Request) {
         : null,
       status: transcriptHeld
         ? "TRANSCRIPT_HELD"
+        : packetStale
+          ? "TRANSCRIPT_REVIEW_CHANGED"
         : summary
           ? "READY_FOR_REVIEW"
           : latestTranscriptJob?.status === "COMPLETED"
@@ -657,10 +685,23 @@ export async function GET(request: Request) {
         openActionItems: openActionItems.length,
         reviewLanes: reviewLanes.length,
         readyReviewLanes: reviewLanes.filter((lane: any) => lane?.status === "READY_FOR_HUMAN_REVIEW").length,
+        transcriptSegments: currentTranscriptSnapshot?.segmentCount ?? 0,
+        humanReviewedTranscriptSegments: currentTranscriptSnapshot?.humanReviewedSegmentCount ?? 0,
+        providerOnlyTranscriptSegments: currentTranscriptSnapshot?.providerOnlySegmentCount ?? 0,
       },
+      transcriptReview: currentTranscriptSnapshot ? {
+        snapshotSha256: currentTranscriptSnapshot.sha256,
+        segmentCount: currentTranscriptSnapshot.segmentCount,
+        humanReviewedSegmentCount: currentTranscriptSnapshot.humanReviewedSegmentCount,
+        providerOnlySegmentCount: currentTranscriptSnapshot.providerOnlySegmentCount,
+        fullyHumanReviewed: currentTranscriptSnapshot.providerOnlySegmentCount === 0,
+        packetStale,
+      } : null,
       reviewLanes,
       nextAction: transcriptHeld
         ? "Await reviewed transcript release before building, reading, or reviewing packet projections."
+        : packetStale
+          ? "Transcript review changed after this packet was built. Build a new packet before accepting any note, goal, or task candidate."
         : summary
         ? "Review summary, highlights, and action candidates. Explicitly accept a candidate before it becomes an ActionItem or promised follow-up work."
         : latestTranscriptJob?.status === "COMPLETED"
@@ -694,17 +735,13 @@ export async function POST(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
+  const email = text(session.user.primaryEmail || session.user.email).toLowerCase();
   const job = await prisma.transcriptJob.findFirst({
     where: session.user.isStaff
       ? { id: transcriptJobId }
       : {
           id: transcriptJobId,
-          OR: [
-            { room: { createdByUserId: userId } },
-            { room: { participants: { some: { userId } } } },
-            { room: { booking: { clientUserId: userId } } },
-            { room: { booking: { coachUserId: userId } } },
-          ],
+          OR: roomAccessConditions(userId, email).map((condition) => ({ room: condition })),
         },
     select: { id: true },
   });
@@ -716,12 +753,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await buildCoachingPacketFromTranscriptJob({
-    prisma,
-    transcriptJobId,
-    authorUserId: userId,
-    force,
-  });
+  const result = await prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
+    return buildCoachingPacketFromTranscriptJob({
+      prisma: tx,
+      transcriptJobId,
+      authorUserId: userId,
+      force,
+    });
+  }, { isolationLevel: "Serializable" });
   const status = result.ok ? 200 : "status" in result && typeof result.status === "number" ? result.status : 500;
 
   return NextResponse.json(
@@ -804,9 +844,9 @@ export async function PATCH(request: Request) {
     where: {
       roomId,
       kind: "SUMMARY",
-      ...(summaryNoteId ? { id: summaryNoteId } : {}),
     },
     orderBy: { createdAt: "desc" },
+    take: 200,
     select: {
       id: true,
       title: true,
@@ -814,7 +854,12 @@ export async function PATCH(request: Request) {
       updatedAt: true,
     },
   });
-  const summary = summaryCandidates.find((note: any) => sourceJson(note.sourceJson).source === "transcript-packet-builder");
+  const transcriptSummaries = summaryCandidates.filter((note: any) => {
+    const source = sourceJson(note.sourceJson);
+    return source.source === "transcript-packet-builder"
+      && (!transcriptJobIdFromBody || text(source.transcriptJobId) === transcriptJobIdFromBody);
+  });
+  const summary = selectLatestCorrelatedPacketNotes(transcriptSummaries).summary;
 
   if (!summary) {
     return NextResponse.json(
@@ -822,83 +867,99 @@ export async function PATCH(request: Request) {
       { status: 409 },
     );
   }
+  if (summaryNoteId && summary.id !== summaryNoteId) {
+    return NextResponse.json(
+      { ok: false, errorCode: "STALE_PACKET_BUILD", error: "Refresh the packet before reviewing this lane; a newer packet build is current." },
+      { status: 409 },
+    );
+  }
 
-  const source = sourceJson(summary.sourceJson);
-  const packetTranscriptJobId = text(source.transcriptJobId);
-  const packetTranscriptJob = packetTranscriptJobId
-    ? await prisma.transcriptJob.findFirst({
+  const packetTranscriptJobId = text(sourceJson(summary.sourceJson).transcriptJobId);
+  if (!packetTranscriptJobId) {
+    return NextResponse.json(
+      { ok: false, errorCode: "TRANSCRIPT_RECORDING_EVIDENCE_REQUIRED", error: "Packet review requires bound transcript and recording asset evidence." },
+      { status: 409 },
+    );
+  }
+
+  let mutation;
+  try {
+    mutation = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${packetTranscriptJobId}`);
+      await tx.$queryRaw`SELECT "id" FROM "CoachingNote" WHERE "id" = ${summary.id} FOR UPDATE`;
+      const lockedSummary = await tx.coachingNote.findUnique({ where: { id: summary.id } });
+      const source = sourceJson(lockedSummary?.sourceJson);
+      if (!lockedSummary || lockedSummary.roomId !== roomId || text(source.transcriptJobId) !== packetTranscriptJobId) {
+        throw new PacketReviewBoundaryError(409, "STALE_PACKET_BUILD", "The packet changed before lane review completed.");
+      }
+      const packetTranscriptJob = await tx.transcriptJob.findFirst({
         where: { id: packetTranscriptJobId, roomId },
-        include: { asset: true },
-      })
-    : null;
-  if (!packetTranscriptJob?.asset) {
-    return NextResponse.json(
-      { ok: false, error: "Packet review requires bound transcript and recording asset evidence." },
-      { status: 409 },
-    );
-  }
-  const transcriptGate = await mobileCaptureTranscriptProcessingGate({
-    prisma,
-    recordingAsset: packetTranscriptJob.asset,
-  });
-  if (!transcriptGate.allowed) {
-    return NextResponse.json(
-      {
-        ok: false,
-        errorCode: transcriptGate.errorCode,
-        error: transcriptGate.error,
-        explicitReleaseRequired: true,
-      },
-      { status: 409 },
-    );
-  }
-  const lanes = asArray(source.reviewLanes).filter(isObject);
-  const lane = lanes.find((candidate: any) => text(candidate.id) === laneId);
-
-  if (!lane) {
-    return NextResponse.json(
-      { ok: false, error: "Packet review lane was not found on this packet." },
-      { status: 404 },
-    );
-  }
-
-  const reviewedAt = new Date().toISOString();
-  const reviewRecord = {
-    status: requestedStatus,
-    note: reviewNote || null,
-    reviewedAt,
-    reviewedByUserId: userId,
-    externalSideEffects: false,
-    deliveryClaimed: false,
-    publicationClaimed: false,
-  };
-  const updatedLanes = lanes.map((candidate: any) => {
-    if (text(candidate.id) !== laneId) return candidate;
-    return {
-      ...candidate,
-      status: requestedStatus,
-      humanApprovalRequired: requestedStatus !== "APPROVED_FOR_INTERNAL_USE",
-      externalSideEffects: false,
-      humanReview: reviewRecord,
-    };
-  });
-  const updatedLane = updatedLanes.find((candidate: any) => text(candidate.id) === laneId);
-
-  await prisma.coachingNote.update({
-    where: { id: summary.id },
-    data: {
-      sourceJson: {
-        ...source,
-        reviewLanes: updatedLanes,
-        reviewLaneCount: updatedLanes.length,
-        reviewLaneReadyCount: reviewLaneReadyCount(updatedLanes),
-        lastHumanReview: {
-          laneId,
-          ...reviewRecord,
+        include: {
+          asset: true,
+          segments: {
+            orderBy: { segmentIndex: "asc" },
+            include: {
+              corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
+              verifications: { orderBy: { createdAt: "desc" } },
+            },
+          },
         },
-      },
-    },
-  });
+      });
+      if (!packetTranscriptJob?.asset) {
+        throw new PacketReviewBoundaryError(409, "TRANSCRIPT_RECORDING_EVIDENCE_REQUIRED", "Packet review requires bound transcript and recording asset evidence.");
+      }
+      const transcriptGate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: packetTranscriptJob.asset });
+      if (!transcriptGate.allowed) {
+        throw new PacketReviewBoundaryError(409, transcriptGate.errorCode, transcriptGate.error);
+      }
+      if (!packetSnapshotMatches(source, packetTranscriptJob.segments)) {
+        throw new PacketReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing this lane.");
+      }
+      const lanes = asArray(source.reviewLanes).filter(isObject);
+      const lane = lanes.find((candidate: any) => text(candidate.id) === laneId);
+      if (!lane) {
+        throw new PacketReviewBoundaryError(404, "PACKET_REVIEW_LANE_NOT_FOUND", "Packet review lane was not found on this packet.");
+      }
+      const reviewedAt = new Date().toISOString();
+      const reviewRecord = {
+        status: requestedStatus,
+        note: reviewNote || null,
+        reviewedAt,
+        reviewedByUserId: userId,
+        externalSideEffects: false,
+        deliveryClaimed: false,
+        publicationClaimed: false,
+      };
+      const updatedLanes = lanes.map((candidate: any) => text(candidate.id) !== laneId ? candidate : {
+        ...candidate,
+        status: requestedStatus,
+        humanApprovalRequired: requestedStatus !== "APPROVED_FOR_INTERNAL_USE",
+        externalSideEffects: false,
+        humanReview: reviewRecord,
+      });
+      const updatedLane = updatedLanes.find((candidate: any) => text(candidate.id) === laneId);
+      await tx.coachingNote.update({
+        where: { id: summary.id },
+        data: {
+          sourceJson: {
+            ...source,
+            reviewLanes: updatedLanes,
+            reviewLaneCount: updatedLanes.length,
+            reviewLaneReadyCount: reviewLaneReadyCount(updatedLanes),
+            lastHumanReview: { laneId, ...reviewRecord },
+          },
+        },
+      });
+      return { reviewedAt, updatedLane, updatedLanes };
+    }, { isolationLevel: "Serializable" });
+  } catch (error) {
+    if (error instanceof PacketReviewBoundaryError) {
+      return NextResponse.json({ ok: false, errorCode: error.errorCode, error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
+
+  const { reviewedAt, updatedLane, updatedLanes } = mutation;
 
   return NextResponse.json({
     ok: true,

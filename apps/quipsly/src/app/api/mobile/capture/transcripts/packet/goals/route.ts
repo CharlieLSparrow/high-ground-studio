@@ -10,8 +10,9 @@ import { TRANSCRIPT_DERIVED_GOAL_SCHEMA } from "@high-ground/quipsly-domain/tran
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { selectLatestCorrelatedPacketNotes } from "@/lib/server/coaching-packets";
+import { packetSnapshotMatches, selectLatestCorrelatedPacketNotes } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
@@ -153,6 +154,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
       const summaryCandidates = await tx.coachingNote.findMany({
         where: { roomId, kind: "SUMMARY" },
         orderBy: { createdAt: "desc" },
@@ -184,13 +186,26 @@ export async function POST(request: Request) {
 
       const transcriptJob = await tx.transcriptJob.findFirst({
         where: { id: transcriptJobId, roomId },
-        include: { asset: true, segments: { orderBy: { segmentIndex: "asc" } } },
+        include: {
+          asset: true,
+          segments: {
+            orderBy: { segmentIndex: "asc" },
+            include: {
+              corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
+              verifications: { orderBy: { createdAt: "desc" } },
+            },
+          },
+        },
       });
       if (!transcriptJob || transcriptJob.status !== "COMPLETED" || transcriptJob.assetId !== recordingAssetId || transcriptJob.asset?.id !== recordingAssetId) {
         throw new GoalReviewBoundaryError(409, "TRANSCRIPT_RECORDING_EVIDENCE_REQUIRED", "Goal review requires a completed transcript bound to the requested recording asset.");
       }
       const gate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: transcriptJob.asset });
       if (!gate.allowed) throw new GoalReviewBoundaryError(409, gate.errorCode, gate.error);
+      if (!packetSnapshotMatches(lockedSource, transcriptJob.segments)) {
+        throw new GoalReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing the goal candidate.");
+      }
+      const transcriptSnapshotSha256 = text(object(lockedSource.transcriptSnapshot).sha256);
 
       const actorGoals = await tx.goal.findMany({ where: { ownerUserId: actor.id, roomId } });
       const candidates = buildPacketGoalCandidates({ summary: lockedSummary, latestTranscriptJob: transcriptJob, goals: actorGoals, packetBuildId });
@@ -217,6 +232,7 @@ export async function POST(request: Request) {
           || text(acceptedReceipt.packetBuildId) !== packetBuildId
           || text(acceptedReceipt.summaryNoteId) !== summaryNoteId
           || text(acceptedReceipt.roomId) !== roomId
+          || text(acceptedReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
           || !goalMatches(acceptedGoal, { actorId: actor.id, roomId, clientRequestId: candidate.clientRequestId })
         ) {
           throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_RECEIPT_MISMATCH", "The accepted candidate receipt no longer matches one canonical goal.");
@@ -265,8 +281,12 @@ export async function POST(request: Request) {
         packetBuildId,
         summaryNoteId,
         roomId,
+        transcriptSnapshotSha256,
         segmentId: candidate.segmentId,
         providerTextSha256: candidate.providerTextSha256,
+        acceptedReviewId: candidate.acceptedReviewId,
+        acceptedCorrectionId: candidate.acceptedCorrectionId,
+        transcriptReviewStatus: candidate.transcriptReviewStatus,
         reviewedAt,
         reviewedByUserId: actor.id,
         reviewNote,

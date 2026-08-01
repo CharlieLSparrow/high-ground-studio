@@ -182,7 +182,7 @@ async function operatePacket(origin, idToken, roomId, purpose) {
   });
   assert(
     build.response.status === 200 && build.body?.ok === true && build.body?.packetPurpose === purpose,
-    `${purpose} packet v2 build failed. HTTP ${build.response.status}`,
+    `${purpose} packet v3 build failed. HTTP ${build.response.status}`,
     { roomId, body: build.body },
   );
 
@@ -195,12 +195,12 @@ async function operatePacket(origin, idToken, roomId, purpose) {
   const expectedLaneIds = laneIdsByPurpose[purpose];
   assert(
     after.response.status === 200 && after.body?.packet?.status === "READY_FOR_REVIEW",
-    `${purpose} packet was not readable after its v2 build.`,
+    `${purpose} packet was not readable after its v3 build.`,
     { roomId, status: after.body?.packet?.status || null },
   );
   assert(
-    source.packetPurpose === purpose && source.packetTemplateVersion === "quipsly-session-packet-v2",
-    `${purpose} packet did not preserve its purpose and v2 template stamp.`,
+    source.packetPurpose === purpose && source.packetTemplateVersion === "quipsly-session-packet-v3",
+    `${purpose} packet did not preserve its purpose and v3 template stamp.`,
     { roomId, packetPurpose: source.packetPurpose || null, packetTemplateVersion: source.packetTemplateVersion || null },
   );
   assert(
@@ -212,6 +212,13 @@ async function operatePacket(origin, idToken, roomId, purpose) {
     reviewLanes.every((lane) => lane.humanApprovalRequired === true && lane.externalSideEffects === false),
     `${purpose} packet lost the human-review or no-side-effects boundary.`,
     { roomId },
+  );
+  assert(
+    source.transcriptSnapshot?.schema === "quipsly-transcript-packet-snapshot-v1"
+      && /^[a-f0-9]{64}$/.test(String(source.transcriptSnapshot?.sha256 || ""))
+      && after.body?.packet?.transcriptReview?.packetStale === false,
+    `${purpose} packet was not pinned to the current transcript-review snapshot.`,
+    { roomId, transcriptSnapshot: source.transcriptSnapshot || null, transcriptReview: after.body?.packet?.transcriptReview || null },
   );
 
   return {
@@ -225,6 +232,9 @@ async function operatePacket(origin, idToken, roomId, purpose) {
     readyLaneCount: after.body.packet.counts?.readyReviewLanes ?? null,
     actionCandidateCount: after.body.packet.counts?.actionCandidates ?? null,
     goalCandidateCount: after.body.packet.counts?.goalCandidates ?? null,
+    humanReviewedSegmentCount: after.body.packet.transcriptReview?.humanReviewedSegmentCount ?? null,
+    providerOnlySegmentCount: after.body.packet.transcriptReview?.providerOnlySegmentCount ?? null,
+    transcriptSnapshotSha256: source.transcriptSnapshot.sha256,
     humanReviewRequired: true,
     externalSideEffects: false,
   };

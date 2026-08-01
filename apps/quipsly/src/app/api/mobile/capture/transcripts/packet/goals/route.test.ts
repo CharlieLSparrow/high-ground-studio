@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
@@ -33,6 +34,17 @@ function request(payload: Record<string, unknown>) {
 }
 
 function harness() {
+  const segments = [{
+    id: "segment-1",
+    segmentIndex: 0,
+    speakerLabel: "Homer",
+    startSeconds: 10,
+    endSeconds: 15,
+    text: "My goal is to build a repeatable review habit.",
+    corrections: [],
+    verifications: [],
+  }];
+  const { projected: _projected, ...transcriptSnapshot } = transcriptPacketSnapshot(segments);
   const summary = {
     id: summaryNoteId,
     roomId,
@@ -45,6 +57,7 @@ function harness() {
       transcriptJobId,
       recordingAssetId,
       packetBuildId,
+      transcriptSnapshot,
       packetBrief: {
         kind: "quipsly-transcript-packet-brief-v1",
         candidateOnly: true,
@@ -73,7 +86,7 @@ function harness() {
       assetId: recordingAssetId,
       status: "COMPLETED",
       asset: { id: recordingAssetId, roomId },
-      segments: [{ id: "segment-1", segmentIndex: 0, speakerLabel: "Homer", startSeconds: 10, endSeconds: 15, text: "My goal is to build a repeatable review habit." }],
+      segments,
     }) },
     goal: {
       findMany: jest.fn(async () => goals),

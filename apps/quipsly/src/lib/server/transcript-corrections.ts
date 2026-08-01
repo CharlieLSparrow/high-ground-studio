@@ -593,6 +593,7 @@ export async function confirmTranscriptSegmentAsIs(input: {
   });
 
   const saved = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
     await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
     const transactionActive = await tx.transcriptCorrection.findFirst({
       where: { segmentId, status: "accepted" },
@@ -734,6 +735,7 @@ export async function createTranscriptCorrection(input: {
 
   const correction = await input.prisma.$transaction(async (tx: any) => {
     if (accepted) {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${segmentId}`);
     }
     const transactionActive = accepted
@@ -860,6 +862,7 @@ export async function reviewTranscriptCorrectionProposal(input: {
   const now = new Date();
   const reviewed = await input.prisma.$transaction(async (tx: any) => {
     if (input.decision === "accept") {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-segment-review:${correction.segmentId}`);
     }
     const transactionActive = input.decision === "accept"

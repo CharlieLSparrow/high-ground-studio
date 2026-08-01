@@ -1,10 +1,12 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
+
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
-import { buildPacketGoalCandidates } from "./route-implementation";
+import { buildPacketGoalCandidates, roomAccessConditions } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -29,6 +31,12 @@ const latestTranscriptJob = {
 };
 
 describe("packet goal candidates", () => {
+  it("keeps packet read and build authorization aligned for Nest project grants", () => {
+    expect(roomAccessConditions("user-1", "producer@example.test")).toContainEqual({
+      project: { accessGrants: { some: { email: "producer@example.test", status: "ACTIVE" } } },
+    });
+  });
+
   it("binds a candidate to current provider evidence without creating work", () => {
     expect(buildPacketGoalCandidates({ summary, latestTranscriptJob, goals: [], packetBuildId })).toEqual([expect.objectContaining({
       id: "packet-goal-packet-build-1-segment-1",
@@ -51,6 +59,34 @@ describe("packet goal candidates", () => {
       reviewStatus: "ACCEPTED_AS_GOAL",
       humanApprovalRequired: false,
       committedGoalId: "goal-1",
+    });
+  });
+
+  it("uses the accepted correction for the candidate while retaining the provider hash", () => {
+    const providerText = latestTranscriptJob.segments[0].text;
+    const correctedJob = {
+      ...latestTranscriptJob,
+      segments: [{
+        ...latestTranscriptJob.segments[0],
+        corrections: [{
+          id: "correction-1",
+          status: "accepted",
+          baseTextSha256: createHash("sha256").update(providerText).digest("hex"),
+          expectedSpeakerLabel: "Homer",
+          correctedText: "My goal is to build a repeatable weekly coaching-review habit.",
+          correctedSpeakerLabel: "Scott",
+          updatedAt: new Date("2026-08-01T23:45:00.000Z"),
+        }],
+      }],
+    };
+    expect(buildPacketGoalCandidates({ summary, latestTranscriptJob: correctedJob, goals: [], packetBuildId })[0]).toMatchObject({
+      sourceText: "My goal is to build a repeatable weekly coaching-review habit.",
+      suggestedDescription: "My goal is to build a repeatable weekly coaching-review habit.",
+      speakerLabel: "Scott",
+      acceptedReviewId: "correction-1",
+      acceptedCorrectionId: "correction-1",
+      transcriptReviewStatus: "human-reviewed",
+      providerTextSha256: createHash("sha256").update(providerText).digest("hex"),
     });
   });
 

@@ -85,6 +85,14 @@ export type SessionReviewPacket = {
     goalCandidates?: SessionReviewGoalCandidate[];
     reviewLanes?: SessionReviewLane[];
     actionItems: Array<{ id: string; title: string; detail: string | null; status: string; dueAt: string | null; source: Record<string, unknown> }>;
+    transcriptReview?: {
+      snapshotSha256: string;
+      segmentCount: number;
+      humanReviewedSegmentCount: number;
+      providerOnlySegmentCount: number;
+      fullyHumanReviewed: boolean;
+      packetStale: boolean;
+    } | null;
     nextAction: string;
     safeActions?: Array<{
       id: string;

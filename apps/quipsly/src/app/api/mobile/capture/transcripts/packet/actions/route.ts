@@ -9,11 +9,13 @@ import {
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
+  packetSnapshotMatches,
   packetActionCandidatesFromSource,
   selectLatestCorrelatedPacketNotes,
   type TranscriptActionCandidate,
 } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 const REVIEW_RECEIPT_KIND = "quipsly-action-candidate-review-receipt-v1";
@@ -338,6 +340,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
       await tx.$queryRaw`SELECT "id" FROM "CoachingNote" WHERE "id" = ${summaryNoteId} FOR UPDATE`;
 
       // Re-read transcript and release evidence inside the same serializable
@@ -346,7 +349,16 @@ export async function POST(request: Request) {
       // from materializing work against stale processing permission.
       const lockedTranscriptJob = await tx.transcriptJob.findFirst({
         where: { id: transcriptJobId, roomId },
-        include: { asset: true },
+        include: {
+          asset: true,
+          segments: {
+            orderBy: { segmentIndex: "asc" },
+            include: {
+              corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
+              verifications: { orderBy: { createdAt: "desc" } },
+            },
+          },
+        },
       });
       if (
         !lockedTranscriptJob
@@ -395,6 +407,14 @@ export async function POST(request: Request) {
         recordingAssetId,
         packetBuildId,
       });
+      if (!packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments)) {
+        throw new ReviewBoundaryError(
+          409,
+          "TRANSCRIPT_REVIEW_CHANGED",
+          "Transcript review changed after this packet was built. Build a new packet before reviewing the action candidate.",
+        );
+      }
+      const transcriptSnapshotSha256 = text(sourceJson(lockedSource.transcriptSnapshot).sha256);
       const lockedCandidates = packetActionCandidatesFromSource(lockedSource);
       const candidate = lockedCandidates.find((item) => item.id === actionCandidateId);
       if (!candidate) {
@@ -426,6 +446,7 @@ export async function POST(request: Request) {
           || text(acceptedReceipt.packetBuildId) !== packetBuildId
           || text(acceptedReceipt.summaryNoteId) !== summaryNoteId
           || text(acceptedReceipt.roomId) !== roomId
+          || text(acceptedReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
         ) {
           throw new ReviewBoundaryError(
             409,
@@ -528,6 +549,7 @@ export async function POST(request: Request) {
               recordingAssetId,
               packetBuildId,
               packetSummaryNoteId: summaryNoteId,
+              transcriptSnapshotSha256,
               roomId,
               segmentId: candidate.segmentId,
               speakerLabel: candidate.speakerLabel,
@@ -554,6 +576,7 @@ export async function POST(request: Request) {
         packetBuildId,
         summaryNoteId,
         roomId,
+        transcriptSnapshotSha256,
         reviewedAt,
         reviewedByUserId: userId,
         reviewNote,
