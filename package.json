@@ -116,6 +116,8 @@
     "quipsly:transcript-worker:deploy": "bash scripts/release/quipsly-transcript-worker-deploy.sh",
     "quipsly:transcript-worker:access": "bash scripts/release/quipsly-transcript-worker-access.sh",
     "quipsly:transcript-worker:cloud-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-transcript-worker-cloud-fixture.mjs",
+    "quipsly:transcript:evaluate": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-transcript-evaluation.mjs",
+    "quipsly:transcript:evaluate:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-transcript-evaluation.test.mjs",
     "quipsly:media-processor:acceptance": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-capture-proxy-ffmpeg-acceptance.mjs",
     "quipsly:media-processor:cloud-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-media-processor-cloud-fixture.mjs",
     "quipsly:media-processor:deploy": "bash scripts/release/quipsly-media-processor-deploy.sh",

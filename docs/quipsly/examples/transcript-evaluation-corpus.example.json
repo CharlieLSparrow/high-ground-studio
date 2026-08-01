@@ -1,0 +1,76 @@
+{
+  "kind": "quipsly-private-transcript-evaluation-corpus-v1",
+  "version": 1,
+  "corpusId": "synthetic-example-corpus",
+  "revisionId": "synthetic-revision-001",
+  "purpose": "mixed",
+  "createdAt": "2026-08-01T18:00:00.000Z",
+  "createdBy": "synthetic-example",
+  "consentReceiptSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "windows": [
+    {
+      "windowId": "synthetic-window-001",
+      "sourceSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "durationSeconds": 3,
+      "reference": {
+        "approvalStatus": "human-approved",
+        "revisionId": "synthetic-human-reference-v1",
+        "contentSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "approvedAt": "2026-08-01T18:05:00.000Z",
+        "approvedBy": "synthetic-reviewer",
+        "words": [
+          {
+            "text": "hello",
+            "startSeconds": 0.1,
+            "endSeconds": 0.5,
+            "speakerId": "synthetic-person-a"
+          },
+          {
+            "text": "world",
+            "startSeconds": 0.6,
+            "endSeconds": 1,
+            "speakerId": "synthetic-person-b"
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "providerKey": "synthetic-provider",
+          "providerName": "Synthetic Provider",
+          "model": "synthetic-model-v1",
+          "adapterVersion": "synthetic-adapter-v1",
+          "requestConfigSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "outcome": "succeeded",
+          "completedAt": "2026-08-01T18:06:00.000Z",
+          "elapsedMilliseconds": 1200,
+          "estimatedCostUsd": 0,
+          "policy": {
+            "receiptSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "capturedAt": "2026-08-01T18:00:00.000Z",
+            "sourceUrl": "https://example.com/synthetic-policy",
+            "trainingUsage": "not-applicable",
+            "retentionMode": "on-device",
+            "retentionDays": null,
+            "processingRegion": null
+          },
+          "providerReceiptSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "words": [
+            {
+              "text": "hello",
+              "startSeconds": 0.12,
+              "endSeconds": 0.52,
+              "speakerId": "speaker-0"
+            },
+            {
+              "text": "world",
+              "startSeconds": 0.65,
+              "endSeconds": 1.02,
+              "speakerId": "speaker-1"
+            }
+          ],
+          "correction": null
+        }
+      ]
+    }
+  ]
+}

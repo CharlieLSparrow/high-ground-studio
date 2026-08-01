@@ -5734,3 +5734,54 @@ was restored.
   subscription feed, provider reconciliation, production migration/deployment,
   or a real-calendar create/reschedule/cancel acceptance. Those stay held until
   the relevant adapter, token, revocation, privacy, and conflict gates pass.
+
+### 2026-08-01 private transcript evaluation contract checkpoint
+
+- Converted the provider-benchmark requirement into a typed, versioned private
+  corpus and privacy-safe aggregate report contract in the canonical media
+  package. The evaluator requires an explicit human-approved reference and
+  refuses machine captions, summaries, scripts, or prior provider output as
+  truth.
+- Word alignment minimizes edit distance and then maximizes exact matches so
+  equal-WER paths cannot silently corrupt downstream timing and speaker
+  evidence. Metrics now cover weighted WER, optimal anonymous-speaker mapping,
+  missing speaker attribution, exact matched-word timing drift, latency,
+  real-time factor, observed cost, measured correction time/operations,
+  provider policy receipts, and retryable/non-retryable failures.
+- Provider model, adapter version, and request-config hash are part of the
+  aggregation identity. A pinned Deepgram diarizer, Deepgram `latest`, OpenAI
+  known-speaker configuration, and Apple physical-device configuration cannot
+  be accidentally averaged together.
+- The create-only CLI emits hashes and aggregates without transcript text,
+  speaker/reviewer identities, provider policy URLs, or source paths. A
+  synthetic public corpus produced a valid zero-WER report, and a second write
+  to the same report path failed as required.
+- Current official-source research is captured in
+  `docs/quipsly/transcript-provider-evaluation.md`: Deepgram batch v2 uses
+  `diarize_model` and can be pinned; OpenAI diarized output supplies segment
+  speakers but not its other models' word-timestamp option; Apple
+  `SpeechAnalyzer` provides on-device long-form transcription and time ranges
+  but no documented built-in multi-speaker diarization contract.
+- Existing retained Episode 1/6 SRT artifacts were inspected and deliberately
+  not promoted into the corpus: several are summary-like publication captions,
+  not exact human-checked transcripts. This preserves the evidence boundary
+  even though it postpones a superficially faster benchmark.
+- Four evaluator tests, canonical media-package typecheck/build, a real CLI
+  report, privacy readback, and create-only overwrite refusal pass. No provider
+  call, consent mutation, media upload, database write, deployment, TestFlight
+  release, or App Store change occurred.
+- Live worker activation remains held on external credentials and provider
+  authority. The current Google Cloud check cannot mint either user or ADC
+  tokens. Exact recovery remains:
+
+  ```bash
+  gcloud auth login --update-adc --brief
+  gcloud auth application-default set-quota-project quipsly-reef
+  cd /Users/wall-e/Dev/high-ground-studio-product
+  bash scripts/release/quipsly-gcloud-auth-check.sh
+  ```
+
+  After that succeeds, the next provider boundary is an enabled secret version,
+  committed worker deployment/IAM readback, the authorized cloud fixture,
+  consent-revocation projection proof, and then real podcast and coaching
+  correction-time corpus operations.

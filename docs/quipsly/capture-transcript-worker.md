@@ -18,6 +18,13 @@ The same canonical transcript version is used by:
 Human corrections are review overlays. They do not modify provider words,
 provider timings, the raw provider receipt, or source media.
 
+Provider selection is governed by the separate
+[private transcript provider evaluation contract](./transcript-provider-evaluation.md).
+Deepgram, OpenAI diarized transcription, and Apple on-device transcription are
+compared on the same human-approved windows. Quipsly does not compare their
+confidence values or collapse accuracy, speaker behavior, timing, correction
+effort, latency, cost, policy, and failures into one universal score.
+
 ## Runtime architecture
 
 1. Nest rechecks the room and recording consent gate.
@@ -84,6 +91,7 @@ after durable native-session readback.
 
 ```bash
 pnpm --filter @high-ground/quipsly-media-processing typecheck
+pnpm quipsly:transcript:evaluate:test
 pnpm quipsly:transcript-worker:build
 pnpm quipsly:transcript-worker:test
 pnpm --filter quipsly typecheck
