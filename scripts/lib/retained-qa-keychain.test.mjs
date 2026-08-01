@@ -19,14 +19,20 @@ test("reads a retained password without putting it in process arguments", () => 
     platform: "darwin",
     runner(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: PASSWORD, stderr: "" };
+      return { status: 0, stdout: `${PASSWORD}\n`, stderr: "" };
     },
   });
   assert.equal(value, PASSWORD);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].command, "xcrun");
-  assert.equal(calls[0].args[0], "swift");
-  assert.equal(calls[0].args[2], "read");
+  assert.equal(calls[0].command, "/usr/bin/security");
+  assert.equal(calls[0].args[0], "find-generic-password");
+  assert.deepEqual(calls[0].args.slice(1), [
+    "-s",
+    SERVICE,
+    "-a",
+    ACCOUNT,
+    "-w",
+  ]);
   assert.equal(calls[0].args.includes(PASSWORD), false);
   assert.equal(calls[0].options.stdio[0], "ignore");
 });
@@ -62,7 +68,7 @@ test("reuses an existing password and does not rewrite the Keychain item", () =>
     platform: "darwin",
     runner(command, args) {
       calls.push({ command, args });
-      return { status: 0, stdout: PASSWORD, stderr: "" };
+      return { status: 0, stdout: `${PASSWORD}\n`, stderr: "" };
     },
   });
   assert.deepEqual(result, { password: PASSWORD, created: false });
@@ -78,7 +84,7 @@ test("creates one password only when the exact item is absent", () => {
     platform: "darwin",
     runner(command, args, options) {
       calls.push({ command, args, options });
-      if (args[2] === "read") {
+      if (command === "/usr/bin/security") {
         return { status: 44, stdout: "", stderr: "not found" };
       }
       return { status: 0, stdout: "", stderr: "" };
@@ -134,7 +140,7 @@ test("rejects malformed secret bytes returned by Keychain", () => {
       account: ACCOUNT,
       platform: "darwin",
       runner() {
-        return { status: 0, stdout: `${PASSWORD}\n`, stderr: "" };
+        return { status: 0, stdout: `${PASSWORD}\nextra\n`, stderr: "" };
       },
     }),
     /safe characters/,
