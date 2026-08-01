@@ -610,7 +610,7 @@ function checkTranscriptPacketContractSources() {
       && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
       && transcriptProcessingText.includes("newCaptureTranscriptManifest")
       && transcriptProcessingText.includes("diarize: true")
-      && transcriptProcessingText.includes('diarizeModel: "latest"')
+      && transcriptProcessingText.includes('diarizeModel: "v2"')
       && transcriptProcessingText.includes("multichannel: false")
       && transcriptProviderText.includes('query.set("diarize_model", request.diarizeModel)')
       && transcriptProviderText.includes('query.set("diarize", String(request.diarize))')

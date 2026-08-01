@@ -89,7 +89,7 @@ function fixture() {
       smartFormat: true,
       punctuate: true,
       diarize: true,
-      diarizeModel: "latest",
+      diarizeModel: "v2",
       multichannel: false,
       utterances: true,
       paragraphs: true,
@@ -265,7 +265,7 @@ test("new batch requests use the versioned diarizer without the deprecated boole
   });
   await provider.transcribe("https://storage.example/source", fixture().manifest.provider);
   const query = new URL(requestedUrl).searchParams;
-  assert.equal(query.get("diarize_model"), "latest");
+  assert.equal(query.get("diarize_model"), "v2");
   assert.equal(query.has("diarize"), false);
   assert.equal(query.has("multichannel"), false);
 });

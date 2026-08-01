@@ -350,7 +350,7 @@ function completedReceipts(input: {
       smartFormat: true,
       punctuate: true,
       diarize: true,
-      diarizeModel: "latest",
+      diarizeModel: "v2",
       multichannel: false,
       utterances: true,
       paragraphs: true,

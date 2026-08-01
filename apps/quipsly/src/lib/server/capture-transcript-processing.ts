@@ -15,6 +15,10 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { getMediaBucket } from "@/lib/server/gcs";
+import {
+  assertCaptureTranscriptManifestBinding,
+  CaptureTranscriptOutboxError,
+} from "@/lib/server/capture-transcript-manifest-policy";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getMobileCaptureObjectEvidence } from "@/lib/server/mobile-capture-resumable-store";
 
@@ -32,15 +36,7 @@ export type CaptureTranscriptQueueStatus = {
   executionRequested: boolean;
 };
 
-export class CaptureTranscriptOutboxError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "CaptureTranscriptOutboxError";
-    this.code = code;
-  }
-}
+export { CaptureTranscriptOutboxError } from "@/lib/server/capture-transcript-manifest-policy";
 
 /**
  * Converts the canonical TranscriptJob into a recoverable GCS outbox. The
@@ -193,7 +189,9 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       smartFormat: true,
       punctuate: true,
       diarize: true,
-      diarizeModel: "latest",
+      // Pin new jobs to a measured diarizer revision. Existing manifests keep
+      // their original request verbatim, including legacy `latest` or v1.
+      diarizeModel: "v2",
       multichannel: false,
       utterances: true,
       paragraphs: true,
@@ -211,7 +209,11 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
     storedManifest.value,
     job.id,
   );
-  assertImmutableManifestBinding(manifest, desiredManifest);
+  assertCaptureTranscriptManifestBinding({
+    stored: manifest,
+    desired: desiredManifest,
+    created: storedManifest.created,
+  });
 
   if (manifest.status === "failed-terminal") {
     await input.prisma.transcriptJob.update({
@@ -377,6 +379,7 @@ async function saveManifestIfAbsent(
   manifest: CaptureTranscriptManifest,
 ) {
   const file = bucket.file(objectName);
+  let created = false;
   try {
     await file.save(JSON.stringify(manifest), {
       resumable: false,
@@ -392,6 +395,7 @@ async function saveManifestIfAbsent(
       },
       preconditionOpts: { ifGenerationMatch: 0 },
     });
+    created = true;
   } catch (error) {
     if (!isPreconditionFailure(error)) throw error;
   }
@@ -403,6 +407,7 @@ async function saveManifestIfAbsent(
   return {
     value: JSON.parse(raw.toString("utf8")) as unknown,
     generation,
+    created,
   };
 }
 
@@ -445,23 +450,6 @@ async function saveQueueIfAbsent(
   }
 }
 
-function assertImmutableManifestBinding(
-  left: CaptureTranscriptManifest,
-  right: CaptureTranscriptManifest,
-) {
-  if (
-    left.jobId !== right.jobId
-    || left.actorUserId !== right.actorUserId
-    || left.actorEmail !== right.actorEmail
-    || JSON.stringify(left.source) !== JSON.stringify(right.source)
-    || JSON.stringify(left.provider) !== JSON.stringify(right.provider)
-  ) {
-    throw new CaptureTranscriptOutboxError(
-      "TRANSCRIPT_MANIFEST_BINDING_MISMATCH",
-      "Existing transcript manifest has a different immutable binding.",
-    );
-  }
-}
 
 async function holdJob(
   prisma: any,
