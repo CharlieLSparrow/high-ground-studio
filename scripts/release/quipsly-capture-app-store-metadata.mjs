@@ -171,6 +171,8 @@ export function validateAppStoreMetadata(
   const app = isRecord(metadata.app) ? metadata.app : {};
   const version = isRecord(metadata.version) ? metadata.version : {};
   const review = isRecord(metadata.review) ? metadata.review : {};
+  const privacy = isRecord(metadata.privacy) ? metadata.privacy : {};
+  const compliance = isRecord(metadata.compliance) ? metadata.compliance : {};
   const screenshots = isRecord(metadata.screenshots) ? metadata.screenshots : {};
   const submission = isRecord(metadata.submission) ? metadata.submission : {};
 
@@ -255,6 +257,53 @@ export function validateAppStoreMetadata(
     errors.push("review.notesFile must be a safe repository-relative path.");
   } else if (!fs.existsSync(path.join(root, review.notesFile))) {
     errors.push(`review.notesFile does not exist: ${review.notesFile}.`);
+  }
+
+  if (!safeRepositoryPath(privacy.sourceManifest)) {
+    errors.push("privacy.sourceManifest must be a safe repository-relative path.");
+  } else {
+    const manifestPath = path.join(root, privacy.sourceManifest);
+    if (!fs.existsSync(manifestPath)) {
+      errors.push(`privacy.sourceManifest does not exist: ${privacy.sourceManifest}.`);
+    } else {
+      const manifestText = fs.readFileSync(manifestPath, "utf8");
+      const dataTypes = Array.isArray(privacy.collectedDataTypes) ? privacy.collectedDataTypes : [];
+      for (const dataType of dataTypes) {
+        if (typeof dataType !== "string" || !/^NSPrivacyCollectedDataType[A-Za-z]+$/.test(dataType)) {
+          errors.push("privacy.collectedDataTypes must contain only Apple collected-data identifiers.");
+        } else if (!manifestText.includes(`<string>${dataType}</string>`)) {
+          errors.push(`privacy.sourceManifest does not declare ${dataType}.`);
+        }
+      }
+      for (const match of manifestText.matchAll(/<string>(NSPrivacyCollectedDataType(?!Purpose)[A-Za-z]+)<\/string>/g)) {
+        if (!dataTypes.includes(match[1])) errors.push(`privacy.collectedDataTypes omits ${match[1]} from the shipping manifest.`);
+      }
+    }
+  }
+  if (privacy.tracking !== false || !Array.isArray(privacy.trackingDomains) || privacy.trackingDomains.length !== 0) {
+    errors.push("privacy must declare no tracking and no tracking domains for the current binary.");
+  }
+  if (privacy.linkedToUser !== true || privacy.purpose !== "App Functionality") {
+    errors.push("privacy collection must remain linked to the user for App Functionality.");
+  }
+  if (privacy.publicationStatus !== "requires-account-holder-approval") {
+    errors.push("privacy.publicationStatus must remain account-holder gated until provider publication is proved.");
+  }
+
+  for (const field of ["contentRights", "ageRating", "digitalServicesAct", "price", "territories"]) {
+    const decision = isRecord(compliance[field]) ? compliance[field] : {};
+    if (decision.status !== "requires-account-holder-approval") {
+      errors.push(`compliance.${field}.status must remain requires-account-holder-approval until provider readback exists.`);
+    }
+  }
+  const compatibility = isRecord(compliance.compatibility) ? compliance.compatibility : {};
+  if (
+    compatibility.iphone !== true
+    || compatibility.appleSiliconMac !== false
+    || compatibility.appleVisionPro !== false
+    || compatibility.status !== "requires-provider-cleanup"
+  ) {
+    errors.push("compliance.compatibility must preserve the iPhone-only first-release posture until provider cleanup is proved.");
   }
 
   if (screenshots.deviceClass !== "iPhone 6.9-inch") {

@@ -34,6 +34,16 @@ External mode-0600 evidence:
 Legal declarations, App Privacy publication, signed-candidate screenshots, and
 physical-device acceptance remain open.
 
+The checked-in packet now also machine-reconciles its proposed App Privacy data
+types with the exact shipping `PrivacyInfo.xcprivacy` file and enumerates the
+current Content Rights, age-rating/social-media, DSA, free-price, first-
+territory, and iPhone-only compatibility decisions. These remain explicit
+account-holder/provider gates; adding them to the packet is preparation, not a
+legal attestation or provider save. The prior App Store Connect API key is no
+longer present on this Mac, and the signed-in browser session has expired, so a
+fresh provider readback requires either a replacement owner-only key file or a
+new interactive sign-in.
+
 ## Screenshot composition
 
 A new iPhone 17 Pro Max simulator produced five private-data-safe drafts at the
@@ -57,6 +67,16 @@ External evidence:
   private notes.
 - The full connected-calendar architecture and phased Google/Apple/webcal plan
   is recorded in `docs/quipsly/calendar-transcription-architecture-2026-08-01.md`.
+- Users can now create, replace, and revoke one-time read-only subscription
+  links for personal commitments, their coaching appointments, or scheduled
+  podcast rooms in one accessible Nest. Raw capability material is returned
+  once, stored only as a digest, and never returned by the status API.
+- Subscription renders preserve stable UIDs/revisions, publish one-hour refresh
+  hints, mark task/goal due events transparent, record no-external-mutation
+  receipts, and exclude notes, transcripts, recordings, identities, and
+  provider credentials by construction.
+- This new subscription slice is committed source only until the next spaced
+  preview batch; the earlier 0%-traffic preview does not contain it.
 
 ## Transcription and packet slice
 

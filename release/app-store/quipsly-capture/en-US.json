@@ -28,6 +28,58 @@
     "credentialStorage": "App Store Connect App Review Information only",
     "whatToTest": "Sign in with the supplied reviewer account. Open Today and Work; create a note, task, goal, project, and tag, then confirm the same records remain after relaunch. Open the supplied capture session, review consent, start and stop a short disposable recording, and confirm the local original remains in Library. Exercise an offline quick entry and retry after reconnecting. Confirm Account exposes Privacy and Request Account Deletion. Do not use private client, coaching, podcast, or unpublished source material."
   },
+  "privacy": {
+    "sourceManifest": "apps/mobile-capture/HighGroundCapture/HighGroundCapture/PrivacyInfo.xcprivacy",
+    "tracking": false,
+    "trackingDomains": [],
+    "linkedToUser": true,
+    "purpose": "App Functionality",
+    "collectedDataTypes": [
+      "NSPrivacyCollectedDataTypeName",
+      "NSPrivacyCollectedDataTypeEmailAddress",
+      "NSPrivacyCollectedDataTypeUserID",
+      "NSPrivacyCollectedDataTypeDeviceID",
+      "NSPrivacyCollectedDataTypeAudioData",
+      "NSPrivacyCollectedDataTypePhotosorVideos",
+      "NSPrivacyCollectedDataTypeOtherUserContent"
+    ],
+    "publicationStatus": "requires-account-holder-approval"
+  },
+  "compliance": {
+    "contentRights": {
+      "status": "requires-account-holder-approval",
+      "recommendedAnswer": "Quipsly may display or process user-selected third-party media only when the user is authorized to use it."
+    },
+    "ageRating": {
+      "status": "requires-account-holder-approval",
+      "shippingFacts": [
+        "No advertising, gambling, loot boxes, open web browser, or public social feed.",
+        "No anonymous public chat or stranger matching.",
+        "The app can record and privately share user-provided audio, video, notes, and session work with authorized collaborators.",
+        "The app does not author violent, sexual, drug, or medical-treatment content, but user-provided coaching and podcast material may discuss ordinary real-world topics.",
+        "Social media capability is not exposed in the shipping iPhone app."
+      ]
+    },
+    "digitalServicesAct": {
+      "status": "requires-account-holder-approval",
+      "recommendedAssessment": "Likely trader if Quipsly is distributed commercially in the European Union; Apple may require verified public business contact details."
+    },
+    "price": {
+      "status": "requires-account-holder-approval",
+      "recommendedValue": "Free"
+    },
+    "territories": {
+      "status": "requires-account-holder-approval",
+      "recommendedFirstRelease": ["United States"],
+      "expansionRule": "Add countries only after support, privacy, tax, content-rights, and local documentation requirements are reviewed."
+    },
+    "compatibility": {
+      "iphone": true,
+      "appleSiliconMac": false,
+      "appleVisionPro": false,
+      "status": "requires-provider-cleanup"
+    }
+  },
   "screenshots": {
     "deviceClass": "iPhone 6.9-inch",
     "orientation": "portrait",

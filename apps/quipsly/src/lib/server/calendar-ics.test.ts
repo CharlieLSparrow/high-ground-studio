@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { buildIcsCalendar, foldIcsLine, stableCalendarUid } from "./calendar-ics";
+import { buildIcsCalendar, buildIcsFeed, foldIcsLine, stableCalendarUid } from "./calendar-ics";
 
 describe("Quipsly iCalendar projection", () => {
   const input = {
@@ -21,9 +21,33 @@ describe("Quipsly iCalendar projection", () => {
     expect(calendar).toContain(`UID:${stableCalendarUid("COACHING_BOOKING", "booking-1")}`);
     expect(calendar).toContain("DTSTART:20261101T150000Z\r\n");
     expect(calendar).toContain("SUMMARY:Coaching: goals\\, decisions\\; and follow-through");
+    expect(calendar).toContain("TRANSP:OPAQUE\r\n");
     expect(unfolded).toContain("DESCRIPTION:Open Quipsly for private notes.\\nNo transcript text is exported.");
     expect(calendar.endsWith("END:VCALENDAR\r\n")).toBe(true);
     expect(calendar.replaceAll("\r\n", "")).not.toContain("\n");
+  });
+
+  it("renders multiple stable events as a refreshable subscription", () => {
+    const calendar = buildIcsFeed({
+      name: "My Quipsly commitments",
+      generatedAt: new Date("2026-08-01T12:00:00.000Z"),
+      events: [
+        input,
+        {
+          ...input,
+          sourceType: "ACTION_ITEM",
+          sourceId: "task-1",
+          title: "Send the follow-up",
+          startsAt: new Date("2026-08-03T18:00:00.000Z"),
+          endsAt: new Date("2026-08-03T18:30:00.000Z"),
+          transparency: "TRANSPARENT",
+        },
+      ],
+    });
+    expect(calendar.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(calendar).toContain("X-WR-CALNAME:My Quipsly commitments\r\n");
+    expect(calendar).toContain("REFRESH-INTERVAL;VALUE=DURATION:PT1H\r\n");
+    expect(calendar).toContain("TRANSP:TRANSPARENT\r\n");
   });
 
   it("folds UTF-8 lines at 75 octets with a continuation space", () => {

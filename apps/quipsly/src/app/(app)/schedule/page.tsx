@@ -36,6 +36,7 @@ import {
   type ScheduleTask,
 } from "./schedule-model";
 import { SchedulePlanner } from "./schedule-planner";
+import { CalendarSubscriptionManager } from "./calendar-subscription-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -101,7 +102,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       select: { tag: { select: { id: true, label: true, isActive: true } } },
     };
 
-    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview] = await Promise.all([
+    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows] = await Promise.all([
       prisma.callRoom.findMany({
             where: {
               ...roomAccess,
@@ -189,6 +190,17 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
         visibleProjectIds: projectIds,
         visibleWorkspaceIds: workspaceIds,
         prisma,
+      }),
+      prisma.calendarFeed.findMany({
+        where: { ownerUserId: userId },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          lastGeneratedAt: true,
+          collection: { select: { purpose: true, displayName: true, nestId: true } },
+        },
       }),
     ]);
 
@@ -322,6 +334,16 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       authState: "signed-in",
       accessibleNestCount: projects.length,
       calendarOverview,
+      calendarProjects: projects.map((project) => ({ id: project.id, name: project.name })),
+      calendarFeeds: calendarFeedRows.map((feed: any) => ({
+        id: feed.id,
+        purpose: feed.collection.purpose,
+        displayName: feed.collection.displayName,
+        projectId: feed.collection.nestId,
+        status: feed.status,
+        createdAt: feed.createdAt.toISOString(),
+        lastGeneratedAt: feed.lastGeneratedAt?.toISOString() ?? null,
+      })),
       sessions,
       tasks,
       planBlocks,
@@ -477,6 +499,8 @@ export default async function SchedulePage() {
           </div>
 
           <CalendarSystemOverview overview={snapshot.calendarOverview} />
+
+          <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
 
           <div id="personal-planning">
             <SchedulePlanner initialBlocks={snapshot.planBlocks} targets={snapshot.planTargets} />

@@ -450,6 +450,49 @@ rendered Schedule at desktop and phone width and proved the authenticated,
 redacted overview contract with no provider or external effect. Evidence is
 recorded in `docs/coordination/2026-08-01-calendar-projection-spine.md`.
 
+## 2026-08-01 subscription and provider research refresh
+
+The read-only subscription boundary is now implemented for three explicit
+scopes: one person's accepted commitments, one person's coaching appointments,
+or scheduled podcast rooms in one accessible episode Nest. Creating a feed
+returns 256 bits of bearer material once; Quipsly stores only its domain-
+separated SHA-256 digest. Replacing or revoking the feed makes the old URL return
+the same non-enumerable 404. Every successful render records a no-external-
+mutation receipt. Feed events use stable UIDs, monotonic integer revisions,
+CRLF, UTF-8 folding, one-hour refresh hints, and transparent task/goal due
+markers so a deadline does not pretend to reserve availability. Private notes,
+transcript text, recordings, participant addresses, and provider identifiers
+are excluded by the server-side projection.
+
+The current provider guidance changes the implementation details, not the
+source-of-truth architecture:
+
+- Google incremental sync must preserve the exact original query parameters,
+  page until the final `nextSyncToken`, include deletions, and discard local
+  provider projection state for a bounded full sync after HTTP 410. Push
+  notifications are wake-ups rather than data; channels expire and must be
+  renewed. Channel verification material must not contain OAuth credentials or
+  private Quipsly data. Quota guidance favors push plus randomized maintenance,
+  exponential backoff, and a separate test project over synchronized polling.
+- RFC 5545 requires persistent globally unique `UID` values. `SEQUENCE` starts
+  at zero and increases for significant organizer revisions. Quipsly feeds use
+  source-derived stable identities and revision timestamps constrained to the
+  interoperable integer range; they do not mint a new identity when an event is
+  rescheduled or canceled.
+- Deepgram's current prerecorded path supports Nova-3, the versioned diarizer,
+  multichannel audio, word timings, utterances, smart formatting, paragraphs,
+  callbacks, and request tags. Async callbacks should be authenticated, made
+  idempotent by provider request ID, and stored before acknowledgement because
+  the provider retries unsuccessful callbacks. Large video should have its
+  audio extracted before submission, and long jobs should use the async path
+  rather than relying on one synchronous request.
+- Apple requires age rating, Content Rights, DSA status where applicable,
+  version review information, support/privacy links, and accurate App Privacy
+  declarations before submission. Starting in July 2026, the questionnaire
+  includes social-media capability. The canonical Capture packet now records
+  the exact shipping facts and privacy-manifest data types but deliberately
+  keeps legal/privacy publication account-holder gated.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:
@@ -468,5 +511,11 @@ recorded in `docs/coordination/2026-08-01-calendar-projection-spine.md`.
   https://developers.deepgram.com/docs/diarization
 - Deepgram multichannel guidance:
   https://developers.deepgram.com/docs/multichannel-vs-diarization
+- Deepgram prerecorded API and async callback authentication:
+  https://developers.deepgram.com/docs/pre-recorded-audio
+  https://developers.deepgram.com/docs/callback
+- Apple required App Store properties and July 2026 age-rating change:
+  https://developer.apple.com/help/app-store-connect/reference/app-information/required-localizable-and-editable-properties/
+  https://developer.apple.com/app-store/whats-new/
 - ICF Code of Ethics confidentiality and technology obligations:
   https://coachingfederation.org/credentialing/coaching-ethics/icf-code-of-ethics/
