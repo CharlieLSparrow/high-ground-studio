@@ -1677,7 +1677,8 @@ requireIncludes(meetingSpineContractText, "stripeMutated: false", "meeting spine
 requireIncludes(meetingSpineContractText, "calendarMutated: false", "meeting spine server route does not mutate Calendar");
 requireIncludes(coachingCalendarAdapterText, "getCoachingDefaultTimezone", "shared coaching timezone helper");
 requireIncludes(coachingCalendarAdapterText, "checkCoachingCalendarAccess", "read-only calendar access check");
-requireIncludes(coachingCalendarAdapterText, "Google Calendar is readable. No event was created, updated, deleted, or sent.", "calendar access check no mutation copy");
+requireIncludes(coachingCalendarAdapterText, "/events?fields=kind&maxResults=1&singleEvents=true", "calendar readiness checks the exact event collection without requesting event content");
+requireIncludes(coachingCalendarAdapterText, "No event content was returned to Quipsly, and no event was created, updated, deleted, or sent.", "calendar access check no mutation copy");
 requireIncludes(coachingCalendarAdapterText, "Google Calendar is scheduling evidence and convenience. Quipsly owns booking", "calendar evidence boundary");
 requireIncludes(coachingCalendarAdapterText, "GOOGLE_CALENDAR_INCLUDE_ATTENDEES", "calendar attendee-send boundary");
 requireIncludes(coachingCalendarAdapterText, "GOOGLE_CALENDAR_ALLOW_METADATA_TOKEN", "calendar metadata token boundary");

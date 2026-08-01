@@ -221,4 +221,4 @@ console.log(`PASS Committed-source receipt: ${receiptPath}`);
 NODE
 
 echo "PASS Quipsly Capture App Store drafts returned from committed source ${source_revision}"
-echo "BLOCKED Drafts remain ineligible until recaptured from Build 6/TestFlight and human-approved."
+echo "BLOCKED Drafts remain ineligible until recaptured from the exact signed candidate or TestFlight install and human-approved."
