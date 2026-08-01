@@ -5440,3 +5440,37 @@ was restored.
 - Production deployment, Build 24 qualification/upload, and physical-iPhone
   recording remain open. Build 23 stays the canonical public TestFlight target
   until an exact committed replacement clears the same release boundaries.
+
+### 2026-07-31 Quipsly Capture Build 24 TestFlight checkpoint
+
+- Released the retained coaching shared-follow-through client from exact
+  pushed source `9fdfeb761f82558fea97c4c03879aa020ac307b4`. Its
+  serialized shipping iPhone and Share Extension suite passed 47/47 with zero
+  failures, followed by a clean signed archive, App Store export, and exact
+  packaged-artifact inspection.
+- The distributed 21,444,234-byte IPA has SHA-256
+  `51a03c5a025066a2223c5b7a8e2c0f59e2984bfd39438d0a99d6727b1738a8d8`.
+  App and extension signatures, App Store profiles, entitlements, privacy
+  manifests, camera and microphone disclosures, audio and VoIP background
+  modes, export-compliance metadata, and matching 1.0 (24) versions passed.
+- App Store Connect accepted provider build
+  `dac9688d-2158-4794-82ea-ccfa00e39ed5`. Independent API readback reports
+  `VALID`, internal and external `IN_BETA_TESTING`, beta review `APPROVED`, no
+  non-exempt encryption, and inclusion in both the internal group and the
+  existing public-link **Quipsly Capture Rehearsal** group with automatic
+  notification enabled.
+- Anonymous delivery-boundary readback proves the open 100-person Quipsly
+  Capture handoff at `https://testflight.apple.com/join/XwRRcYUm`, including
+  Apple's exact app title, beta heading, and `itms-beta` transition. Build 24
+  is now the canonical TestFlight target; Build 23 remains rollback history.
+- Release operation exposed two pipeline defects before provider mutation: a
+  configured UI/DerivedData root was not actually source-and-run scoped, and
+  Fastlane's transporter split an inherited external `TMPDIR` containing
+  spaces. The release lane now scopes retained evidence automatically and
+  bounds only disposable transporter state to `/private/tmp`, with source
+  verification and runbook contracts for both behaviors.
+- This is simulator, signed-artifact, and provider-delivery proof—not a
+  physical-iPhone claim. Installation, real audio/video capture, camera
+  switching, pause/resume, interruption and process-death recovery, protected
+  upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
+  open until operated on an enumerated physical device.
