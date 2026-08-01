@@ -49,6 +49,12 @@ def release_receipt_path(paths)
   )
 end
 
+def capture_derived_data_path(default_root, lane_name)
+  configured_root = ENV["QUIPSLY_CAPTURE_DERIVED_DATA_DIR"].to_s.strip
+  base_root = configured_root.empty? ? File.join(default_root, "DerivedData") : configured_root
+  File.expand_path(File.join(base_root, lane_name))
+end
+
 def write_release_receipt(receipt_path, receipt)
   temporary_path = "#{receipt_path}.tmp-#{Process.pid}"
   File.write(temporary_path, JSON.pretty_generate(receipt) + "\n")
@@ -99,8 +105,11 @@ platform :ios do
     output_root = File.expand_path(
       explicit_output_root || File.join("/tmp/quipsly-capture-ui-tests", source_label, test_run_id),
     )
+    derived_data_path = capture_derived_data_path(output_root, "ui-tests")
     FileUtils.mkdir_p(output_root)
+    FileUtils.mkdir_p(derived_data_path)
     UI.message("Capture UI evidence: #{output_root}")
+    UI.message("Capture UI DerivedData: #{derived_data_path}")
 
     run_tests(
       project: PROJECT_PATH,
@@ -110,6 +119,7 @@ platform :ios do
       parallel_testing: false,
       result_bundle: true,
       output_directory: output_root,
+      derived_data_path: derived_data_path,
       buildlog_path: output_root,
       fail_build: true,
     )
@@ -148,7 +158,10 @@ platform :ios do
     end
     ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"] = source_revision
     paths = release_paths(options)
+    derived_data_path = capture_derived_data_path(paths[:output_directory], "archive")
     FileUtils.mkdir_p(paths[:output_directory])
+    FileUtils.mkdir_p(derived_data_path)
+    UI.message("Capture archive DerivedData: #{derived_data_path}")
 
     build_app(
       project: PROJECT_PATH,
@@ -157,6 +170,7 @@ platform :ios do
       clean: true,
       archive_path: paths[:archive_path],
       output_directory: paths[:output_directory],
+      derived_data_path: derived_data_path,
       output_name: paths[:output_name],
       xcargs: "-allowProvisioningUpdates",
       skip_package_ipa: true,

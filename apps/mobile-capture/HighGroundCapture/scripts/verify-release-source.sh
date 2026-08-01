@@ -102,6 +102,8 @@ require_text "$fastfile" "parallel_testing: false" "Capture UI tests run seriall
 require_text "$fastfile" 'sh("bash", SOURCE_VERIFIER)' "Release source verification preserves worktree paths containing spaces"
 require_text "$fastfile" 'QUIPSLY_CAPTURE_UI_TEST_RUN_ID' "Capture UI evidence is isolated per invocation"
 require_text "$fastfile" 'capture_status.empty? ? "" : "-dirty"' "Capture UI evidence labels working-tree drift"
+require_text "$fastfile" 'QUIPSLY_CAPTURE_DERIVED_DATA_DIR' "Capture release can relocate Xcode DerivedData off the system volume"
+require_text "$fastfile" 'derived_data_path: derived_data_path' "Capture UI and archive lanes use run-scoped DerivedData"
 require_text "$fastfile" 'lane :candidate do |options|' "Capture exposes an auth-free candidate qualification lane"
 require_text "$fastfile" 'receipt["candidateQualified"] = true' "Candidate receipt records deterministic UI and signed-artifact qualification"
 require_text "$fastfile" 'candidate(options)' "TestFlight reuses the complete candidate qualification lane"

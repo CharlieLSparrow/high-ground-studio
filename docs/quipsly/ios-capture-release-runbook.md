@@ -265,6 +265,20 @@ receipt must say:
 }
 ```
 
+The UI-test and archive lanes keep Xcode DerivedData inside the run-scoped
+artifact tree instead of the global `~/Library/Developer/Xcode/DerivedData`
+directory. On a low-space workstation, put both artifacts and transient build
+state on a trusted APFS volume:
+
+```bash
+export QUIPSLY_CAPTURE_RELEASE_DIR='/Volumes/<trusted-volume>/Quipsly QA Artifacts/Capture Releases'
+export QUIPSLY_CAPTURE_UI_TEST_DIR="$QUIPSLY_CAPTURE_RELEASE_DIR/ui-tests"
+export QUIPSLY_CAPTURE_DERIVED_DATA_DIR='/Volumes/<trusted-volume>/Quipsly QA Artifacts/Temporary/Capture DerivedData'
+```
+
+Each lane appends its own `ui-tests` or `archive` directory. Do not point this
+at a shared active Xcode DerivedData directory.
+
 Retain the receipt and SHA-256, not signing secrets or provisioning material,
 with the release record.
 
