@@ -15,6 +15,8 @@ if [[ "${CREATE_SESSION}" != "0" && "${CREATE_SESSION}" != "1" ]]; then
   exit 1
 fi
 
+mkdir -p "$(dirname "${OUTPUT_JSON}")"
+
 echo "Quipsly capture live reviewer proof"
 echo "root=${ROOT_DIR}"
 echo "base_url=${BASE_URL}"
