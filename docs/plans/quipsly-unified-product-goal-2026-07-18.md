@@ -5475,6 +5475,29 @@ was restored.
   upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
   open until operated on an enumerated physical device.
 
+### 2026-08-01 Quipsly Capture Build 25 public TestFlight checkpoint
+
+- Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
+  passed detached-source preflight, two independent 47/47 serialized iPhone
+  and Share Extension suites, and signed archive/export inspection.
+- The upload-bound 21,447,970-byte IPA has SHA-256
+  `ffc296f70a5afbd78b834908eed1d29e4f8d3e750c0e87fa917792c48d082071`.
+  Apple processed provider build `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33` as
+  `VALID`, accepted it into the existing public-link rehearsal group, and
+  approved beta review.
+- Independent App Store Connect readback reports external
+  `IN_BETA_TESTING`, the exact group/build relationship, automatic
+  notification, and the enabled 100-person public link. Anonymous delivery
+  readback returned HTTP 200 and Apple's Quipsly Capture beta title at
+  `https://testflight.apple.com/join/XwRRcYUm`.
+- Build 25 replaces Build 24 as the canonical public TestFlight target. The
+  complete provider and artifact evidence is in
+  `docs/coordination/2026-08-01-capture-build25-public-release.md`.
+- Physical installation and operated real-iPhone capture remain separate red
+  gates: installed-build readback, consented audio/video, pause/resume, camera
+  switching, interruption/process-death recovery, protected upload, playback,
+  timeline alignment, and same-ID Nest/Studio inspection are not yet proven.
+
 ### 2026-07-31 honest recorder-to-editor checkpoint
 
 - Exact implementation source `dfb837465d4720ed2f069df5edf80f7b32cc6b12`

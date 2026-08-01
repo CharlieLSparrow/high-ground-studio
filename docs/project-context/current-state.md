@@ -1,6 +1,35 @@
 # Current State
 
-Date: 2026-07-31
+Date: 2026-08-01
+
+## Capture Build 25 public TestFlight checkpoint
+
+- Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
+  passed the complete detached-source release preflight and two independent
+  47/47 serialized iPhone and Share Extension suites with zero failures.
+- The upload-bound signed IPA is 21,447,970 bytes at SHA-256
+  `ffc296f70a5afbd78b834908eed1d29e4f8d3e750c0e87fa917792c48d082071`.
+  Packaged app and extension identity, App Store profiles, entitlements,
+  nested signatures, privacy manifest, camera and microphone purpose strings,
+  background audio/CallKit modes, and export-compliance metadata all passed.
+- App Store Connect accepted provider build
+  `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`. A fresh independent readback reports
+  `VALID`, externally `IN_BETA_TESTING`, beta review `APPROVED`, included in
+  **Quipsly Capture Rehearsal**, automatic notification enabled, and the
+  existing 100-seat public link enabled.
+- Anonymous delivery-boundary readback returns HTTP 200 and Apple's title
+  **Join the Quipsly Capture beta - TestFlight - Apple** at
+  `https://testflight.apple.com/join/XwRRcYUm`. Build 25 is now the canonical
+  installation target; Build 24 remains rollback history.
+- Build 25 restores visible provider-runtime truth, explicitly distinguishes
+  immutable Studio handoff from publishing or source editing, and carries the
+  retained tagging/runtime hardening. Complete evidence and the remaining
+  physical-device gate are recorded in
+  `docs/coordination/2026-08-01-capture-build25-public-release.md`.
+- This is exact-source simulator, package, upload, review, group, and public
+  page proof. A physical TestFlight install, real iPhone audio/video recording,
+  pause/resume, camera switching, process-death recovery, upload, playback,
+  timeline alignment, and same-ID Nest/Studio readback remain open.
 
 ## Build 22 production and TestFlight release checkpoint
 

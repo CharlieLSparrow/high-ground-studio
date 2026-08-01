@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-31
+Last verified: 2026-08-01
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,12 +8,12 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (24)**
+- App: **Quipsly Capture 1.0 (25)**
 - Exact native source:
-  `9fdfeb761f82558fea97c4c03879aa020ac307b4`
-- Qualified upload-bound IPA: 21,444,234 bytes, SHA-256
-  `51a03c5a025066a2223c5b7a8e2c0f59e2984bfd39438d0a99d6727b1738a8d8`
-- App Store Connect build ID: `dac9688d-2158-4794-82ea-ccfa00e39ed5`
+  `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
+- Qualified upload-bound IPA: 21,447,970 bytes, SHA-256
+  `ffc296f70a5afbd78b834908eed1d29e4f8d3e750c0e87fa917792c48d082071`
+- App Store Connect build ID: `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -24,6 +24,11 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
+- Build 25 passed two independent 47/47 serialized iPhone and Share Extension
+  runs, exact-source preflight, signed archive/export inspection, Apple
+  processing, external beta review, external-group readback, and an anonymous
+  HTTP 200 read of Apple's page naming **Quipsly Capture**. This does not claim
+  a physical install or recording.
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**
