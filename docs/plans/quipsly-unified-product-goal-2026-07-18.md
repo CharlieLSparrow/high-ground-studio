@@ -5785,3 +5785,40 @@ was restored.
   committed worker deployment/IAM readback, the authorized cloud fixture,
   consent-revocation projection proof, and then real podcast and coaching
   correction-time corpus operations.
+
+### 2026-08-01 cloud build and image-cost control checkpoint
+
+- A current billing screenshot exposed the release pipeline as the largest
+  avoidable cloud-spend lane. Repository readback confirmed the Nest build uses
+  the `E2_HIGHCPU_32` default-pool worker and timestamped preview tags, so
+  repeated qualification of the same commit could purchase another build and
+  retain another Artifact Registry version.
+- Preview images are now content-addressed by the full committed source SHA.
+  Before Cloud Build, the release script resolves and validates the existing
+  tag's immutable digest. Repeated preview/recovery runs reuse that image while
+  still materializing the committed release context, running strict local
+  preflight, deploying at zero traffic, and requiring the same authenticated
+  smoke/promotion/readback boundaries.
+- Explicit `SKIP_BUILD` now fails closed if the requested image cannot be read
+  back. Registry authorization errors are distinguished from a genuinely
+  missing tag, and every build/reuse path ends with a valid digest readback.
+- Added a validated `CLOUD_BUILD_MACHINE_TYPE` override. The default remains
+  `e2-highcpu-32` until one real non-urgent `e2-highcpu-8` build demonstrates
+  reliable total cost savings; the smaller worker costs one-quarter per minute
+  but has one-quarter the memory, so changing the default without evidence
+  would be false economy.
+- Added a read-only 30-day cost audit that groups build duration and estimated
+  list-price compute by machine, detects repeated committed-source builds,
+  inventories tagged/untagged and old image versions, reads cleanup policies,
+  and resolves traffic-serving Cloud Run digests. It performs no deletion,
+  policy, service, database, or billing mutation and emits a blocker when a
+  live digest cannot be proven.
+- Nineteen release/cost tests and shell syntax pass. Live audit correctly stops
+  before cloud access because user and ADC credentials cannot refresh
+  non-interactively. Artifact cleanup stays unimplemented externally until
+  credentialed inventory, keep/delete dry run, log review, and explicit
+  destructive-action confirmation.
+- Normal cadence is now local iteration plus committed checkpoints, with a
+  cloud preview at a coherent production-boundary milestone—not a deployment
+  per commit. The complete runbook is
+  `docs/deploy/quipsly-cloud-cost-control.md`.

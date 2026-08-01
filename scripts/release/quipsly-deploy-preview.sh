@@ -6,7 +6,9 @@ ARTIFACT_REPOSITORY="${ARTIFACT_REPOSITORY:-high-ground-studio}"
 IMAGE_NAME="${IMAGE_NAME:-studio}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
-IMAGE_TAG="${IMAGE_TAG:-preview-$(date +%Y%m%d-%H%M%S)}"
+REQUESTED_IMAGE_TAG="${IMAGE_TAG:-}"
+REUSE_EXISTING_IMAGE="${REUSE_EXISTING_IMAGE:-1}"
+CLOUD_BUILD_MACHINE_TYPE="${CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32}"
 PREVIEW_TAG="${PREVIEW_TAG:-quipsly-preview}"
 SOURCE_SHA="${SOURCE_SHA:-manual-preview}"
 DEPLOYED_BY="${DEPLOYED_BY:-$(whoami)}"
@@ -21,6 +23,19 @@ if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
   exit 2
 fi
+
+if [[ "${REUSE_EXISTING_IMAGE}" != "0" && "${REUSE_EXISTING_IMAGE}" != "1" ]]; then
+  echo "REUSE_EXISTING_IMAGE must be 0 or 1." >&2
+  exit 2
+fi
+
+case "${CLOUD_BUILD_MACHINE_TYPE}" in
+  e2-medium|e2-highcpu-8|e2-highcpu-32|n1-highcpu-8|n1-highcpu-32) ;;
+  *)
+    echo "CLOUD_BUILD_MACHINE_TYPE is not supported by the default Cloud Build pool." >&2
+    exit 2
+    ;;
+esac
 
 if ! gcloud secrets versions describe "${RELEASE_SMOKE_SECRET_VERSION}" \
   --secret="${RELEASE_SMOKE_SECRET_NAME}" \
@@ -76,7 +91,37 @@ trap cleanup EXIT
 
 release_context="$("${repo_root}/scripts/release/quipsly-build-context.sh" "${resolved_source_sha}" "${release_context}")"
 SOURCE_SHA="${resolved_source_sha}"
+if [[ -n "${REQUESTED_IMAGE_TAG}" ]]; then
+  IMAGE_TAG="${REQUESTED_IMAGE_TAG}"
+else
+  # One committed release identity maps to one immutable registry tag. This
+  # makes retries, repeated preview qualification, and later promotion reuse
+  # the already-verified image instead of buying another timestamped build.
+  IMAGE_TAG="source-${SOURCE_SHA}"
+fi
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
+image_readback_error="${release_root}/artifact-image-readback.stderr"
+
+read_image_digest() {
+  local digest=""
+  : > "${image_readback_error}"
+  if digest="$(gcloud artifacts docker images describe "${IMAGE_URI}" \
+    --project="${PROJECT_ID}" \
+    --format='value(image_summary.digest)' 2>"${image_readback_error}")"; then
+    if [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      printf '%s\n' "${digest}"
+      return 0
+    fi
+    echo "Artifact Registry returned an invalid digest for ${IMAGE_URI}." >&2
+    return 2
+  fi
+  if grep -Eqi 'NOT_FOUND|not found|does not exist|was not found' "${image_readback_error}"; then
+    return 1
+  fi
+  echo "Artifact Registry readback failed before release cost decisions." >&2
+  sed -n '1,12p' "${image_readback_error}" >&2
+  return 2
+}
 
 echo "=========================================================="
 echo "🛡️  Running Beta Manifest Scan..."
@@ -93,15 +138,51 @@ RELEASE_CONTEXT_DIR="${release_context}" \
   QUIPSLY_PREFLIGHT_PURPOSE=preview \
   bash "${repo_root}/scripts/release/quipsly-release-preflight.sh"
 
+existing_image_digest=""
+image_readback_status=1
+if existing_image_digest="$(read_image_digest)"; then
+  image_readback_status=0
+else
+  image_readback_status=$?
+fi
+
 if [[ "${SKIP_BUILD:-0}" == "1" || "${SKIP_CLOUD_BUILD:-0}" == "1" ]]; then
-  echo "Using existing Quipsly image ${IMAGE_URI}"
+  if [[ "${image_readback_status}" != "0" ]]; then
+    echo "The requested existing image is unavailable: ${IMAGE_URI}" >&2
+    exit 2
+  fi
+  echo "Using explicitly selected existing Quipsly image ${IMAGE_URI} (${existing_image_digest})"
+elif [[ "${REUSE_EXISTING_IMAGE}" == "1" && "${image_readback_status}" == "0" ]]; then
+  echo "Reusing exact-source Quipsly image ${IMAGE_URI} (${existing_image_digest})"
+  echo "Cloud Build skipped: this committed source already has a verified image."
+elif [[ "${image_readback_status}" == "2" ]]; then
+  exit 2
 else
   echo "Building Quipsly image ${IMAGE_URI} from committed source ${SOURCE_SHA}"
+  echo "Cloud Build worker: ${CLOUD_BUILD_MACHINE_TYPE}"
   gcloud builds submit \
     --config "${release_context}/${CLOUD_BUILD_CONFIG}" \
+    --machine-type "${CLOUD_BUILD_MACHINE_TYPE}" \
     --substitutions "_REGION=${REGION},_ARTIFACT_REPOSITORY=${ARTIFACT_REPOSITORY},_IMAGE_NAME=${IMAGE_NAME},_IMAGE_TAG=${IMAGE_TAG},_QUIPSLY_BUILD_ID=${SOURCE_SHA}" \
     "${release_context}"
 fi
+
+verified_image_digest=""
+for attempt in 1 2 3 4 5 6; do
+  if verified_image_digest="$(read_image_digest)"; then
+    break
+  fi
+  image_status=$?
+  if [[ "${image_status}" == "2" ]]; then
+    exit 2
+  fi
+  sleep "$((attempt * 2))"
+done
+if [[ ! "${verified_image_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  echo "Could not verify the release image after the build/reuse decision: ${IMAGE_URI}" >&2
+  exit 2
+fi
+echo "Release image digest: ${verified_image_digest}"
 
 echo "Deploying no-traffic preview revision for ${SERVICE_NAME}"
 gcloud run deploy "${SERVICE_NAME}" \

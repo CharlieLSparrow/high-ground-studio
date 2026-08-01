@@ -12,6 +12,10 @@ const deploy = fs.readFileSync(
   new URL("./quipsly-deploy-preview.sh", import.meta.url),
   "utf8",
 );
+const cloudBuild = fs.readFileSync(
+  new URL("../../cloudbuild.quipsly-web.yaml", import.meta.url),
+  "utf8",
+);
 const promote = fs.readFileSync(
   new URL("./quipsly-promote-preview.sh", import.meta.url),
   "utf8",
@@ -96,6 +100,23 @@ test("no-traffic preview can repair drift without weakening candidate checks", (
     /Current production has blockers; continuing only because a no-traffic preview may repair them/,
   );
   assert.match(preflight, /QUIPSLY_PREFLIGHT_PURPOSE.*audit\|preview/s);
+});
+
+test("preview retries reuse the content-addressed image without bypassing preflight", () => {
+  assert.match(deploy, /QUIPSLY_PREFLIGHT_PURPOSE=preview/);
+  assert.match(deploy, /IMAGE_TAG="source-\$\{SOURCE_SHA\}"/);
+  assert.match(deploy, /read_image_digest/);
+  assert.match(deploy, /Cloud Build skipped: this committed source already has a verified image/);
+  assert.match(deploy, /Deploying no-traffic preview revision/);
+  assert.match(cloudBuild, /:\$\{_IMAGE_TAG\}-candidate/);
+  assert.match(cloudBuild, /id: verify-quipsly-route-bundles/);
+  assert.match(cloudBuild, /id: qualify-quipsly-source-image/);
+  assert.ok(
+    cloudBuild.indexOf("id: qualify-quipsly-source-image")
+      > cloudBuild.indexOf("id: verify-quipsly-route-bundles"),
+  );
+  assert.match(cloudBuild, /Refusing to replace an existing qualified source tag with another digest/);
+  assert.match(cloudBuild, /Qualified source tag digest readback failed/);
 });
 
 test("preview deploy mounts internal proxy credentials from Secret Manager", () => {

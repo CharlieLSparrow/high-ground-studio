@@ -34,7 +34,7 @@ steps:
       - pipefail
       - -c
       - |
-        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}-candidate"
         cache_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_BUILD_CACHE_IMAGE_NAME}:${_BUILD_CACHE_TAG}"
 
         docker buildx version
@@ -75,7 +75,7 @@ steps:
       - pipefail
       - -c
       - |
-        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}-candidate"
         for attempt in 1 2 3 4 5 6; do
           digest="$$(gcloud artifacts docker images describe "$${image}" \
             --format='value(image_summary.digest)' 2>/dev/null || true)"
@@ -89,7 +89,7 @@ steps:
         exit 1
 
   - id: verify-quipsly-route-bundles
-    name: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+    name: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}-candidate
     entrypoint: node
     args:
       - -e
@@ -113,6 +113,41 @@ steps:
           }
         }
         console.log(`PASS Verified ${requiredRoutes.size} required Quipsly routes in the image.`);
+
+  - id: qualify-quipsly-source-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        repository="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}"
+        qualified="$${repository}:${_IMAGE_TAG}"
+        digest="$$(cat /workspace/quipsly-image-digest.txt)"
+        if [[ ! "$${digest}" =~ ^sha256:[0-9a-f]{64}$$ ]]; then
+          echo "Candidate digest receipt is invalid." >&2
+          exit 1
+        fi
+        existing="$$(gcloud artifacts docker images describe "$${qualified}" \
+          --format='value(image_summary.digest)' 2>/dev/null || true)"
+        if [[ -n "$${existing}" && "$${existing}" != "$${digest}" ]]; then
+          echo "Refusing to replace an existing qualified source tag with another digest." >&2
+          exit 1
+        fi
+        if [[ -z "$${existing}" ]]; then
+          gcloud artifacts docker tags add \
+            "$${repository}@$${digest}" \
+            "$${qualified}" \
+            --quiet
+        fi
+        readback="$$(gcloud artifacts docker images describe "$${qualified}" \
+          --format='value(image_summary.digest)')"
+        if [[ "$${readback}" != "$${digest}" ]]; then
+          echo "Qualified source tag digest readback failed." >&2
+          exit 1
+        fi
+        echo "PASS Qualified exact-source image $${qualified} at $${digest}."
 
 options:
   machineType: E2_HIGHCPU_32
