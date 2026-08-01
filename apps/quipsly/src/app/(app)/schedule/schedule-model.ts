@@ -13,6 +13,7 @@ export type ScheduleSession = {
   id: string;
   title: string;
   purpose: string;
+  projectId: string | null;
   status: string;
   scheduledStart: string;
   scheduledEnd: string | null;

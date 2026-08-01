@@ -102,6 +102,7 @@ describe("Schedule page truth states", () => {
       goal: { findMany: jest.fn().mockResolvedValue([]) },
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
     render(await SchedulePage());
     expect(screen.getByRole("status", { name: "Calendar unavailable" })).toHaveTextContent("database connection is unavailable");
@@ -121,6 +122,7 @@ describe("Schedule page truth states", () => {
       callRoom: {
         findMany: jest.fn().mockResolvedValue([{
           id: "room-1",
+          projectId: null,
           title: "High Ground Odyssey rehearsal",
           purpose: "PODCAST",
           status: "PLANNED",
@@ -136,6 +138,7 @@ describe("Schedule page truth states", () => {
       goal: { findMany: jest.fn().mockResolvedValue([]) },
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());
@@ -205,6 +208,7 @@ describe("Schedule page truth states", () => {
       goal: { findMany: jest.fn().mockResolvedValue([]) },
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());

@@ -116,6 +116,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
               id: true,
               title: true,
               purpose: true,
+              projectId: true,
               status: true,
               scheduledStart: true,
               scheduledEnd: true,
@@ -205,16 +206,48 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       }),
     ]);
 
+    const canonicalSessionProjectionRows = roomRows.length > 0
+      ? await prisma.calendarProjection.findMany({
+          where: {
+            sourceType: "CallRoom",
+            sourceId: { in: roomRows.map((room: any) => room.id) },
+            collection: {
+              OR: [
+                { ownerUserId: userId },
+                ...(projectIds.length > 0 ? [{ nestId: { in: projectIds } }] : []),
+                ...(workspaceIds.length > 0 ? [{ workspaceId: { in: workspaceIds } }] : []),
+              ],
+            },
+          },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            sourceId: true,
+            providerEventId: true,
+            status: true,
+            conflictState: true,
+            collection: { select: { connection: { select: { provider: true } } } },
+          },
+        })
+      : [];
+    const canonicalSessionProjectionByRoom = new Map<string, any>();
+    for (const projection of canonicalSessionProjectionRows) {
+      if (!canonicalSessionProjectionByRoom.has(projection.sourceId)) {
+        canonicalSessionProjectionByRoom.set(projection.sourceId, projection);
+      }
+    }
+
     const now = Date.now();
     const sessions: ScheduleSession[] = roomRows
       .filter((room: any) => room.scheduledStart && room.scheduledStart.getTime() >= now - 86_400_000)
       .map((room: any) => {
         const calendar = room.calendarLinks[0] ?? null;
+        const canonicalProjection = canonicalSessionProjectionByRoom.get(room.id) ?? null;
         const participant = room.booking?.clientUser || room.booking?.coachUser || null;
         return {
           id: room.id,
           title: room.title || `${humanizeScheduleValue(room.purpose)} session`,
           purpose: room.purpose,
+          projectId: room.projectId,
           status: room.status,
           scheduledStart: room.scheduledStart!.toISOString(),
           scheduledEnd: room.scheduledEnd?.toISOString() ?? null,
@@ -222,10 +255,12 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             room.metadataJson,
             room.booking?.timezone,
           ),
-          calendarStatus: calendar
+          calendarStatus: canonicalProjection
+            ? `${humanizeScheduleValue(canonicalProjection.collection.connection?.provider || "provider")} · ${canonicalProjection.conflictState !== "NONE" ? "Conflict needs review" : humanizeScheduleValue(canonicalProjection.status)}`
+            : calendar
             ? `${humanizeScheduleValue(calendar.provider)} · ${humanizeScheduleValue(calendar.status)}`
             : "Quipsly schedule only",
-          calendarLinked: Boolean(calendar?.providerEventId),
+          calendarLinked: Boolean(canonicalProjection?.providerEventId || calendar?.providerEventId),
           participantLabel: participant?.name || participant?.primaryEmail || null,
           tags: scheduleTags(room.tagLinks),
         };
@@ -501,7 +536,7 @@ export default async function SchedulePage() {
 
           <CalendarSystemOverview overview={snapshot.calendarOverview} />
 
-          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects} />
+          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects} sessions={snapshot.sessions} />
 
           <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
 

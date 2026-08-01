@@ -170,11 +170,49 @@ consent/readback remain explicit external gates.
 
 ## Next calendar slices
 
+### Session event projection checkpoint
+
+The next local slice now implements explicit Session-to-Google event projection:
+
+- only scheduled Podcast and Coaching Sessions are eligible;
+- the chosen calendar collection must belong to the signed-in user's verified
+  OAuth connection and match the Session lane/Nest;
+- preview is read-only and returns the exact privacy-safe event snapshot;
+- deterministic provider event IDs allow retry recovery after an ambiguous
+  create response without creating duplicates;
+- the event contains title, time, timezone, Quipsly return URL, and a generic
+  privacy notice—never attendees, participant identity, consent, recordings,
+  transcript text, notes, goals, or tasks;
+- `sendUpdates=none` is forced for create and update;
+- team production selections keep the shared calendar's normal event visibility,
+  while private selections stay private at the provider;
+- confirmation is bound to the preview's exact source-revision digest;
+- changed Quipsly state invalidates the preview before token decryption;
+- updates use `If-Match` with the last provider etag so a Google-side edit
+  produces `EXTERNAL_CHANGED` conflict truth instead of a lost update;
+- successful create/update/no-op writes the canonical `CalendarProjection` and
+  an append-only `CalendarSyncReceipt`;
+- cancellation is deliberately held for a separately confirmed action;
+- an uncertain network/provider outcome is reported as unknown and instructs
+  retry of the same deterministic preview instead of claiming no side effect.
+
+Google recommends client-supplied event IDs to keep local records synchronized
+and prevent duplicate creation after ambiguous failures ([Create events](https://developers.google.com/workspace/calendar/api/guides/create-events)). Google etags and `If-Match` provide the lost-update boundary ([Resource versions](https://developers.google.com/workspace/calendar/api/guides/version-resources)). Collection-wide incremental sync and 410 full-resync recovery remain the next reconciliation layer ([Incremental synchronization](https://developers.google.com/workspace/calendar/api/guides/sync)).
+
+Focused Session projection provider/route tests pass 13/13. The retained
+authenticated browser operation temporarily scheduled an actor-owned real
+Session, previewed `CREATE`, rejected a stale confirmation, verified zero
+projection/effect rows, restored the exact prior Session schedule/metadata/
+revision timestamp, and removed all temporary connection and collection rows.
+No Google request or external side effect occurred.
+
 1. Complete the dedicated Google OAuth client and real-account consent
    readback.
-2. Add a write-preview contract for one canonical Quipsly Session projection.
-3. Create events idempotently with source revision, provider etag, and receipt.
-4. Reconcile external changes and conflicts without overwriting either side.
+2. Exercise create, deterministic retry recovery, etag conflict, and no-op
+   against a dedicated QA calendar with notifications visibly off.
+3. Add explicit cancellation confirmation and provider-absence readback.
+4. Add incremental reconciliation, including 410-triggered full resync, without
+   overwriting either side.
 5. Add podcast milestones and coach availability/free-busy as separate,
    least-privilege capabilities.
 6. Add EventKit device-local access in Quipsly Capture only after the shared
