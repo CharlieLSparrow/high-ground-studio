@@ -117,7 +117,11 @@ export function buildSessionCalendarProjectionPreview(input: {
   } : null;
   let action: SessionCalendarProjectionPreview["action"];
   if (existing?.conflictState && existing.conflictState !== "NONE") action = "BLOCKED";
-  else if (input.snapshot.status === "CANCELLED") action = existing?.providerEventId ? "CANCEL" : "NOOP";
+  else if (input.snapshot.status === "CANCELLED") {
+    action = existing?.status === "CANCELED" || !existing?.providerEventId
+      ? "NOOP"
+      : "CANCEL";
+  }
   else if (!existing?.providerEventId) action = "CREATE";
   else if (existing.sourceRevision === sourceRevision && existing.status === "SYNCED") action = "NOOP";
   else action = "UPDATE";
@@ -270,5 +274,109 @@ export async function writeSessionGoogleCalendarProjection(input: {
     providerUpdatedAt: typeof body.updated === "string" ? body.updated : null,
     providerStatus: typeof body.status === "string" ? body.status : "confirmed",
     recoveredCreate: false,
+  };
+}
+
+export async function cancelSessionGoogleCalendarProjection(input: {
+  preview: SessionCalendarProjectionPreview;
+  accessToken: string;
+  calendarId: string;
+  fetchImpl?: typeof fetch;
+}) {
+  if (input.preview.snapshot.status !== "CANCELLED") {
+    throw new SessionCalendarProjectionError(
+      "Only a canceled Quipsly Session can cancel its projected Google event.",
+      "session-not-cancelled",
+      409,
+    );
+  }
+  if (input.preview.action === "BLOCKED") {
+    throw new SessionCalendarProjectionError(
+      input.preview.warning,
+      "projection-conflict",
+      409,
+    );
+  }
+  if (
+    input.preview.action === "NOOP"
+    && (
+      input.preview.existing?.status === "CANCELED"
+      || !input.preview.existing?.providerEventId
+    )
+  ) {
+    return {
+      outcome: "ALREADY_ABSENT" as const,
+      externalMutated: false,
+      providerEventId: input.preview.existing?.providerEventId || null,
+      providerEtag: null,
+      providerUpdatedAt: null,
+      providerStatus: input.preview.existing?.status === "CANCELED"
+        ? "cancellation-already-recorded"
+        : "not-projected",
+      providerAlreadyAbsent: true,
+    };
+  }
+  if (input.preview.action !== "CANCEL") {
+    throw new SessionCalendarProjectionError(
+      "Preview this canceled Session before confirming Google Calendar removal.",
+      "cancellation-preview-required",
+      409,
+    );
+  }
+  if (!input.preview.existing?.providerEventId || !input.preview.existing.providerEtag) {
+    throw new SessionCalendarProjectionError(
+      "The previous Google event version is missing. Read it back before canceling.",
+      "provider-etag-required",
+      409,
+    );
+  }
+
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(input.calendarId)}/events`;
+  const response = await fetchImpl(
+    `${base}/${encodeURIComponent(input.preview.existing.providerEventId)}?sendUpdates=none`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${input.accessToken}`,
+        "If-Match": input.preview.existing.providerEtag,
+      },
+    },
+  );
+  if (response.status === 412) {
+    throw new SessionCalendarProjectionError(
+      "Google Calendar changed after Quipsly last verified it. Review the conflict before removing anything.",
+      "provider-etag-conflict",
+      409,
+    );
+  }
+  if (response.status === 404 || response.status === 410) {
+    return {
+      outcome: "ALREADY_ABSENT" as const,
+      externalMutated: false,
+      providerEventId: input.preview.existing.providerEventId,
+      providerEtag: null,
+      providerUpdatedAt: null,
+      providerStatus: "already-absent",
+      providerAlreadyAbsent: true,
+    };
+  }
+  if (!response.ok) {
+    throw new SessionCalendarProjectionError(
+      response.status === 401 || response.status === 403
+        ? "Google Calendar access is no longer sufficient. Reconnect or choose another owned calendar."
+        : "Google Calendar did not confirm removal of the Session event.",
+      `provider-cancel-${response.status || "failed"}`,
+      response.status === 401 || response.status === 403 ? 409 : 502,
+    );
+  }
+  return {
+    outcome: "CANCELED" as const,
+    externalMutated: true,
+    providerEventId: input.preview.existing.providerEventId,
+    providerEtag: null,
+    providerUpdatedAt: null,
+    providerStatus: "cancelled",
+    providerAlreadyAbsent: false,
   };
 }

@@ -72,7 +72,7 @@ export type ScheduleSnapshot =
       authState: "signed-in";
       accessibleNestCount: number;
       calendarOverview: CalendarOverview;
-      calendarProjects: Array<{ id: string; name: string }>;
+      calendarProjects: Array<{ id: string; name: string; canWrite: boolean }>;
       calendarFeeds: Array<{
         id: string;
         purpose: "COACHING" | "PODCAST_PRODUCTION" | "PERSONAL_COMMITMENTS";

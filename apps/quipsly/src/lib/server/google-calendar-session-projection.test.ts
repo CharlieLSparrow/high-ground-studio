@@ -3,6 +3,7 @@
 import {
   buildSessionCalendarProjectionPreview,
   buildSessionCalendarSnapshot,
+  cancelSessionGoogleCalendarProjection,
   deterministicGoogleEventId,
   SessionCalendarProjectionError,
   writeSessionGoogleCalendarProjection,
@@ -52,6 +53,7 @@ describe("Session Google Calendar projection", () => {
     expect(buildSessionCalendarProjectionPreview({ snapshot: current, existing: existing() }).action).toBe("UPDATE");
     expect(buildSessionCalendarProjectionPreview({ snapshot: current, existing: existing({ sourceRevision: create.sourceRevision }) }).action).toBe("NOOP");
     expect(buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED"), existing: existing() }).action).toBe("CANCEL");
+    expect(buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED"), existing: existing({ status: "CANCELED" }) }).action).toBe("NOOP");
     expect(buildSessionCalendarProjectionPreview({ snapshot: current, existing: existing({ conflictState: "EXTERNAL_CHANGED" }) }).action).toBe("BLOCKED");
   });
 
@@ -138,5 +140,85 @@ describe("Session Google Calendar projection", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     const cancellation = buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED"), existing: existing() });
     await expect(writeSessionGoogleCalendarProjection({ preview: cancellation, accessToken: "access", calendarId: "calendar", fetchImpl })).rejects.toBeInstanceOf(SessionCalendarProjectionError);
+  });
+
+  it("conditionally removes a canceled Session event with notifications off", async () => {
+    const preview = buildSessionCalendarProjectionPreview({
+      snapshot: snapshot("CANCELED"),
+      existing: existing(),
+    });
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const result = await cancelSessionGoogleCalendarProjection({
+      preview,
+      accessToken: "access",
+      calendarId: "calendar@example.test",
+      fetchImpl,
+    });
+    expect(result).toMatchObject({
+      outcome: "CANCELED",
+      externalMutated: true,
+      providerEventId: "provider-1",
+      providerAlreadyAbsent: false,
+    });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toContain("/events/provider-1?sendUpdates=none");
+    expect(init).toMatchObject({
+      method: "DELETE",
+      headers: {
+        Authorization: "Bearer access",
+        "If-Match": '"etag-1"',
+      },
+    });
+    expect(init.body).toBeUndefined();
+  });
+
+  it.each([404, 410])("converges an already-absent provider event after HTTP %s", async (status) => {
+    const preview = buildSessionCalendarProjectionPreview({
+      snapshot: snapshot("CANCELED"),
+      existing: existing(),
+    });
+    const result = await cancelSessionGoogleCalendarProjection({
+      preview,
+      accessToken: "access",
+      calendarId: "calendar",
+      fetchImpl: jest.fn().mockResolvedValue(new Response(null, { status })),
+    });
+    expect(result).toMatchObject({
+      outcome: "ALREADY_ABSENT",
+      externalMutated: false,
+      providerAlreadyAbsent: true,
+      providerStatus: "already-absent",
+    });
+  });
+
+  it("turns a stale delete etag into conflict truth", async () => {
+    const preview = buildSessionCalendarProjectionPreview({
+      snapshot: snapshot("CANCELED"),
+      existing: existing(),
+    });
+    await expect(cancelSessionGoogleCalendarProjection({
+      preview,
+      accessToken: "access",
+      calendarId: "calendar",
+      fetchImpl: jest.fn().mockResolvedValue(new Response(null, { status: 412 })),
+    })).rejects.toMatchObject({ code: "provider-etag-conflict", status: 409 });
+  });
+
+  it("records local absence without provider access when no event was projected", async () => {
+    const preview = buildSessionCalendarProjectionPreview({ snapshot: snapshot("CANCELED") });
+    const fetchImpl = jest.fn();
+    const result = await cancelSessionGoogleCalendarProjection({
+      preview,
+      accessToken: "",
+      calendarId: "calendar",
+      fetchImpl,
+    });
+    expect(result).toMatchObject({
+      outcome: "ALREADY_ABSENT",
+      externalMutated: false,
+      providerEventId: null,
+      providerStatus: "not-projected",
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

@@ -11,8 +11,8 @@ import {
   refreshGoogleCalendarAccess,
   revokeGoogleCalendarToken,
 } from "@/lib/server/google-calendar-oauth";
-import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const runtime = "nodejs";
 
@@ -158,23 +158,31 @@ export async function POST(request: Request) {
 
   const prisma = getPrismaClient() as any;
   try {
+    let nestId: string | null = null;
+    if (purpose === "PODCAST_PRODUCTION") {
+      const project = await prisma.studioProject.findUnique({
+        where: { id: projectId },
+        select: { slug: true },
+      });
+      const access = project
+        ? await resolveStudioProjectAccess({
+            projectSlug: project.slug,
+            email: session.user.primaryEmail || session.user.email,
+            action: "write",
+            prisma,
+          })
+        : null;
+      if (!access?.allowed || access.projectId !== projectId) {
+        return json({ ok: false, error: "You need edit access to select a team calendar for that episode Nest." }, 403);
+      }
+      nestId = projectId;
+    }
+
     const connection = await actorConnection(prisma, session.user.id);
     if (!connection) return json({ ok: false, error: "Connect Google Calendar first." }, 409);
     const provider = await providerCalendars({ connection, requestUrl: request.url, prisma });
     const selected = provider.calendars.find((calendar) => calendar.id === calendarId);
     if (!selected) return json({ ok: false, error: "That owned Google calendar is no longer available." }, 409);
-
-    let nestId: string | null = null;
-    if (purpose === "PODCAST_PRODUCTION") {
-      const visibleProjects = await listProjectsVisibleToEmail(
-        session.user.primaryEmail,
-        prisma,
-      );
-      if (!visibleProjects.some((project) => project.id === projectId)) {
-        return json({ ok: false, error: "You do not have access to that episode Nest." }, 403);
-      }
-      nestId = projectId;
-    }
 
     const existing = await prisma.calendarCollection.findUnique({
       where: {

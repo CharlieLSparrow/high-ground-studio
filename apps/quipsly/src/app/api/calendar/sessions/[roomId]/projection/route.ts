@@ -11,12 +11,13 @@ import {
 import {
   buildSessionCalendarProjectionPreview,
   buildSessionCalendarSnapshot,
+  cancelSessionGoogleCalendarProjection,
   SessionCalendarProjectionError,
   writeSessionGoogleCalendarProjection,
 } from "@/lib/server/google-calendar-session-projection";
 import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sessionAccessWhere } from "@/lib/server/session-access";
+import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 
 export const runtime = "nodejs";
 
@@ -40,10 +41,13 @@ async function projectionContext(input: {
   roomId: string;
   collectionId: string;
   actor: { id: string; email: string; primaryEmail: string; isStaff: boolean };
+  action?: "read" | "write";
   prisma: any;
 }) {
   const room = await input.prisma.callRoom.findFirst({
-    where: sessionAccessWhere(input.roomId, input.actor),
+    where: input.action === "write"
+      ? sessionMutationAccessWhere(input.roomId, input.actor)
+      : sessionAccessWhere(input.roomId, input.actor),
     select: {
       id: true,
       title: true,
@@ -155,12 +159,12 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
   let providerExternalMutated: boolean | null = null;
   try {
     const { roomId } = await context.params;
-    const current = await projectionContext({ request, roomId, collectionId, actor: session.user, prisma });
+    const current = await projectionContext({ request, roomId, collectionId, actor: session.user, action: "write", prisma });
     result = current;
     if (current.preview.sourceRevision !== expectedSourceRevision) {
       return json({ ok: false, error: "The Session changed after preview. Review the current event before confirming.", code: "stale-session-preview", externalSideEffects: false }, 409);
     }
-    if (current.preview.action === "CANCEL") {
+    if (current.preview.snapshot.status === "CANCELLED") {
       return json({ ok: false, error: current.preview.warning, code: "cancellation-requires-separate-action", externalSideEffects: false }, 409);
     }
     const credential = current.collection.connection.oauthCredential;
@@ -280,6 +284,404 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       nextAction:
         providerWriteAttempted && providerExternalMutated === null
           ? "Retry the same preview. Quipsly will recover the deterministic event instead of creating a duplicate."
+          : undefined,
+    }, known ? error.status : 503);
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ roomId: string }> }) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user?.id) return json({ ok: false, error: "Authentication required." }, 401);
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const collectionId = typeof body?.collectionId === "string" ? body.collectionId.trim() : "";
+  const expectedSourceRevision = typeof body?.expectedSourceRevision === "string" ? body.expectedSourceRevision.trim() : "";
+  if (!collectionId || !expectedSourceRevision || body?.confirmCancellation !== true) {
+    return json({
+      ok: false,
+      error: "Preview this exact canceled Session and explicitly confirm Google Calendar removal.",
+      externalSideEffects: false,
+    }, 400);
+  }
+
+  const prisma = getPrismaClient() as any;
+  let current: Awaited<ReturnType<typeof projectionContext>> | null = null;
+  let providerWriteAttempted = false;
+  let providerExternalMutated: boolean | null = null;
+  let providerCancellation: Awaited<ReturnType<typeof cancelSessionGoogleCalendarProjection>> | null = null;
+  try {
+    const { roomId } = await context.params;
+    current = await projectionContext({ request, roomId, collectionId, actor: session.user, action: "write", prisma });
+    if (current.preview.sourceRevision !== expectedSourceRevision) {
+      return json({
+        ok: false,
+        error: "The Session changed after preview. Review the current cancellation before confirming.",
+        code: "stale-session-preview",
+        externalSideEffects: false,
+      }, 409);
+    }
+    if (current.preview.snapshot.status !== "CANCELLED") {
+      return json({
+        ok: false,
+        error: "This Session is not canceled in Quipsly. No Google event was removed.",
+        code: "session-not-cancelled",
+        externalSideEffects: false,
+      }, 409);
+    }
+
+    if (current.preview.action === "NOOP" && current.preview.existing?.status === "CANCELED") {
+      const priorReceipt = await prisma.calendarSyncReceipt.findFirst({
+        where: {
+          connectionId: current.collection.connectionId,
+          collectionId: current.collection.id,
+          projectionId: current.preview.existing.projectionId,
+          operation: "CANCEL_EVENT",
+          requestDigest: current.preview.sourceRevision,
+          outcome: { in: ["SUCCEEDED", "SKIPPED"] },
+        },
+        orderBy: { occurredAt: "desc" },
+        select: { id: true, externalMutated: true, providerStatus: true, metadataJson: true },
+      });
+      if (priorReceipt) {
+        const receiptMetadata = priorReceipt.metadataJson && typeof priorReceipt.metadataJson === "object"
+          ? priorReceipt.metadataJson as Record<string, unknown>
+          : {};
+        return json({
+          ok: true,
+          result: {
+            projectionId: current.preview.existing.projectionId,
+            receiptId: priorReceipt.id,
+            sourceRevision: current.preview.sourceRevision,
+            action: "CANCEL",
+            externalMutated: priorReceipt.externalMutated,
+            providerAlreadyAbsent: receiptMetadata.providerAlreadyAbsent === true,
+            idempotentReplay: true,
+            providerStatus: priorReceipt.providerStatus,
+          },
+        });
+      }
+    }
+
+    let accessToken = "";
+    if (current.preview.action === "CANCEL") {
+      const credential = current.collection.connection.oauthCredential;
+      if (!credential?.encryptedPayload) {
+        throw new SessionCalendarProjectionError(
+          "Reconnect Google Calendar before removing this event.",
+          "missing-encrypted-credential",
+          409,
+        );
+      }
+      const config = getGoogleCalendarOAuthConfig(request.url);
+      const refreshToken = decryptGoogleRefreshToken(credential.encryptedPayload, config.encryptionKey);
+      accessToken = await refreshGoogleCalendarAccess({ refreshToken, config });
+      providerWriteAttempted = true;
+    }
+    const provider = await cancelSessionGoogleCalendarProjection({
+      preview: current.preview,
+      accessToken,
+      calendarId: current.collection.providerCalendarId,
+    });
+    providerCancellation = provider;
+    providerExternalMutated = provider.externalMutated;
+
+    const afterProvider = await projectionContext({
+      request,
+      roomId,
+      collectionId,
+      actor: session.user,
+      action: "write",
+      prisma,
+    });
+    const occurredAt = new Date();
+    if (afterProvider.preview.sourceRevision !== current.preview.sourceRevision) {
+      if (!providerWriteAttempted && !provider.providerEventId) {
+        return json({
+          ok: false,
+          error: "The Session changed while Quipsly was confirming that no Google event existed. Preview it again.",
+          code: "stale-session-preview",
+          externalSideEffects: false,
+        }, 409);
+      }
+      const conflict = await prisma.$transaction(async (transaction: any) => {
+        const projection = await transaction.calendarProjection.upsert({
+          where: {
+            collectionId_sourceType_sourceId: {
+              collectionId: current!.collection.id,
+              sourceType: "CallRoom",
+              sourceId: current!.room.id,
+            },
+          },
+          create: {
+            collectionId: current!.collection.id,
+            sourceType: "CallRoom",
+            sourceId: current!.room.id,
+            sourceRevision: current!.preview.sourceRevision,
+            providerEventId: provider.providerEventId,
+            providerEtag: null,
+            uid: current!.preview.uid,
+            status: "CONFLICT",
+            conflictState: "QUIPSLY_CHANGED",
+            lastSyncedAt: occurredAt,
+            metadataJson: {
+              schema: "quipsly-session-calendar-projection-v1",
+              cancellationConfirmed: true,
+              sourceChangedAfterProviderEffect: true,
+              observedCurrentSourceRevision: afterProvider.preview.sourceRevision,
+              sendUpdates: "none",
+              attendeesIncluded: false,
+            },
+          },
+          update: {
+            sourceRevision: current!.preview.sourceRevision,
+            providerEventId: provider.providerEventId,
+            providerEtag: null,
+            sequence: { increment: provider.externalMutated ? 1 : 0 },
+            status: "CONFLICT",
+            conflictState: "QUIPSLY_CHANGED",
+            lastSyncedAt: occurredAt,
+            metadataJson: {
+              schema: "quipsly-session-calendar-projection-v1",
+              cancellationConfirmed: true,
+              sourceChangedAfterProviderEffect: true,
+              observedCurrentSourceRevision: afterProvider.preview.sourceRevision,
+              sendUpdates: "none",
+              attendeesIncluded: false,
+            },
+          },
+        });
+        const receipt = await transaction.calendarSyncReceipt.create({
+          data: {
+            connectionId: current!.collection.connectionId,
+            collectionId: current!.collection.id,
+            projectionId: projection.id,
+            actorUserId: session.user.id,
+            operation: "CANCEL_EVENT",
+            outcome: "CONFLICT",
+            requestDigest: current!.preview.sourceRevision,
+            responseDigest: provider.providerEventId || provider.providerStatus,
+            providerStatus: provider.providerStatus,
+            externalMutated: provider.externalMutated,
+            occurredAt,
+            metadataJson: {
+              schema: "quipsly-session-calendar-sync-receipt-v1",
+              sourceChangedAfterProviderEffect: true,
+              observedCurrentSourceRevision: afterProvider.preview.sourceRevision,
+              providerAlreadyAbsent: provider.providerAlreadyAbsent,
+              sendUpdates: "none",
+              attendeesIncluded: false,
+            },
+          },
+        });
+        return { projection, receipt };
+      });
+      return json({
+        ok: false,
+        error: "Google cancellation was observed, but the Quipsly Session changed during the operation. Review the recorded conflict before projecting again.",
+        code: "source-changed-after-provider-effect",
+        projectionId: conflict.projection.id,
+        receiptId: conflict.receipt.id,
+        externalSideEffects: provider.externalMutated,
+      }, 409);
+    }
+
+    const persisted = await prisma.$transaction(async (transaction: any) => {
+      const projection = await transaction.calendarProjection.upsert({
+        where: {
+          collectionId_sourceType_sourceId: {
+            collectionId: current!.collection.id,
+            sourceType: "CallRoom",
+            sourceId: current!.room.id,
+          },
+        },
+        create: {
+          collectionId: current!.collection.id,
+          sourceType: "CallRoom",
+          sourceId: current!.room.id,
+          sourceRevision: current!.preview.sourceRevision,
+          providerEventId: provider.providerEventId,
+          providerEtag: null,
+          uid: current!.preview.uid,
+          status: "CANCELED",
+          conflictState: "NONE",
+          lastSyncedAt: occurredAt,
+          metadataJson: {
+            schema: "quipsly-session-calendar-projection-v1",
+            cancellationConfirmed: true,
+            providerAlreadyAbsent: provider.providerAlreadyAbsent,
+            providerEventIdRetainedForAudit: Boolean(provider.providerEventId),
+            sendUpdates: "none",
+            attendeesIncluded: false,
+          },
+        },
+        update: {
+          sourceRevision: current!.preview.sourceRevision,
+          providerEventId: provider.providerEventId,
+          providerEtag: null,
+          sequence: { increment: provider.externalMutated ? 1 : 0 },
+          status: "CANCELED",
+          conflictState: "NONE",
+          lastSyncedAt: occurredAt,
+          metadataJson: {
+            schema: "quipsly-session-calendar-projection-v1",
+            cancellationConfirmed: true,
+            providerAlreadyAbsent: provider.providerAlreadyAbsent,
+            providerEventIdRetainedForAudit: Boolean(provider.providerEventId),
+            sendUpdates: "none",
+            attendeesIncluded: false,
+          },
+        },
+      });
+      const receipt = await transaction.calendarSyncReceipt.create({
+        data: {
+          connectionId: current!.collection.connectionId,
+          collectionId: current!.collection.id,
+          projectionId: projection.id,
+          actorUserId: session.user.id,
+          operation: "CANCEL_EVENT",
+          outcome: provider.externalMutated ? "SUCCEEDED" : "SKIPPED",
+          requestDigest: current!.preview.sourceRevision,
+          responseDigest: provider.providerEventId || provider.providerStatus,
+          providerStatus: provider.providerStatus,
+          externalMutated: provider.externalMutated,
+          occurredAt,
+          metadataJson: {
+            schema: "quipsly-session-calendar-sync-receipt-v1",
+            providerAlreadyAbsent: provider.providerAlreadyAbsent,
+            sendUpdates: "none",
+            attendeesIncluded: false,
+          },
+        },
+      });
+      return { projection, receipt };
+    });
+    return json({
+      ok: true,
+      result: {
+        projectionId: persisted.projection.id,
+        receiptId: persisted.receipt.id,
+        sourceRevision: current.preview.sourceRevision,
+        action: "CANCEL",
+        externalMutated: provider.externalMutated,
+        providerAlreadyAbsent: provider.providerAlreadyAbsent,
+      },
+    });
+  } catch (error) {
+    const known = error instanceof SessionCalendarProjectionError || error instanceof GoogleCalendarOAuthError;
+    if (
+      current
+      && providerCancellation
+      && providerWriteAttempted
+      && current.preview.existing?.projectionId
+    ) {
+      const conflictCurrent = current;
+      const observedProvider = providerCancellation;
+      try {
+        const receipt = await prisma.$transaction(async (transaction: any) => {
+          await transaction.calendarProjection.update({
+            where: { id: conflictCurrent.preview.existing!.projectionId },
+            data: {
+              providerEventId: observedProvider.providerEventId,
+              providerEtag: null,
+              sequence: { increment: observedProvider.externalMutated ? 1 : 0 },
+              status: "CONFLICT",
+              conflictState: "QUIPSLY_CHANGED",
+              lastSyncedAt: new Date(),
+              metadataJson: {
+                schema: "quipsly-session-calendar-projection-v1",
+                cancellationConfirmed: true,
+                postProviderVerificationFailed: true,
+                providerAlreadyAbsent: observedProvider.providerAlreadyAbsent,
+                sendUpdates: "none",
+                attendeesIncluded: false,
+              },
+            },
+          });
+          return transaction.calendarSyncReceipt.create({
+            data: {
+              connectionId: conflictCurrent.collection.connectionId,
+              collectionId: conflictCurrent.collection.id,
+              projectionId: conflictCurrent.preview.existing!.projectionId,
+              actorUserId: session.user.id,
+              operation: "CANCEL_EVENT",
+              outcome: "CONFLICT",
+              requestDigest: conflictCurrent.preview.sourceRevision,
+              responseDigest: observedProvider.providerEventId || observedProvider.providerStatus,
+              providerStatus: observedProvider.providerStatus,
+              externalMutated: observedProvider.externalMutated,
+              metadataJson: {
+                schema: "quipsly-session-calendar-sync-receipt-v1",
+                postProviderVerificationFailed: true,
+                providerAlreadyAbsent: observedProvider.providerAlreadyAbsent,
+                sendUpdates: "none",
+                attendeesIncluded: false,
+              },
+            },
+          });
+        });
+        return json({
+          ok: false,
+          error: "Google cancellation was observed, but Session authority or source truth changed before Quipsly could verify the result. Review the recorded conflict.",
+          code: "post-provider-verification-failed",
+          projectionId: conflictCurrent.preview.existing!.projectionId,
+          receiptId: receipt.id,
+          providerWriteAttempted: true,
+          externalSideEffects: observedProvider.externalMutated,
+        }, 409);
+      } catch (receiptError) {
+        console.error("[calendar-session-projection] Could not persist the post-provider cancellation receipt.", receiptError);
+        return json({
+          ok: false,
+          error: "Google cancellation was observed, but Quipsly could not save its verification receipt. Do not repeat with a different event; retry this exact cancellation after storage recovers.",
+          code: "post-provider-receipt-failed",
+          providerWriteAttempted: true,
+          externalSideEffects: observedProvider.externalMutated,
+        }, 503);
+      }
+    }
+    if (current && error instanceof SessionCalendarProjectionError && error.code === "provider-etag-conflict" && current.preview.existing?.projectionId) {
+      const conflictCurrent = current;
+      await prisma.$transaction(async (transaction: any) => {
+        await transaction.calendarProjection.update({
+          where: { id: conflictCurrent.preview.existing!.projectionId },
+          data: { conflictState: "EXTERNAL_CHANGED", status: "CONFLICT" },
+        });
+        await transaction.calendarSyncReceipt.create({
+          data: {
+            connectionId: conflictCurrent.collection.connectionId,
+            collectionId: conflictCurrent.collection.id,
+            projectionId: conflictCurrent.preview.existing!.projectionId,
+            actorUserId: session.user.id,
+            operation: "CANCEL_EVENT",
+            outcome: "CONFLICT",
+            requestDigest: conflictCurrent.preview.sourceRevision,
+            providerStatus: "etag-conflict",
+            externalMutated: false,
+            metadataJson: {
+              schema: "quipsly-session-calendar-sync-receipt-v1",
+              lostDeletePrevented: true,
+              sendUpdates: "none",
+              attendeesIncluded: false,
+            },
+          },
+        });
+      }).catch((receiptError: unknown) => {
+        console.error("[calendar-session-projection] Could not persist the provider cancellation conflict receipt.", receiptError);
+      });
+    }
+    return json({
+      ok: false,
+      error: known ? error.message : "The Google Calendar event could not be removed safely.",
+      code: known ? error.code : "provider-cancel-failed",
+      providerWriteAttempted,
+      externalSideEffects:
+        providerExternalMutated === true
+          ? true
+          : providerWriteAttempted && providerExternalMutated === null
+            ? "unknown"
+            : false,
+      nextAction:
+        providerWriteAttempted && providerExternalMutated === null
+          ? "Retry the same cancellation preview. If Google already removed the event, Quipsly will record that exact absence without another effect."
           : undefined,
     }, known ? error.status : 503);
   }

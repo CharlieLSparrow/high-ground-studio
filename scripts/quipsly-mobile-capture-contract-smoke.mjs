@@ -1636,6 +1636,40 @@ function checkUnifiedNestOperatingShellSources() {
   );
 }
 
+function checkSessionCalendarCancellationContractSources() {
+  const providerText = sourceText("apps/quipsly/src/lib/server/google-calendar-session-projection.ts");
+  const routeText = sourceText("apps/quipsly/src/app/api/calendar/sessions/[roomId]/projection/route.ts");
+  const connectionRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/route.ts");
+  const managerText = sourceText("apps/quipsly/src/app/(app)/schedule/google-calendar-connection-manager.tsx");
+  const schedulePageText = sourceText("apps/quipsly/src/app/(app)/schedule/page.tsx");
+  const dogfoodText = sourceText("scripts/quipsly-local-calendar-cancellation-dogfood.mjs");
+  expect(
+    providerText.includes('method: "DELETE"')
+      && providerText.includes('"If-Match": input.preview.existing.providerEtag')
+      && providerText.includes("?sendUpdates=none")
+      && providerText.includes("response.status === 404 || response.status === 410")
+      && providerText.includes('"provider-etag-conflict"')
+      && routeText.includes('body?.confirmCancellation !== true')
+      && routeText.includes('action: "write"')
+      && routeText.includes("sessionMutationAccessWhere")
+      && routeText.includes('operation: "CANCEL_EVENT"')
+      && routeText.includes("idempotentReplay: true")
+      && routeText.includes("post-provider-verification-failed")
+      && connectionRouteText.includes('action: "write"')
+      && connectionRouteText.includes("You need edit access to select a team calendar")
+      && managerText.includes("Confirm removal from Google")
+      && managerText.includes("Record verified absence")
+      && managerText.includes('session.status === "CANCELED"')
+      && managerText.includes('body?.externalSideEffects === "unknown"')
+      && schedulePageText.includes('status: { not: "FAILED" }')
+      && dogfoodText.includes("teamCalendarSelectionStatus")
+      && dogfoodText.includes("exactReplayReusedReceipt")
+      && dogfoodText.includes("providerCallsRequired: false"),
+    "sessionCalendarCancellationAuthority",
+    "Session cancellation uses explicit confirmation, canonical mutation authority, conditional provider deletion, honest absence/conflict receipts, and operated editor-versus-viewer proof.",
+  );
+}
+
 async function request(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs || timeoutMs);
@@ -1926,6 +1960,7 @@ async function main() {
   checkTranscriptPacketContractSources();
   checkReviewDigestContractSources();
   checkTranscriptCorrectionContractSources();
+  checkSessionCalendarCancellationContractSources();
   checkUnifiedNestOperatingShellSources();
   if (!sourceOnly) {
     await checkReadiness();

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarCheck2, Link2, RefreshCcw, ShieldOff } from "lucide-react";
+import { CalendarCheck2, CalendarX2, Link2, RefreshCcw, ShieldOff } from "lucide-react";
 
 type Purpose = "COACHING" | "PODCAST_PRODUCTION" | "PERSONAL_COMMITMENTS";
 type Project = { id: string; name: string };
@@ -10,6 +10,7 @@ type SessionChoice = {
   title: string;
   purpose: string;
   projectId: string | null;
+  status: string;
   scheduledStart: string;
   scheduledEnd: string | null;
   scheduledTimezone?: string | null;
@@ -51,6 +52,7 @@ type ProjectionPreview = {
     timezone: string;
     description: string;
     providerVisibility: "default" | "private";
+    status: "CONFIRMED" | "CANCELLED";
     attendeesIncluded: false;
     privateSessionContentIncluded: false;
   };
@@ -219,6 +221,41 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
     }
   }
 
+  async function confirmSessionCancellation() {
+    if (!projectionPreview || !projectionSessionId || !projectionCollectionId) return;
+    if (!window.confirm("Remove this Quipsly Session from the selected Google calendar? The Session and its Quipsly history stay intact. No attendees or notifications will be sent.")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/calendar/sessions/${encodeURIComponent(projectionSessionId)}/projection`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collectionId: projectionCollectionId,
+          expectedSourceRevision: projectionPreview.sourceRevision,
+          confirmCancellation: true,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) {
+        const suffix = body?.externalSideEffects === "unknown"
+          ? " Provider outcome is uncertain; retry this exact cancellation preview to reconcile safely."
+          : "";
+        throw new Error((body?.error || "Could not remove the Google event safely.") + suffix);
+      }
+      setMessage(
+        body.result.externalMutated
+          ? "Google Calendar event removed with notifications off. Quipsly retained the Session and saved the cancellation receipt."
+          : "Google had no remaining event to remove. Quipsly saved the verified absence without another provider effect.",
+      );
+      setProjectionPreview(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not remove the Google event safely.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section aria-labelledby="google-calendar-connection-heading" className="rounded-3xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm lg:p-7">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -301,7 +338,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
               <select value={projectionSessionId} onChange={(event) => setProjectionSessionId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-[#263f34]">
                 {sessions.length === 0 && <option value="">No upcoming Sessions</option>}
                 {sessions.map((session) => (
-                  <option key={session.id} value={session.id}>{session.title} · {new Date(session.scheduledStart).toLocaleString()}</option>
+                  <option key={session.id} value={session.id}>{session.status === "CANCELED" ? "Canceled · " : ""}{session.title} · {new Date(session.scheduledStart).toLocaleString()}</option>
                 ))}
               </select>
             </label>
@@ -331,10 +368,17 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
               </p>
               <p className="mt-3 text-xs font-semibold leading-relaxed text-[#5d746a]">{projectionPreview.snapshot.description}</p>
               <p className="mt-3 rounded-xl bg-white p-3 text-xs font-bold leading-relaxed text-[#4e685d]">{projectionPreview.warning}</p>
-              <button type="button" onClick={confirmSessionProjection} disabled={busy || projectionPreview.action === "BLOCKED" || projectionPreview.action === "CANCEL"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#263f34] px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
-                <CalendarCheck2 size={15} aria-hidden="true" />
-                {projectionPreview.action === "NOOP" ? "Record verified no-change" : `Confirm ${projectionPreview.action.toLowerCase()} in Google`}
-              </button>
+              {projectionPreview.snapshot.status === "CANCELLED" ? (
+                <button type="button" onClick={confirmSessionCancellation} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-700 px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  <CalendarX2 size={15} aria-hidden="true" />
+                  {projectionPreview.action === "NOOP" ? "Record verified absence" : "Confirm removal from Google"}
+                </button>
+              ) : (
+                <button type="button" onClick={confirmSessionProjection} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#263f34] px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  <CalendarCheck2 size={15} aria-hidden="true" />
+                  {projectionPreview.action === "NOOP" ? "Record verified no-change" : `Confirm ${projectionPreview.action.toLowerCase()} in Google`}
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -108,7 +108,10 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             where: {
               ...roomAccess,
               scheduledStart: { not: null },
-              status: { notIn: ["CANCELED", "FAILED"] },
+              // Keep canceled Sessions visible long enough to reconcile a
+              // previously projected provider event. Failed Sessions have no
+              // valid calendar representation.
+              status: { not: "FAILED" },
             },
             orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
             take: 30,
@@ -370,7 +373,11 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       authState: "signed-in",
       accessibleNestCount: projects.length,
       calendarOverview,
-      calendarProjects: projects.map((project) => ({ id: project.id, name: project.name })),
+      calendarProjects: projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        canWrite: project.role === "OWNER" || project.role === "EDITOR",
+      })),
       calendarFeeds: calendarFeedRows.map((feed: any) => ({
         id: feed.id,
         purpose: feed.collection.purpose,
@@ -536,7 +543,7 @@ export default async function SchedulePage() {
 
           <CalendarSystemOverview overview={snapshot.calendarOverview} />
 
-          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects} sessions={snapshot.sessions} />
+          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects.filter((project) => project.canWrite)} sessions={snapshot.sessions} />
 
           <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
 

@@ -7,14 +7,14 @@ import {
   listOwnedGoogleCalendars,
   refreshGoogleCalendarAccess,
 } from "@/lib/server/google-calendar-oauth";
-import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
-jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
 jest.mock("@/lib/server/google-calendar-oauth", () => ({
   ...jest.requireActual("@/lib/server/google-calendar-oauth"),
   decryptGoogleRefreshToken: jest.fn(),
@@ -73,7 +73,7 @@ describe("/api/calendar/connections/google", () => {
     expect(serialized).not.toContain("encrypted-not-a-token");
   });
 
-  it("forbids binding a production calendar to an inaccessible Nest", async () => {
+  it("forbids a read-only collaborator from binding a shared production calendar before Google access", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.com" } } as never);
     const prisma = {
       calendarConnection: {
@@ -81,15 +81,27 @@ describe("/api/calendar/connections/google", () => {
         update: jest.fn().mockResolvedValue({}),
       },
       calendarCollection: { create: jest.fn(), update: jest.fn() },
+      studioProject: { findUnique: jest.fn().mockResolvedValue({ slug: "episode-one" }) },
     };
     configureProvider(prisma);
-    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-allowed" }] as never);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: false,
+      role: "VIEWER",
+      source: "grant",
+      projectId: "project-denied",
+      projectSlug: "episode-one",
+    });
     const response = await POST(new Request("https://nest.quipsly.com/api/calendar/connections/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ purpose: "PODCAST_PRODUCTION", projectId: "project-denied", calendarId: "owned-1" }),
     }));
     expect(response.status).toBe(403);
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({
+      action: "write",
+      projectSlug: "episode-one",
+    }));
+    expect(refreshGoogleCalendarAccess).not.toHaveBeenCalled();
     expect(prisma.calendarCollection.create).not.toHaveBeenCalled();
     expect(prisma.calendarCollection.update).not.toHaveBeenCalled();
   });

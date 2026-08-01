@@ -105,7 +105,9 @@ A Google account connection is user-owned. A selected collection is:
 
 - user-owned and private for Coaching or My Commitments; or
 - Nest-owned and team-visible for Podcast Production, but only after the
-  signed-in actor's current project visibility is proven.
+  signed-in actor's current OWNER or EDITOR authority is proven before any
+  Google request. VIEWER access remains read-only and cannot select or replace
+  the shared production-calendar lane.
 
 Provider calendar IDs are accepted only after a fresh provider read confirms
 the calendar still exists and the actor has the `owner` role. Request bodies
@@ -192,7 +194,8 @@ The next local slice now implements explicit Session-to-Google event projection:
   produces `EXTERNAL_CHANGED` conflict truth instead of a lost update;
 - successful create/update/no-op writes the canonical `CalendarProjection` and
   an append-only `CalendarSyncReceipt`;
-- cancellation is deliberately held for a separately confirmed action;
+- cancellation is isolated behind its own exact-revision preview and explicit
+  removal confirmation;
 - an uncertain network/provider outcome is reported as unknown and instructs
   retry of the same deterministic preview instead of claiming no side effect.
 
@@ -210,7 +213,8 @@ No Google request or external side effect occurred.
    readback.
 2. Exercise create, deterministic retry recovery, etag conflict, and no-op
    against a dedicated QA calendar with notifications visibly off.
-3. Add explicit cancellation confirmation and provider-absence readback.
+3. Exercise explicit cancellation against a dedicated QA event and verify the
+   provider-absence recovery receipt.
 4. Add incremental reconciliation, including 410-triggered full resync, without
    overwriting either side.
 5. Add podcast milestones and coach availability/free-busy as separate,
