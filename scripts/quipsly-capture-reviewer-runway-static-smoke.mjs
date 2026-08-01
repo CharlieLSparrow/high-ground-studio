@@ -127,6 +127,8 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "reviewerSetupRunbook",
   "firebaseAccountVerified",
   "reviewerHasVisibleCaptureSession",
+  "reviewerExpectedRetainedSession",
+  "QUIPSLY_CAPTURE_REVIEWER_EXPECT_SESSION_TITLE",
   "reviewerSessionHasParticipantBoundary",
   "reviewerSessionHasConsentBoundary",
   "reviewerSessionHasSafeRecordingBoundary",

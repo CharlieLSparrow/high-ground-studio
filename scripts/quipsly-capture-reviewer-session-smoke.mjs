@@ -77,6 +77,10 @@ const createSessionPurpose =
     .replace(/[-\s]+/g, "_");
 const createSessionProvider =
   clean(args.get("session-provider") || process.env.QUIPSLY_CAPTURE_REVIEWER_SESSION_PROVIDER || "livekit").toLowerCase();
+const expectedSessionTitle = clean(
+  args.get("expect-session-title")
+    || process.env.QUIPSLY_CAPTURE_REVIEWER_EXPECT_SESSION_TITLE,
+);
 const grantConsent =
   truthy(args.get("grant-consent") || process.env.QUIPSLY_CAPTURE_REVIEWER_GRANT_CONSENT);
 const inspectRoomJoin =
@@ -792,7 +796,10 @@ async function prepareReviewerRoomJoin(idToken, session) {
   return summary;
 }
 
-function chooseCandidate(sessions) {
+function chooseCandidate(sessions, expectedTitle = "") {
+  if (expectedTitle) {
+    return sessions.find((session) => session?.title === expectedTitle) || null;
+  }
   return (
     sessions.find((session) => session?.status === "OPEN" || session?.status === "PLANNED") ||
     sessions.find((session) => session?.callRoomId || session?.id) ||
@@ -828,8 +835,20 @@ async function main() {
     sessionJson = await fetchReviewerSessions(signIn.idToken);
 
     const sessions = Array.isArray(sessionJson.sessions) ? sessionJson.sessions : [];
-    candidate = chooseCandidate(sessions);
+    candidate = chooseCandidate(sessions, expectedSessionTitle);
     candidateSummary = summarizeSession(candidate);
+    if (expectedSessionTitle) {
+      expect(
+        candidateSummary?.title === expectedSessionTitle,
+        "reviewerExpectedRetainedSession",
+        "The exact retained capture session remains visible to the reviewer account.",
+        {
+          expectedTitle: expectedSessionTitle,
+          actualTitle: candidateSummary?.title || null,
+          sessionCount: sessions.length,
+        },
+      );
+    }
     if (createdSessionSummary?.callRoomId) {
       const createdRoomId = createdSessionSummary.callRoomId;
       const createdReadback = sessions.find((session) => {
@@ -945,6 +964,7 @@ async function main() {
     baseUrl,
     email,
     createSession,
+    expectedSessionTitle: expectedSessionTitle || null,
     sessionCount: sessions.length,
     reviewerReady: failed.length === 0 && sessions.length > 0,
     createdSession: createdSessionSummary,
