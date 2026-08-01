@@ -5521,3 +5521,33 @@ was restored.
   the exact source and revision, and the post-promotion recovery gate passes all
   111 Capture contracts. Physical-iPhone TestFlight capture remains open; Build
   24 stays the canonical public TestFlight build.
+
+### 2026-07-31 Shared Watch full-editor handoff checkpoint
+
+- Exact implementation source `5ebda1e19a5a6c3fb6dfa69d19e9cbe859d64dc6`
+  closes a real one-system seam: Episode Room and the Nest editor already read
+  canonical receipt-backed Watch derivatives, while the full production editor
+  ignored them whenever `timelineJson`, the recorder package, and transcript
+  payload were empty.
+- The full editor now projects only complete `quipsly-episode-room-watch.v1`
+  evidence, replaces stale materializations by stable identity, preserves every
+  ordinary clip/transcript/paper-edit value, and honors an explicit empty sync.
+  Editor saves retain the source/session/segment/start/end receipt envelope and
+  compare concurrency against the pre-projection saved fingerprint.
+- The exact commit was operated through rendered local Quipsly as the retained
+  Keychain-backed `.test` media operator. Recorder-to-editor truth remained
+  current, then the retained Media Vault episode rendered exactly one
+  `Watched · Canonical tag focus QA` span from source `00:04-00:12`, exposed
+  `1 receipt-backed`, injected no placeholders, raised no browser exception,
+  and cleared the browser session without removing the corpus.
+- Independent PostgreSQL readback retained one derivative with stable ID,
+  `quipsly-episode-room-watch.v1`, and both exact receipt IDs while the protected
+  `timelineJson` remained null. The read-only operation reported no mutation or
+  external effect.
+- Focused tests pass 12/12, complete active Quipsly Jest passes 195 suites / 986
+  tests, cross-surface contracts pass 180/180, TypeScript passes, and the
+  optimized 150-route build succeeds. Exact evidence and remaining boundaries
+  are in
+  `docs/coordination/2026-07-31-shared-watch-production-editor-handoff.md`.
+- Production deployment of this source and physical-iPhone TestFlight capture
+  remain open. Build 24 remains the canonical public TestFlight target.

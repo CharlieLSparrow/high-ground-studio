@@ -170,12 +170,14 @@ pnpm quipsly:retained:recording-editor
 ```
 
 The operation signs in through the real login form, waits until canonical room
-hydration has finished, retains a synthetic manuscript and one watched source
-range, proves autosave, and opens the same episode in the editor. It rejects
-placeholder media, verifies the exact `00:02-00:18` watched range, checks outer
-desktop overflow, reports whether it actually mutated anything, captures no
-credential artifact, and clears the rendered session. Repeated runs reuse the
-same retained episode instead of creating another fixture.
+hydration has finished, retains a synthetic manuscript and one played source
+range, proves autosave, and opens the same episode in the editor. It then opens
+the retained Media Vault/Shared Watch episode in the full production editor and
+requires its receipt-backed `00:04-00:12` derivative. It rejects placeholder
+media, verifies the recorder's exact `00:02-00:18` range, checks desktop
+overflow on both editors, reports whether it actually mutated anything,
+captures no credential artifact, and clears the rendered session. Repeated runs
+reuse the same retained episodes instead of creating another fixture.
 
 To create and retain a new project plus tagged Task, private document-kernel
 Note, and active Goal through the compiled iPhone app, use:
