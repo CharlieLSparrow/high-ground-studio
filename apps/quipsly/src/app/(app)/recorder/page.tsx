@@ -7,20 +7,14 @@ import {
   getRecordingSessionDurationSeconds,
   segmentNeedsAttention,
   type EpisodeRecordingSession,
+  type RecordingSessionEvent,
+  type RecordingSessionEventKind,
   type RecordingSegment,
 } from "@high-ground/quipsly-domain/recording";
 import { classifyRecorderEntryAccess, type RecorderEntryAccessState } from "./recorder-entry-access";
 
-type RecordingEventKind = "session" | "marker" | "clip" | "retake" | "note";
-
-type RecordingEvent = {
-  id: string;
-  kind: RecordingEventKind;
-  label: string;
-  atMs: number;
-  note?: string;
-  createdAt: string;
-};
+type RecordingEventKind = RecordingSessionEventKind;
+type RecordingEvent = RecordingSessionEvent & { readonly createdAt: string };
 
 type ClipSegment = {
   id: string;
@@ -99,20 +93,6 @@ type RecorderRoomSnapshot = {
   tracks: PersistedTrack[];
 };
 
-const DEFAULT_SCRIPT = `Cold open
-
-Homer:
-Read the manuscript from here. If something turns into a better line while recording, say it cleanly and keep going.
-
-Charlie:
-Show notes, clip cues, and production reminders stay in the same room as the script so the edit has a breadcrumb trail.
-
-Clip cue
-When a clip gets played during the recording, log it here. The event ledger becomes the first rough cut map.`;
-
-const DEFAULT_PRODUCER_NOTES =
-  "Tonight goal: capture clean local audio, mark useful moments, and leave enough cue data that editing feels like following tracks in fresh snow.";
-
 const DEMO_YOUTUBE_VIDEO_URL = "https://www.youtube.com/watch?v=96LN__TA-T8&t=2s";
 
 function makeDemoYoutubeClip(): ClipCue {
@@ -127,7 +107,7 @@ function makeDemoYoutubeClip(): ClipCue {
   };
 }
 
-const DEFAULT_CLIPS: ClipCue[] = [makeDemoYoutubeClip()];
+const DEFAULT_CLIPS: ClipCue[] = [];
 
 const MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -143,8 +123,6 @@ const TRACK_PREFIX_AUDIO = "A";
 const TRACK_PREFIX_VIDEO = "V";
 const RECORDER_SEGMENT_DEFAULT_SECONDS = 8;
 const RECORDER_SEGMENT_MIN_SECONDS = 0.2;
-const RECORDER_SEGMENT_GAP_SECONDS = 0.15;
-
 function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -598,8 +576,8 @@ function downloadText(filename: string, value: string, type = "application/json"
 function defaultRoom(): PersistedRoom {
   return {
     roomName: "Quipsly Recording Room",
-    script: DEFAULT_SCRIPT,
-    producerNotes: DEFAULT_PRODUCER_NOTES,
+    script: "",
+    producerNotes: "",
     clips: DEFAULT_CLIPS,
     events: [],
     tracks: [],
@@ -676,12 +654,29 @@ function normalizeEvent(raw: unknown): RecordingEvent {
   const record = asObject(raw);
   const kind = coerceString(record?.kind, "session");
   const validKinds: RecordingEventKind[] = ["session", "marker", "clip", "retake", "note"];
+  const clipPlaybackRecord = asObject(record?.clipPlayback);
+  const sourceStartSeconds = coerceNumber(clipPlaybackRecord?.sourceStartSeconds, 0);
+  const sourceEndSeconds = coerceNumber(clipPlaybackRecord?.sourceEndSeconds, sourceStartSeconds);
+  const clipPlayback = clipPlaybackRecord
+    && coerceString(clipPlaybackRecord.clipId)
+    && coerceString(clipPlaybackRecord.segmentId)
+    && normalizeTrackSourceUrl(coerceString(clipPlaybackRecord.sourceUrl))
+    && sourceEndSeconds > sourceStartSeconds
+      ? {
+          clipId: coerceString(clipPlaybackRecord.clipId),
+          segmentId: coerceString(clipPlaybackRecord.segmentId),
+          sourceUrl: normalizeTrackSourceUrl(coerceString(clipPlaybackRecord.sourceUrl)),
+          sourceStartSeconds,
+          sourceEndSeconds,
+        }
+      : undefined;
   return {
     id: coerceString(record?.id, makeId("event")),
     kind: validKinds.includes(kind as RecordingEventKind) ? (kind as RecordingEventKind) : "session",
     label: coerceString(record?.label, "Event"),
     atMs: coerceNumber(record?.atMs, 0),
     note: coerceString(record?.note),
+    clipPlayback,
     createdAt: coerceString(record?.createdAt, new Date().toISOString()),
   };
 }
@@ -778,8 +773,8 @@ function normalizeRoomState(raw: unknown): PersistedRoom | null {
   return {
     exportedAt: coerceString(normalized.exportedAt),
     roomName: roomName || "Quipsly Recording Room",
-    script: scripts || DEFAULT_SCRIPT,
-    producerNotes: producerNotes || DEFAULT_PRODUCER_NOTES,
+    script: scripts,
+    producerNotes,
     clips: clipRecords.map(normalizeClipCue),
     events: eventRecords.map(normalizeEvent),
     tracks: trackRecords.map((track, index) =>
@@ -832,6 +827,7 @@ export default function RecorderDashboard() {
   const [activeSegmentId, setActiveSegmentId] = useState(DEFAULT_CLIPS[0]?.segments[0]?.id ?? "");
   const [playNonce, setPlayNonce] = useState(0);
   const [productionState, setProductionState] = useState<EpisodeProductionState | null>(null);
+  const [productionHydrationResolved, setProductionHydrationResolved] = useState(false);
   const [entryAccessState, setEntryAccessState] = useState<"checking" | RecorderEntryAccessState>("checking");
   const [entryAccessMessage, setEntryAccessMessage] = useState<string | null>(null);
   const [entryAccessRetryToken, setEntryAccessRetryToken] = useState(0);
@@ -899,6 +895,7 @@ export default function RecorderDashboard() {
     setEntryAccessState("checking");
     setEntryAccessMessage(null);
     setProductionState(null);
+    setProductionHydrationResolved(false);
     setHydrated(false);
 
     if (!routeProject) {
@@ -952,6 +949,7 @@ export default function RecorderDashboard() {
     if (!slug) {
       setProjectSlug("");
       setEpisodeSlug(episode);
+      setProductionHydrationResolved(true);
       setHydrated(true);
       return;
     }
@@ -1082,12 +1080,15 @@ export default function RecorderDashboard() {
         setLastSavedAt(dbSavedAt || null);
         isHydratedFromProduction.current = true;
       }
+      setProductionHydrationResolved(true);
     }).catch((error) => {
       if (isAbortError(error)) return;
       if (routeHydrationRunRef.current !== routeRunId || activeHydrationRouteRef.current !== activeRoute) return;
       if (requestId !== productionHydrationRunRef.current) return;
       if (controller.signal.aborted) return;
       console.warn("Could not hydrate recorder production state.", error);
+      setRoomSaveState("error");
+      setProductionHydrationResolved(true);
     });
 
     return () => {
@@ -1138,7 +1139,7 @@ export default function RecorderDashboard() {
   );
 
   useEffect(() => {
-    if (!hydrated || !productionState || productionState.mode !== "database") {
+    if (!hydrated || !productionHydrationResolved || !productionState || productionState.mode !== "database") {
       setRoomSaveState(roomSnapshotFingerprint === roomAutosaveHashRef.current ? "fallback" : "conflict");
       return;
     }
@@ -1214,7 +1215,7 @@ export default function RecorderDashboard() {
       }
       roomAutosaveAbortRef.current?.abort();
     };
-  }, [clips, episodeSlug, hydrated, productionState, projectSlug, roomSnapshotFingerprint, roomPersistPackage]);
+  }, [clips, episodeSlug, hydrated, productionHydrationResolved, productionState, projectSlug, roomSnapshotFingerprint, roomPersistPackage]);
 
   useEffect(() => {
     return () => {
@@ -1426,7 +1427,13 @@ export default function RecorderDashboard() {
     animationFrameRef.current = window.requestAnimationFrame(updateLevels);
   };
 
-  const logEvent = (kind: RecordingEventKind, label: string, note?: string, atMs?: number) => {
+  const logEvent = (
+    kind: RecordingEventKind,
+    label: string,
+    note?: string,
+    atMs?: number,
+    clipPlayback?: RecordingEvent["clipPlayback"],
+  ) => {
     const resolvedAtMs = Number.isFinite(atMs ?? NaN) ? atMs! : isRecording && startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     setEvents((current) => [
       {
@@ -1434,6 +1441,7 @@ export default function RecorderDashboard() {
         kind,
         label,
         note,
+        clipPlayback,
         atMs: resolvedAtMs,
         createdAt: new Date().toISOString(),
       },
@@ -1648,7 +1656,7 @@ export default function RecorderDashboard() {
         setActiveClipId(next[0]?.id ?? "");
         setActiveSegmentId(next[0]?.segments[0]?.id ?? "");
       }
-      return next.length ? next : defaultRoom().clips;
+      return next;
     });
   };
 
@@ -1690,6 +1698,7 @@ export default function RecorderDashboard() {
 
   const playAndLogSegment = () => {
     if (!activeClip || !activeSegment) return;
+    const segmentRange = sanitizeSegmentTimes(activeSegment);
     if (clipFollowRecording) {
       setClipFollowRecording(false);
     }
@@ -1698,6 +1707,16 @@ export default function RecorderDashboard() {
       "clip",
       `Played ${activeClip.title || "clip"} ${activeSegment.start || "0:00"}-${activeSegment.end || "open"}`,
       activeSegment.note || activeClip.url,
+      undefined,
+      activeClip.url.trim()
+        ? {
+            clipId: activeClip.id,
+            segmentId: activeSegment.id,
+            sourceUrl: activeClip.url.trim(),
+            sourceStartSeconds: segmentRange.sourceStart,
+            sourceEndSeconds: segmentRange.sourceEnd,
+          }
+        : undefined,
     );
   };
 
@@ -1815,7 +1834,7 @@ export default function RecorderDashboard() {
     }
   };
 
-  if (entryAccessState === "checking" || (entryAccessState === "allowed" && !hydrated)) {
+  if (entryAccessState === "checking" || (entryAccessState === "allowed" && (!hydrated || !productionHydrationResolved))) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0b0d12] px-5 py-10 text-slate-100">
         <section className="w-full max-w-2xl rounded-[32px] border border-amber-300/25 bg-slate-950/80 p-8 text-center shadow-2xl shadow-black/30" aria-live="polite">
@@ -1992,6 +2011,7 @@ export default function RecorderDashboard() {
               <textarea
                 value={script}
                 onChange={(event) => setScript(event.target.value)}
+                aria-label="Episode manuscript"
                 className="h-full min-h-[80vh] w-full resize-none bg-transparent font-serif text-[28px] leading-[1.6] text-amber-50/90 outline-none placeholder:text-white/20 md:text-[36px]"
                 placeholder="Paste manuscript here..."
                 spellCheck={false}
@@ -2123,8 +2143,9 @@ export default function RecorderDashboard() {
                 </div>
               </div>
 
-              <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#8f6d38]">Room title</label>
+              <label htmlFor="recording-room-title" className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-[#8f6d38]">Room title</label>
               <input
+                id="recording-room-title"
                 value={roomName}
                 onChange={(event) => setRoomName(event.target.value)}
                 className="mb-4 w-full rounded-2xl border border-[#e4cfaa] bg-white px-4 py-3 text-sm font-bold outline-none focus:border-[#c0832d]"
@@ -2133,6 +2154,7 @@ export default function RecorderDashboard() {
               <textarea
                 value={script}
                 onChange={(event) => setScript(event.target.value)}
+                aria-label="Episode manuscript"
                 className="h-[46vh] min-h-[360px] w-full resize-none rounded-2xl border border-[#e4cfaa] bg-white p-4 font-serif text-lg leading-8 text-[#342616] shadow-inner outline-none focus:border-[#c0832d]"
                 spellCheck
               />
@@ -2142,6 +2164,7 @@ export default function RecorderDashboard() {
                 <textarea
                   value={producerNotes}
                   onChange={(event) => setProducerNotes(event.target.value)}
+                  aria-label="Producer notes"
                   className="h-28 w-full resize-none rounded-xl border border-[#ead3aa] bg-white/80 p-3 text-sm leading-6 outline-none focus:border-[#c0832d]"
                 />
               </div>

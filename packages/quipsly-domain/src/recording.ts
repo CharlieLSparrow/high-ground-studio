@@ -25,6 +25,31 @@ export type RecordingStopReason =
   | "network-loss"
   | "unknown";
 
+export type RecordingSessionEventKind = "session" | "marker" | "clip" | "retake" | "note";
+
+/**
+ * Immutable source-range evidence for a clip that was actually played during a
+ * recording. `atMs` on the containing event is the placement on the shared
+ * recording clock; these values are offsets into the preserved source.
+ */
+export type RecordingClipPlayback = {
+  readonly clipId: string;
+  readonly segmentId: string;
+  readonly sourceUrl: string;
+  readonly sourceStartSeconds: number;
+  readonly sourceEndSeconds: number;
+};
+
+export type RecordingSessionEvent = {
+  readonly id: string;
+  readonly kind: RecordingSessionEventKind;
+  readonly label: string;
+  readonly atMs: number;
+  readonly note?: string;
+  readonly clipPlayback?: RecordingClipPlayback;
+  readonly createdAt?: string;
+};
+
 export type RecordingUploadRef = {
   readonly provider: "gcs" | "local" | "external";
   readonly bucket?: string;

@@ -31,15 +31,15 @@ import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimeline
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
+import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
 import {
   captureGroupEditorFocusPlan,
   normalizeCaptureGroupFocusId,
 } from "./captureGroupEditorFocus";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
-const EDITOR_LEGACY_VERSION = 0;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
-type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "default timeline" | "error";
+type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "empty episode" | "error";
 
 type AiEditSuggestion =
   | { type: "deactivate"; blockId: string }
@@ -516,40 +516,21 @@ type EpisodeSpineAudio = {
   setAt?: string;
 };
 
-const INITIAL_VIDEO_TRACK_A = makeTrackId(TRACK_PREFIX_VIDEO, 1);
 const INITIAL_VIDEO_TRACK_B = makeTrackId(TRACK_PREFIX_VIDEO, 2);
-const SESSION_EVENT_TRACK = makeTrackId(TRACK_PREFIX_VIDEO, 3);
 
-const INITIAL_STATE: TimelineState = {
-  clips: [
-    { id: "t1", assetId: "v1", kind: "video", trackId: INITIAL_VIDEO_TRACK_A, startIn: 0, duration: 10.5, sourceStart: 0, sourceEnd: 10.5, name: "A-Roll_Take_1", color: "#2563eb" },
-    { id: "t2", assetId: "v2", kind: "video", trackId: INITIAL_VIDEO_TRACK_B, startIn: 10.5, duration: 5.2, sourceStart: 0, sourceEnd: 5.2, name: "B-Roll_City", color: "#059669" },
-  ],
-  transcript: [
-    { id: "p1", time: 0, duration: 5, text: "Welcome back to the podcast. Today we are talking about the AI revolution.", deleted: false, alert: null },
-    { id: "p2", time: 5, duration: 7, text: "And honestly, it's pretty crazy. I don't know what to think about it.", deleted: false, alert: "Retention Drop Detected" },
-    { id: "p3", time: 12, duration: 3.7, text: "Let's dive right into the code and see how we can build an autonomous studio.", deleted: false, alert: null },
-  ]
+const EMPTY_TIMELINE_STATE: TimelineState = {
+  clips: [],
+  transcript: [],
 };
 
 const RECORDER_SEGMENT_DEFAULT_DURATION_SECONDS = 8;
 const RECORDER_SEGMENT_MIN_DURATION_SECONDS = 0.2;
-const RECORDER_SEGMENT_GAP_SECONDS = 0.5;
-const RECORDER_SEGMENT_PREFIX = "seg";
 type SessionTrackKind = "audio" | "video";
 
 type SegmentTimelineRange = {
   sourceStart: number;
   sourceEnd: number;
   duration: number;
-};
-
-type RecordingSessionEvent = {
-  id?: string;
-  kind?: "session" | "marker" | "clip" | "retake" | "note";
-  label?: string;
-  atMs?: number;
-  note?: string;
 };
 
 type RecordingSessionTrack = {
@@ -607,84 +588,6 @@ function coerceString(value: unknown, fallback = "") {
 function coerceOptionalString(value: unknown, fallback?: string) {
   return typeof value === "string" ? value : fallback ?? "";
 }
-
-const STARTER_KIT_ASSETS: ImportedMediaAsset[] = [
-  {
-    id: "starter-audio-1",
-    sourceId: "starter-audio-1",
-    projectSlug: "starter",
-    episodeSlug: "starter",
-    originalName: "Episode 4 Intro Audio",
-    contentType: "audio/mp3",
-    size: 1000000,
-    kind: "audio",
-    gcsUri: "gs://quipsly-starter/audio-1.mp3",
-    playbackUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-    importedAt: new Date().toISOString(),
-    importRole: "spine",
-    sync: { status: "synced" }
-  },
-  {
-    id: "starter-video-1",
-    sourceId: "starter-video-1",
-    projectSlug: "starter",
-    episodeSlug: "starter",
-    originalName: "B-Roll: Coffee Pour",
-    contentType: "video/mp4",
-    size: 5000000,
-    kind: "video",
-    gcsUri: "gs://quipsly-starter/video-1.mp4",
-    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    importedAt: new Date().toISOString(),
-    importRole: "b-roll",
-    sync: { status: "ready-to-sync" }
-  },
-  {
-    id: "starter-video-2",
-    sourceId: "starter-video-2",
-    projectSlug: "starter",
-    episodeSlug: "starter",
-    originalName: "B-Roll: Typing on Keyboard",
-    contentType: "video/mp4",
-    size: 5000000,
-    kind: "video",
-    gcsUri: "gs://quipsly-starter/video-2.mp4",
-    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
-    importedAt: new Date().toISOString(),
-    importRole: "b-roll",
-    sync: { status: "ready-to-sync" }
-  },
-  {
-    id: "starter-video-3",
-    sourceId: "starter-video-3",
-    projectSlug: "starter",
-    episodeSlug: "starter",
-    originalName: "B-Roll: Scenic Mountains",
-    contentType: "video/mp4",
-    size: 5000000,
-    kind: "video",
-    gcsUri: "gs://quipsly-starter/video-3.mp4",
-    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    importedAt: new Date().toISOString(),
-    importRole: "b-roll",
-    sync: { status: "ready-to-sync" }
-  },
-  {
-    id: "starter-video-4",
-    sourceId: "starter-video-4",
-    projectSlug: "starter",
-    episodeSlug: "starter",
-    originalName: "B-Roll: City Traffic",
-    contentType: "video/mp4",
-    size: 5000000,
-    kind: "video",
-    gcsUri: "gs://quipsly-starter/video-4.mp4",
-    playbackUrl: "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    importedAt: new Date().toISOString(),
-    importRole: "b-roll",
-    sync: { status: "ready-to-sync" }
-  }
-];
 
 function normalizeImportedMediaAssets(value: unknown): ImportedMediaAsset[] {
   const record = asObject(value);
@@ -1554,20 +1457,46 @@ function normalizeRecordingSessionPackage(raw: unknown): RecordingSessionPackage
     }),
     events: events.map((event) => {
       const eventRecord = asObject(event);
-      if (!eventRecord) return {};
+      if (!eventRecord) {
+        return {
+          id: makeId("event"),
+          kind: "note",
+          label: "Event",
+          atMs: 0,
+        } satisfies RecordingSessionEvent;
+      }
+      const clipPlayback = asObject(eventRecord.clipPlayback);
+      const eventKind = coerceOptionalString(eventRecord.kind);
+      const normalizedKind = ["session", "marker", "clip", "retake", "note"].includes(eventKind)
+        ? eventKind as RecordingSessionEvent["kind"]
+        : "note";
+      const playbackSourceUrl = sanitizeTrackSource(clipPlayback?.sourceUrl);
+      const playbackStartSeconds = coerceOptionalNumber(clipPlayback?.sourceStartSeconds);
+      const playbackEndSeconds = coerceOptionalNumber(clipPlayback?.sourceEndSeconds);
+      const normalizedClipPlayback = clipPlayback
+        && coerceOptionalString(clipPlayback.clipId)
+        && coerceOptionalString(clipPlayback.segmentId)
+        && playbackSourceUrl
+        && playbackStartSeconds !== undefined
+        && playbackEndSeconds !== undefined
+        && playbackEndSeconds > playbackStartSeconds
+          ? {
+              clipId: coerceOptionalString(clipPlayback.clipId),
+              segmentId: coerceOptionalString(clipPlayback.segmentId),
+              sourceUrl: playbackSourceUrl,
+              sourceStartSeconds: playbackStartSeconds,
+              sourceEndSeconds: playbackEndSeconds,
+            }
+          : undefined;
       return {
-        id: coerceOptionalString(eventRecord.id),
-        kind: coerceOptionalString(eventRecord.kind) as
-          | "session"
-          | "marker"
-          | "clip"
-          | "retake"
-          | "note"
-          | undefined,
-        label: coerceOptionalString(eventRecord.label),
+        id: coerceOptionalString(eventRecord.id, makeId("event")),
+        kind: normalizedKind,
+        label: coerceOptionalString(eventRecord.label, "Event"),
         atMs: coerceNumber(eventRecord.atMs, 0),
-        note: coerceOptionalString(eventRecord.note),
-      };
+        note: coerceOptionalString(eventRecord.note) || undefined,
+        clipPlayback: normalizedClipPlayback,
+        createdAt: coerceOptionalString(eventRecord.createdAt) || undefined,
+      } satisfies RecordingSessionEvent;
     }),
     clips: clips.map((clip) => {
       const clipRecord = asObject(clip);
@@ -1699,7 +1628,6 @@ function buildSessionTrackClips(session: RecordingSessionPackage): TimelineClip[
 function extractTimelineFromPayload(payload: unknown): TimelineState | null {
   const record = normalizeEpisodePayload(payload);
   if (!record) return null;
-  const payloadVersion = coerceNumber(record.payloadVersion, EDITOR_LEGACY_VERSION);
   const recordedProjectSlug = coerceOptionalString(record.projectSlug);
   const recordedEpisodeSlug = coerceOptionalString(record.episodeSlug);
   const isLegacyRecordedContract = recordedProjectSlug === undefined && recordedEpisodeSlug === undefined
@@ -1712,12 +1640,12 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
   const nestedTimeline = asObject((record as Record<string, unknown>).timeline);
   const nestedTimelineClips = coerceArray(nestedTimeline?.timelineClips);
   const rawClips = artifactClips.length ? artifactClips : nestedTimelineClips.length ? nestedTimelineClips : legacyClips;
-  const hasTimelineClips = artifactClips.length > 0 || legacyClips.some((clip) => {
+  const hasTimelinePayloadShape = "timelineClips" in record || Boolean(nestedTimeline && "timelineClips" in nestedTimeline) || legacyClips.some((clip) => {
     const recordClip = asObject(clip);
     return !!(recordClip && ("assetId" in recordClip || "duration" in recordClip || "sourceStart" in recordClip));
   });
 
-  if (hasTimelineClips) {
+  if (hasTimelinePayloadShape) {
     const clips = rawClips.map(normalizeTimelineClip).filter((clip): clip is TimelineClip => Boolean(clip));
     const nestedTranscript = asObject((record as Record<string, unknown>).timeline)?.transcript;
     const nestedPaperEditSnapshots = asObject((record as Record<string, unknown>).timeline)?.paperEditSnapshots;
@@ -1731,16 +1659,15 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
           : [];
     const transcript = transcriptSource.map(normalizeTranscriptBlock).filter((block): block is TranscriptBlock => Boolean(block));
 
-    if (clips.length || transcript.length) {
-      return {
-        clips: clips.length ? clips : INITIAL_STATE.clips,
-        transcript: transcript.length ? transcript : INITIAL_STATE.transcript,
-        paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots ?? nestedPaperEditSnapshots ?? nestedData?.paperEditSnapshots),
-      };
-    }
+    return {
+      clips,
+      transcript,
+      paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots ?? nestedPaperEditSnapshots ?? nestedData?.paperEditSnapshots),
+    };
   }
 
-  const isRecordingSessionPayload = payloadVersion >= 1 || isLegacyRecordedContract
+  const recordingVersion = coerceOptionalString(record.version).toLocaleLowerCase();
+  const isRecordingSessionPayload = recordingVersion.startsWith("quipsly-recording-room.") || isLegacyRecordedContract
     || ("clips" in record && "events" in record && "roomName" in record && "durationMs" in record)
     || ("clips" in record && "tracks" in record && (record as Record<string, unknown>).projectSlug !== undefined);
 
@@ -1763,7 +1690,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
   if (!transcript.length) return null;
 
   return {
-    clips: INITIAL_STATE.clips,
+    clips: [],
     transcript,
     paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots),
   };
@@ -2345,59 +2272,71 @@ function sanitizeSegmentSource(raw: unknown, fallback = "") {
   return sanitizeLegacyAssetId(raw, fallback);
 }
 
+function legacyClipPlaybackRange(event: RecordingSessionEvent, clip: NonNullable<RecordingSessionPackage["clips"]>[number]) {
+  const title = coerceOptionalString(clip.title, "clip");
+  const label = coerceOptionalString(event.label);
+  if (!label.toLocaleLowerCase().startsWith(`played ${title} `.toLocaleLowerCase())) return null;
+  const rangeMatch = label.match(/(\d+(?::\d+){0,2}(?:\.\d+)?)\s*-\s*(\d+(?::\d+){0,2}(?:\.\d+)?|open)\s*$/i);
+  if (!rangeMatch) return null;
+  const sourceStart = parseTimeToSeconds(rangeMatch[1]);
+  const sourceEnd = rangeMatch[2].toLocaleLowerCase() === "open"
+    ? sourceStart + RECORDER_SEGMENT_DEFAULT_DURATION_SECONDS
+    : parseTimeToSeconds(rangeMatch[2], sourceStart + RECORDER_SEGMENT_DEFAULT_DURATION_SECONDS);
+  if (sourceEnd <= sourceStart) return null;
+  const segment = clip.segments?.find((candidate) => {
+    const range = sanitizeSegmentRange(candidate);
+    return Math.abs(range.sourceStart - sourceStart) < 0.01 && Math.abs(range.sourceEnd - sourceEnd) < 0.01;
+  });
+  return {
+    clipId: coerceOptionalString(clip.id, "legacy-clip"),
+    segmentId: coerceOptionalString(segment?.id, "legacy-segment"),
+    sourceUrl: sanitizeSegmentSource(clip.url, ""),
+    sourceStartSeconds: sourceStart,
+    sourceEndSeconds: sourceEnd,
+  };
+}
+
 function buildSegmentTrackClips(session: RecordingSessionPackage, trackAllocator: { next: (kind: SessionTrackKind) => string }) {
   const usedTrackIds = new Map<string, string>();
-  let cursor = 0.5;
-  const sortedClips = [...(session.clips ?? [])];
-  const deterministicSortedClips = [...sortedClips].sort((a, b) => {
-    const aOrder = coerceOptionalString(a.id, "").localeCompare(coerceOptionalString(b.id, ""));
-    if (aOrder !== 0) return aOrder;
-    return coerceOptionalString(a.title, "").localeCompare(coerceOptionalString(b.title, ""));
-  });
+  const cueDefinitions = [...(session.clips ?? [])];
+  const playbackEvents = [...(session.events ?? [])]
+    .filter((event) => event.kind === "clip")
+    .sort((a, b) => (a.atMs ?? 0) - (b.atMs ?? 0));
 
-  const segmentClips = deterministicSortedClips.flatMap((clip, clipIndex) => {
-    const clipId = coerceOptionalString(clip.id, `${RECORDER_SEGMENT_PREFIX}-${clipIndex}`);
-    const sourceUrl = sanitizeSegmentSource(clip.url, "");
+  return playbackEvents.flatMap((event, eventIndex) => {
+    const structured = event.clipPlayback;
+    const legacy = structured?.sourceUrl
+      ? null
+      : cueDefinitions.map((clip) => legacyClipPlaybackRange(event, clip)).find(Boolean) ?? null;
+    const playback = structured?.sourceUrl ? structured : legacy;
+    const sourceUrl = sanitizeSegmentSource(playback?.sourceUrl, "");
+    const sourceStart = Math.max(0, coerceNumber(playback?.sourceStartSeconds, 0));
+    const sourceEnd = Math.max(sourceStart, coerceNumber(playback?.sourceEndSeconds, sourceStart));
+    if (!playback || !sourceUrl || sourceEnd <= sourceStart) return [];
     const segmentKind = inferTrackKindFromSourceUrl(sourceUrl, "video");
-    const cacheKey = `${segmentKind}::${sourceUrl || clipId}`;
+    const cacheKey = `${segmentKind}::${sourceUrl}`;
 
     const trackId = usedTrackIds.get(cacheKey)
       || trackAllocator.next(segmentKind);
     usedTrackIds.set(cacheKey, trackId);
+    const timelineStart = Math.max(0, coerceNumber(event.atMs, 0) / 1000);
+    const duration = Math.max(RECORDER_SEGMENT_MIN_DURATION_SECONDS, sourceEnd - sourceStart);
+    const cue = cueDefinitions.find((clip) => clip.id === playback.clipId);
+    const segment = cue?.segments?.find((candidate) => candidate.id === playback.segmentId);
 
-    const orderedSegments = [...(clip.segments?.length ? clip.segments : [{ id: makeId("segment"), start: "", end: "", note: "" }])]
-      .sort((a, b) => {
-        const aStart = normalizeSegmentTime(a.start, 0);
-        const bStart = normalizeSegmentTime(b.start, 0);
-        if (aStart !== bStart) return aStart - bStart;
-        const aLabel = coerceOptionalString((a as any).id, "0");
-        const bLabel = coerceOptionalString((b as any).id, "0");
-        return aLabel.localeCompare(bLabel);
-      });
-
-    return orderedSegments.map((segment, segmentIndex) => {
-      const range = sanitizeSegmentRange(segment);
-      const duration = range.duration;
-      const timelineStart = Math.max(0, cursor);
-      cursor = Math.max(0, cursor + duration + RECORDER_SEGMENT_GAP_SECONDS);
-      const timelineEnd = timelineStart + duration;
-
-      return {
-        id: `clip-segment-${clipId}-${segmentIndex}-${range.sourceStart.toFixed(3)}`,
-        assetId: sourceUrl || `missing-segment-source-${clipId}`,
-        trackId,
-        startIn: timelineStart,
-        sourceStart: range.sourceStart,
-        sourceEnd: roundSeconds(range.sourceEnd),
-        kind: segmentKind,
-        name: `${clip.title || "Clip"} ${segmentIndex + 1}${segment.note ? ` — ${segment.note}` : ""} (${formatClock(range.sourceStart)}-${formatClock(range.sourceEnd)})`,
-        color: segmentKind === "video" ? "#7c3aed" : "#a855f7",
-        duration: Math.max(range.duration, Math.max(RECORDER_SEGMENT_MIN_DURATION_SECONDS, timelineEnd - timelineStart)),
-      } satisfies TimelineClip;
-    });
+    return [{
+      id: `clip-playback-${coerceOptionalString(event.id, String(eventIndex))}`,
+      assetId: sourceUrl,
+      trackId,
+      startIn: roundSeconds(timelineStart),
+      sourceStart: roundSeconds(sourceStart),
+      sourceEnd: roundSeconds(sourceEnd),
+      kind: segmentKind,
+      name: `${cue?.title || event.label || "Watched clip"}${segment?.note ? ` — ${segment.note}` : ""} (${formatClock(sourceStart)}-${formatClock(sourceEnd)})`,
+      color: segmentKind === "video" ? "#7c3aed" : "#a855f7",
+      duration: roundSeconds(duration),
+    } satisfies TimelineClip];
   });
-
-  return segmentClips.filter((clip) => clip.duration > 0);
 }
 
 function sessionPackageToTimeline(session: RecordingSessionPackage): TimelineState {
@@ -2410,41 +2349,11 @@ function sessionPackageToTimeline(session: RecordingSessionPackage): TimelineSta
     (session.durationMs ?? 0) / 1000,
     ...events.map((event) => ((event.atMs ?? 0) / 1000) + 10),
   );
-  const hasSessionTrackClips = sessionTrackClips.length > 0;
   const usedTrackIds = sessionTrackClips.map((clip) => coerceString(clip.trackId, ""));
-  const trackAllocator = buildTrackAllocator([SESSION_EVENT_TRACK, ...usedTrackIds]);
+  const trackAllocator = buildTrackAllocator(usedTrackIds);
   const segmentClips = buildSegmentTrackClips(session, trackAllocator);
 
-  const clips: TimelineClip[] = hasSessionTrackClips
-    ? [...sessionTrackClips, ...segmentClips]
-    : [{
-      id: `session-${session.episodeSlug || session.roomName || "session"}-spine`,
-      assetId: "",
-      kind: "audio",
-      trackId: DEFAULT_AUDIO_TRACK,
-      startIn: 0,
-      duration,
-      sourceStart: 0,
-      sourceEnd: roundSeconds(duration),
-      name: `${session.episodeLabel ?? session.roomName ?? "Recording"} audio spine (placeholder)`,
-      color: "#047857",
-    }];
-
-  const clipEvents = events.filter((event) => event.kind === "clip");
-  const clipEventTimelineClips = clipEvents.map((event, index) => ({
-    id: `clip-event-${event.id ?? index}`,
-    assetId: "recording-clip-event",
-    trackId: SESSION_EVENT_TRACK,
-    startIn: (event.atMs ?? 0) / 1000,
-    duration: eventDuration(event),
-    sourceStart: 0,
-    sourceEnd: roundSeconds((event.atMs ?? 0) / 1000 + eventDuration(event)),
-    kind: "video",
-    name: event.label ?? `Clip cue ${index + 1}`,
-    color: "#d97706",
-  } satisfies TimelineClip));
-
-  clips.push(...clipEventTimelineClips);
+  const clips: TimelineClip[] = [...sessionTrackClips, ...segmentClips];
 
   const markerEvents = events.filter((event) => event.kind !== "session");
   const transcript: TranscriptBlock[] = markerEvents.length
@@ -2456,16 +2365,16 @@ function sessionPackageToTimeline(session: RecordingSessionPackage): TimelineSta
         deleted: false,
         alert: event.kind === "retake" ? "Retake" : event.kind === "clip" ? "Clip Cue" : null,
       }))
-    : [
-        {
+    : session.script?.trim()
+      ? [{
           id: "session-script",
           time: 0,
           duration,
-          text: session.script?.slice(0, 260) || `${session.roomName ?? "Recording"} session imported.`,
+          text: session.script.slice(0, 260),
           deleted: false,
           alert: null,
-        },
-      ];
+        }]
+      : [];
 
   return {
     clips: clips.sort((a, b) => a.startIn - b.startIn),
@@ -2944,7 +2853,7 @@ function CloudEditorContent() {
     setEditorMode,
     updateClipTransforms,
     addClipKeyframe,
-  } = useTimelineState(INITIAL_STATE);
+  } = useTimelineState(EMPTY_TIMELINE_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
   const routeToken = useMemo(() => `${resolvedProjectSlug}::${episodeSlug}`, [resolvedProjectSlug, episodeSlug]);
@@ -3135,11 +3044,11 @@ function CloudEditorContent() {
         setSessionSummary(`Loaded ${state.title} from ${persistedTimelineEntry.label}`);
         setViewMode("timeline");
       } else {
-        replaceTimeline(INITIAL_STATE);
-        timelineSavedFingerprintRef.current = timelineContentFingerprint(INITIAL_STATE);
+        replaceTimeline(EMPTY_TIMELINE_STATE);
+        timelineSavedFingerprintRef.current = timelineContentFingerprint(EMPTY_TIMELINE_STATE);
         setTimelineLastSavedAt(null);
-        setTimelineHydrationSource("default timeline");
-        setSessionSummary(`Using default timeline for ${state.title}`);
+        setTimelineHydrationSource("empty episode");
+        setSessionSummary(`${state.title} has no saved timeline or playable recording media yet.`);
       }
       setIsTimelineHydrated(true);
     }).catch((error) => {
@@ -3151,7 +3060,7 @@ function CloudEditorContent() {
       setTimelineSaveStateSafe("error");
       setTimelineHydrationSource("error");
       setSessionSummary("Failed to hydrate timeline from server.");
-      replaceTimeline(INITIAL_STATE);
+      replaceTimeline(EMPTY_TIMELINE_STATE);
       setIsTimelineHydrated(true);
     });
 
@@ -3418,8 +3327,7 @@ function CloudEditorContent() {
   }, [selectedClipId, timelineState.clips]);
 
   const importedMediaAssets = useMemo(() => {
-    const parsed = normalizeImportedMediaAssets(productionState?.productionJson);
-    return parsed.length > 0 ? parsed : STARTER_KIT_ASSETS;
+    return normalizeImportedMediaAssets(productionState?.productionJson);
   }, [productionState?.productionJson]);
   const captureGroupFocus = useMemo(
     () => captureGroupEditorFocusPlan(
@@ -8966,8 +8874,8 @@ function CloudEditorContent() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_1fr_1fr]">
-              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="min-w-0 rounded-2xl border border-[#e8dcc4] bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Production map</div>
                   <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${timelineSaveStatusStyles}`}>
@@ -8994,7 +8902,7 @@ function CloudEditorContent() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+              <div className="min-w-0 rounded-2xl border border-[#e8dcc4] bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Selected clip</div>
                   {selectedClip && (
@@ -9035,7 +8943,7 @@ function CloudEditorContent() {
                         </div>
                       </div>
                     )}
-                    <div className="mt-2 text-xs font-bold leading-5 text-[#6f5336]">
+                    <div className="mt-2 break-words text-xs font-bold leading-5 text-[#6f5336]">
                       {selectedClipAsset
                         ? `Using ${selectedClipAsset.originalName}.`
                         : selectedClip.assetId
@@ -9050,7 +8958,7 @@ function CloudEditorContent() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+              <div className="min-w-0 rounded-2xl border border-[#e8dcc4] bg-white p-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Next best moves</div>
                 <div className="mt-3 space-y-2">
                   {editorNextActions.map((action) => (

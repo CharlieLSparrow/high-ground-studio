@@ -20,6 +20,38 @@ function response(payload: unknown, ok = false, status = ok ? 200 : 503) {
   } as Response);
 }
 
+function productionState(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    mode: "database",
+    id: "production-1",
+    projectSlug: "high-ground-odyssey-manuscript",
+    slug: "current-episode",
+    title: "Current Episode",
+    boundaryLabel: "Current Episode",
+    status: "active",
+    actorEmail: "editor@example.com",
+    accessRole: "EDITOR",
+    accessSource: "grant",
+    recordingRoomJson: null,
+    timelineJson: null,
+    transcriptJson: null,
+    productionJson: null,
+    updatedAt: "2026-07-19T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function mockEpisodeProduction(overrides: Record<string, unknown>) {
+  const previous = jest.mocked(globalThis.fetch).getMockImplementation();
+  jest.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/api/episode-production") {
+      return response(productionState(overrides), true, 200);
+    }
+    return previous?.(input, init) ?? response({ ok: false, error: "Unavailable" });
+  });
+}
+
 describe("CloudEditor production truth UX", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -36,24 +68,7 @@ describe("CloudEditor production truth UX", () => {
           }, true, 200);
         }
         if (url === "/api/episode-production") {
-          return response({
-            ok: true,
-            mode: "database",
-            id: "production-1",
-            projectSlug: "high-ground-odyssey-manuscript",
-            slug: "current-episode",
-            title: "Current Episode",
-            boundaryLabel: "Current Episode",
-            status: "active",
-            actorEmail: "editor@example.com",
-            accessRole: "EDITOR",
-            accessSource: "grant",
-            recordingRoomJson: null,
-            timelineJson: null,
-            transcriptJson: null,
-            productionJson: null,
-            updatedAt: "2026-07-19T00:00:00.000Z",
-          }, true, 200);
+          return response(productionState(), true, 200);
         }
         return response({ ok: false, error: "Persistence unavailable in component test" });
       }),
@@ -99,6 +114,11 @@ describe("CloudEditor production truth UX", () => {
   });
 
   it("discloses the provider handoff and returns proposals without auto-applying them", async () => {
+    mockEpisodeProduction({
+      transcriptJson: {
+        blocks: [{ id: "t2", time: 0, duration: 8, text: "A real transcript block for proposal review." }],
+      },
+    });
     const user = userEvent.setup();
     render(<CloudEditor />);
 
@@ -115,6 +135,78 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByText(/Nothing has been applied/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply proposal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
+
+  it("keeps a new episode honestly empty instead of injecting sample media or a representative cut", async () => {
+    render(<CloudEditor />);
+
+    expect(await screen.findByText("Current Episode has no saved timeline or playable recording media yet.")).toBeInTheDocument();
+    expect(screen.getByText("No timeline sources yet.")).toBeInTheDocument();
+    expect(screen.getByText("No media assets available.")).toBeInTheDocument();
+    expect(screen.queryByText("Episode 4 Intro Audio")).not.toBeInTheDocument();
+    expect(screen.queryByText("B-Roll: Coffee Pour")).not.toBeInTheDocument();
+    expect(screen.queryByText(/audio spine \(placeholder\)/i)).not.toBeInTheDocument();
+  });
+
+  it("materializes a played source clip at its structured recording timestamp", async () => {
+    mockEpisodeProduction({
+      recordingRoomJson: {
+        payloadVersion: 2,
+        version: "quipsly-recording-room.v1",
+        roomName: "Curiosity rehearsal",
+        durationMs: 60_000,
+        clips: [{
+          id: "clip-be-curious",
+          title: "Be Curious",
+          url: "https://www.youtube.com/watch?v=example",
+          segments: [{ id: "segment-opening", start: "0:02", end: "0:18", note: "Opening reaction" }],
+        }],
+        events: [{
+          id: "event-played-opening",
+          kind: "clip",
+          label: "Played Be Curious 0:02-0:18",
+          atMs: 12_000,
+          note: "Opening reaction",
+          clipPlayback: {
+            clipId: "clip-be-curious",
+            segmentId: "segment-opening",
+            sourceUrl: "https://www.youtube.com/watch?v=example",
+            sourceStartSeconds: 2,
+            sourceEndSeconds: 18,
+          },
+        }],
+        tracks: [],
+      },
+    });
+
+    render(<CloudEditor />);
+
+    expect(await screen.findByText("Loaded Current Episode from recording room")).toBeInTheDocument();
+    expect((await screen.findAllByText(/Be Curious.*00:02-00:18/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText("No timeline sources yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/audio spine \(placeholder\)/i)).not.toBeInTheDocument();
+  });
+
+  it("loads a transcript-only saved artifact without borrowing demo clips", async () => {
+    mockEpisodeProduction({
+      timelineJson: {
+        payloadVersion: 3,
+        projectSlug: "high-ground-odyssey-manuscript",
+        episodeSlug: "current-episode",
+        timelineClips: [],
+        transcript: [{ id: "real-line", time: 4, duration: 3, text: "The retained transcript is the only edit evidence." }],
+      },
+    });
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByText("Loaded Current Episode from saved timeline");
+    await user.click(screen.getByRole("button", { name: "TRANSCRIPT" }));
+
+    expect(screen.getByText("retained")).toBeInTheDocument();
+    expect(screen.getByText("evidence.")).toBeInTheDocument();
+    expect(screen.getByText("No timeline sources yet.")).toBeInTheDocument();
+    expect(screen.queryByText("A-Roll_Take_1")).not.toBeInTheDocument();
   });
 
   it("does not paint a representative timeline when Nest access is denied", async () => {
