@@ -31,17 +31,17 @@ The first production shape is deliberately asymmetric:
 
 ## Product vocabulary
 
-| Concept | Meaning | Canonical owner |
-| --- | --- | --- |
-| Session | A coaching, podcast, interview, or internal room with participants, consent, sources, and time | `CallRoom` |
-| Appointment | A scheduled human commitment | Quipsly booking/session models |
-| Work block | Personal intent to spend time, movable without changing a client appointment or release date | `WorkPlanBlock` |
-| Production milestone | Recording, edit, review, approval, scheduled publication, or release date for an episode/project | Quipsly production records |
-| Calendar projection | A provider event bound to one canonical object and its current version | Calendar binding and receipt records |
-| Transcript source | Immutable provider response plus exact recording generation and checksum | Transcript manifest/result ledger |
-| Transcript overlay | Human correction, speaker mapping, redaction, or annotation over source anchors | Revisioned Quipsly records |
-| Session packet | Purpose-specific, source-linked candidates prepared for human review | Revisioned notes/output records |
-| Commitment | A reviewed goal or task with owner, timing, visibility, and source | `Goal` / `ActionItem` / task model |
+| Concept              | Meaning                                                                                          | Canonical owner                      |
+| -------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| Session              | A coaching, podcast, interview, or internal room with participants, consent, sources, and time   | `CallRoom`                           |
+| Appointment          | A scheduled human commitment                                                                     | Quipsly booking/session models       |
+| Work block           | Personal intent to spend time, movable without changing a client appointment or release date     | `WorkPlanBlock`                      |
+| Production milestone | Recording, edit, review, approval, scheduled publication, or release date for an episode/project | Quipsly production records           |
+| Calendar projection  | A provider event bound to one canonical object and its current version                           | Calendar binding and receipt records |
+| Transcript source    | Immutable provider response plus exact recording generation and checksum                         | Transcript manifest/result ledger    |
+| Transcript overlay   | Human correction, speaker mapping, redaction, or annotation over source anchors                  | Revisioned Quipsly records           |
+| Session packet       | Purpose-specific, source-linked candidates prepared for human review                             | Revisioned notes/output records      |
+| Commitment           | A reviewed goal or task with owner, timing, visibility, and source                               | `Goal` / `ActionItem` / task model   |
 
 ## Calendar experience
 
@@ -329,6 +329,16 @@ visibility, and optional project/goal. Sharing creates a recipient-bound,
 revisioned snapshot; it never flips every source note to shared. Multiple coaches
 can collaborate only through explicit Nest/session membership and role-aware
 visibility. Client-safe material is separate from team and author-private notes.
+
+Before sharing, the assigned coach can revise the private recipient-bound
+snapshot itself. Every save revalidates the coach/client assignment and eligible
+canonical sources inside a Serializable transaction, requires the currently
+observed revision, advances a monotonic revision, and appends immutable history.
+Stable request identities make exact retries idempotent and changed intent a
+conflict. The intended client continues to read only the latest explicitly
+released output; saving a draft performs no delivery, Calendar, publication, or
+source-record mutation. Once released, that snapshot is history and cannot be
+edited—the coach prepares a new private output instead.
 
 This design follows coaching confidentiality practice: Quipsly records the
 agreement about who receives what, applies the same obligations to AI-assisted

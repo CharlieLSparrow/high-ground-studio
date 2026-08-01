@@ -154,12 +154,25 @@ External evidence:
 - Both surfaces state that lane approval creates no canonical note, task, goal,
   client delivery, message, calendar event, or publication. Deliberate Session
   Notes and client follow-up release remain separate workflows.
+- The assigned coach can now adjust a private client follow-up after assembly
+  and before release. Saves use optimistic concurrency, revalidate the current
+  coach/client/source boundary inside a Serializable transaction, and append
+  immutable `DRAFT_UPDATED` history. Exact retries are idempotent; stale saves,
+  changed request intent, client mutation, and edits to released history fail
+  closed.
+- A retained rendered coach/client operation created revision 1, changed and
+  saved revision 2, then proved from a separate client account that the private
+  draft remained concealed while the prior released artifact stayed visible.
+  PostgreSQL readback found the two expected revisions and zero delivery events;
+  Calendar evidence and the released content hash were unchanged. Exact evidence
+  is recorded in
+  `docs/coordination/2026-08-01-retained-coaching-draft-revisions.md`.
 
 ## Verification
 
 - Final calendar-focused web suite: 47/47.
 - Final calendar operation/release contracts: 9/9.
-- Full Nest Jest suite: 1,033 passed across 205 active suites; 100 tests in 34
+- Full Nest Jest suite: 1,035 passed across 205 active suites; 100 tests in 34
   suites remained intentionally skipped.
 - Quipsly TypeScript, Prisma schema validation, 37-migration local status, and
   optimized 152-route production build: pass.

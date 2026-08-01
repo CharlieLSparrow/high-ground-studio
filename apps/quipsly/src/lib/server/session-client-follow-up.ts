@@ -7,7 +7,8 @@ import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-dom
 import { sessionAccessWhere, type SessionAccessActor } from "./session-access";
 
 export const CLIENT_FOLLOW_UP_SCHEMA = "quipsly-client-follow-up-v1";
-export const CLIENT_FOLLOW_UP_MANIFEST_SCHEMA = "quipsly-client-follow-up-manifest-v1";
+export const CLIENT_FOLLOW_UP_MANIFEST_SCHEMA =
+  "quipsly-client-follow-up-manifest-v1";
 
 type RestoreClient = any;
 
@@ -36,7 +37,7 @@ export class ClientFollowUpError extends Error {
 
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -48,25 +49,37 @@ function clean(value: unknown, max: number) {
 
 function uniqueIds(value: unknown, max = 100) {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.map((item) => clean(item, 240)).filter(Boolean))].slice(0, max);
+  return [
+    ...new Set(value.map((item) => clean(item, 240)).filter(Boolean)),
+  ].slice(0, max);
 }
 
 export function stableClientFollowUpJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableClientFollowUpJson).join(",")}]`;
+  if (Array.isArray(value))
+    return `[${value.map(stableClientFollowUpJson).join(",")}]`;
   if (value && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nested]) => `${JSON.stringify(key)}:${stableClientFollowUpJson(nested)}`)
+      .map(
+        ([key, nested]) =>
+          `${JSON.stringify(key)}:${stableClientFollowUpJson(nested)}`,
+      )
       .join(",")}}`;
   }
   return JSON.stringify(value);
 }
 
 export function clientFollowUpSha256(value: unknown) {
-  return createHash("sha256").update(stableClientFollowUpJson(value)).digest("hex");
+  return createHash("sha256")
+    .update(stableClientFollowUpJson(value))
+    .digest("hex");
 }
 
-function outputId(actorUserId: string, roomId: string, clientRequestId: string) {
+function outputId(
+  actorUserId: string,
+  roomId: string,
+  clientRequestId: string,
+) {
   return `client-follow-up-${createHash("sha256")
     .update(`${actorUserId}|${roomId}|${clientRequestId}`)
     .digest("hex")
@@ -75,6 +88,10 @@ function outputId(actorUserId: string, roomId: string, clientRequestId: string) 
 
 function isUniqueConstraintError(error: unknown) {
   return object(error).code === "P2002";
+}
+
+function isTransactionConflictError(error: unknown) {
+  return object(error).code === "P2034";
 }
 
 function outputSnapshot(output: any) {
@@ -167,7 +184,11 @@ function serializeRequiredOutput(output: any) {
   return serialized;
 }
 
-async function loadBoundary(client: RestoreClient, roomId: string, actor: SessionAccessActor) {
+async function loadBoundary(
+  client: RestoreClient,
+  roomId: string,
+  actor: SessionAccessActor,
+) {
   const room = await client.callRoom.findFirst({
     where: sessionAccessWhere(roomId, actor),
     select: {
@@ -252,11 +273,15 @@ async function loadEligibleRecords(client: RestoreClient, room: any) {
       },
     }),
   ]);
-  const tasks = taskRows.filter((task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson));
+  const tasks = taskRows.filter(
+    (task: any) => !isUnreviewedTranscriptActionItemSource(task.sourceJson),
+  );
   return { notes, tasks, goals };
 }
 
-function eligibleSummary(records: Awaited<ReturnType<typeof loadEligibleRecords>>) {
+function eligibleSummary(
+  records: Awaited<ReturnType<typeof loadEligibleRecords>>,
+) {
   return {
     notes: records.notes.map((note: any) => ({
       id: note.id,
@@ -287,17 +312,38 @@ function eligibleSummary(records: Awaited<ReturnType<typeof loadEligibleRecords>
   };
 }
 
-function choose<T extends { id: string }>(all: T[], selected: string[], kind: string) {
+function choose<T extends { id: string }>(
+  all: T[],
+  selected: string[],
+  kind: string,
+) {
   const byId = new Map(all.map((item) => [item.id, item]));
-  const chosen = selected.map((id) => byId.get(id)).filter((item): item is T => Boolean(item));
-  if (chosen.length !== selected.length) {
+  const selectedIds = new Set(selected);
+  if ([...selectedIds].some((id) => !byId.has(id))) {
     throw new ClientFollowUpError(
       409,
       "SOURCE_SELECTION_CHANGED",
       `One or more selected ${kind} records are no longer eligible for this client follow-up. Refresh before creating a draft.`,
     );
   }
-  return chosen;
+  return all.filter((item) => selectedIds.has(item.id));
+}
+
+function draftIntentSha256(input: {
+  outputId: string;
+  expectedRevision: number;
+  draft: DraftInput;
+}) {
+  return clientFollowUpSha256({
+    outputId: input.outputId,
+    expectedRevision: input.expectedRevision,
+    title: input.draft.title,
+    intro: input.draft.intro,
+    nextSessionFocus: input.draft.nextSessionFocus,
+    noteIds: [...input.draft.noteIds].sort(),
+    taskIds: [...input.draft.taskIds].sort(),
+    goalIds: [...input.draft.goalIds].sort(),
+  });
 }
 
 function buildDraftContent(input: {
@@ -311,7 +357,11 @@ function buildDraftContent(input: {
   const notes = choose(input.records.notes, input.selected.noteIds, "note");
   const tasks = choose(input.records.tasks, input.selected.taskIds, "task");
   const goals = choose(input.records.goals, input.selected.goalIds, "goal");
-  if (notes.length + tasks.length + goals.length === 0 && !input.intro && !input.nextSessionFocus) {
+  if (
+    notes.length + tasks.length + goals.length === 0 &&
+    !input.intro &&
+    !input.nextSessionFocus
+  ) {
     throw new ClientFollowUpError(
       400,
       "EMPTY_FOLLOW_UP",
@@ -404,7 +454,9 @@ export async function readClientFollowUp(
   input: { roomId: string; actor: SessionAccessActor },
 ) {
   const boundary = await loadBoundary(client, input.roomId, input.actor);
-  const records = boundary.isCoach ? await loadEligibleRecords(client, boundary.room) : null;
+  const records = boundary.isCoach
+    ? await loadEligibleRecords(client, boundary.room)
+    : null;
   const output = await client.sessionOutput.findFirst({
     where: boundary.isCoach
       ? {
@@ -419,14 +471,11 @@ export async function readClientFollowUp(
           recipientUserId: input.actor.id,
           status: "RELEASED",
         },
-    orderBy: [
-      { releasedAt: "desc" },
-      { updatedAt: "desc" },
-    ],
+    orderBy: [{ releasedAt: "desc" }, { updatedAt: "desc" }],
     select: OUTPUT_SELECT,
   });
   return {
-    role: boundary.isCoach ? "COACH" as const : "CLIENT" as const,
+    role: boundary.isCoach ? ("COACH" as const) : ("CLIENT" as const),
     room: {
       id: boundary.room.id,
       title: boundary.room.title || "Coaching Session",
@@ -434,16 +483,18 @@ export async function readClientFollowUp(
       coach: boundary.room.booking.coachUser
         ? {
             id: boundary.room.booking.coachUser.id,
-            label: boundary.room.booking.coachUser.name
-              || boundary.room.booking.coachUser.primaryEmail
-              || "Coach",
+            label:
+              boundary.room.booking.coachUser.name ||
+              boundary.room.booking.coachUser.primaryEmail ||
+              "Coach",
           }
         : null,
       client: {
         id: boundary.room.booking.clientUser.id,
-        label: boundary.room.booking.clientUser.name
-          || boundary.room.booking.clientUser.primaryEmail
-          || "Client",
+        label:
+          boundary.room.booking.clientUser.name ||
+          boundary.room.booking.clientUser.primaryEmail ||
+          "Client",
       },
     },
     eligible: records ? eligibleSummary(records) : null,
@@ -476,12 +527,24 @@ export async function createClientFollowUpDraft(
 ) {
   const boundary = await loadBoundary(client, input.roomId, input.actor);
   if (!boundary.isCoach) {
-    throw new ClientFollowUpError(403, "COACH_REQUIRED", "Only the assigned coach can prepare a client follow-up.");
+    throw new ClientFollowUpError(
+      403,
+      "COACH_REQUIRED",
+      "Only the assigned coach can prepare a client follow-up.",
+    );
   }
   if (!input.draft.clientRequestId || !input.draft.title) {
-    throw new ClientFollowUpError(400, "INVALID_INPUT", "A stable request identity and follow-up title are required.");
+    throw new ClientFollowUpError(
+      400,
+      "INVALID_INPUT",
+      "A stable request identity and follow-up title are required.",
+    );
   }
-  const id = outputId(input.actor.id, boundary.room.id, input.draft.clientRequestId);
+  const id = outputId(
+    input.actor.id,
+    boundary.room.id,
+    input.draft.clientRequestId,
+  );
   const records = await loadEligibleRecords(client, boundary.room);
   const content = buildDraftContent({
     room: boundary.room,
@@ -493,10 +556,10 @@ export async function createClientFollowUpDraft(
   });
   const assertReplayMatches = (output: any) => {
     if (
-      output.roomId !== boundary.room.id
-      || output.createdByUserId !== input.actor.id
-      || output.recipientUserId !== boundary.room.booking.clientUserId
-      || output.contentSha256 !== content.contentSha256
+      output.roomId !== boundary.room.id ||
+      output.createdByUserId !== input.actor.id ||
+      output.recipientUserId !== boundary.room.booking.clientUserId ||
+      output.contentSha256 !== content.contentSha256
     ) {
       throw new ClientFollowUpError(
         409,
@@ -509,7 +572,10 @@ export async function createClientFollowUpDraft(
       idempotentReplay: true,
     };
   };
-  const existing = await client.sessionOutput.findUnique({ where: { id }, select: OUTPUT_SELECT });
+  const existing = await client.sessionOutput.findUnique({
+    where: { id },
+    select: OUTPUT_SELECT,
+  });
   if (existing) {
     return assertReplayMatches(existing);
   }
@@ -563,6 +629,225 @@ export async function createClientFollowUpDraft(
   }
 }
 
+export async function updateClientFollowUpDraft(
+  client: RestoreClient,
+  input: {
+    roomId: string;
+    outputId: string;
+    actor: SessionAccessActor;
+    expectedRevision: number;
+    draft: DraftInput;
+  },
+) {
+  const boundary = await loadBoundary(client, input.roomId, input.actor);
+  if (!boundary.isCoach) {
+    throw new ClientFollowUpError(
+      403,
+      "COACH_REQUIRED",
+      "Only the assigned coach can revise a private client follow-up draft.",
+    );
+  }
+  if (
+    !input.draft.clientRequestId ||
+    !input.draft.title ||
+    !Number.isInteger(input.expectedRevision) ||
+    input.expectedRevision < 1
+  ) {
+    throw new ClientFollowUpError(
+      400,
+      "INVALID_INPUT",
+      "A stable request identity, title, and current draft revision are required.",
+    );
+  }
+  const intentSha256 = draftIntentSha256({
+    outputId: input.outputId,
+    expectedRevision: input.expectedRevision,
+    draft: input.draft,
+  });
+
+  const assertReplayMatches = async (revision: any) => {
+    const snapshot = object(revision?.snapshotJson);
+    const request = object(snapshot.request);
+    if (
+      revision?.outputId !== input.outputId ||
+      revision?.actorUserId !== input.actor.id ||
+      revision?.operation !== "DRAFT_UPDATED" ||
+      request.intentSha256 !== intentSha256
+    ) {
+      throw new ClientFollowUpError(
+        409,
+        "REQUEST_ID_CONFLICT",
+        "That request identity already belongs to a different follow-up revision.",
+      );
+    }
+    const output = await client.sessionOutput.findFirst({
+      where: {
+        id: input.outputId,
+        roomId: boundary.room.id,
+        createdByUserId: input.actor.id,
+        recipientUserId: boundary.room.booking.clientUserId,
+        kind: "CLIENT_FOLLOW_UP",
+      },
+      select: OUTPUT_SELECT,
+    });
+    return {
+      output: serializeRequiredOutput(output),
+      idempotentReplay: true,
+    };
+  };
+
+  const existingRevision = await client.sessionOutputRevision.findUnique({
+    where: { id: input.draft.clientRequestId },
+    select: {
+      id: true,
+      outputId: true,
+      operation: true,
+      actorUserId: true,
+      snapshotJson: true,
+    },
+  });
+  if (existingRevision) return assertReplayMatches(existingRevision);
+
+  const current = await client.sessionOutput.findFirst({
+    where: {
+      id: input.outputId,
+      roomId: boundary.room.id,
+      createdByUserId: input.actor.id,
+      recipientUserId: boundary.room.booking.clientUserId,
+      kind: "CLIENT_FOLLOW_UP",
+    },
+    select: OUTPUT_SELECT,
+  });
+  if (!current) {
+    throw new ClientFollowUpError(
+      404,
+      "FOLLOW_UP_NOT_FOUND",
+      "That private client follow-up draft is unavailable.",
+    );
+  }
+  if (current.status !== "DRAFT") {
+    throw new ClientFollowUpError(
+      409,
+      "DRAFT_NOT_EDITABLE",
+      "Only a private draft can be revised. Prepare a new draft instead of rewriting released history.",
+    );
+  }
+  if (current.revision !== input.expectedRevision) {
+    throw new ClientFollowUpError(
+      409,
+      "STALE_FOLLOW_UP",
+      "The private draft changed before this save. Refresh and review the current revision.",
+    );
+  }
+
+  const nextRevision = current.revision + 1;
+  try {
+    const updated = await client.$transaction(
+      async (tx: any) => {
+        const freshBoundary = await loadBoundary(tx, input.roomId, input.actor);
+        if (!freshBoundary.isCoach) {
+          throw new ClientFollowUpError(
+            403,
+            "COACH_REQUIRED",
+            "Only the assigned coach can revise a private client follow-up draft.",
+          );
+        }
+        const records = await loadEligibleRecords(tx, freshBoundary.room);
+        const content = buildDraftContent({
+          room: freshBoundary.room,
+          records,
+          selected: input.draft,
+          title: input.draft.title,
+          intro: input.draft.intro,
+          nextSessionFocus: input.draft.nextSessionFocus,
+        });
+        const changed = await tx.sessionOutput.updateMany({
+          where: {
+            id: current.id,
+            roomId: freshBoundary.room.id,
+            kind: "CLIENT_FOLLOW_UP",
+            createdByUserId: input.actor.id,
+            recipientUserId: freshBoundary.room.booking.clientUserId,
+            status: "DRAFT",
+            revision: current.revision,
+          },
+          data: {
+            title: input.draft.title,
+            intro: input.draft.intro || null,
+            nextSessionFocus: input.draft.nextSessionFocus || null,
+            bodyJson: content.body,
+            sourceManifestJson: content.sourceManifest,
+            contentSha256: content.contentSha256,
+            revision: nextRevision,
+          },
+        });
+        if (changed.count !== 1) {
+          throw new ClientFollowUpError(
+            409,
+            "STALE_FOLLOW_UP",
+            "The private draft changed before this save. Refresh and review the current revision.",
+          );
+        }
+        await tx.sessionOutputRevision.create({
+          data: {
+            id: input.draft.clientRequestId,
+            outputId: current.id,
+            revision: nextRevision,
+            operation: "DRAFT_UPDATED",
+            actorUserId: input.actor.id,
+            snapshotJson: {
+              ...content,
+              title: input.draft.title,
+              intro: input.draft.intro || null,
+              nextSessionFocus: input.draft.nextSessionFocus || null,
+              status: "DRAFT",
+              revision: nextRevision,
+              request: {
+                clientRequestId: input.draft.clientRequestId,
+                expectedRevision: input.expectedRevision,
+                intentSha256,
+                externalMessageSent: false,
+                providerCalendarMutated: false,
+                publicationPerformed: false,
+              },
+            },
+          },
+        });
+        return tx.sessionOutput.findUnique({
+          where: { id: current.id },
+          select: OUTPUT_SELECT,
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
+    return {
+      output: serializeRequiredOutput(updated),
+      idempotentReplay: false,
+    };
+  } catch (error) {
+    if (isTransactionConflictError(error)) {
+      throw new ClientFollowUpError(
+        409,
+        "STALE_FOLLOW_UP",
+        "The private draft changed before this save. Refresh and review the current revision.",
+      );
+    }
+    if (!isUniqueConstraintError(error)) throw error;
+    const raced = await client.sessionOutputRevision.findUnique({
+      where: { id: input.draft.clientRequestId },
+      select: {
+        id: true,
+        outputId: true,
+        operation: true,
+        actorUserId: true,
+        snapshotJson: true,
+      },
+    });
+    if (!raced) throw error;
+    return assertReplayMatches(raced);
+  }
+}
+
 async function transitionOutput(
   client: RestoreClient,
   input: {
@@ -576,7 +861,11 @@ async function transitionOutput(
 ) {
   const boundary = await loadBoundary(client, input.roomId, input.actor);
   if (!boundary.isCoach) {
-    throw new ClientFollowUpError(403, "COACH_REQUIRED", "Only the assigned coach can change client follow-up visibility.");
+    throw new ClientFollowUpError(
+      403,
+      "COACH_REQUIRED",
+      "Only the assigned coach can change client follow-up visibility.",
+    );
   }
   const current = await client.sessionOutput.findFirst({
     where: {
@@ -588,7 +877,12 @@ async function transitionOutput(
     },
     select: OUTPUT_SELECT,
   });
-  if (!current) throw new ClientFollowUpError(404, "FOLLOW_UP_NOT_FOUND", "That client follow-up is unavailable.");
+  if (!current)
+    throw new ClientFollowUpError(
+      404,
+      "FOLLOW_UP_NOT_FOUND",
+      "That client follow-up is unavailable.",
+    );
 
   const nextStatus = input.action === "RELEASE" ? "RELEASED" : "REVOKED";
   const expectedStatus = input.action === "RELEASE" ? "DRAFT" : "RELEASED";
@@ -603,12 +897,23 @@ async function transitionOutput(
         },
       },
     });
-    if (!replay || replay.outputId !== current.id || replay.kind !== eventKind) {
-      throw new ClientFollowUpError(409, "REQUEST_ID_CONFLICT", "That visibility request identity belongs to a different operation.");
+    if (
+      !replay ||
+      replay.outputId !== current.id ||
+      replay.kind !== eventKind
+    ) {
+      throw new ClientFollowUpError(
+        409,
+        "REQUEST_ID_CONFLICT",
+        "That visibility request identity belongs to a different operation.",
+      );
     }
     return { output: serializeRequiredOutput(current), idempotentReplay: true };
   }
-  if (current.status !== expectedStatus || current.revision !== input.expectedRevision) {
+  if (
+    current.status !== expectedStatus ||
+    current.revision !== input.expectedRevision
+  ) {
     throw new ClientFollowUpError(
       409,
       "STALE_FOLLOW_UP",
@@ -618,58 +923,75 @@ async function transitionOutput(
 
   const now = new Date();
   const nextRevision = current.revision + 1;
-  const updated = await client.$transaction(async (tx: any) => {
-    const changed = await tx.sessionOutput.updateMany({
-      where: { id: current.id, status: expectedStatus, revision: current.revision },
-      data: {
-        status: nextStatus,
-        revision: nextRevision,
-        releasedAt: input.action === "RELEASE" ? now : current.releasedAt,
-        revokedAt: input.action === "REVOKE" ? now : null,
-      },
-    });
-    if (changed.count !== 1) {
-      throw new ClientFollowUpError(409, "STALE_FOLLOW_UP", "The client follow-up changed before this visibility decision.");
-    }
-    await tx.sessionOutputRevision.create({
-      data: {
-        id: randomUUID(),
-        outputId: current.id,
-        revision: nextRevision,
-        operation: input.action === "RELEASE" ? "RELEASED_IN_APP" : "REVOKED",
-        actorUserId: input.actor.id,
-        snapshotJson: {
-          ...outputSnapshot(current),
+  const updated = await client.$transaction(
+    async (tx: any) => {
+      const changed = await tx.sessionOutput.updateMany({
+        where: {
+          id: current.id,
+          status: expectedStatus,
+          revision: current.revision,
+        },
+        data: {
           status: nextStatus,
           revision: nextRevision,
-          releasedAt: input.action === "RELEASE" ? now.toISOString() : current.releasedAt?.toISOString() ?? null,
-          revokedAt: input.action === "REVOKE" ? now.toISOString() : null,
+          releasedAt: input.action === "RELEASE" ? now : current.releasedAt,
+          revokedAt: input.action === "REVOKE" ? now : null,
         },
-      },
-    });
-    await tx.deliveryEvent.create({
-      data: {
-        id: randomUUID(),
-        outputId: current.id,
-        roomId: current.roomId,
-        actorUserId: input.actor.id,
-        recipientUserId: current.recipientUserId,
-        kind: eventKind,
-        destination: "quipsly-session",
-        status: "CONFIRMED",
-        contentSha256: current.contentSha256,
-        clientRequestId: input.clientRequestId,
-        occurredAt: now,
-        metadataJson: {
-          inAppVisibilityChanged: true,
-          externalMessageSent: false,
-          providerCalendarMutated: false,
-          publicationPerformed: false,
+      });
+      if (changed.count !== 1) {
+        throw new ClientFollowUpError(
+          409,
+          "STALE_FOLLOW_UP",
+          "The client follow-up changed before this visibility decision.",
+        );
+      }
+      await tx.sessionOutputRevision.create({
+        data: {
+          id: randomUUID(),
+          outputId: current.id,
+          revision: nextRevision,
+          operation: input.action === "RELEASE" ? "RELEASED_IN_APP" : "REVOKED",
+          actorUserId: input.actor.id,
+          snapshotJson: {
+            ...outputSnapshot(current),
+            status: nextStatus,
+            revision: nextRevision,
+            releasedAt:
+              input.action === "RELEASE"
+                ? now.toISOString()
+                : (current.releasedAt?.toISOString() ?? null),
+            revokedAt: input.action === "REVOKE" ? now.toISOString() : null,
+          },
         },
-      },
-    });
-    return tx.sessionOutput.findUnique({ where: { id: current.id }, select: OUTPUT_SELECT });
-  }, { isolationLevel: "Serializable" });
+      });
+      await tx.deliveryEvent.create({
+        data: {
+          id: randomUUID(),
+          outputId: current.id,
+          roomId: current.roomId,
+          actorUserId: input.actor.id,
+          recipientUserId: current.recipientUserId,
+          kind: eventKind,
+          destination: "quipsly-session",
+          status: "CONFIRMED",
+          contentSha256: current.contentSha256,
+          clientRequestId: input.clientRequestId,
+          occurredAt: now,
+          metadataJson: {
+            inAppVisibilityChanged: true,
+            externalMessageSent: false,
+            providerCalendarMutated: false,
+            publicationPerformed: false,
+          },
+        },
+      });
+      return tx.sessionOutput.findUnique({
+        where: { id: current.id },
+        select: OUTPUT_SELECT,
+      });
+    },
+    { isolationLevel: "Serializable" },
+  );
   return { output: serializeRequiredOutput(updated), idempotentReplay: false };
 }
 
@@ -710,7 +1032,11 @@ export async function acknowledgeClientFollowUp(
 ) {
   const boundary = await loadBoundary(client, input.roomId, input.actor);
   if (!boundary.isRecipient) {
-    throw new ClientFollowUpError(403, "CLIENT_REQUIRED", "Only the intended client can confirm opening this follow-up.");
+    throw new ClientFollowUpError(
+      403,
+      "CLIENT_REQUIRED",
+      "Only the intended client can confirm opening this follow-up.",
+    );
   }
   const output = await client.sessionOutput.findFirst({
     where: {
@@ -722,7 +1048,12 @@ export async function acknowledgeClientFollowUp(
     },
     select: OUTPUT_SELECT,
   });
-  if (!output) throw new ClientFollowUpError(404, "FOLLOW_UP_NOT_FOUND", "That released follow-up is unavailable.");
+  if (!output)
+    throw new ClientFollowUpError(
+      404,
+      "FOLLOW_UP_NOT_FOUND",
+      "That released follow-up is unavailable.",
+    );
   const existing = await client.deliveryEvent.findUnique({
     where: {
       actorUserId_clientRequestId: {
@@ -733,7 +1064,11 @@ export async function acknowledgeClientFollowUp(
   });
   if (existing) {
     if (existing.outputId !== output.id || existing.kind !== "OPENED_IN_APP") {
-      throw new ClientFollowUpError(409, "REQUEST_ID_CONFLICT", "That readback request identity belongs to a different operation.");
+      throw new ClientFollowUpError(
+        409,
+        "REQUEST_ID_CONFLICT",
+        "That readback request identity belongs to a different operation.",
+      );
     }
     return { output: serializeRequiredOutput(output), idempotentReplay: true };
   }
@@ -756,6 +1091,12 @@ export async function acknowledgeClientFollowUp(
       },
     },
   });
-  const refreshed = await client.sessionOutput.findUnique({ where: { id: output.id }, select: OUTPUT_SELECT });
-  return { output: serializeRequiredOutput(refreshed), idempotentReplay: false };
+  const refreshed = await client.sessionOutput.findUnique({
+    where: { id: output.id },
+    select: OUTPUT_SELECT,
+  });
+  return {
+    output: serializeRequiredOutput(refreshed),
+    idempotentReplay: false,
+  };
 }

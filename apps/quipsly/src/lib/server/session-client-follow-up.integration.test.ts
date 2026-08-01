@@ -12,6 +12,7 @@ import {
   readClientFollowUp,
   releaseClientFollowUp,
   revokeClientFollowUp,
+  updateClientFollowUpDraft,
 } from "./session-client-follow-up";
 
 const runLocalDatabaseSmoke =
@@ -46,10 +47,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
   let candidateTaskId = "";
   let goalId = "";
 
-  const actor = (
-    id: string,
-    email: string,
-  ) => ({
+  const actor = (id: string, email: string) => ({
     id,
     email,
     primaryEmail: email,
@@ -182,7 +180,8 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
             bookingId,
             ownerUserId: clientUserId,
             title: "Use a sustainable boundary",
-            description: "Prefer repeatable evidence over a perfect performance.",
+            description:
+              "Prefer repeatable evidence over a perfect performance.",
             targetAt: new Date("2026-08-14T18:00:00.000Z"),
           },
         }),
@@ -282,6 +281,117 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       output: { id: draft.output.id },
     });
 
+    const updateRequestId = randomUUID();
+    const revisedDraftInput = {
+      clientRequestId: updateRequestId,
+      title: "Your revised coaching follow-up",
+      intro: "Here is the clearer work we agreed to carry forward.",
+      nextSessionFocus: "Review the revised rehearsal evidence together.",
+      noteIds: [clientSafeNoteId],
+      taskIds: [taskId],
+      goalIds: [goalId],
+    };
+    const revised = await updateClientFollowUpDraft(prisma as never, {
+      roomId,
+      outputId: draft.output.id,
+      actor: coach,
+      expectedRevision: 1,
+      draft: revisedDraftInput,
+    });
+    const revisedReplay = await updateClientFollowUpDraft(prisma as never, {
+      roomId,
+      outputId: draft.output.id,
+      actor: coach,
+      expectedRevision: 1,
+      draft: revisedDraftInput,
+    });
+    expect(revised).toMatchObject({
+      idempotentReplay: false,
+      output: {
+        id: draft.output.id,
+        status: "DRAFT",
+        revision: 2,
+        title: "Your revised coaching follow-up",
+        intro: "Here is the clearer work we agreed to carry forward.",
+      },
+    });
+    expect(revisedReplay).toMatchObject({
+      idempotentReplay: true,
+      output: { id: draft.output.id, revision: 2 },
+    });
+
+    const concurrentResults = await Promise.allSettled([
+      updateClientFollowUpDraft(prisma as never, {
+        roomId,
+        outputId: draft.output.id,
+        actor: coach,
+        expectedRevision: 2,
+        draft: {
+          ...revisedDraftInput,
+          clientRequestId: randomUUID(),
+          title: "Concurrent coaching follow-up A",
+        },
+      }),
+      updateClientFollowUpDraft(prisma as never, {
+        roomId,
+        outputId: draft.output.id,
+        actor: coach,
+        expectedRevision: 2,
+        draft: {
+          ...revisedDraftInput,
+          clientRequestId: randomUUID(),
+          title: "Concurrent coaching follow-up B",
+        },
+      }),
+    ]);
+    const concurrentSuccesses = concurrentResults.filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof updateClientFollowUpDraft>>
+      > => result.status === "fulfilled",
+    );
+    const concurrentConflicts = concurrentResults.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(concurrentSuccesses).toHaveLength(1);
+    expect(concurrentSuccesses[0].value.output).toMatchObject({
+      status: "DRAFT",
+      revision: 3,
+      title: expect.stringMatching(/^Concurrent coaching follow-up [AB]$/),
+    });
+    expect(concurrentConflicts).toHaveLength(1);
+    expect(concurrentConflicts[0].reason).toMatchObject({
+      status: 409,
+      code: "STALE_FOLLOW_UP",
+    } satisfies Partial<ClientFollowUpError>);
+    const concurrentWinner = concurrentSuccesses[0].value.output;
+
+    await expect(
+      updateClientFollowUpDraft(prisma as never, {
+        roomId,
+        outputId: draft.output.id,
+        actor: coach,
+        expectedRevision: 1,
+        draft: { ...revisedDraftInput, clientRequestId: randomUUID() },
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "STALE_FOLLOW_UP",
+    } satisfies Partial<ClientFollowUpError>);
+    await expect(
+      updateClientFollowUpDraft(prisma as never, {
+        roomId,
+        outputId: draft.output.id,
+        actor: client,
+        expectedRevision: 2,
+        draft: { ...revisedDraftInput, clientRequestId: randomUUID() },
+      }),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "COACH_REQUIRED",
+    } satisfies Partial<ClientFollowUpError>);
+
     await expect(
       readClientFollowUp(prisma as never, { roomId, actor: client }),
     ).resolves.toMatchObject({
@@ -300,7 +410,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       roomId,
       outputId: draft.output.id,
       actor: coach,
-      expectedRevision: 1,
+      expectedRevision: 3,
       clientRequestId: releaseRequestId,
     });
     expect(released).toMatchObject({
@@ -308,7 +418,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       output: {
         id: draft.output.id,
         status: "RELEASED",
-        revision: 2,
+        revision: 4,
         contentSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
         deliveryEvents: [
           {
@@ -335,6 +445,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
         id: draft.output.id,
         status: "RELEASED",
         body: {
+          title: concurrentWinner.title,
           notes: [
             {
               id: clientSafeNoteId,
@@ -395,13 +506,13 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       roomId,
       outputId: draft.output.id,
       actor: coach,
-      expectedRevision: 2,
+      expectedRevision: 4,
       clientRequestId: randomUUID(),
     });
     expect(revoked).toMatchObject({
       output: {
         status: "REVOKED",
-        revision: 3,
+        revision: 5,
         deliveryEvents: [
           { kind: "RELEASED_IN_APP" },
           { kind: "OPENED_IN_APP" },
@@ -419,6 +530,6 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       prisma.sessionOutputRevision.count({
         where: { outputId: draft.output.id },
       }),
-    ).resolves.toBe(3);
+    ).resolves.toBe(5);
   });
 });

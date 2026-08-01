@@ -13,6 +13,7 @@ jest.mock("@/lib/server/session-client-follow-up", () => {
     readClientFollowUp: jest.fn(),
     releaseClientFollowUp: jest.fn(),
     revokeClientFollowUp: jest.fn(),
+    updateClientFollowUpDraft: jest.fn(),
   };
 });
 
@@ -25,6 +26,7 @@ import {
   readClientFollowUp,
   releaseClientFollowUp,
   revokeClientFollowUp,
+  updateClientFollowUpDraft,
 } from "@/lib/server/session-client-follow-up";
 
 import { GET, POST } from "./route";
@@ -36,6 +38,7 @@ const mockedCreate = jest.mocked(createClientFollowUpDraft);
 const mockedRelease = jest.mocked(releaseClientFollowUp);
 const mockedRevoke = jest.mocked(revokeClientFollowUp);
 const mockedAcknowledge = jest.mocked(acknowledgeClientFollowUp);
+const mockedUpdate = jest.mocked(updateClientFollowUpDraft);
 
 const ACTOR = {
   id: "coach-1",
@@ -50,14 +53,11 @@ function context() {
 }
 
 function request(method: "GET" | "POST", body?: unknown) {
-  return new Request(
-    "http://localhost/api/sessions/room-1/client-follow-up",
-    {
-      method,
-      headers: body ? { "content-type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    },
-  );
+  return new Request("http://localhost/api/sessions/room-1/client-follow-up", {
+    method,
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
 }
 
 describe("Session client follow-up route", () => {
@@ -207,6 +207,55 @@ describe("Session client follow-up route", () => {
       }),
     );
     expect(mockedRevoke).not.toHaveBeenCalled();
+  });
+
+  it("revises only the current private draft without claiming release", async () => {
+    mockedUpdate.mockResolvedValue({
+      output: { id: "follow-up-1", status: "DRAFT", revision: 2 },
+      idempotentReplay: false,
+    } as never);
+
+    const response = await POST(
+      request("POST", {
+        action: "UPDATE_DRAFT",
+        clientRequestId: REQUEST_ID,
+        outputId: "follow-up-1",
+        expectedRevision: 1,
+        title: "Revised after our session",
+        intro: "A clearer review.",
+        nextSessionFocus: "Check the revised experiment.",
+        noteIds: ["note-1"],
+        goalIds: ["goal-1"],
+        taskIds: ["task-1"],
+      }),
+      context(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      output: { id: "follow-up-1", status: "DRAFT", revision: 2 },
+      boundaries: {
+        privateDraftRevised: true,
+        releasedToClient: false,
+        externalMessageSent: false,
+        providerCalendarMutated: false,
+        publicationPerformed: false,
+      },
+    });
+    expect(mockedUpdate).toHaveBeenCalledWith(
+      { marker: "prisma" },
+      {
+        roomId: "room-1",
+        outputId: "follow-up-1",
+        actor: ACTOR,
+        expectedRevision: 1,
+        draft: expect.objectContaining({
+          clientRequestId: REQUEST_ID,
+          title: "Revised after our session",
+        }),
+      },
+    );
   });
 
   it("fails closed with a concealed domain error and no cacheable body", async () => {

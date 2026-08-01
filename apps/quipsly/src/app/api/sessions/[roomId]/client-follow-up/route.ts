@@ -10,11 +10,13 @@ import {
   readClientFollowUp,
   releaseClientFollowUp,
   revokeClientFollowUp,
+  updateClientFollowUpDraft,
 } from "@/lib/server/session-client-follow-up";
 
 export const runtime = "nodejs";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRIVATE_HEADERS = {
   "Cache-Control": "private, no-store",
   Vary: "Authorization, Cookie",
@@ -26,7 +28,7 @@ function privateJson(body: unknown, status = 200) {
 
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 
@@ -35,7 +37,9 @@ function text(value: unknown, max = 240) {
 }
 
 function integer(value: unknown) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : null;
 }
 
 async function requestBody(request: Request) {
@@ -53,14 +57,18 @@ async function actor(request: Request) {
 
 function handled(error: unknown) {
   if (error instanceof ClientFollowUpError) {
-    return privateJson({ ok: false, code: error.code, error: error.message }, error.status);
+    return privateJson(
+      { ok: false, code: error.code, error: error.message },
+      error.status,
+    );
   }
   console.error("[client-follow-up] operation failed", error);
   return privateJson(
     {
       ok: false,
       code: "FOLLOW_UP_UNAVAILABLE",
-      error: "Quipsly could not verify this private client follow-up. Nothing was released or changed.",
+      error:
+        "Quipsly could not verify this private client follow-up. Nothing was released or changed.",
     },
     503,
   );
@@ -71,9 +79,25 @@ export async function GET(
   context: { params: Promise<{ roomId: string }> },
 ) {
   const signedInActor = await actor(request);
-  if (!signedInActor) return privateJson({ ok: false, code: "AUTH_REQUIRED", error: "Sign in before opening a client follow-up." }, 401);
+  if (!signedInActor)
+    return privateJson(
+      {
+        ok: false,
+        code: "AUTH_REQUIRED",
+        error: "Sign in before opening a client follow-up.",
+      },
+      401,
+    );
   const roomId = text((await context.params).roomId);
-  if (!roomId) return privateJson({ ok: false, code: "ROOM_REQUIRED", error: "Choose one Session before opening a client follow-up." }, 400);
+  if (!roomId)
+    return privateJson(
+      {
+        ok: false,
+        code: "ROOM_REQUIRED",
+        error: "Choose one Session before opening a client follow-up.",
+      },
+      400,
+    );
   try {
     const result = await readClientFollowUp(getPrismaClient() as any, {
       roomId,
@@ -90,14 +114,38 @@ export async function POST(
   context: { params: Promise<{ roomId: string }> },
 ) {
   const signedInActor = await actor(request);
-  if (!signedInActor) return privateJson({ ok: false, code: "AUTH_REQUIRED", error: "Sign in before changing a client follow-up." }, 401);
+  if (!signedInActor)
+    return privateJson(
+      {
+        ok: false,
+        code: "AUTH_REQUIRED",
+        error: "Sign in before changing a client follow-up.",
+      },
+      401,
+    );
   const roomId = text((await context.params).roomId);
   const body = await requestBody(request);
   const action = text(body.action, 40).toUpperCase();
   const clientRequestId = text(body.clientRequestId, 80).toLowerCase();
-  if (!roomId) return privateJson({ ok: false, code: "ROOM_REQUIRED", error: "Choose one Session before changing a client follow-up." }, 400);
+  if (!roomId)
+    return privateJson(
+      {
+        ok: false,
+        code: "ROOM_REQUIRED",
+        error: "Choose one Session before changing a client follow-up.",
+      },
+      400,
+    );
   if (!UUID_PATTERN.test(clientRequestId)) {
-    return privateJson({ ok: false, code: "REQUEST_ID_REQUIRED", error: "A stable request identity is required for this client follow-up operation." }, 400);
+    return privateJson(
+      {
+        ok: false,
+        code: "REQUEST_ID_REQUIRED",
+        error:
+          "A stable request identity is required for this client follow-up operation.",
+      },
+      400,
+    );
   }
 
   const prisma = getPrismaClient() as any;
@@ -121,7 +169,46 @@ export async function POST(
     }
 
     const outputId = text(body.outputId);
-    if (!outputId) return privateJson({ ok: false, code: "OUTPUT_REQUIRED", error: "Choose one client follow-up before changing its state." }, 400);
+    if (!outputId)
+      return privateJson(
+        {
+          ok: false,
+          code: "OUTPUT_REQUIRED",
+          error: "Choose one client follow-up before changing its state.",
+        },
+        400,
+      );
+    if (action === "UPDATE_DRAFT") {
+      const expectedRevision = integer(body.expectedRevision);
+      if (!expectedRevision) {
+        return privateJson(
+          {
+            ok: false,
+            code: "REVISION_REQUIRED",
+            error: "Refresh the private draft before saving changes.",
+          },
+          400,
+        );
+      }
+      const result = await updateClientFollowUpDraft(prisma, {
+        roomId,
+        outputId,
+        actor: signedInActor,
+        expectedRevision,
+        draft: parseClientFollowUpDraft(body),
+      });
+      return privateJson({
+        ok: true,
+        ...result,
+        boundaries: {
+          privateDraftRevised: true,
+          releasedToClient: false,
+          externalMessageSent: false,
+          providerCalendarMutated: false,
+          publicationPerformed: false,
+        },
+      });
+    }
     if (action === "ACKNOWLEDGE_OPEN") {
       const result = await acknowledgeClientFollowUp(prisma, {
         roomId,
@@ -132,13 +219,23 @@ export async function POST(
       return privateJson({
         ok: true,
         ...result,
-        boundaries: { recipientConfirmedOpen: true, externalMessageSent: false },
+        boundaries: {
+          recipientConfirmedOpen: true,
+          externalMessageSent: false,
+        },
       });
     }
 
     const expectedRevision = integer(body.expectedRevision);
     if (!expectedRevision) {
-      return privateJson({ ok: false, code: "REVISION_REQUIRED", error: "Refresh the client follow-up before changing its visibility." }, 400);
+      return privateJson(
+        {
+          ok: false,
+          code: "REVISION_REQUIRED",
+          error: "Refresh the client follow-up before changing its visibility.",
+        },
+        400,
+      );
     }
     if (action === "RELEASE") {
       const result = await releaseClientFollowUp(prisma, {
@@ -178,7 +275,15 @@ export async function POST(
         },
       });
     }
-    return privateJson({ ok: false, code: "INVALID_ACTION", error: "Choose draft, release, revoke, or confirm-open for this client follow-up." }, 400);
+    return privateJson(
+      {
+        ok: false,
+        code: "INVALID_ACTION",
+        error:
+          "Choose create draft, revise draft, release, revoke, or confirm-open for this client follow-up.",
+      },
+      400,
+    );
   } catch (error) {
     return handled(error);
   }

@@ -133,16 +133,23 @@ describe("SessionClientFollowUpCard", () => {
     };
     const draftState = {
       ...coachState,
-      output: { ...releasedOutput, status: "DRAFT", revision: 1, releasedAt: null },
+      output: {
+        ...releasedOutput,
+        status: "DRAFT",
+        revision: 1,
+        releasedAt: null,
+      },
     };
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response(coachState))
-      .mockResolvedValueOnce(response({
-        ok: true,
-        output: draftState.output,
-        idempotentReplay: false,
-      }))
+      .mockResolvedValueOnce(
+        response({
+          ok: true,
+          output: draftState.output,
+          idempotentReplay: false,
+        }),
+      )
       .mockResolvedValueOnce(response(draftState));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -207,11 +214,13 @@ describe("SessionClientFollowUpCard", () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response(clientState))
-      .mockResolvedValueOnce(response({
-        ok: true,
-        output: openedState.output,
-        idempotentReplay: false,
-      }))
+      .mockResolvedValueOnce(
+        response({
+          ok: true,
+          output: openedState.output,
+          idempotentReplay: false,
+        }),
+      )
       .mockResolvedValueOnce(response(openedState));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -219,7 +228,9 @@ describe("SessionClientFollowUpCard", () => {
     render(<SessionClientFollowUpCard roomId="room-1" />);
 
     expect(
-      await screen.findByText("Here is the exact work we agreed to carry forward."),
+      await screen.findByText(
+        "Here is the exact work we agreed to carry forward.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("Bring one concrete example.")).toBeInTheDocument();
     expect(
@@ -243,5 +254,75 @@ describe("SessionClientFollowUpCard", () => {
     expect(
       screen.getByRole("button", { name: "Confirm follow-up opened" }),
     ).toBeDisabled();
+  });
+
+  it("reopens the current private draft and saves an explicit immutable revision", async () => {
+    const draftOutput = {
+      ...releasedOutput,
+      status: "DRAFT",
+      revision: 1,
+      releasedAt: null,
+    };
+    const revisedOutput = {
+      ...draftOutput,
+      revision: 2,
+      intro: "A clearer review after checking the exact commitments.",
+    };
+    const initialState = {
+      ok: true,
+      role: "COACH",
+      room,
+      eligible,
+      output: draftOutput,
+    };
+    const revisedState = { ...initialState, output: revisedOutput };
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response(initialState))
+      .mockResolvedValueOnce(
+        response({
+          ok: true,
+          output: revisedOutput,
+          idempotentReplay: false,
+        }),
+      )
+      .mockResolvedValueOnce(response(revisedState));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionClientFollowUpCard roomId="room-1" />);
+
+    expect(
+      await screen.findByText(/Editing private revision 1/i),
+    ).toBeInTheDocument();
+    const intro = screen.getByLabelText("Opening note");
+    expect(intro).toHaveValue(
+      "Here is the exact work we agreed to carry forward.",
+    );
+    await user.clear(intro);
+    await user.type(
+      intro,
+      "A clearer review after checking the exact commitments.",
+    );
+    await user.click(
+      screen.getByRole("button", { name: /save private draft changes/i }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      action: "UPDATE_DRAFT",
+      outputId: "follow-up-1",
+      expectedRevision: 1,
+      intro: "A clearer review after checking the exact commitments.",
+      noteIds: ["note-safe"],
+      taskIds: ["task-client"],
+      goalIds: ["goal-client"],
+    });
+    expect(
+      await screen.findByText(
+        /Private draft revised with an immutable history/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Editing private revision 2/i)).toBeInTheDocument();
   });
 });
