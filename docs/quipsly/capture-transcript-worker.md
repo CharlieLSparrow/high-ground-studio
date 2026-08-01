@@ -1,7 +1,8 @@
 # Quipsly canonical transcript pipeline
 
-Status: implemented locally; the credentialed cloud fixture is implemented,
-while provider activation and production promotion remain operator-gated.
+Status: implementation, committed-source release, and least-privilege storage
+preparation are complete. Provider activation and production promotion remain
+operator-gated by an enabled provider key and the real acceptance sequence.
 
 ## Product contract
 
@@ -156,6 +157,12 @@ SOURCE_REF=COMMITTED_SHA \
 bash scripts/release/quipsly-transcript-worker-deploy.sh
 ```
 
+The default image identity is `source-<full-commit-sha>`. The deploy reads
+Artifact Registry before Cloud Build and reuses an existing verified digest
+for that exact source. An explicit `IMAGE_TAG` must equal the same canonical
+source tag, and `REUSE_EXISTING_IMAGE=0` cannot overwrite it. A distinct worker
+release identity therefore requires a new commit rather than a misleading tag.
+
 Then activate invoker and recovery permissions:
 
 ```bash
@@ -194,6 +201,43 @@ Nest must be deployed with:
 - `QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID=high-ground-odyssey`
 - `QUIPSLY_TRANSCRIPT_WORKER_REGION=us-central1`
 - `QUIPSLY_TRANSCRIPT_WORKER_JOB=quipsly-transcript-worker`
+
+Do not edit those variables directly on the live service. After the worker Job
+and activation IAM read back successfully, create a zero-traffic Nest preview
+through the canonical release path:
+
+```bash
+ENABLE_TRANSCRIPT_WORKER=1 \
+PROJECT_ID=high-ground-odyssey \
+SOURCE_REF=COMMITTED_SHA \
+bash scripts/release/quipsly-deploy-preview.sh
+```
+
+This flag fails before build/deploy unless the provider secret has an enabled
+version, the worker Job uses an immutable image digest and dedicated service
+account, its committed build identity is present, and the Nest runtime has
+`roles/run.jobsExecutor` without environment-override authority. The resulting
+Nest revision still receives zero traffic until authenticated smoke and normal
+promotion.
+
+## Current activation boundary — 2026-08-01
+
+- Google user credentials and ADC can mint tokens and Firebase Admin access is
+  healthy after setting ADC quota project `quipsly-reef`.
+- `high-ground-odyssey-media` storage preparation and provider-secret IAM pass
+  the read-only least-privilege audit.
+- Secret resource `quipsly-deepgram-api-key` exists, but it has **zero enabled
+  versions**. The key value is not present in the repository, local environment,
+  or discovered local key files.
+- Cloud Run Job `quipsly-transcript-worker` does not yet exist. Activation IAM
+  therefore correctly remains absent and the Nest preview activation gate
+  stops at the missing secret version before any build or deployment.
+
+The remaining human-owned setup action is to create or retrieve the authorized
+Deepgram API key and add it as a new enabled Secret Manager version named
+`quipsly-deepgram-api-key`. Do not paste the key into chat, git, a command-line
+argument, or shell history. Once the version exists, rerun the deploy, activate,
+fixture, consent-revocation, preview, and promotion sequence above.
 
 Promotion still requires executing this isolated GCS fixture, database
 migration, consent-revocation proof, exact image/job/IAM readback, and one real

@@ -29,7 +29,10 @@ test("preview deploy mounts the required secrets and privately validates the rel
 test("preview deploy reuses one verified image for one committed source", () => {
   const source = readFileSync(deployScript, "utf8");
 
-  assert.match(source, /IMAGE_TAG="source-\$\{SOURCE_SHA\}"/);
+  assert.match(source, /canonical_image_tag="source-\$\{SOURCE_SHA\}"/);
+  assert.match(source, /IMAGE_TAG="\$\{canonical_image_tag\}"/);
+  assert.match(source, /IMAGE_TAG must equal \$\{canonical_image_tag\}/);
+  assert.match(source, /Create a new commit for a distinct Nest release identity/);
   assert.match(source, /gcloud artifacts docker images describe "\$\{IMAGE_URI\}"/);
   assert.match(source, /Reusing exact-source Quipsly image/);
   assert.match(source, /Cloud Build skipped: this committed source already has a verified image/);
@@ -39,4 +42,19 @@ test("preview deploy reuses one verified image for one committed source", () => 
   assert.match(source, /requested existing image is unavailable/);
   assert.match(source, /Could not verify the release image after the build\/reuse decision/);
   assert.doesNotMatch(source, /IMAGE_TAG="\$\{IMAGE_TAG:-preview-\$\(date/);
+});
+
+test("transcript activation requires an immutable worker and exact Nest execution authority", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_TRANSCRIPT_WORKER must be 0 or 1/);
+  assert.match(source, /Transcript worker project, region, job, identity, bucket, or secret name is unsafe/);
+  assert.match(source, /gcloud run jobs describe "\$\{TRANSCRIPT_WORKER_JOB\}"/);
+  assert.match(source, /@sha256:\[0-9a-f\]\{64\}\$/);
+  assert.match(source, /roles\/run\.jobsExecutor/);
+  assert.match(source, /roles\/run\.jobsExecutorWithOverrides/);
+  assert.match(source, /Nest lacks the exact transcript jobsExecutor boundary or has unsafe override authority/);
+  assert.match(source, /Transcript provider secret .* is missing or disabled/);
+  assert.match(source, /QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1/);
+  assert.match(source, /Transcript worker passed immutable job, provider-secret, and Nest executor readback/);
 });

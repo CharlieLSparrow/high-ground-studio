@@ -19,6 +19,13 @@ RELEASE_SMOKE_SECRET_VERSION="${RELEASE_SMOKE_SECRET_VERSION:-latest}"
 IMAGE_PROXY_TOKEN_SECRET_NAME="${IMAGE_PROXY_TOKEN_SECRET_NAME:-reefball-image-proxy-token}"
 IMAGE_PROXY_TOKEN_SECRET_VERSION="${IMAGE_PROXY_TOKEN_SECRET_VERSION:-latest}"
 ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
+ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
+TRANSCRIPT_WORKER_PROJECT_ID="${TRANSCRIPT_WORKER_PROJECT_ID:-${PROJECT_ID}}"
+TRANSCRIPT_WORKER_REGION="${TRANSCRIPT_WORKER_REGION:-${REGION}}"
+TRANSCRIPT_WORKER_JOB="${TRANSCRIPT_WORKER_JOB:-quipsly-transcript-worker}"
+TRANSCRIPT_WORKER_SERVICE_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT:-quipsly-transcript-worker@${TRANSCRIPT_WORKER_PROJECT_ID}.iam.gserviceaccount.com}"
+TRANSCRIPT_WORKER_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET:-high-ground-odyssey-media}"
+TRANSCRIPT_WORKER_SECRET_NAME="${TRANSCRIPT_WORKER_SECRET_NAME:-quipsly-deepgram-api-key}"
 GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_ID_SECRET_NAME:-quipsly-google-calendar-oauth-client-id}"
 GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET_SECRET_NAME:-quipsly-google-calendar-oauth-client-secret}"
 GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME:-quipsly-google-calendar-oauth-state-secret}"
@@ -36,6 +43,23 @@ fi
 
 if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" != "0" && "${ENABLE_GOOGLE_CALENDAR_OAUTH}" != "1" ]]; then
   echo "ENABLE_GOOGLE_CALENDAR_OAUTH must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_TRANSCRIPT_WORKER}" != "0" && "${ENABLE_TRANSCRIPT_WORKER}" != "1" ]]; then
+  echo "ENABLE_TRANSCRIPT_WORKER must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]] && {
+  [[ ! "${TRANSCRIPT_WORKER_PROJECT_ID}" =~ ^[a-z][a-z0-9-]{4,62}$ ]] \
+    || [[ ! "${TRANSCRIPT_WORKER_REGION}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
+    || [[ ! "${TRANSCRIPT_WORKER_JOB}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
+    || [[ ! "${TRANSCRIPT_WORKER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]] \
+    || [[ ! "${TRANSCRIPT_WORKER_MEDIA_BUCKET}" =~ ^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$ ]] \
+    || [[ ! "${TRANSCRIPT_WORKER_SECRET_NAME}" =~ ^[A-Za-z][A-Za-z0-9_-]{0,254}$ ]];
+}; then
+  echo "Transcript worker project, region, job, identity, bucket, or secret name is unsafe." >&2
   exit 2
 fi
 
@@ -96,6 +120,78 @@ if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" == "1" ]]; then
   echo "Google Calendar OAuth secrets passed enabled-version validation."
 fi
 
+transcript_worker_env_vars=""
+if [[ "${ENABLE_TRANSCRIPT_WORKER}" == "1" ]]; then
+  if ! gcloud secrets versions describe latest \
+    --secret="${TRANSCRIPT_WORKER_SECRET_NAME}" \
+    --project="${TRANSCRIPT_WORKER_PROJECT_ID}" \
+    --format='value(state)' | grep -qx 'ENABLED'; then
+    echo "Transcript provider secret ${TRANSCRIPT_WORKER_SECRET_NAME}:latest is missing or disabled." >&2
+    exit 2
+  fi
+
+  nest_service_account="$(
+    gcloud run services describe "${SERVICE_NAME}" \
+      --project="${PROJECT_ID}" \
+      --region="${REGION}" \
+      --format='value(spec.template.spec.serviceAccountName)'
+  )"
+  transcript_job_json="$(
+    gcloud run jobs describe "${TRANSCRIPT_WORKER_JOB}" \
+      --project="${TRANSCRIPT_WORKER_PROJECT_ID}" \
+      --region="${TRANSCRIPT_WORKER_REGION}" \
+      --format=json
+  )"
+  JOB_JSON="${transcript_job_json}" \
+  EXPECTED_WORKER_ACCOUNT="${TRANSCRIPT_WORKER_SERVICE_ACCOUNT}" \
+  EXPECTED_MEDIA_BUCKET="${TRANSCRIPT_WORKER_MEDIA_BUCKET}" \
+  EXPECTED_SECRET="${TRANSCRIPT_WORKER_SECRET_NAME}" \
+  node <<'NODE'
+const job = JSON.parse(process.env.JOB_JSON || "{}");
+const template = job.template?.template || job.spec?.template?.spec?.template?.spec;
+const container = template?.containers?.[0];
+const env = Object.fromEntries((container?.env || []).map((entry) => [entry.name, entry]));
+const failures = [];
+if (!/@sha256:[0-9a-f]{64}$/.test(container?.image || "")) failures.push("immutable worker image");
+if (
+  template?.serviceAccount !== process.env.EXPECTED_WORKER_ACCOUNT
+  && template?.serviceAccountName !== process.env.EXPECTED_WORKER_ACCOUNT
+) failures.push("worker service account");
+if (env.QUIPSLY_MEDIA_BUCKET?.value !== process.env.EXPECTED_MEDIA_BUCKET) failures.push("media bucket");
+if (!/^[0-9a-f]{40}$/.test(env.QUIPSLY_WORKER_BUILD_ID?.value || "")) failures.push("committed build identity");
+const secret = env.DEEPGRAM_API_KEY?.valueSource?.secretKeyRef?.secret
+  || env.DEEPGRAM_API_KEY?.valueFrom?.secretKeyRef?.name;
+if (
+  secret !== process.env.EXPECTED_SECRET
+  && !String(secret || "").endsWith(`/secrets/${process.env.EXPECTED_SECRET}`)
+) failures.push("provider secret reference");
+if (typeof env.DEEPGRAM_API_KEY?.value === "string") failures.push("plaintext provider secret");
+if (failures.length) throw new Error(`Transcript worker activation readback mismatch: ${failures.join(", ")}`);
+NODE
+
+  transcript_job_policy="$(
+    gcloud run jobs get-iam-policy "${TRANSCRIPT_WORKER_JOB}" \
+      --project="${TRANSCRIPT_WORKER_PROJECT_ID}" \
+      --region="${TRANSCRIPT_WORKER_REGION}" \
+      --format=json
+  )"
+  POLICY_JSON="${transcript_job_policy}" \
+  NEST_MEMBER="serviceAccount:${nest_service_account}" \
+  node <<'NODE'
+const policy = JSON.parse(process.env.POLICY_JSON || "{}");
+const member = process.env.NEST_MEMBER;
+const hasRole = (role) => (policy.bindings || []).some(
+  (binding) => binding.role === role && (binding.members || []).includes(member),
+);
+if (!hasRole("roles/run.jobsExecutor") || hasRole("roles/run.jobsExecutorWithOverrides")) {
+  throw new Error("Nest lacks the exact transcript jobsExecutor boundary or has unsafe override authority.");
+}
+NODE
+
+  transcript_worker_env_vars=",QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1,QUIPSLY_TRANSCRIPT_WORKER_PROJECT_ID=${TRANSCRIPT_WORKER_PROJECT_ID},QUIPSLY_TRANSCRIPT_WORKER_REGION=${TRANSCRIPT_WORKER_REGION},QUIPSLY_TRANSCRIPT_WORKER_JOB=${TRANSCRIPT_WORKER_JOB}"
+  echo "Transcript worker passed immutable job, provider-secret, and Nest executor readback."
+fi
+
 if ! gcloud secrets versions describe "${IMAGE_PROXY_TOKEN_SECRET_VERSION}" \
   --secret="${IMAGE_PROXY_TOKEN_SECRET_NAME}" \
   --project="${PROJECT_ID}" \
@@ -120,14 +216,16 @@ trap cleanup EXIT
 
 release_context="$("${repo_root}/scripts/release/quipsly-build-context.sh" "${resolved_source_sha}" "${release_context}")"
 SOURCE_SHA="${resolved_source_sha}"
-if [[ -n "${REQUESTED_IMAGE_TAG}" ]]; then
-  IMAGE_TAG="${REQUESTED_IMAGE_TAG}"
-else
-  # One committed release identity maps to one immutable registry tag. This
-  # makes retries, repeated preview qualification, and later promotion reuse
-  # the already-verified image instead of buying another timestamped build.
-  IMAGE_TAG="source-${SOURCE_SHA}"
+canonical_image_tag="source-${SOURCE_SHA}"
+if [[ -n "${REQUESTED_IMAGE_TAG}" && "${REQUESTED_IMAGE_TAG}" != "${canonical_image_tag}" ]]; then
+  echo "IMAGE_TAG must equal ${canonical_image_tag} for committed source ${SOURCE_SHA}." >&2
+  echo "Create a new commit for a distinct Nest release identity." >&2
+  exit 2
 fi
+# One committed release identity maps to one immutable registry tag. This
+# makes retries, repeated preview qualification, and later promotion reuse
+# the already-verified image instead of buying another timestamped build.
+IMAGE_TAG="${canonical_image_tag}"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 image_readback_error="${release_root}/artifact-image-readback.stderr"
 
@@ -221,7 +319,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
   --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${google_calendar_oauth_secrets}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app${transcript_worker_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

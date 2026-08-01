@@ -40,6 +40,10 @@ timestamp. `quipsly-deploy-preview.sh` now defaults to
 whether Cloud Build is needed. `REUSE_EXISTING_IMAGE=0` remains an explicit
 diagnostic escape hatch; it is not the routine release path.
 
+The dedicated transcript-worker release follows the same rule. Its default tag
+is the full committed source SHA, registry failures fail closed, and an existing
+verified image is reused before deploying the Cloud Run Job by digest.
+
 ## Build worker benchmark
 
 The current safe default remains `e2-highcpu-32` until one real non-urgent

@@ -11,6 +11,8 @@ source_ref="${SOURCE_REF:-HEAD}"
 media_bucket="${QUIPSLY_MEDIA_BUCKET:-}"
 deepgram_secret="${DEEPGRAM_SECRET:-quipsly-deepgram-api-key}"
 service_account="${TRANSCRIPT_SERVICE_ACCOUNT:-quipsly-transcript-worker@${project_id}.iam.gserviceaccount.com}"
+requested_image_tag="${IMAGE_TAG:-}"
+reuse_existing_image="${REUSE_EXISTING_IMAGE:-1}"
 
 if [[ -z "${project_id}" || -z "${media_bucket}" ]]; then
   echo "PROJECT_ID and QUIPSLY_MEDIA_BUCKET are required." >&2
@@ -21,6 +23,10 @@ if [[ ! "${project_id}" =~ ^[a-z][a-z0-9-]{4,62}$ ]] \
   || [[ ! "${job_name}" =~ ^[a-z][a-z0-9-]{0,62}$ ]] \
   || [[ ! "${deepgram_secret}" =~ ^[A-Za-z][A-Za-z0-9_-]{0,254}$ ]]; then
   echo "Project, bucket, job, or secret name is unsafe." >&2
+  exit 2
+fi
+if [[ "${reuse_existing_image}" != "0" && "${reuse_existing_image}" != "1" ]]; then
+  echo "REUSE_EXISTING_IMAGE must be 0 or 1." >&2
   exit 2
 fi
 
@@ -38,10 +44,17 @@ if [[ -z "${enabled_secret_version}" ]]; then
 fi
 
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${source_ref}^{commit}")"
-image_tag="${IMAGE_TAG:-source-${source_sha:0:16}}"
+canonical_image_tag="source-${source_sha}"
+if [[ -n "${requested_image_tag}" && "${requested_image_tag}" != "${canonical_image_tag}" ]]; then
+  echo "IMAGE_TAG must equal ${canonical_image_tag} for committed source ${source_sha}." >&2
+  echo "Create a new commit for a distinct worker release identity." >&2
+  exit 2
+fi
+image_tag="${canonical_image_tag}"
 image_uri="${region}-docker.pkg.dev/${project_id}/${artifact_repository}/${image_name}:${image_tag}"
 release_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-transcript-release.XXXXXX")"
 release_context="${release_root}/context"
+image_readback_error="${release_root}/artifact-image-readback.stderr"
 
 cleanup() {
   if [[ -f "${release_context}/.quipsly-release-context" ]]; then
@@ -51,6 +64,27 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+read_image_digest() {
+  local digest=""
+  : > "${image_readback_error}"
+  if digest="$(gcloud artifacts docker images describe "${image_uri}" \
+    --project="${project_id}" \
+    --format='value(image_summary.digest)' 2>"${image_readback_error}")"; then
+    if [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+      printf '%s\n' "${digest}"
+      return 0
+    fi
+    echo "Artifact Registry returned an invalid transcript-worker digest for ${image_uri}." >&2
+    return 2
+  fi
+  if grep -Eqi 'NOT_FOUND|not found|does not exist|was not found' "${image_readback_error}"; then
+    return 1
+  fi
+  echo "Artifact Registry readback failed before the transcript-worker build decision." >&2
+  sed -n '1,12p' "${image_readback_error}" >&2
+  return 2
+}
 
 release_context="$(
   bash "${repo_root}/scripts/release/materialize-release-context.sh" \
@@ -64,18 +98,43 @@ pnpm --dir "${repo_root}" \
 pnpm --dir "${repo_root}" --filter quipsly-transcript-worker build
 pnpm --dir "${repo_root}" quipsly:transcript-worker:test
 
-gcloud builds submit "${release_context}" \
-  --project="${project_id}" \
-  --config="${release_context}/cloudbuild.quipsly-transcript-worker.yaml" \
-  --substitutions="_REGION=${region},_ARTIFACT_REPOSITORY=${artifact_repository},_IMAGE_NAME=${image_name},_IMAGE_TAG=${image_tag}"
+existing_image_digest=""
+image_readback_status=1
+if existing_image_digest="$(read_image_digest)"; then
+  image_readback_status=0
+else
+  image_readback_status=$?
+fi
 
-image_digest="$(
-  gcloud artifacts docker images describe "${image_uri}" \
+if [[ "${reuse_existing_image}" == "1" && "${image_readback_status}" == "0" ]]; then
+  echo "Reusing exact-source transcript-worker image ${image_uri} (${existing_image_digest})."
+  echo "Cloud Build skipped: this committed worker source already has a verified image."
+elif [[ "${image_readback_status}" == "2" ]]; then
+  exit 2
+elif [[ "${image_readback_status}" == "0" ]]; then
+  echo "Refusing to replace an existing immutable transcript-worker image tag." >&2
+  echo "Create a new commit for a distinct worker release identity." >&2
+  exit 2
+else
+  gcloud builds submit "${release_context}" \
     --project="${project_id}" \
-    --format='value(image_summary.digest)'
-)"
+    --config="${release_context}/cloudbuild.quipsly-transcript-worker.yaml" \
+    --substitutions="_REGION=${region},_ARTIFACT_REPOSITORY=${artifact_repository},_IMAGE_NAME=${image_name},_IMAGE_TAG=${image_tag}"
+fi
+
+image_digest=""
+for attempt in 1 2 3 4 5 6; do
+  if image_digest="$(read_image_digest)"; then
+    break
+  fi
+  image_status=$?
+  if [[ "${image_status}" == "2" ]]; then
+    exit 2
+  fi
+  sleep "$((attempt * 2))"
+done
 if [[ ! "${image_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  echo "Could not read back transcript worker image digest for ${image_uri}." >&2
+  echo "Could not verify the transcript-worker image after the build/reuse decision: ${image_uri}." >&2
   exit 1
 fi
 immutable_image="${region}-docker.pkg.dev/${project_id}/${artifact_repository}/${image_name}@${image_digest}"

@@ -6120,3 +6120,38 @@ was restored.
   Nest build must benchmark `E2_HIGHCPU_8` before changing the 32-core default.
   Full evidence is in
   `docs/coordination/2026-08-01-cloud-cost-pipeline-consolidation.md`.
+
+### Transcript worker activation-readiness checkpoint — 2026-08-01
+
+- Re-audited the actual transcript production boundary after the provider,
+  review, packet, and follow-through architecture had already landed. The
+  application owns durable enqueue/retry, exact source binding, protected
+  playback correction, and explicit task/goal/writing review; the missing seam
+  was production worker activation, not another mock transcript surface.
+- Repaired ADC locally by setting quota project `quipsly-reef`; Google user and
+  ADC token minting, both project checks, and Firebase Admin now pass. The
+  `high-ground-odyssey-media` transcript storage and secret-access preparation
+  also pass their live least-privilege audit.
+- Worker releases now use `source-<full-commit-sha>`, distinguish not-found from
+  registry failures, reuse an existing exact-source image, refuse immutable-tag
+  replacement, verify the final digest, and deploy the Cloud Run Job by digest.
+- The canonical zero-traffic Nest release now has an explicit transcript
+  activation gate. It requires an enabled provider secret, immutable worker
+  image, dedicated worker identity, committed build ID, correct media bucket
+  and secret reference, no plaintext key, and exact Nest `jobsExecutor`
+  authority without override permission before adding worker routing values.
+- Live readback found the dedicated worker service account and prepared storage
+  boundary, but no enabled version in `quipsly-deepgram-api-key` and no worker
+  Job. Exercising the activation gate stopped before any build, deploy, provider
+  request, or database mutation.
+- Worker/cloud-fixture/release coverage passes 13/13, adjacent preview and
+  release-pipeline coverage passes 20/20, the complete Nest regression passes
+  218 suites / 1,118 runnable tests, media/worker/Nest typechecks and builds
+  pass, and the committed worker context remains bounded to 23 files / 0.8 MiB.
+- The exact loop-back trigger is a human-created authorized Deepgram key added
+  directly as an enabled Secret Manager version without exposing it to chat,
+  git, command arguments, or shell history. Then run committed worker deploy,
+  activation IAM, authorized cloud fixture, consent-revocation projection,
+  zero-traffic Nest preview, authenticated promotion, and real podcast/coaching
+  operations. Full evidence is in
+  `docs/coordination/2026-08-01-transcript-worker-activation-readiness.md`.

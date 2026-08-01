@@ -104,7 +104,8 @@ test("no-traffic preview can repair drift without weakening candidate checks", (
 
 test("preview retries reuse the content-addressed image without bypassing preflight", () => {
   assert.match(deploy, /QUIPSLY_PREFLIGHT_PURPOSE=preview/);
-  assert.match(deploy, /IMAGE_TAG="source-\$\{SOURCE_SHA\}"/);
+  assert.match(deploy, /canonical_image_tag="source-\$\{SOURCE_SHA\}"/);
+  assert.match(deploy, /IMAGE_TAG="\$\{canonical_image_tag\}"/);
   assert.match(deploy, /read_image_digest/);
   assert.match(deploy, /Cloud Build skipped: this committed source already has a verified image/);
   assert.match(deploy, /Deploying no-traffic preview revision/);
