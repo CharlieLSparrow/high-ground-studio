@@ -33,11 +33,11 @@ function nextPlanningStart() {
 }
 
 function formatPlanTime(value: string, timezone: string) {
-  return new Intl.DateTimeFormat(undefined, { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(value));
+  return new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "numeric", minute: "2-digit" }).format(new Date(value));
 }
 
 function formatPlanDay(value: string) {
-  return new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(new Date(`${value}T12:00:00`));
+  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date(`${value}T12:00:00`));
 }
 
 function ScheduleTagChips({ tags }: { tags: ScheduleTag[] }) {
@@ -80,7 +80,7 @@ function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefre
   const statusTone = block.status === "COMPLETED" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : block.status === "PLANNED" ? "border-sky-200 bg-sky-50 text-sky-800" : "border-stone-200 bg-stone-100 text-stone-700";
   return <article className="rounded-2xl border border-[#e4d3b3] bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone}`}>{humanizeScheduleValue(block.status)}</span><span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{block.targetType}</span></div><h4 className="mt-2 text-lg font-black text-[#3d3122]">{block.title}</h4><p className="mt-1 text-xs font-bold text-[#806a4d]">{humanizeScheduleValue(block.targetStatus)} source · completing this block does not complete it</p></div>
+      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone}`}>{humanizeScheduleValue(block.status)}</span><span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{block.targetType}</span></div><h4 className="mt-2"><Link href={`/work?${block.targetType}=${encodeURIComponent(block.targetId)}`} className="inline-flex min-h-11 items-center text-lg font-black text-[#3d3122] underline decoration-[#c7ad7a] decoration-2 underline-offset-4 hover:text-[#76551f]">{block.title}</Link></h4><p className="mt-1 text-xs font-bold text-[#806a4d]">{humanizeScheduleValue(block.targetStatus)} source · completing this block does not complete it</p></div>
       <div className="text-right text-sm font-black text-[#5f4b32]"><p>{formatPlanTime(block.startsAt, block.timezone)}–{formatPlanTime(block.endsAt, block.timezone)}</p><p className="mt-1 text-[10px] uppercase tracking-wide text-[#92754f]">{duration ? `${duration} min` : "Duration needs review"}</p></div>
     </div>
     <ScheduleTagChips tags={block.tags} />
@@ -104,10 +104,13 @@ export function SchedulePlanner({ initialBlocks, targets }: { initialBlocks: Sch
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [timezone, setTimezone] = useState<string | null>(null);
-  const [startsAt, setStartsAt] = useState(nextPlanningStart);
+  const [startsAt, setStartsAt] = useState("");
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"), []);
+  useEffect(() => {
+    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+    setStartsAt(nextPlanningStart());
+  }, []);
   const dayGroups = useMemo(() => groupPlanBlocksByLocalDay(initialBlocks, timezone ?? "UTC"), [initialBlocks, timezone]);
 
   function create(formData: FormData) {
