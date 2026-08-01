@@ -7,7 +7,7 @@ import test from "node:test";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const deployScript = fileURLToPath(new URL("./quipsly-deploy-preview.sh", import.meta.url));
 
-test("preview deploy mounts and privately validates the release-smoke signing key", () => {
+test("preview deploy mounts the required secrets and privately validates the release-smoke signing key", () => {
   execFileSync("bash", ["-n", deployScript], { cwd: repoRoot, stdio: "pipe" });
   const source = readFileSync(deployScript, "utf8");
 
@@ -19,7 +19,7 @@ test("preview deploy mounts and privately validates the release-smoke signing ke
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
