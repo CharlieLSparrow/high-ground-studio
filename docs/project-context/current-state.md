@@ -2,6 +2,26 @@
 
 Date: 2026-08-01
 
+## Episode Room editor navigation production checkpoint
+
+- Exact source `811a29db16d1493032b2ccc285438bd5b45854ab` is serving
+  100% of production as Cloud Run revision `studio-00486-son` from platform
+  digest `sha256:a4b015fb43779799b1159c86073e75a086d1f20ed70f9fb3f90642de3081f9be`.
+- The Episode Room now distinguishes **Edit timeline**, **Live cut**, and the
+  Shared Watch **Review production timeline** return path instead of hiding the
+  production editor behind one ambiguous Edit action.
+- Exact-context preflight, strict TypeScript, the optimized 150-route build,
+  Cloud Build `2804ad4c-3484-4b8e-816f-0e8a66d9d9f8`, in-image route
+  inspection, zero-traffic generated-reviewer acceptance, cleanup, promotion,
+  and post-promotion recovery all passed.
+- Pushed test-harness commit `17f5d1a44db93b4592a5f2969cd78172612f46bc`
+  closes the prior proof gap: every generated reviewer now creates a persisted
+  episode and requires the rendered Episode Room to expose the exact timeline
+  and live-cut destinations. A fresh production run passed and independently
+  removed its generated Firebase and database artifacts.
+- Exact evidence and remaining physical-device boundary are in
+  `docs/coordination/2026-08-01-episode-room-editor-navigation-release.md`.
+
 ## Capture Build 25 public TestFlight checkpoint
 
 - Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`

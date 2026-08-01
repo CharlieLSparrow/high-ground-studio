@@ -5475,6 +5475,28 @@ was restored.
   upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
   open until operated on an enumerated physical device.
 
+### 2026-08-01 Episode Room editor navigation production checkpoint
+
+- Exact pushed source `811a29db16d1493032b2ccc285438bd5b45854ab`
+  passed a dependency-closed exact-context build and deployed through Cloud
+  Build `2804ad4c-3484-4b8e-816f-0e8a66d9d9f8` to zero-traffic revision
+  `studio-00486-son`.
+- Generated-reviewer acceptance passed the real authenticated Nest, Session,
+  Writing Desk, editor, recorder, Research, Publishing, logout, and cleanup
+  paths before immutable promotion. Post-promotion recovery reports 100%
+  traffic, ready Cloud SQL and Cloud Run, healthy public hosts, and all 111
+  production Capture contracts.
+- Episode Rooms now visibly distinguish production timeline editing from the
+  bounded live-cut surface and provide a direct production-timeline return
+  after Shared Watch synchronization.
+- Pushed harness commit `17f5d1a44db93b4592a5f2969cd78172612f46bc`
+  makes rendered Episode Room navigation a permanent release gate. A fresh
+  production-generated reviewer persisted an episode, proved both exact link
+  targets, logged out, and independently removed its Firebase and database
+  artifacts. Focused pipeline tests pass 18/18.
+- Exact identities and proof boundaries are in
+  `docs/coordination/2026-08-01-episode-room-editor-navigation-release.md`.
+
 ### 2026-08-01 Quipsly Capture Build 25 public TestFlight checkpoint
 
 - Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
