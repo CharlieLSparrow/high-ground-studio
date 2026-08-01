@@ -189,6 +189,57 @@ describe("action candidate review route", () => {
     expect(harness.prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("uses the normalized active Nest grant for both preflight and transactional access", async () => {
+    mockedSession.mockResolvedValue({
+      user: {
+        id: "producer-2",
+        isStaff: false,
+        primaryEmail: " Producer-2@Example.Test ",
+      },
+    } as any);
+
+    const response = await POST(reviewRequest("DEFER"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.boundaries).toMatchObject({
+      canonicalSessionAccess: true,
+      sessionAccessRechecked: true,
+    });
+    expect(harness.prisma.callRoom.findFirst).toHaveBeenCalledTimes(2);
+    for (const [input] of harness.prisma.callRoom.findFirst.mock.calls) {
+      expect(input.where).toEqual(expect.objectContaining({
+        id: ROOM_ID,
+        OR: expect.arrayContaining([{
+          project: {
+            accessGrants: {
+              some: {
+                email: "producer-2@example.test",
+                status: "ACTIVE",
+                role: { in: ["OWNER", "EDITOR"] },
+              },
+            },
+          },
+        }]),
+      }));
+    }
+  });
+
+  it("fails closed without a receipt or ActionItem when Session access is revoked before commit", async () => {
+    harness.prisma.callRoom.findFirst
+      .mockResolvedValueOnce({ id: ROOM_ID })
+      .mockResolvedValueOnce(null);
+
+    const response = await POST(reviewRequest("ACCEPT"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.errorCode).toBe("SESSION_ACCESS_REVOKED");
+    expect(harness.prisma.actionItem.create).not.toHaveBeenCalled();
+    expect(harness.prisma.coachingNote.update).not.toHaveBeenCalled();
+    expect((harness.summary.sourceJson as any).actionCandidateReviewReceipts).toEqual([]);
+  });
+
   it("serializes concurrent ACCEPT repeats into exactly one provenance-rich, unassigned ActionItem", async () => {
     const [firstResponse, secondResponse] = await Promise.all([
       POST(reviewRequest("ACCEPT")),

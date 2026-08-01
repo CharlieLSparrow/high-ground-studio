@@ -6,7 +6,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
-import { buildPacketGoalCandidates, roomAccessConditions } from "./route-implementation";
+import { buildPacketGoalCandidates } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -31,12 +31,6 @@ const latestTranscriptJob = {
 };
 
 describe("packet goal candidates", () => {
-  it("keeps packet read and build authorization aligned for Nest project grants", () => {
-    expect(roomAccessConditions("user-1", "producer@example.test")).toContainEqual({
-      project: { accessGrants: { some: { email: "producer@example.test", status: "ACTIVE" } } },
-    });
-  });
-
   it("binds a candidate to current provider evidence without creating work", () => {
     expect(buildPacketGoalCandidates({ summary, latestTranscriptJob, goals: [], packetBuildId })).toEqual([expect.objectContaining({
       id: "packet-goal-packet-build-1-segment-1",

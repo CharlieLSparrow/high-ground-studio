@@ -12,11 +12,13 @@ import {
   packetSnapshotMatches,
   packetActionCandidatesFromSource,
   selectLatestCorrelatedPacketNotes,
+  TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   type TranscriptActionCandidate,
 } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 
 const REVIEW_RECEIPT_KIND = "quipsly-action-candidate-review-receipt-v1";
 const MATERIALIZED_ACTION_SOURCE = "transcript-action-candidate-acceptance";
@@ -66,20 +68,6 @@ async function readJson(request: Request) {
   } catch {
     return {};
   }
-}
-
-function canAccessRoomWhere(userId: string, isStaff: boolean, roomId: string) {
-  return isStaff
-    ? { id: roomId }
-    : {
-        id: roomId,
-        OR: [
-          { createdByUserId: userId },
-          { participants: { some: { userId } } },
-          { booking: { clientUserId: userId } },
-          { booking: { coachUserId: userId } },
-        ],
-      };
 }
 
 function reviewStatus(decision: string): TranscriptActionCandidate["reviewStatus"] {
@@ -162,6 +150,9 @@ function responseBoundaries() {
     acceptCreatesOneUnassignedActionItem: true,
     editRejectDeferCreateNoOpenWork: true,
     recordingAndTranscriptEvidenceRequired: true,
+    canonicalSessionAccess: true,
+    canonicalSessionMutationAccess: true,
+    sessionAccessRechecked: true,
   };
 }
 
@@ -256,8 +247,14 @@ export async function POST(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
+  const actor = {
+    id: userId,
+    primaryEmail: session.user.primaryEmail,
+    email: session.user.email,
+    isStaff: session.user.isStaff === true,
+  };
   const room = await prisma.callRoom.findFirst({
-    where: canAccessRoomWhere(userId, session.user.isStaff, roomId),
+    where: sessionMutationAccessWhere(roomId, actor),
     select: { id: true },
   });
   if (!room) {
@@ -341,6 +338,17 @@ export async function POST(request: Request) {
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
+      const authorizedRoom = await tx.callRoom.findFirst({
+        where: sessionMutationAccessWhere(roomId, actor),
+        select: { id: true },
+      });
+      if (!authorizedRoom) {
+        throw new ReviewBoundaryError(
+          404,
+          "SESSION_ACCESS_REVOKED",
+          "Session access changed before candidate review completed. Refresh before trying again.",
+        );
+      }
       await tx.$queryRaw`SELECT "id" FROM "CoachingNote" WHERE "id" = ${summaryNoteId} FOR UPDATE`;
 
       // Re-read transcript and release evidence inside the same serializable
@@ -352,7 +360,7 @@ export async function POST(request: Request) {
         include: {
           asset: true,
           segments: {
-            orderBy: { segmentIndex: "asc" },
+            orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
             include: {
               corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
               verifications: { orderBy: { createdAt: "desc" } },

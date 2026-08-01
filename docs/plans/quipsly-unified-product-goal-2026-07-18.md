@@ -5972,3 +5972,30 @@ was restored.
   and end-to-end deletion proof remain open.
 - Full evidence and the precise boundary are in
   `docs/coordination/2026-08-01-capture-app-store-screenshot-ux-checkpoint.md`.
+
+### Session packet collaboration authorization checkpoint — 2026-08-01
+
+- Replaced packet-route authorization copies with the canonical Nest Session
+  policy. Active project grants can read a Session; project-only mutations now
+  require `EDITOR` or `OWNER`, keeping `VIEWER` read-only while preserving
+  direct creator, non-observer participant, booking, and staff authority.
+- Packet build, lane review, task-candidate review, and goal-candidate review
+  recheck mutation authority after the transcript-job transaction lock. Grant
+  revocation or role downgrade can no longer race from preflight into a write.
+- Real operation preparation exposed three queries ordering canonical
+  `TranscriptSegment` rows by nonexistent `segmentIndex`. Packet paths now
+  share deterministic `startSeconds`, then stable `id`, ordering.
+- A disposable Firebase-emulator/PostgreSQL/Nest operation proved outsider
+  denial, viewer read plus mutation denial, editor `DEFER` with one receipt and
+  zero ActionItems, immediate revoked-grant denial, and zero-row cleanup in an
+  independent Prisma process.
+- Focused authorization/packet coverage passes 32 tests, database integration
+  passes 3, rendered Session evidence passes 32, adjacent transcript routes
+  pass 19, TypeScript, the optimized 155-route Next build, and packet gates
+  pass, the mobile Capture contract passes, and App Store static checks pass
+  949/949. The local build required an explicit 8 GB Node heap after the
+  default 4 GB heap compiled successfully but exhausted during TypeScript.
+- This is generated-fixture authority proof, not a human listening judgment.
+  Physical iPhone/TestFlight, deployed committed-source parity, and real HGO
+  and coaching packet review remain open. Full evidence is in
+  `docs/coordination/2026-08-01-session-packet-collaboration-access.md`.

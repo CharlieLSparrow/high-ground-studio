@@ -109,6 +109,81 @@ describe("packet goal review route", () => {
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
+  it("uses the normalized active Nest grant for both preflight and transactional access", async () => {
+    const state = harness();
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "producer-2",
+        primaryEmail: " Producer-2@Example.Test ",
+        isStaff: false,
+      },
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+
+    const response = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "DEFER",
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.boundaries).toMatchObject({
+      canonicalSessionAccess: true,
+      sessionAccessRechecked: true,
+    });
+    expect(state.prisma.callRoom.findFirst).toHaveBeenCalledTimes(2);
+    for (const [input] of state.prisma.callRoom.findFirst.mock.calls) {
+      expect(input.where).toEqual(expect.objectContaining({
+        id: roomId,
+        OR: expect.arrayContaining([{
+          project: {
+            accessGrants: {
+              some: {
+                email: "producer-2@example.test",
+                status: "ACTIVE",
+                role: { in: ["OWNER", "EDITOR"] },
+              },
+            },
+          },
+        }]),
+      }));
+    }
+  });
+
+  it("fails closed without a receipt or Goal when Session access is revoked before commit", async () => {
+    const state = harness();
+    state.prisma.callRoom.findFirst
+      .mockResolvedValueOnce({ id: roomId })
+      .mockResolvedValueOnce(null);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false },
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+
+    const response = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "ACCEPT",
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload.errorCode).toBe("SESSION_ACCESS_REVOKED");
+    expect(state.goalCreate).not.toHaveBeenCalled();
+    expect((state.summary.sourceJson.goalCandidateReviewReceipts as any[])).toEqual([]);
+  });
+
   it("persists an edited review receipt without creating a Goal or task", async () => {
     const state = harness();
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);

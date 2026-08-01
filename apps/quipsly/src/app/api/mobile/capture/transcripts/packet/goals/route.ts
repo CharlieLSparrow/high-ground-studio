@@ -10,10 +10,15 @@ import { TRANSCRIPT_DERIVED_GOAL_SCHEMA } from "@high-ground/quipsly-domain/tran
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { packetSnapshotMatches, selectLatestCorrelatedPacketNotes } from "@/lib/server/coaching-packets";
+import {
+  packetSnapshotMatches,
+  selectLatestCorrelatedPacketNotes,
+  TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
+} from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
   createTranscriptDerivedGoalInTransaction,
@@ -57,23 +62,14 @@ function decision(value: unknown): TranscriptGoalReviewDecision | null {
   return isTranscriptGoalReviewDecision(normalized) ? normalized : null;
 }
 
-function roomAccess(userId: string, isStaff: boolean, roomId: string) {
-  return isStaff ? { id: roomId } : {
-    id: roomId,
-    OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-    ],
-  };
-}
-
 function boundaries() {
   return {
     explicitHumanDecision: true,
     acceptCreatesOneActorOwnedGoal: true,
     editRejectDeferCreateNoGoal: true,
+    canonicalSessionAccess: true,
+    canonicalSessionMutationAccess: true,
+    sessionAccessRechecked: true,
     ...transcriptDerivedGoalBoundaries(),
   };
 }
@@ -144,10 +140,14 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor = {
     id: session.user.id,
+    primaryEmail: session.user.primaryEmail,
     email: session.user.primaryEmail || session.user.email,
     isStaff: session.user.isStaff === true,
   };
-  const room = await prisma.callRoom.findFirst({ where: roomAccess(actor.id, actor.isStaff, roomId), select: { id: true } });
+  const room = await prisma.callRoom.findFirst({
+    where: sessionMutationAccessWhere(roomId, actor),
+    select: { id: true },
+  });
   if (!room) {
     return NextResponse.json({ ok: false, errorCode: "ROOM_ACCESS_DENIED", error: "You do not have access to this packet room." }, { status: 404 });
   }
@@ -155,6 +155,17 @@ export async function POST(request: Request) {
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
+      const authorizedRoom = await tx.callRoom.findFirst({
+        where: sessionMutationAccessWhere(roomId, actor),
+        select: { id: true },
+      });
+      if (!authorizedRoom) {
+        throw new GoalReviewBoundaryError(
+          404,
+          "SESSION_ACCESS_REVOKED",
+          "Session access changed before goal review completed. Refresh before trying again.",
+        );
+      }
       const summaryCandidates = await tx.coachingNote.findMany({
         where: { roomId, kind: "SUMMARY" },
         orderBy: { createdAt: "desc" },
@@ -189,7 +200,7 @@ export async function POST(request: Request) {
         include: {
           asset: true,
           segments: {
-            orderBy: { segmentIndex: "asc" },
+            orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
             include: {
               corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
               verifications: { orderBy: { createdAt: "desc" } },

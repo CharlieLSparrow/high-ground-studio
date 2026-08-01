@@ -23,6 +23,10 @@ type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INT
 
 const SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v3";
 export const TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1";
+export const TRANSCRIPT_PACKET_SEGMENT_ORDER_BY = [
+  { startSeconds: "asc" as const },
+  { id: "asc" as const },
+];
 
 const ACTION_PATTERNS = [
   /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
@@ -525,7 +529,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       room: { include: { booking: true } },
       asset: true,
       segments: {
-        orderBy: { startSeconds: "asc" },
+        orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
         include: {
           corrections: {
             where: { status: "accepted" },

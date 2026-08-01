@@ -13,10 +13,18 @@ import {
   packetSnapshotMatches,
   projectTranscriptSegmentsForPacket,
   selectLatestCorrelatedPacketNotes,
+  TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   transcriptPacketSnapshot,
 } from "@/lib/server/coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  sessionAccessWhere,
+  sessionActorAccessWhere,
+  sessionMutationAccessWhere,
+  sessionMutationActorAccessWhere,
+  type SessionAccessActor,
+} from "@/lib/server/session-access";
 
 // Kept outside route.ts so candidate builders remain directly testable.
 const PACKET_KIND = "quipsly-mobile-capture-transcript-packet-v1";
@@ -157,25 +165,6 @@ async function readJson(request: Request) {
   }
 }
 
-export function roomAccessConditions(userId: string, email: string) {
-  return [
-    { createdByUserId: userId },
-    { participants: { some: { userId } } },
-    { booking: { clientUserId: userId } },
-    { booking: { coachUserId: userId } },
-    ...(email ? [{ project: { accessGrants: { some: { email, status: "ACTIVE" } } } }] : []),
-  ];
-}
-
-function canAccessRoomWhere(userId: string, email: string, isStaff: boolean, roomId: string) {
-  return isStaff
-    ? { id: roomId }
-    : {
-        id: roomId,
-        OR: roomAccessConditions(userId, email),
-      };
-}
-
 function packetBoundaries() {
   return {
     sideEffectFreeRead: true,
@@ -184,6 +173,9 @@ function packetBoundaries() {
     noTranscriptProviderRunFromPacketRead: true,
     noExternalDelivery: true,
     noPublicationClaim: true,
+    canonicalSessionAccess: true,
+    canonicalSessionMutationAccess: true,
+    sessionAccessRecheckedOnMutation: true,
     recordingSourceTruth:
       "Recording assets remain source evidence. Transcript segments are derived evidence. Coaching packet notes and action candidates are review projections built from completed transcript evidence. ActionItem records are committed work only after explicit human acceptance.",
     reviewRule:
@@ -350,14 +342,21 @@ function packetLaneReviewSafeActions(lane: any) {
   ];
 }
 
-async function resolveRoomIdFromRequest(prisma: any, request: Request, userId: string, email: string, isStaff: boolean) {
+async function resolveRoomIdFromRequest(
+  prisma: any,
+  request: Request,
+  actor: SessionAccessActor,
+  access: "read" | "mutate" = "read",
+) {
   const url = new URL(request.url);
   const roomId = text(url.searchParams.get("callRoomId")) || text(url.searchParams.get("roomId"));
   const transcriptJobId = text(url.searchParams.get("transcriptJobId"));
 
   if (roomId) {
     const room = await prisma.callRoom.findFirst({
-      where: canAccessRoomWhere(userId, email, isStaff, roomId),
+      where: access === "mutate"
+        ? sessionMutationAccessWhere(roomId, actor)
+        : sessionAccessWhere(roomId, actor),
       select: { id: true },
     });
     return room?.id ?? null;
@@ -365,12 +364,12 @@ async function resolveRoomIdFromRequest(prisma: any, request: Request, userId: s
 
   if (transcriptJobId) {
     const job = await prisma.transcriptJob.findFirst({
-      where: isStaff
-        ? { id: transcriptJobId }
-        : {
-            id: transcriptJobId,
-            OR: roomAccessConditions(userId, email).map((condition) => ({ room: condition })),
-          },
+      where: {
+        id: transcriptJobId,
+        room: access === "mutate"
+          ? sessionMutationActorAccessWhere(actor)
+          : sessionActorAccessWhere(actor),
+      },
       select: { roomId: true },
     });
     return job?.roomId ?? null;
@@ -390,9 +389,8 @@ export async function GET(request: Request) {
   }
 
   const prisma = getPrismaClient() as any;
-  const userId = session.user.id;
-  const email = text(session.user.primaryEmail || session.user.email).toLowerCase();
-  const roomId = await resolveRoomIdFromRequest(prisma, request, userId, email, session.user.isStaff);
+  const actor: SessionAccessActor = session.user;
+  const roomId = await resolveRoomIdFromRequest(prisma, request, actor);
 
   if (roomId === "") {
     return NextResponse.json(
@@ -549,7 +547,7 @@ export async function GET(request: Request) {
     : [];
   const goalRows = transcriptProcessingAllowed && summary
     ? await prisma.goal.findMany({
-        where: { ownerUserId: userId, roomId },
+        where: { ownerUserId: actor.id, roomId },
         orderBy: { createdAt: "asc" },
         take: 200,
         select: { id: true, sourceJson: true },
@@ -735,14 +733,12 @@ export async function POST(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const email = text(session.user.primaryEmail || session.user.email).toLowerCase();
+  const actor: SessionAccessActor = session.user;
   const job = await prisma.transcriptJob.findFirst({
-    where: session.user.isStaff
-      ? { id: transcriptJobId }
-      : {
-          id: transcriptJobId,
-          OR: roomAccessConditions(userId, email).map((condition) => ({ room: condition })),
-        },
+    where: {
+      id: transcriptJobId,
+      room: sessionMutationActorAccessWhere(actor),
+    },
     select: { id: true },
   });
 
@@ -755,6 +751,21 @@ export async function POST(request: Request) {
 
   const result = await prisma.$transaction(async (tx: any) => {
     await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
+    const authorizedJob = await tx.transcriptJob.findFirst({
+      where: {
+        id: transcriptJobId,
+        room: sessionMutationActorAccessWhere(actor),
+      },
+      select: { id: true },
+    });
+    if (!authorizedJob) {
+      return {
+        ok: false,
+        status: 404,
+        errorCode: "SESSION_ACCESS_REVOKED",
+        error: "Session access changed before the packet build began. Refresh before trying again.",
+      };
+    }
     return buildCoachingPacketFromTranscriptJob({
       prisma: tx,
       transcriptJobId,
@@ -816,7 +827,7 @@ export async function PATCH(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const email = text(session.user.primaryEmail || session.user.email).toLowerCase();
+  const actor: SessionAccessActor = session.user;
   const url = new URL(request.url);
   const roomIdQuery = text(url.searchParams.get("callRoomId")) || text(url.searchParams.get("roomId"));
   const transcriptJobIdQuery = text(url.searchParams.get("transcriptJobId"));
@@ -824,7 +835,12 @@ export async function PATCH(request: Request) {
   if (roomIdFromBody && !roomIdQuery) lookupUrl.searchParams.set("callRoomId", roomIdFromBody);
   if (transcriptJobIdFromBody && !transcriptJobIdQuery) lookupUrl.searchParams.set("transcriptJobId", transcriptJobIdFromBody);
 
-  const roomId = await resolveRoomIdFromRequest(prisma, new Request(lookupUrl.toString()), userId, email, session.user.isStaff);
+  const roomId = await resolveRoomIdFromRequest(
+    prisma,
+    new Request(lookupUrl.toString()),
+    actor,
+    "mutate",
+  );
 
   if (roomId === "") {
     return NextResponse.json(
@@ -886,6 +902,17 @@ export async function PATCH(request: Request) {
   try {
     mutation = await prisma.$transaction(async (tx: any) => {
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${packetTranscriptJobId}`);
+      const authorizedRoom = await tx.callRoom.findFirst({
+        where: sessionMutationAccessWhere(roomId, actor),
+        select: { id: true },
+      });
+      if (!authorizedRoom) {
+        throw new PacketReviewBoundaryError(
+          404,
+          "SESSION_ACCESS_REVOKED",
+          "Session access changed before lane review completed. Refresh before trying again.",
+        );
+      }
       await tx.$queryRaw`SELECT "id" FROM "CoachingNote" WHERE "id" = ${summary.id} FOR UPDATE`;
       const lockedSummary = await tx.coachingNote.findUnique({ where: { id: summary.id } });
       const source = sourceJson(lockedSummary?.sourceJson);
@@ -897,7 +924,7 @@ export async function PATCH(request: Request) {
         include: {
           asset: true,
           segments: {
-            orderBy: { segmentIndex: "asc" },
+            orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
             include: {
               corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
               verifications: { orderBy: { createdAt: "desc" } },
