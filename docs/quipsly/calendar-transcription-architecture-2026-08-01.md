@@ -112,6 +112,13 @@ It already uses deterministic event IDs, explicit sync/cancel commands,
 conservative notification defaults, and append-only Quipsly receipts. Evolve it
 behind a general adapter contract rather than replacing it.
 
+Its side-effect-free readiness probe must exercise the same event collection as
+the adapter's writes. With the intentionally narrow `calendar.events` scope,
+`events.list` succeeds while the separate calendar-metadata endpoint can return
+HTTP 403. Quipsly therefore requests the event-list resource with a partial
+response restricted to its collection kind, never requests event content, and
+never creates, updates, deletes, or sends during readiness verification.
+
 The connected-account path requests the narrowest useful scopes:
 
 - calendar list read-only to let a person select a destination;

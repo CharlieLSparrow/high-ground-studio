@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       externalMutated: false,
       readiness: getCoachingCalendarReadiness(),
       nextAction:
-        "Add ?verify=1 as staff to perform a read-only Google Calendar metadata check.",
+        "Add ?verify=1 as staff to perform a read-only Google Calendar event-access check.",
     });
   }
 
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       externalMutated: false,
       readiness: check,
       nextAction: check.accessOk
-        ? "Calendar access is readable. Quipsly can attach calendar evidence when an operator explicitly syncs a booking."
+        ? "Calendar event access is readable. Quipsly can attach calendar evidence when an operator explicitly syncs a booking."
         : "Fix Google Calendar credentials or sharing before syncing booking evidence.",
     });
   } catch (error) {

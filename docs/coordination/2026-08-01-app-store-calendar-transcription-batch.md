@@ -121,12 +121,17 @@ External evidence:
   across reschedule and cancellation, changed the start time on reschedule,
   exported `CANCELLED` after cancellation, used private/no-store and CRLF, and
   excluded generated identities and private session-content categories.
-- The deployed Google Calendar path passed configuration and token minting, but
-  its read-only calendar metadata request returned Google HTTP 403. Calendar API
-  is enabled and the runtime identity is
-  `studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com`; the configured
-  calendar still needs to grant that identity event-management access. No event
-  was created, changed, deleted, or sent during this check.
+- The deployed Google Calendar path passed configuration and token minting. A
+  live `events.list` request with the exact runtime identity and a token whose
+  scope readback includes `calendar.events` returned HTTP 200. A second
+  production-shaped partial response returned only `calendar#events`, proving
+  the configured event collection is readable without requesting event
+  content. The earlier calendar-metadata request returned HTTP
+  403 because that endpoint is outside the intentionally narrow scope, not
+  because calendar sharing is missing. The readiness implementation now probes
+  the real event collection with a partial response that excludes event
+  content and returns only access status. No event was created, changed,
+  deleted, or sent during either check.
 
 The live coaching runner was brought up to the production auth and consent
 contracts: disposable Firebase identities are explicitly verified, and both

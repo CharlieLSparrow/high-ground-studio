@@ -26,15 +26,6 @@ type GoogleCalendarEventResponse = {
   updated?: string;
 };
 
-type GoogleCalendarMetadataResponse = {
-  id?: string;
-  summary?: string;
-  description?: string;
-  timeZone?: string;
-  accessRole?: string;
-  primary?: boolean;
-};
-
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -314,7 +305,7 @@ export async function checkCoachingCalendarAccess() {
   }
 
   const response = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?fields=kind&maxResults=1&singleEvents=true`,
     {
       method: "GET",
       headers: {
@@ -330,11 +321,9 @@ export async function checkCoachingCalendarAccess() {
       accessOk: false,
       accessStatus: `google-${response.status}`,
       externalMutated: false,
-      message: `Google Calendar metadata check failed with HTTP ${response.status}.`,
+      message: `Google Calendar event-collection check failed with HTTP ${response.status}.`,
     };
   }
-
-  const calendar = (await response.json()) as GoogleCalendarMetadataResponse;
 
   return {
     ...readiness,
@@ -342,13 +331,11 @@ export async function checkCoachingCalendarAccess() {
     accessStatus: "readable",
     externalMutated: false,
     calendar: {
-      id: text(calendar.id) || calendarId,
-      summary: text(calendar.summary) || null,
-      timeZone: text(calendar.timeZone) || null,
-      accessRole: text(calendar.accessRole) || null,
-      primary: calendar.primary === true,
+      id: calendarId,
+      eventCollectionReadable: true,
     },
-    message: "Google Calendar is readable. No event was created, updated, deleted, or sent.",
+    message:
+      "Google Calendar event access is readable. No event content was returned to Quipsly, and no event was created, updated, deleted, or sent.",
   };
 }
 

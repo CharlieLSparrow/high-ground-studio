@@ -6,6 +6,7 @@ import { recordManagedCoachingCalendarProjection } from "@/lib/server/calendar-p
 import {
   canManageCoachingCalendarEvidence,
   cancelCoachingBookingGoogleCalendar,
+  checkCoachingCalendarAccess,
   deleteGoogleCalendarEvent,
   deterministicGoogleCalendarEventId,
   syncCoachingBookingToGoogleCalendar,
@@ -30,6 +31,11 @@ describe("Google Calendar receipt identity", () => {
     process.env.GOOGLE_CALENDAR_ID = "calendar-a@example.test";
     process.env.GOOGLE_CALENDAR_SEND_UPDATES = "none";
     delete process.env.GOOGLE_CALENDAR_INCLUDE_ATTENDEES;
+    delete process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON;
+    delete process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
+    delete process.env.GOOGLE_CALENDAR_SYNC_CLIENT_ID;
+    delete process.env.GOOGLE_CALENDAR_SYNC_CLIENT_SECRET;
+    delete process.env.GOOGLE_CALENDAR_ALLOW_APPLICATION_DEFAULT;
   });
 
   afterAll(() => {
@@ -49,6 +55,71 @@ describe("Google Calendar receipt identity", () => {
     expect(canManageCoachingCalendarEvidence({ operatorUserId: "coach", assignedCoachUserId: "coach" })).toBe(true);
     expect(canManageCoachingCalendarEvidence({ operatorUserId: "creator", roomCreatedByUserId: "creator" })).toBe(true);
     expect(canManageCoachingCalendarEvidence({ operatorUserId: "other", assignedCoachUserId: "coach", roomCreatedByUserId: "creator" })).toBe(false);
+  });
+
+  it("verifies the exact event collection used by the narrow calendar.events scope without mutation", async () => {
+    process.env.GOOGLE_CALENDAR_REFRESH_TOKEN = "refresh-token";
+    process.env.GOOGLE_CALENDAR_SYNC_CLIENT_ID = "client-id";
+    process.env.GOOGLE_CALENDAR_SYNC_CLIENT_SECRET = "client-secret";
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: "access-token" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ kind: "calendar#events" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    const result = await checkCoachingCalendarAccess();
+    expect(result).toMatchObject({
+      accessOk: true,
+      accessStatus: "readable",
+      externalMutated: false,
+      calendar: {
+        id: "calendar-a@example.test",
+        eventCollectionReadable: true,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://www.googleapis.com/calendar/v3/calendars/calendar-a%40example.test/events?fields=kind&maxResults=1&singleEvents=true",
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "GET" });
+    expect(JSON.stringify(result)).not.toContain("calendar#events");
+    fetchMock.mockRestore();
+  });
+
+  it("redacts provider details when the event-collection readiness probe fails", async () => {
+    process.env.GOOGLE_CALENDAR_REFRESH_TOKEN = "refresh-token";
+    process.env.GOOGLE_CALENDAR_SYNC_CLIENT_ID = "client-id";
+    process.env.GOOGLE_CALENDAR_SYNC_CLIENT_SECRET = "client-secret";
+    const fetchMock = jest
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: "access-token" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("private provider detail", { status: 403 }),
+      );
+
+    const result = await checkCoachingCalendarAccess();
+    expect(result).toMatchObject({
+      accessOk: false,
+      accessStatus: "google-403",
+      externalMutated: false,
+      message: "Google Calendar event-collection check failed with HTTP 403.",
+    });
+    expect(JSON.stringify(result)).not.toContain("private provider detail");
+    fetchMock.mockRestore();
   });
 
   it("recovers an already-created deterministic event with one update instead of another insert", async () => {
