@@ -156,6 +156,14 @@ test("authenticated smoke persists and verifies recorder access before claiming 
   assert.match(authenticatedSmoke, /Checking Nest access/);
 });
 
+test("authenticated smoke proves the rendered Episode Room owns both editor handoffs", () => {
+  assert.match(authenticatedSmoke, /episodeRoomPath/);
+  assert.match(authenticatedSmoke, /Edit timeline/);
+  assert.match(authenticatedSmoke, /Live cut/);
+  assert.match(authenticatedSmoke, /timeline-handoffs-rendered/);
+  assert.match(authenticatedSmoke, /renderedResponseIncludesHref/);
+});
+
 test("promotion requires a database-backed Session workspace instead of route-only success", () => {
   assert.match(previewSmoke, /QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1/);
   assert.match(previewSmoke, /"sessions\.workspace"/);

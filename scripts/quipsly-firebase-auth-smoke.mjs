@@ -43,6 +43,14 @@ async function requestText(url, options = {}) {
   return { response, text };
 }
 
+function renderedResponseIncludesHref(text, href) {
+  return [
+    href,
+    href.replaceAll("&", "&amp;"),
+    href.replaceAll("&", "\\u0026"),
+  ].some((candidate) => text.includes(candidate));
+}
+
 async function canReachQuipsly(candidate) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3_000);
@@ -268,6 +276,8 @@ try {
   const createPath = `/create?project=${encodeURIComponent(sessionBody.homeNest.slug)}`;
   const editorPath = `/editor?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
   const recorderPath = `/recorder?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
+  const episodeRoomPath = `/nests/${encodeURIComponent(sessionBody.homeNest.slug)}/episodes/release-smoke`;
+  const liveCutPath = `/nests/${encodeURIComponent(sessionBody.homeNest.slug)}/episode-editor?episode=release-smoke`;
   const recorderAccess = await requestText(`${baseUrl}/api/episode-production`, {
     method: "POST",
     headers: {
@@ -371,6 +381,7 @@ try {
   const allRouteChecks = routeChecks.concat([
     [homeNestPath, 200, /Nest|Home|Quipsly/i],
     [createPath, 200, /Writing Desk/i],
+    [episodeRoomPath, 200, /Episode Room/i],
     [editorPath, 200, /Episode Editor/i],
     [recorderPath, 200, /Checking Nest access/i],
     ["/research", 200, /Evidence, with its receipts\./i],
@@ -378,13 +389,27 @@ try {
   ]);
 
   let projectsText = "";
+  let episodeRoomText = "";
   for (const [route, expectedStatus, marker] of allRouteChecks) {
     const result = await requestText(`${baseUrl}${route}`, { headers: { cookie } });
     assert(result.response.status === expectedStatus, `${route} returned HTTP ${result.response.status}`);
     assert(marker.test(result.text), `${route} did not include expected page marker.`);
     if (route === "/projects") projectsText = result.text;
+    if (route === episodeRoomPath) episodeRoomText = result.text;
     checkedRoutes.push(`${route}:${result.response.status}`);
   }
+
+  assert(
+    episodeRoomText.includes("Edit timeline")
+      && renderedResponseIncludesHref(episodeRoomText, editorPath),
+    `${episodeRoomPath} did not render the exact production timeline handoff.`,
+  );
+  assert(
+    episodeRoomText.includes("Live cut")
+      && renderedResponseIncludesHref(episodeRoomText, liveCutPath),
+    `${episodeRoomPath} did not render the exact live-cut handoff.`,
+  );
+  checkedRoutes.push(`${episodeRoomPath}:timeline-handoffs-rendered`);
 
   if (expectedProjectSlug) {
     assert(
