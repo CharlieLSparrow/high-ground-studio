@@ -6155,3 +6155,25 @@ was restored.
   zero-traffic Nest preview, authenticated promotion, and real podcast/coaching
   operations. Full evidence is in
   `docs/coordination/2026-08-01-transcript-worker-activation-readiness.md`.
+
+### Capture App Store submission-readiness checkpoint — 2026-08-01
+
+- Replaced the stale Build 6/8 submission checklist with a credentialed,
+  read-only operator bound to the canonical Build 25 release identity. It uses
+  request-scoped Apple JWTs, mode-`0600` keys and receipts, exposes no mutation
+  or submit flag, and redacts review and screenshot-upload secrets.
+- Live provider readback proves exact Build 25 assignment, editable 1.0 state,
+  manual release, and App Review detail. It also proves the real submission
+  gaps: content rights unset, 0/23 age-rating answers, IDFA unset, zero
+  screenshots, no active Free price, no App Availability/USA territory, and no
+  review submission.
+- The auditor fails closed across app/build identity, current age-rating fields,
+  screenshot delivery, price, complete territory inventory, territory content
+  and trader-status blockers, and review state. App Privacy publication, DSA
+  account identity, physical Build 25 acceptance, production account deletion,
+  and iPhone-only compatibility remain explicit human/provider gates.
+- Focused coverage passes 4/4, the complete Apple operator suite passes 42/42,
+  syntax and diff checks pass, and the live Apple audit produced a redacted
+  mode-`0600` receipt with expected readiness exit 2. No App Store record or
+  review submission changed. Full evidence is in
+  `docs/coordination/2026-08-01-capture-app-store-submission-readiness.md`.

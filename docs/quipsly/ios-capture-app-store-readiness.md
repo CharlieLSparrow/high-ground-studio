@@ -457,103 +457,72 @@ remain red until approved screenshots and every delivery-layer proof exist.
 
 ## Remaining blockers before App Store submission
 
-- 2026-07-28 qualified Build 6: exact source
-  `f10ceab5e83ce08e61092d3cf6a8e8ec2f457589` passes 32/32 serial
-  native UI scenarios and 701/701 App Store checks. Its signed
-  18,555,196-byte `1.0 (6)` IPA has SHA-256
-  `080f8b9fa700a3270683a347419c0695cc9694e03b33b3c4cc34bef6b52c6c5a`.
-  The detached-source receipt records `candidateQualified: true` and the exact
-  readable `.xcresult` path. See
-  [`2026-07-28-capture-build-6-qualified-candidate.md`](../coordination/2026-07-28-capture-build-6-qualified-candidate.md).
-  Xcode Organizer uploaded that exact archive. App Store Connect provider
-  build `47e5e730-e5bd-4cfb-afae-baef86d3923c` reached `Complete` and
-  `Ready to Test` with no Missing Compliance gate. Build 6 is assigned to the
-  manually controlled `Quipsly Capture Internal` group with one Account Holder
-  tester at `Invited`; physical installation has not occurred. See
-  [`2026-07-28-capture-build-6-testflight-delivery.md`](../coordination/2026-07-28-capture-build-6-testflight-delivery.md).
-- 2026-07-28 production parity: Cloud Run revision `studio-00414-tut` is
-  promoted from exact source `9d3faeccf1f469decaaddbcf3d3e9eabfe3cebde`.
-  The post-promotion release gate and a fresh unauthenticated production audit
-  both pass all 104 mobile contracts. Google user, ADC, deploy-project,
-  Firebase-project, and Firebase Admin authorization were refreshed and pass.
-  Authenticated native lifecycle and separate-account privacy readback remain
-  open.
-- 2026-07-24 account deletion: the reviewed 30-day policy, request/status UI,
-  inventory, fail-closed controlled executor, Firebase/GCS/email adapters,
-  recovery states, durable receipts, and completion constraint are
-  implemented. Unit/route tests pass and the disposable local database/Auth
-  Emulator loop passes 2/2, including refusal when another Home Nest
-  collaborator exists. Production migration/provider/execution readback and
-  account-holder retention approval remain open.
-- 2026-07-28 release-boundary hardening:
-  `scripts/quipsly-capture-release-from-commit.sh candidate` now runs the
-  deterministic UI suite before signing and artifact verification;
-  `scripts/deploy-testflight.sh` reuses that complete candidate lane before
-  upload. Both operate in a disposable detached worktree. The receipt
-  distinguishes candidate qualification, archive creation, upload
-  return/processing wait, tester assignment, and physical TestFlight
-  installation. The canonical procedure is
-  [`ios-capture-release-runbook.md`](./ios-capture-release-runbook.md). Local
-  regression proof excludes an uncommitted sentinel and removes the linked
-  worktree afterward; this is not upload, App Store Connect readback, or
-  physical-device proof.
-- 2026-07-28 screenshot evidence: the exact Build 6 source completed the
-  deterministic five-screen draft journey at `1320 x 2868`, with one passed
-  UI test and clean detached-source readback. Visual review rejected all five
-  for submission, as required: DEBUG preview badges remain, and the Account
-  attachment exposed a restored-scroll/XCUITest query-order defect. The
-  materializer also exposed and now covers macOS `/var` versus `/private/var`
-  CLI identity. See
-  [`2026-07-28-capture-build-6-screenshot-audit.md`](../coordination/2026-07-28-capture-build-6-screenshot-audit.md).
-  No canonical screenshot asset is approved.
+The canonical distribution target is now **Quipsly Capture 1.0 (25)**, provider
+build `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`. Apple reports it `VALID`, beta
+review `APPROVED`, externally `IN_BETA_TESTING`, included in **Quipsly Capture
+Rehearsal**, and available through the open public TestFlight link. Build 6/8/9
+sections below are historical evidence, not current installation instructions.
 
-- 2026-07-21 physical-device blocker: Xcode/CoreDevice still does not see the plugged-in iPhone as an available destination. `xctrace` lists only the Mac plus offline iPads `Layla` and `Morbo`; `devicectl` lists the same unavailable iPads. Unlock/trust the iPhone, use a data-capable cable/direct port, and confirm it appears in Xcode Devices before claiming physical-device capture proof.
-- Complete authenticated native lifecycle and separate-account privacy
-  readback against the current exact-source production revision. Public
-  production parity already passes all 104 mobile checks.
-- Apply the exact release commit's committed migrations through
-  `scripts/release/quipsly-schema-release.sh` before deploying backend code
-  that reads or writes `CaptureRoomStateReceipt` or
-  `MediaVaultUploadReservation`; upload capability issuance is launch-critical
-  on the latter. Preserve the guarded release receipt and require its
-  production ledger and zero-diff readbacks. Do not substitute the historical
-  additive SQL or targeted coaching-capture sync.
-- Apply or re-read the reviewed media-vault CORS policy and verify live bucket
-  readback includes `x-goog-if-generation-match`. Google authorization now
-  passes; source policy alone is still not deployment proof.
-- Operate the configured synthetic reviewer account and visible session through
-  Build 8 against deployed `nest.quipsly.com`; server-side sign-in and session
-  visibility are proved, but native Build 8 use is not.
-- Install the assigned Build 8 from TestFlight and validate microphone
-  permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior,
-  interruptions, route loss, force-quit recovery, failed-upload recovery,
-  direct-GCS background transfer, audio/video capture, front/back camera
-  switching, segment recovery, assembled playback, and transcript packet
-  creation on the physical iPhone.
-- Join a real Nest-issued LiveKit room and prove LiveKit transport, CallKit activation/presentation, and local recording remain visibly separate through connect, timeout/failure, interruption, reconnect, and reset. Provider-egress START becomes a submission blocker only if provider recording enters release scope; otherwise prove it stays interlocked and absent from end-user Capture controls.
-- Operate the retention-aware deletion system in production with a disposable
-  eligible account, read back its completion receipt/confirmation, and obtain
-  account-holder approval for the retention matrix. A request row or local
-  executor proof is not production deletion completion.
-- Read back production Terms, Privacy, and account-deletion surfaces at their
-  canonical HTTPS URLs; reconcile their claims with the binary, App Store
-  privacy answers, reviewer notes, and actual retention behavior.
-- Generate Xcode's privacy report from the signed archive and confirm `PrivacyInfo.xcprivacy` and all required-reason entries appear in the distributed app bundle.
-- Google ADC and Firebase Admin authorization pass. Run the generated-auth
-  production smoke with its controlled database configuration, or configure a
-  dedicated non-interactive service account before depending on unattended
-  release automation.
-- Capture and approve the five planned iPhone screenshots from the
-  physical/TestFlight candidate. The canonical listing metadata and source
-  validator pass. A deterministic iPhone 17 Pro Max draft harness now operates
-  the five real app surfaces, exports exact-size private-data-safe layout
-  evidence, and records `submissionEligible:false`; run
-  `scripts/release/quipsly-capture-screenshots-from-commit.sh --revision <candidate-source-sha>`
-  for detached exact-commit evidence, or the lower-level
-  `bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh`
-  for current-worktree composition checks.
-  The stricter submission gate remains red until signed-candidate assets exist,
-  are human-approved, and all delivery blockers are resolved.
+The credentialed read-only submission audit is:
+
+```bash
+pnpm quipsly:capture:app-store-submission-readiness -- \
+  --api-key-path /absolute/private/app-store-connect-key.json \
+  --output /absolute/private/submission-readiness-build25.json
+```
+
+Exit `2` means the read succeeded but submission is still blocked. This first
+auditor deliberately preserves the legal, privacy, physical-device, deletion,
+and compatibility gates as manual blockers even after every machine-readable
+provider check is green; it cannot itself authorize submission. Exit `0` is
+therefore reserved for a future evidence-complete contract that consumes those
+separate proofs. The operator has no mutation or submit mode and never prints
+review contact details, demo credentials, screenshot upload capabilities, or
+API-key material.
+
+Live readback on 2026-08-01 proves the safe listing, App Review detail, exact
+Build 25 assignment, manual release type, and editable 1.0 record. It also
+proves these current provider gaps:
+
+- content rights are unset;
+- all 23 current age-rating questions are unanswered and no derived rating
+  exists;
+- the IDFA declaration is unset;
+- Apple has zero screenshot sets for the `en-US` version;
+- the price-schedule shell exists, but no active Free price is selected;
+- no App Availability resource exists, so the intended first territory
+  (`USA`) is not configured; and
+- no App Store review submission exists yet.
+
+The remaining release gates are therefore:
+
+1. Account Holder/Admin confirms content rights, the complete age-rating
+   questionnaire, no-IDFA answer, Free price, United States availability, and
+   the EU DSA trader determination in App Store Connect.
+2. Publish accurate App Privacy answers. Apple requires the answers to cover
+   Quipsly and integrated third parties across every platform; the public API
+   does not expose a trustworthy publication readback for this gate.
+3. Capture, visually approve, and upload all five planned largest-iPhone
+   screenshots from the exact Build 25 experience with synthetic/private-safe
+   content. Draft simulator compositions remain layout evidence only.
+4. Confirm iPhone-only distribution and remove unintended Apple-silicon Mac or
+   Vision compatibility.
+5. Install Build 25 from TestFlight on a physical iPhone and prove microphone
+   and camera permission/fidelity, front/back switching, pause/resume,
+   interruptions, route loss, force-quit and offline recovery, direct upload,
+   assembled playback, timeline alignment, and same-ID Nest/Studio readback.
+6. Join a Nest-issued LiveKit room and prove provider transport, CallKit audio
+   activation, and local recording stay visibly separate through failure and
+   recovery. Provider egress must remain interlocked unless it explicitly
+   enters release scope.
+7. Operate production account deletion with a disposable eligible account and
+   independently read back Firebase, database, storage, email confirmation,
+   retention, and completion evidence. A request row is not completion.
+8. Reconcile the signed archive privacy report, production Terms/Privacy/
+   deletion pages, reviewer notes, and published App Privacy answers before
+   creating the review submission.
+
+Historical candidate and delivery details remain below for audit and rollback.
 
 ## 2026-07-29 Quipsly Capture Build 8 external-beta checkpoint
 

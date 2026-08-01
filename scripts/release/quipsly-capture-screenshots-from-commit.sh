@@ -220,5 +220,11 @@ fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
 console.log(`PASS Committed-source receipt: ${receiptPath}`);
 NODE
 
+derived_data_directory="${output_directory}/DerivedData"
+if [[ -d "$derived_data_directory" && "${QUIPSLY_CAPTURE_KEEP_DERIVED_DATA:-0}" != "1" ]]; then
+  rm -rf -- "$derived_data_directory"
+  echo "INFO Removed regenerable committed-run screenshot DerivedData."
+fi
+
 echo "PASS Quipsly Capture App Store drafts returned from committed source ${source_revision}"
 echo "BLOCKED Drafts remain ineligible until recaptured from the exact signed candidate or TestFlight install and human-approved."

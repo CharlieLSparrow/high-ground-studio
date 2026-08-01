@@ -44,6 +44,9 @@ git diff --cached --quiet
   printf 'sourceIsolation=%s\n' "${QUIPSLY_CAPTURE_SCREENSHOT_SOURCE_ISOLATION:-}"
 } >"$MOCK_RUNNER_RECEIPT_PATH"
 
+mkdir -p "$QUIPSLY_CAPTURE_SCREENSHOT_DIR/DerivedData"
+printf 'regenerable\n' >"$QUIPSLY_CAPTURE_SCREENSHOT_DIR/DerivedData/marker.txt"
+
 if [[ "${MOCK_RUNNER_FAIL:-0}" == "1" ]]; then
   exit 42
 fi
@@ -139,6 +142,8 @@ grep -Fqx "outputDirectory=${output_directory}" "$runner_receipt" ||
   fail "Screenshot output directory was not stable across the worktree."
 [[ -f "${output_directory}/committed-source-receipt.json" ]] ||
   fail "Committed-source receipt was not created."
+[[ ! -e "${output_directory}/DerivedData" ]] ||
+  fail "Successful committed screenshot run retained regenerable DerivedData."
 node - "${output_directory}/committed-source-receipt.json" "$source_revision" <<'NODE'
 const fs = require("node:fs");
 const [receiptPath, sourceRevision] = process.argv.slice(2);
@@ -183,6 +188,17 @@ if (receipt.materializationMode !== "exact-committed-recovery") {
 }
 NODE
 
+MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
+QUIPSLY_CAPTURE_KEEP_DERIVED_DATA=1 \
+QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT="$fixture_artifacts" \
+QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="keep-derived-run" \
+"${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
+  --revision "$source_revision" \
+  --device "iPhone Test"
+kept_derived_data="${canonical_fixture_artifacts}/${source_revision:0:12}/keep-derived-run/DerivedData/marker.txt"
+[[ -f "$kept_derived_data" ]] ||
+  fail "Explicit DerivedData retention did not preserve the diagnostic payload."
+
 if MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
   MOCK_RUNNER_FAIL=1 \
   QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT="$fixture_artifacts" \
@@ -191,6 +207,9 @@ if MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
     --revision "$source_revision" >/dev/null 2>&1; then
   fail "A failing committed screenshot runner must propagate failure."
 fi
+failure_derived_data="${canonical_fixture_artifacts}/${source_revision:0:12}/failure-run/DerivedData/marker.txt"
+[[ -f "$failure_derived_data" ]] ||
+  fail "Failed committed screenshot run did not preserve diagnostic DerivedData."
 worktree_count_after_failure="$(
   git -C "$fixture_repo" worktree list --porcelain |
     awk '$1 == "worktree" { count += 1 } END { print count + 0 }'

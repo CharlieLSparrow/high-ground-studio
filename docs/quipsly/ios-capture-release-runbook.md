@@ -90,15 +90,15 @@ authentication and waits for build processing when
 `skip_waiting_for_build_processing: false`; see
 [upload_to_testflight](https://docs.fastlane.tools/actions/upload_to_testflight/).
 
-Prove the provider state with the repository-owned, read-only boundary:
+Prove the canonical public TestFlight target with the repository-owned,
+read-only boundary:
 
 ```bash
-export QUIPSLY_CAPTURE_TESTER_EMAIL='<expected internal tester>'
 pnpm quipsly:capture:app-store-readback -- \
   --version 1.0 \
-  --build 6 \
-  --group 'Quipsly Capture Internal' \
-  --expect-tester-state INSTALLED \
+  --build 25 \
+  --group 'Quipsly Capture Rehearsal' \
+  --group-kind external \
   --output /absolute/private/evidence/app-store-connect-readback.json
 ```
 
@@ -109,6 +109,20 @@ receipt. It never prints the API key, JWT, or tester email. An `INVITED`
 readback proves assignment only; `INSTALLED` proves provider-side installation.
 Require app-owned version/build readback and TestFlight/device operation
 separately before changing the physical-operation receipt.
+
+Then audit App Store submission prerequisites without changing legal answers,
+screenshots, price, availability, App Privacy, or review state:
+
+```bash
+pnpm quipsly:capture:app-store-submission-readiness -- \
+  --output /absolute/private/evidence/submission-readiness-build25.json
+```
+
+This command exits `2` after a successful provider read when any submission
+gate remains open. It has no `--apply` or submit mode. Even a provider-green
+receipt keeps App Privacy publication, DSA trader identity, physical-device
+acceptance, production account deletion, and device compatibility as explicit
+manual checks.
 
 Use a dedicated **App Manager** Team key for routine Quipsly release automation
 rather than an Admin key. Apple documents App Manager as an app-development and

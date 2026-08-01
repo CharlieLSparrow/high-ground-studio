@@ -50,10 +50,19 @@ xcrun simctl status_bar "$DEVICE_ID" override \
   --batteryState charged \
   --batteryLevel 100
 
-clear_status_bar() {
+CAPTURE_COMPLETED=0
+cleanup() {
+  exit_code=$?
   xcrun simctl status_bar "$DEVICE_ID" clear >/dev/null 2>&1 || true
+  if [[ "$CAPTURE_COMPLETED" -eq 1 && "${QUIPSLY_CAPTURE_KEEP_DERIVED_DATA:-0}" != "1" ]]; then
+    rm -rf -- "$DERIVED_DATA"
+    echo "INFO Removed regenerable screenshot DerivedData after successful materialization."
+  elif [[ -d "$DERIVED_DATA" ]]; then
+    echo "INFO Preserved screenshot DerivedData for failed-run diagnosis: $DERIVED_DATA" >&2
+  fi
+  return "$exit_code"
 }
-trap clear_status_bar EXIT
+trap cleanup EXIT
 
 echo "INFO Capturing private-data-safe draft screenshots on $DEVICE_NAME ($DEVICE_ID)."
 echo "INFO Evidence root: $OUTPUT_ROOT"
@@ -90,3 +99,4 @@ fi
 
 node "$CAPTURE_ROOT/scripts/app-store-draft-screenshots.mjs" \
   "${MATERIALIZER_ARGUMENTS[@]}"
+CAPTURE_COMPLETED=1

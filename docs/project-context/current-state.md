@@ -2,6 +2,31 @@
 
 Date: 2026-08-01
 
+## Capture App Store submission-readiness checkpoint
+
+- A new credentialed read-only operator audits App Store submission state from
+  the exact Build 25 release ledger. It uses request-scoped JWTs, mode-`0600`
+  keys/receipts, no apply or submit mode, and never prints review credentials
+  or asset-upload capabilities.
+- Live Apple readback proves the safe listing, App Review detail, editable 1.0
+  version, manual release type, and exact Build 25 assignment. It also proves
+  content rights unset, 0/23 age-rating answers, IDFA unset, zero screenshots,
+  no active Free price, no App Availability/USA territory, and no review
+  submission.
+- Provider checks remain separate from manual App Privacy publication, EU DSA
+  trader verification, iPhone-only compatibility cleanup, physical Build 25
+  acceptance, and production disposable-account deletion proof. The operator
+  cannot turn those human/legal boundaries green by inference.
+- Focused coverage passes 4/4, the complete Apple operator suite passes 42/42,
+  syntax and diff checks pass, the live read completed with expected readiness
+  exit 2, its redacted receipt is mode `0600`, and no Apple record or
+  submission was mutated. Full evidence is in
+  `docs/coordination/2026-08-01-capture-app-store-submission-readiness.md`.
+- Final verification exposed 11.98 GiB of repeated temporary screenshot
+  `DerivedData`. The evidence assets were preserved, the regenerable trees were
+  removed, and successful direct/exact-commit screenshot runs now clean that
+  payload automatically while failed runs retain it for diagnosis.
+
 ## Source-grounded transcript packet note-lane checkpoint
 
 - Nest now makes every persisted coaching/podcast packet purpose lane directly
