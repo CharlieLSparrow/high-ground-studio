@@ -15,6 +15,7 @@ import {
 
 import type {
   PriorSessionContinuity,
+  PriorSessionFollowThrough,
   SavedSessionContinuityBrief,
   SessionContinuityState,
 } from "./session-continuity-model";
@@ -38,6 +39,80 @@ function statusTone(value: string) {
   if (/(DONE|COMPLETED|ACHIEVED)/.test(normalized)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (/(CANCELED|SKIPPED|ARCHIVED)/.test(normalized)) return "border-slate-200 bg-slate-50 text-slate-700";
   return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+export function PriorSessionFollowThroughCard({
+  followThrough,
+}: {
+  followThrough: PriorSessionFollowThrough | null;
+}) {
+  if (!followThrough) return null;
+  const changed = followThrough.summary.changedSinceReleaseCount;
+
+  return (
+    <section className="rounded-2xl border border-fuchsia-300 bg-gradient-to-br from-fuchsia-50/80 to-violet-50/70 p-5" aria-labelledby="prior-follow-through-heading">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-900">Follow-through for this Session</p>
+          <h2 id="prior-follow-through-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{followThrough.output.title}</h2>
+          <p className="mt-1 text-xs font-black uppercase tracking-wide text-[#8a7354]">
+            Released to {followThrough.output.recipientLabel} · revision {followThrough.output.revision} · live canonical status
+          </p>
+        </div>
+        <Link
+          href={sessionWorkspaceHref(followThrough.sourceRoom.id, "outputs")}
+          className="inline-flex min-h-11 items-center rounded-full border border-fuchsia-300 bg-white px-4 py-2 text-xs font-black text-fuchsia-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700"
+        >
+          Open release source
+        </Link>
+      </div>
+
+      {followThrough.output.intro ? <p className="mt-4 max-w-4xl text-sm font-semibold leading-6 text-[#5f4d37]">{followThrough.output.intro}</p> : null}
+
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Commitments</dt><dd className="mt-1 text-lg font-black text-[#3d3122]">{followThrough.summary.openTaskCount} open · {followThrough.summary.completedTaskCount} done</dd></div>
+        <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Goals</dt><dd className="mt-1 text-lg font-black text-[#3d3122]">{followThrough.summary.activeGoalCount} active · {followThrough.summary.achievedGoalCount} achieved</dd></div>
+        <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Since release</dt><dd className="mt-1 text-lg font-black text-[#3d3122]">{changed} updated</dd></div>
+        <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Visibility</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">Assigned {followThrough.viewerRole === "COACH" ? "coach" : "client"}</dd></div>
+      </dl>
+
+      {followThrough.summary.unavailableCount > 0 ? (
+        <p role="status" className="mt-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-black leading-5 text-amber-950">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {followThrough.summary.unavailableCount} released record{followThrough.summary.unavailableCount === 1 ? " is" : "s are"} no longer available to this client. Quipsly preserves the release receipt instead of silently dropping it.
+        </p>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <section className="rounded-xl border border-fuchsia-100 bg-white p-4" aria-labelledby="follow-through-tasks-heading">
+          <div className="flex items-center gap-2"><ListTodo className="h-4 w-4 text-fuchsia-800" aria-hidden="true" /><h3 id="follow-through-tasks-heading" className="font-black text-[#3d3122]">Commitments now</h3></div>
+          {followThrough.tasks.length ? <ul className="mt-3 space-y-2">{followThrough.tasks.map((task) => {
+            const card = <><span className="flex flex-wrap items-start justify-between gap-2"><span className="text-xs font-black text-[#3d3122]">{task.title}</span><span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusTone(task.status)}`}>{humanize(task.status)}</span></span>{task.detail ? <span className="mt-1 line-clamp-2 block text-xs font-semibold leading-5 text-[#765f40]">{task.detail}</span> : null}{task.changedSinceRelease ? <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">Updated since release · was {humanize(task.releasedStatus)}</span> : <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-800">Matches released state</span>}</>;
+            return <li key={task.id}>{followThrough.canOpenWork && task.availability === "CURRENT" ? <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="block rounded-lg border border-fuchsia-100 p-3 hover:border-fuchsia-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">{card}</Link> : <div className="rounded-lg border border-fuchsia-100 p-3">{card}</div>}</li>;
+          })}</ul> : <p className="mt-3 text-xs font-semibold text-[#765f40]">The released follow-up did not include a client commitment.</p>}
+        </section>
+
+        <section className="rounded-xl border border-violet-100 bg-white p-4" aria-labelledby="follow-through-goals-heading">
+          <div className="flex items-center gap-2"><Target className="h-4 w-4 text-violet-800" aria-hidden="true" /><h3 id="follow-through-goals-heading" className="font-black text-[#3d3122]">Goals now</h3></div>
+          {followThrough.goals.length ? <ul className="mt-3 space-y-2">{followThrough.goals.map((goal) => {
+            const card = <><span className="flex flex-wrap items-start justify-between gap-2"><span className="text-xs font-black text-[#3d3122]">{goal.title}</span><span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusTone(goal.status)}`}>{humanize(goal.status)}</span></span>{goal.latestProgress ? <span className="mt-1 block text-xs font-semibold leading-5 text-[#765f40]">{goal.latestProgress.progressPercent === null ? "Latest check-in recorded" : `${goal.latestProgress.progressPercent}% at latest check-in`}{goal.latestProgress.note ? ` · ${goal.latestProgress.note}` : ""}</span> : null}{goal.changedSinceRelease ? <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">Updated since release · was {humanize(goal.releasedStatus)}</span> : <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-800">Matches released state</span>}</>;
+            return <li key={goal.id}>{followThrough.canOpenWork && goal.availability === "CURRENT" ? <Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="block rounded-lg border border-violet-100 p-3 hover:border-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">{card}</Link> : <div className="rounded-lg border border-violet-100 p-3">{card}</div>}</li>;
+          })}</ul> : <p className="mt-3 text-xs font-semibold text-[#765f40]">The released follow-up did not include a client goal.</p>}
+        </section>
+      </div>
+
+      {followThrough.output.nextSessionFocus ? <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-wide text-violet-900">Bring into this Session</p><p className="mt-1 text-sm font-semibold leading-6 text-[#5f4d37]">{followThrough.output.nextSessionFocus}</p></div> : null}
+
+      <details className="mt-4 rounded-xl border border-fuchsia-200 bg-white/85 p-4">
+        <summary className="cursor-pointer text-xs font-black text-fuchsia-950">Inspect immutable release receipt</summary>
+        <div className="mt-3 space-y-1 text-[10px] font-black uppercase tracking-wide text-[#765f40]"><p>Source Session · {followThrough.sourceRoom.title}</p><p>Released · {dateTime(followThrough.output.releasedAt)}</p><p className="break-all font-mono normal-case tracking-normal">SHA-256 {followThrough.output.contentSha256}</p></div>
+      </details>
+
+      <p className="mt-4 text-[10px] font-black uppercase tracking-wide text-fuchsia-950">
+        Same Nest, purpose, client, and coach · released in Quipsly · same canonical IDs · no copied work · no completion, message, or calendar side effect
+      </p>
+    </section>
+  );
 }
 
 export function PriorSessionContinuityCard({
@@ -201,6 +276,10 @@ export function SessionContinuityCard({
           {notice.message}
         </p>
       ) : null}
+
+      <div className="mt-4">
+        <PriorSessionFollowThroughCard followThrough={continuity.priorFollowThrough} />
+      </div>
 
       <div className="mt-4">
         <PriorSessionContinuityCard prior={continuity.prior} />

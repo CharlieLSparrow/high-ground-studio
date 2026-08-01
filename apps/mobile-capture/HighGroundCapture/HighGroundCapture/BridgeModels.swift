@@ -536,6 +536,85 @@ struct MobileCapturePriorContinuity: Codable, Hashable {
     let externalSideEffects: Bool
 }
 
+struct MobileCaptureFollowThroughTask: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String?
+    let status: String
+    let dueAt: String?
+    let completedAt: String?
+    let updatedAt: String?
+    let availability: String
+    let changedSinceRelease: Bool
+    let releasedStatus: String
+    let releasedContentSha256: String
+}
+
+struct MobileCaptureFollowThroughProgress: Codable, Identifiable, Hashable {
+    let id: String
+    let kind: String
+    let progressPercent: Int?
+    let note: String?
+    let occurredAt: String
+}
+
+struct MobileCaptureFollowThroughGoal: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String
+    let targetAt: String?
+    let achievedAt: String?
+    let updatedAt: String?
+    let availability: String
+    let changedSinceRelease: Bool
+    let releasedStatus: String
+    let releasedContentSha256: String
+    let latestProgress: MobileCaptureFollowThroughProgress?
+}
+
+struct MobileCaptureFollowThroughSourceRoom: Codable, Hashable {
+    let id: String
+    let title: String
+    let projectId: String
+    let scheduledStart: String?
+}
+
+struct MobileCaptureFollowThroughOutput: Codable, Hashable {
+    let id: String
+    let title: String
+    let intro: String?
+    let nextSessionFocus: String?
+    let contentSha256: String
+    let revision: Int
+    let releasedAt: String
+    let recipientLabel: String
+}
+
+struct MobileCaptureFollowThroughSummary: Codable, Hashable {
+    let openTaskCount: Int
+    let completedTaskCount: Int
+    let activeGoalCount: Int
+    let achievedGoalCount: Int
+    let changedSinceReleaseCount: Int
+    let unavailableCount: Int
+}
+
+struct MobileCapturePriorFollowThrough: Codable, Hashable {
+    let schema: String
+    let viewerRole: String
+    let sourceRoom: MobileCaptureFollowThroughSourceRoom
+    let output: MobileCaptureFollowThroughOutput
+    let tasks: [MobileCaptureFollowThroughTask]
+    let goals: [MobileCaptureFollowThroughGoal]
+    let summary: MobileCaptureFollowThroughSummary
+    let relationship: String
+    let canOpenWork: Bool
+    let canonicalRecordsMutated: Bool
+    let currentSessionMutated: Bool
+    let externalSideEffects: Bool
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -612,6 +691,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketStatus: String?
     var clientFollowUp: MobileCaptureClientFollowUp? = nil
     var priorContinuity: MobileCapturePriorContinuity? = nil
+    var priorFollowThrough: MobileCapturePriorFollowThrough? = nil
     var canUseProjectTeamNotes: Bool? = nil
     var sessionNotes: [MobileCaptureSessionNote]? = nil
     let afterCaptureNextAction: String?

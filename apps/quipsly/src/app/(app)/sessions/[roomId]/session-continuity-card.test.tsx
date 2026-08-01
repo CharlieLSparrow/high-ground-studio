@@ -82,6 +82,7 @@ function continuity(saved: SessionContinuityState["saved"] = []): SessionContinu
     },
     saved,
     prior: null,
+    priorFollowThrough: null,
     canSave: true,
   };
 }
@@ -169,5 +170,85 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByText("Carry the exact protected rehearsal forward.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open source Session" })).toHaveAttribute("href", "/sessions/room-previous?mode=work");
     expect(screen.getByText(/current Session unchanged · no AI or external side effects/i)).toBeInTheDocument();
+  });
+
+  it("shows released coaching work as live canonical follow-through without copying it", () => {
+    const state = continuity();
+    state.priorFollowThrough = {
+      schema: "quipsly-session-follow-through-v1",
+      viewerRole: "CLIENT",
+      sourceRoom: {
+        id: "room-previous",
+        title: "Previous coaching rehearsal",
+        projectId: "project-1",
+        scheduledStart: "2026-07-18T16:00:00.000Z",
+      },
+      output: {
+        id: "follow-up-1",
+        title: "Your follow-through",
+        intro: "Use the smallest repeatable version.",
+        nextSessionFocus: "What made the rehearsal easier to repeat?",
+        contentSha256: "e".repeat(64),
+        revision: 2,
+        releasedAt: "2026-07-18T18:00:00.000Z",
+        recipientLabel: "Retained client",
+      },
+      tasks: [{
+        id: "task-1",
+        title: "Run one protected rehearsal",
+        detail: "Write down what changed.",
+        status: "DONE",
+        dueAt: "2026-07-20T18:00:00.000Z",
+        completedAt: "2026-07-19T18:00:00.000Z",
+        updatedAt: "2026-07-19T18:00:00.000Z",
+        availability: "CURRENT",
+        changedSinceRelease: true,
+        releasedStatus: "OPEN",
+        releasedContentSha256: "f".repeat(64),
+      }],
+      goals: [{
+        id: "goal-1",
+        title: "Use a sustainable boundary",
+        description: "Prefer repeatable evidence.",
+        status: "ACTIVE",
+        targetAt: "2026-08-14T18:00:00.000Z",
+        achievedAt: null,
+        updatedAt: "2026-07-19T18:00:00.000Z",
+        availability: "CURRENT",
+        changedSinceRelease: false,
+        releasedStatus: "ACTIVE",
+        releasedContentSha256: "1".repeat(64),
+        latestProgress: {
+          id: "progress-1",
+          kind: "CHECK_IN",
+          progressPercent: 60,
+          note: "The smaller version worked.",
+          occurredAt: "2026-07-19T18:00:00.000Z",
+        },
+      }],
+      summary: {
+        openTaskCount: 0,
+        completedTaskCount: 1,
+        activeGoalCount: 1,
+        achievedGoalCount: 0,
+        changedSinceReleaseCount: 1,
+        unavailableCount: 0,
+      },
+      relationship: "same-project-purpose-client-and-coach",
+      canOpenWork: true,
+      canonicalRecordsMutated: false,
+      currentSessionMutated: false,
+      externalSideEffects: false,
+    };
+
+    render(<SessionContinuityCard roomId="room-1" initial={state} />);
+
+    expect(screen.getByRole("heading", { name: "Your follow-through" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /run one protected rehearsal/i })).toHaveAttribute("href", "/work?task=task-1");
+    expect(screen.getByRole("link", { name: /use a sustainable boundary/i })).toHaveAttribute("href", "/work?goal=goal-1");
+    expect(screen.getByText(/updated since release · was Open/i)).toBeInTheDocument();
+    expect(screen.getByText(/60% at latest check-in/i)).toBeInTheDocument();
+    expect(screen.getByText(/same canonical IDs · no copied work/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open release source" })).toHaveAttribute("href", "/sessions/room-previous?mode=outputs");
   });
 });

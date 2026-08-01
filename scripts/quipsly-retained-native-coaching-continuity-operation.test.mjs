@@ -31,6 +31,9 @@ test("retained native coaching continuity stays local, credential-safe, and comp
   assert.match(runner, /coaching-continuity\)/);
   assert.match(nativeTest, /testPriorCoachingContinuityProjectsIntoExactNextSession/);
   assert.match(nativeTest, /CapturePriorSessionContinuity/);
+  assert.match(nativeTest, /CapturePriorSessionFollowThrough/);
   assert.match(shell, /CapturePriorContinuityOpenSource/);
+  assert.match(shell, /CaptureFollowThroughOpenSource/);
+  assert.match(shell, /no copied work/);
   assert.match(shell, /current Session unchanged/);
 });

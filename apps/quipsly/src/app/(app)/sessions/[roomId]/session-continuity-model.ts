@@ -1,4 +1,5 @@
 export const SESSION_CONTINUITY_SCHEMA = "quipsly-session-continuity-brief-v1" as const;
+export const SESSION_FOLLOW_THROUGH_SCHEMA = "quipsly-session-follow-through-v1" as const;
 
 export type SessionContinuityTag = {
   id: string;
@@ -116,6 +117,77 @@ export type PriorSessionContinuity = {
   externalSideEffects: false;
 };
 
+export type SessionFollowThroughTask = {
+  id: string;
+  title: string;
+  detail: string | null;
+  status: string;
+  dueAt: string | null;
+  completedAt: string | null;
+  updatedAt: string | null;
+  availability: "CURRENT" | "UNAVAILABLE";
+  changedSinceRelease: boolean;
+  releasedStatus: string;
+  releasedContentSha256: string;
+};
+
+export type SessionFollowThroughGoal = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  targetAt: string | null;
+  achievedAt: string | null;
+  updatedAt: string | null;
+  availability: "CURRENT" | "UNAVAILABLE";
+  changedSinceRelease: boolean;
+  releasedStatus: string;
+  releasedContentSha256: string;
+  latestProgress: {
+    id: string;
+    kind: string;
+    progressPercent: number | null;
+    note: string | null;
+    occurredAt: string;
+  } | null;
+};
+
+export type PriorSessionFollowThrough = {
+  schema: typeof SESSION_FOLLOW_THROUGH_SCHEMA;
+  viewerRole: "COACH" | "CLIENT";
+  sourceRoom: {
+    id: string;
+    title: string;
+    projectId: string;
+    scheduledStart: string | null;
+  };
+  output: {
+    id: string;
+    title: string;
+    intro: string | null;
+    nextSessionFocus: string | null;
+    contentSha256: string;
+    revision: number;
+    releasedAt: string;
+    recipientLabel: string;
+  };
+  tasks: SessionFollowThroughTask[];
+  goals: SessionFollowThroughGoal[];
+  summary: {
+    openTaskCount: number;
+    completedTaskCount: number;
+    activeGoalCount: number;
+    achievedGoalCount: number;
+    changedSinceReleaseCount: number;
+    unavailableCount: number;
+  };
+  relationship: "same-project-purpose-client-and-coach";
+  canOpenWork: boolean;
+  canonicalRecordsMutated: false;
+  currentSessionMutated: false;
+  externalSideEffects: false;
+};
+
 export type SessionContinuityState = {
   current: {
     snapshot: SessionContinuitySnapshot;
@@ -124,5 +196,6 @@ export type SessionContinuityState = {
   };
   saved: SavedSessionContinuityBrief[];
   prior: PriorSessionContinuity | null;
+  priorFollowThrough: PriorSessionFollowThrough | null;
   canSave: boolean;
 };

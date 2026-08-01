@@ -5405,3 +5405,38 @@ was restored.
   capture, camera switching, pause/resume, interruption recovery, protected
   upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
   open and must be operated on a real device.
+
+### 2026-07-31 retained coaching shared follow-through checkpoint
+
+- A released client follow-up now projects into the next exact coaching
+  Session as live canonical Tasks, Goals, progress, and next-Session focus.
+  Projection requires the same project, purpose, client, and coach; validates
+  the complete release and record hashes; and fails closed on duplicate,
+  missing, reassigned, moved-project, or tampered work.
+- Nest Prepare and Quipsly Capture share the same status/provenance model. The
+  client gets same-ID Work links; the coach gets read-only status; an unrelated
+  producer receives no card or titles. No Task or Goal is copied into Session
+  2, and no completion, message, Calendar, delivery, AI, or publishing side
+  effect is inferred.
+- The retained client operated the rendered product from Session 2 through Work
+  and completed the exact canonical Task. Session 2 immediately showed `DONE`
+  and `Updated since release · was Open`; the Goal remained `ACTIVE`. Coach and
+  outsider readbacks proved the privilege boundary. Independent PostgreSQL
+  readback proved zero copied work and an unchanged released SHA-256.
+- Four browser screenshots and the receipt remain under
+  `/Volumes/My Passport/Quipsly QA Artifacts/Coaching Follow Through/20260801T014325285Z`.
+  The final compiled Capture operation passed 1/1 and remains at
+  `/private/tmp/quipsly-retained-native-coaching-continuity-1785548417124-30271.xcresult`.
+- Real operation also repaired three adjacent production defects: the Session
+  picker now distinguishes loading from an empty list; the episode manuscript
+  is reachable before shared Watch; and a second rejected bearer during a
+  protected media download deletes the temporary response and signs out while
+  ordinary feature-scoped authorization remains endpoint-owned.
+- Verification passes 193 Nest suites / 977 runnable tests, 180/180
+  cross-surface contracts, 902/902 App Store static checks, all 27 projects on
+  TypeScript 7.0.2, the mobile source-and-network contract, both optimized web
+  builds, schema readiness, explicit diff checks, and the complete local
+  release gate with `LOCAL SOURCE READY`.
+- Production deployment, Build 24 qualification/upload, and physical-iPhone
+  recording remain open. Build 23 stays the canonical public TestFlight target
+  until an exact committed replacement clears the same release boundaries.

@@ -19,6 +19,7 @@ import {
   sessionAccessWhere,
   type SessionAccessActor,
 } from "@/lib/server/session-access";
+import { loadPriorSessionFollowThroughByRoomId } from "@/lib/server/session-follow-through";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EXCERPT_LIMIT = 600;
@@ -376,6 +377,7 @@ export async function loadSessionContinuityState(input: {
       endedAt: true,
       createdAt: true,
       updatedAt: true,
+      booking: { select: { clientUserId: true, coachUserId: true } },
       notes: {
         where: { authorUserId: input.actor.id, kind: "SESSION_NOTE" },
         orderBy: { createdAt: "desc" },
@@ -503,6 +505,11 @@ export async function loadSessionContinuityState(input: {
     },
   });
   const priorByRoomId = await loadPriorSessionContinuityByRoomId({
+    prisma: input.prisma,
+    actor: input.actor,
+    rooms: [room],
+  });
+  const priorFollowThroughByRoomId = await loadPriorSessionFollowThroughByRoomId({
     prisma: input.prisma,
     actor: input.actor,
     rooms: [room],
@@ -640,6 +647,7 @@ export async function loadSessionContinuityState(input: {
     },
     saved,
     prior: priorByRoomId[room.id] ?? null,
+    priorFollowThrough: priorFollowThroughByRoomId[room.id] ?? null,
     canSave: snapshot.notes.length + snapshot.tasks.length + snapshot.goals.length > 0,
   };
 }

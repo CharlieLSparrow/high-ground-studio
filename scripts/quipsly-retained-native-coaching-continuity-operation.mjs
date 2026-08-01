@@ -31,6 +31,51 @@ function requireLoopbackOrigin(value) {
   return url.origin;
 }
 
+function requireLoopbackAuthOrigin(value) {
+  const normalized = String(value || "").trim();
+  const url = new URL(normalized.includes("://") ? normalized : `http://${normalized}`);
+  assert(url.protocol === "http:", "Native retained coaching auth requires loopback HTTP.");
+  assert(
+    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname),
+    "Native retained coaching auth refuses non-loopback Firebase emulators.",
+  );
+  return url.origin;
+}
+
+async function verifyAndWarmCanonicalSession({ baseURL, email, password }) {
+  const authOrigin = requireLoopbackAuthOrigin(
+    process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099",
+  );
+  const signInResponse = await fetch(
+    `${authOrigin}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    },
+  );
+  const signInBody = await signInResponse.json().catch(() => null);
+  assert(
+    signInResponse.status === 200 && typeof signInBody?.idToken === "string",
+    "Retained coach could not authenticate with the local Firebase emulator.",
+  );
+
+  const sessionsResponse = await fetch(`${baseURL}/api/mobile/capture/sessions`, {
+    headers: { authorization: `Bearer ${signInBody.idToken}` },
+  });
+  const sessionsBody = await sessionsResponse.json().catch(() => null);
+  assert(
+    sessionsResponse.status === 200 && sessionsBody?.ok === true,
+    "Nest did not return the authoritative retained Session list.",
+  );
+  assert(
+    Array.isArray(sessionsBody.sessions)
+      && sessionsBody.sessions.some((session) => session?.id === NEXT_ROOM_ID),
+    "The exact retained next Session is missing from Nest's authoritative list.",
+  );
+  return sessionsBody.sessions.length;
+}
+
 function parseArguments(args) {
   const result = { help: false, resultBundle: "" };
   for (let index = 0; index < args.length; index += 1) {
@@ -42,7 +87,7 @@ function parseArguments(args) {
   return result;
 }
 
-function main() {
+async function main() {
   const options = parseArguments(process.argv.slice(2));
   if (options.help) {
     console.log(`Usage:
@@ -60,6 +105,11 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     account: COACH_EMAIL,
   });
   assert(password, "The retained coaching actor has no Keychain password.");
+  const authoritativeSessionCount = await verifyAndWarmCanonicalSession({
+    baseURL,
+    email: COACH_EMAIL,
+    password,
+  });
   const resultBundle = path.resolve(
     options.resultBundle
       || `/private/tmp/quipsly-retained-native-coaching-continuity-${Date.now()}-${process.pid}.xcresult`,
@@ -95,6 +145,8 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     actor: "coach",
     nextRoomID: NEXT_ROOM_ID,
     priorRoomID: PRIOR_ROOM_ID,
+    authoritativeSessionCount,
+    authenticatedSessionPrewarm: true,
     resultBundle,
     artifactPreserved: true,
     credentialsPrinted: false,
@@ -102,4 +154,4 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
   }, null, 2));
 }
 
-main();
+await main();

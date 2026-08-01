@@ -232,6 +232,14 @@ function checkMeetingSpineContractSources() {
   );
   const providerRoomText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomController.swift");
   const authManagerText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift");
+  const authenticatedDataBoundary = authManagerText.slice(
+    authManagerText.indexOf("func authenticatedData("),
+    authManagerText.indexOf("/// Downloads a potentially large authenticated source"),
+  );
+  const authenticatedDownloadBoundary = authManagerText.slice(
+    authManagerText.indexOf("func authenticatedDownload("),
+    authManagerText.indexOf("func stableOwnerSnapshot()"),
+  );
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
@@ -325,7 +333,10 @@ function checkMeetingSpineContractSources() {
   expect(
     authManagerText.includes("the denial belongs to that feature")
       && authManagerText.includes("own decoding and handling every returned HTTP status.")
-      && !authManagerText.includes("AuthenticatedRequestError.sessionRejected")
+      && !authenticatedDataBoundary.includes("AuthenticatedRequestError.sessionRejected")
+      && authenticatedDownloadBoundary.includes("guard retryResult.1.statusCode != 401")
+      && authenticatedDownloadBoundary.includes("removeItem(at: retryResult.0)")
+      && authenticatedDownloadBoundary.includes("AuthenticatedRequestError.sessionRejected")
       && nestChatRouteText.includes('import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";')
       && nestChatRouteText.includes("const session = await getQuipslySessionFromRequest(request);"),
     "nativeFeatureAuthorizationCannotEvictValidAccount",

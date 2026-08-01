@@ -4738,6 +4738,22 @@ private struct CaptureRecorderView: View {
 
                     if session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {
+                        MobileEpisodeManuscriptCard(
+                            client: episodeManuscript,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeManuscript.loadPreview(session: session)
+                            } else {
+                                await episodeManuscript.load(session: session)
+                            }
+                        }
+
                         MobileEpisodeWatchCard(
                             client: episodeWatch,
                             session: session,
@@ -4806,6 +4822,23 @@ private struct CaptureRecorderView: View {
                         errorMessage: model.sessionClient.errorMessage
                     )
 
+                    if let priorFollowThrough = session.priorFollowThrough {
+                        MobilePriorSessionFollowThroughCard(
+                            followThrough: priorFollowThrough,
+                            sourceSessionAvailable: model.sessions.contains(where: {
+                                $0.id == priorFollowThrough.sourceRoom.id
+                            })
+                        ) {
+                            guard let sourceSession = model.sessions.first(where: {
+                                $0.id == priorFollowThrough.sourceRoom.id
+                            }) else {
+                                model.message = "Refresh Sessions to open the exact source Session. The released follow-through and canonical work remain unchanged."
+                                return
+                            }
+                            model.select(sourceSession)
+                        }
+                    }
+
                     if let priorContinuity = session.priorContinuity {
                         MobilePriorSessionContinuityCard(
                             prior: priorContinuity,
@@ -4851,22 +4884,6 @@ private struct CaptureRecorderView: View {
 
                     if session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {
-                        MobileEpisodeManuscriptCard(
-                            client: episodeManuscript,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
-                        ) {
-                            if model.usesPreviewData {
-                                episodeManuscript.loadPreview(session: session)
-                            } else {
-                                await episodeManuscript.load(session: session)
-                            }
-                        }
-
                         MobileEpisodeChatCard(
                             client: episodeChat,
                             session: session,
@@ -5040,6 +5057,167 @@ private struct CaptureRecorderView: View {
                 await episodeWatch.prepareSelectedClip()
             }
         }
+    }
+}
+
+private struct MobilePriorSessionFollowThroughCard: View {
+    let followThrough: MobileCapturePriorFollowThrough
+    let sourceSessionAvailable: Bool
+    let onOpenSource: () -> Void
+    @State private var showsReleaseReceipt = false
+
+    private func humanized(_ value: String) -> String {
+        value.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func statusIcon(_ status: String, unavailable: Bool) -> String {
+        if unavailable { return "questionmark.circle" }
+        if ["DONE", "ACHIEVED"].contains(status.uppercased()) { return "checkmark.circle.fill" }
+        return "circle"
+    }
+
+    private func statusTint(_ status: String, unavailable: Bool) -> Color {
+        if unavailable { return .orange }
+        return ["DONE", "ACHIEVED"].contains(status.uppercased()) ? .green : .purple
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Follow-through for this Session", systemImage: "arrow.triangle.2.circlepath.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.purple)
+
+            Text(followThrough.output.title)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Released to \(followThrough.output.recipientLabel) · live canonical status")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if let intro = followThrough.output.intro?.nonempty {
+                Text(intro)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                StatusChip(
+                    label: "\(followThrough.summary.openTaskCount) open",
+                    tint: followThrough.summary.openTaskCount == 0 ? .green : .orange
+                )
+                StatusChip(
+                    label: "\(followThrough.summary.activeGoalCount) active",
+                    tint: .purple
+                )
+                if followThrough.summary.changedSinceReleaseCount > 0 {
+                    StatusChip(
+                        label: "\(followThrough.summary.changedSinceReleaseCount) updated",
+                        tint: .blue
+                    )
+                }
+            }
+
+            if !followThrough.tasks.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Commitments", systemImage: "checklist")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(followThrough.tasks) { task in
+                        let unavailable = task.availability == "UNAVAILABLE"
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: statusIcon(task.status, unavailable: unavailable))
+                                .foregroundStyle(statusTint(task.status, unavailable: unavailable))
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.title)
+                                    .font(.caption.bold())
+                                Text(unavailable ? "No longer available to this client" : humanized(task.status))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                if task.changedSinceRelease {
+                                    Text(unavailable ? "Changed since release" : "Current status differs from the released snapshot")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureFollowThroughTask_\(task.id)")
+                    }
+                }
+            }
+
+            if !followThrough.goals.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Goals", systemImage: "target")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(followThrough.goals) { goal in
+                        let unavailable = goal.availability == "UNAVAILABLE"
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: statusIcon(goal.status, unavailable: unavailable))
+                                .foregroundStyle(statusTint(goal.status, unavailable: unavailable))
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(goal.title)
+                                    .font(.caption.bold())
+                                Text(unavailable ? "No longer available to this client" : humanized(goal.status))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                if let progress = goal.latestProgress {
+                                    Text(progress.progressPercent.map { "Latest check-in \($0)%" } ?? "Latest check-in recorded")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.purple)
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureFollowThroughGoal_\(goal.id)")
+                    }
+                }
+            }
+
+            if let focus = followThrough.output.nextSessionFocus?.nonempty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Bring into this Session")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.purple)
+                    Text(focus)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            DisclosureGroup(isExpanded: $showsReleaseReceipt) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Revision \(followThrough.output.revision) · \(followThrough.viewerRole.lowercased()) view")
+                    Text("SHA-256 \(followThrough.output.contentSha256)")
+                        .font(.system(.caption2, design: .monospaced))
+                        .lineLimit(1)
+                    Text("The release remains immutable. Statuses above are live reads of the same task and goal IDs.")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+            } label: {
+                Text("Inspect release receipt")
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            Button("Open source Session", action: onOpenSource)
+                .buttonStyle(.bordered)
+                .disabled(!sourceSessionAvailable)
+                .accessibilityIdentifier("CaptureFollowThroughOpenSource")
+
+            Text("Shared only with the assigned coach and client · same Nest and purpose · no copied work · no completion, message, or calendar side effect")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePriorSessionFollowThrough")
     }
 }
 
@@ -9034,7 +9212,20 @@ private struct SessionPickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if model.sessions.isEmpty {
+                if model.isRefreshing && model.sessions.isEmpty {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading sessions from Nest…")
+                            .font(.headline)
+                        Text("Your saved Session stays selected while Quipsly verifies the authoritative list.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 220)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("CaptureSessionPickerLoading")
+                } else if model.sessions.isEmpty {
                     ContentUnavailableView("No sessions", systemImage: "calendar", description: Text("Create a session to keep consent and recordings together."))
                         .accessibilityIdentifier("CaptureSessionPickerEmpty")
                 } else {

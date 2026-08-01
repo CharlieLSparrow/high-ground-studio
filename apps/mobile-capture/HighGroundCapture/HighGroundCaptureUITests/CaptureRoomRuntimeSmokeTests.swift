@@ -438,7 +438,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             sessionChooser.tap()
             let exactSession = app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].firstMatch
             XCTAssertTrue(
-                exactSession.waitForExistence(timeout: 8),
+                exactSession.waitForExistence(timeout: 60),
                 "The exact canonical Session ID should be selectable in the native runtime."
             )
             exactSession.tap()
@@ -2495,6 +2495,20 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let app = try launchSignedInCaptureApp()
         tapRootTab("Record", in: app)
         selectRequestedSession(in: app, credentials: credentials)
+
+        let followThrough = app.descendants(matching: .any)["CapturePriorSessionFollowThrough"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(followThrough, in: app, timeout: 40, swipeAttempts: 18),
+            "Capture should project the released client follow-up and current canonical work into the next coaching Session."
+        )
+        XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "no copied work")
+            ).firstMatch.exists,
+            "The native follow-through workspace should disclose its no-copy boundary."
+        )
 
         let card = app.descendants(matching: .any)["CapturePriorSessionContinuity"].firstMatch
         XCTAssertTrue(

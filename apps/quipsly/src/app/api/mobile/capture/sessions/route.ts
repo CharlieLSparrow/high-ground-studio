@@ -19,6 +19,7 @@ import {
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadPriorSessionContinuityByRoomId } from "@/lib/server/session-continuity";
+import { loadPriorSessionFollowThroughByRoomId } from "@/lib/server/session-follow-through";
 import {
   mobileSessionNoteVisibilityWhere,
   SESSION_NOTE_VISIBLE_KINDS,
@@ -316,6 +317,27 @@ export async function GET(request: Request) {
       scheduledStart: room.scheduledStart,
       endedAt: room.endedAt,
       createdAt: room.createdAt,
+      booking: room.booking ? {
+        clientUserId: room.booking.clientUserId,
+        coachUserId: room.booking.coachUserId,
+      } : null,
+    })),
+  });
+  const priorFollowThroughByRoomId = await loadPriorSessionFollowThroughByRoomId({
+    prisma,
+    actor: session.user,
+    rooms: rooms.map((room: any) => ({
+      id: room.id,
+      title: room.title,
+      purpose: room.purpose,
+      projectId: room.projectId,
+      scheduledStart: room.scheduledStart,
+      endedAt: room.endedAt,
+      createdAt: room.createdAt,
+      booking: room.booking ? {
+        clientUserId: room.booking.clientUserId,
+        coachUserId: room.booking.coachUserId,
+      } : null,
     })),
   });
 
@@ -352,6 +374,7 @@ export async function GET(request: Request) {
       finalizationReceipts,
       captureMediaAssets,
       priorContinuityByRoomId,
+      priorFollowThroughByRoomId,
     }),
     links: {
       today: "/api/mobile/capture/today",
@@ -518,27 +541,41 @@ export async function POST(request: Request) {
     where: { id: room.id },
     include: MOBILE_CAPTURE_ROOM_INCLUDE,
   });
+  const createdRoomIdentity = createdRoom ? {
+    id: createdRoom.id,
+    title: createdRoom.title,
+    purpose: createdRoom.purpose,
+    projectId: createdRoom.projectId,
+    scheduledStart: createdRoom.scheduledStart,
+    endedAt: createdRoom.endedAt,
+    createdAt: createdRoom.createdAt,
+    booking: createdRoom.booking ? {
+      clientUserId: createdRoom.booking.clientUserId,
+      coachUserId: createdRoom.booking.coachUserId,
+    } : null,
+  } : null;
+  const createdPriorContinuity = createdRoomIdentity
+    ? await loadPriorSessionContinuityByRoomId({
+        prisma,
+        actor: session.user,
+        rooms: [createdRoomIdentity],
+      })
+    : {};
+  const createdPriorFollowThrough = createdRoomIdentity
+    ? await loadPriorSessionFollowThroughByRoomId({
+        prisma,
+        actor: session.user,
+        rooms: [createdRoomIdentity],
+      })
+    : {};
 
   const [mapped] = mapMobileCaptureSessionsForUser({
     rooms: createdRoom ? [createdRoom] : [],
     userId,
     isStaff: session.user.isStaff === true,
     productionNoteProjectIds: createdRoom?.projectId ? [createdRoom.projectId] : [],
-    priorContinuityByRoomId: createdRoom
-      ? await loadPriorSessionContinuityByRoomId({
-          prisma,
-          actor: session.user,
-          rooms: [{
-            id: createdRoom.id,
-            title: createdRoom.title,
-            purpose: createdRoom.purpose,
-            projectId: createdRoom.projectId,
-            scheduledStart: createdRoom.scheduledStart,
-            endedAt: createdRoom.endedAt,
-            createdAt: createdRoom.createdAt,
-          }],
-        })
-      : {},
+    priorContinuityByRoomId: createdPriorContinuity,
+    priorFollowThroughByRoomId: createdPriorFollowThrough,
   });
 
   return NextResponse.json(

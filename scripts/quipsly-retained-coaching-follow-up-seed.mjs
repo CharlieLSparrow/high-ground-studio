@@ -481,6 +481,7 @@ async function main() {
       update: {
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         assignedUserId: userByRole.client.id,
         title: "Run one protected rehearsal",
         detail: "Write down what changed and what remained difficult.",
@@ -491,6 +492,7 @@ async function main() {
         id: TASK_ID,
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         assignedUserId: userByRole.client.id,
         title: "Run one protected rehearsal",
         detail: "Write down what changed and what remained difficult.",
@@ -503,6 +505,7 @@ async function main() {
       update: {
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         assignedUserId: userByRole.client.id,
         title: "RETAINED UNREVIEWED MARKER",
         sourceJson: {
@@ -514,6 +517,7 @@ async function main() {
         id: CANDIDATE_TASK_ID,
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         assignedUserId: userByRole.client.id,
         title: "RETAINED UNREVIEWED MARKER",
         sourceJson: {
@@ -527,6 +531,7 @@ async function main() {
       update: {
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         ownerUserId: userByRole.client.id,
         title: "Use a sustainable boundary",
         description: "Prefer repeatable evidence over a perfect performance.",
@@ -537,10 +542,31 @@ async function main() {
         id: GOAL_ID,
         roomId: ROOM_ID,
         bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
         ownerUserId: userByRole.client.id,
         title: "Use a sustainable boundary",
         description: "Prefer repeatable evidence over a perfect performance.",
         targetAt: new Date("2026-08-14T18:00:00.000Z"),
+        sourceJson: { source: "retained-coaching-follow-up-seed" },
+      },
+    });
+    await prisma.goalTaskLink.upsert({
+      where: {
+        goalId_actionItemId: {
+          goalId: GOAL_ID,
+          actionItemId: TASK_ID,
+        },
+      },
+      update: {
+        relationship: "CONTRIBUTES",
+        createdByUserId: userByRole.client.id,
+        sourceJson: { source: "retained-coaching-follow-up-seed" },
+      },
+      create: {
+        goalId: GOAL_ID,
+        actionItemId: TASK_ID,
+        relationship: "CONTRIBUTES",
+        createdByUserId: userByRole.client.id,
         sourceJson: { source: "retained-coaching-follow-up-seed" },
       },
     });

@@ -79,6 +79,7 @@ final class AuthManager: ObservableObject {
     private enum AuthenticatedRequestError: LocalizedError {
         case signInRequired
         case refreshFailed
+        case sessionRejected
         case offlineAccess
         case accountChanged
 
@@ -88,6 +89,8 @@ final class AuthManager: ObservableObject {
                 return "Sign in to continue."
             case .refreshFailed:
                 return "Your Quipsly session could not be refreshed. Sign in again to continue."
+            case .sessionRejected:
+                return "Nest rejected the refreshed Quipsly session. Sign in again to continue."
             case .offlineAccess:
                 return "Nest is unavailable. Quipsly opened the protected local Library; network actions remain disabled until your session is verified again."
             case .accountChanged:
@@ -832,6 +835,11 @@ final class AuthManager: ObservableObject {
         } catch {
             try? FileManager.default.removeItem(at: retryResult.0)
             throw error
+        }
+        guard retryResult.1.statusCode != 401 else {
+            try? FileManager.default.removeItem(at: retryResult.0)
+            signOut()
+            throw AuthenticatedRequestError.sessionRejected
         }
         return retryResult
     }
