@@ -54,10 +54,17 @@ export class DeepgramTranscriptProvider implements TranscriptProvider {
       model: request.model,
       smart_format: String(request.smartFormat),
       punctuate: String(request.punctuate),
-      diarize: String(request.diarize),
       utterances: String(request.utterances),
       paragraphs: String(request.paragraphs),
     });
+    if (request.diarizeModel) {
+      query.set("diarize_model", request.diarizeModel);
+    } else {
+      // Immutable v1 manifests created before diarizer versioning continue to
+      // replay with their original request instead of changing provider truth.
+      query.set("diarize", String(request.diarize));
+    }
+    if (request.multichannel) query.set("multichannel", "true");
     if (request.language) query.set("language", request.language);
 
     let response: Response;

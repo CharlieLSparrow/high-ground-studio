@@ -1560,6 +1560,12 @@ export default function CoachingPage() {
                             <p className="break-all text-xs"><strong>Latest:</strong> {booking.latestCheckoutSessionId}</p>
                           )}
                           <p><strong>Calendar:</strong> {booking.calendarStatus ? normalize(booking.calendarStatus) : "receipt slot empty"}</p>
+                          <a
+                            href={`/api/coaching/bookings/${encodeURIComponent(booking.id)}/calendar`}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-[#fffaf1]"
+                          >
+                            <CalendarIcon size={14} /> Add with iCalendar
+                          </a>
                           {runway?.user?.isStaff === true && (
                             <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
                               <p className="text-[11px] font-black uppercase tracking-wide text-sky-700">Google Calendar</p>

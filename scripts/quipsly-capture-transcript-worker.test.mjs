@@ -13,6 +13,7 @@ import {
   parseCaptureTranscriptResult,
 } from "../packages/quipsly-media-processing/src/index.ts";
 import {
+  DeepgramTranscriptProvider,
   TranscriptProviderError,
 } from "../apps/quipsly-transcript-worker/src/deepgram.ts";
 import {
@@ -88,6 +89,8 @@ function fixture() {
       smartFormat: true,
       punctuate: true,
       diarize: true,
+      diarizeModel: "latest",
+      multichannel: false,
       utterances: true,
       paragraphs: true,
     },
@@ -249,6 +252,44 @@ test("normalizes stable word anchors and speaker-aware playback segments", () =>
       [1, 2, 3, "Reply."],
     ],
   );
+});
+
+test("new batch requests use the versioned diarizer without the deprecated boolean", async () => {
+  let requestedUrl = "";
+  const provider = new DeepgramTranscriptProvider("test-key", async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify(deepgramPayload()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  await provider.transcribe("https://storage.example/source", fixture().manifest.provider);
+  const query = new URL(requestedUrl).searchParams;
+  assert.equal(query.get("diarize_model"), "latest");
+  assert.equal(query.has("diarize"), false);
+  assert.equal(query.has("multichannel"), false);
+});
+
+test("legacy manifests preserve the deprecated request for exact replay", async () => {
+  const legacy = structuredClone(fixture().manifest);
+  delete legacy.provider.diarizeModel;
+  delete legacy.provider.multichannel;
+  const parsed = parseCaptureTranscriptManifest(legacy, jobId);
+  assert.equal(parsed.provider.diarizeModel, null);
+  assert.equal(parsed.provider.multichannel, false);
+
+  let requestedUrl = "";
+  const provider = new DeepgramTranscriptProvider("test-key", async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify(deepgramPayload()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  await provider.transcribe("https://storage.example/source", parsed.provider);
+  const query = new URL(requestedUrl).searchParams;
+  assert.equal(query.get("diarize"), "true");
+  assert.equal(query.has("diarize_model"), false);
 });
 
 test("worker stores provider evidence, completes once, and retires queue", async () => {

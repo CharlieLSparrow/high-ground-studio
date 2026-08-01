@@ -193,6 +193,8 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       smartFormat: true,
       punctuate: true,
       diarize: true,
+      diarizeModel: "latest",
+      multichannel: false,
       utterances: true,
       paragraphs: true,
     },

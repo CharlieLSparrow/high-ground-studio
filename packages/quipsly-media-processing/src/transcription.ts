@@ -55,6 +55,8 @@ export type CaptureTranscriptProviderRequest = {
   smartFormat: true;
   punctuate: true;
   diarize: true;
+  diarizeModel: "latest" | "v1" | "v2" | null;
+  multichannel: boolean;
   utterances: true;
   paragraphs: true;
 };
@@ -480,6 +482,10 @@ function parseSource(value: unknown): CaptureTranscriptSourceBinding {
 function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest {
   const row = record(value);
   const language = row.language == null ? null : normalizedText(row.language);
+  const diarizeModel = row.diarizeModel == null
+    ? null
+    : normalizedText(row.diarizeModel) as CaptureTranscriptProviderRequest["diarizeModel"];
+  const multichannel = row.multichannel == null ? false : row.multichannel;
   const result: CaptureTranscriptProviderRequest = {
     name: "deepgram",
     model: normalizedText(row.model),
@@ -487,6 +493,8 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
     smartFormat: true,
     punctuate: true,
     diarize: true,
+    diarizeModel,
+    multichannel: multichannel === true,
     utterances: true,
     paragraphs: true,
   };
@@ -498,6 +506,8 @@ function parseProviderRequest(value: unknown): CaptureTranscriptProviderRequest 
     || row.smartFormat !== true
     || row.punctuate !== true
     || row.diarize !== true
+    || (diarizeModel !== null && !["latest", "v1", "v2"].includes(diarizeModel))
+    || (row.multichannel != null && typeof row.multichannel !== "boolean")
     || row.utterances !== true
     || row.paragraphs !== true
   ) {

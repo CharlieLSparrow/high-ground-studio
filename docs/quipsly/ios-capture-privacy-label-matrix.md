@@ -1,7 +1,7 @@
 # Quipsly iOS capture privacy label and reviewer matrix
 
-Date: 2026-07-29
-Status: Build 8 external-beta inventory; not legal-reviewed or App Store-submitted
+Date: 2026-08-01
+Status: Build 25 external-beta inventory; not legal-reviewed or App Store-submitted
 Target app: `apps/mobile-capture/HighGroundCapture`
 
 ## Purpose
@@ -19,10 +19,11 @@ This is not legal advice. Before submission, the final App Store Connect privacy
 
 The two canonical marketing policy URLs return HTTP 200 through production.
 The readiness endpoint returns HTTP 200, exposes configuration booleans and
-the equivalent Nest policy URLs, and does not expose secrets. Production
-revision `studio-00425-gij` is at 100% traffic and the complete public mobile
-contract passes 104/104. App Store Connect's Privacy Policy and User Privacy
-Choices URL fields are still empty.
+the equivalent Nest policy URLs, and does not expose secrets. App Store Connect
+now contains both policy URLs, the canonical en-US listing, categories, manual
+release setting, Build 25 assignment, and credential-backed App Review details.
+The exact redacted listing receipt is stored outside Git with the retained QA
+artifacts.
 
 ## Data categories likely involved
 
@@ -31,7 +32,7 @@ Choices URL fields are still empty.
 | Contact Info | account email, display name, coaching contact email, optional phone | Yes | Yes | No | Needed for sign-in, scheduling, coaching follow-up, and account support. |
 | User Content | recordings, transcripts, notes, action items, field notes, podcast/session artifacts | Yes | Yes | No | Core product data. Original recordings should be preserved until verification/retention policy says otherwise. |
 | Audio Data | microphone recordings, provider/server-mix recordings | Yes | Yes | No | Requires explicit consent and visible recording state. |
-| Photos or Videos | solo camera-and-microphone movies, video-only podcast camera sources, immutable camera-switch segments | Yes | Yes | No | Build 8 can capture from either iPhone camera. Video consent and visible recording state are required, and source boundaries are preserved across camera switches and pauses. |
+| Photos or Videos | solo camera-and-microphone movies, video-only podcast camera sources, immutable camera-switch segments | Yes | Yes | No | Build 25 can capture from either iPhone camera. Video consent and visible recording state are required, and source boundaries are preserved across camera switches and pauses. |
 | Other User Content | uploaded chunks, recording manifests, transcript corrections, coaching packets | Yes | Yes | No | Use clear retention and deletion review language. |
 | Purchases | Stripe checkout/session/payment evidence for eligible one-to-one coaching | Conditional | Yes | No | Stripe is evidence only. Do not use this for SaaS, courses, group coaching, or digital goods inside iOS. |
 | Identifiers | Quipsly user ID, Firebase/auth subject, device/session IDs | Yes | Yes | No | Needed for authentication, upload ownership, recovery, and support. |
@@ -104,15 +105,15 @@ Reviewer instructions should explicitly say:
 
 ## Current gaps before App Store submission
 
-- Build 8 is waiting for Apple external TestFlight review. Its synthetic
-  reviewer account/session, real reachable contact, localized beta metadata,
-  external group/build assignment, and intended tester are configured. Approval,
-  notification, installation, app-owned version readback, and physical
-  operation remain open.
+- Build 25 is valid, in external beta testing, assigned to the external rehearsal
+  group, reachable through the public TestFlight link, and assigned to iOS App
+  Version 1.0. Its synthetic reviewer account and real reachable App Review
+  contact are configured. Physical installation, app-owned version readback,
+  and device operation remain open.
 - Production operation of the account-deletion executor against one disposable
   eligible account, including completion confirmation and a sanitized durable
   execution receipt.
-- Physical-iPhone Build 8 TestFlight validation of microphone fidelity,
+- Physical-iPhone Build 25 TestFlight validation of microphone fidelity,
   Bluetooth/wired/USB routes, lock/background, interruption, route loss, force
   quit, reboot, direct-GCS background recovery, solo video, podcast-camera
   video, camera switching, segment upload, and assembled playback.
@@ -121,8 +122,8 @@ Reviewer instructions should explicitly say:
   plus account-holder approval of the retention matrix and final
   Terms/Privacy/App Store answers.
 - Final legal/privacy review, Xcode archive privacy report, and App Store
-  Connect privacy-label reconciliation. The live provider privacy workflow is
-  completely unstarted as of the 2026-07-28 read-only audit.
+  Connect privacy-label reconciliation. The canonical engineering inventory is
+  ready, but the account holder must confirm the final declarations.
 - Five approved App Store screenshots from the physical/TestFlight candidate.
   The canonical listing metadata is maintained and source-valid; its strict
   submission gate remains red until those assets and delivery proofs exist.

@@ -1,7 +1,7 @@
 # Quipsly Capture App Store listing
 
-Date: 2026-07-24
-Status: source-complete, submission-blocked
+Date: 2026-08-01
+Status: safe provider metadata applied and read back; submission blocked
 
 The canonical English (U.S.) listing is
 [`release/app-store/quipsly-capture/en-US.json`](../../release/app-store/quipsly-capture/en-US.json).
@@ -25,6 +25,22 @@ The second command must remain red until all screenshot files are present at
 their declared dimensions, each is explicitly approved, the blocker list is
 empty, and readiness is changed to `ready`.
 
+Apply or read back the safe listing fields with the API-backed operator:
+
+```bash
+pnpm quipsly:capture:app-store-listing
+pnpm quipsly:capture:app-store-listing --apply \
+  --review-contact-first-name <name> \
+  --review-contact-last-name <name> \
+  --review-contact-email <email> \
+  --review-contact-phone <phone>
+```
+
+Read-only planning is the default. Apply mode reads the demo password from
+macOS Keychain, writes safe metadata and the exact validated build, then reads
+everything back. Its mode-0600 receipt stores only hashes for reviewer contact
+and demo-account identity; it never prints or stores the password or API key.
+
 ## Listing direction
 
 - Name: **Quipsly Capture**
@@ -38,11 +54,11 @@ empty, and readiness is changed to `ready`.
   `https://quipsly.com/privacy/account-deletion`
 - Release: manual after App Review approval
 
-The category and copyright values are strong working recommendations, not proof
-of the App Store Connect account holder's legal selections. The account holder
-must confirm those values together with age rating, content rights, DSA trader
-status, and territory availability before the packet can become submission
-ready.
+These categories, copyright, manual release, the en-US listing, policy URLs,
+Build 25, and App Review details are now applied and read back in App Store
+Connect. The account holder still must confirm the legal copyright owner, age
+rating, content rights, DSA trader status, pricing, and territory availability
+before the packet can become submission ready.
 
 Apple permits 1–10 screenshots. The canonical plan uses five portrait
 screenshots in one accepted 6.9-inch size, `1320 x 2868`, so App Store Connect
@@ -95,16 +111,22 @@ canonical approved-assets directory. Re-run the same five stories on the exact
 signed candidate or its TestFlight install with the approved reviewer account,
 then inspect and approve those final captures separately.
 
+The 2026-08-01 6.9-inch draft run produced five valid `1320 x 2868` images and
+was visually inspected. Record, Library, and Account communicate the intended
+trust story. Today and Work need a quieter synthetic final composition, and all
+preview banners must disappear in the signed-candidate recapture. The complete
+draft bundle is retained outside Git under the Quipsly QA artifacts volume.
+
 ## Submission ownership
 
 Reviewer credentials belong only in App Store Connect's App Review Information,
 never in Git, screenshots, shell history, or shared logs. The checked-in packet
-contains the safe review journey and points to the detailed review-notes draft.
+contains the safe review journey and points to the current review notes.
 
 The current blocker ledger is intentionally stored in the canonical JSON. It
-includes production route parity, policy redirect deployment, legal/account
-holder selections, reviewer state, screenshots, physical-iPhone proof,
-TestFlight proof, App Privacy answers, and production account-deletion proof.
+now contains only legal/account-holder selections, signed-candidate screenshots,
+physical-iPhone proof, App Privacy answers, and production account-deletion
+proof.
 Removing a blocker requires evidence from the actual delivery layer; changing
 the JSON alone is not evidence.
 

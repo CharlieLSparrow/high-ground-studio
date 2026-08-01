@@ -570,6 +570,7 @@ function checkTranscriptPacketContractSources() {
   const transcriptProcessingText = sourceText("apps/quipsly/src/lib/server/capture-transcript-processing.ts");
   const transcriptReconciliationText = sourceText("apps/quipsly/src/lib/server/capture-transcript-reconciliation.ts");
   const transcriptContractText = sourceText("packages/quipsly-media-processing/src/transcription.ts");
+  const transcriptProviderText = sourceText("apps/quipsly-transcript-worker/src/deepgram.ts");
   const packetBuilderText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const coachingPacketDomainText = sourceText("packages/quipsly-domain/src/coaching-packet.ts");
   const lifecycleSmokeText = sourceText("scripts/quipsly-coaching-local-lifecycle-db-smoke.mjs");
@@ -609,6 +610,11 @@ function checkTranscriptPacketContractSources() {
       && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
       && transcriptProcessingText.includes("newCaptureTranscriptManifest")
       && transcriptProcessingText.includes("diarize: true")
+      && transcriptProcessingText.includes('diarizeModel: "latest"')
+      && transcriptProcessingText.includes("multichannel: false")
+      && transcriptProviderText.includes('query.set("diarize_model", request.diarizeModel)')
+      && transcriptProviderText.includes('query.set("diarize", String(request.diarize))')
+      && transcriptProviderText.includes('query.set("multichannel", "true")')
       && transcriptProcessingText.includes("utterances: true")
       && transcriptProcessingText.includes("source: \"capture-transcript-background-worker\"")
       && transcriptContractText.includes("CAPTURE_TRANSCRIPT_RAW_PREFIX")
@@ -685,6 +691,10 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("reviewRequired: true")
       && packetBuilderText.includes("reusedExistingPacket")
       && packetBuilderText.includes("buildTranscriptPacketReviewLanes")
+      && packetBuilderText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v2"')
+      && packetBuilderText.includes('visibility: "AUTHOR_PRIVATE"')
+      && packetBuilderText.includes("reviewLaneDefinitionsForPurpose")
+      && packetBuilderText.includes("fact-checks-and-rights")
       && packetBuilderText.includes("quote-candidates")
       && packetBuilderText.includes("article-seeds")
       && packetBuilderText.includes("next-session-prep")

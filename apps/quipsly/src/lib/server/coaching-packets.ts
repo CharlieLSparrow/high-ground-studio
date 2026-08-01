@@ -19,6 +19,10 @@ type BuildCoachingPacketArgs = {
   force?: boolean;
 };
 
+type SessionPacketPurpose = "COACHING" | "PODCAST" | "RESEARCH_INTERVIEW" | "INTERNAL_MEETING";
+
+const SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v2";
+
 const ACTION_PATTERNS = [
   /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
   /\b(i'll|we'll|you'll|let's|follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
@@ -33,44 +37,83 @@ const REVIEW_LANE_DEFINITIONS = [
     label: "Client follow-up notes",
     meaning: "Candidate notes that may become client-facing recap material after human review.",
     pattern: /\b(client|coachee|you|goal|stuck|decision|commitment|homework|follow up|next step)\b/i,
+    purposes: ["COACHING"],
+  },
+  {
+    id: "coaching-insights",
+    label: "Insights and decisions",
+    meaning: "Candidate insights and decisions to review without exposing private coach interpretation.",
+    pattern: /\b(insight|realized|learned|decision|decided|pattern|meaning|important|changed|understand)\b/i,
+    purposes: ["COACHING"],
+  },
+  {
+    id: "obstacles-and-support",
+    label: "Obstacles and support",
+    meaning: "Candidate obstacles, resources, and support to revisit with the client.",
+    pattern: /\b(stuck|block|obstacle|hard|difficult|support|help|resource|accountability|challenge)\b/i,
+    purposes: ["COACHING"],
   },
   {
     id: "goals-and-tasks",
     label: "Goals and tasks",
     meaning: "Candidate commitments, goals, and todos that may become Nest tasks or coaching goals.",
     pattern: /\b(goal|task|todo|to-do|commit|commitment|before next|for next|need to|should|will|finish|prepare)\b/i,
+    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
   },
   {
     id: "next-session-prep",
     label: "Next-session prep",
     meaning: "Material that helps prepare the next coaching, podcast, or research session.",
     pattern: /\b(next session|next time|before we meet|bring back|follow up|prep|prepare|homework|review)\b/i,
+    purposes: ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"],
   },
   {
     id: "podcast-production",
     label: "Podcast and episode notes",
     meaning: "Candidate beats, episode notes, title ideas, and production hooks for podcast or video work.",
     pattern: /\b(podcast|episode|clip|short|youtube|video|publish|title|hook|segment|chapter|article|post)\b/i,
+    purposes: ["PODCAST"],
+  },
+  {
+    id: "fact-checks-and-rights",
+    label: "Fact checks and source rights",
+    meaning: "Claims, sources, clips, sponsors, and rights questions to verify before publication.",
+    pattern: /\b(fact|check|source|citation|claim|rights|license|permission|copyright|sponsor|verify)\b/i,
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "quote-candidates",
     label: "Quote candidates",
     meaning: "Memorable lines that may become quote cards, social copy, article pull quotes, or QuipLore seeds.",
     pattern: /\b(remember|truth|lesson|means|because|story|wisdom|quote|important|realized|learned)\b/i,
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "article-seeds",
     label: "Article and post seeds",
     meaning: "Ideas that may become articles, posts, book notes, or research packets.",
     pattern: /\b(article|post|write|draft|book|research|source|example|lesson|story|framework|principle)\b/i,
+    purposes: ["PODCAST", "RESEARCH_INTERVIEW"],
   },
   {
     id: "clip-candidates",
     label: "Clip candidates",
     meaning: "Moments with enough shape or energy to review as possible short clips.",
     pattern: /\?|\b(wait|wow|love|huge|funny|story|example|realized|important|problem|answer|mistake)\b/i,
+    purposes: ["PODCAST"],
   },
 ] as const;
+
+function packetPurpose(value: unknown): SessionPacketPurpose {
+  return ["COACHING", "PODCAST", "RESEARCH_INTERVIEW", "INTERNAL_MEETING"].includes(cleanText(value))
+    ? cleanText(value) as SessionPacketPurpose
+    : "COACHING";
+}
+
+export function reviewLaneDefinitionsForPurpose(value: unknown) {
+  const purpose = packetPurpose(value);
+  return REVIEW_LANE_DEFINITIONS.filter((lane) => (lane.purposes as readonly string[]).includes(purpose));
+}
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -286,8 +329,8 @@ function segmentPreview(segment: any) {
 
 export { buildTranscriptPacketBrief } from "@high-ground/quipsly-domain/coaching-packet";
 
-function buildTranscriptPacketReviewLanes(segments: any[], highlights: any[], actionSegments: any[]) {
-  const laneCandidates = REVIEW_LANE_DEFINITIONS.map((lane) => {
+function buildTranscriptPacketReviewLanes(purpose: SessionPacketPurpose, segments: any[], highlights: any[], actionSegments: any[]) {
+  const laneCandidates = reviewLaneDefinitionsForPurpose(purpose).map((lane) => {
     const seen = new Set<string>();
     const matches = [];
     const pool = lane.id === "goals-and-tasks" || lane.id === "next-session-prep"
@@ -324,7 +367,11 @@ function buildTranscriptPacketReviewLanes(segments: any[], highlights: any[], ac
   }));
 }
 
-function summarizeSegments(segments: any[], brief: ReturnType<typeof buildTranscriptPacketBrief>) {
+function summarizeSegments(
+  purpose: SessionPacketPurpose,
+  segments: any[],
+  brief: ReturnType<typeof buildTranscriptPacketBrief>,
+) {
   const speakerCounts = new Map<string, number>();
   for (const segment of segments) {
     const speaker = cleanText(segment.speakerLabel) || "Unknown speaker";
@@ -340,7 +387,11 @@ function summarizeSegments(segments: any[], brief: ReturnType<typeof buildTransc
   const closing = segments.slice(-3).map(segmentLine);
 
   return [
-    "Candidate session summary generated from transcript timing and speaker labels.",
+    purpose === "PODCAST"
+      ? "Candidate podcast production packet generated from transcript timing and speaker labels."
+      : purpose === "COACHING"
+        ? "Candidate private coaching packet generated from transcript timing and speaker labels."
+        : "Candidate session packet generated from transcript timing and speaker labels.",
     "",
     `Range: ${duration}`,
     `Speaker turn map: ${speakers.length ? speakers.join(", ") : "No speaker labels available"}`,
@@ -358,7 +409,7 @@ function summarizeSegments(segments: any[], brief: ReturnType<typeof buildTransc
     "Closing context:",
     ...(closing.length ? closing : ["- No closing transcript segments available."]),
     "",
-    "Review note: this is a deterministic first packet, not a final coaching interpretation. Human review should adjust emphasis, names, and follow-up commitments.",
+    "Review note: this is a deterministic candidate packet, not a final interpretation or publication. Human review must adjust emphasis, names, visibility, and follow-through commitments.",
   ].join("\n");
 }
 
@@ -403,6 +454,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
   }
 
   const packetTitle = `Transcript packet: ${job.id}`;
+  const purpose = packetPurpose(job.room?.purpose);
   const existing = await args.prisma.coachingNote.findFirst({
     where: {
       roomId: job.roomId,
@@ -431,6 +483,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       roomId: job.roomId,
       summaryNoteId: existing.id,
       packetBuildId: cleanText(existingSource.packetBuildId) || null,
+      packetPurpose: packetPurpose(existingSource.packetPurpose || purpose),
       actionCandidateIds: existingActionCandidates.map((candidate) => candidate.id),
       actionCandidateCount: existingActionCandidates.length,
       actionItemCount: committedActionItems.length,
@@ -459,12 +512,14 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     recordingAssetId: job.assetId,
     roomId: job.roomId,
     provider: job.provider,
+    packetPurpose: purpose,
+    packetTemplateVersion: SESSION_PACKET_TEMPLATE_VERSION,
     generatedAt: new Date().toISOString(),
     deterministic: true,
     reviewRequired: true,
   };
 
-  const reviewLanes = buildTranscriptPacketReviewLanes(job.segments, highlights, actionSegments);
+  const reviewLanes = buildTranscriptPacketReviewLanes(purpose, job.segments, highlights, actionSegments);
   const packetBrief = buildTranscriptPacketBrief(job.segments, highlights, actionSegments);
   const actionCandidates: TranscriptActionCandidate[] = actionSegments.map((segment: any) => transcriptActionCandidate({
     segment,
@@ -480,8 +535,9 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
       bookingId: job.room?.bookingId ?? null,
       authorUserId: args.authorUserId || null,
       kind: "SUMMARY",
+      visibility: "AUTHOR_PRIVATE",
       title: packetTitle,
-      body: summarizeSegments(job.segments, packetBrief),
+      body: summarizeSegments(purpose, job.segments, packetBrief),
       sourceJson: {
         ...sourceJson,
         packetBrief,
@@ -505,6 +561,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
         bookingId: job.room?.bookingId ?? null,
         authorUserId: args.authorUserId || null,
         kind: "HIGHLIGHT",
+        visibility: "AUTHOR_PRIVATE",
         title: titleFromSegment(segment),
         body: segmentLine(segment),
         sourceJson: {
@@ -525,6 +582,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     roomId: job.roomId,
     summaryNoteId: summaryNote.id,
     packetBuildId,
+    packetPurpose: purpose,
     highlightNoteIds: highlightNotes.map((note: any) => note.id),
     actionCandidateIds: actionCandidates.map((candidate) => candidate.id),
     actionItemIds: [],

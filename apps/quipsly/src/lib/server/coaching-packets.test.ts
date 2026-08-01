@@ -5,6 +5,7 @@ import {
   buildTranscriptPacketBrief,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
+  reviewLaneDefinitionsForPurpose,
   selectLatestCorrelatedPacketNotes,
 } from "./coaching-packets";
 import { mobileCaptureTranscriptProcessingGate } from "./mobile-capture-processing-gates";
@@ -23,7 +24,7 @@ function completedTranscriptJob() {
     provider: "test-provider",
     status: "COMPLETED",
     asset: { id: "asset-1", roomId: "room-1" },
-    room: { bookingId: "booking-1", booking: { id: "booking-1" } },
+    room: { bookingId: "booking-1", purpose: "COACHING", booking: { id: "booking-1" } },
     segments: [
       {
         id: "segment-action",
@@ -89,6 +90,11 @@ describe("transcript coaching packet action review boundary", () => {
         committedActionItemId: null,
       }),
     ]);
+    expect(summaryWrite).toMatchObject({ visibility: "AUTHOR_PRIVATE" });
+    expect(summaryWrite?.sourceJson).toMatchObject({
+      packetPurpose: "COACHING",
+      packetTemplateVersion: "quipsly-session-packet-v2",
+    });
     expect(summaryWrite?.sourceJson.packetBrief).toMatchObject({
       kind: "quipsly-transcript-packet-brief-v1",
       candidateOnly: true,
@@ -104,6 +110,29 @@ describe("transcript coaching packet action review boundary", () => {
       actionItemCount: 0,
       actionItemIds: [],
     }));
+  });
+
+  it("keeps coaching and podcast review lanes purpose-specific", () => {
+    const coaching = reviewLaneDefinitionsForPurpose("COACHING").map((lane) => lane.id);
+    const podcast = reviewLaneDefinitionsForPurpose("PODCAST").map((lane) => lane.id);
+    expect(coaching).toEqual([
+      "client-follow-up",
+      "coaching-insights",
+      "obstacles-and-support",
+      "goals-and-tasks",
+      "next-session-prep",
+    ]);
+    expect(podcast).toEqual([
+      "goals-and-tasks",
+      "next-session-prep",
+      "podcast-production",
+      "fact-checks-and-rights",
+      "quote-candidates",
+      "article-seeds",
+      "clip-candidates",
+    ]);
+    expect(coaching).not.toContain("podcast-production");
+    expect(podcast).not.toContain("client-follow-up");
   });
 
   it("keeps decisions, goals, questions, commitments, and key moments in separate source-linked candidate lanes", () => {
