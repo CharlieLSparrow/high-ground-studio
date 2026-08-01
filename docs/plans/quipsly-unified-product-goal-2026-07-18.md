@@ -5702,3 +5702,34 @@ was restored.
 - This is local simulator product proof, not physical-iPhone TestFlight proof.
   Actual microphone/camera capture, interruption recovery, upload, playback,
   timeline alignment, and same-ID production readback remain open.
+
+### 2026-08-01 calendar projection spine and rendered Schedule checkpoint
+
+- Exact implementation source `64294dc2a7162b757fed0bb91e0fddac35c9bc30`
+  adds provider-independent connection, collection, projection, cursor,
+  append-only receipt, and hashed feed-capability models without replacing the
+  existing coaching calendar evidence. Database constraints require each
+  connection and collection to have exactly one person or Nest owner boundary.
+- The authenticated calendar overview reads only the signed-in person's and
+  accessible Nests' safe status fields. It authenticates before database
+  access, forbids shared caching, fails closed, and never returns credentials,
+  provider calendar IDs, sync/feed tokens, attendee lists, granted scopes, or
+  raw provider failures.
+- Schedule now separates Coaching, Podcast Production, and My Calendar instead
+  of presenting a vague sync switch. Each card states included facts, forbidden
+  private data, recommended provider, honest fallback, verification state, and
+  latest redacted effect receipt. Configuration alone cannot claim a connected
+  provider, and a personal Google connection cannot verify managed coaching.
+- Prisma format/generate/validate, TypeScript, 11 focused checks, the full 199-
+  suite / 1,003-test Quipsly run, and the optimized 151-route build pass. All 34
+  migrations replayed twice in a disposable database with idempotency and zero
+  schema drift.
+- A retained Keychain-backed `.test` user operated the loopback Schedule on
+  desktop and `390x844` phone width. Independent API/schema readback, private
+  screenshots, clean session removal, zero browser/server failures, and zero
+  external effects are retained under
+  `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/calendar-projection-spine-64294dc2-e/`.
+- This checkpoint does not claim connected-account Google OAuth, a live
+  subscription feed, provider reconciliation, production migration/deployment,
+  or a real-calendar create/reschedule/cancel acceptance. Those stay held until
+  the relevant adapter, token, revocation, privacy, and conflict gates pass.

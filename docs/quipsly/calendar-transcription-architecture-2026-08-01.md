@@ -439,6 +439,13 @@ This checkpoint does not claim Google OAuth, subscription-feed delivery,
 provider reconciliation, or production deployment. Those remain in Slices 2
 and 3 and must pass the real-calendar acceptance gates above before release.
 
+Exact implementation source `64294dc2a7162b757fed0bb91e0fddac35c9bc30`
+passed an empty-database replay of all 34 migrations, idempotent second replay,
+and zero Prisma schema drift. A retained `.test` user then operated the local
+rendered Schedule at desktop and phone width and proved the authenticated,
+redacted overview contract with no provider or external effect. Evidence is
+recorded in `docs/coordination/2026-08-01-calendar-projection-spine.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:
