@@ -2,6 +2,28 @@
 
 Date: 2026-08-01
 
+## Retained production Capture-session checkpoint
+
+- A verified, Keychain-backed synthetic `.test` identity now owns the durable
+  production podcast Session
+  `QA Retained · Capture Build 25 longitudinal session · 2026-08-01`.
+- The exact Session/call-room `cmsa2xxoo001i01s639zmnn5u` is `PLANNED`, exposes
+  one participant and an explicit `REQUESTED` consent receipt, reports
+  `needs-consent`, and correctly refuses recording. No provider join/token,
+  recording, transcript, invitation, calendar event, Stripe operation, or
+  publication occurred.
+- A read-only rerun authenticated through Firebase and Quipsly's native-session
+  boundary, read the Home Nest and ten retained Sessions, selected this exact
+  Session by title, and passed participant, consent, lifecycle, and safe-record
+  checks without creating a duplicate.
+- The live proof now creates missing evidence directories, writes atomically,
+  pins expected retained-session identity, and stores receipts as mode `0600`.
+  Exact evidence and the retained-artifact operating boundary are in
+  `docs/coordination/2026-08-01-retained-production-capture-session.md`.
+- This gives future Capture builds a stable longitudinal test world. Physical
+  TestFlight installation, consented audio/video, upload, transcript, timeline,
+  and same-ID Studio playback remain separate open boundaries.
+
 ## Episode Room editor navigation production checkpoint
 
 - Exact source `811a29db16d1493032b2ccc285438bd5b45854ab` is serving

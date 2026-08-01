@@ -5612,6 +5612,32 @@ was restored.
 - Physical-iPhone TestFlight capture remains open. Build 24 remains the
   canonical public TestFlight target.
 
+### 2026-08-01 retained production Capture-session checkpoint
+
+- Established a durable, verified, Keychain-backed synthetic production user
+  as Quipsly's longitudinal Capture operator instead of deleting every useful
+  QA world. The account retains ten private Sessions and now owns exact podcast
+  Session `cmsa2xxoo001i01s6s7bo95a4`, titled
+  `QA Retained · Capture Build 25 longitudinal session · 2026-08-01`.
+- The production mobile boundary returns the same call-room identity, one
+  participant, explicit `REQUESTED` consent, `needs-consent`,
+  `canRecordNow=false`, LiveKit readiness, zero recordings, and no transcript.
+  No consent was granted, provider token requested, room joined, recording
+  started, invite sent, calendar event created, payment attempted, or item
+  published.
+- The durable proof wrapper now creates evidence parents, uses a mode-`0600`
+  temporary receipt, and atomically replaces the final JSON so a failed rerun
+  cannot destroy the last good proof. Exact-title selection fails closed and
+  prevents a growing QA corpus from silently proving the wrong Session.
+- Static reviewer contracts and a second read-only production run passed. The
+  rerun selected the exact retained Session from ten visible Sessions and
+  created no duplicate. The private 16,186-byte receipt is retained at
+  `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-reviewer-session.json`.
+- This establishes the durable state for future notes, tasks, goals, tags,
+  consented recordings, uploads, transcripts, and editor timelines. It does not
+  substitute for Build 25 installation and operation on a CoreDevice-visible
+  physical iPhone.
+
 ### 2026-08-01 retained iPhone tagging and runtime-quality checkpoint
 
 - Confirmed the intended taxonomy boundary instead of adding a circular

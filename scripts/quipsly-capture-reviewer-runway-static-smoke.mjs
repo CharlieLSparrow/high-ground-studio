@@ -154,7 +154,10 @@ const appStoreReadiness = read(paths.appStoreReadiness);
   "passwordPrinted: false",
   "providerSecretsExposed: false",
   "QUIPSLY_CAPTURE_REVIEWER_CREATE_SESSION",
-  "mkdir -p \"$(dirname \"${OUTPUT_JSON}\")\"",
+  "umask 077",
+  "mktemp \"${OUTPUT_DIR}/.quipsly-capture-reviewer-proof.XXXXXX\"",
+  "chmod 600 \"${PROOF_TEMP}\"",
+  "mv -f \"${PROOF_TEMP}\" \"${OUTPUT_JSON}\"",
   "--password-keychain-service",
   "--create-session",
 ].forEach((marker) => assertIncludes(liveReviewerProof, marker, paths.liveReviewerProof));

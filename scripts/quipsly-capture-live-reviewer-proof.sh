@@ -9,13 +9,18 @@ SERVICE="${QUIPSLY_CAPTURE_REVIEWER_PASSWORD_KEYCHAIN_SERVICE:-quipsly-capture-r
 ACCOUNT="${QUIPSLY_CAPTURE_REVIEWER_PASSWORD_KEYCHAIN_ACCOUNT:-${EMAIL}}"
 CREATE_SESSION="${QUIPSLY_CAPTURE_REVIEWER_CREATE_SESSION:-1}"
 OUTPUT_JSON="${QUIPSLY_CAPTURE_REVIEWER_PROOF_JSON:-/tmp/quipsly-capture-reviewer-live-proof.json}"
+OUTPUT_DIR="$(dirname "${OUTPUT_JSON}")"
+
+# Proof receipts contain private QA identity and internal record identifiers.
+# Keep newly created files private even if the caller has a permissive umask.
+umask 077
 
 if [[ "${CREATE_SESSION}" != "0" && "${CREATE_SESSION}" != "1" ]]; then
   echo "ERROR: QUIPSLY_CAPTURE_REVIEWER_CREATE_SESSION must be 0 or 1." >&2
   exit 1
 fi
 
-mkdir -p "$(dirname "${OUTPUT_JSON}")"
+mkdir -p "${OUTPUT_DIR}"
 
 echo "Quipsly capture live reviewer proof"
 echo "root=${ROOT_DIR}"
@@ -28,7 +33,7 @@ echo "output_json=${OUTPUT_JSON}"
 echo
 
 write_missing_keychain_json() {
-  mkdir -p "$(dirname "${OUTPUT_JSON}")"
+  mkdir -p "${OUTPUT_DIR}"
   node - "${OUTPUT_JSON}" "${BASE_URL}" "${EMAIL}" "${SERVICE}" "${ACCOUNT}" "${CREATE_SESSION}" <<'NODE'
 const fs = require("node:fs");
 const [outputJson, baseUrl, email, service, account, createSession] = process.argv.slice(2);
@@ -49,6 +54,7 @@ fs.writeFileSync(outputJson, JSON.stringify({
   truth: "The live reviewer proof did not run because the reviewer password was not available in macOS Keychain. This is an operator setup blocker, not evidence that the capture product failed.",
 }, null, 2) + "\n");
 NODE
+  chmod 600 "${OUTPUT_JSON}"
 }
 
 if ! security find-generic-password -s "${SERVICE}" -a "${ACCOUNT}" -w >/dev/null 2>&1; then
@@ -75,13 +81,23 @@ node "${ROOT_DIR}/scripts/quipsly-capture-reviewer-runway-static-smoke.mjs"
 
 echo
 echo "== Live reviewer visible-session proof =="
+PROOF_TEMP="$(mktemp "${OUTPUT_DIR}/.quipsly-capture-reviewer-proof.XXXXXX")"
+cleanup_proof_temp() {
+  rm -f "${PROOF_TEMP}"
+}
+trap cleanup_proof_temp EXIT
+
 node "${ROOT_DIR}/scripts/quipsly-capture-reviewer-session-smoke.mjs" \
   --base-url="${BASE_URL}" \
   --email="${EMAIL}" \
   --password-keychain-service="${SERVICE}" \
   --password-keychain-account="${ACCOUNT}" \
   --create-session="${CREATE_SESSION}" \
-  --json | tee "${OUTPUT_JSON}"
+  --json | tee "${PROOF_TEMP}"
+
+chmod 600 "${PROOF_TEMP}"
+mv -f "${PROOF_TEMP}" "${OUTPUT_JSON}"
+trap - EXIT
 
 echo
 echo "Live reviewer proof complete. Password was read from Keychain and was not printed."
