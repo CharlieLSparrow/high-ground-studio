@@ -67,6 +67,7 @@
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",
+    "quipsly:retained:production-project-web-readback": "node scripts/quipsly-retained-production-project-web-readback.mjs",
     "quipsly:retained:coaching-continuity": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-coaching-continuity-browser-smoke.mjs",
     "quipsly:retained:coaching-follow-through": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-coaching-follow-through-browser-smoke.mjs",
     "quipsly:retained:native-coaching-continuity": "node scripts/quipsly-retained-native-coaching-continuity-operation.mjs",
