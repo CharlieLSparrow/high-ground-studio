@@ -5474,3 +5474,37 @@ was restored.
   switching, pause/resume, interruption and process-death recovery, protected
   upload, playback, timeline alignment, and same-ID Nest/Studio readback remain
   open until operated on an enumerated physical device.
+
+### 2026-07-31 honest recorder-to-editor checkpoint
+
+- Exact implementation source `dfb837465d4720ed2f069df5edf80f7b32cc6b12`
+  removes prototype starter media from new recorder rooms and editor timelines.
+  An empty episode is now honestly empty; transcript-only artifacts remain
+  transcript-only; planned-but-unplayed clip cues no longer masquerade as media;
+  and a recording with no playable track no longer receives a fake audio spine.
+- Recorder and editor now share one typed clip-playback contract. A played clip
+  records immutable source URL and source in/out evidence against the shared
+  recording clock. The editor materializes only that played range at the event's
+  actual timestamp, while preserving a bounded legacy-label reader for older
+  retained rooms.
+- The rendered retained operation used the dedicated Keychain-backed `.test`
+  media operator and canonical private QA Nest. It retained episode
+  `qa-retained-editor-truth-20260731`, a synthetic manuscript, and one watched
+  `00:02-00:18` source range, then opened that same production in the editor.
+  Readback proved recording-room hydration, no placeholder media, no browser
+  exception, no external side effect, and no outer overflow at `1440x1000`.
+- Doing the real operation exposed and repaired two adjacent UX failures. The
+  recorder had exposed controls before canonical database hydration completed,
+  allowing fast edits and autosave to race saved state. Controls and autosave
+  now remain sealed until canonical hydration resolves. The editor's three-card
+  production cockpit used intrinsic-width grid tracks and overflowed its normal
+  desktop work area; shrink-safe tracks and source wrapping now keep it bounded.
+- Focused recorder/editor suites pass 10/10, episode-media contracts pass 3/3,
+  the complete 111-check cross-surface Capture contract passes, Quipsly-domain
+  and app TypeScript checks pass, and the optimized Next 16.2.7 build succeeds
+  for all 150 routes. The retained operation is idempotent and its latest run
+  truthfully reported `mutationsPerformed: false` because the corpus was already
+  current.
+- This is local rendered-product and optimized-build proof. A guarded Cloud Run
+  preview/promotion for this exact source and physical-iPhone TestFlight capture
+  remain open; Build 24 stays the canonical public TestFlight build.

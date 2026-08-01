@@ -161,6 +161,22 @@ results, opens project and global Work over the same IDs, and finishes on a
 phone-width Today surface. It performs no product mutation or external action,
 captures no screenshot or trace, and explicitly clears its Nest session.
 
+Operate one retained recorder-to-editor episode through the rendered product
+with:
+
+```bash
+QUIPSLY_RETAINED_PRODUCT_BASE_URL=http://127.0.0.1:3012 \
+pnpm quipsly:retained:recording-editor
+```
+
+The operation signs in through the real login form, waits until canonical room
+hydration has finished, retains a synthetic manuscript and one watched source
+range, proves autosave, and opens the same episode in the editor. It rejects
+placeholder media, verifies the exact `00:02-00:18` watched range, checks outer
+desktop overflow, reports whether it actually mutated anything, captures no
+credential artifact, and clears the rendered session. Repeated runs reuse the
+same retained episode instead of creating another fixture.
+
 To create and retain a new project plus tagged Task, private document-kernel
 Note, and active Goal through the compiled iPhone app, use:
 
