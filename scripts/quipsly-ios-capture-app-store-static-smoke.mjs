@@ -395,11 +395,16 @@ requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exp
 requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPPED"', "Capture sends the exact bounded missed-occurrence decision reason");
 requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
+requireIncludes(capturePhoneShellText, "CapturePacketReviewLanesCard", "the production phone recorder reaches persisted transcript packet note lanes");
+requireIncludes(capturePhoneShellText, "Internal review only · no note, task, goal, client delivery, message, calendar event, or publication", "packet lane review states its no-side-effect boundary on the phone");
+requireIncludes(capturePhoneShellText, "Preview shows the production review workflow without changing saved packet state.", "packet lane preview remains demonstrative and read-only");
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
 requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
 requireIncludes(mobileText, "CaptureClientFollowUpAcknowledge_", "the native follow-up card exposes an explicit acknowledgement control");
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
+requireIncludes(bridgeText, '"callRoomId": session.callRoomId', "packet lane review targets the canonical call-room identity rather than the local session row ID");
+requireIncludes(bridgeText, "func reviewPacketLane", "the native bridge owns the bounded packet lane review mutation");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");
 requireIncludes(canonicalTaskStatusText, "historicalRecordPreserved: true", "canonical missed-occurrence receipts declare preserved history");

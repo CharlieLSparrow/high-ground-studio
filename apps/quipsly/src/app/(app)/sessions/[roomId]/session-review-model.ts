@@ -41,6 +41,29 @@ export type SessionReviewGoalCandidate = {
   committedGoalId: string | null;
 };
 
+export type SessionReviewLaneStatus =
+  | "READY_FOR_HUMAN_REVIEW"
+  | "APPROVED_FOR_INTERNAL_USE"
+  | "NEEDS_REVISION"
+  | "REJECTED_BY_HUMAN";
+
+export type SessionReviewLane = {
+  id: string;
+  label: string;
+  status: SessionReviewLaneStatus | string;
+  itemCount: number;
+  meaning: string;
+  sourceTruth: string;
+  reviewRule: string;
+  humanApprovalRequired: boolean;
+  externalSideEffects: boolean;
+  humanReview?: {
+    status?: string | null;
+    note?: string | null;
+    reviewedAt?: string | null;
+  } | null;
+};
+
 export type SessionReviewPacket = {
   ok: boolean;
   error?: string;
@@ -60,6 +83,7 @@ export type SessionReviewPacket = {
     highlights: Array<{ id: string; title: string | null; body: string; createdAt: string | null }>;
     actionCandidates: SessionReviewCandidate[];
     goalCandidates?: SessionReviewGoalCandidate[];
+    reviewLanes?: SessionReviewLane[];
     actionItems: Array<{ id: string; title: string; detail: string | null; status: string; dueAt: string | null; source: Record<string, unknown> }>;
     nextAction: string;
     safeActions?: Array<{
@@ -134,6 +158,26 @@ export function candidateReviewRequest(input: {
     decision: input.decision,
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.detail !== undefined ? { detail: input.detail } : {}),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+  };
+}
+
+export function packetLaneReviewRequest(input: {
+  packet: SessionReviewPacket;
+  lane: SessionReviewLane;
+  status: SessionReviewLaneStatus;
+  note?: string;
+}) {
+  const summaryNoteId = input.packet.packet?.summary?.id;
+  const transcriptJobId = input.packet.transcriptJob?.id;
+  const roomId = input.packet.room?.id;
+  if (!summaryNoteId || !transcriptJobId || !roomId || !input.lane.id.trim()) return null;
+  return {
+    callRoomId: roomId,
+    transcriptJobId,
+    summaryNoteId,
+    laneId: input.lane.id,
+    status: input.status,
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
   };
 }

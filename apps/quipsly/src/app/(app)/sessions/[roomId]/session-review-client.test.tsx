@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
-import type { SessionReviewGoalCandidate } from "./session-review-model";
+import type { SessionReviewGoalCandidate, SessionReviewPacket } from "./session-review-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
 
@@ -27,7 +27,7 @@ const candidate: SessionReviewGoalCandidate = {
   committedGoalId: null,
 };
 
-function packet(goalCandidate = candidate) {
+function packet(goalCandidate = candidate): SessionReviewPacket {
   return {
     ok: true,
     room: { id: "room-1", title: "Coaching review", purpose: "COACHING", status: "ENDED" },
@@ -54,6 +54,18 @@ function packet(goalCandidate = candidate) {
       highlights: [],
       actionCandidates: [],
       goalCandidates: [goalCandidate],
+      reviewLanes: [{
+        id: "client-follow-up",
+        label: "Client follow-up notes",
+        status: "READY_FOR_HUMAN_REVIEW",
+        itemCount: 1,
+        meaning: "Candidate recap material for the client or coachee.",
+        sourceTruth: "Derived from transcript packet summary evidence only.",
+        reviewRule: "Human approval is required before client delivery.",
+        humanApprovalRequired: true,
+        externalSideEffects: false,
+        humanReview: null,
+      }],
       actionItems: [],
       nextAction: "Review the packet.",
     },
@@ -183,6 +195,51 @@ describe("Session review goal candidates", () => {
     expect(
       fetchMock.mock.calls.some(([url]) => String(url).includes("/transcripts/")),
     ).toBe(false);
+  });
+
+  it("persists source-grounded packet lane review without creating downstream work", async () => {
+    const reviewed = packet();
+    reviewed.packet!.reviewLanes![0] = {
+      ...reviewed.packet!.reviewLanes![0],
+      status: "APPROVED_FOR_INTERNAL_USE",
+      humanApprovalRequired: false,
+      humanReview: {
+        status: "APPROVED_FOR_INTERNAL_USE",
+        note: "Useful recap once the client-safe wording is authored deliberately.",
+        reviewedAt: "2026-08-01T18:30:00.000Z",
+      },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packet()))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }))
+      .mockResolvedValueOnce(jsonResponse(reviewed));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findByRole("heading", { name: "Review notes by purpose" })).toBeInTheDocument();
+    expect(screen.getByText(/does not make the text a canonical Session note or authorize client delivery/i)).toBeInTheDocument();
+    expect(screen.getByText(/creates no canonical note, task, goal, client delivery, message, calendar event, or publication/i)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Review note"), "Useful recap once the client-safe wording is authored deliberately.");
+    await user.click(screen.getByRole("button", { name: "Approve inside Quipsly" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet");
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "PATCH",
+      body: JSON.stringify({
+        callRoomId: "room-1",
+        transcriptJobId: "job-1",
+        summaryNoteId: "summary-1",
+        laneId: "client-follow-up",
+        status: "APPROVED_FOR_INTERNAL_USE",
+        note: "Useful recap once the client-safe wording is authored deliberately.",
+      }),
+    });
+    expect(await screen.findByText(/No canonical note, task, goal, client delivery, message, calendar event, or publication was created/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reopen for review" })).toBeInTheDocument();
+    expect(screen.getByText("Useful recap once the client-safe wording is authored deliberately.")).toBeInTheDocument();
   });
 
   it("builds the available review packet from the exact transcript without forcing a rebuild", async () => {

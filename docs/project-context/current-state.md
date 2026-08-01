@@ -2,6 +2,26 @@
 
 Date: 2026-08-01
 
+## Source-grounded transcript packet note-lane checkpoint
+
+- Nest now makes every persisted coaching/podcast packet purpose lane directly
+  reviewable with approve-for-internal-use, needs-revision, reject, and reopen
+  decisions. Review notes and status survive reload on the canonical summary.
+- Capture reads the same saved lane projection, targets the canonical
+  `callRoomId`, and exposes the bounded decision sheet in the Session recorder.
+  Approval creates no canonical note, task, goal, client delivery, message,
+  calendar event, Studio mutation, or publication.
+- Operating the focused iPhone preview exposed and fixed a SwiftUI
+  accessibility-identifier inheritance bug; the card, lane rows, sheet, and
+  buttons now retain distinct identities.
+- Three focused web/model/server suites pass 46 tests, TypeScript passes, the
+  Capture/App Store static gate passes 933 checks, and the operated iPhone 17
+  Pro Max simulator journey passes. No Cloud Run revision, TestFlight build, or
+  production packet was replaced; eligible released transcript operation still
+  waits on the transcript-worker/provider gate.
+- Exact implementation and verification evidence are recorded in
+  `docs/coordination/2026-08-01-app-store-calendar-transcription-batch.md`.
+
 ## Production Capture cross-device project-system checkpoint
 
 - The compiled Build 25 iPhone product created a retained production Project,

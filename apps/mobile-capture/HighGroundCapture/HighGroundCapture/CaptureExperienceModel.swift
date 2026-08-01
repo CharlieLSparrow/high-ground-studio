@@ -2432,7 +2432,8 @@ extension MobileCaptureSession {
                 purpose: "COACHING",
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
-                scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60))
+                scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
+                packetReviewLanes: capturePreviewPacketReviewLanes
             ),
             capturePreview(
                 id: "preview-podcast-consent",
@@ -2532,7 +2533,8 @@ extension MobileCaptureSession {
         canTranscribe: Bool = false,
         scheduledStart: String?,
         scheduledEnd: String? = nil,
-        captureSources: [MobileCaptureSourceSummary] = []
+        captureSources: [MobileCaptureSourceSummary] = [],
+        packetReviewLanes: [MobileCapturePacketReviewLane] = []
     ) -> MobileCaptureSession {
         let audioConsentGranted = consentGranted && (canRecordAudio ?? true)
         let videoConsentGranted = consentGranted && (canRecordVideo ?? true)
@@ -2635,18 +2637,19 @@ extension MobileCaptureSession {
                 : captureSources.allSatisfy(\.isPromotedToStudio)
                     ? "promoted"
                     : "ready-to-promote",
-            latestTranscriptJobId: nil,
-            latestTranscriptStatus: nil,
-            latestTranscriptProvider: nil,
-            latestTranscriptSegmentCount: nil,
-            coachingPacketSummaryNoteId: nil,
-            coachingPacketTitle: nil,
-            coachingPacketPreview: nil,
-            coachingPacketHighlightCount: nil,
-            coachingPacketActionItemCount: nil,
-            coachingPacketLatestActivityAt: nil,
+            latestTranscriptJobId: packetReviewLanes.isEmpty ? nil : "preview-transcript-job",
+            latestTranscriptStatus: packetReviewLanes.isEmpty ? nil : "COMPLETED",
+            latestTranscriptProvider: packetReviewLanes.isEmpty ? nil : "preview-provider",
+            latestTranscriptSegmentCount: packetReviewLanes.isEmpty ? nil : 3,
+            coachingPacketSummaryNoteId: packetReviewLanes.isEmpty ? nil : "preview-packet-summary",
+            coachingPacketTitle: packetReviewLanes.isEmpty ? nil : "Source-grounded Session brief",
+            coachingPacketPreview: packetReviewLanes.isEmpty ? nil : "Review each purpose lane before creating canonical work.",
+            coachingPacketHighlightCount: packetReviewLanes.isEmpty ? nil : 1,
+            coachingPacketActionItemCount: packetReviewLanes.isEmpty ? nil : 0,
+            coachingPacketLatestActivityAt: packetReviewLanes.isEmpty ? nil : ISO8601DateFormatter().string(from: Date()),
             coachingPacketFirstOpenActionItemId: nil,
-            coachingPacketStatus: nil,
+            coachingPacketStatus: packetReviewLanes.isEmpty ? nil : "READY_FOR_REVIEW",
+            coachingPacketReviewLanes: packetReviewLanes.isEmpty ? nil : packetReviewLanes,
             canUseProjectTeamNotes: true,
             sessionNotes: [
                 MobileCaptureSessionNote(
@@ -2670,5 +2673,54 @@ extension MobileCaptureSession {
             afterCaptureNextAction: "Record a local source, then verify upload.",
             nextAction: readiness.nextAction
         )
+    }
+
+    private static var capturePreviewPacketReviewLanes: [MobileCapturePacketReviewLane] {
+        [
+            MobileCapturePacketReviewLane(
+                id: "client-follow-up",
+                label: "Client follow-up notes",
+                status: "READY_FOR_HUMAN_REVIEW",
+                itemCount: 1,
+                meaning: "Candidate recap material for the client or coachee.",
+                sourceTruth: "Derived from transcript packet summary evidence only.",
+                reviewRule: "Human approval is required before client delivery.",
+                humanApprovalRequired: true,
+                externalSideEffects: false,
+                humanReview: nil
+            ),
+            MobileCapturePacketReviewLane(
+                id: "goals-and-tasks",
+                label: "Goals and tasks",
+                status: "NEEDS_REVISION",
+                itemCount: 1,
+                meaning: "Candidate commitments that may become tasks, goals, or next-session prep.",
+                sourceTruth: "Derived from transcript-backed candidates that are not committed work.",
+                reviewRule: "Review candidate by candidate before assigning or promising work.",
+                humanApprovalRequired: true,
+                externalSideEffects: false,
+                humanReview: MobileCapturePacketLaneHumanReview(
+                    status: "NEEDS_REVISION",
+                    note: "Clarify ownership before committing anything.",
+                    reviewedAt: "2026-08-01T12:00:00Z",
+                    reviewedByUserId: "preview-reviewer",
+                    externalSideEffects: false,
+                    deliveryClaimed: false,
+                    publicationClaimed: false
+                )
+            ),
+            MobileCapturePacketReviewLane(
+                id: "podcast-production",
+                label: "Podcast production",
+                status: "READY_FOR_HUMAN_REVIEW",
+                itemCount: 1,
+                meaning: "Candidate clips, beats, and production notes for an episode.",
+                sourceTruth: "Derived from the same transcript packet; no edit or publication is implied.",
+                reviewRule: "A producer must review before routing anything into Studio.",
+                humanApprovalRequired: true,
+                externalSideEffects: false,
+                humanReview: nil
+            ),
+        ]
     }
 }

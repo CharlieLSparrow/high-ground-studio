@@ -161,6 +161,38 @@ function sourceJson(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+export function mobilePacketReviewLanes(summary: any) {
+  const saved = sourceJson(summary?.sourceJson).reviewLanes;
+  if (!Array.isArray(saved)) return [];
+  return saved.flatMap((value) => {
+    const lane = sourceJson(value);
+    const id = label(lane.id)?.trim();
+    if (!id) return [];
+    const humanReview = sourceJson(lane.humanReview);
+    const reviewedStatus = label(humanReview.status);
+    return [{
+      id,
+      label: label(lane.label),
+      status: label(lane.status),
+      itemCount: Number.isFinite(Number(lane.itemCount)) ? Math.max(0, Math.floor(Number(lane.itemCount))) : 0,
+      meaning: label(lane.meaning),
+      sourceTruth: label(lane.sourceTruth),
+      reviewRule: label(lane.reviewRule),
+      humanApprovalRequired: lane.humanApprovalRequired === true,
+      externalSideEffects: lane.externalSideEffects === true,
+      humanReview: reviewedStatus ? {
+        status: reviewedStatus,
+        note: label(humanReview.note),
+        reviewedAt: label(humanReview.reviewedAt),
+        reviewedByUserId: label(humanReview.reviewedByUserId),
+        externalSideEffects: humanReview.externalSideEffects === true,
+        deliveryClaimed: humanReview.deliveryClaimed === true,
+        publicationClaimed: humanReview.publicationClaimed === true,
+      } : null,
+    }];
+  });
+}
+
 function isProviderRecordingReceiptSlot(asset: any) {
   const manifest = sourceJson(asset?.localManifestJson);
   return asset?.kind === "SERVER_MIX" && manifest.source === "provider-recording-receipt-slot";
@@ -862,6 +894,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       : [];
     const packetSummary = packetNotesForLatestTranscript.find((note: any) => note.kind === "SUMMARY") || null;
     const packetHighlights = packetNotesForLatestTranscript.filter((note: any) => note.kind === "HIGHLIGHT");
+    const packetReviewLanes = mobilePacketReviewLanes(packetSummary);
     const sessionNotes = room.notes
       .filter((note: any) => DELIBERATE_SESSION_NOTE_KINDS.has(note.kind))
       .map((note: any) => {
@@ -1132,6 +1165,7 @@ export function mapMobileCaptureSessionsForUser(input: {
           : latestTranscriptStatus === "COMPLETED"
             ? "PACKET_READY_TO_BUILD"
             : "NOT_READY",
+      coachingPacketReviewLanes: packetReviewLanes,
       clientFollowUp: clientFollowUp ? {
         id: clientFollowUp.id,
         status: clientFollowUp.status,

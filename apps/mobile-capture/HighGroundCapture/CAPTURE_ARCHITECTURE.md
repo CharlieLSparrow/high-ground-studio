@@ -229,6 +229,27 @@ Every network action requires a currently verified Quipsly session, not merely t
 
 Native account entry supports sign-in, account creation, email verification, and enumeration-safe password recovery. Firebase password credentials are not enough by themselves: the app resolves current `accounts:lookup` state and requires a verified mailbox before it writes any credential or offline identity to Keychain or asks Nest to merge an identity. The same verification check runs after token refresh. Creating an identity does not grant Capture beta recording/upload access; Nest remains the access authority. Google-origin accounts are directed to use the same email, password recovery when available, or Quipsly's web Google sign-in/support path rather than creating a duplicate identity.
 
+### Transcript packet note-lane review
+
+Capture projects packet review lanes from the canonical Session response. Each
+lane carries its saved status, item count, meaning, source-truth statement,
+review rule, and optional human-review receipt. If a just-completed mutation is
+newer than Session reload, the response may be displayed only when its
+`roomId` equals the selected Session's canonical `callRoomId`.
+
+Approving a lane means **approved for internal use** only. It creates no
+canonical note, task, goal, delivery, message, calendar event, Studio mutation,
+or publication. Those remain deliberate workflows with their own authorization
+and receipts. Capture has no separate offline approval ledger; a decision
+requires a verified online actor and the server rechecks transcript release
+evidence. Preview mode renders realistic lanes and keeps every mutation button
+disabled.
+
+Accessibility identifiers belong to the actual disclosure label, each lane
+button, the sheet marker, and each decision button. They must not be attached
+to the enclosing `DisclosureGroup`, because SwiftUI may propagate that
+identifier and erase the identity of every child decision.
+
 ## Server authorization requirements
 
 Every capture mutation validates the authenticated actor and the requested object graph. Client-provided slugs and IDs are lookup hints, not authorization.

@@ -531,6 +531,35 @@ source-of-truth architecture:
   the exact shipping facts and privacy-manifest data types but deliberately
   keeps legal/privacy publication account-holder gated.
 
+## 2026-08-01 source-grounded packet note-lane review checkpoint
+
+The transcript packet's purpose lanes are now reachable decisions rather than
+passive JSON. Nest renders every saved lane with its count, meaning, exact
+source-truth statement, review rule, prior reviewer note, and current status.
+The reviewer can approve the lane for continued internal use, request revision,
+reject it, or reopen it. Every request is correlated to the canonical Session,
+transcript job, and summary note before the server rechecks transcript release
+evidence and persists the decision.
+
+Capture receives the same saved lane projection in `MobileCaptureSession` and
+uses the existing packet PATCH contract. There is no offline or device-local
+approval ledger: a network mutation requires the current verified actor, and a
+subsequent Session load is authoritative. The deterministic iPhone preview
+shows realistic coaching and podcast lanes but disables all decisions.
+
+Lane approval is deliberately narrower than note/task creation or delivery. It
+means only that the source-grounded lane is useful inside Quipsly. It never
+creates a canonical Session note, task, goal, calendar event, client follow-up,
+message, Studio edit, or publication. A coach must deliberately author a
+visibility-scoped Session Note, accept a source-linked task or goal candidate,
+and separately assemble and release any client-safe follow-up.
+
+This slice passed focused web/model/server tests, strict TypeScript, the 933-
+check Capture/App Store static contract, native compilation, and an operated
+iPhone simulator journey. Production operation remains correctly gated on an
+eligible released transcript and the durable transcript worker described
+above; no TestFlight or Cloud Run release was replaced for this checkpoint.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:

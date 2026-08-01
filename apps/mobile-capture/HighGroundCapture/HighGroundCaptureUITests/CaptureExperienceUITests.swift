@@ -550,6 +550,35 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("never sends a message"))
     }
 
+    func testPacketNoteLanesExposeSourceTruthAndKeepPreviewReviewReadOnly() {
+        app.tabBars.buttons["Record"].tap()
+        let lanesToggle = app.descendants(matching: .any)["CapturePacketReviewLanesToggle"].firstMatch
+        reveal(lanesToggle)
+        XCTAssertTrue(lanesToggle.isHittable)
+        lanesToggle.tap()
+
+        let clientLane = app.descendants(matching: .any)["CapturePacketReviewLane_client-follow-up"].firstMatch
+        reveal(clientLane)
+        XCTAssertTrue(clientLane.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "no note, task, goal, client delivery")
+        ).firstMatch.exists)
+        clientLane.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketLaneReviewSheet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Derived from transcript packet summary evidence only")
+        ).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "creates no canonical note")
+        ).firstMatch.exists)
+        let approve = app.buttons["CapturePacketLaneApprove"].firstMatch
+        reveal(approve)
+        XCTAssertTrue(approve.exists)
+        XCTAssertFalse(approve.isEnabled, "Preview must demonstrate lane review without mutating saved packet state.")
+        XCTAssertTrue(app.staticTexts["Preview shows the production review workflow without changing saved packet state."].exists)
+    }
+
     func testCanonicalSessionNoteEditMakesRevisionAudienceAndNestTagsObviousWithoutFakingPreviewWrites() {
         app.tabBars.buttons["Record"].tap()
         let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch

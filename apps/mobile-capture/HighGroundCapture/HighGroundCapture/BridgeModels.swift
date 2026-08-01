@@ -689,6 +689,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketLatestActivityAt: String?
     let coachingPacketFirstOpenActionItemId: String?
     let coachingPacketStatus: String?
+    var coachingPacketReviewLanes: [MobileCapturePacketReviewLane]? = nil
     var clientFollowUp: MobileCaptureClientFollowUp? = nil
     var priorContinuity: MobileCapturePriorContinuity? = nil
     var priorFollowThrough: MobileCapturePriorFollowThrough? = nil
@@ -5781,6 +5782,7 @@ final class CaptureSessionClient: ObservableObject {
                 coachingPacketLatestActivityAt: session.coachingPacketLatestActivityAt,
                 coachingPacketFirstOpenActionItemId: session.coachingPacketFirstOpenActionItemId,
                 coachingPacketStatus: session.coachingPacketStatus,
+                coachingPacketReviewLanes: session.coachingPacketReviewLanes,
                 afterCaptureNextAction: session.afterCaptureNextAction,
                 nextAction: update?.nextAction ?? session.nextAction
             )
@@ -5966,6 +5968,7 @@ final class CaptureSessionClient: ObservableObject {
                 coachingPacketLatestActivityAt: session.coachingPacketLatestActivityAt,
                 coachingPacketFirstOpenActionItemId: session.coachingPacketFirstOpenActionItemId,
                 coachingPacketStatus: session.coachingPacketStatus,
+                coachingPacketReviewLanes: session.coachingPacketReviewLanes,
                 afterCaptureNextAction: session.afterCaptureNextAction,
                 nextAction: update?.nextAction ?? session.nextAction
             )
@@ -6693,7 +6696,7 @@ final class CaptureSessionClient: ObservableObject {
 
         do {
             var body: [String: Any] = [
-                "callRoomId": session.id,
+                "callRoomId": session.callRoomId,
                 "laneId": laneId,
                 "status": reviewStatus,
             ]

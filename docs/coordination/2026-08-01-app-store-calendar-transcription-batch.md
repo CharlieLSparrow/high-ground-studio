@@ -112,6 +112,16 @@ External evidence:
 - Coaching packets stay author-private and expose coaching-only lanes.
 - Podcast packets expose production, fact-check/rights, quote, article, clip,
   preparation, and task lanes without creating work automatically.
+- Nest now exposes each saved packet lane as an explicit human decision:
+  approve for internal use, request revision, reject, or reopen. The mutation is
+  bound to the canonical room, transcript job, and summary note and stores the
+  reviewer note and no-external-effect receipt on the packet summary.
+- Capture projects those same persisted lanes on the Session recorder. It does
+  not maintain a second mobile review state, and its review request now uses the
+  canonical `callRoomId` rather than the local Session record ID.
+- Both surfaces state that lane approval creates no canonical note, task, goal,
+  client delivery, message, calendar event, or publication. Deliberate Session
+  Notes and client follow-up release remain separate workflows.
 
 ## Verification
 
@@ -134,6 +144,18 @@ External evidence:
   `/Volumes/My Passport/QuipslyBuild/CalendarFinal-20260801/CalendarFinal.xcresult`.
 - Optimized Nest production build: pass, including the new calendar route.
 - `git diff --check`: pass.
+- Packet note-lane web/model/server tests: 46/46 across the focused suites.
+- Capture static App Store gate after packet-lane integration: 933/933.
+- Focused native packet-lane UI acceptance on iPhone 17 Pro Max simulator:
+  pass. The test expanded the three-lane card, opened the source-grounded client
+  follow-up lane, read the no-side-effect boundary, and proved preview mutation
+  controls disabled. Result bundle:
+  `/Volumes/My Passport/CodexDerivedData/quipsly-packet-lanes-20260801/Logs/Test/Test-HighGroundCapture-2026.08.01_07-24-29--0600.xcresult`.
+
+The first native pass also found and fixed an accessibility defect: a
+DisclosureGroup-level identifier was inherited by every lane row. Identifiers
+now live on the actual disclosure label, lane buttons, sheet marker, and action
+buttons, so assistive technology can distinguish the decisions.
 
 ## Live preview acceptance
 

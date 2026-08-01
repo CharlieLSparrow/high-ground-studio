@@ -1,8 +1,9 @@
-import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, timestampForSeconds } from "./session-review-model";
+import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, packetLaneReviewRequest, timestampForSeconds } from "./session-review-model";
 
 describe("session review model", () => {
   const packet: any = {
     ok: true,
+    room: { id: "room-1" },
     transcriptJob: { id: "job-1", asset: { id: "asset-1" } },
     packet: {
       build: { packetBuildId: "build-1", correlationMode: "PACKET_BUILD_ID" },
@@ -62,5 +63,18 @@ describe("session review model", () => {
       description: "One real review each week.",
     });
     expect(goalCandidateReviewRequest({ packet, candidate: { ...goalCandidate, committedGoalId: "goal-1", reviewStatus: "ACCEPTED_AS_GOAL" }, decision: "ACCEPT" })).toBeNull();
+  });
+
+  it("binds packet lane review to the canonical room, transcript, and summary", () => {
+    const lane: any = { id: "client-follow-up", status: "READY_FOR_HUMAN_REVIEW" };
+    expect(packetLaneReviewRequest({ packet, lane, status: "APPROVED_FOR_INTERNAL_USE", note: "  Reviewed for internal use.  " })).toEqual({
+      callRoomId: "room-1",
+      transcriptJobId: "job-1",
+      summaryNoteId: "summary-1",
+      laneId: "client-follow-up",
+      status: "APPROVED_FOR_INTERNAL_USE",
+      note: "Reviewed for internal use.",
+    });
+    expect(packetLaneReviewRequest({ packet: { ...packet, room: null }, lane, status: "NEEDS_REVISION" })).toBeNull();
   });
 });

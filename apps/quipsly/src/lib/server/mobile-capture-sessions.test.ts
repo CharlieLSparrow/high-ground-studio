@@ -12,6 +12,7 @@ import {
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProject,
+  mobilePacketReviewLanes,
   releasedClientFollowUpForUser,
   registeredParticipantConsentSummary,
 } from "./mobile-capture-sessions";
@@ -20,6 +21,54 @@ import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "./mobile-capture-consent-readiness.js";
+
+describe("mobile packet review lane projection", () => {
+  it("projects only persisted lane review truth and preserves no-side-effect receipts", () => {
+    expect(mobilePacketReviewLanes({
+      sourceJson: {
+        reviewLanes: [{
+          id: "client-follow-up",
+          label: "Client follow-up notes",
+          status: "APPROVED_FOR_INTERNAL_USE",
+          itemCount: 1,
+          meaning: "Candidate recap material.",
+          sourceTruth: "Derived from transcript packet evidence only.",
+          reviewRule: "Human approval is required before client delivery.",
+          humanApprovalRequired: false,
+          externalSideEffects: false,
+          humanReview: {
+            status: "APPROVED_FOR_INTERNAL_USE",
+            note: "Useful internally.",
+            reviewedAt: "2026-08-01T18:30:00.000Z",
+            reviewedByUserId: "coach-1",
+            externalSideEffects: false,
+            deliveryClaimed: false,
+            publicationClaimed: false,
+          },
+        }, { label: "Malformed lane without an id" }],
+      },
+    })).toEqual([{
+      id: "client-follow-up",
+      label: "Client follow-up notes",
+      status: "APPROVED_FOR_INTERNAL_USE",
+      itemCount: 1,
+      meaning: "Candidate recap material.",
+      sourceTruth: "Derived from transcript packet evidence only.",
+      reviewRule: "Human approval is required before client delivery.",
+      humanApprovalRequired: false,
+      externalSideEffects: false,
+      humanReview: {
+        status: "APPROVED_FOR_INTERNAL_USE",
+        note: "Useful internally.",
+        reviewedAt: "2026-08-01T18:30:00.000Z",
+        reviewedByUserId: "coach-1",
+        externalSideEffects: false,
+        deliveryClaimed: false,
+        publicationClaimed: false,
+      },
+    }]);
+  });
+});
 
 describe("mobile Session canonical project projection", () => {
   it("uses the relational project and reports legacy slug drift", () => {

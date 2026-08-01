@@ -5116,6 +5116,11 @@ private struct CaptureRecorderView: View {
                         model: model
                     )
 
+                    CapturePacketReviewLanesCard(
+                        session: session,
+                        model: model
+                    )
+
                     CaptureSessionFollowUpStatus(
                         session: session,
                         errorMessage: model.sessionClient.errorMessage
@@ -5609,6 +5614,207 @@ private struct CaptureSessionFollowUpStatus: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("CaptureSessionSyncStatus")
+    }
+}
+
+private struct CapturePacketReviewLanesCard: View {
+    let session: MobileCaptureSession
+    @ObservedObject var model: CaptureExperienceModel
+    @State private var isExpanded = false
+    @State private var selectedLane: MobileCapturePacketReviewLane?
+
+    private var lanes: [MobileCapturePacketReviewLane] {
+        if let saved = session.coachingPacketReviewLanes, !saved.isEmpty {
+            return saved
+        }
+        guard model.sessionClient.latestPacketBuildResponse?.roomId == session.callRoomId else {
+            return []
+        }
+        return model.sessionClient.latestPacketBuildResponse?.reviewLanes ?? []
+    }
+
+    var body: some View {
+        if session.coachingPacketSummaryNoteId != nil || !lanes.isEmpty {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Approve a lane only as useful internal review material. This does not create a canonical Session note or authorize delivery.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if lanes.isEmpty {
+                        Text("No packet review lanes were returned. Capture will not infer approval or create replacement notes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    ForEach(lanes) { lane in
+                        Button {
+                            selectedLane = lane
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(lane.titleLabel)
+                                        .font(.subheadline.weight(.bold))
+                                    Spacer(minLength: 8)
+                                    Text(lane.displayStatus)
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.trailing)
+                                }
+                                if let meaning = lane.meaning?.nonempty {
+                                    Text(meaning)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Text(lane.boundaryLine)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(CapturePalette.accent)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("CapturePacketReviewLane_\(lane.id)")
+                    }
+
+                    Text("Internal review only · no note, task, goal, client delivery, message, calendar event, or publication")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("Packet note lanes (\(lanes.count))", systemImage: "list.bullet.clipboard")
+                    .font(.subheadline.weight(.semibold))
+                    .accessibilityIdentifier("CapturePacketReviewLanesToggle")
+            }
+            .captureCard()
+            .sheet(item: $selectedLane) { lane in
+                CapturePacketLaneReviewSheet(session: session, lane: lane, model: model)
+            }
+        }
+    }
+}
+
+private struct CapturePacketLaneReviewSheet: View {
+    let session: MobileCaptureSession
+    let lane: MobileCapturePacketReviewLane
+    @ObservedObject var model: CaptureExperienceModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var note: String
+    @State private var isSaving = false
+
+    init(session: MobileCaptureSession, lane: MobileCapturePacketReviewLane, model: CaptureExperienceModel) {
+        self.session = session
+        self.lane = lane
+        self.model = model
+        _note = State(initialValue: lane.humanReview?.note ?? "")
+    }
+
+    private var canSave: Bool {
+        !model.usesPreviewData
+            && !model.isSessionContextLocked
+            && AuthManager.shared.networkActionsAllowed
+            && !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Packet lane review")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CapturePacketLaneReviewSheet")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(lane.displayStatus)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(lane.meaning?.nonempty ?? "Review this source-grounded packet lane.")
+                            .font(.body.weight(.semibold))
+                        Text(lane.sourceTruth?.nonempty ?? lane.boundaryLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(lane.reviewRule?.nonempty ?? "Human review is required before canonical use or delivery.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.purple)
+                    }
+                    .captureCard()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Review note")
+                            .font(.caption.weight(.bold))
+                        TextEditor(text: $note)
+                            .frame(minHeight: 110)
+                            .padding(8)
+                            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .accessibilityIdentifier("CapturePacketLaneReviewNote")
+                    }
+
+                    if lane.status == "READY_FOR_HUMAN_REVIEW" {
+                        Button("Approve inside Quipsly") { save("APPROVED_FOR_INTERNAL_USE") }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                            .disabled(!canSave)
+                            .accessibilityIdentifier("CapturePacketLaneApprove")
+                        Button("Needs revision") { save("NEEDS_REVISION") }
+                            .buttonStyle(.bordered)
+                            .disabled(!canSave)
+                            .accessibilityIdentifier("CapturePacketLaneNeedsRevision")
+                        Button("Reject lane", role: .destructive) { save("REJECTED_BY_HUMAN") }
+                            .buttonStyle(.bordered)
+                            .disabled(!canSave)
+                            .accessibilityIdentifier("CapturePacketLaneReject")
+                    } else {
+                        Button("Reopen for review") { save("READY_FOR_HUMAN_REVIEW") }
+                            .buttonStyle(.bordered)
+                            .disabled(!canSave)
+                            .accessibilityIdentifier("CapturePacketLaneReopen")
+                    }
+
+                    if model.usesPreviewData {
+                        Text("Preview shows the production review workflow without changing saved packet state.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Text("This decision creates no canonical note, task, goal, client delivery, message, calendar event, or publication. Use Session Notes for deliberate canonical notes.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding()
+            }
+            .navigationTitle(lane.titleLabel)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func save(_ status: String) {
+        guard canSave else { return }
+        isSaving = true
+        Task {
+            let saved = await model.sessionClient.reviewPacketLane(
+                for: session,
+                laneId: lane.id,
+                reviewStatus: status,
+                note: note
+            )
+            isSaving = false
+            if saved { dismiss() }
+        }
     }
 }
 

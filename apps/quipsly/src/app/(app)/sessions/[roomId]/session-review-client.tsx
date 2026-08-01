@@ -11,9 +11,12 @@ import {
   candidateReviewRequest,
   committedTasks,
   goalCandidateReviewRequest,
+  packetLaneReviewRequest,
   timestampForSeconds,
   type SessionReviewCandidate,
   type SessionReviewGoalCandidate,
+  type SessionReviewLane,
+  type SessionReviewLaneStatus,
   type SessionReviewPacket,
 } from "./session-review-model";
 import { PriorSessionContinuityCard, PriorSessionFollowThroughCard, SessionContinuityCard } from "./session-continuity-card";
@@ -91,6 +94,46 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
     <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold leading-relaxed text-emerald-950">{brief.sourceTruth}</p>
     <details className="rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]"><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Inspect exact saved packet text</summary><p className="mt-4 whitespace-pre-wrap font-semibold leading-relaxed">{summary.body}</p></details>
   </div>;
+}
+
+function PacketReviewLaneCard({ lane, busy, onDecision }: {
+  lane: SessionReviewLane;
+  busy: boolean;
+  onDecision: (lane: SessionReviewLane, status: SessionReviewLaneStatus, note: string) => Promise<void>;
+}) {
+  const [note, setNote] = useState(lane.humanReview?.note ?? "");
+  const ready = lane.status === "READY_FOR_HUMAN_REVIEW";
+
+  useEffect(() => {
+    setNote(lane.humanReview?.note ?? "");
+  }, [lane.humanReview?.note, lane.id]);
+
+  return <article className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#987443]">{lane.itemCount} source-linked item{lane.itemCount === 1 ? "" : "s"}</p>
+        <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{lane.label}</h3>
+      </div>
+      <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(lane.status)}`}>{humanize(lane.status)}</span>
+    </div>
+    <p className="mt-4 text-sm font-semibold leading-relaxed text-[#765f40]">{lane.meaning}</p>
+    <dl className="mt-4 grid gap-3 text-xs font-semibold leading-relaxed text-[#765f40]">
+      <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3"><dt className="font-black uppercase tracking-wide text-sky-900">Source truth</dt><dd className="mt-1">{lane.sourceTruth}</dd></div>
+      <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3"><dt className="font-black uppercase tracking-wide text-violet-900">Review rule</dt><dd className="mt-1">{lane.reviewRule}</dd></div>
+    </dl>
+    {lane.humanReview?.reviewedAt ? <p className="mt-3 text-xs font-bold text-[#8a7354]">Last reviewed {new Date(lane.humanReview.reviewedAt).toLocaleString()}</p> : null}
+    <label className="mt-4 block text-xs font-black uppercase tracking-wide text-[#5b472f]" htmlFor={`packet-lane-note-${lane.id}`}>Review note</label>
+    <textarea id={`packet-lane-note-${lane.id}`} value={note} onChange={(event) => setNote(event.target.value)} rows={3} disabled={busy} placeholder="Record why this lane is ready, needs work, or should be rejected." className="mt-2 w-full rounded-xl border border-[#d8c7a7] bg-[#fffdf8] px-3 py-2 text-sm font-semibold text-[#3d3122] outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 disabled:opacity-60" />
+    <div className="mt-4 flex flex-wrap gap-2">
+      {ready ? <>
+        <button type="button" disabled={busy} onClick={() => void onDecision(lane, "APPROVED_FOR_INTERNAL_USE", note)} className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Approve inside Quipsly</button>
+        <button type="button" disabled={busy} onClick={() => void onDecision(lane, "NEEDS_REVISION", note)} className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50">Needs revision</button>
+        <button type="button" disabled={busy} onClick={() => void onDecision(lane, "REJECTED_BY_HUMAN", note)} className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-950 disabled:opacity-50">Reject lane</button>
+      </> : <button type="button" disabled={busy} onClick={() => void onDecision(lane, "READY_FOR_HUMAN_REVIEW", note)} className="rounded-full border border-[#d8c7a7] bg-[#fffaf0] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50">Reopen for review</button>}
+      {busy ? <span className="inline-flex items-center gap-2 px-2 text-xs font-bold text-[#765f40]"><LoaderCircle size={14} className="animate-spin" aria-hidden="true" />Saving review…</span> : null}
+    </div>
+    <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-relaxed text-emerald-950">Internal review only. This decision creates no canonical note, task, goal, client delivery, message, calendar event, or publication.</p>
+  </article>;
 }
 
 export type SessionTaxonomy = {
@@ -900,6 +943,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   const [loading, setLoading] = useState(mode === "transcript");
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
+  const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -1004,6 +1048,34 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
+  async function reviewLane(lane: SessionReviewLane, status: SessionReviewLaneStatus, note: string) {
+    if (!packet) return;
+    const request = packetLaneReviewRequest({ packet, lane, status, note });
+    if (!request) {
+      setMessage("This packet lane is missing its correlated transcript evidence. Refresh the packet before deciding.");
+      return;
+    }
+    setBusyLaneId(lane.id);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/packet", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const body = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !body.ok) throw new Error(body.error || "The packet lane review was not saved.");
+      await load();
+      setMessage(status === "APPROVED_FOR_INTERNAL_USE"
+        ? "Lane approved inside Quipsly. No canonical note, task, goal, client delivery, message, calendar event, or publication was created."
+        : `${humanize(status)} saved as internal packet review state. No downstream work or delivery was created.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The packet lane review was not saved.");
+    } finally {
+      setBusyLaneId(null);
+    }
+  }
+
   const tasks = committedTasks(packet);
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const activeMode = sessionWorkspaceDefinition(mode);
@@ -1017,7 +1089,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
             <h1 className="mt-2 font-serif text-4xl font-black tracking-tight text-[#3d3122]">{sessionTitle}</h1>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">{activeMode.description}</p>
           </div>
-          {mode === "transcript" ? <button type="button" onClick={() => void load()} disabled={loading || buildingPacket || busyCandidateId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""} aria-hidden="true" />Refresh transcript truth</button> : null}
+          {mode === "transcript" ? <button type="button" onClick={() => void load()} disabled={loading || buildingPacket || busyCandidateId !== null || busyLaneId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""} aria-hidden="true" />Refresh transcript truth</button> : null}
         </div>
         {mode === "transcript" && message ? <p role="status" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{message}</p> : null}
       </section>
@@ -1088,6 +1160,15 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
               <p className="mt-3 text-xs font-bold leading-relaxed text-violet-900">Creates internal summary, highlight, and candidate review artifacts from this exact transcript. It creates no task or goal and sends or publishes nothing.</p>
             </div> : null}
           </>}
+        </section>
+
+        <section aria-labelledby="packet-lanes-heading">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div className="flex items-center gap-3"><span className="rounded-xl bg-sky-50 p-2 text-sky-700"><ClipboardList aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Internal editorial decisions</p><h2 id="packet-lanes-heading" className="font-serif text-3xl font-black text-[#3d3122]">Review notes by purpose</h2></div></div>
+            <Link href={sessionWorkspaceHref(roomId, "notes")} className="rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:border-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">Open canonical Notes</Link>
+          </div>
+          <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">Each lane is a source-grounded way to inspect the packet. Approving it means the material is useful for continued work inside Quipsly; it does not make the text a canonical Session note or authorize client delivery.</p>
+          {held ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">Packet lane review is held until the transcript release evidence is valid. No review state can be changed.</div> : (packet.packet?.reviewLanes ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.reviewLanes ?? []).map((lane) => <PacketReviewLaneCard key={lane.id} lane={lane} busy={busyLaneId === lane.id} onDecision={reviewLane} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No packet review lanes were saved for this transcript. Quipsly will not infer approval or create replacement notes.</div>}
         </section>
 
         <section aria-labelledby="candidate-heading">
