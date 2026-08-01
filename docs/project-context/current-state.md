@@ -28,7 +28,17 @@ Date: 2026-08-01
 - The operation exposed a contradictory ready-state next action that still
   said consent was required. The server projection now says that joining alone
   does not start recording, and its regression test covers a consented first
-  capture. Production deployment/readback of that copy fix is the next gate.
+  capture.
+- Exact source `da2947700ec6ddcc1dcfa379c47133772fcf1ec0` passed 30/30
+  Session evidence tests, strict TypeScript and 150 routes twice, Cloud Build
+  `9cb2bfa2-819e-43eb-a2e2-8b7ee16e51a4`, in-image bundle inspection,
+  zero-traffic retained-Session proof, generated-reviewer acceptance/cleanup,
+  promotion, and recovery. Revision `studio-00488-tim` now serves 100% from
+  platform digest
+  `sha256:fc6b75eea4116c56cfd33f1bec8facabe315f1703a925030940daa2989d16c56`.
+- Final production readback shows the same ten Sessions and exact target as
+  `GRANTED`, `canRecordNow=true`, `ready-provider`, with the corrected action
+  **Joining alone does not start recording** and no failed checks.
 - This gives future Capture builds a stable longitudinal test world. Physical
   TestFlight installation, consented audio/video, upload, transcript, timeline,
   and same-ID Studio playback remain separate open boundaries.

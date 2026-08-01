@@ -18,10 +18,14 @@ invite, create a calendar event, charge Stripe, or publish anything.
 
 ## Exact production and client identities
 
-- Nest source: `811a29db16d1493032b2ccc285438bd5b45854ab`
-- Cloud Run revision: `studio-00486-son`
+- Nest source: `da2947700ec6ddcc1dcfa379c47133772fcf1ec0`
+- Cloud Build: `9cb2bfa2-819e-43eb-a2e2-8b7ee16e51a4`
+- Artifact manifest-list digest:
+  `sha256:25247d13a516a6787aad2a65eca8500eeb963f3f36c291b5f14653ed9398413d`
+- Cloud Run revision: `studio-00488-tim`
 - Cloud Run platform image digest:
-  `sha256:a4b015fb43779799b1159c86073e75a086d1f20ed70f9fb3f90642de3081f9be`
+  `sha256:fc6b75eea4116c56cfd33f1bec8facabe315f1703a925030940daa2989d16c56`
+- Production traffic: `100% studio-00488-tim`
 - Capture source: `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
 - TestFlight version/build: `1.0 (25)`
 - App Store Connect build: `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`
@@ -71,10 +75,22 @@ now keeps provider preparation neutral—joining alone does not start
 recording—and regression coverage exercises an exact consented, first-capture
 projection.
 
+The exact pushed source passed 30/30 Session evidence tests, strict TypeScript,
+the optimized 150-route build twice, Cloud media IAM, Firebase authority,
+production recovery, 111 Capture contracts, and six in-image route-bundle
+checks. Preview `studio-00488-tim` first passed the exact retained Session with
+the corrected action. A separate generated reviewer passed the full signed
+workspace journey, then promoted only that revision. Cleanup independently
+removed its Firebase identity, grants, Home Nest, membership, and database
+user. Final production readback returned the same corrected retained Session
+and exact health source/revision.
+
 - Private receipt:
   `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-reviewer-session.json`
 - Consent/room receipt:
   `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-consent-room.json`
+- Zero-traffic preview receipt:
+  `/Volumes/My Passport/Quipsly QA Artifacts/Retained Production/2026-08-01/capture-build25-preview-ready-session.json`
 - Receipt modes at readback: `-rw-------`
 
 ## Operating policy

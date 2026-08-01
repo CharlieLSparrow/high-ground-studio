@@ -5653,6 +5653,20 @@ was restored.
   is now consent-neutral and says that joining alone does not start recording;
   regression coverage projects a granted, first-capture Session and refuses
   that stale instruction.
+- Released that fix from exact source
+  `da2947700ec6ddcc1dcfa379c47133772fcf1ec0`. Cloud Build
+  `9cb2bfa2-819e-43eb-a2e2-8b7ee16e51a4` produced manifest-list digest
+  `sha256:25247d13a516a6787aad2a65eca8500eeb963f3f36c291b5f14653ed9398413d`;
+  Cloud Run imported platform digest
+  `sha256:fc6b75eea4116c56cfd33f1bec8facabe315f1703a925030940daa2989d16c56`
+  as zero-traffic revision `studio-00488-tim`.
+- The immutable preview passed the same exact retained Session before a
+  separate generated reviewer passed the signed workspace and Episode Room
+  handoffs. Generated Firebase/database artifacts were independently removed,
+  then the revision moved to 100% traffic and all 111 recovery contracts
+  passed. Final production readback retained ten Sessions and the exact target
+  as `GRANTED`, `canRecordNow=true`, `ready-provider`, with the corrected action
+  and zero failed checks.
 
 ### 2026-08-01 retained iPhone tagging and runtime-quality checkpoint
 
