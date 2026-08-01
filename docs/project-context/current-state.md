@@ -2,6 +2,35 @@
 
 Date: 2026-08-01
 
+## Production Capture cross-device project-system checkpoint
+
+- The compiled Build 25 iPhone product created a retained production Project,
+  Task, document-kernel Note, active Goal, and one shared canonical Tag through
+  the fixed `codex@dev.test` account. Stable IDs are preserved for longitudinal
+  use; the Tag has three canonical assignments.
+- The fail-closed operator requires the exact production origin, clean source,
+  released Build 25 app hash, fixed Keychain identity, unique labels, and
+  mode-`0600` evidence. It performed no recording, Session creation, invite,
+  calendar action, publication, cleanup, or other external effect.
+- The first rendered Nest readback found two genuine React hydration failures
+  on focused Work routes. Work timestamps now use deterministic UTC server
+  snapshots and localize only after hydration; the full Quipsly suite passes
+  195 suites and 989 tests, TypeScript 7 passes, and all 150 production routes
+  build.
+- Exact release source `f1a403572cd5804a6ffb81a6a6112edf0b8809c2`
+  passed exact-context preflight, Cloud Build
+  `3154fb52-ef10-4b10-9df0-dd25917e6388`, in-image route inspection,
+  zero-traffic generated-reviewer acceptance, promotion, and recovery.
+  Revision `studio-00490-hex` now serves 100% from runtime digest
+  `sha256:b84bc743747ee9016dec964afa3471c619bb8b2c294f04baa7089ace33670879`.
+- Final rendered production readback proved the same Project, Note, Task, Goal,
+  and Tag on desktop and phone width with no overflow, browser exceptions,
+  server failures, product mutation, or external effect. The failed and fixed
+  screenshot sets remain versioned as private evidence.
+- Exact records, artifact hashes, release proof, commands, and the remaining
+  physical-iPhone boundary are in
+  `docs/coordination/2026-08-01-production-capture-cross-device-system.md`.
+
 ## Retained production Capture-session checkpoint
 
 - A verified, Keychain-backed synthetic `.test` identity now owns the durable

@@ -206,6 +206,47 @@ The tagging/runtime-quality isolation and final certified retained project are
 in
 `docs/coordination/2026-08-01-capture-retained-tagging-runtime-quality.md`.
 
+To operate the released Capture app against the exact production origin and
+retain a new private cross-device project system, use unique labels and explicit
+private evidence paths:
+
+```bash
+pnpm quipsly:retained:production-native-project -- \
+  --project "QA Retained · Production iPhone system <date> <run>" \
+  --task "QA Retained · Build the production cross-device system <run>" \
+  --tag "QA Retained · Product system <run>" \
+  --result-bundle "/absolute/private/path/capture-production-<run>.xcresult" \
+  --receipt "/absolute/private/path/capture-production-<run>.json"
+```
+
+This operator is intentionally narrower than the local lane. It accepts only
+`https://nest.quipsly.com`, the fixed production `.test` account, credentials
+from service `quipsly-capture-reviewer` in macOS Keychain, a clean committed
+worktree, and the source hash of the currently released Capture build. It
+refuses duplicate exact labels or existing evidence targets, checks production
+auth/API health before and after the compiled app, independently reads the
+canonical graph, and writes the receipt atomically as mode `0600`. It does not
+clean up a successful retained project.
+
+After the native receipt exists, prove the same stable records through rendered
+production Nest without changing them:
+
+```bash
+pnpm quipsly:retained:production-project-web-readback -- \
+  --native-receipt "/absolute/private/path/capture-production-<run>.json" \
+  --output-dir "/absolute/private/new-directory/capture-production-<run>-web"
+```
+
+The web readback follows real login and project navigation, opens Project
+Overview, Notes, Work, focused global Task and Goal routes, and repeats the
+overview at phone width. Any browser exception, server failure, horizontal
+overflow, missing stable ID, wrong tag usage, output collision, or product
+mutation fails the run before a receipt is written. Screenshots and the receipt
+are mode `0600`; preserve failed directories as versioned product evidence and
+always choose a new output directory after a fix. The first complete production
+operation is documented in
+`docs/coordination/2026-08-01-production-capture-cross-device-system.md`.
+
 ## Environment boundaries
 
 ### Local and emulator
