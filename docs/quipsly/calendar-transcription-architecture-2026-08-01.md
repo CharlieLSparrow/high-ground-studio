@@ -484,6 +484,24 @@ renders the entire decision surface read-only without inventing a capability.
 The card stays collapsed outside setup/maintenance so calendar plumbing does
 not displace Today work.
 
+Capture also implements the first explicit Apple one-event path. A scheduled
+next Session is eligible only when Quipsly has both a canonical start and a
+later canonical end; the app never invents a duration. It prepares a title,
+exact interval, stable Nest Session URL, and privacy-safe context, then presents
+Apple's `EKEventEditViewController`. On iOS 17 and later this editor operates
+without Quipsly requesting write-only or full calendar access. The person
+chooses the destination and confirms the event in Apple's UI. Because the
+editor is outside Quipsly's calendar data boundary, Capture shows a no-readback
+receipt before handoff and never claims that it verified what Apple saved.
+
+Provider setup guidance now names an important product constraint: subscribing
+to an HTTPS calendar URL in Google Calendar is a desktop-web flow under **Other
+calendars > From URL**; Google does not expose that setup in its mobile app.
+Capture therefore offers Share for the standard HTTPS URL and explains that it
+must be finished at calendar.google.com on a computer. Apple Calendar can open
+the corresponding `webcal:` form directly. This is a setup difference only;
+both clients consume the same scoped, revocable, read-only feed.
+
 The current provider guidance changes the implementation details, not the
 source-of-truth architecture:
 
@@ -517,6 +535,10 @@ source-of-truth architecture:
 
 - Apple EventKit access levels and iOS 17 usage descriptions:
   https://developer.apple.com/documentation/eventkit/accessing-the-event-store
+- Apple EventKitUI system editor:
+  https://developer.apple.com/documentation/eventkitui
+- Google Calendar URL subscriptions (computer setup only):
+  https://support.google.com/calendar/answer/37100
 - Google Calendar OAuth scopes:
   https://developers.google.com/workspace/calendar/api/auth
 - Google event creation and deterministic event IDs:

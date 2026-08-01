@@ -17,7 +17,7 @@ The live room is coordination. Its remote audio is not secretly mixed into the l
 
 The implemented iPhone candidate exposes five focused surfaces:
 
-1. **Today** — upcoming/recent Quipsly sessions plus actor-scoped canonical goals, committed tasks, personal focus blocks, weekly commitments, source-linked research cues, blockers, and one clear next action. A compact Calendar continuity disclosure manages revocable personal, coaching, and selected podcast-Nest subscription projections without adding a sixth tab or exposing transcript/media/private-note content. Protected offline work is read-only; task/focus/annotation/calendar decisions require a current verified session. Resolving a research cue changes only its annotation overlay and never the preserved source.
+1. **Today** — upcoming/recent Quipsly sessions plus actor-scoped canonical goals, committed tasks, personal focus blocks, weekly commitments, source-linked research cues, blockers, and one clear next action. A compact Calendar continuity disclosure manages revocable personal, coaching, and selected podcast-Nest subscription projections without adding a sixth tab or exposing transcript/media/private-note content. A scheduled next Session with a canonical start and end can also be handed to Apple's one-event editor. That path requests no calendar permission, reads no calendars, copies no private Session content, lets the person choose the destination, and never claims it can verify Apple's saved result. Protected offline work is read-only; task/focus/annotation/calendar decisions require a current verified session. Resolving a research cue changes only its annotation overlay and never the preserved source.
 2. **Record** — session choice, source-specific consent, Audio / Solo video / Podcast camera modes, real microphone or camera preflight, persistent capture state, elapsed time, controlled pause/switch/stop boundaries, and compact room controls.
 3. **Work** — actor-scoped projects, tasks, goals, notes, and reusable canonical tags without exposing desktop editor administration.
 4. **Library** — every local source, its upload state, size, duration, server verification, and recovery action.
@@ -39,6 +39,7 @@ review, export, and publishing handoff.
 - Failure language leads with what is safe: “Saved on this iPhone. Upload will retry.”
 - Diagnostics and receipt detail live behind disclosure. They do not displace the main task.
 - One-time integration/setup tools stay compact until opened; calendar capability URLs remain memory-only and are never placed in protected caches, logs, or preview fixtures.
+- A one-event Apple Calendar handoff uses `EKEventEditViewController` without write-only or full-calendar authorization. Capture supplies only the canonical title, exact start/end, stable Session URL, and a privacy-safe description. It does not invent duration when scheduling data is incomplete and displays a no-readback receipt before yielding to the system editor.
 - Recording state uses text, shape, timer, and VoiceOver—not color alone.
 - The app respects Dynamic Type, Reduce Motion, 44-point minimum controls, and accessible progress values.
 

@@ -91,6 +91,15 @@ External evidence:
   statuses without any private URL and disables create/replace/revoke.
 - This new subscription slice is committed source only until the next spaced
   preview batch; the earlier 0%-traffic preview does not contain it.
+- A scheduled next Session can now open Apple's one-event editor with its exact
+  canonical interval and Session link. The shipping target requests neither
+  write-only nor full calendar access, copies no Session-private content, and
+  shows a no-readback receipt before handoff. Sessions without a valid end time
+  do not offer the action; Quipsly does not invent a meeting duration.
+- Google subscription setup is documented as the provider actually supports
+  it: share the HTTPS URL from Capture, then finish **Other calendars > From
+  URL** at calendar.google.com on a computer. Apple receives the `webcal:` form
+  directly.
 
 ## Transcription and packet slice
 
@@ -113,11 +122,16 @@ External evidence:
 - Quipsly TypeScript: pass.
 - Media-processing and transcript-worker TypeScript: pass.
 - Public mobile contract: pass.
-- Capture calendar static App Store gate: 917/917.
+- Capture calendar static App Store gate: 928/928.
 - Focused native calendar UI acceptance on iPhone 17 Pro simulator: pass; the
   shipping Swift target compiled and the read-only/privacy test completed with
   exit 0. Result bundle:
-  `/Volumes/My Passport/QuipslyBuild/CalendarContinuity-20260801-attempt3/CalendarContinuity.xcresult`.
+  `/Volumes/My Passport/QuipslyBuild/CalendarFinal-20260801/CalendarFinal.xcresult`.
+- Focused one-event Apple Calendar acceptance on the same simulator: pass. The
+  test opened Apple's real `New Event` editor, canceled it, and read back
+  Quipsly's truthful no-calendar-read/no-save-verification receipt. Result
+  bundle:
+  `/Volumes/My Passport/QuipslyBuild/CalendarFinal-20260801/CalendarFinal.xcresult`.
 - Optimized Nest production build: pass, including the new calendar route.
 - `git diff --check`: pass.
 

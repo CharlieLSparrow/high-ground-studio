@@ -1043,6 +1043,30 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("provider credentials"))
     }
 
+    func testTodayPreparesOneScheduledSessionInAppleCalendarEditorWithoutBroadAccess() {
+        let button = app.buttons["CaptureAddNextSessionToCalendar"]
+        reveal(button)
+        XCTAssertTrue(
+            button.isHittable,
+            "A scheduled next Session should offer Apple's explicit one-event editor."
+        )
+        XCTAssertTrue(button.label.contains("Add to Apple Calendar"))
+        button.tap()
+
+        XCTAssertTrue(
+            app.navigationBars["New Event"].waitForExistence(timeout: 8),
+            "EventKitUI should present Apple's system-owned editor instead of asking Quipsly for calendar read access."
+        )
+        let cancel = app.buttons["Cancel"]
+        XCTAssertTrue(cancel.exists)
+        cancel.tap()
+
+        let status = app.staticTexts["CaptureCalendarEditorStatus"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.label.contains("will not read"))
+        XCTAssertTrue(status.label.contains("verify the result"))
+    }
+
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_preview-series_preview-task"]
         reveal(recurrence)

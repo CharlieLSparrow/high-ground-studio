@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import EventKitUI
 import SwiftUI
 import UIKit
 
@@ -176,6 +177,8 @@ private struct CaptureTodayView: View {
     @Binding var visibleTab: CaptureRootTab
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var auth = AuthManager.shared
+    @State private var calendarEventDraft: CaptureCalendarEventDraft?
+    @State private var calendarEditorStatus: String?
 
     var body: some View {
         ScrollView {
@@ -193,10 +196,19 @@ private struct CaptureTodayView: View {
                 }
 
                 if let next = model.nextSession {
-                    NextCaptureCard(session: next) {
-                        model.select(next)
-                        visibleTab = .record
-                    }
+                    NextCaptureCard(
+                        session: next,
+                        onOpen: {
+                            model.select(next)
+                            visibleTab = .record
+                        },
+                        onAddToCalendar: CaptureCalendarEventDraft(session: next).map { draft in
+                            {
+                                calendarEditorStatus = "Apple's editor is reviewing this one Session event. Quipsly will not read your calendars or verify the result."
+                                calendarEventDraft = draft
+                            }
+                        }
+                    )
                     .disabled(model.isSessionContextLocked && model.selectedSession?.id != next.id)
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading your sessions…")
@@ -209,6 +221,14 @@ private struct CaptureTodayView: View {
                         action: { showsNewSession = true }
                     )
                     .disabled(model.isSessionContextLocked)
+                }
+
+                if let calendarEditorStatus {
+                    Label(calendarEditorStatus, systemImage: "calendar.badge.checkmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .accessibilityIdentifier("CaptureCalendarEditorStatus")
                 }
 
                 CaptureCalendarContinuityCard(
@@ -271,6 +291,28 @@ private struct CaptureTodayView: View {
         .navigationTitle("Quipsly Capture")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
+        .sheet(
+            item: $calendarEventDraft,
+            onDismiss: {
+                if calendarEditorStatus == nil {
+                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read or verify any calendar data."
+                }
+            }
+        ) { draft in
+            CaptureCalendarEventEditorSheet(draft: draft) { action in
+                calendarEventDraft = nil
+                switch action {
+                case .saved:
+                    calendarEditorStatus = "Apple's editor closed after Add. iOS owns the event; Quipsly did not read or verify it."
+                case .canceled:
+                    calendarEditorStatus = "Calendar editor canceled. No event was added by Quipsly."
+                case .deleted:
+                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read or change any calendar."
+                @unknown default:
+                    calendarEditorStatus = "Calendar editor closed. Quipsly did not read any calendar data."
+                }
+            }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -1467,11 +1509,15 @@ private struct CaptureCalendarContinuityCard: View {
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("CaptureCalendarSubscribe")
                         ShareLink(item: httpsURL) {
-                            Label("Share HTTPS link", systemImage: "square.and.arrow.up")
+                            Label("Share for Google or another calendar", systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("CaptureCalendarShareLink")
+                        Text("For Google Calendar, finish on a computer at calendar.google.com: Other calendars > From URL. Google's mobile app cannot add a calendar from a URL.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureCalendarGoogleSetup")
                         Button("Hide private link") {
                             client.dismissOneTimeFeed()
                         }
@@ -7493,7 +7539,8 @@ private struct CaptureAccountView: View {
 
 private struct NextCaptureCard: View {
     let session: MobileCaptureSession
-    let action: () -> Void
+    let onOpen: () -> Void
+    let onAddToCalendar: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -7522,7 +7569,7 @@ private struct NextCaptureCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Button(action: action) {
+            Button(action: onOpen) {
                 Label(session.canRecordNow ? "Open recorder" : "Prepare session", systemImage: "arrow.right.circle.fill")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
@@ -7531,6 +7578,17 @@ private struct NextCaptureCard: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .accessibilityIdentifier("CaptureOpenNextSessionButton")
+
+            if let onAddToCalendar {
+                Button(action: onAddToCalendar) {
+                    Label("Add to Apple Calendar…", systemImage: "calendar.badge.plus")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Opens Apple's event editor with this Session title and time. Quipsly does not read your calendars.")
+                .accessibilityIdentifier("CaptureAddNextSessionToCalendar")
+            }
         }
         .captureCard()
         .accessibilityElement(children: .contain)

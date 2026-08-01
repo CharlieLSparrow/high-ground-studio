@@ -50,6 +50,7 @@ const files = {
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
@@ -180,6 +181,7 @@ const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
@@ -1408,9 +1410,20 @@ requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "ship
 requireIncludes(capturePhoneShellText, "Recording still starts separately.", "shipping consent does not imply recording");
 requireIncludes(capturePhoneShellText, "CaptureSessionContextPanel(", "shipping recorder reaches session context");
 requireIncludes(capturePhoneShellText, "CaptureCalendarContinuityCard(", "shipping Today surface reaches calendar continuity without a sixth tab");
+requireIncludes(capturePhoneShellText, "CaptureAddNextSessionToCalendar", "shipping next Session exposes Apple's one-event editor");
+requireIncludes(capturePhoneShellText, "iOS owns the event; Quipsly did not read or verify it.", "shipping event-editor receipt avoids false provider readback");
+requireIncludes(captureCalendarEventEditorText, "import EventKitUI", "native one-event export uses Apple's system editor framework");
+requireIncludes(captureCalendarEventEditorText, "EKEventEditViewController", "native one-event export presents Apple's event editor");
+requireIncludes(captureCalendarEventEditorText, "Private Session content is not copied into Calendar.", "native one-event export excludes private working content");
+requireIncludes(captureCalendarEventEditorText, '.appendingPathComponent("sessions"', "native one-event export links back to canonical Session truth");
+assert(!captureCalendarEventEditorText.includes("requestFullAccessToEvents"), "One-event EventKitUI export must not request full calendar access.", { forbidden: "requestFullAccessToEvents" });
+assert(!captureCalendarEventEditorText.includes("requestWriteOnlyAccessToEvents"), "System-editor export must not request calendar access it does not need.", { forbidden: "requestWriteOnlyAccessToEvents" });
+assert(!appInfoText.includes("NSCalendarsFullAccessUsageDescription"), "Capture must not declare full calendar access for system-editor export.", { forbidden: "NSCalendarsFullAccessUsageDescription" });
+assert(!appInfoText.includes("NSCalendarsWriteOnlyAccessUsageDescription"), "Capture must not declare write-only calendar access while it only uses EventKitUI.", { forbidden: "NSCalendarsWriteOnlyAccessUsageDescription" });
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCalendarContinuityCard")', "shipping calendar continuity has a stable automation identity");
 requireIncludes(capturePhoneShellText, "Subscribe in Apple Calendar", "shipping calendar continuity offers an Apple Calendar subscription action");
-requireIncludes(capturePhoneShellText, "Share HTTPS link", "shipping calendar continuity offers a standard cross-provider subscription link");
+requireIncludes(capturePhoneShellText, "Share for Google or another calendar", "shipping calendar continuity offers a standard cross-provider subscription link");
+requireIncludes(capturePhoneShellText, "Google's mobile app cannot add a calendar from a URL.", "shipping Google calendar setup states the provider's desktop-only URL subscription boundary");
 requireIncludes(capturePhoneShellText, "Shown once", "shipping calendar capability is explicitly one-time");
 requireIncludes(capturePhoneShellText, "Subscriptions are read-only and revocable.", "shipping calendar projection states its lifecycle boundary");
 requireIncludes(capturePhoneShellText, "not recordings, transcript text, coaching notes, participant addresses, manuscripts, chat, or provider credentials", "shipping calendar projection excludes private working content");

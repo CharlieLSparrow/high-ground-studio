@@ -2423,20 +2423,24 @@ final class CaptureExperienceModel: ObservableObject {
 
 extension MobileCaptureSession {
     static var capturePreviewFixtures: [MobileCaptureSession] {
-        [
+        let coachingStart = Date().addingTimeInterval(35 * 60)
+        let podcastStart = Date().addingTimeInterval(24 * 60 * 60)
+        return [
             capturePreview(
                 id: "preview-coaching-ready",
                 title: "Demo coaching session",
                 purpose: "COACHING",
                 consentGranted: true,
-                scheduledStart: ISO8601DateFormatter().string(from: Date().addingTimeInterval(35 * 60))
+                scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
+                scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60))
             ),
             capturePreview(
                 id: "preview-podcast-consent",
                 title: "High Ground pre-show",
                 purpose: "PODCAST",
                 consentGranted: false,
-                scheduledStart: ISO8601DateFormatter().string(from: Date().addingTimeInterval(24 * 60 * 60))
+                scheduledStart: ISO8601DateFormatter().string(from: podcastStart),
+                scheduledEnd: ISO8601DateFormatter().string(from: podcastStart.addingTimeInterval(90 * 60))
             ),
             capturePreview(
                 id: "preview-studio-group-ready",
@@ -2527,6 +2531,7 @@ extension MobileCaptureSession {
         canRecordVideo: Bool? = nil,
         canTranscribe: Bool = false,
         scheduledStart: String?,
+        scheduledEnd: String? = nil,
         captureSources: [MobileCaptureSourceSummary] = []
     ) -> MobileCaptureSession {
         let audioConsentGranted = consentGranted && (canRecordAudio ?? true)
@@ -2585,7 +2590,7 @@ extension MobileCaptureSession {
             projectLegacySlugDrift: false,
             episodeSlug: "session-capture",
             scheduledStart: scheduledStart,
-            scheduledEnd: nil,
+            scheduledEnd: scheduledEnd,
             participantId: "preview-host",
             recordingConsentId: "consent-\(id)",
             recordingConsentStatus: consentGranted ? "GRANTED" : "REQUESTED",
