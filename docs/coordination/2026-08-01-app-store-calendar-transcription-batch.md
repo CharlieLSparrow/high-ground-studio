@@ -9,6 +9,14 @@ remains pinned to the prior revision. This intentionally spaces releases and
 avoids promoting a new web manifest before the matching transcript worker is
 released and read back.
 
+Cadence decision: local checks remain continuous, but routine Nest previews now
+receive a two-hour observation window before replacement, and routine TestFlight
+candidates are limited to one materially testable workflow build per day.
+Critical security, data-loss, authentication, or outage fixes may override the
+window only with an explicit reason and immutable source/rollback evidence. The
+calendar subscription and readiness batches are committed and pushed without
+replacing the current preview.
+
 ## App Store Connect
 
 The API-backed operator applied and read back:

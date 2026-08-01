@@ -1,6 +1,6 @@
 # Quipsly Native App Distribution Policy
 
-Last updated: 2026-06-18
+Last updated: 2026-08-01
 
 ## Decision
 
@@ -132,3 +132,28 @@ The editor-specific readiness checklist lives in `docs/quipsly/quipslystudio-tes
 Use **local builds for speed** and **TestFlight for truth outside the dev machine**.
 
 If a feature cannot survive TestFlight, it is not ready for beta collaborators.
+
+## Release cadence
+
+Quipsly should test continuously without making every passing commit a provider
+release. Group changes by one testable user story and preserve time to observe
+the previous candidate.
+
+- **Local builds:** unrestricted. Use them for implementation, automated checks,
+  simulator work, and physical-device debugging.
+- **Nest preview:** deploy one coherent committed batch, keep it at zero traffic,
+  run authenticated and separate-account acceptance, then allow at least two
+  hours of observation before replacing it. Security, data-loss, authentication,
+  and production-outage fixes may bypass the observation window when the reason
+  is recorded in the release handoff.
+- **Production Nest:** promote only the already-proved immutable preview. A newer
+  commit starts a new preview; it never silently rides the previous proof.
+- **TestFlight:** ordinarily publish no more than one candidate per day and only
+  when the build adds or repairs a workflow a person can meaningfully exercise.
+  Continue local and preview development between TestFlight candidates.
+- **App Store:** submit a deliberately named release candidate after screenshot,
+  privacy, legal, deletion, physical-device, and reviewer-account gates pass.
+
+Release spacing is an observation policy, not a reason to delay a critical fix.
+Every override must retain the exact source commit, build number, reason, smoke
+evidence, and rollback target.
