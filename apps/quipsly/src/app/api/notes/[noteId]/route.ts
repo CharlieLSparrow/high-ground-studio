@@ -106,6 +106,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ noteI
     ...result,
     boundaries: {
       actorOwned: true,
+      canonicalSessionMutationAccess: true,
       sessionAccessRechecked: true,
       projectAuthorityRechecked: true,
       explicitVisibility: true,

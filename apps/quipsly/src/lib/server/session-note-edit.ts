@@ -7,7 +7,7 @@ import {
   type EditableSessionNoteKind,
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
-import { sessionAccessWhere } from "@/lib/server/session-access";
+import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
 
 type SessionActor = {
@@ -207,7 +207,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
   }
 
   const room = await prisma.callRoom.findFirst({
-    where: sessionAccessWhere(note.roomId, input.actor as any),
+    where: sessionMutationAccessWhere(note.roomId, input.actor as any),
     select: {
       id: true,
       projectId: true,
@@ -293,7 +293,7 @@ export async function editSessionNote(input: EditSessionNoteInput): Promise<Edit
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       const currentRoom = await tx.callRoom.findFirst({
-        where: sessionAccessWhere(note.roomId, input.actor as any),
+        where: sessionMutationAccessWhere(note.roomId, input.actor as any),
         select: {
           id: true,
           projectId: true,

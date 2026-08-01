@@ -980,6 +980,7 @@ function checkTranscriptCorrectionContractSources() {
   const quickEntryRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts");
   const sessionNoteContractText = sourceText("apps/quipsly/src/lib/session-note-contract.ts");
   const sessionNoteAccessText = sourceText("apps/quipsly/src/lib/server/session-note-access.ts");
+  const sessionNoteCreateRouteText = sourceText("apps/quipsly/src/app/api/sessions/[roomId]/notes/route.ts");
   const sessionNoteEditText = sourceText("apps/quipsly/src/lib/server/session-note-edit.ts");
   const sessionNoteEditRouteText = sourceText("apps/quipsly/src/app/api/notes/[noteId]/route.ts");
   const quickEntryOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileQuickEntryOutbox.swift");
@@ -1290,7 +1291,11 @@ function checkTranscriptCorrectionContractSources() {
       && sessionNoteEditText.includes("previousContentRetainedInRevision: true")
       && sessionNoteEditText.includes("externalSideEffects: false")
       && sessionNoteEditText.includes("addedTagIdsInTransaction")
+      && sessionNoteCreateRouteText.includes("sessionMutationAccessWhere")
+      && sessionNoteCreateRouteText.includes("canonicalSessionMutationAccess: true")
+      && sessionNoteEditText.includes("sessionMutationAccessWhere")
       && sessionNoteEditRouteText.includes("clientRequestId")
+      && sessionNoteEditRouteText.includes("canonicalSessionMutationAccess: true")
       && sessionNoteEditRouteText.includes("canonicalTagsAtomic")
       && sessionNoteEditRouteText.includes("retryIdentityProtected")
       && sessionNoteEditOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")

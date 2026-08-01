@@ -124,6 +124,7 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       note: { id: noteId, title: "Opening rhythm", body: "Pause, then let the first question breathe." },
       boundaries: {
         actorOwned: true,
+        canonicalSessionMutationAccess: true,
         sessionAccessRechecked: true,
         explicitVisibility: true,
         appendOnlyRevision: true,
@@ -321,5 +322,28 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     await expect(prisma.coachingNoteRevision.count({
       where: { noteId, id: firstBody.receiptId },
     })).resolves.toBe(1);
+  });
+
+  it("denies further edits after the author is downgraded to a project viewer", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const before = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
+    const revisionCount = await prisma.coachingNoteRevision.count({ where: { noteId } });
+    await prisma.studioProjectAccessGrant.update({
+      where: { projectId_email: { projectId, email: actorEmail } },
+      data: { role: "VIEWER" },
+    });
+
+    const denied = await patch(
+      before.updatedAt,
+      "Viewer edit attempt",
+      "A downgraded author must no longer mutate Session state.",
+    );
+    expect(denied.status).toBe(404);
+    expect(await denied.json()).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    await expect(prisma.coachingNote.findUnique({
+      where: { id: noteId },
+      select: { title: true, body: true },
+    })).resolves.toEqual({ title: before.title, body: before.body });
+    await expect(prisma.coachingNoteRevision.count({ where: { noteId } })).resolves.toBe(revisionCount);
   });
 });

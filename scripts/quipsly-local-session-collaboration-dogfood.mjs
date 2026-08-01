@@ -419,6 +419,120 @@ try {
     "Disposable DEFER review receipt was not persisted.",
   );
 
+  const noteRequest = {
+    clientRequestId: randomUUID(),
+    title: "Disposable collaborator Session note",
+    body: "Generated fixture note used only to prove the Session mutation boundary.",
+    kind: "SESSION_NOTE",
+    visibility: "SESSION_SHARED",
+  };
+  const viewerNoteAttempt = await requestJson(
+    new URL(`/api/sessions/${encodeURIComponent(room.id)}/notes`, baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(viewerToken), "content-type": "application/json" },
+      body: JSON.stringify({
+        ...noteRequest,
+        clientRequestId: randomUUID(),
+        title: "Viewer note attempt",
+      }),
+    },
+  );
+  assert(
+    viewerNoteAttempt.status === 404 &&
+      viewerNoteAttempt.body?.code === "NOT_FOUND",
+    `Project viewer unexpectedly created Session note state. HTTP ${viewerNoteAttempt.status}`,
+  );
+
+  const editorNote = await requestJson(
+    new URL(`/api/sessions/${encodeURIComponent(room.id)}/notes`, baseUrl),
+    {
+      method: "POST",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(noteRequest),
+    },
+  );
+  assert(
+    editorNote.status === 200 &&
+      editorNote.body?.ok === true &&
+      editorNote.body?.boundaries?.canonicalSessionMutationAccess === true &&
+      editorNote.body?.boundaries?.sessionAccessRechecked === true,
+    `Project editor could not create the disposable Session note. HTTP ${editorNote.status}`,
+  );
+  const createdNoteId = String(editorNote.body.note?.id || "");
+  const createdNoteUpdatedAt = String(editorNote.body.note?.updatedAt || "");
+  assert(createdNoteId && createdNoteUpdatedAt, "Session note response omitted canonical identity or revision.");
+
+  await prisma.studioProjectAccessGrant.update({
+    where: {
+      projectId_email: { projectId: project.id, email: collaboratorEmail },
+    },
+    data: { role: "VIEWER" },
+  });
+  const downgradedEdit = await requestJson(
+    new URL(`/api/notes/${encodeURIComponent(createdNoteId)}`, baseUrl),
+    {
+      method: "PATCH",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Downgraded edit attempt",
+        body: "This content must not replace the editor-authored fixture note.",
+        expectedUpdatedAt: createdNoteUpdatedAt,
+      }),
+    },
+  );
+  assert(
+    downgradedEdit.status === 404 && downgradedEdit.body?.code === "NOT_FOUND",
+    `Downgraded project viewer unexpectedly edited Session note state. HTTP ${downgradedEdit.status}`,
+  );
+  const preservedNote = await prisma.coachingNote.findUnique({
+    where: { id: createdNoteId },
+    select: {
+      title: true,
+      body: true,
+      _count: { select: { revisions: true } },
+    },
+  });
+  assert(
+    preservedNote?.title === noteRequest.title &&
+      preservedNote?.body === noteRequest.body &&
+      preservedNote?._count.revisions === 1,
+    "Downgraded Session note edit changed content or appended a revision.",
+  );
+  const downgradedPacketRead = await requestJson(
+    new URL(
+      `/api/mobile/capture/transcripts/packet?callRoomId=${encodeURIComponent(room.id)}`,
+      baseUrl,
+    ),
+    { headers: bearer(collaboratorToken) },
+  );
+  assert(
+    downgradedPacketRead.status === 200 && downgradedPacketRead.body?.ok === true,
+    `Downgraded project viewer lost intended Session read access. HTTP ${downgradedPacketRead.status}`,
+  );
+  const downgradedPacketMutation = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/actions", baseUrl),
+    {
+      method: "POST",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(reviewBody),
+    },
+  );
+  assert(
+    downgradedPacketMutation.status === 404 &&
+      downgradedPacketMutation.body?.errorCode === "ROOM_ACCESS_DENIED",
+    `Downgraded project viewer unexpectedly reviewed packet state. HTTP ${downgradedPacketMutation.status}`,
+  );
+
   await prisma.studioProjectAccessGrant.update({
     where: {
       projectId_email: { projectId: project.id, email: collaboratorEmail },
@@ -467,6 +581,12 @@ try {
     disposableDecision: "DEFER",
     actionItemsCreated: actionCount,
     reviewReceiptsPersisted: receipts.length,
+    editorSessionNoteCreated: true,
+    viewerSessionNoteCreateDenied: true,
+    downgradedSessionNoteEditDenied: true,
+    downgradedSessionNotePreserved: true,
+    downgradedPacketReadAllowed: true,
+    downgradedPacketMutationDenied: true,
     revokedGrantDeniedImmediately: true,
     canonicalSessionAccess: review.body.boundaries.canonicalSessionAccess,
     canonicalSessionMutationAccess:

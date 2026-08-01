@@ -5999,3 +5999,30 @@ was restored.
   Physical iPhone/TestFlight, deployed committed-source parity, and real HGO
   and coaching packet review remain open. Full evidence is in
   `docs/coordination/2026-08-01-session-packet-collaboration-access.md`.
+
+### Session note mutation authority checkpoint — 2026-08-01
+
+- Session-note creation and editing now use canonical Session mutation access,
+  not the broader read predicate. Project-only `VIEWER` grants remain
+  read-only; active `EDITOR`/`OWNER`, direct creator, non-observer participant,
+  booking, and staff authority are preserved.
+- Creation and edit paths recheck access inside their transactions. A project
+  editor downgraded to viewer can still read the Session but cannot create or
+  revise canonical note state, including notes they previously authored.
+- The broader permission audit retained read access for Session rendering,
+  continuity, evidence, and packet reads; kept client follow-up behind the
+  booked coach/recipient boundary; kept calendar writes actor-owned and
+  preview-revision-bound; and confirmed Episode Room and media promotion use
+  explicit destination write authority.
+- A real authenticated loopback operation proved viewer creation denial,
+  editor creation, downgrade edit denial, unchanged text and one revision,
+  retained read access before revocation, packet mutation denial, and complete
+  cleanup. An independent Prisma process found zero generated users,
+  workspaces, projects, or rooms.
+- Session-note/access coverage passes 16 tests, enabled PostgreSQL integration
+  passes 12, strict TypeScript and the optimized 155-route build pass, the
+  mobile Capture contract passes, and App Store static checks pass 949/949.
+- This remains generated-fixture permission proof. Physical-iPhone,
+  separate-account, real HGO/coaching note use, deployed parity, and
+  cross-device readback remain open. Full evidence is in
+  `docs/coordination/2026-08-01-session-note-mutation-authority.md`.

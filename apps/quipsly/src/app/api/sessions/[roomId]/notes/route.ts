@@ -9,7 +9,7 @@ import {
 } from "@/app/(app)/sessions/[roomId]/session-notes-model";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { sessionAccessWhere } from "@/lib/server/session-access";
+import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
 
 export const runtime = "nodejs";
@@ -140,7 +140,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
   const prisma = getPrismaClient() as any;
   const actorEmail = text(session.user.primaryEmail || session.user.email, 320).toLowerCase();
   const room = await prisma.callRoom.findFirst({
-    where: sessionAccessWhere(roomId, session.user),
+    where: sessionMutationAccessWhere(roomId, session.user),
     select: {
       id: true,
       bookingId: true,
@@ -208,14 +208,19 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       ok: true,
       idempotentReplay: true,
       note: serializedNote(existing, session.user.id),
-      boundaries: { canonicalIdentity: true, explicitVisibility: true, externalSideEffects: false },
+      boundaries: {
+        canonicalIdentity: true,
+        canonicalSessionMutationAccess: true,
+        explicitVisibility: true,
+        externalSideEffects: false,
+      },
     });
   }
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       const currentRoom = await tx.callRoom.findFirst({
-        where: sessionAccessWhere(room.id, session.user),
+        where: sessionMutationAccessWhere(room.id, session.user),
         select: {
           id: true,
           bookingId: true,
@@ -287,6 +292,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       note: serializedNote(result.created, session.user.id),
       boundaries: {
         canonicalIdentity: true,
+        canonicalSessionMutationAccess: true,
         sessionAccessRechecked: true,
         explicitVisibility: true,
         externalSideEffects: false,
@@ -313,7 +319,12 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       ok: true,
       idempotentReplay: true,
       note: serializedNote(raced, session.user.id),
-      boundaries: { canonicalIdentity: true, explicitVisibility: true, externalSideEffects: false },
+      boundaries: {
+        canonicalIdentity: true,
+        canonicalSessionMutationAccess: true,
+        explicitVisibility: true,
+        externalSideEffects: false,
+      },
     });
   }
 }

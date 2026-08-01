@@ -23,19 +23,23 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
   const nonce = randomUUID().slice(0, 8);
   const actorEmail = `session-notes-${nonce}@example.test`;
   const participantEmail = `session-notes-participant-${nonce}@example.test`;
+  const projectViewerEmail = `session-notes-viewer-${nonce}@example.test`;
   let actorUserId = "";
   let participantUserId = "";
+  let projectViewerUserId = "";
   let workspaceId = "";
   let projectId = "";
   let roomId = "";
 
   beforeAll(async () => {
-    const [actor, participant] = await Promise.all([
+    const [actor, participant, projectViewer] = await Promise.all([
       prisma.user.create({ data: { primaryEmail: actorEmail, name: "Session note author" } }),
       prisma.user.create({ data: { primaryEmail: participantEmail, name: "Session participant" } }),
+      prisma.user.create({ data: { primaryEmail: projectViewerEmail, name: "Project-only viewer" } }),
     ]);
     actorUserId = actor.id;
     participantUserId = participant.id;
+    projectViewerUserId = projectViewer.id;
     const workspace = await prisma.studioWorkspace.create({
       data: { slug: `session-notes-${nonce}`, name: "Session Notes smoke" },
     });
@@ -48,6 +52,7 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
       data: [
         { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail },
         { projectId, email: participantEmail, role: "VIEWER", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail },
+        { projectId, email: projectViewerEmail, role: "VIEWER", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail },
       ],
     });
     const room = await prisma.callRoom.create({
@@ -64,8 +69,8 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
-      if (actorUserId || participantUserId) {
-        await prisma.user.deleteMany({ where: { id: { in: [actorUserId, participantUserId].filter(Boolean) } } });
+      if (actorUserId || participantUserId || projectViewerUserId) {
+        await prisma.user.deleteMany({ where: { id: { in: [actorUserId, participantUserId, projectViewerUserId].filter(Boolean) } } });
       }
     } finally {
       await prisma.$disconnect();
@@ -114,6 +119,7 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
       },
       boundaries: {
         canonicalIdentity: true,
+        canonicalSessionMutationAccess: true,
         sessionAccessRechecked: true,
         explicitVisibility: true,
         externalSideEffects: false,
@@ -171,7 +177,7 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
     expect(JSON.stringify(authorLibrary)).toContain("Production audience evidence");
   });
 
-  it("does not let a project viewer author production-team policy", async () => {
+  it("does not let a Session participant with a viewer project role author production-team policy", async () => {
     signedInAs(participantUserId, participantEmail);
     const response = await post({
       clientRequestId: randomUUID(),
@@ -184,6 +190,22 @@ runLocalDatabaseSmoke("Session Notes creation and audience local database smoke"
     expect(await response.json()).toMatchObject({ ok: false, code: "PROJECT_ROLE_REQUIRED" });
     await expect(prisma.coachingNote.count({
       where: { roomId, title: "Unauthorized production note" },
+    })).resolves.toBe(0);
+  });
+
+  it("keeps a project-only viewer read-only for every Session note audience", async () => {
+    signedInAs(projectViewerUserId, projectViewerEmail);
+    const response = await post({
+      clientRequestId: randomUUID(),
+      title: "Viewer private note attempt",
+      body: "A read-only project grant must not create Session state.",
+      kind: "SESSION_NOTE",
+      visibility: "AUTHOR_PRIVATE",
+    });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    await expect(prisma.coachingNote.count({
+      where: { roomId, title: "Viewer private note attempt" },
     })).resolves.toBe(0);
   });
 });
