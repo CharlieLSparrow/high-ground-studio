@@ -5954,3 +5954,21 @@ was restored.
 - Human playback review followed by stale-lock/new-packet/canonical-work
   acceptance remains open. Full evidence is in
   `docs/coordination/2026-08-01-reviewed-transcript-packet-snapshots.md`.
+
+### Capture App Store screenshot UX checkpoint — 2026-08-01
+
+- Replaced the engineering-preview story in the deterministic App Store draft
+  journey with a `DEBUG`-only, mutation-free presentation layer that cannot be
+  enabled in release builds and uses only fictional identity data.
+- Visually repaired Today, consent, project work, verified-source Library, and
+  Account/privacy screenshots. The real consent UI is more concise without
+  weakening the canonical attestation or independent participant-consent
+  boundary; privacy and deletion controls now appear directly below identity.
+- The five-screen operated UI journey and 949/949 App Store static checks pass.
+  Exact-source drafts and receipts were regenerated from committed source
+  `543180f4085b63ffe37d21554e04c2e7fe17fda3` and sampled visually.
+- Draft receipts deliberately remain submission-ineligible. Physical/TestFlight
+  signed-candidate recapture, human approval, App Privacy/legal declarations,
+  and end-to-end deletion proof remain open.
+- Full evidence and the precise boundary are in
+  `docs/coordination/2026-08-01-capture-app-store-screenshot-ux-checkpoint.md`.
