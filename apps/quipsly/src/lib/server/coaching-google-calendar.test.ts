@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
+import { recordManagedCoachingCalendarProjection } from "@/lib/server/calendar-projections";
 
 import {
   canManageCoachingCalendarEvidence,
@@ -12,6 +13,14 @@ import {
 } from "./coaching-google-calendar";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/calendar-projections", () => ({
+  recordManagedCoachingCalendarProjection: jest.fn().mockResolvedValue({
+    connectionId: "connection-1",
+    collectionId: "collection-1",
+    projectionId: "projection-1",
+    receiptId: "receipt-1",
+  }),
+}));
 
 describe("Google Calendar receipt identity", () => {
   const originalEnv = { ...process.env };
@@ -68,6 +77,23 @@ describe("Google Calendar receipt identity", () => {
     fetchMock.mockRestore();
   });
 
+  it("does not surface raw Google response bodies through provider failures", async () => {
+    const fetchMock = jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("private attendee and provider detail", { status: 403 }),
+    );
+
+    const failure = await writeGoogleCalendarEvent({
+      accessToken: "token",
+      createEventId: "event-1",
+      payload: { summary: "Coaching" },
+    }).catch((error) => error as Error);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) throw new Error("Expected a redacted provider error.");
+    expect(failure.message).toBe("Google Calendar event write failed with HTTP 403.");
+    expect(failure.message).not.toContain("private attendee");
+    fetchMock.mockRestore();
+  });
+
   it("does not reuse an event ID from a different calendar and commits local receipts together", async () => {
     process.env.GOOGLE_CALENDAR_REFRESH_TOKEN = "refresh-token";
     process.env.GOOGLE_CALENDAR_SYNC_CLIENT_ID = "client-id";
@@ -112,6 +138,13 @@ describe("Google Calendar receipt identity", () => {
     expect(tx.calendarEventLink.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ providerCalendarId: "calendar-a@example.test", providerEventId: expectedEventId }) }));
     expect(tx.coachingBooking.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ calendarEventId: expectedEventId }) }));
     expect(tx.appointment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ googleEventId: expectedEventId }) }));
+    expect(recordManagedCoachingCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
+      tx,
+      bookingId: "booking-1",
+      operation: "CREATE_EVENT",
+      externalMutated: true,
+      legacyCalendarLinkId: "link-new",
+    }));
     fetchMock.mockRestore();
   });
 
@@ -169,6 +202,13 @@ describe("Google Calendar receipt identity", () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.calendarEventLink.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "canceled", providerEventId: "provider-event-1" }) }));
     expect(tx.coachingBooking.update).toHaveBeenCalled();
+    expect(recordManagedCoachingCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
+      tx,
+      bookingId: "booking-canceled",
+      operation: "CANCEL_EVENT",
+      externalMutated: true,
+      legacyCalendarLinkId: "cancel-link",
+    }));
     fetchMock.mockRestore();
   });
 });

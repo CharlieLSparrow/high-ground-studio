@@ -434,6 +434,10 @@ schema migration and an authenticated Schedule read model:
 - external writes remain held unless a relevant provider connection is
   `VERIFIED`; configuration or token availability alone does not display as
   connected.
+- after a managed Google write succeeds, Quipsly now atomically records its
+  legacy compatibility link and the normalized workspace connection,
+  collection, stable projection, and redacted effect receipt. Provider failures
+  expose only HTTP status, never a raw response body.
 
 This checkpoint does not claim Google OAuth, subscription-feed delivery,
 provider reconciliation, or production deployment. Those remain in Slices 2

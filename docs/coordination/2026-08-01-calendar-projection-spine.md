@@ -34,6 +34,12 @@ The Schedule experience communicates three separate promises:
 - redacted client contract with no credential, token, external calendar ID,
   attendee, or raw provider-error fields;
 - provider status derived from successful verification, not configuration;
+- successful managed Google create, update, and cancel operations now write the
+  legacy booking link and normalized workspace connection, collection,
+  projection, and append-only effect receipt in one local transaction;
+- normalized Google receipts retain hashes, stable source identity, provider
+  status, and mutation truth while excluding the calendar address, attendees,
+  tokens, and raw provider error bodies;
 - Schedule cards for each calendar purpose, its privacy boundary, fallback,
   current state, and latest safe receipt;
 - focused tests for anonymous denial, authorized projection, failure redaction,

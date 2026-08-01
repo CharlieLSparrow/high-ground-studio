@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { google } from "googleapis";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { recordManagedCoachingCalendarProjection } from "@/lib/server/calendar-projections";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
@@ -18,6 +19,7 @@ type ServiceAccountCredential = {
 
 type GoogleCalendarEventResponse = {
   id?: string;
+  etag?: string;
   htmlLink?: string;
   status?: string;
   summary?: string;
@@ -35,6 +37,11 @@ type GoogleCalendarMetadataResponse = {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function validProviderDate(value: unknown) {
+  const parsed = new Date(text(value));
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 export function getCoachingDefaultTimezone() {
@@ -454,7 +461,7 @@ export async function writeGoogleCalendarEvent(input: {
     });
   }
   if (!response.ok) {
-    throw new Error(`Google Calendar event write failed: ${await response.text()}`);
+    throw new Error(`Google Calendar event write failed with HTTP ${response.status}.`);
   }
 
   return (await response.json()) as GoogleCalendarEventResponse;
@@ -471,7 +478,7 @@ export async function deleteGoogleCalendarEvent(input: { accessToken: string; ev
   if (response.status === 404 || response.status === 410) {
     return { providerEventId: input.eventId, alreadyAbsent: true, httpStatus: response.status };
   }
-  if (!response.ok) throw new Error(`Google Calendar event cancellation failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(`Google Calendar event cancellation failed with HTTP ${response.status}.`);
   return { providerEventId: input.eventId, alreadyAbsent: false, httpStatus: response.status };
 }
 
@@ -488,7 +495,7 @@ export async function syncCoachingBookingToGoogleCalendar(input: {
       offering: true,
       clientUser: { select: { id: true, name: true, primaryEmail: true, image: true } },
       coachUser: { select: { id: true, name: true, primaryEmail: true, image: true } },
-      callRoom: true,
+      callRoom: { include: { project: { select: { workspaceId: true } } } },
       calendarLinks: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
@@ -585,6 +592,27 @@ export async function syncCoachingBookingToGoogleCalendar(input: {
         },
       });
     }
+    await recordManagedCoachingCalendarProjection({
+      tx,
+      workspaceId: booking.callRoom?.project?.workspaceId || null,
+      calendarId,
+      bookingId: booking.id,
+      roomId: booking.callRoom?.id || null,
+      title: eventTitle(booking),
+      scheduledStart: booking.scheduledStart,
+      scheduledEnd: booking.scheduledEnd,
+      timezone: text(booking.timezone) || getCoachingDefaultTimezone(),
+      bookingStatus: booking.status,
+      providerEventId,
+      providerEtag: text(googleEvent.etag) || null,
+      providerUpdatedAt: validProviderDate(googleEvent.updated),
+      operation: existingEventId ? "UPDATE_EVENT" : "CREATE_EVENT",
+      providerStatus: text(googleEvent.status) || status,
+      externalMutated: true,
+      actorUserId: input.operatorUserId,
+      legacyCalendarLinkId: createdLink.id,
+      occurredAt: now,
+    });
     return createdLink;
   });
 
@@ -612,7 +640,7 @@ export async function cancelCoachingBookingGoogleCalendar(input: {
     where: { id: input.bookingId },
     include: {
       coachUser: { select: { id: true } },
-      callRoom: true,
+      callRoom: { include: { project: { select: { workspaceId: true } } } },
       calendarLinks: { orderBy: { createdAt: "desc" }, take: 25 },
     },
   });
@@ -681,6 +709,25 @@ export async function cancelCoachingBookingGoogleCalendar(input: {
           alreadyAbsent: providerReceipt.alreadyAbsent,
         }),
       },
+    });
+    await recordManagedCoachingCalendarProjection({
+      tx,
+      workspaceId: booking.callRoom?.project?.workspaceId || null,
+      calendarId,
+      bookingId: booking.id,
+      roomId: booking.callRoom?.id || null,
+      title: eventTitle(booking),
+      scheduledStart: booking.scheduledStart,
+      scheduledEnd: booking.scheduledEnd,
+      timezone: text(booking.timezone) || getCoachingDefaultTimezone(),
+      bookingStatus: booking.status,
+      providerEventId,
+      operation: "CANCEL_EVENT",
+      providerStatus: createdLink.status,
+      externalMutated: !providerReceipt.alreadyAbsent,
+      actorUserId: input.operatorUserId,
+      legacyCalendarLinkId: createdLink.id,
+      occurredAt: now,
     });
     return createdLink;
   });
