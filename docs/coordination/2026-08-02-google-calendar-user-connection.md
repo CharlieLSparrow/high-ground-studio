@@ -215,9 +215,14 @@ No Google request or external side effect occurred.
    against a dedicated QA calendar with notifications visibly off.
 3. Exercise explicit cancellation against a dedicated QA event and verify the
    provider-absence recovery receipt.
-4. Add incremental reconciliation, including 410-triggered full resync, without
-   overwriting either side.
-5. Add podcast milestones and coach availability/free-busy as separate,
+4. Operate the implemented privacy-safe full/incremental reconciliation,
+   deletion handling, stale-cursor rejection, and 410-triggered full resync
+   against the dedicated QA calendar. Local PostgreSQL proof is complete; see
+   `docs/coordination/2026-08-01-google-calendar-reconciliation.md`.
+5. Add a verified, renewable push-notification wake-up for that same
+   reconciliation path; notification payloads must never become an alternate
+   event-import path.
+6. Add podcast milestones and coach availability/free-busy as separate,
    least-privilege capabilities.
-6. Add EventKit device-local access in Quipsly Capture only after the shared
+7. Add EventKit device-local access in Quipsly Capture only after the shared
    projection and conflict contracts are stable.

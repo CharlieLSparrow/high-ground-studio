@@ -1670,6 +1670,40 @@ function checkSessionCalendarCancellationContractSources() {
   );
 }
 
+function checkGoogleCalendarReconciliationContractSources() {
+  const oauthText = sourceText("apps/quipsly/src/lib/server/google-calendar-oauth.ts");
+  const reconciliationText = sourceText("apps/quipsly/src/lib/server/google-calendar-reconciliation.ts");
+  const routeText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/reconcile/route.ts");
+  const connectionRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/route.ts");
+  const managerText = sourceText("apps/quipsly/src/app/(app)/schedule/google-calendar-connection-manager.tsx");
+  const dogfoodText = sourceText("scripts/quipsly-local-calendar-reconciliation-dogfood.mjs");
+  expect(
+    oauthText.includes('"quipsly-google-calendar-sync-token-v1"')
+      && oauthText.includes('"sync-v1"')
+      && reconciliationText.includes("items(id,etag,status,updated,extendedProperties/private)")
+      && reconciliationText.includes('showDeleted: "true"')
+      && reconciliationText.includes('singleEvents: "false"')
+      && reconciliationText.includes('status: "RESET_REQUIRED"')
+      && reconciliationText.includes("google-calendar-reconciliation:${input.collectionId}")
+      && reconciliationText.includes("revalidateTeamWriteAccess")
+      && reconciliationText.includes("(cursor?.syncTokenRef || null) !== input.priorCursorRef")
+      && reconciliationText.includes("importedProviderContent: false")
+      && routeText.includes('action: "write"')
+      && routeText.includes('code: "calendar-reconciliation-superseded"')
+      && routeText.includes("externalSideEffects: false")
+      && connectionRouteText.includes("lastIncrementalSyncAt: true")
+      && !connectionRouteText.includes("syncTokenRef: true")
+      && managerText.includes("Check Google changes")
+      && managerText.includes("no Google event was changed")
+      && dogfoodText.includes("persistGoogleCalendarReconciliation")
+      && dogfoodText.includes("staleRetrySuperseded")
+      && dogfoodText.includes("providerCallsPerformed: false")
+      && dogfoodText.includes("plaintextCursorStored"),
+    "googleCalendarReconciliationAuthority",
+    "Google Calendar reconciliation persists encrypted cursors, imports only provider identity/version state, handles deletions and expired cursors, rechecks team authority, rejects stale writes, exposes an explicit non-mutating check, and is proven against disposable PostgreSQL fixtures.",
+  );
+}
+
 async function request(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs || timeoutMs);
@@ -1961,6 +1995,7 @@ async function main() {
   checkReviewDigestContractSources();
   checkTranscriptCorrectionContractSources();
   checkSessionCalendarCancellationContractSources();
+  checkGoogleCalendarReconciliationContractSources();
   checkUnifiedNestOperatingShellSources();
   if (!sourceOnly) {
     await checkReadiness();

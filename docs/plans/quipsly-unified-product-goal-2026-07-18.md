@@ -6026,3 +6026,33 @@ was restored.
   separate-account, real HGO/coaching note use, deployed parity, and
   cross-device readback remain open. Full evidence is in
   `docs/coordination/2026-08-01-session-note-mutation-authority.md`.
+
+### Privacy-safe Google Calendar reconciliation checkpoint — 2026-08-01
+
+- Google Calendar checks now use a persisted encrypted cursor for initial full
+  and incremental synchronization, consume deletion tombstones, and recover
+  expired HTTP 410 cursors through a clean full read.
+- The provider adapter requests and parses only event identity, etag, status,
+  update time, and Quipsly private linkage. Titles, descriptions, attendees,
+  notes, and every other provider-content field remain outside the contract.
+- Provider edits, deletion, restoration, missing events, and identity mismatch
+  become explicit projection conflicts. Quipsly never overwrites canonical
+  Session truth or mutates Google during reconciliation.
+- Serializable persistence uses a collection advisory lock, rejects a stale
+  cursor result, and rechecks team OWNER/EDITOR authority after the provider
+  read and before any shared write.
+- Schedule exposes an explicit **Check Google changes** control and receives
+  only safe counts and last-checked timestamps; provider identities and cursor
+  ciphertext do not leave the server boundary.
+- Operated loopback PostgreSQL dogfood proved full sync, incremental etag
+  conflict, stale-result rejection, cursor encryption/readback, receipt
+  privacy, metadata preservation, and zero-row cleanup without a provider
+  call. Focused coverage passes 49 tests, TypeScript passes, and the shared
+  iPhone/Nest source contract passes 81/81. The full Nest suite passes 215
+  suites / 1,106 tests, the optimized 156-page build passes, and Capture App
+  Store static checks pass 949/949.
+- Real Google consent and a dedicated QA calendar remain required to close
+  create/edit/delete/410/concurrency provider acceptance. Push notification
+  channels remain a later renewable wake-up for this exact reconciliation
+  path. Full evidence is in
+  `docs/coordination/2026-08-01-google-calendar-reconciliation.md`.

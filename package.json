@@ -63,6 +63,7 @@
     "quipsly:cloud:cost-audit:test": "node --test scripts/release/quipsly-cloud-cost-audit.test.mjs",
     "quipsly:local:session-collaboration-dogfood": "node --experimental-strip-types scripts/quipsly-local-session-collaboration-dogfood.mjs",
     "quipsly:local:calendar-cancellation-dogfood": "node --experimental-strip-types scripts/quipsly-local-calendar-cancellation-dogfood.mjs",
+    "quipsly:local:calendar-reconciliation-dogfood": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-calendar-reconciliation-dogfood.mjs",
     "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
     "quipsly:schema:release": "bash scripts/release/quipsly-schema-release.sh",
     "quipsly:schema:release:test": "bash scripts/release/quipsly-schema-release.test.sh && node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs",

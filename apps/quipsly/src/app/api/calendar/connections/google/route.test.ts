@@ -30,7 +30,19 @@ function connection() {
     verifiedAt: new Date("2026-08-02T00:00:00.000Z"),
     metadataJson: { accountLabel: "Calendar account" },
     oauthCredential: { encryptedPayload: "encrypted-not-a-token" },
-    collections: [],
+    collections: [{
+      id: "collection-1",
+      purpose: "PODCAST_PRODUCTION",
+      displayName: "Production",
+      providerCalendarId: "owned-1",
+      nestId: "project-1",
+      timezone: "America/Denver",
+      cursor: {
+        lastFullSyncAt: new Date("2026-08-01T00:00:00.000Z"),
+        lastIncrementalSyncAt: new Date("2026-08-02T00:00:00.000Z"),
+        syncTokenRef: "encrypted-cursor-must-not-escape",
+      },
+    }],
   };
 }
 
@@ -67,10 +79,15 @@ describe("/api/calendar/connections/google", () => {
     expect(response.status).toBe(200);
     expect(payload.connection.accountLabel).toBe("Calendar account");
     expect(payload.calendars[0].accessRole).toBe("owner");
+    expect(payload.selections[0].cursor).toEqual({
+      lastFullSyncAt: "2026-08-01T00:00:00.000Z",
+      lastIncrementalSyncAt: "2026-08-02T00:00:00.000Z",
+    });
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain("refresh-token");
     expect(serialized).not.toContain("access-token");
     expect(serialized).not.toContain("encrypted-not-a-token");
+    expect(serialized).not.toContain("encrypted-cursor-must-not-escape");
   });
 
   it("forbids a read-only collaborator from binding a shared production calendar before Google access", async () => {

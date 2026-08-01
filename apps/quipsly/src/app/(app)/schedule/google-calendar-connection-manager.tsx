@@ -29,6 +29,10 @@ type Selection = {
   providerCalendarId: string;
   nestId: string | null;
   timezone: string;
+  cursor?: {
+    lastFullSyncAt: string | null;
+    lastIncrementalSyncAt: string | null;
+  } | null;
 };
 type State = {
   connection: null | {
@@ -162,6 +166,33 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       setMessage("Google Calendar disconnected. The provider grant was revoked and the saved credential was erased.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not disconnect Google Calendar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reconcileSelection(collectionId: string) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/calendar/connections/google/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not check Google Calendar changes.");
+      const result = body.result;
+      setMessage(
+        result.conflictCount > 0
+          ? `Google check complete. ${result.conflictCount} projection conflict${result.conflictCount === 1 ? "" : "s"} need review; no Google event was changed.`
+          : result.resetFromExpiredToken
+            ? "Google's old sync cursor expired. Quipsly completed a privacy-minimized full check and saved the new encrypted cursor."
+            : "Google check complete. Quipsly saved the encrypted cursor and found no unresolved provider conflict.",
+      );
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not check Google Calendar changes.");
     } finally {
       setBusy(false);
     }
@@ -315,7 +346,18 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
             <h3 className="font-black text-[#263f34]">Verified selections</h3>
             {state.selections.length === 0 ? <p className="mt-2 text-xs font-semibold leading-relaxed text-[#5d746a]">Connected, but no Quipsly lane may project to Google yet.</p> : (
               <ul className="mt-3 space-y-2 text-xs font-semibold text-[#4e685d]">
-                {state.selections.map((selection) => <li key={selection.id} className="rounded-xl bg-emerald-50 p-3"><span className="font-black">{laneLabel(selection.purpose)}</span><br />{selection.displayName}</li>)}
+                {state.selections.map((selection) => {
+                  const lastChecked = selection.cursor?.lastIncrementalSyncAt || selection.cursor?.lastFullSyncAt;
+                  return (
+                    <li key={selection.id} className="rounded-xl bg-emerald-50 p-3">
+                      <span className="font-black">{laneLabel(selection.purpose)}</span><br />{selection.displayName}
+                      <p className="mt-1 text-[11px] text-[#5d746a]">{lastChecked ? `Provider checked ${new Date(lastChecked).toLocaleString()}` : "Provider changes have not been checked yet."}</p>
+                      <button type="button" onClick={() => void reconcileSelection(selection.id)} disabled={busy} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-[11px] font-black text-[#315346] disabled:opacity-50">
+                        <RefreshCcw size={13} aria-hidden="true" />Check Google changes
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             <div className="mt-4 flex flex-wrap gap-2">

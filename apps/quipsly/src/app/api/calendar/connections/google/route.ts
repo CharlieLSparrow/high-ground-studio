@@ -58,6 +58,12 @@ async function actorConnection(prisma: any, userId: string) {
           providerCalendarId: true,
           nestId: true,
           timezone: true,
+          cursor: {
+            select: {
+              lastFullSyncAt: true,
+              lastIncrementalSyncAt: true,
+            },
+          },
         },
       },
     },
@@ -127,7 +133,20 @@ export async function GET(request: Request) {
         verifiedAt: connection.verifiedAt?.toISOString() ?? null,
       },
       calendars: provider.calendars,
-      selections: connection.collections,
+      selections: connection.collections.map((selection: any) => ({
+        id: selection.id,
+        purpose: selection.purpose,
+        displayName: selection.displayName,
+        providerCalendarId: selection.providerCalendarId,
+        nestId: selection.nestId,
+        timezone: selection.timezone,
+        cursor: selection.cursor
+          ? {
+              lastFullSyncAt: selection.cursor.lastFullSyncAt?.toISOString?.() ?? selection.cursor.lastFullSyncAt ?? null,
+              lastIncrementalSyncAt: selection.cursor.lastIncrementalSyncAt?.toISOString?.() ?? selection.cursor.lastIncrementalSyncAt ?? null,
+            }
+          : null,
+      })),
     });
   } catch (error) {
     const known = error instanceof GoogleCalendarOAuthError;

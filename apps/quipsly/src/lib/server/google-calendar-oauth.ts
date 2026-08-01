@@ -406,6 +406,68 @@ export function decryptGoogleRefreshToken(payload: string, key: Buffer) {
   }
 }
 
+const GOOGLE_CALENDAR_SYNC_TOKEN_AAD = Buffer.from(
+  "quipsly-google-calendar-sync-token-v1",
+  "utf8",
+);
+
+export function encryptGoogleCalendarSyncToken(syncToken: string, key: Buffer) {
+  if (!syncToken.trim()) {
+    throw new GoogleCalendarOAuthError(
+      "Google Calendar returned an empty reconciliation cursor.",
+      "invalid-calendar-sync-token",
+      502,
+    );
+  }
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(GOOGLE_CALENDAR_SYNC_TOKEN_AAD);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify({ version: 1, syncToken }), "utf8"),
+    cipher.final(),
+  ]);
+  return [
+    "sync-v1",
+    iv.toString("base64url"),
+    cipher.getAuthTag().toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(".");
+}
+
+export function decryptGoogleCalendarSyncToken(payload: string, key: Buffer) {
+  const [version, iv, authTag, ciphertext, ...remainder] = payload.split(".");
+  if (version !== "sync-v1" || !iv || !authTag || !ciphertext || remainder.length) {
+    throw new GoogleCalendarOAuthError(
+      "The saved Google Calendar reconciliation cursor could not be read.",
+      "invalid-encrypted-calendar-sync-token",
+      503,
+    );
+  }
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      key,
+      Buffer.from(iv, "base64url"),
+    );
+    decipher.setAAD(GOOGLE_CALENDAR_SYNC_TOKEN_AAD);
+    decipher.setAuthTag(Buffer.from(authTag, "base64url"));
+    const decoded = JSON.parse(
+      Buffer.concat([
+        decipher.update(Buffer.from(ciphertext, "base64url")),
+        decipher.final(),
+      ]).toString("utf8"),
+    ) as { version?: number; syncToken?: string };
+    if (decoded.version !== 1 || !decoded.syncToken?.trim()) throw new Error("invalid");
+    return decoded.syncToken;
+  } catch {
+    throw new GoogleCalendarOAuthError(
+      "The saved Google Calendar reconciliation cursor could not be read.",
+      "invalid-encrypted-calendar-sync-token",
+      503,
+    );
+  }
+}
+
 export async function revokeGoogleCalendarToken(token: string) {
   const response = await fetch("https://oauth2.googleapis.com/revoke", {
     method: "POST",

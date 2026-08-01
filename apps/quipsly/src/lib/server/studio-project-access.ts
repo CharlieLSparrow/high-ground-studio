@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { PrismaClient, StudioProjectAccessRole, StudioProjectAccessStatus } from "@prisma/client";
+import type { Prisma, PrismaClient, StudioProjectAccessRole, StudioProjectAccessStatus } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
@@ -31,7 +31,9 @@ export type AccessibleStudioProjectSummary = {
   collaborators?: { email: string; role: StudioProjectAccessRole }[];
 };
 
-type ProjectWithAccess = Awaited<ReturnType<typeof findStudioProjectForAccess>>;
+type ProjectWithAccess = Prisma.StudioProjectGetPayload<{
+  include: { workspace: true; accessGrants: true };
+}>;
 
 export function normalizeAccessEmail(email?: string | null) {
   return (email || "").trim().toLowerCase();
@@ -119,22 +121,33 @@ export async function hasAnyActiveStudioProjectAccessGrantForEmail(
   return Boolean(grant);
 }
 
-export async function findStudioProjectForAccess(projectSlug: string, prisma: PrismaClient = getPrismaClient()) {
-  return prisma.studioProject.findFirst({
+export async function findStudioProjectForAccess(
+  projectSlug: string,
+  prisma: PrismaClient = getPrismaClient(),
+): Promise<ProjectWithAccess | null> {
+  const project = await prisma.studioProject.findFirst({
     where: { slug: projectSlug },
-    include: {
-      workspace: true,
-      accessGrants: {
-        where: { status: "ACTIVE" },
-        orderBy: { createdAt: "asc" },
-      },
-    },
     orderBy: { updatedAt: "desc" },
   });
+  if (!project) return null;
+
+  // A few isolated unit callers supply the already-shaped result. Production
+  // Prisma reads the relations sequentially so this resolver remains valid on
+  // an interactive transaction's single pg connection.
+  if ("workspace" in project && "accessGrants" in project) return project as ProjectWithAccess;
+  const workspace = await prisma.studioWorkspace.findUnique({
+    where: { id: project.workspaceId },
+  });
+  const accessGrants = await prisma.studioProjectAccessGrant.findMany({
+    where: { projectId: project.id, status: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!workspace) return null;
+  return { ...project, workspace, accessGrants };
 }
 
 function workspaceOwnerLabelAllows(
-  project: NonNullable<ProjectWithAccess>,
+  project: ProjectWithAccess,
   identityEmails: string[],
 ) {
   return identityEmails.includes(normalizeAccessEmail(project.workspace.ownerLabel));
@@ -152,10 +165,9 @@ export async function resolveStudioProjectAccess({
   prisma?: PrismaClient;
 }): Promise<StudioProjectAccessResolution> {
   const normalizedEmail = normalizeAccessEmail(email);
-  const [project, identity] = await Promise.all([
-    findStudioProjectForAccess(projectSlug, prisma),
-    resolveStudioAccessIdentity(normalizedEmail, prisma),
-  ]);
+  // Keep these reads sequential for interactive-transaction callers.
+  const project = await findStudioProjectForAccess(projectSlug, prisma);
+  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
 
   if (!project || !normalizedEmail) {
     return { allowed: false, role: null, source: "none", projectId: project?.id ?? null, projectSlug };

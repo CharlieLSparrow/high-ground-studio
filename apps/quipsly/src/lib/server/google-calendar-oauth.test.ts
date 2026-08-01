@@ -3,6 +3,8 @@
 import {
   beginGoogleCalendarOAuth,
   decryptGoogleRefreshToken,
+  decryptGoogleCalendarSyncToken,
+  encryptGoogleCalendarSyncToken,
   encryptGoogleRefreshToken,
   GOOGLE_CALENDAR_LIST_SCOPE,
   GOOGLE_OWNED_EVENTS_SCOPE,
@@ -100,6 +102,18 @@ describe("Google Calendar OAuth boundary", () => {
     expect(() => decryptGoogleRefreshToken(encrypted, Buffer.alloc(32, 8))).toThrow(
       GoogleCalendarOAuthError,
     );
+  });
+
+  it("encrypts sync cursors with a distinct authenticated context", () => {
+    const key = Buffer.alloc(32, 7);
+    const encrypted = encryptGoogleCalendarSyncToken("provider-sync-token", key);
+    expect(encrypted).not.toContain("provider-sync-token");
+    expect(encrypted).toMatch(/^sync-v1\./);
+    expect(decryptGoogleCalendarSyncToken(encrypted, key)).toBe("provider-sync-token");
+    expect(() => decryptGoogleCalendarSyncToken(encrypted, Buffer.alloc(32, 8))).toThrow(
+      GoogleCalendarOAuthError,
+    );
+    expect(() => decryptGoogleRefreshToken(encrypted, key)).toThrow(GoogleCalendarOAuthError);
   });
 
   it("uses a stable digest rather than a provider email as the account key", () => {
