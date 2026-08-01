@@ -1640,6 +1640,68 @@ struct MobileCaptureWorkResponse: Codable, Hashable {
     let boundaries: MobileCaptureWorkBoundaries?
 }
 
+enum MobileCalendarFeedPurpose: String, Codable, CaseIterable, Hashable, Identifiable {
+    case personalCommitments = "PERSONAL_COMMITMENTS"
+    case coaching = "COACHING"
+    case podcastProduction = "PODCAST_PRODUCTION"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .personalCommitments: "My commitments"
+        case .coaching: "My coaching sessions"
+        case .podcastProduction: "Podcast production"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .personalCommitments:
+            "Focus blocks plus transparent task due dates and goal targets."
+        case .coaching:
+            "Appointments you coach or attend, without notes or transcript text."
+        case .podcastProduction:
+            "Scheduled podcast rooms from one Nest, without manuscripts, chat, or media."
+        }
+    }
+}
+
+struct MobileCalendarFeedStatus: Codable, Identifiable, Hashable {
+    let id: String
+    let purpose: MobileCalendarFeedPurpose
+    let displayName: String
+    let projectId: String?
+    let status: String
+    let createdAt: String
+    let revokedAt: String?
+    let lastGeneratedAt: String?
+    let subscriptionUrlRecoverable: Bool
+}
+
+struct MobileCalendarFeedListResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let feeds: [MobileCalendarFeedStatus]?
+}
+
+struct MobileCalendarFeedCreated: Decodable, Hashable {
+    let id: String
+    let purpose: MobileCalendarFeedPurpose
+    let displayName: String
+    let subscriptionUrl: String
+    let webcalUrl: String
+    let shownOnce: Bool
+    let priorFeedRevoked: Bool
+}
+
+struct MobileCalendarFeedMutationResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let feed: MobileCalendarFeedCreated?
+    let revoked: Int?
+}
+
 struct MobileCaptureSessionCreateResponse: Codable {
     let ok: Bool
     let error: String?
@@ -4351,6 +4413,197 @@ final class CaptureTodayClient: ObservableObject {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("QuipslyCapture/ProtectedTodayCache", isDirectory: true)
             .appendingPathComponent("mobile-today-v1.json")
+    }
+}
+
+@MainActor
+final class CaptureCalendarSubscriptionClient: ObservableObject {
+    @Published private(set) var feeds: [MobileCalendarFeedStatus] = []
+    @Published private(set) var oneTimeFeed: MobileCalendarFeedCreated?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isMutating = false
+    @Published var statusMessage: String?
+    @Published var errorMessage: String?
+
+    private struct MutationRequest: Encodable {
+        let purpose: String
+        let timezone: String?
+        let projectId: String?
+        let displayName: String?
+    }
+
+    private let baseURL = normalizedNestBaseURL(
+        Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+            ?? "https://nest.quipsly.com"
+    )
+
+    func activeFeed(
+        purpose: MobileCalendarFeedPurpose,
+        projectID: String? = nil
+    ) -> MobileCalendarFeedStatus? {
+        feeds.first {
+            $0.status.uppercased() == "ACTIVE"
+                && $0.purpose == purpose
+                && (purpose != .podcastProduction || $0.projectId == projectID)
+        }
+    }
+
+    func loadPreview() {
+        let now = ISO8601DateFormatter().string(from: Date())
+        feeds = [
+            MobileCalendarFeedStatus(
+                id: "preview-personal-calendar",
+                purpose: .personalCommitments,
+                displayName: "My commitments",
+                projectId: nil,
+                status: "ACTIVE",
+                createdAt: now,
+                revokedAt: nil,
+                lastGeneratedAt: now,
+                subscriptionUrlRecoverable: false
+            ),
+            MobileCalendarFeedStatus(
+                id: "preview-coaching-calendar",
+                purpose: .coaching,
+                displayName: "My coaching sessions",
+                projectId: nil,
+                status: "ACTIVE",
+                createdAt: now,
+                revokedAt: nil,
+                lastGeneratedAt: nil,
+                subscriptionUrlRecoverable: false
+            ),
+        ]
+        oneTimeFeed = nil
+        statusMessage = "Preview subscriptions are read-only. No private link was created or exposed."
+        errorMessage = nil
+    }
+
+    func load() async {
+        guard !isLoading,
+              let url = URL(string: "\(baseURL)/api/calendar/feeds") else { return }
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCalendarFeedListResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureCalendarSubscriptions",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Calendar subscriptions could not be loaded."]
+                )
+            }
+            feeds = payload.feeds ?? []
+        } catch {
+            errorMessage = "Calendar subscriptions are unavailable: \(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func rotate(
+        purpose: MobileCalendarFeedPurpose,
+        projectID: String? = nil,
+        displayName: String? = nil
+    ) async -> Bool {
+        guard !isMutating, AuthManager.shared.networkActionsAllowed,
+              let url = URL(string: "\(baseURL)/api/calendar/feeds") else {
+            errorMessage = "Reconnect to Nest before changing a calendar subscription."
+            return false
+        }
+        if purpose == .podcastProduction,
+           projectID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            errorMessage = "Choose a podcast Nest before creating its calendar subscription."
+            return false
+        }
+        isMutating = true
+        oneTimeFeed = nil
+        statusMessage = nil
+        errorMessage = nil
+        defer { isMutating = false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(
+                MutationRequest(
+                    purpose: purpose.rawValue,
+                    timezone: TimeZone.current.identifier,
+                    projectId: purpose == .podcastProduction ? projectID : nil,
+                    displayName: displayName
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCalendarFeedMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok, let feed = payload.feed else {
+                throw NSError(
+                    domain: "CaptureCalendarSubscriptions",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "The private calendar link could not be created."]
+                )
+            }
+            oneTimeFeed = feed
+            statusMessage = "Private link created. Add or share it now; Quipsly stores only its digest and cannot show this exact link again."
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func revoke(
+        purpose: MobileCalendarFeedPurpose,
+        projectID: String? = nil
+    ) async -> Bool {
+        guard !isMutating, AuthManager.shared.networkActionsAllowed,
+              let url = URL(string: "\(baseURL)/api/calendar/feeds") else {
+            errorMessage = "Reconnect to Nest before revoking a calendar subscription."
+            return false
+        }
+        isMutating = true
+        statusMessage = nil
+        errorMessage = nil
+        defer { isMutating = false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(
+                MutationRequest(
+                    purpose: purpose.rawValue,
+                    timezone: nil,
+                    projectId: purpose == .podcastProduction ? projectID : nil,
+                    displayName: nil
+                )
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCalendarFeedMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureCalendarSubscriptions",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "The calendar subscription could not be revoked."]
+                )
+            }
+            if oneTimeFeed?.purpose == purpose { oneTimeFeed = nil }
+            statusMessage = (payload.revoked ?? 0) > 0
+                ? "Subscription revoked. The old private link now returns not found."
+                : "No active subscription needed revocation."
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func dismissOneTimeFeed() {
+        oneTimeFeed = nil
     }
 }
 

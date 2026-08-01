@@ -179,6 +179,7 @@ final class CaptureExperienceModel: ObservableObject {
     let sessionClient = CaptureSessionClient()
     let todayClient = CaptureTodayClient()
     let workClient = CaptureWorkClient()
+    let calendarSubscriptionClient = CaptureCalendarSubscriptionClient()
     let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
     let readinessClient = CaptureReadinessClient()
@@ -214,6 +215,9 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         workClient.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        calendarSubscriptionClient.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         sourceInboxClient.objectWillChange
@@ -366,6 +370,7 @@ final class CaptureExperienceModel: ObservableObject {
             ]
             todayClient.loadPreview()
             workClient.loadPreview()
+            calendarSubscriptionClient.loadPreview()
             sourceInboxClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
@@ -387,9 +392,10 @@ final class CaptureExperienceModel: ObservableObject {
         async let sessionLoad = sessionClient.load()
         async let todayLoad: Void = todayClient.load()
         async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
+        async let calendarLoad: Void = calendarSubscriptionClient.load()
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
-        _ = await (sessionLoad, todayLoad, workLoad, sourceInboxLoad, readinessLoad)
+        _ = await (sessionLoad, todayLoad, workLoad, calendarLoad, sourceInboxLoad, readinessLoad)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )

@@ -83,6 +83,12 @@ External evidence:
   hints, mark task/goal due events transparent, record no-external-mutation
   receipts, and exclude notes, transcripts, recordings, identities, and
   provider credentials by construction.
+- Capture Today now exposes the same three feeds through a compact native
+  Calendar continuity disclosure. It authenticates directly with Nest, selects
+  one accessible podcast Nest, opens Apple Calendar with `webcal`, shares the
+  standard HTTPS subscription form for Google Calendar and other clients, and
+  retains a newly minted capability only in process memory. Preview data shows
+  statuses without any private URL and disables create/replace/revoke.
 - This new subscription slice is committed source only until the next spaced
   preview batch; the earlier 0%-traffic preview does not contain it.
 
@@ -107,6 +113,11 @@ External evidence:
 - Quipsly TypeScript: pass.
 - Media-processing and transcript-worker TypeScript: pass.
 - Public mobile contract: pass.
+- Capture calendar static App Store gate: 917/917.
+- Focused native calendar UI acceptance on iPhone 17 Pro simulator: pass; the
+  shipping Swift target compiled and the read-only/privacy test completed with
+  exit 0. Result bundle:
+  `/Volumes/My Passport/QuipslyBuild/CalendarContinuity-20260801-attempt3/CalendarContinuity.xcresult`.
 - Optimized Nest production build: pass, including the new calendar route.
 - `git diff --check`: pass.
 

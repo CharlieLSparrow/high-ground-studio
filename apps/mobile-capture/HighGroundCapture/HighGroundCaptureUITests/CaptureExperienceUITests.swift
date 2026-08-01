@@ -1002,6 +1002,47 @@ final class CaptureExperienceUITests: XCTestCase {
         assertFocusedTranscriptSegment("preview-segment")
     }
 
+    func testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks() {
+        let card = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "Today should make calendar continuity reachable without adding a sixth primary tab."
+        )
+        let manage = app.buttons["CaptureCalendarManage"]
+        XCTAssertTrue(manage.isHittable)
+        manage.tap()
+
+        for purpose in ["PERSONAL_COMMITMENTS", "COACHING", "PODCAST_PRODUCTION"] {
+            let lane = app.descendants(matching: .any)["CaptureCalendarLane_\(purpose)"]
+            XCTAssertTrue(lane.exists, "Expected a deliberate calendar lane for \(purpose).")
+
+            let createOrReplace = app.buttons["CaptureCalendarCreate_\(purpose)"]
+            XCTAssertTrue(createOrReplace.exists)
+            XCTAssertFalse(
+                createOrReplace.isEnabled,
+                "Preview calendar subscriptions must never create or rotate a private capability."
+            )
+        }
+
+        XCTAssertTrue(app.staticTexts["My commitments"].exists)
+        XCTAssertTrue(app.staticTexts["My coaching sessions"].exists)
+        XCTAssertTrue(app.staticTexts["Podcast production"].exists)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureCalendarOneTimeLink"].exists,
+            "A private subscription capability must never exist in deterministic preview data."
+        )
+
+        let boundary = app.staticTexts["CaptureCalendarBoundary"]
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("read-only and revocable"))
+        XCTAssertTrue(boundary.label.contains("not recordings"))
+        XCTAssertTrue(boundary.label.contains("transcript text"))
+        XCTAssertTrue(boundary.label.contains("coaching notes"))
+        XCTAssertTrue(boundary.label.contains("participant addresses"))
+        XCTAssertTrue(boundary.label.contains("provider credentials"))
+    }
+
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
         let recurrence = app.descendants(matching: .any)["CaptureTodayRecurrence_preview-series_preview-task"]
         reveal(recurrence)

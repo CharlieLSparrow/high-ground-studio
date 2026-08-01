@@ -471,6 +471,19 @@ markers so a deadline does not pretend to reserve availability. Private notes,
 transcript text, recordings, participant addresses, and provider identifiers
 are excluded by the server-side projection.
 
+The same boundary is now reachable natively from a compact, expandable
+**Calendar continuity** card near the top of Capture's Today surface. It uses
+the signed-in Nest identity rather than handing the user through a second web
+login. A person can create, replace, or revoke the personal, coaching, and
+selected podcast-Nest feeds; Apple Calendar receives a `webcal` action while
+the standard HTTPS subscription URL can be shared to Google Calendar or other
+clients. The raw bearer capability remains in process memory only and is
+cleared when hidden, replaced, revoked, or the app process ends. Status refresh
+returns metadata only and cannot reconstruct the private link. Preview mode
+renders the entire decision surface read-only without inventing a capability.
+The card stays collapsed outside setup/maintenance so calendar plumbing does
+not displace Today work.
+
 The current provider guidance changes the implementation details, not the
 source-of-truth architecture:
 

@@ -211,6 +211,12 @@ private struct CaptureTodayView: View {
                     .disabled(model.isSessionContextLocked)
                 }
 
+                CaptureCalendarContinuityCard(
+                    client: model.calendarSubscriptionClient,
+                    projects: model.workClient.projects,
+                    previewOnly: model.usesPreviewData
+                )
+
                 TodayFollowThroughCard(
                     client: model.todayClient,
                     inboxClient: model.sourceInboxClient,
@@ -1389,6 +1395,253 @@ private struct CaptureWorkView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct CaptureCalendarContinuityCard: View {
+    @ObservedObject var client: CaptureCalendarSubscriptionClient
+    let projects: [MobileCaptureWorkProject]
+    let previewOnly: Bool
+    @State private var selectedProjectID = ""
+    @State private var isExpanded = false
+    @State private var replaceTarget: MobileCalendarFeedPurpose?
+    @State private var revokeTarget: MobileCalendarFeedPurpose?
+
+    private var selectedProject: MobileCaptureWorkProject? {
+        projects.first { $0.id == selectedProjectID }
+            ?? projects.first { !$0.isHomeNest }
+            ?? projects.first
+    }
+
+    private var decisionsDisabled: Bool {
+        previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "calendar.badge.plus")
+                    .font(.title2)
+                    .foregroundStyle(.blue)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Calendar continuity")
+                        .font(.title3.weight(.bold))
+                    Text("Subscribe once; keep Quipsly as the source of truth")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if client.isLoading || client.isMutating {
+                    ProgressView().controlSize(.small)
+                }
+                Button(isExpanded ? "Close" : "Manage") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureCalendarManage")
+            }
+
+            if isExpanded {
+                ForEach(MobileCalendarFeedPurpose.allCases) { purpose in
+                    calendarLane(purpose)
+                }
+
+                if let feed = client.oneTimeFeed,
+                   let webcalURL = URL(string: feed.webcalUrl),
+                   let httpsURL = URL(string: feed.subscriptionUrl) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Shown once · \(feed.displayName)", systemImage: "key.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.green)
+                        Text("Treat this private subscription like a password. Anyone with it can read this calendar projection until you revoke or replace it.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Link(destination: webcalURL) {
+                            Label("Subscribe in Apple Calendar", systemImage: "calendar.badge.plus")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("CaptureCalendarSubscribe")
+                        ShareLink(item: httpsURL) {
+                            Label("Share HTTPS link", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureCalendarShareLink")
+                        Button("Hide private link") {
+                            client.dismissOneTimeFeed()
+                        }
+                        .font(.caption.weight(.bold))
+                        .accessibilityIdentifier("CaptureCalendarHideLink")
+                    }
+                    .padding(12)
+                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureCalendarOneTimeLink")
+                }
+
+                if let message = client.statusMessage {
+                    Label(message, systemImage: "checkmark.shield")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureCalendarStatus")
+                }
+                if let error = client.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureCalendarError")
+                }
+
+                Text("Subscriptions are read-only and revocable. They contain schedule labels and links back to Quipsly—not recordings, transcript text, coaching notes, participant addresses, manuscripts, chat, or provider credentials. Calendar apps choose their own refresh timing.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureCalendarBoundary")
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCalendarContinuityCard")
+        .onAppear {
+            if selectedProjectID.isEmpty {
+                selectedProjectID = selectedProject?.id ?? ""
+            }
+        }
+        .onChange(of: projects) { _, _ in
+            if !projects.contains(where: { $0.id == selectedProjectID }) {
+                selectedProjectID = selectedProject?.id ?? ""
+            }
+        }
+        .confirmationDialog(
+            "Replace this private calendar link?",
+            isPresented: Binding(
+                get: { replaceTarget != nil },
+                set: { if !$0 { replaceTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let purpose = replaceTarget {
+                Button("Replace and revoke old link", role: .destructive) {
+                    replaceTarget = nil
+                    Task { await rotate(purpose) }
+                }
+            }
+            Button("Keep current link", role: .cancel) { replaceTarget = nil }
+        } message: {
+            Text("The current private link will stop working immediately. Calendar apps may keep their last downloaded copy until they refresh.")
+        }
+        .confirmationDialog(
+            "Revoke this calendar subscription?",
+            isPresented: Binding(
+                get: { revokeTarget != nil },
+                set: { if !$0 { revokeTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let purpose = revokeTarget {
+                Button("Revoke private link", role: .destructive) {
+                    revokeTarget = nil
+                    Task {
+                        await client.revoke(
+                            purpose: purpose,
+                            projectID: projectID(for: purpose)
+                        )
+                    }
+                }
+            }
+            Button("Keep subscription", role: .cancel) { revokeTarget = nil }
+        } message: {
+            Text("The private URL will return not found. Quipsly schedule records remain unchanged.")
+        }
+    }
+
+    @ViewBuilder
+    private func calendarLane(_ purpose: MobileCalendarFeedPurpose) -> some View {
+        let projectID = projectID(for: purpose)
+        let active = client.activeFeed(purpose: purpose, projectID: projectID) != nil
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(purpose.title)
+                        .font(.subheadline.weight(.bold))
+                    Text(purpose.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(active ? "Active" : "Not shared")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(active ? Color.green : Color.secondary)
+            }
+
+            if purpose == .podcastProduction {
+                Picker("Episode Nest", selection: $selectedProjectID) {
+                    if projects.isEmpty {
+                        Text("No accessible Nests").tag("")
+                    }
+                    ForEach(projects) { project in
+                        Text(project.name).tag(project.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(decisionsDisabled || projects.isEmpty)
+                .accessibilityIdentifier("CaptureCalendarPodcastProject")
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    if active {
+                        replaceTarget = purpose
+                    } else {
+                        Task { await rotate(purpose) }
+                    }
+                } label: {
+                    Label(
+                        active ? "Replace link" : "Create private link",
+                        systemImage: active ? "arrow.triangle.2.circlepath" : "plus"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    decisionsDisabled
+                        || (purpose == .podcastProduction && projectID == nil)
+                )
+                .accessibilityIdentifier("CaptureCalendarCreate_\(purpose.rawValue)")
+
+                if active {
+                    Button("Revoke", role: .destructive) {
+                        revokeTarget = purpose
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .disabled(decisionsDisabled)
+                    .accessibilityIdentifier("CaptureCalendarRevoke_\(purpose.rawValue)")
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCalendarLane_\(purpose.rawValue)")
+    }
+
+    private func projectID(for purpose: MobileCalendarFeedPurpose) -> String? {
+        purpose == .podcastProduction ? selectedProject?.id : nil
+    }
+
+    private func rotate(_ purpose: MobileCalendarFeedPurpose) async {
+        await client.rotate(
+            purpose: purpose,
+            projectID: projectID(for: purpose),
+            displayName: purpose == .podcastProduction
+                ? selectedProject.map { "\($0.name) production" }
+                : nil
+        )
     }
 }
 
