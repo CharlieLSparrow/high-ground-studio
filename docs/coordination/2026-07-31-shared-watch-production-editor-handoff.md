@@ -75,12 +75,39 @@ that opening the editor did not rewrite the protected source aggregate.
 - Retained recorder/editor/Shared Watch operation: passed.
 - Independent database readback: passed.
 
-## Remaining release boundary
+## Production release
 
-This checkpoint proves the local canonical handoff and durable retained
-operation. It does not yet claim production deployment of this source or a
-physical TestFlight recording. Preview deployment, authenticated review,
-immutable source/image readback, and promotion are the next web gates.
-Physical-iPhone install, audio/video capture, camera switching, pause/resume,
-interruption recovery, upload, playback, alignment, and same-ID Nest/Studio
-readback remain open until an iPhone enumerates through CoreDevice.
+- Exact deployed source: `7cad51fed83189582545731deeb2541bb6852fdf`
+- Cloud Build: `b09b93e2-e735-44fa-8465-974d827fc09a`
+- Cloud Run revision: `studio-00484-jem`
+- Build manifest-list digest:
+  `sha256:d77371bb0e768f9273fb860ace6c0750d6688b459af64ddaa3e92706c08fe99f`
+- Cloud Run platform image digest:
+  `sha256:2a568b14bbb2b3991af9619e59bdd95392eae06f140128790c7f374917d61dd5`
+- Rollback revision: `studio-00482-lon`
+- Production traffic: `100% studio-00484-jem`
+
+The release pipeline materialized a dependency-closed clean context from the
+exact commit, passed 30/30 Session source-evidence tests, regenerated Prisma,
+built and typechecked all 150 routes again, verified six required route bundles
+inside the final image, and deployed the candidate with zero traffic. A
+generated verified reviewer then exercised public health, production-core,
+Firebase, native-session, Home Nest, Projects, Session workspace, account
+switching, admin authority, writing, editor, recorder, Research, Publishing,
+logout, and configured public hosts before promotion.
+
+After smoke, the reviewer removed two grants, one membership, one generated
+user, one Home Nest, and the Firebase identity, then independently verified
+both stores clean. The immutable candidate was promoted to 100% traffic.
+Production `/api/healthz` reads back the exact source, image tag, and revision;
+the post-promotion recovery gate passes infrastructure, domain/certificate,
+public-route, billing-log, and all 111 Capture contracts.
+
+## Remaining boundary
+
+This checkpoint proves the production web handoff. It does not claim a
+physical TestFlight recording. Physical-iPhone install, audio/video capture,
+camera switching, pause/resume, interruption recovery, upload, playback,
+alignment, and same-ID Nest/Studio readback remain open until an iPhone
+enumerates through CoreDevice. Quipsly Capture Build 24 remains the canonical
+public TestFlight target.

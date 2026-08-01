@@ -5549,5 +5549,20 @@ was restored.
   optimized 150-route build succeeds. Exact evidence and remaining boundaries
   are in
   `docs/coordination/2026-07-31-shared-watch-production-editor-handoff.md`.
-- Production deployment of this source and physical-iPhone TestFlight capture
-  remain open. Build 24 remains the canonical public TestFlight target.
+- Exact release source `7cad51fed83189582545731deeb2541bb6852fdf`
+  passed a dependency-closed materialized build, 30/30 Session-evidence tests,
+  final-image route inspection, and a generated authenticated reviewer at 0%
+  traffic. Cloud Build `b09b93e2-e735-44fa-8465-974d827fc09a` produced
+  manifest-list digest
+  `sha256:d77371bb0e768f9273fb860ace6c0750d6688b459af64ddaa3e92706c08fe99f`;
+  Cloud Run imported platform image
+  `sha256:2a568b14bbb2b3991af9619e59bdd95392eae06f140128790c7f374917d61dd5`
+  as revision `studio-00484-jem`.
+- The generated reviewer passed public, Firebase, native-session, Home Nest,
+  Projects, Session, account, admin, writing, editor, recorder, Research,
+  Publishing, and logout gates, then removed and independently disproved every
+  generated Firebase/database artifact. The immutable revision now serves 100%
+  of production; `/api/healthz` reads back the exact source/revision and the
+  recovery gate passes all 111 Capture contracts.
+- Physical-iPhone TestFlight capture remains open. Build 24 remains the
+  canonical public TestFlight target.
