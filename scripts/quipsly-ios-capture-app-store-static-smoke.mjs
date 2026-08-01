@@ -155,6 +155,7 @@ const liveKitProviderRoomValidatorText = read(files.liveKitProviderRoomValidator
 const runtimeUISmokeRunnerText = read(files.runtimeUISmokeRunner);
 const runtimeUISmokeTestsText = read(files.runtimeUISmokeTests);
 const deterministicUITestsText = read(files.deterministicUITests);
+const captureExperienceModelText = read(files.captureExperienceModel);
 const appStoreDraftRunnerText = read(files.appStoreDraftRunner);
 const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
 const appStoreCommittedDraftRunnerText = read(files.appStoreCommittedDraftRunner);
@@ -758,7 +759,7 @@ for (const needle of [
   "CaptureRecordingModePicker",
   "CaptureRehearsalReadinessCard",
   "CaptureConsentConfirmationSheet",
-  "I confirm that everyone who may be seen or heard — including people who are not signed into Quipsly — was told about the audio, video, and transcription choices and agreed before recording starts.",
+  "I confirm everyone who may be seen or heard — including people not signed into Quipsly — was told which recording and transcription choices are on and agreed before recording starts.",
   "Consent needed",
   "Button(\"Cancel\")",
   "Revoke",
@@ -1589,6 +1590,21 @@ requireIncludes(
   deterministicUITestsText,
   "final class CaptureAppStoreScreenshotUITests",
   "dedicated App Store screenshot UI harness exists outside the release UX suite",
+);
+requireIncludes(
+  deterministicUITestsText,
+  '"--capture-app-store-presentation"',
+  "draft screenshot journey requests the polished mutation-free presentation layer",
+);
+requireIncludes(
+  captureExperienceModelText,
+  "static var usesAppStorePresentation: Bool",
+  "App Store presentation mode is explicit",
+);
+requireIncludes(
+  captureExperienceModelText,
+  "#if DEBUG",
+  "App Store presentation mode is unavailable to release builds",
 );
 for (const filename of [
   "01-today.png",

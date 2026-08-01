@@ -185,7 +185,8 @@ private struct CaptureTodayView: View {
             VStack(alignment: .leading, spacing: 18) {
                 todayHeader
 
-                if model.usesPreviewData {
+                if model.usesPreviewData
+                    && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data — no server actions", systemImage: "hammer.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
@@ -526,7 +527,8 @@ private struct CaptureWorkView: View {
                         .padding(.vertical, 9)
                         .background(.orange.opacity(0.12), in: Capsule())
                         .accessibilityIdentifier("CaptureWorkProtectedSnapshot")
-                } else if model.usesPreviewData {
+                } else if model.usesPreviewData
+                    && !CaptureLaunchConfiguration.usesAppStorePresentation {
                     Label("Preview data · no canonical work will change", systemImage: "hammer.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.orange)
@@ -693,16 +695,18 @@ private struct CaptureWorkView: View {
             selectedProjectID = newValue
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showsNewProject = true
-                } label: {
-                    Image(systemName: "folder.badge.plus")
+            if !CaptureLaunchConfiguration.usesAppStorePresentation {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showsNewProject = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                    }
+                    .disabled(projectCreationDisabled)
+                    .accessibilityLabel("New private project")
+                    .accessibilityHint("Creates a canonical private Nest owned by this Quipsly account.")
+                    .accessibilityIdentifier("CaptureWorkNewProject")
                 }
-                .disabled(projectCreationDisabled)
-                .accessibilityLabel("New private project")
-                .accessibilityHint("Creates a canonical private Nest owned by this Quipsly account.")
-                .accessibilityIdentifier("CaptureWorkNewProject")
             }
         }
         .accessibilityIdentifier("CaptureWorkView")
@@ -798,16 +802,18 @@ private struct CaptureWorkView: View {
                 Text("Your projects")
                     .font(.largeTitle.weight(.bold))
                 Spacer()
-                Button {
-                    showsNewProject = true
-                } label: {
-                    Label("New", systemImage: "plus")
+                if !CaptureLaunchConfiguration.usesAppStorePresentation {
+                    Button {
+                        showsNewProject = true
+                    } label: {
+                        Label("New", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(projectCreationDisabled)
+                    .accessibilityIdentifier("CaptureWorkNewProjectInline")
                 }
-                .buttonStyle(.bordered)
-                .disabled(projectCreationDisabled)
-                .accessibilityIdentifier("CaptureWorkNewProjectInline")
             }
-            Text("Every task, goal, note, and tag stays attached to its canonical Nest.")
+            Text("Every task, goal, note, and tag stays with this project across iPhone and Nest.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -966,7 +972,7 @@ private struct CaptureWorkView: View {
                         .accessibilityIdentifier("CaptureWorkQuickEntry_\(kind.rawValue)")
                     }
                 }
-                Text("The iPhone protects the complete capture first. Nest sync keeps this exact project, canonical ID, and selected tags.")
+                Text("Capture it here; the same project and tags stay in sync with Nest.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -7314,7 +7320,7 @@ private struct CaptureLibraryView: View {
                         NavigationLink {
                             CaptureTranscriptReviewView(
                                 roomID: "room-preview-coaching-ready",
-                                sessionTitle: "Demo coaching session",
+                                sessionTitle: "Leadership coaching session",
                                 recording: nil,
                                 previewOnly: true
                             )
@@ -7424,6 +7430,10 @@ private struct CaptureLibraryView: View {
 }
 
 private struct CaptureLibraryPreviewSourceCard: View {
+    private var presentsAppStoreStory: Bool {
+        CaptureLaunchConfiguration.usesAppStorePresentation
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -7433,9 +7443,11 @@ private struct CaptureLibraryPreviewSourceCard: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Demo coaching session")
+                    Text("Leadership coaching session")
                         .font(.headline)
-                    Text("Synthetic local source · 18.4 MB")
+                    Text(presentsAppStoreStory
+                         ? "Local audio source · 18.4 MB"
+                         : "Synthetic local source · 18.4 MB")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -7450,18 +7462,25 @@ private struct CaptureLibraryPreviewSourceCard: View {
                     tint: .green
                 )
                 CaptureStatusPill(
-                    label: "Waiting for Nest",
-                    systemImage: "arrow.clockwise.icloud",
-                    tint: .orange
+                    label: presentsAppStoreStory ? "Verified in Nest" : "Waiting for Nest",
+                    systemImage: presentsAppStoreStory ? "checkmark.icloud.fill" : "arrow.clockwise.icloud",
+                    tint: presentsAppStoreStory ? .green : .orange
                 )
             }
 
-            Text("The original is safe on this iPhone. Upload can be retried after reconnecting; Quipsly will not call it verified until the cloud copy matches.")
+            Text(presentsAppStoreStory
+                 ? "The original remains safe on this iPhone. Its matching cloud copy is verified, and the transcript is ready for review."
+                 : "The original is safe on this iPhone. Upload can be retried after reconnecting; Quipsly will not call it verified until the cloud copy matches.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Label("Recoverable · retry available when online", systemImage: "checkmark.shield.fill")
+            Label(
+                presentsAppStoreStory
+                    ? "Source verified · transcript ready"
+                    : "Recoverable · retry available when online",
+                systemImage: "checkmark.shield.fill"
+            )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(CapturePalette.accent)
         }
@@ -7493,6 +7512,7 @@ private struct CaptureAccountView: View {
         ScrollView {
             VStack(spacing: 16) {
                 accountHeader
+                accountControlCard
 
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Upload policy", systemImage: "antenna.radiowaves.left.and.right")
@@ -7584,22 +7604,6 @@ private struct CaptureAccountView: View {
                 }
                 .captureCard()
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Link(destination: URL(string: "\(baseURL)/privacy")!) {
-                        AccountLinkRow(label: "Privacy policy", systemImage: "hand.raised")
-                    }
-                    Divider().padding(.leading, 42)
-                    Link(destination: URL(string: "\(baseURL)/privacy/account-deletion")!) {
-                        AccountLinkRow(label: "Account deletion information", systemImage: "person.crop.circle.badge.minus")
-                    }
-                    Divider().padding(.leading, 42)
-                    Button(role: .destructive) { showsDeletion = true } label: {
-                        AccountLinkRow(label: "Request account deletion", systemImage: "trash")
-                    }
-                    .disabled(model.isSessionContextLocked)
-                }
-                .captureCard(contentPadding: 4)
-
                 if let request = deletionClient.latestRequest {
                     AccountDeletionStatusCard(
                         request: request,
@@ -7669,9 +7673,9 @@ private struct CaptureAccountView: View {
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(auth.userName ?? (model.usesPreviewData ? "Preview Creator" : "Quipsly creator"))
+                Text(auth.userName ?? previewAccountName)
                     .font(.headline)
-                Text(auth.userEmail ?? (model.usesPreviewData ? "preview@quipsly.local" : "Signed in"))
+                Text(auth.userEmail ?? previewAccountEmail)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -7681,8 +7685,46 @@ private struct CaptureAccountView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Signed in account")
         .accessibilityValue(
-            "\(auth.userName ?? (model.usesPreviewData ? "Preview Creator" : "Quipsly creator")), \(auth.userEmail ?? (model.usesPreviewData ? "preview@quipsly.local" : "Signed in"))"
+            "\(auth.userName ?? previewAccountName), \(auth.userEmail ?? previewAccountEmail)"
         )
+    }
+
+    private var accountControlCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Privacy & account control")
+                .font(.headline)
+                .padding(.horizontal, 14)
+                .padding(.top, 12)
+                .padding(.bottom, 6)
+            Link(destination: URL(string: "\(baseURL)/privacy")!) {
+                AccountLinkRow(label: "Privacy policy", systemImage: "hand.raised")
+            }
+            Divider().padding(.leading, 42)
+            Link(destination: URL(string: "\(baseURL)/privacy/account-deletion")!) {
+                AccountLinkRow(label: "Account deletion information", systemImage: "person.crop.circle.badge.minus")
+            }
+            Divider().padding(.leading, 42)
+            Button(role: .destructive) { showsDeletion = true } label: {
+                AccountLinkRow(label: "Request account deletion", systemImage: "trash")
+            }
+            .disabled(model.isSessionContextLocked)
+        }
+        .captureCard(contentPadding: 4)
+        .accessibilityIdentifier("CaptureAccountControlCard")
+    }
+
+    private var previewAccountName: String {
+        if CaptureLaunchConfiguration.usesAppStorePresentation {
+            return "Alex Morgan"
+        }
+        return model.usesPreviewData ? "Preview Creator" : "Quipsly creator"
+    }
+
+    private var previewAccountEmail: String {
+        if CaptureLaunchConfiguration.usesAppStorePresentation {
+            return "alex@example.com"
+        }
+        return model.usesPreviewData ? "preview@quipsly.local" : "Signed in"
     }
 
     private var totalLocalBytes: Int64 {
@@ -8052,7 +8094,7 @@ struct CaptureConsentConfirmationSheet: View {
                     Toggle(isOn: $canRecordAudio) {
                         ConsentChoiceLabel(
                             title: "Record audio",
-                            detail: "Allow this iPhone to create and preserve a local audio source for this session.",
+                            detail: "Save a local audio source on this iPhone.",
                             systemImage: "waveform"
                         )
                     }
@@ -8061,7 +8103,7 @@ struct CaptureConsentConfirmationSheet: View {
                     Toggle(isOn: $canRecordVideo) {
                         ConsentChoiceLabel(
                             title: "Record video",
-                            detail: "Allow this iPhone to create and preserve local camera sources for this session. This is separate from joining a call.",
+                            detail: "Save local camera sources. This is separate from joining a call.",
                             systemImage: "video"
                         )
                     }
@@ -8072,7 +8114,7 @@ struct CaptureConsentConfirmationSheet: View {
                     Toggle(isOn: $canTranscribe) {
                         ConsentChoiceLabel(
                             title: "Create a transcript",
-                            detail: "Optional. Leave this off to allow audio recording without authorizing transcription.",
+                            detail: "Optional; audio can be recorded without it.",
                             systemImage: "text.bubble"
                         )
                     }
@@ -8081,12 +8123,12 @@ struct CaptureConsentConfirmationSheet: View {
 
                 Section("Everyone who may be seen or heard") {
                     Toggle(isOn: $allAudibleParticipantsNotifiedAndAgreed) {
-                        Text("I confirm that everyone who may be seen or heard — including people who are not signed into Quipsly — was told about the audio, video, and transcription choices and agreed before recording starts.")
+                        Text("I confirm everyone who may be seen or heard — including people not signed into Quipsly — was told which recording and transcription choices are on and agreed before recording starts.")
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityIdentifier("CaptureConsentAudibleParticipantsToggle")
 
-                    Text("Each signed-in participant must also save their own consent. This nearby-person confirmation does not replace those individual receipts.")
+                    Text("Signed-in participants must also save their own consent; this confirmation covers anyone nearby.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -8114,6 +8156,8 @@ struct CaptureConsentConfirmationSheet: View {
             }
             .navigationTitle("Consent choices")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

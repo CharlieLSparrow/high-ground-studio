@@ -111,6 +111,22 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    /// A DEBUG-only presentation layer for deterministic App Store layout
+    /// drafts. It uses the same mutation-free preview model, but removes
+    /// engineering boundary labels and substitutes clearly fictional account
+    /// data so the captured product story matches the shipping experience.
+    /// The release build can never enable this branch.
+    static var usesAppStorePresentation: Bool {
+        #if DEBUG
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-app-store-presentation"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesReminderSystemUITest: Bool {
         #if DEBUG && targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--capture-reminder-system-ui-test")
@@ -2428,7 +2444,7 @@ extension MobileCaptureSession {
         return [
             capturePreview(
                 id: "preview-coaching-ready",
-                title: "Demo coaching session",
+                title: "Leadership coaching session",
                 purpose: "COACHING",
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),

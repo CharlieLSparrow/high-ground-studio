@@ -2045,6 +2045,8 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
 
     func testCapturePrivateDataSafeDrafts() {
         launch(tab: "today", waitingFor: app.scrollViews["CaptureTodayView"])
+        XCTAssertFalse(app.descendants(matching: .any)["CapturePreviewModeBadge"].exists)
+        XCTAssertTrue(app.staticTexts["Leadership coaching session"].exists)
         keepScreenshot("01-today.png")
 
         launch(tab: "record", waitingFor: app.navigationBars["Record"])
@@ -2060,12 +2062,22 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(
             app.otherElements["CaptureConsentConfirmationSheet"].waitForExistence(timeout: 5)
         )
+        turnOnConsentChoice("CaptureConsentRecordAudioToggle")
+        turnOnConsentChoice("CaptureConsentRecordVideoToggle")
+        turnOnConsentChoice("CaptureConsentTranscriptionToggle")
+        turnOnConsentChoice("CaptureConsentAudibleParticipantsToggle")
+        let saveConsent = app.buttons["Save these choices"]
+        XCTAssertTrue(saveConsent.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveConsent.isEnabled)
+        Thread.sleep(forTimeInterval: 0.8)
         keepScreenshot("02-record.png")
 
         launch(tab: "work", waitingFor: app.navigationBars["Work"])
         XCTAssertTrue(
             app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 5)
         )
+        XCTAssertFalse(app.buttons["CaptureWorkNewProject"].exists)
+        XCTAssertFalse(app.buttons["CaptureWorkNewProjectInline"].exists)
         keepScreenshot("03-work.png")
 
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
@@ -2073,28 +2085,34 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
                 .waitForExistence(timeout: 5)
         )
+        XCTAssertTrue(app.staticTexts["Local audio source · 18.4 MB"].exists)
+        XCTAssertTrue(app.staticTexts["Verified in Nest"].exists)
+        XCTAssertFalse(app.staticTexts["Synthetic local source · 18.4 MB"].exists)
         keepScreenshot("04-library.png")
 
         launch(tab: "account", waitingFor: app.navigationBars["Account"])
-        // SwiftUI can restore the prior ScrollView offset across process
-        // relaunches. Account has no pull-to-refresh action, so return it to
-        // the deterministic top viewport before capturing.
-        for _ in 0..<6 {
-            app.swipeDown()
-        }
-        Thread.sleep(forTimeInterval: 1.2)
-        // Capture the stable initial viewport before descendant queries can
-        // auto-scroll SwiftUI's account surface to an offscreen control.
-        keepScreenshot("05-account.png")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureAccountControlCard"]
+                .waitForExistence(timeout: 5)
+        )
         XCTAssertTrue(app.staticTexts["Privacy policy"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Account deletion information"].exists)
         XCTAssertTrue(app.buttons["Request account deletion"].exists)
+        XCTAssertTrue(app.staticTexts["Privacy policy"].isHittable)
+        XCTAssertTrue(app.buttons["Request account deletion"].isHittable)
+        XCTAssertTrue(app.staticTexts["Alex Morgan"].exists)
+        XCTAssertTrue(app.staticTexts["alex@example.com"].exists)
+        XCTAssertFalse(app.staticTexts["preview@quipsly.local"].exists)
+        for _ in 0..<5 { app.swipeDown() }
+        Thread.sleep(forTimeInterval: 2.0)
+        keepScreenshot("05-account.png")
     }
 
     private func launch(tab: String, waitingFor destination: XCUIElement) {
         app.terminate()
         app.launchArguments = [
             "--capture-ui-preview",
+            "--capture-app-store-presentation",
             "--capture-ui-preview-tab=\(tab)",
         ]
         app.launch()
@@ -2109,6 +2127,41 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         attachment.name = filename
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func turnOnConsentChoice(_ identifier: String) {
+        let toggle = app.switches[identifier]
+        XCTAssertTrue(
+            toggle.waitForExistence(timeout: 5),
+            "The App Store consent story requires \(identifier)."
+        )
+        guard toggle.value as? String != "1" else { return }
+        let unobscuredBottom = app.frame.maxY - 150
+        for _ in 0..<8
+        where !toggle.isHittable || toggle.frame.maxY > unobscuredBottom {
+            app.swipeUp()
+        }
+        XCTAssertTrue(
+            toggle.isHittable && toggle.frame.maxY <= unobscuredBottom,
+            "The App Store consent story must keep \(identifier) reachable."
+        )
+        for horizontalOffset in [0.92, 0.78, 0.5]
+        where toggle.value as? String != "1" {
+            toggle.coordinate(
+                withNormalizedOffset: CGVector(
+                    dx: horizontalOffset,
+                    dy: 0.5
+                )
+            ).tap()
+            RunLoop.current.run(
+                until: Date().addingTimeInterval(0.45)
+            )
+        }
+        XCTAssertEqual(
+            toggle.value as? String,
+            "1",
+            "The App Store consent story could not enable \(identifier)."
+        )
     }
 }
 
