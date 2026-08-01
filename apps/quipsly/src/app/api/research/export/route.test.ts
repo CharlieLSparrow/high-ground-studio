@@ -64,12 +64,13 @@ describe("portable research export", () => {
         }]);
         return Promise.resolve([{
           id: "use-1", annotationId: "annotation-1", documentId: "document-1", blockId: "block-1", useKind: "evidence",
-          citationKey: "source-1", quoteSnapshot: "Preserved evidence.", citationLabel: "Source one", sourceJson: {},
+          citationKey: "source-1", quoteSnapshot: "Preserved evidence.", citationLabel: "Source one", sourceJson: { responseBlockId: "block-2" },
           archivedAt: null, createdAt,
           writingTarget: {
             useId: "use-1",
             document: { id: "document-1", stableId: "draft-1", title: "Draft one", sourceLabel: null, sourcePath: null, projectionStatus: "draft", isPrivate: true, updatedAt: createdAt },
             block: { id: "block-1", stableId: "opening-1", order: 1, title: "Opening", body: "Body", sourceLabel: null, sourcePath: null, externalId: null, projectionStatus: "draft", isPrivate: true, archivedAt: null, updatedAt: createdAt },
+            responseBlock: { id: "block-2", stableId: "response-1", order: 2, title: "Response", body: "Human response", sourceLabel: null, sourcePath: null, externalId: null, projectionStatus: "draft", isPrivate: true, archivedAt: null, updatedAt: createdAt },
           },
         }]);
       }),
@@ -89,8 +90,8 @@ describe("portable research export", () => {
       sources: [{ id: "source-1", immutableText: "Preserved evidence.", immutableTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }],
       annotations: [{ id: "annotation-1", visibility: "private" }],
       writingUses: [{ id: "use-1", annotationId: "annotation-1" }],
-      writingTargets: [{ useId: "use-1", document: { id: "document-1" }, block: { id: "block-1", body: "Body" } }],
-      boundaries: { actorScoped: true, privateAnnotationsLimitedToExporter: true, privateWritingTargetsLimitedToCreator: true, writingTargetSnapshotsIncluded: true, externalResourcesFetched: false, sourceMutated: false },
+      writingTargets: [{ useId: "use-1", document: { id: "document-1" }, block: { id: "block-1", body: "Body" }, responseBlock: { id: "block-2", body: "Human response" } }],
+      boundaries: { actorScoped: true, privateAnnotationsLimitedToExporter: true, privateWritingTargetsLimitedToCreator: true, writingTargetSnapshotsIncluded: true, linkedResponseBlockSnapshotsIncluded: true, externalResourcesFetched: false, sourceMutated: false },
       integrity: { algorithm: "sha256", manifestSha256: expect.stringMatching(/^[a-f0-9]{64}$/), sourceCount: 1, annotationCount: 1, writingUseCount: 1, writingTargetCount: 1 },
     });
     expect(queries).toHaveLength(2);
@@ -98,5 +99,7 @@ describe("portable research export", () => {
     expect(queries[0].strings.join("")).toContain("annotation.\"createdByUserId\"");
     expect(queries[1].strings.join("")).toContain("document.\"isPrivate\" = false");
     expect(queries[1].strings.join("")).toContain("annotation_use.\"createdByUserId\"");
+    expect(queries[1].strings.join("")).toContain("response_block.\"id\"");
+    expect(queries[1].strings.join("")).toContain("annotation_use.\"sourceJson\"->>'responseBlockId'");
   });
 });

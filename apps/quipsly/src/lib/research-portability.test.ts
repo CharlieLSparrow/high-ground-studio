@@ -73,7 +73,7 @@ describe("research portability validation", () => {
     const writingUses = [{
       id: "use-1", annotationId: "annotation-1", documentId: "document-1", blockId: "block-1",
       useKind: "evidence", citationKey: "source-1", quoteSnapshot: "Preserved evidence.", citationLabel: "Source one",
-      sourceJson: { sourceMutated: false }, archivedAt: null, createdAt: "2026-07-18T19:30:00.000Z",
+      sourceJson: { sourceMutated: false, responseBlockId: "block-2" }, archivedAt: null, createdAt: "2026-07-18T19:30:00.000Z",
     }];
     const writingTargets = [{
       useId: "use-1",
@@ -86,11 +86,16 @@ describe("research portability validation", () => {
         sourceLabel: "Source one", sourcePath: null, externalId: "annotation:annotation-1",
         projectionStatus: "draft", isPrivate: true, archivedAt: null, updatedAt: "2026-07-18T19:40:00.000Z",
       },
+      responseBlock: {
+        id: "block-2", stableId: "response-1", order: 2, title: "Response", body: "A human response to the evidence.",
+        sourceLabel: "Source one", sourcePath: null, externalId: "annotation-response:annotation-1",
+        projectionStatus: "draft", isPrivate: true, archivedAt: null, updatedAt: "2026-07-18T19:41:00.000Z",
+      },
     }];
     const result = validateResearchBundle(bundle({ writingUses, writingTargets }));
     expect(result).toMatchObject({
       ok: true,
-      bundle: { writingUses: [{ id: "use-1" }], writingTargets: [{ useId: "use-1", block: { id: "block-1" } }] },
+      bundle: { writingUses: [{ id: "use-1" }], writingTargets: [{ useId: "use-1", block: { id: "block-1" }, responseBlock: { id: "block-2" } }] },
     });
   });
 
@@ -107,5 +112,22 @@ describe("research portability validation", () => {
     }];
     const result = validateResearchBundle(bundle({ writingUses, writingTargets }));
     expect(result).toEqual({ ok: false, error: "A writing-target snapshot is incomplete or does not match its writing-use link." });
+  });
+
+  it("rejects a linked response snapshot rebound from its saved response identity", () => {
+    const writingUses = [{
+      id: "use-1", annotationId: "annotation-1", documentId: "document-1", blockId: "block-1",
+      useKind: "evidence", citationKey: "source-1", quoteSnapshot: "Preserved evidence.", citationLabel: "Source one",
+      sourceJson: { responseBlockId: "response-1" }, archivedAt: null, createdAt: "2026-07-18T19:30:00.000Z",
+    }];
+    const document = { id: "document-1", stableId: "draft-1", title: "Draft one", sourceLabel: null, sourcePath: null, projectionStatus: "draft", isPrivate: true, updatedAt: "2026-07-18T19:40:00.000Z" };
+    const block = { id: "block-1", stableId: "opening-1", order: 1, title: null, body: "Evidence", sourceLabel: null, sourcePath: null, externalId: null, projectionStatus: "draft", isPrivate: true, archivedAt: null, updatedAt: "2026-07-18T19:40:00.000Z" };
+    const responseBlock = { ...block, id: "different-response", stableId: "response-1", order: 2, title: "Response", body: "Human response" };
+    const input = bundle({
+      writingUses,
+      writingTargets: [{ useId: "use-1", document, block, responseBlock }],
+      boundaries: { linkedResponseBlockSnapshotsIncluded: true },
+    });
+    expect(validateResearchBundle(input)).toEqual({ ok: false, error: "A writing-target snapshot is incomplete or does not match its writing-use link." });
   });
 });

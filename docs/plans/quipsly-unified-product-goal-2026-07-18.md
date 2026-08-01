@@ -5822,3 +5822,47 @@ was restored.
   cloud preview at a coherent production-boundary milestone—not a deployment
   per commit. The complete runbook is
   `docs/deploy/quipsly-cloud-cost-control.md`.
+
+### 2026-08-01 rendered private Research-to-writing portability checkpoint
+
+- Added a retained local-only rendered operator for the full exact-source
+  journey: passage selection, private tagged annotation, private writing
+  handoff, human response edit, browser download, validated two-gate restore,
+  exact-bundle retry, independent PostgreSQL readback, and unrelated-account
+  denial. Owner credentials remain in macOS Keychain; the outsider used an
+  owner-only temporary credential deleted after proof.
+- Real operation found and fixed three boundary defects rather than accepting
+  a superficial pass: three nested dropdowns lacked stable accessible names;
+  the editor proof could accept the initial Saved state before the new body
+  persisted; and portable Research exported its pinned evidence block while
+  omitting the separate human response block already identified by the
+  canonical writing use.
+- Schema-v1 portability remains backward compatible and now optionally carries
+  a linked response-block snapshot. Validation binds it to the exact saved
+  response ID. Restore creates evidence and response privately, rebinds the
+  restored response identity in `sourceJson`, versions changed snapshots, and
+  reuses the exact same source, annotation, document, blocks, and use on retry.
+- The final retained operation selected `Never edit that receipt to make a
+  human or physical gate green.`, applied canonical tag `Episode sync`, saved
+  source annotation `901b6b59-c9ff-425d-a203-f000133dba10`, wrote private
+  response block `cmsalwxj1003cicxl2scbrxen`, and restored it as private
+  document `cmsalwywv003ficxlczh3qewg` under manifest
+  `e6d8384b82f5f08eb7626f11a7c8ed343db0c6fb99fbd30030e5695dee8513fc`.
+- Exact retry rendered zero creates across sources, annotations, writing
+  documents, writing blocks, and uses, plus zero overwrites/source mutations.
+  Readback retained source SHA-256
+  `a97d354e00a74012f050569a846878e76e3f1ece90ccb014e0f0a24c735a9cbe`,
+  exact response text, append-only receipts, personal-owner draft privacy,
+  private restored blocks, manifest provenance, and the translated response
+  ID. The unrelated account received private/no-store 404s for both exports,
+  redirects away from both exact writing URLs, and no private markers.
+- Focused Research tests pass 16/16, enabled PostgreSQL restore integration
+  passes 1/1, retained operator contracts pass 3/3, Quipsly TypeScript passes,
+  and the final rendered operation completed with four screenshots and zero
+  browser exceptions. Exact evidence and remaining boundaries are in
+  `docs/coordination/2026-08-01-rendered-research-writing-portability.md`.
+- This closes the local rendered Research-to-private-writing portability and
+  separate-account privacy gate. It does not close deployed committed-SHA
+  parity, separately administered disaster recovery, physical-iPhone/TestFlight
+  operation, real HGO/coaching completion, transcript activation, Studio proof
+  acceptance, or App Store submission.

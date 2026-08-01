@@ -71,7 +71,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       citationKey: "portable-source-1",
       quoteSnapshot: "Evidence",
       citationLabel: "Portable source",
-      sourceJson: { kind: "quipsly-source-annotation-use-v1", sourceMutated: false },
+      sourceJson: { kind: "quipsly-source-annotation-use-v1", sourceMutated: false, responseBlockId: "portable-response-1", responseBlockStableId: "portable-response-stable-1" },
       archivedAt: null,
       createdAt: "2026-07-18T20:10:00.000Z",
     }];
@@ -101,6 +101,20 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
         archivedAt: null,
         updatedAt: "2026-07-18T20:20:00.000Z",
       },
+      responseBlock: {
+        id: "portable-response-1",
+        stableId: "portable-response-stable-1",
+        order: 2,
+        title: "Response",
+        body: "A private human response that must travel with its evidence.",
+        sourceLabel: "Portable source",
+        sourcePath: null,
+        externalId: "annotation-response:portable-annotation-1",
+        projectionStatus: "draft",
+        isPrivate: true,
+        archivedAt: null,
+        updatedAt: "2026-07-18T20:21:00.000Z",
+      },
     }];
     const payload = {
       schemaVersion: "quipsly-research-export-v1",
@@ -121,7 +135,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       }],
       writingUses,
       writingTargets,
-      boundaries: { actorScoped: true, sourceMutated: false },
+      boundaries: { actorScoped: true, sourceMutated: false, linkedResponseBlockSnapshotsIncluded: true },
     };
     const input = {
       ...payload,
@@ -145,7 +159,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       keywordCandidateReuses: 0,
       annotationCreates: 1,
       writingTargetDocumentCreates: 1,
-      writingTargetBlockCreates: 1,
+      writingTargetBlockCreates: 2,
       writingUseCreates: 1,
       writingUsesDeferred: 0,
       overwrites: 0,
@@ -161,7 +175,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       sourceMutated: false,
       overwroteExisting: false,
       writingTargetsRestoredPrivate: true,
-      writingTargetSnapshotKind: "referenced-blocks-only",
+      writingTargetSnapshotKind: "linked-evidence-and-response-blocks-only",
       writingUsesDeferred: 0,
     });
 
@@ -171,8 +185,11 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       prisma.studioSourceUnit.findFirst({ where: { projectId } }),
       prisma.studioTagCandidate.findMany({ where: { projectId }, include: { evidence: true }, orderBy: { slug: "asc" } }),
     ]);
-    expect(document).toMatchObject({ isPrivate: true, projectionStatus: "private", blocks: [{ body: writingTargets[0].block.body, isPrivate: true, projectionStatus: "private" }] });
+    expect(document).toMatchObject({ isPrivate: true, projectionStatus: "private" });
+    expect(document?.blocks.map((block) => block.body).sort()).toEqual([writingTargets[0].block.body, writingTargets[0].responseBlock.body].sort());
     expect(restoredUse).toMatchObject({ quoteSnapshot: "Evidence", createdByUserId: actorUserId, block: { body: writingTargets[0].block.body }, annotation: { visibility: "private" } });
+    const restoredResponse = document?.blocks.find((block) => block.body === writingTargets[0].responseBlock.body);
+    expect(restoredUse?.sourceJson).toMatchObject({ responseBlockId: restoredResponse?.id });
     expect(source?.immutableText).toBe("Evidence");
     expect(importedCandidates).toMatchObject([
       { label: "Interview research", status: "PENDING", evidence: [{ sourceKind: "research-source-metadata" }] },
@@ -201,7 +218,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       keywordCandidateReuses: 2,
       annotationReuses: 1,
       writingTargetDocumentReuses: 1,
-      writingTargetBlockReuses: 1,
+      writingTargetBlockReuses: 2,
       writingUseReuses: 1,
       writingUsesDeferred: 0,
       overwrites: 0,
@@ -243,7 +260,7 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       sourceReuses: 1,
       annotationReuses: 1,
       writingTargetDocumentCreates: 1,
-      writingTargetBlockCreates: 1,
+      writingTargetBlockCreates: 2,
       writingUseCreates: 1,
       overwrites: 0,
     });

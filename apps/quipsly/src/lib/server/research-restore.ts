@@ -57,19 +57,23 @@ function writingUseRequestId(
 }
 
 type WritingTarget = ValidatedResearchBundle["writingTargets"][number];
+type WritingBlockTarget = Pick<WritingTarget, "useId" | "document" | "block">;
 
 type WritingTargetGroup = {
   originalDocumentId: string;
   document: WritingTarget["document"];
-  targets: WritingTarget[];
+  targets: WritingBlockTarget[];
   restoredStableId: string;
 };
 
 function writingTargetGroups(bundle: ValidatedResearchBundle): WritingTargetGroup[] {
-  const grouped = new Map<string, WritingTarget[]>();
+  const grouped = new Map<string, WritingBlockTarget[]>();
   for (const target of bundle.writingTargets) {
     const targets = grouped.get(target.document.id) ?? [];
-    targets.push(target);
+    targets.push({ useId: target.useId, document: target.document, block: target.block });
+    if (target.responseBlock) {
+      targets.push({ useId: target.useId, document: target.document, block: target.responseBlock });
+    }
     grouped.set(target.document.id, targets);
   }
   return [...grouped.entries()].map(([originalDocumentId, targets]) => {
@@ -90,7 +94,7 @@ function writingTargetGroups(bundle: ValidatedResearchBundle): WritingTargetGrou
   });
 }
 
-function restoredBlockStableId(bundle: ValidatedResearchBundle, target: WritingTarget) {
+function restoredBlockStableId(bundle: ValidatedResearchBundle, target: WritingBlockTarget) {
   return `research-restore-block-${researchSha256(`${bundle.project.id}:${target.document.id}:${target.block.id}`).slice(0, 50)}`;
 }
 
@@ -488,7 +492,7 @@ export async function applyResearchRestore(
               originalProjectId: input.bundle.project.id,
               originalDocumentId: group.originalDocumentId,
               originalDocumentStableId: group.document.stableId,
-              snapshotKind: "referenced-blocks-only",
+              snapshotKind: "linked-evidence-and-response-blocks-only",
               restoredPrivate: true,
               overwroteExisting: false,
             },
@@ -506,7 +510,13 @@ export async function applyResearchRestore(
       const annotationId = restoredAnnotationIds.get(use.annotationId);
       const documentId = restoredWritingTargetDocumentIds.get(target.document.id);
       const blockId = restoredWritingTargetBlockIds.get(`${target.document.id}:${target.block.id}`);
-      if (!annotationId || !documentId || !blockId) {
+      const responseTarget = target.responseBlock
+        ? { useId: target.useId, document: target.document, block: target.responseBlock }
+        : null;
+      const responseBlockId = responseTarget
+        ? restoredWritingTargetBlockIds.get(`${target.document.id}:${target.responseBlock?.id}`)
+        : null;
+      if (!annotationId || !documentId || !blockId || (responseTarget && !responseBlockId)) {
         throw new Error(`Restore writing mapping is incomplete for use ${use.id}.`);
       }
       const clientRequestId = writingUseRequestId(input.bundle, use);
@@ -540,6 +550,10 @@ export async function applyResearchRestore(
           citationLabel: use.citationLabel,
           sourceJson: {
             ...use.sourceJson,
+            ...(responseTarget && responseBlockId ? {
+              responseBlockId,
+              responseBlockStableId: restoredBlockStableId(input.bundle, responseTarget),
+            } : {}),
             restore: {
               kind: "quipsly-research-writing-use-restore-v1",
               manifestSha256: input.bundle.manifestSha256,
@@ -548,7 +562,7 @@ export async function applyResearchRestore(
               originalDocumentId: use.documentId,
               originalBlockId: use.blockId,
               originalCreatedAt: use.createdAt,
-              snapshotKind: "referenced-block-only",
+              snapshotKind: target.responseBlock ? "linked-evidence-and-response-blocks" : "referenced-block-only",
               targetRestoredPrivate: true,
               overwroteExisting: false,
             },
@@ -572,7 +586,7 @@ export async function applyResearchRestore(
         externalResourcesFetched: false,
         providerMutated: false,
         writingTargetsRestoredPrivate: true,
-        writingTargetSnapshotKind: "referenced-blocks-only",
+        writingTargetSnapshotKind: "linked-evidence-and-response-blocks-only",
         writingUsesDeferred: plan.writingUsesDeferred,
       },
     };

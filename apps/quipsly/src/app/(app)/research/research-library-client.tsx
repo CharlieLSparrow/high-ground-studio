@@ -359,13 +359,13 @@ function SourceAnnotationWorkbench({
             <div className="mt-4 grid grid-cols-2 gap-3">
             <label className="text-[10px] font-black uppercase tracking-[0.12em] text-[#75593c]">
               Purpose
-              <select value={kind} onChange={(event) => setKind(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
+              <select aria-label="Annotation purpose" value={kind} onChange={(event) => setKind(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
                 {['note', 'question', 'quote', 'claim', 'idea', 'correction', 'action', 'highlight'].map((value) => <option key={value} value={value}>{humanizeResearchStatus(value)}</option>)}
               </select>
             </label>
             <label className="text-[10px] font-black uppercase tracking-[0.12em] text-[#75593c]">
               Who can see it
-              <select value={visibility} onChange={(event) => setVisibility(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
+              <select aria-label="Annotation visibility" value={visibility} onChange={(event) => setVisibility(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
                 <option value="private">Only me</option>
                 <option value="project">Nest collaborators</option>
               </select>
@@ -630,7 +630,7 @@ function ResearchRestoreControl({ projects }: { projects: Array<{ id: string; sl
       <h3 className="text-xs font-black uppercase tracking-[0.13em] text-[#68472c]">Restore without overwriting</h3>
       <label className="mt-3 block text-[10px] font-black uppercase tracking-[0.12em] text-[#75593c]">
         Destination Nest
-        <select value={projectSlug} onChange={(event) => { setProjectSlug(event.target.value); setPlan(null); }} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
+        <select aria-label="Restore destination Nest" value={projectSlug} onChange={(event) => { setProjectSlug(event.target.value); setPlan(null); }} className="mt-1.5 w-full rounded-xl border border-[#d9c5a5] bg-white p-2.5 text-sm font-semibold normal-case tracking-normal">
           {projects.map((project) => <option key={project.id} value={project.slug}>{project.name}</option>)}
         </select>
       </label>
@@ -677,7 +677,7 @@ function ResearchRestoreControl({ projects }: { projects: Array<{ id: string; sl
             <li>{plan.writingUseCreates} evidence-to-writing links restored · {plan.writingUseReuses} reused</li>
             <li>{plan.writingUsesDeferred} legacy writing-use links deferred because their export has no verified target snapshot</li>
           </ul>
-          <p className="mt-2">Writing restore contains referenced blocks only, not a claim that the original full document was exported. Restored excerpts stay private until a person deliberately changes their status.</p>
+          <p className="mt-2">Writing restore contains each verified evidence block and its linked response when included, not a claim that the original full document was exported. Restored excerpts stay private until a person deliberately changes their status.</p>
           <p className="mt-2 font-black">{plan.overwrites} overwrites · {plan.sourceMutations} source mutations</p>
           <button type="button" disabled={isPending || plan.overwrites !== 0 || plan.sourceMutations !== 0} onClick={() => send("apply")} className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-[#3d3122] px-3 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-45">
             {isPending ? "Restoring…" : "Apply verified restore"}

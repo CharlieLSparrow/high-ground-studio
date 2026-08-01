@@ -67,6 +67,21 @@ export type PortableResearchWritingUse = {
   createdAt: string;
 };
 
+export type PortableResearchWritingBlock = {
+  id: string;
+  stableId: string;
+  order: number;
+  title: string | null;
+  body: string;
+  sourceLabel: string | null;
+  sourcePath: string | null;
+  externalId: string | null;
+  projectionStatus: string;
+  isPrivate: boolean;
+  archivedAt: string | null;
+  updatedAt: string;
+};
+
 export type PortableResearchWritingTarget = {
   useId: string;
   document: {
@@ -79,20 +94,8 @@ export type PortableResearchWritingTarget = {
     isPrivate: boolean;
     updatedAt: string;
   };
-  block: {
-    id: string;
-    stableId: string;
-    order: number;
-    title: string | null;
-    body: string;
-    sourceLabel: string | null;
-    sourcePath: string | null;
-    externalId: string | null;
-    projectionStatus: string;
-    isPrivate: boolean;
-    archivedAt: string | null;
-    updatedAt: string;
-  };
+  block: PortableResearchWritingBlock;
+  responseBlock: PortableResearchWritingBlock | null;
 };
 
 export type ValidatedResearchBundle = {
@@ -151,6 +154,25 @@ function safeDateString(value: unknown, nullable = false) {
   if (nullable && value == null) return null;
   if (typeof value !== "string" || !Number.isFinite(new Date(value).getTime())) return undefined;
   return value;
+}
+
+function portableWritingBlock(raw: unknown): PortableResearchWritingBlock | null {
+  if (!isRecord(raw)) return null;
+  const id = stringValue(raw.id, 200);
+  const stableId = stringValue(raw.stableId, 500);
+  const order = typeof raw.order === "number" && Number.isSafeInteger(raw.order) && raw.order >= 0 ? raw.order : null;
+  const title = nullableString(raw.title, 500);
+  const body = stringValue(raw.body, MAX_SOURCE_TEXT_BYTES, true);
+  const sourceLabel = nullableString(raw.sourceLabel, 2_000);
+  const sourcePath = nullableString(raw.sourcePath, 4_000);
+  const externalId = nullableString(raw.externalId, 2_000);
+  const projectionStatus = stringValue(raw.projectionStatus, 100);
+  const archivedAt = safeDateString(raw.archivedAt, true);
+  const updatedAt = safeDateString(raw.updatedAt);
+  if (!id || !stableId || order == null || title === undefined || body == null
+    || sourceLabel === undefined || sourcePath === undefined || externalId === undefined
+    || !projectionStatus || typeof raw.isPrivate !== "boolean" || archivedAt === undefined || !updatedAt) return null;
+  return { id, stableId, order, title, body, sourceLabel, sourcePath, externalId, projectionStatus, isPrivate: raw.isPrivate, archivedAt, updatedAt };
 }
 
 export function validateResearchBundle(input: unknown): ResearchBundleValidationResult {
@@ -351,26 +373,16 @@ export function validateResearchBundle(input: unknown): ResearchBundleValidation
     const documentSourcePath = nullableString(raw.document.sourcePath, 4_000);
     const documentProjectionStatus = stringValue(raw.document.projectionStatus, 100);
     const documentUpdatedAt = safeDateString(raw.document.updatedAt);
-    const blockId = stringValue(raw.block.id, 200);
-    const blockStableId = stringValue(raw.block.stableId, 500);
-    const blockOrder = typeof raw.block.order === "number" && Number.isSafeInteger(raw.block.order) && raw.block.order >= 0
-      ? raw.block.order
-      : null;
-    const blockTitle = nullableString(raw.block.title, 500);
-    const blockBody = stringValue(raw.block.body, MAX_SOURCE_TEXT_BYTES, true);
-    const blockSourceLabel = nullableString(raw.block.sourceLabel, 2_000);
-    const blockSourcePath = nullableString(raw.block.sourcePath, 4_000);
-    const blockExternalId = nullableString(raw.block.externalId, 2_000);
-    const blockProjectionStatus = stringValue(raw.block.projectionStatus, 100);
-    const blockArchivedAt = safeDateString(raw.block.archivedAt, true);
-    const blockUpdatedAt = safeDateString(raw.block.updatedAt);
+    const block = portableWritingBlock(raw.block);
+    const sourceJson = use?.sourceJson ?? {};
+    const responseBlock = raw.responseBlock == null ? null : portableWritingBlock(raw.responseBlock);
+    const responseBlockId = typeof sourceJson.responseBlockId === "string" ? sourceJson.responseBlockId : null;
     if (!useId || !use || !documentId || documentId !== use.documentId || !documentStableId || !documentTitle
       || documentSourceLabel === undefined || documentSourcePath === undefined || !documentProjectionStatus
-      || typeof raw.document.isPrivate !== "boolean" || !documentUpdatedAt || !blockId || blockId !== use.blockId
-      || !blockStableId || blockOrder == null || blockTitle === undefined || blockBody == null
-      || blockSourceLabel === undefined || blockSourcePath === undefined || blockExternalId === undefined
-      || !blockProjectionStatus || typeof raw.block.isPrivate !== "boolean"
-      || blockArchivedAt === undefined || !blockUpdatedAt) {
+      || typeof raw.document.isPrivate !== "boolean" || !documentUpdatedAt || !block || block.id !== use.blockId
+      || (raw.responseBlock != null && !responseBlock)
+      || (responseBlock && (!responseBlockId || responseBlock.id !== responseBlockId || responseBlock.id === block.id))
+      || (input.boundaries && isRecord(input.boundaries) && input.boundaries.linkedResponseBlockSnapshotsIncluded === true && responseBlockId && !responseBlock)) {
       return { ok: false, error: "A writing-target snapshot is incomplete or does not match its writing-use link." };
     }
     writingTargets.push({
@@ -385,20 +397,8 @@ export function validateResearchBundle(input: unknown): ResearchBundleValidation
         isPrivate: raw.document.isPrivate,
         updatedAt: documentUpdatedAt,
       },
-      block: {
-        id: blockId,
-        stableId: blockStableId,
-        order: blockOrder,
-        title: blockTitle,
-        body: blockBody,
-        sourceLabel: blockSourceLabel,
-        sourcePath: blockSourcePath,
-        externalId: blockExternalId,
-        projectionStatus: blockProjectionStatus,
-        isPrivate: raw.block.isPrivate,
-        archivedAt: blockArchivedAt,
-        updatedAt: blockUpdatedAt,
-      },
+      block,
+      responseBlock,
     });
   }
   if (new Set(writingTargets.map((target) => target.useId)).size !== writingTargets.length) {

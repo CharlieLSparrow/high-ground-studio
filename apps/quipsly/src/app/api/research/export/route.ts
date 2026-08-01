@@ -99,12 +99,21 @@ export async function GET(request: Request) {
                    'body', block."body", 'sourceLabel', block."sourceLabel", 'sourcePath', block."sourcePath",
                    'externalId', block."externalId", 'projectionStatus', block."projectionStatus",
                    'isPrivate', block."isPrivate", 'archivedAt', block."archivedAt", 'updatedAt', block."updatedAt"
-                 )
+                 ),
+                 'responseBlock', CASE WHEN response_block."id" IS NULL THEN NULL ELSE jsonb_build_object(
+                   'id', response_block."id", 'stableId', response_block."stableId", 'order', response_block."order", 'title', response_block."title",
+                   'body', response_block."body", 'sourceLabel', response_block."sourceLabel", 'sourcePath', response_block."sourcePath",
+                   'externalId', response_block."externalId", 'projectionStatus', response_block."projectionStatus",
+                   'isPrivate', response_block."isPrivate", 'archivedAt', response_block."archivedAt", 'updatedAt', response_block."updatedAt"
+                 ) END
                ) AS "writingTarget"
         FROM "StudioSourceAnnotationUse" annotation_use
         JOIN "StudioSourceAnnotation" annotation ON annotation."id" = annotation_use."annotationId"
         JOIN "StudioDocument" document ON document."id" = annotation_use."documentId"
         JOIN "StudioDocumentBlock" block ON block."id" = annotation_use."blockId"
+        LEFT JOIN "StudioDocumentBlock" response_block
+          ON response_block."id" = annotation_use."sourceJson"->>'responseBlockId'
+         AND response_block."documentId" = document."id"
         WHERE annotation_use."projectId" = ${project.id}
           AND (annotation."visibility" = 'project' OR annotation."createdByUserId" = ${session.user.id})
           AND ${researchWritingUseVisibilitySql(session.user.id)}
@@ -141,6 +150,7 @@ export async function GET(request: Request) {
         privateAnnotationsLimitedToExporter: true,
         privateWritingTargetsLimitedToCreator: true,
         writingTargetSnapshotsIncluded: true,
+        linkedResponseBlockSnapshotsIncluded: true,
         immutableSourceTextIncluded: true,
         externalResourcesFetched: false,
         sourceMutated: false,
