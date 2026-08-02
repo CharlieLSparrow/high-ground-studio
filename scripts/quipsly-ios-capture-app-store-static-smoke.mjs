@@ -364,6 +364,7 @@ requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_BASE_URL", "r
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_MODE", "runtime UI smoke requires an explicit bounded journey mode");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH", "runtime UI smoke can reuse one explicit bounded DerivedData cache");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH", "runtime UI smoke preserves one explicit xcresult proof");
+requireIncludes(runtimeUISmokeRunnerText, "-parallel-testing-enabled NO", "focused runtime UI smoke avoids unnecessary cloned simulator runners");
 requireIncludes(runtimeUISmokeRunnerText, 'google-handoff)', "runtime UI smoke can select the no-credential Google provider handoff proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'REQUIRES_PASSWORD_CREDENTIALS=false', "Google handoff proof does not require or serialize a reviewer password");
 requireIncludes(runtimeUISmokeRunnerText, "custom paths are not visible inside the test runner", "credentialed runtime UI smoke rejects a credential path XCTest cannot read");
@@ -382,6 +383,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smok
 requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'client-follow-up)', "runtime UI smoke can select the retained client follow-up delivery proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime UI smoke can select the assigned-coach draft, revision, and release proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'coaching-follow-through-work)', "runtime UI smoke can select the exact next-Session follow-through to Work proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
@@ -394,6 +396,7 @@ requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEdit
 requireIncludes(runtimeUISmokeTestsText, "func testPrivateSourceInboxFilesIntoCanonicalResearch", "runtime UI smoke files one exact private iPhone source into canonical Nest Research");
 requireIncludes(runtimeUISmokeTestsText, "func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture", "runtime UI smoke reads and acknowledges one exact released client follow-up");
 requireIncludes(runtimeUISmokeTestsText, "func testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture", "runtime UI smoke operates assigned-coach draft, revision, and explicit in-app release");
+requireIncludes(runtimeUISmokeTestsText, "func testClientOpensExactFollowThroughGoalInWork", "runtime UI smoke opens one exact carried-forward goal in canonical Work");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUp_", "runtime UI smoke addresses the exact released follow-up artifact");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpAcknowledge_", "runtime UI smoke addresses the explicit client open acknowledgement");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
@@ -1537,6 +1540,11 @@ requireIncludes(capturePhoneShellText, "only a verified, released upload becomes
 requireIncludes(bridgeText, "let progressedSinceRelease: Bool?", "native follow-through remains backward-compatible while decoding post-release goal progress");
 requireIncludes(capturePhoneShellText, "New check-in since release", "native coaching preparation distinguishes new progress from a changed goal definition");
 requireIncludes(capturePhoneShellText, "Evidence: \\(evidence)", "native coaching preparation preserves the client's evidence note with goal progress");
+requireIncludes(captureExperienceText, "struct CaptureWorkNavigationRequest", "native coaching follow-through carries an explicit canonical Work navigation request");
+requireIncludes(captureExperienceText, ".receive(on: DispatchQueue.main)", "native child-model updates are delivered on the main thread before publishing SwiftUI state");
+requireIncludes(capturePhoneShellText, "CaptureFollowThroughOpenTask_", "native coaching follow-through exposes an exact canonical task action");
+requireIncludes(capturePhoneShellText, "CaptureFollowThroughOpenGoal_", "native coaching follow-through exposes an exact canonical goal action");
+requireIncludes(capturePhoneShellText, "proxy.scrollTo(request.scrollID", "native coaching follow-through focuses the exact canonical Work row");
 for (const retiredRoot of [
   "struct MobileCaptureRunwayPanel",
   "struct MobileCaptureReviewDigestPanel",

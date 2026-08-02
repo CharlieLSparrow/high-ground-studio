@@ -10,6 +10,9 @@ struct ContentView: View {
             LoginView()
         } else if authManager.isAuthenticated || CaptureLaunchConfiguration.usesPreviewData || mustKeepRecorderVisible {
             CapturePhoneShell()
+                .overlay(alignment: .topLeading) {
+                    CaptureRuntimeAccountIdentityReceipt(email: authManager.userEmail)
+                }
         } else if authManager.hasProtectedOfflineAccess {
             ProtectedOfflineLibraryShell(authManager: authManager)
         } else if authManager.accessMode == .checking {
@@ -31,6 +34,24 @@ struct ContentView: View {
         case .idle, .saved, .failed:
             return false
         }
+    }
+}
+
+private struct CaptureRuntimeAccountIdentityReceipt: View {
+    let email: String?
+
+    @ViewBuilder
+    var body: some View {
+#if DEBUG
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement()
+            .accessibilityLabel("Signed in account")
+            .accessibilityValue(email ?? "Unknown")
+            .accessibilityIdentifier("CaptureSignedInShellAccount")
+#else
+        EmptyView()
+#endif
     }
 }
 

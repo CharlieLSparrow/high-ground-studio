@@ -28,7 +28,7 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.today)
 
             NavigationStack {
-                CaptureRecorderView(model: model)
+                CaptureRecorderView(model: model, visibleTab: $visibleTab)
             }
             .tabItem { Label(CaptureRootTab.record.title, systemImage: CaptureRootTab.record.systemImage) }
             .tag(CaptureRootTab.record)
@@ -385,6 +385,7 @@ private struct CaptureWorkView: View {
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
     @State private var noteToEdit: MobileCaptureWorkNote?
+    @State private var focusedWorkEntityID: String?
 
     init(model: CaptureExperienceModel) {
         self.model = model
@@ -515,8 +516,9 @@ private struct CaptureWorkView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
                 header
 
                 if client.isUsingProtectedCache {
@@ -569,9 +571,9 @@ private struct CaptureWorkView: View {
                     )
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 96)
-        }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
+            }
         .scrollDismissesKeyboard(.interactively)
         .background(CaptureCanvas())
         .navigationTitle("Work")
@@ -694,6 +696,24 @@ private struct CaptureWorkView: View {
         .onChange(of: client.selectedProjectID) { _, newValue in
             selectedProjectID = newValue
         }
+        .task(id: model.workNavigationRequest?.id) {
+            guard let request = model.workNavigationRequest else { return }
+            selectedTagID = nil
+            searchText = request.title
+            if request.kind == .task { showsCompletedTasks = true }
+            selectedProjectID = request.projectID
+            while client.isLoading && !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard !Task.isCancelled else { return }
+            await client.load(projectID: request.projectID)
+            focusedWorkEntityID = request.entityID
+            await Task.yield()
+            withAnimation(.easeInOut(duration: 0.25)) {
+                proxy.scrollTo(request.scrollID, anchor: .center)
+            }
+            model.finishWorkNavigation(request)
+        }
         .toolbar {
             if !CaptureLaunchConfiguration.usesAppStorePresentation {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -710,6 +730,7 @@ private struct CaptureWorkView: View {
             }
         }
         .accessibilityIdentifier("CaptureWorkView")
+        }
     }
 
     private var documentNoteEditStatus: some View {
@@ -1139,6 +1160,7 @@ private struct CaptureWorkView: View {
                 Text(task.title)
                     .font(.body.weight(.semibold))
                     .strikethrough(task.status != "OPEN")
+                    .accessibilityIdentifier("CaptureWorkTask_\(task.id)")
                 if let detail = task.detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
@@ -1190,9 +1212,17 @@ private struct CaptureWorkView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(task.isOverdue == true ? Color.orange.opacity(0.45) : Color.primary.opacity(0.07))
+                .stroke(
+                    focusedWorkEntityID == task.id
+                        ? CapturePalette.accent
+                        : task.isOverdue == true
+                            ? Color.orange.opacity(0.45)
+                            : Color.primary.opacity(0.07),
+                    lineWidth: focusedWorkEntityID == task.id ? 3 : 1
+                )
         }
-        .accessibilityIdentifier("CaptureWorkTask_\(task.id)")
+        .id("CaptureWorkTask_\(task.id)")
+        .accessibilityElement(children: .contain)
     }
 
     private func workGoalRow(_ goal: MobileCaptureTodayGoal) -> some View {
@@ -1207,7 +1237,9 @@ private struct CaptureWorkView: View {
                 Image(systemName: "target")
                     .foregroundStyle(CapturePalette.accent)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(goal.title).font(.body.weight(.semibold))
+                    Text(goal.title)
+                        .font(.body.weight(.semibold))
+                        .accessibilityIdentifier("CaptureWorkGoal_\(goal.id)")
                     if let description = goal.description, !description.isEmpty {
                         Text(description).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                     }
@@ -1269,9 +1301,15 @@ private struct CaptureWorkView: View {
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.primary.opacity(0.07))
+                .stroke(
+                    focusedWorkEntityID == goal.id
+                        ? CapturePalette.accent
+                        : Color.primary.opacity(0.07),
+                    lineWidth: focusedWorkEntityID == goal.id ? 3 : 1
+                )
         }
-        .accessibilityIdentifier("CaptureWorkGoal_\(goal.id)")
+        .id("CaptureWorkGoal_\(goal.id)")
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -4824,6 +4862,7 @@ private struct NewCaptureProjectSheet: View {
 
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
+    @Binding var visibleTab: CaptureRootTab
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @State private var showsSessionPicker = false
@@ -5137,7 +5176,25 @@ private struct CaptureRecorderView: View {
                             followThrough: priorFollowThrough,
                             sourceSessionAvailable: model.sessions.contains(where: {
                                 $0.id == priorFollowThrough.sourceRoom.id
-                            })
+                            }),
+                            onOpenTask: { task in
+                                model.requestWorkNavigation(
+                                    kind: .task,
+                                    entityID: task.id,
+                                    title: task.title,
+                                    projectID: priorFollowThrough.sourceRoom.projectId
+                                )
+                                visibleTab = .work
+                            },
+                            onOpenGoal: { goal in
+                                model.requestWorkNavigation(
+                                    kind: .goal,
+                                    entityID: goal.id,
+                                    title: goal.title,
+                                    projectID: priorFollowThrough.sourceRoom.projectId
+                                )
+                                visibleTab = .work
+                            }
                         ) {
                             guard let sourceSession = model.sessions.first(where: {
                                 $0.id == priorFollowThrough.sourceRoom.id
@@ -5380,6 +5437,8 @@ private struct CaptureRecorderView: View {
 private struct MobilePriorSessionFollowThroughCard: View {
     let followThrough: MobileCapturePriorFollowThrough
     let sourceSessionAvailable: Bool
+    let onOpenTask: (MobileCaptureFollowThroughTask) -> Void
+    let onOpenGoal: (MobileCaptureFollowThroughGoal) -> Void
     let onOpenSource: () -> Void
     @State private var showsReleaseReceipt = false
 
@@ -5457,9 +5516,17 @@ private struct MobilePriorSessionFollowThroughCard: View {
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
+                                if followThrough.canOpenWork && !unavailable {
+                                    Button("Open commitment in Work") {
+                                        onOpenTask(task)
+                                    }
+                                    .font(.caption2.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier("CaptureFollowThroughOpenTask_\(task.id)")
+                                }
                             }
                         }
-                        .accessibilityIdentifier("CaptureFollowThroughTask_\(task.id)")
+                        .accessibilityElement(children: .contain)
                     }
                 }
             }
@@ -5502,9 +5569,17 @@ private struct MobilePriorSessionFollowThroughCard: View {
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.blue)
                                 }
+                                if followThrough.canOpenWork && !unavailable {
+                                    Button("Open goal in Work") {
+                                        onOpenGoal(goal)
+                                    }
+                                    .font(.caption2.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier("CaptureFollowThroughOpenGoal_\(goal.id)")
+                                }
                             }
                         }
-                        .accessibilityIdentifier("CaptureFollowThroughGoal_\(goal.id)")
+                        .accessibilityElement(children: .contain)
                     }
                 }
             }
@@ -7715,6 +7790,7 @@ private struct CaptureAccountView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureSignOutButton")
 
                 Text(versionLine)
                     .font(.caption2)
@@ -7777,6 +7853,7 @@ private struct CaptureAccountView: View {
         .accessibilityValue(
             "\(auth.userName ?? previewAccountName), \(auth.userEmail ?? previewAccountEmail)"
         )
+        .accessibilityIdentifier("CaptureSignedInAccount")
     }
 
     private var accountControlCard: some View {

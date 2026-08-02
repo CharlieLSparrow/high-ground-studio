@@ -255,6 +255,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         signInIfNeeded(app, credentials: credentials)
+        ensureExactSignedInAccount(
+            app,
+            credentials: credentials,
+            restoringTab: initialTab
+        )
         let initialSurfaceIdentifier: String
         switch initialTab {
         case "record": initialSurfaceIdentifier = "CaptureRecorderView"
@@ -320,6 +325,85 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if app.tabBars.firstMatch.exists { return }
             signInButton.tap()
         }
+    }
+
+    private func ensureExactSignedInAccount(
+        _ app: XCUIApplication,
+        credentials: RuntimeSmokeCredentials,
+        restoringTab: String
+    ) {
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(
+            tabBar.waitForExistence(timeout: 60),
+            "Capture should expose its signed-in shell before account identity is trusted."
+        )
+
+        func openAccount() -> XCUIElement {
+            let accountTab = tabBar.buttons["Account"].firstMatch
+            XCTAssertTrue(accountTab.waitForExistence(timeout: 8))
+            accountTab.tap()
+            let account = app.descendants(matching: .any)["CaptureSignedInAccount"].firstMatch
+            XCTAssertTrue(
+                account.waitForExistence(timeout: 20),
+                "Runtime proof requires a readable signed-in account identity."
+            )
+            return account
+        }
+
+        let expectedEmail = credentials.email.lowercased()
+        var shellAccount = app.descendants(matching: .any)["CaptureSignedInShellAccount"].firstMatch
+        XCTAssertTrue(
+            shellAccount.waitForExistence(timeout: 20),
+            "The signed-in shell must expose a noninteractive account identity for operated proof."
+        )
+        let restoredIdentity = String(describing: shellAccount.value ?? "").lowercased()
+        if !restoredIdentity.contains(expectedEmail) {
+            var account = openAccount()
+            let signOut = app.buttons["CaptureSignOutButton"].firstMatch
+            XCTAssertTrue(
+                signOut.waitForExistence(timeout: 8),
+                "A restored session for the wrong actor must expose deliberate account switching."
+            )
+            signOut.tap()
+            // Runtime-smoke LoginView intentionally begins the credential-file
+            // sign-in as soon as it appears, so the form may be too brief for
+            // XCTest to observe. Use it when visible; otherwise require the
+            // exact replacement identity below instead of mistaking a hidden
+            // automatic sign-in for a failed sign-out.
+            if app.textFields["QuipslyCaptureEmailField"].waitForExistence(timeout: 2) {
+                signInIfNeeded(app, credentials: credentials)
+            }
+            XCTAssertTrue(
+                tabBar.waitForExistence(timeout: 60),
+                "The requested runtime actor should reach the signed-in shell after account switching."
+            )
+            account = openAccount()
+            let exactAccount = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value CONTAINS[c] %@", expectedEmail),
+                object: account
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [exactAccount], timeout: 60),
+                .completed,
+                "Runtime proof refuses a restored Firebase session belonging to a different account."
+            )
+
+            let restoredTitle = restoringTab.capitalized
+            let restoredButton = tabBar.buttons[restoredTitle].firstMatch
+            XCTAssertTrue(restoredButton.waitForExistence(timeout: 8))
+            restoredButton.tap()
+            shellAccount = app.descendants(matching: .any)["CaptureSignedInShellAccount"].firstMatch
+        }
+
+        let exactActor = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value CONTAINS[c] %@", expectedEmail),
+            object: shellAccount
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [exactActor], timeout: 60),
+            .completed,
+            "Runtime proof refuses a restored Firebase session belonging to a different account."
+        )
     }
 
     private func waitForRuntimeElement(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 18, swipeAttempts: Int = 8) -> Bool {
@@ -2703,6 +2787,83 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(
             "\(sessionID)|\(sessionTitle)|retained-coaching-follow-up-20260731",
             name: "Retained iPhone coaching continuity projection"
+        )
+    }
+
+    func testExactSignedInAccountIdentityIsReadable() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let app = try launchSignedInCaptureApp()
+        let account = app.descendants(matching: .any)["CaptureSignedInShellAccount"].firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            String(describing: account.value ?? "")
+                .localizedCaseInsensitiveContains(credentials.email),
+            "Account must expose the exact authenticated email used by this operated journey."
+        )
+        attachRecordingIdentity(
+            credentials.email,
+            name: "Exact signed-in Capture account"
+        )
+    }
+
+    func testClientOpensExactFollowThroughGoalInWork() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty,
+              let taskID = credentials.taskID, !taskID.isEmpty,
+              let goalID = credentials.goalID, !goalID.isEmpty else {
+            throw XCTSkip("The coaching follow-through Work journey requires exact Session, task, and goal identities.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let taskButton = app.buttons["CaptureFollowThroughOpenTask_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(taskButton, in: app, timeout: 40, swipeAttempts: 18),
+            "The intended client should be able to open the exact released commitment in Work."
+        )
+        XCTAssertTrue(taskButton.isEnabled)
+
+        let goalButton = app.buttons["CaptureFollowThroughOpenGoal_\(goalID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(goalButton, in: app, timeout: 20, swipeAttempts: 12),
+            "The intended client should be able to open the exact released goal in Work."
+        )
+        XCTAssertTrue(goalButton.isEnabled)
+        let recorder = app.scrollViews["CaptureRecorderView"].firstMatch
+        for _ in 0..<12 where !goalButton.isHittable {
+            recorder.swipeUp()
+        }
+        XCTAssertTrue(goalButton.isHittable, "The exact goal action should be physically reachable on iPhone.")
+        goalButton.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureWorkView"].firstMatch.waitForExistence(timeout: 15),
+            "The follow-through action should switch to the canonical Work surface."
+        )
+        let exactGoal = app.descendants(matching: .any)["CaptureWorkGoal_\(goalID)"].firstMatch
+        XCTAssertTrue(
+            exactGoal.waitForExistence(timeout: 30),
+            "Work should load and reveal the exact goal identity, not a copied follow-up item."
+        )
+        let search = app.textFields["CaptureWorkSearchField"].firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            search.value as? String,
+            "Use a sustainable boundary",
+            "The Work handoff should narrow the canonical project to the selected goal."
+        )
+        XCTAssertTrue(app.staticTexts["75% · I used the smaller boundary in one difficult conversation and recovered before overcommitting."].firstMatch.exists)
+        let checkIn = app.buttons["CaptureTodayGoalCheckIn_\(goalID)"].firstMatch
+        XCTAssertTrue(checkIn.exists)
+        XCTAssertTrue(checkIn.isEnabled, "The owning client should retain the standard canonical goal check-in control.")
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureWorkTask_\(taskID)"].firstMatch.exists,
+            "The exact-title handoff should not leave unrelated Work rows in the focused result."
+        )
+        attachRecordingIdentity(
+            "\(sessionID)|\(sessionTitle)|\(goalID)|75",
+            name: "Retained client follow-through to exact Work goal"
         )
     }
 

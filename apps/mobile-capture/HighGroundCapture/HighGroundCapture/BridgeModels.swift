@@ -6886,8 +6886,8 @@ final class CaptureSessionClient: ObservableObject {
     }
 
     func refreshClientFollowUp(forSessionID sessionID: String) async {
-        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
-        let roomID = sessions[index].callRoomId
+        guard let requestedSession = sessions.first(where: { $0.id == sessionID }) else { return }
+        let roomID = requestedSession.callRoomId
         guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(
                 string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
@@ -6905,10 +6905,12 @@ final class CaptureSessionClient: ObservableObject {
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpReadResponse.self, from: data)
             if response.statusCode == 404 {
-                var refreshedSession = sessions[index]
+                guard let currentIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+                var refreshedSession = sessions[currentIndex]
                 refreshedSession.clientFollowUp = nil
                 refreshedSession.clientFollowUpWorkspace = nil
-                sessions[index] = refreshedSession
+                sessions[currentIndex] = refreshedSession
+                persistProtectedSessionCache()
                 return
             }
             guard response.statusCode < 400, payload.ok else {
@@ -6921,10 +6923,17 @@ final class CaptureSessionClient: ObservableObject {
                     ]
                 )
             }
-            var refreshedSession = sessions[index]
+            // The authoritative Session collection may finish loading while
+            // this focused request is in flight. Re-resolve by stable ID after
+            // the suspension so an older cached value cannot overwrite newer
+            // Session fields (including prior-session continuity) or a
+            // different row after list reordering.
+            guard let currentIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+            var refreshedSession = sessions[currentIndex]
             refreshedSession.clientFollowUp = payload.releasedClientFollowUp
             refreshedSession.clientFollowUpWorkspace = payload.workspace
-            sessions[index] = refreshedSession
+            sessions[currentIndex] = refreshedSession
+            persistProtectedSessionCache()
         } catch {
             errorMessage = "Session loaded, but its private follow-up could not be refreshed: \(error.localizedDescription)"
         }

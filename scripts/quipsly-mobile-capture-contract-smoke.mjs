@@ -1000,6 +1000,8 @@ function checkTranscriptCorrectionContractSources() {
   const captureEntitlementsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/HighGroundCapture.entitlements");
   const shareEntitlementsText = sourceText("apps/mobile-capture/HighGroundCapture/ShareCaptureExtension/ShareCaptureExtension.entitlements");
   const captureUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift");
+  const runtimeUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift");
+  const runtimeRunnerText = sourceText("apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh");
   const inboxText = [
     sourceText("apps/quipsly/src/app/(app)/inbox/page.tsx"),
     sourceText("apps/quipsly/src/app/(app)/inbox/inbox-loader.ts"),
@@ -1593,6 +1595,32 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("New check-in since release"),
     "coachingGoalProgressSinceRelease",
     "A client goal check-in after the immutable release is counted and labelled as new progress across Nest and iPhone without pretending the goal definition or status changed.",
+  );
+  expect(
+    captureExperienceText.includes("struct CaptureWorkNavigationRequest")
+      && captureExperienceText.includes("func requestWorkNavigation(")
+      && captureExperienceText.includes(".receive(on: DispatchQueue.main)")
+      && shellText.includes("CaptureFollowThroughOpenTask_")
+      && shellText.includes("CaptureFollowThroughOpenGoal_")
+      && shellText.includes("searchText = request.title")
+      && shellText.includes("await client.load(projectID: request.projectID)")
+      && shellText.includes("proxy.scrollTo(request.scrollID")
+      && shellText.includes("CaptureSignedInAccount")
+      && shellText.includes("CaptureSignOutButton")
+      && runtimeRunnerText.includes("coaching-follow-through-work)")
+      && runtimeUITestText.includes("testClientOpensExactFollowThroughGoalInWork")
+      && runtimeUITestText.includes("ensureExactSignedInAccount")
+      && runtimeUITestText.includes("refuses a restored Firebase session belonging to a different account"),
+    "nativeCoachingFollowThroughExactWorkReturn",
+    "An exact verified client—not whichever Firebase actor happened to be restored—can return from next-Session follow-through to the canonical task or goal in its owning Work project, with focused native proof and no copied work.",
+  );
+  expect(
+    bridgeText.includes("let requestedSession = sessions.first(where: { $0.id == sessionID })")
+      && bridgeText.includes("let currentIndex = sessions.firstIndex(where: { $0.id == sessionID })")
+      && bridgeText.includes("an older cached value cannot overwrite newer")
+      && bridgeText.includes("persistProtectedSessionCache()"),
+    "nativeSessionRefreshReconcilesByStableIdentity",
+    "A focused follow-up refresh re-resolves the Session by stable ID after suspension, preserving newer canonical continuity fields and cache state instead of overwriting by a stale array index.",
   );
   expect(
     workPageText.includes("initialSnapshot.tasks.some((task) => task.id === requestedTaskId)")

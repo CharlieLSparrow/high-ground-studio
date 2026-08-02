@@ -6319,3 +6319,29 @@ was restored.
   publication, billing action, or production database mutation occurred. Full
   evidence is in
   `docs/coordination/2026-08-02-coaching-goal-progress-readback.md`.
+
+### iPhone follow-through to canonical Work checkpoint — 2026-08-02
+
+- Quipsly Capture now opens released coaching commitments and goals in the
+  same canonical Work records instead of leaving the client to reconstruct a
+  search. The handoff switches the real root tab, selects the source project,
+  filters by exact title, loads by stable identity, scrolls to the matching
+  row, and visibly focuses it. Completed commitments remain reachable.
+- Work card accessibility keeps descendant edit, tag, reminder, completion,
+  and check-in actions independently reachable. The client retains the normal
+  Goal Check in action; the coach receives the same progress as read-only
+  preparation and no Work mutation affordance.
+- The paired retained operator now proves exact coach and client identities in
+  two compiled iPhone journeys. Coach continuity/source return and client
+  exact-Goal Work navigation both pass 1/1 with zero unexpected runtime
+  warnings and no copied work or external side effect.
+- Operated diagnostics found and fixed re-entrant parent observation:
+  `CaptureExperienceModel` now forwards child model changes on the main queue
+  rather than publishing from within a SwiftUI view update. The focused
+  follow-up refresh also re-resolves Session indices by stable ID after awaits
+  and persists the protected exact-row snapshot.
+- Mobile source contracts pass 86/86, Capture/App Store static contracts pass
+  1007/1007, and the native operator contract passes 1/1. This remains local
+  simulator proof, not physical-iPhone, deployed, TestFlight, or genuine
+  coaching acceptance. Full evidence is in
+  `docs/coordination/2026-08-02-iphone-follow-through-work-navigation.md`.

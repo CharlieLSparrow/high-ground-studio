@@ -13,9 +13,12 @@ const RUNNER = path.join(
 );
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
+const CLIENT_EMAIL = "quipsly-client-retained-20260731@example.test";
 const NEXT_ROOM_ID = "qa-retained-coaching-next-session-20260807";
 const NEXT_ROOM_TITLE = "QA Retained · Coaching continuity Session 2";
 const PRIOR_ROOM_ID = "retained-coaching-follow-up-20260731";
+const TASK_ID = "retained-follow-up-client-task-20260731";
+const GOAL_ID = "retained-follow-up-client-goal-20260731";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -57,7 +60,7 @@ async function verifyAndWarmCanonicalSession({ baseURL, email, password }) {
   const signInBody = await signInResponse.json().catch(() => null);
   assert(
     signInResponse.status === 200 && typeof signInBody?.idToken === "string",
-    "Retained coach could not authenticate with the local Firebase emulator.",
+    "Retained coaching actor could not authenticate with the local Firebase emulator.",
   );
 
   const sessionsResponse = await fetch(`${baseURL}/api/mobile/capture/sessions`, {
@@ -105,10 +108,20 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     account: COACH_EMAIL,
   });
   assert(password, "The retained coaching actor has no Keychain password.");
+  const clientPassword = readRetainedQAPassword({
+    service: KEYCHAIN_SERVICE,
+    account: CLIENT_EMAIL,
+  });
+  assert(clientPassword, "The retained coaching client has no Keychain password.");
   const authoritativeSessionCount = await verifyAndWarmCanonicalSession({
     baseURL,
     email: COACH_EMAIL,
     password,
+  });
+  await verifyAndWarmCanonicalSession({
+    baseURL,
+    email: CLIENT_EMAIL,
+    password: clientPassword,
   });
   const resultBundle = path.resolve(
     options.resultBundle
@@ -137,17 +150,40 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     result.status === 0,
     `Compiled Capture coaching-continuity operation failed (exit ${String(result.status)}).`,
   );
+  const clientResultBundle = resultBundle.replace(/\.xcresult$/, "-client-work.xcresult");
+  const clientResult = spawnSync("bash", [RUNNER], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      QUIPSLY_CAPTURE_UI_TEST_MODE: "coaching-follow-through-work",
+      QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseURL,
+      QUIPSLY_CAPTURE_UI_TEST_EMAIL: CLIENT_EMAIL,
+      QUIPSLY_CAPTURE_UI_TEST_PASSWORD: clientPassword,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: NEXT_ROOM_ID,
+      QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: NEXT_ROOM_TITLE,
+      QUIPSLY_CAPTURE_UI_TEST_TASK_ID: TASK_ID,
+      QUIPSLY_CAPTURE_UI_TEST_GOAL_ID: GOAL_ID,
+      QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: clientResultBundle,
+    },
+    stdio: "inherit",
+  });
+  assert(
+    clientResult.status === 0,
+    `Compiled Capture follow-through Work operation failed (exit ${String(clientResult.status)}).`,
+  );
   console.log(JSON.stringify({
     ok: true,
     localOnly: true,
     retained: true,
     compiledCaptureOperation: true,
-    actor: "coach",
+    actors: ["coach", "client"],
     nextRoomID: NEXT_ROOM_ID,
     priorRoomID: PRIOR_ROOM_ID,
     authoritativeSessionCount,
     authenticatedSessionPrewarm: true,
     resultBundle,
+    clientResultBundle,
+    passedOperations: 2,
     artifactPreserved: true,
     credentialsPrinted: false,
     externalSideEffects: false,

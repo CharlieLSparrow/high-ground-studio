@@ -142,12 +142,16 @@ the exact XCTest result bundle:
 pnpm quipsly:retained:native-coaching-continuity
 ```
 
-This operator reads the coach password through the repository Keychain helper,
-selects Session 2 by canonical ID, reads the Task status plus post-release Goal
-percentage and evidence note, reveals the carried-forward brief, checks the
-no-copy boundary, and switches to the exact source Session. It never prints
-credentials, and the runtime runner removes its short-lived credential packet
-on exit.
+This operator reads both coach and client passwords through the repository
+Keychain helper and executes two compiled journeys. The coach selects Session
+2 by canonical ID, reads the Task status plus post-release Goal percentage and
+evidence note, reveals the carried-forward brief, checks the no-copy boundary,
+and switches to the exact source Session. The client then opens the exact
+canonical Goal from Session 2 in Work, verifies its title search and 75%
+evidence, and retains the ordinary enabled Check in control. Each journey
+proves its exact signed-in email before trusting restored simulator state. The
+operator never prints credentials, and the runtime runner removes each
+short-lived credential packet on exit.
 
 ### Reusable local media-production identity
 

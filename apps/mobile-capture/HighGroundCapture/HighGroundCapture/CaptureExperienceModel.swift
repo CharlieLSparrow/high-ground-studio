@@ -31,6 +31,26 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
     }
 }
 
+enum CaptureWorkEntityKind: String, Equatable {
+    case task
+    case goal
+}
+
+struct CaptureWorkNavigationRequest: Identifiable, Equatable {
+    let id = UUID()
+    let kind: CaptureWorkEntityKind
+    let entityID: String
+    let title: String
+    let projectID: String
+
+    var scrollID: String {
+        switch kind {
+        case .task: "CaptureWorkTask_\(entityID)"
+        case .goal: "CaptureWorkGoal_\(entityID)"
+        }
+    }
+}
+
 enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     case audio
     case podcastAV
@@ -176,6 +196,7 @@ final class CaptureExperienceModel: ObservableObject {
     @Published var newSessionPurpose = "COACHING"
     @Published var message: String?
     @Published var errorMessage: String?
+    @Published private(set) var workNavigationRequest: CaptureWorkNavigationRequest?
     @Published var preparedRoomJoin: MobileCaptureRoomJoinResponse?
     @Published private(set) var activeCaptureSession: MobileCaptureSession?
     @Published private(set) var activeVideoCaptureSession: MobileCaptureSession?
@@ -225,39 +246,51 @@ final class CaptureExperienceModel: ObservableObject {
         self.usesPreviewData = usesPreviewData ?? CaptureLaunchConfiguration.usesPreviewData
         observedReceiptOwnerAccountID = normalizedOwnerAccountID(AuthManager.currentStoredOwnerID())
         sessionClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         todayClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         workClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         calendarSubscriptionClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         sourceInboxClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         providerRoom.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         readinessClient.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         uploadManager.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         receiptStore.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         quickEntryOutbox.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         sessionNoteEditOutbox.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         taskReminderScheduler.objectWillChange
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         taskReminderScheduler.activateOwner(observedReceiptOwnerAccountID)
@@ -714,6 +747,25 @@ final class CaptureExperienceModel: ObservableObject {
         Task { [weak self] in
             await self?.sessionClient.refreshClientFollowUp(forSessionID: session.id)
         }
+    }
+
+    func requestWorkNavigation(
+        kind: CaptureWorkEntityKind,
+        entityID: String,
+        title: String,
+        projectID: String
+    ) {
+        workNavigationRequest = CaptureWorkNavigationRequest(
+            kind: kind,
+            entityID: entityID,
+            title: title,
+            projectID: projectID
+        )
+    }
+
+    func finishWorkNavigation(_ request: CaptureWorkNavigationRequest) {
+        guard workNavigationRequest?.id == request.id else { return }
+        workNavigationRequest = nil
     }
 
     func createSession() async -> Bool {
