@@ -6336,6 +6336,12 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - Metadata/readiness coverage passes 12/12, the Capture App Store contract
   passes 1,009/1,009, resolved Release settings and source verification pass,
   and the exact Build 26 archive/IPA pass the strengthened verifier.
+- Exact pushed source `5bdcf4724c237068c000450856e03946ad4a7e61`
+  subsequently passed 54/54 serialized iPhone and Share Extension journeys and
+  signed archive/IPA qualification from a detached worktree. The 22,376,642-
+  byte IPA has SHA-256
+  `39116abacbdf4083e60f50b66c391bc0498bc496f6c3d6bee34d7ae862e574a1`;
+  its receipt explicitly records no upload and no physical TestFlight proof.
 - The browser session required fresh Apple authentication, so no provider
   mutation was attempted. The loop-back is exact: sign in, open Pricing and
   Availability, deselect both app-level availability controls, save, reload,

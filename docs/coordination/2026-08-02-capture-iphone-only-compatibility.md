@@ -75,6 +75,29 @@ opt-out](https://developer.apple.com/help/app-store-connect/manage-your-apps-ava
 Build 26 remains the public TestFlight target. The XR source correction is
 queued for the next spaced release; it did not create or upload a new build.
 
+## Qualified next-release candidate
+
+Exact pushed source
+`5bdcf4724c237068c000450856e03946ad4a7e61` was qualified from a detached
+worktree without uploading it. The complete serialized iPhone and Share
+Extension suite passed 54/54 journeys with zero failures, then the same source
+produced and exported a signed App Store archive and IPA.
+
+The archive and IPA independently prove `UIDeviceFamily = [1]`,
+`CFBundleSupportedPlatforms = ["iPhoneOS"]`, valid App Store profiles, and
+Apple Distribution signatures for both the app and Share Extension. The IPA
+is 22,376,642 bytes with SHA-256
+`39116abacbdf4083e60f50b66c391bc0498bc496f6c3d6bee34d7ae862e574a1`.
+
+The owner-retained qualification receipt is:
+
+`/Volumes/My Passport/Quipsly QA Artifacts/Capture Next Release/Releases/5bdcf4724c23/20260802T151000Z-iphone-only/QuipslyCapture-1.0.26-release-receipt.json`
+
+It records `candidateQualified=true`, detached-source isolation, deterministic
+UI execution, `uploadAttempted=false`, `uploadPerformed=false`, and
+`physicalTestFlightInstallReadbackPerformed=false`. This is a sealed local
+candidate, not a new TestFlight build or physical-device acceptance claim.
+
 ## Verification
 
 - App Store metadata and submission-auditor coverage: 12/12 passed;
@@ -82,6 +105,8 @@ queued for the next spaced release; it did not create or upload a new build.
 - resolved Release app and extension settings: iPhone-only with Mac/XR `NO`;
 - source release verifier plus Nest evidence contract: passed;
 - exact signed Build 26 archive and IPA verification: passed;
+- exact pushed next-release source: 54/54 UI journeys plus signed archive/IPA
+  qualification passed without upload;
 - fresh credentialed App Store readback: expected readiness exit 2 with the
   exact compatibility blocker; and
 - no build upload, App Store mutation, release, submission, or cloud cost.

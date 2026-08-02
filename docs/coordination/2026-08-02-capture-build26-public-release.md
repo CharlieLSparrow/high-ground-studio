@@ -113,6 +113,14 @@ the two app-level availability toggles, so Mac/Vision opt-out remains one exact
 Pricing and Availability operation. Evidence is in
 `docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
 
+Exact pushed correction source `5bdcf472` also passed a no-upload candidate
+qualification: 54/54 serialized UI journeys, detached-source archive/export,
+and packaged iPhone-only signature/profile verification. Its receipt and IPA
+are retained under `/Volumes/My Passport/Quipsly QA Artifacts/Capture Next
+Release/Releases/5bdcf4724c23/20260802T151000Z-iphone-only`. Build 26 remains
+the canonical public TestFlight binary; this candidate did not trigger another
+release.
+
 ## Screenshot candidate operation
 
 The five private-data-safe screenshot stories were operated again from a clean

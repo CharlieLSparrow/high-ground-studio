@@ -309,8 +309,12 @@ Implementation commit: `03a316e1`
   `UIDeviceFamily=[1]`. Apple still reports Build 26 can run on Apple silicon
   Mac, so the separate Mac and Vision store-availability controls remain a
   manual Pricing and Availability opt-out. No new build or provider mutation
-  occurred. Full evidence is in
-  `docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
+  occurred. Exact pushed source `5bdcf472` then passed 54/54 serialized UI
+  journeys and signed archive/IPA qualification from a detached worktree. Its
+  22,376,642-byte IPA has SHA-256
+  `39116abacbdf4083e60f50b66c391bc0498bc496f6c3d6bee34d7ae862e574a1`;
+  the receipt records no upload and no physical-device proof. Full evidence is
+  in `docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
 
 ## Capture Build 25 public TestFlight checkpoint
 
