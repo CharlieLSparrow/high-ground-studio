@@ -61,7 +61,7 @@ SOURCE_REF=COMMITTED_SHA \
 bash scripts/release/quipsly-deploy-preview.sh
 ```
 
-New successful Nest image builds are also separated by a 24-hour default
+New successful Nest image builds are also separated by a 72-hour default
 cadence. Exact-source image reuse, local testing, failed-build retries, preview
 smoke, and promotion do not consume this interval. An urgent production repair
 can use `ALLOW_EARLY_CLOUD_BUILD=1`; using that override for routine checkpoint
@@ -216,7 +216,7 @@ of estimated list-price compute; the historical 83 `E2_HIGHCPU_32` attempts
 still account for $36.14. The latest 8-core exact-source Nest build received
 `SIGKILL` after approximately 22 minutes, consistent with worker memory
 pressure, so the reliable 32-core
-default was restored while the 24-hour cadence and exact-image reuse remain.
+default was restored while the 72-hour cadence and exact-image reuse remain.
 
 Artifact Registry reports 152,454.130 MB, 929 versions, and active cleanup
 (`Dry run is disabled`). The asynchronous evaluator has not yet reduced the
