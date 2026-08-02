@@ -2,6 +2,30 @@
 
 Date: 2026-08-02
 
+## Episode production milestone runway checkpoint
+
+- Episode Room now owns revisioned, typed production milestones with exact
+  timezone, optional windows, assignment, dependencies, optimistic concurrency,
+  append-only snapshots, and no implicit provider-calendar write.
+- Operated the real local High Ground Odyssey Episode 4 Part 2 room: source
+  verification gated the dependent rough cut, then both were started and
+  completed through the rendered UI. PostgreSQL retained six immutable
+  revisions and `externalCalendarMutated=false` throughout.
+- Calendar rendered both completed point milestones with the right local times,
+  prerequisite context, and exact return links. A real local revocable podcast
+  feed returned two transparent ICS events with stable UIDs, one-hour refresh
+  hints, and no transcript/manuscript payload.
+- Real operation exposed a stale generated-Prisma-client boundary. Local startup
+  now generates the client before applying migrations and starting Nest.
+- All 41 migrations replay cleanly on an empty disposable database, the
+  service-level database operation and zero-diff gate pass, focused proof is
+  32/32, lifecycle is 8/8, the full Quipsly run is 228 suites / 1,194 tests,
+  strict TypeScript passes, and the optimized 158-page build passes with the
+  release 8 GB heap.
+- No cloud build, production migration/deploy, Google Calendar write,
+  TestFlight action, or physical-iPhone mutation occurred. Full evidence is in
+  `docs/coordination/2026-08-02-episode-production-milestone-runway.md`.
+
 ## Evidence-backed weekly review checkpoint
 
 Implementation commit: `03a316e1`
@@ -32,10 +56,11 @@ Implementation commit: `03a316e1`
 
 - The supported Nest release paths now reuse an exact committed-source image
   before building, so retries and promotion do not pay for duplicate images.
-- Artifact Registry has a conservative untagged-after-45-days cleanup policy
-  evaluating in dry-run mode. No image deletion has been enabled; wait at least
-  one day and inspect the proposed deletions before making that separate
-  destructive decision.
+- Artifact Registry now has active 45-day cleanup with a keep-ten-per-package
+  rule. Retention-aware proof preserves every traffic-serving digest; the
+  asynchronous evaluator reduced the inventory from 929 to 477 versions. The
+  remaining storage is dominated by current and legacy build caches, not Cloud
+  Run request traffic.
 - The cost auditor now covers every Cloud Run service and every
   traffic-serving revision in the region. This fixed a blind spot that had
   omitted the always-warm `studio-collab` service.

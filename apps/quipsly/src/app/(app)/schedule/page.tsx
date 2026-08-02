@@ -7,6 +7,7 @@ import {
   ListTodo,
   Radio,
   Play,
+  Film,
 } from "lucide-react";
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
@@ -30,6 +31,7 @@ import {
   humanizeScheduleValue,
   type SchedulePlanBlock,
   type SchedulePlanTarget,
+  type ScheduleMilestone,
   type ScheduleSession,
   type ScheduleSnapshot,
   type ScheduleTag,
@@ -103,7 +105,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       select: { tag: { select: { id: true, label: true, isActive: true } } },
     };
 
-    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows] = await Promise.all([
+    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows, milestoneRows] = await Promise.all([
       prisma.callRoom.findMany({
             where: {
               ...roomAccess,
@@ -206,6 +208,33 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           createdAt: true,
           lastGeneratedAt: true,
           collection: { select: { purpose: true, displayName: true, nestId: true } },
+        },
+      }),
+      prisma.studioEpisodeMilestone.findMany({
+        where: {
+          episodeProduction: { projectId: { in: projectIds } },
+          startsAt: { gte: new Date(Date.now() - 90 * 86_400_000) },
+        },
+        orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
+        take: 500,
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          status: true,
+          startsAt: true,
+          endsAt: true,
+          timezone: true,
+          revision: true,
+          assignee: { select: { name: true, primaryEmail: true } },
+          dependsOn: { select: { title: true, status: true } },
+          episodeProduction: {
+            select: {
+              title: true,
+              slug: true,
+              project: { select: { slug: true } },
+            },
+          },
         },
       }),
     ]);
@@ -370,6 +399,23 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       }),
     ];
 
+    const milestones: ScheduleMilestone[] = milestoneRows.map((milestone: any) => ({
+      id: milestone.id,
+      title: milestone.title,
+      kind: milestone.kind,
+      status: milestone.status,
+      startsAt: milestone.startsAt.toISOString(),
+      endsAt: milestone.endsAt?.toISOString() ?? null,
+      timezone: milestone.timezone,
+      revision: milestone.revision,
+      blocked: Boolean(milestone.dependsOn && milestone.dependsOn.status !== "COMPLETED" && milestone.status !== "CANCELED"),
+      assigneeLabel: milestone.assignee?.name || milestone.assignee?.primaryEmail || null,
+      dependencyTitle: milestone.dependsOn?.title || null,
+      episodeTitle: milestone.episodeProduction.title,
+      episodeSlug: milestone.episodeProduction.slug,
+      projectSlug: milestone.episodeProduction.project.slug,
+    }));
+
     return {
       state: "ready",
       authState: "signed-in",
@@ -390,6 +436,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
         lastGeneratedAt: feed.lastGeneratedAt?.toISOString() ?? null,
       })),
       sessions,
+      milestones,
       tasks,
       planBlocks,
       planTargets,
@@ -548,6 +595,41 @@ export default async function SchedulePage() {
           <GoogleCalendarConnectionManager projects={snapshot.calendarProjects.filter((project) => project.canWrite)} sessions={snapshot.sessions} />
 
           <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
+
+          <section aria-labelledby="production-runway-heading">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span className="rounded-xl bg-violet-50 p-2 text-violet-700"><Film aria-hidden="true" /></span>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Podcast production</p>
+                  <h2 id="production-runway-heading" className="font-serif text-3xl font-black text-[#3d3122]">Episode milestones</h2>
+                </div>
+              </div>
+              <p className="max-w-2xl text-xs font-semibold leading-5 text-[#80694a]">Team production dates are canonical Quipsly records. Point milestones stay transparent in calendar feeds; only explicit time windows reserve time.</p>
+            </div>
+            {snapshot.milestones.length === 0 ? (
+              <EmptyCard>No production milestones are scheduled in your accessible episode Nests yet. Open an Episode Room to add dates the team has actually agreed to.</EmptyCard>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {snapshot.milestones.map((milestone) => (
+                  <article key={milestone.id} className={`rounded-2xl border bg-white p-5 shadow-sm ${milestone.blocked ? "border-amber-300" : milestone.status === "CANCELED" ? "border-rose-200 opacity-70" : "border-violet-200"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-violet-700">{humanizeScheduleValue(milestone.kind)}</p>
+                        <h3 className="mt-1 text-lg font-black text-[#3d3122]">{milestone.title}</h3>
+                      </div>
+                      <span className="rounded-full bg-[#f6efdf] px-2.5 py-1 text-[9px] font-black uppercase text-[#725938]">{humanizeScheduleValue(milestone.status)}</span>
+                    </div>
+                    <p className="mt-4 flex items-center gap-2 text-sm font-bold text-[#5f4b32]"><Clock3 size={15} aria-hidden="true" />{formatScheduleDateTime(milestone.startsAt, milestone.timezone)}</p>
+                    {milestone.endsAt ? <p className="mt-1 text-xs font-semibold text-[#80694a]">Through {formatScheduleDateTime(milestone.endsAt, milestone.timezone)}</p> : <p className="mt-1 text-xs font-semibold text-[#80694a]">Point milestone · does not reserve availability</p>}
+                    <p className="mt-3 text-xs font-bold text-[#80694a]">{milestone.episodeTitle}{milestone.assigneeLabel ? ` · ${milestone.assigneeLabel}` : " · unassigned"}</p>
+                    {milestone.dependencyTitle ? <p className={`mt-2 text-xs font-bold ${milestone.blocked ? "text-amber-800" : "text-emerald-700"}`}>{milestone.blocked ? "Waiting on" : "Prerequisite complete"}: {milestone.dependencyTitle}</p> : null}
+                    <Link href={`/nests/${encodeURIComponent(milestone.projectSlug)}/episodes/${encodeURIComponent(milestone.episodeSlug)}`} className="mt-4 inline-flex min-h-11 items-center gap-1 text-xs font-black text-[#76522c] hover:underline">Open episode runway <ChevronRight size={14} aria-hidden="true" /></Link>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
 
           <div id="personal-planning">
             <SchedulePlanner initialBlocks={snapshot.planBlocks} targets={snapshot.planTargets} />

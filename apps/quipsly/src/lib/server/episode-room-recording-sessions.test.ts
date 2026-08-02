@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 jest.mock("server-only", () => ({}));
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/capture-proxy-reconciliation", () => ({
   reconcileCaptureProxyResults: jest.fn(),

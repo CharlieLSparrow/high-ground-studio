@@ -316,6 +316,30 @@ enum WorkPlanBlockStatus {
   CANCELED
 }
 
+enum StudioEpisodeMilestoneKind {
+  RESEARCH_LOCK
+  RUN_OF_SHOW_READY
+  TECH_CHECK
+  RECORDING
+  SOURCE_UPLOAD_VERIFIED
+  TRANSCRIPT_REVIEW
+  ROUGH_CUT
+  EDITORIAL_REVIEW
+  FINAL_APPROVAL
+  SCHEDULED_PUBLICATION
+  RELEASE
+  CLIPS_WINDOW
+  FOLLOW_UP
+  CUSTOM
+}
+
+enum StudioEpisodeMilestoneStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
 enum CalendarProvider {
   GOOGLE
   ICALENDAR
@@ -596,6 +620,9 @@ model User {
   callRoomTagsCreated           CallRoomTagLink[]                    @relation("CallRoomTagCreatedBy")
   workPlanBlocks                WorkPlanBlock[]                      @relation("WorkPlanBlockOwner")
   taskRecurrenceSeries          TaskRecurrenceSeries[]               @relation("TaskRecurrenceOwner")
+  episodeMilestonesAssigned     StudioEpisodeMilestone[]             @relation("StudioEpisodeMilestoneAssignee")
+  episodeMilestonesCreated      StudioEpisodeMilestone[]             @relation("StudioEpisodeMilestoneCreatedBy")
+  episodeMilestoneRevisions     StudioEpisodeMilestoneRevision[]     @relation("StudioEpisodeMilestoneRevisionActor")
   sourceAnnotationsCreated      StudioSourceAnnotation[]             @relation("StudioSourceAnnotationCreatedBy")
   sourceAnnotationRevisions     StudioSourceAnnotationRevision[]     @relation("StudioSourceAnnotationRevisionActor")
   sourceAnnotationUsesCreated   StudioSourceAnnotationUse[]          @relation("StudioSourceAnnotationUseCreatedBy")
@@ -2249,21 +2276,21 @@ model GoalProgressReceipt {
 // A personal focus block says when one actor intends to work. It is not the
 // task deadline, the goal target, a coaching appointment, or provider evidence.
 model WorkPlanBlock {
-  id           String              @id @default(cuid())
-  ownerUserId  String
-  actionItemId String?
-  goalId       String?
-  startsAt     DateTime
-  endsAt       DateTime
-  timezone     String
-  status       WorkPlanBlockStatus @default(PLANNED)
-  completedAt  DateTime?
+  id            String              @id @default(cuid())
+  ownerUserId   String
+  actionItemId  String?
+  goalId        String?
+  startsAt      DateTime
+  endsAt        DateTime
+  timezone      String
+  status        WorkPlanBlockStatus @default(PLANNED)
+  completedAt   DateTime?
   // Explicitly reported work, not inferred from the planned window. Historical
   // completed blocks may remain null so review surfaces can say "not recorded".
   actualMinutes Int?
-  sourceJson   Json                @default("{}")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  sourceJson    Json                @default("{}")
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   owner      User        @relation("WorkPlanBlockOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   actionItem ActionItem? @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
@@ -2776,13 +2803,65 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project  StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project    StudioProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document   StudioDocument           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  milestones StudioEpisodeMilestone[]
 
   @@unique([projectId, slug])
   @@index([documentId])
   @@index([projectId, boundaryKind])
   @@index([projectId, status, updatedAt])
+}
+
+model StudioEpisodeMilestone {
+  id                   String                       @id @default(cuid())
+  episodeProductionId  String
+  stableId             String                       @unique
+  kind                 StudioEpisodeMilestoneKind
+  title                String
+  detail               String?
+  startsAt             DateTime
+  endsAt               DateTime?
+  timezone             String                       @default("UTC")
+  status               StudioEpisodeMilestoneStatus @default(PLANNED)
+  assigneeUserId       String?
+  dependsOnMilestoneId String?
+  revision             Int                          @default(1)
+  createdByUserId      String?
+  createdByEmail       String
+  completedAt          DateTime?
+  canceledAt           DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  episodeProduction StudioEpisodeProduction          @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  assignee          User?                            @relation("StudioEpisodeMilestoneAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  createdBy         User?                            @relation("StudioEpisodeMilestoneCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  dependsOn         StudioEpisodeMilestone?          @relation("StudioEpisodeMilestoneDependency", fields: [dependsOnMilestoneId], references: [id], onDelete: SetNull)
+  dependents        StudioEpisodeMilestone[]         @relation("StudioEpisodeMilestoneDependency")
+  revisions         StudioEpisodeMilestoneRevision[]
+
+  @@index([episodeProductionId, status, startsAt])
+  @@index([assigneeUserId, status, startsAt])
+  @@index([dependsOnMilestoneId])
+}
+
+model StudioEpisodeMilestoneRevision {
+  id           String   @id @default(cuid())
+  milestoneId  String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  actorEmail   String
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  milestone StudioEpisodeMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  actor     User?                  @relation("StudioEpisodeMilestoneRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([milestoneId, revision])
+  @@index([actorUserId, createdAt])
+  @@index([milestoneId, createdAt])
 }
 
 model StudioNestInvite {

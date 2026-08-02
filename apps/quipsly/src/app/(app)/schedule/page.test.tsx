@@ -103,6 +103,7 @@ describe("Schedule page truth states", () => {
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
     render(await SchedulePage());
     expect(screen.getByRole("status", { name: "Calendar unavailable" })).toHaveTextContent("database connection is unavailable");
@@ -139,6 +140,7 @@ describe("Schedule page truth states", () => {
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());
@@ -209,6 +211,7 @@ describe("Schedule page truth states", () => {
       workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());
@@ -225,5 +228,56 @@ describe("Schedule page truth states", () => {
     );
     expect(screen.getByRole("heading", { name: "Time for the work you actually chose." })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Real rooms, grouped by current status" })).not.toBeInTheDocument();
+  });
+
+  it("projects an accessible episode milestone to Calendar with its exact Episode Room", async () => {
+    const startsAt = new Date(Date.now() + 2 * 86_400_000);
+    startsAt.setSeconds(0, 0);
+    jest.mocked(getQuipslySession).mockResolvedValue({
+      user: { id: "user-1", email: "producer@example.com" },
+    } as any);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{
+      id: "project-1",
+      slug: "high-ground-odyssey",
+      name: "High Ground Odyssey",
+      workspaceId: "workspace-1",
+      role: "EDITOR",
+    }] as any);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+      goal: { findMany: jest.fn().mockResolvedValue([]) },
+      workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
+      calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([{
+        id: "milestone-rough-cut",
+        title: "Rough cut ready for Homer",
+        kind: "ROUGH_CUT",
+        status: "PLANNED",
+        startsAt,
+        endsAt: null,
+        timezone: "America/Denver",
+        revision: 3,
+        assignee: { name: "Scott Sparrow", primaryEmail: "shomers@example.com" },
+        dependsOn: { title: "Source upload verified", status: "IN_PROGRESS" },
+        episodeProduction: {
+          title: "The Swear Jar",
+          slug: "the-swear-jar",
+          project: { slug: "high-ground-odyssey" },
+        },
+      }]) },
+    } as any);
+
+    render(await SchedulePage());
+
+    expect(screen.getByRole("heading", { name: "Rough cut ready for Homer" })).toBeInTheDocument();
+    expect(screen.getByText("Waiting on: Source upload verified")).toBeInTheDocument();
+    expect(screen.getByText(/The Swear Jar · Scott Sparrow/)).toBeInTheDocument();
+    expect(screen.getByText("Point milestone · does not reserve availability")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open episode runway" })).toHaveAttribute(
+      "href",
+      "/nests/high-ground-odyssey/episodes/the-swear-jar",
+    );
   });
 });

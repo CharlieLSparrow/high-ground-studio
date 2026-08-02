@@ -24,6 +24,23 @@ export type ScheduleSession = {
   tags: ScheduleTag[];
 };
 
+export type ScheduleMilestone = {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string;
+  revision: number;
+  blocked: boolean;
+  assigneeLabel: string | null;
+  dependencyTitle: string | null;
+  episodeTitle: string;
+  episodeSlug: string;
+  projectSlug: string;
+};
+
 export type ScheduleTask = {
   id: string;
   title: string;
@@ -84,6 +101,7 @@ export type ScheduleSnapshot =
         lastGeneratedAt: string | null;
       }>;
       sessions: ScheduleSession[];
+      milestones: ScheduleMilestone[];
       tasks: ScheduleTask[];
       planBlocks: SchedulePlanBlock[];
       planTargets: SchedulePlanTarget[];

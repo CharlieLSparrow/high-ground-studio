@@ -39,7 +39,7 @@ const LANES: Array<{ purpose: Purpose; title: string; description: string }> = [
     purpose: "PODCAST_PRODUCTION",
     title: "Episode Nest feed",
     description:
-      "Scheduled podcast rooms for one Nest. Milestones will join after their canonical model ships.",
+      "Scheduled podcast rooms plus the episode's explicit research, recording, edit, review, approval, and release milestones.",
   },
 ];
 

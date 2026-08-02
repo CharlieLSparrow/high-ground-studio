@@ -51,6 +51,7 @@ import type {
 } from "@/lib/server/episode-room-store";
 
 import EpisodeRoomChat from "./EpisodeRoomChat";
+import EpisodeProductionRunway from "./EpisodeProductionRunway";
 
 type RoomResponse = {
   ok: boolean;
@@ -646,6 +647,14 @@ export default function EpisodeRoomClient({
           {error ? <p role="alert" className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-950/50 px-4 py-3 text-sm font-semibold text-rose-200">{error}</p> : null}
           {notice ? <p className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-950/40 px-4 py-3 text-sm font-semibold text-emerald-100">{notice}</p> : null}
         </header>
+
+        <EpisodeProductionRunway
+          projectSlug={projectSlug}
+          episodeSlug={episodeSlug}
+          initialMilestones={initialPayload.milestones}
+          initialAssignees={initialPayload.milestoneAssignees}
+          canEdit={canEdit}
+        />
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(260px,0.72fr)_minmax(520px,1.55fr)_minmax(300px,0.8fr)]">
           <section aria-labelledby="episode-text-heading" className="min-h-[34rem] overflow-hidden rounded-[1.75rem] border border-[#30483d] bg-[#101b16]">

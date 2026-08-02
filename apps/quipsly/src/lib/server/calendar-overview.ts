@@ -91,7 +91,7 @@ export const CALENDAR_PURPOSE_BLUEPRINTS: Record<CalendarPurpose, Omit<CalendarP
     sourceOfTruth: "Episode production and accepted work stay canonical in Quipsly; calendars receive projections.",
     recommendedProvider: "Shared Google Calendar",
     externalAccess: "Only explicit episode milestones should project externally, with a receipt for every write.",
-    fallback: "A revocable iCalendar subscription is planned after projection reconciliation is proven.",
+    fallback: "A revocable read-only iCalendar subscription carries scheduled rooms and explicit episode milestones without private work blocks.",
   },
   PERSONAL_COMMITMENTS: {
     purpose: "PERSONAL_COMMITMENTS",

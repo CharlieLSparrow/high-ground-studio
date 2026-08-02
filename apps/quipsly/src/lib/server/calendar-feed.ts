@@ -351,28 +351,55 @@ export async function renderCalendarFeed(input: {
   }
 
   if (feed.collection.purpose === "PODCAST_PRODUCTION") {
-    const rooms = await input.prisma.callRoom.findMany({
-      where: {
-        purpose: "PODCAST",
-        scheduledStart: { gte: from, lte: until },
-        scheduledEnd: { not: null },
-        ...(feed.collection.nestId
-          ? { projectId: feed.collection.nestId }
-          : feed.collection.workspaceId
-            ? { project: { workspaceId: feed.collection.workspaceId } }
-            : { id: "__unscoped_feed__" }),
-      },
-      orderBy: { scheduledStart: "asc" },
-      take: 1_000,
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        scheduledStart: true,
-        scheduledEnd: true,
-        updatedAt: true,
-      },
-    });
+    const scope = feed.collection.nestId
+      ? { projectId: feed.collection.nestId }
+      : feed.collection.workspaceId
+        ? { project: { workspaceId: feed.collection.workspaceId } }
+        : { id: "__unscoped_feed__" };
+    const [rooms, milestones] = await Promise.all([
+      input.prisma.callRoom.findMany({
+        where: {
+          purpose: "PODCAST",
+          scheduledStart: { gte: from, lte: until },
+          scheduledEnd: { not: null },
+          ...scope,
+        },
+        orderBy: { scheduledStart: "asc" },
+        take: 1_000,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          scheduledStart: true,
+          scheduledEnd: true,
+          updatedAt: true,
+        },
+      }),
+      input.prisma.studioEpisodeMilestone.findMany({
+        where: {
+          startsAt: { gte: from, lte: until },
+          episodeProduction: scope,
+        },
+        orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
+        take: 2_000,
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          revision: true,
+          updatedAt: true,
+          episodeProduction: {
+            select: {
+              slug: true,
+              project: { select: { slug: true } },
+            },
+          },
+        },
+      }),
+    ]);
     for (const room of rooms) {
       if (!room.scheduledStart || !room.scheduledEnd) continue;
       events.push({
@@ -394,6 +421,26 @@ export async function renderCalendarFeed(input: {
           room.status === "CANCELED" || room.status === "FAILED"
             ? "CANCELLED"
             : "CONFIRMED",
+      });
+    }
+    for (const milestone of milestones) {
+      events.push({
+        sourceType: "PRODUCTION_MILESTONE",
+        sourceId: milestone.id,
+        title: milestone.title,
+        description:
+          "Open Quipsly for the episode runway, ownership, dependencies, and production context. Private work blocks and manuscript content are not included.",
+        location: "Quipsly production",
+        startsAt: milestone.startsAt,
+        endsAt: milestone.endsAt ?? new Date(milestone.startsAt.getTime() + 30 * 60_000),
+        updatedAt: milestone.updatedAt,
+        sequence: milestone.revision,
+        url: new URL(
+          `/nests/${encodeURIComponent(milestone.episodeProduction.project.slug)}/episodes/${encodeURIComponent(milestone.episodeProduction.slug)}`,
+          input.origin,
+        ).toString(),
+        transparency: milestone.endsAt ? "OPAQUE" : "TRANSPARENT",
+        status: milestone.status === "CANCELED" ? "CANCELLED" : "CONFIRMED",
       });
     }
   }

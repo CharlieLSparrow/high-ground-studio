@@ -717,6 +717,32 @@ percentage and evidence note and returned to the exact source Session.
 Full evidence is in
 `docs/coordination/2026-08-02-coaching-goal-progress-readback.md`.
 
+## 2026-08-02 canonical episode production runway checkpoint
+
+Episode production dates are now canonical revisioned records rather than
+labels embedded in a provider calendar. `StudioEpisodeMilestone` retains the
+typed production kind, timezone, optional explicit window, assignment,
+dependency, status, and optimistic revision. Each accepted write appends a
+`StudioEpisodeMilestoneRevision` snapshot with its actor and operation identity.
+
+The Episode Room is the mutation surface. Calendar and the podcast iCalendar
+subscription are permission-filtered read projections. Completion waits for a
+finished prerequisite, episode-wide serializable locking prevents dependency
+races and cycles, stale revisions conflict, and every snapshot explicitly says
+that no external calendar was mutated. Point milestones are transparent in ICS;
+only a deliberately authored time window reserves availability.
+
+Rendered High Ground Odyssey acceptance created source-verification and rough-
+cut milestones, proved the completion gate, progressed both through three
+revisions, rendered both in Calendar, and fetched a real private podcast feed.
+PostgreSQL retained six immutable snapshots with no external side effect. The
+feed contained two stable transparent events and no manuscript, transcript,
+recording, participant-address, or provider-credential payload.
+
+The full implementation, lifecycle defect repair, database replay, operated
+evidence, verification, and production loop-back are in
+`docs/coordination/2026-08-02-episode-production-milestone-runway.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:

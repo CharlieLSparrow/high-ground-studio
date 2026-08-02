@@ -188,6 +188,114 @@ describe("revocable Quipsly calendar feeds", () => {
     expect(prisma.calendarSyncReceipt.create).toHaveBeenCalledTimes(1);
   });
 
+  it("projects canonical episode milestones without leaking private production context", async () => {
+    const { token, tokenDigest } = createCalendarFeedToken();
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{
+      id: "project-1",
+      slug: "high-ground-odyssey",
+    }] as any);
+    let feedMetadata: Record<string, unknown> = {
+      tokenVersion: 1,
+      rawTokenStored: false,
+    };
+    const feedRecord = {
+      id: "feed-podcast-1",
+      collectionId: "collection-podcast-1",
+      ownerUserId: "user-1",
+      status: "ACTIVE",
+      collection: {
+        id: "collection-podcast-1",
+        purpose: "PODCAST_PRODUCTION",
+        displayName: "High Ground Odyssey production",
+        status: "ACTIVE",
+        nestId: "project-1",
+        workspaceId: null,
+      },
+      owner: { primaryEmail: "producer@example.test", isActive: true },
+    };
+    const transaction = {
+      calendarFeed: {
+        findUnique: jest.fn().mockImplementation(async (query: any) =>
+          "tokenDigest" in query.where
+            ? feedRecord
+            : { status: "ACTIVE", metadataJson: feedMetadata }),
+        update: jest.fn().mockImplementation(async (query: any) => {
+          feedMetadata = query.data.metadataJson;
+          return { id: "feed-podcast-1" };
+        }),
+      },
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeMilestone: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "milestone-point",
+            title: "Rough cut ready for review",
+            kind: "ROUGH_CUT",
+            startsAt: new Date("2026-08-10T18:00:00.000Z"),
+            endsAt: null,
+            status: "PLANNED",
+            revision: 4,
+            updatedAt: new Date("2026-08-02T12:00:00.000Z"),
+            episodeProduction: {
+              slug: "the-swear-jar",
+              project: { slug: "high-ground-odyssey" },
+            },
+          },
+          {
+            id: "milestone-canceled",
+            title: "Editorial review",
+            kind: "EDITORIAL_REVIEW",
+            startsAt: new Date("2026-08-12T18:00:00.000Z"),
+            endsAt: new Date("2026-08-12T19:00:00.000Z"),
+            status: "CANCELED",
+            revision: 2,
+            updatedAt: new Date("2026-08-02T12:05:00.000Z"),
+            episodeProduction: {
+              slug: "the-swear-jar",
+              project: { slug: "high-ground-odyssey" },
+            },
+          },
+        ]),
+      },
+      calendarSyncReceipt: { create: jest.fn().mockResolvedValue({ id: "receipt-1" }) },
+      $queryRaw: jest.fn().mockResolvedValue([{ lock: "" }]),
+    };
+    const prisma = {
+      ...transaction,
+      $transaction: jest.fn(
+        async (operation: (value: typeof transaction) => Promise<unknown>) =>
+          operation(transaction),
+      ),
+    };
+
+    expect(tokenDigest).toBe(calendarFeedTokenDigest(token));
+    const rendered = await renderCalendarFeed({
+      prisma: prisma as never,
+      token,
+      origin: "https://nest.quipsly.com",
+      now: new Date("2026-08-02T12:00:00.000Z"),
+    });
+    const unfolded = rendered?.calendar.replaceAll("\r\n ", "") || "";
+
+    expect(rendered?.eventCount).toBe(2);
+    expect(unfolded).toContain("SUMMARY:Rough cut ready for review");
+    expect(unfolded).toContain("SEQUENCE:4\r\n");
+    expect(unfolded).toContain("TRANSP:TRANSPARENT\r\n");
+    expect(unfolded).toContain("STATUS:CANCELLED\r\n");
+    expect(unfolded).toContain(
+      "URL:https://nest.quipsly.com/nests/high-ground-odyssey/episodes/the-swear-jar",
+    );
+    expect(unfolded).toContain("X-QUIPSLY-SOURCE-TYPE:PRODUCTION_MILESTONE");
+    expect(unfolded).not.toMatch(/Scott|producer@example|private production note|manuscript text itself/i);
+    expect(prisma.studioEpisodeMilestone.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          episodeProduction: { projectId: "project-1" },
+        }),
+      }),
+    );
+  });
+
   it("returns no calendar for a revoked capability", async () => {
     const { token } = createCalendarFeedToken();
     const prisma = {

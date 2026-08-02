@@ -31,6 +31,10 @@ import {
   episodeRoomWritingUpdatedAt,
   episodeRoomWritingVersion,
 } from "@/lib/server/episode-room-writing";
+import {
+  listEpisodeMilestoneAssignees,
+  listEpisodeMilestones,
+} from "@/lib/server/episode-production-milestones";
 import { sessionActorAccessWhere } from "@/lib/server/session-access";
 
 type JsonRecord = Record<string, unknown>;
@@ -115,6 +119,10 @@ export type EpisodeRoomRecordingSession = {
   canOpenSession: boolean;
 };
 
+export type EpisodeRoomMilestone = Awaited<ReturnType<typeof listEpisodeMilestones>>[number];
+
+export type EpisodeRoomMilestoneAssignee = Awaited<ReturnType<typeof listEpisodeMilestoneAssignees>>[number];
+
 export type EpisodeRoomDeskPayload = {
   project: {
     id: string;
@@ -137,6 +145,8 @@ export type EpisodeRoomDeskPayload = {
   importedCandidates: EpisodeRoomImportedCandidate[];
   vaultCandidates: EpisodeRoomVaultCandidate[];
   recordingSessions: EpisodeRoomRecordingSession[];
+  milestones: EpisodeRoomMilestone[];
+  milestoneAssignees: EpisodeRoomMilestoneAssignee[];
   timelineClipCount: number;
   canEdit: boolean;
 };
@@ -1008,6 +1018,12 @@ export async function loadEpisodeRoomDesk(
       production.slug,
       actor,
       room.session?.recordingRoomId,
+    ),
+    milestones: await listEpisodeMilestones(prisma, production.id),
+    milestoneAssignees: await listEpisodeMilestoneAssignees(
+      prisma,
+      production.project.id,
+      actor?.userId,
     ),
     timelineClipCount: episodeRoomWatchTimelineRows(production.productionJson).length,
     canEdit,

@@ -53,8 +53,10 @@ const initialPayload: EpisodeRoomDeskPayload = {
   transcriptSegments: [],
   importedCandidates: [],
   vaultCandidates: [],
-  recordingSessions: [],
-  timelineClipCount: 0,
+      recordingSessions: [],
+      milestones: [],
+      milestoneAssignees: [],
+      timelineClipCount: 0,
   canEdit: true,
 };
 

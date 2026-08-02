@@ -228,6 +228,10 @@ if ! quipsly_local_run_docker \
 fi
 printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
 
+echo "Generating the Prisma client from the current worktree schema..."
+DATABASE_URL="${local_database_url}" pnpm db:generate
+printf "PASS  %-24s current worktree schema\n" "Prisma client"
+
 echo "Applying committed local database migrations..."
 DATABASE_URL="${local_database_url}" pnpm exec prisma migrate deploy
 printf "PASS  %-24s committed schema current\n" "PostgreSQL migrations"

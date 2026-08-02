@@ -6449,3 +6449,48 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   simulator proof, not physical-iPhone, deployed, TestFlight, or genuine
   coaching acceptance. Full evidence is in
   `docs/coordination/2026-08-02-iphone-follow-through-work-navigation.md`.
+
+### Episode production milestone runway checkpoint — 2026-08-02
+
+- Added canonical revisioned episode-production milestones rather than using a
+  calendar provider, manuscript text, or mutable UI state as production truth.
+  A milestone has a stable ID, typed production kind, exact timezone, optional
+  explicit window, assignment, dependency, lifecycle, and append-only revision
+  snapshots. Serializable episode-scoped operations reject stale revisions,
+  changed retries, cross-episode links, dependency cycles, and premature
+  completion.
+- Episode Room now provides the production runway and Calendar projects the
+  same records with status, point/window semantics, assignment, prerequisite
+  context, and exact return links. The existing revocable podcast ICS feed now
+  includes these milestones while excluding private work blocks, manuscript,
+  thread, transcript, recording, participant-address, and provider data.
+- Operated the real local High Ground Odyssey Episode 4 Part 2 room. `Homer
+  source upload verified` blocked `Rough cut ready for review` until complete;
+  both were then started and completed through the rendered product. Calendar
+  showed both in America/Denver, and a real private feed returned exactly two
+  transparent events with stable UIDs and one-hour refresh hints.
+- PostgreSQL readback found two completed revision-3 milestones, six immutable
+  revision rows, the preserved prerequisite, and
+  `externalCalendarMutated=false` throughout. The active feed retained only a
+  digest of its capability and recorded two generated events.
+- Real operation found that local startup migrated schema without regenerating
+  Prisma, leaving the long-running app on a stale client. Startup now generates
+  before migration and Nest, with lifecycle regression coverage. The full Jest
+  run also repaired two server-unit tests that accidentally crossed into
+  Firebase Admin instead of mocking auth at their boundary.
+- Milestone editing now preserves the stored IANA timezone and wall clock
+  rather than silently converting through the browser zone; conversion uses
+  the shared DST-safe Temporal policy.
+- Verification passes: focused 32/32, lifecycle 8/8, all 41 migrations on an
+  empty disposable database, real service operation, zero Prisma diff, complete
+  Quipsly 228 suites / 1,194 tests, strict TypeScript, schema validation, and
+  the optimized Next 16.2.7 build with all 158 static pages under the release
+  8 GB heap.
+- This is strong local HGO workflow evidence, not production or physical-iPhone
+  completion. No Cloud Build, production migration/deploy, Google Calendar
+  write, message, invitation, publication, TestFlight action, or device
+  mutation occurred. Required loop-back is exact-source schema release,
+  zero-traffic authenticated preview, promotion/rollback readback, a second
+  genuine HGO episode, and physical Capture media proving source upload before
+  editorial completion. Full evidence is in
+  `docs/coordination/2026-08-02-episode-production-milestone-runway.md`.
