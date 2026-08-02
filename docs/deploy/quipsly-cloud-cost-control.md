@@ -143,8 +143,8 @@ Credentialed readback of `high-ground-odyssey` found:
 - 14 Artifact Registry packages and 927 versions, including 177 untagged and
   536 older than 30 days;
 - approximately 229 GB across versions with reported sizes;
-- 396 Cloud Run revisions, only two traffic-serving revisions, and zero
-  minimum instances; and
+- 492 Cloud Run revisions, seven traffic-serving revision digests across four
+  services, and zero minimum instances; and
 - four repeated committed-source build groups detected from available source
   identities.
 
@@ -156,6 +156,21 @@ readback found that the idle collaboration service had retained
 3600-second WebSocket timeout, Cloud SQL attachment, service account, public
 invoker posture, IAM policy, and 100% traffic contract were preserved. The
 replacement revision passed `/health`, and no Cloud Build ran.
+
+The production database is one zonal PostgreSQL 16 Cloud SQL instance using
+the smallest shared-core `db-f1-micro` tier, 10 GB HDD storage, seven retained
+backups, and deletion protection. Its charge is a persistent database baseline,
+not deployment churn. Stopping it or weakening backups would save money by
+making production unavailable or less recoverable, so no database cost change
+was made.
+
+The red **HighGroundOdyssey** billing row is project
+`gen-lang-client-0819080752`. It has only Cloud DNS and the Generative Language
+API enabled. Its single API key is restricted to the Generative Language API
+and supplies Quipsly's server-side `GEMINI_API_KEY`; that $17.34 is model usage,
+not Cloud Build or deployment spend. Future optimization belongs in per-feature
+AI metering, caching, quotas, and model selection rather than the release
+pipeline.
 
 The repository still exposed a second timestamp-tag deployment path through
 package scripts, the HGO/Quipsly conductor, readiness output, and coaching
