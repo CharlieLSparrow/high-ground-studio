@@ -28,8 +28,15 @@ implements CaptureProxyWorkerStorage {
   }
 
   async listQueueObjects(limit: number) {
+    return this.listQueueObjectsUnder(captureProxyQueuePrefix(), limit);
+  }
+
+  async listQueueObjectsUnder(prefix: string, limit: number) {
+    if (!prefix.trim() || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) {
+      throw new Error("Media proxy queue listing contract is invalid.");
+    }
     const options: GetFilesOptions = {
-      prefix: captureProxyQueuePrefix(),
+      prefix,
       autoPaginate: false,
       maxResults: limit,
     };

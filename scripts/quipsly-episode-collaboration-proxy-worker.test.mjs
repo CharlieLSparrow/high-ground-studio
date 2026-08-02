@@ -114,6 +114,7 @@ class FakeTranscoder {
 const options = (root) => ({
   executionId: "execution_001",
   buildId: "test-build",
+  imageDigest: null,
   leaseMs: 60_000,
   localMediaRoot: root,
   now: () => new Date("2026-08-02T18:05:00.000Z"),

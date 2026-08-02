@@ -49,6 +49,7 @@ export interface LocalEpisodeProxyStore {
 export type LocalEpisodeProxyWorkerOptions = {
   executionId: string;
   buildId: string;
+  imageDigest: string | null;
   leaseMs: number;
   localMediaRoot: string;
   now: () => Date;
@@ -154,6 +155,7 @@ export async function runOneLocalEpisodeProxyJob(
         generation: `sha256:${proxy.sha256}`,
         sizeBytes: proxy.sizeBytes,
         sha256: proxy.sha256,
+        crc32c: null,
         contentType: "video/mp4",
         profile: job.target.profile,
         metadata: proxy.technical,
@@ -161,6 +163,7 @@ export async function runOneLocalEpisodeProxyJob(
       worker: {
         executionId: claim.executionId,
         buildId: options.buildId,
+        imageDigest: options.imageDigest,
         attempt: claim.attempt,
       },
     });
@@ -216,6 +219,7 @@ export class PostgresLocalEpisodeProxyStore implements LocalEpisodeProxyStore {
           FROM "StudioWorkflowJob"
           WHERE "type" = $1
             AND "source" = $2
+            AND "inputJson"->'source'->>'provider' = 'local'
             AND (
               "status" = 'queued'
               OR ("status" = 'processing' AND "updatedAt" < $3)
@@ -446,6 +450,7 @@ async function main() {
   const options: LocalEpisodeProxyWorkerOptions = {
     executionId,
     buildId: process.env.QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID?.trim() || "local-development",
+    imageDigest: null,
     leaseMs: Number(process.env.QUIPSLY_LOCAL_MEDIA_WORKER_LEASE_MS) || DEFAULT_LEASE_MS,
     localMediaRoot,
     now: () => new Date(),

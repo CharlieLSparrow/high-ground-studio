@@ -48,6 +48,7 @@ export type ObjectEvidence = {
 
 export interface CaptureProxyWorkerStorage {
   listQueueObjects(limit: number): Promise<QueueObject[]>;
+  listQueueObjectsUnder(prefix: string, limit: number): Promise<QueueObject[]>;
   loadJson(objectName: string, generation?: string): Promise<StoredJson>;
   saveJson(
     objectName: string,

@@ -136,10 +136,12 @@ ensure_service_account \
   "Quipsly capture proxy scheduler"
 
 recordings_folder="media-vault/recordings/"
+raw_folder="media-vault/raw/"
 control_folder="media-vault/control/capture-proxy/"
 proxy_folder="media-vault/proxy/"
 for folder in \
   "${recordings_folder}" \
+  "${raw_folder}" \
   "${control_folder}" \
   "${proxy_folder}"; do
   ensure_managed_folder "${folder}"
@@ -147,6 +149,10 @@ done
 
 ensure_binding \
   "${recordings_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
+  "${raw_folder}" \
   "serviceAccount:${processor_service_account}" \
   "roles/storage.objectViewer"
 ensure_binding \

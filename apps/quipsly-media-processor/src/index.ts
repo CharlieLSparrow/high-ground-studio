@@ -1,6 +1,7 @@
 import { GcsCaptureProxyWorkerStorage } from "./gcs-storage.js";
 import { FfmpegCaptureProxyTranscoder } from "./transcoder.js";
 import { runCaptureProxyWorker } from "./worker.js";
+import { runEpisodeCloudProxyWorker } from "./episode-cloud-worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
@@ -25,9 +26,23 @@ const leaseDurationMs = boundedInteger(
 
 const startedAt = Date.now();
 try {
-  const results = await runCaptureProxyWorker(
-    new GcsCaptureProxyWorkerStorage(bucketName),
-    new FfmpegCaptureProxyTranscoder(),
+  const storage = new GcsCaptureProxyWorkerStorage(bucketName);
+  const transcoder = new FfmpegCaptureProxyTranscoder();
+  const captureResults = await runCaptureProxyWorker(
+    storage,
+    transcoder,
+    {
+      executionId,
+      buildId,
+      imageDigest,
+      leaseDurationMs,
+      now: () => new Date(),
+    },
+    jobLimit,
+  );
+  const episodeResults = await runEpisodeCloudProxyWorker(
+    storage,
+    transcoder,
     {
       executionId,
       buildId,
@@ -43,8 +58,9 @@ try {
     executionId,
     buildId,
     elapsedMs: Date.now() - startedAt,
-    resultCount: results.length,
-    results,
+    resultCount: captureResults.length + episodeResults.length,
+    captureResults,
+    episodeResults,
   }));
 } catch (error) {
   console.error(JSON.stringify({

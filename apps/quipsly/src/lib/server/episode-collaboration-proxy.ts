@@ -7,8 +7,11 @@ import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
   COLLABORATION_PROXY_PROFILE,
+  buildEpisodeCollaborationProxyCloudManifestObjectName,
+  buildEpisodeCollaborationProxyCloudResultObjectName,
   buildEpisodeCollaborationProxyTargetLocator,
   newEpisodeCollaborationProxyJob,
+  parseEpisodeCollaborationProxyCloudManifest,
   parseEpisodeCollaborationProxyJob,
   parseEpisodeCollaborationProxyResult,
   type EpisodeCollaborationProxyJob,
@@ -23,6 +26,9 @@ import {
   toGcsUri,
 } from "@/lib/server/gcs";
 import { registerEpisodeCollaborationProxy } from "@/lib/server/episode-collaboration-proxy-registration";
+import {
+  ensureEpisodeCollaborationProxyCloudQueued,
+} from "@/lib/server/episode-collaboration-proxy-cloud";
 import {
   authorizeConfiguredMediaVaultLocation,
   resolveAllowedLocalStudioMediaPath,
@@ -181,6 +187,23 @@ export async function queueEpisodeCollaborationProxy(input: {
       },
     });
   }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 30_000 });
+  if (job.source.provider === "gcs") {
+    const cloud = await ensureEpisodeCollaborationProxyCloudQueued({
+      prisma: input.prisma,
+      workflow: saved,
+    });
+    const refreshed = await input.prisma.studioWorkflowJob.findUnique({
+      where: { id: saved.id },
+    });
+    const status = refreshed ? statusFromJob(refreshed) : statusFromJob(saved);
+    return cloud.status === "configuration-required"
+      ? {
+        ...status,
+        status: "blocked" as const,
+        error: "Cloud collaboration proxy is queued, but the media processor is not configured.",
+      }
+      : status;
+  }
   return statusFromJob(saved);
 }
 
@@ -240,9 +263,16 @@ export async function reconcileEpisodeCollaborationProxy(input: {
   });
   if (!jobRow) return emptyStatus();
   if (jobRow.status === "completed") return statusFromJob(jobRow);
+  const job = parseEpisodeCollaborationProxyJob(jobRow.inputJson, jobRow.id);
+  if (job.source.provider === "gcs") {
+    return reconcileCloudEpisodeCollaborationProxy({
+      prisma: input.prisma,
+      workflow: jobRow,
+      job,
+    });
+  }
   if (jobRow.status !== "output-ready") return statusFromJob(jobRow);
 
-  const job = parseEpisodeCollaborationProxyJob(jobRow.inputJson, jobRow.id);
   const resultEnvelope = jsonObject(jobRow.resultJson);
   const result = parseEpisodeCollaborationProxyResult(resultEnvelope.receipt, job);
   await assertCurrentSource(job);
@@ -255,6 +285,100 @@ export async function reconcileEpisodeCollaborationProxy(input: {
   });
   return {
     jobId: job.jobId,
+    status: "completed" as const,
+    proxyUrl: registration.playbackUrl,
+    proxyAssetId: registration.proxyAssetId,
+    proxySourceId: registration.sourceId,
+    variantId: registration.variantId,
+    outputEvidence: result.output,
+    error: null,
+    updatedAt: result.completedAt,
+    originalRemainsSourceTruth: true as const,
+  };
+}
+
+async function reconcileCloudEpisodeCollaborationProxy(input: {
+  prisma: any;
+  workflow: any;
+  job: EpisodeCollaborationProxyJob;
+}) {
+  const cloud = await ensureEpisodeCollaborationProxyCloudQueued({
+    prisma: input.prisma,
+    workflow: input.workflow,
+  });
+  if (cloud.status === "configuration-required") {
+    return {
+      ...statusFromJob(input.workflow),
+      status: "blocked" as const,
+      error: "Cloud collaboration proxy is queued, but the media processor is not configured.",
+    };
+  }
+  if (cloud.status === "failed") {
+    const refreshed = await input.prisma.studioWorkflowJob.findUnique({
+      where: { id: input.workflow.id },
+    });
+    return refreshed ? statusFromJob(refreshed) : statusFromJob(input.workflow);
+  }
+  const sourceLocation = exactGcsLocation(
+    input.job.source.locator,
+    input.job.source.generation,
+  );
+  if (sourceLocation.bucketName !== cloud.bucketName) {
+    throw new Error("Cloud collaboration proxy control bucket drifted from its source.");
+  }
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadGcsJsonIfPresent(
+    bucket,
+    buildEpisodeCollaborationProxyCloudManifestObjectName(input.job.jobId),
+  );
+  if (!storedManifest) return statusFromJob(input.workflow);
+  const manifest = parseEpisodeCollaborationProxyCloudManifest(
+    storedManifest.value,
+    input.job.jobId,
+  );
+  if (manifest.status === "failed-terminal") {
+    const error = [
+      manifest.failure?.code || "episode-proxy-worker-failed",
+      manifest.failure?.message || "Episode collaboration proxy failed terminal.",
+    ].join(": ");
+    const failed = await input.prisma.studioWorkflowJob.update({
+      where: { id: input.job.jobId },
+      data: {
+        status: "failed",
+        error,
+        completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
+      },
+    });
+    return statusFromJob(failed);
+  }
+  if (manifest.status !== "completed") {
+    const refreshed = await input.prisma.studioWorkflowJob.findUnique({
+      where: { id: input.job.jobId },
+    });
+    return refreshed ? statusFromJob(refreshed) : statusFromJob(input.workflow);
+  }
+  const storedResult = await loadGcsJsonIfPresent(
+    bucket,
+    buildEpisodeCollaborationProxyCloudResultObjectName(input.job.jobId),
+  );
+  if (!storedResult) return statusFromJob(input.workflow);
+  const result = parseEpisodeCollaborationProxyResult(storedResult.value, input.job);
+  await assertCurrentSource(input.job);
+  await assertCurrentOutput(input.job, result);
+  const registration = await registerEpisodeCollaborationProxy({
+    prisma: input.prisma,
+    job: input.job,
+    result,
+    registrationSource: "episode-collaboration-proxy-cloud-reconciliation",
+    attachmentMetadata: {
+      controlManifestObjectName: cloud.manifestObjectName,
+      controlManifestGeneration: storedManifest.generation,
+      controlResultObjectName: cloud.resultObjectName,
+      controlResultGeneration: storedResult.generation,
+    },
+  });
+  return {
+    jobId: input.job.jobId,
     status: "completed" as const,
     proxyUrl: registration.playbackUrl,
     proxyAssetId: registration.proxyAssetId,
@@ -380,8 +504,49 @@ async function assertCurrentOutput(
   job: EpisodeCollaborationProxyJob,
   result: ReturnType<typeof parseEpisodeCollaborationProxyResult>,
 ) {
+  if (job.target.provider === "gcs" && result.output.provider === "gcs") {
+    const source = exactGcsLocation(job.source.locator, job.source.generation);
+    const output = exactGcsLocation(result.output.locator, result.output.generation);
+    if (
+      output.bucketName !== source.bucketName
+      || output.objectName !== job.target.locator
+    ) {
+      throw new Error("Cloud collaboration proxy escaped its deterministic target binding.");
+    }
+    const bucket = getMediaBucket(output.bucketName);
+    const file = bucket.file(output.objectName, { generation: output.generation });
+    const [metadata] = await file.getMetadata();
+    const custom = Object.fromEntries(
+      Object.entries(metadata.metadata ?? {}).map(([key, value]) => [key, String(value)]),
+    );
+    const sha256 = await sha256Stream(file.createReadStream({ validation: "crc32c" }));
+    if (
+      String(metadata.generation || "") !== result.output.generation
+      || Number(metadata.size) !== result.output.sizeBytes
+      || String(metadata.contentType || "") !== result.output.contentType
+      || String(metadata.crc32c || "") !== result.output.crc32c
+      || sha256 !== result.output.sha256
+      || custom.quipslyKind !== "episode-collaboration-proxy-v1"
+      || custom.quipslyProxyJobId !== job.jobId
+      || custom.quipslyProjectId !== job.projectId
+      || custom.quipslyEpisodeProductionId !== job.episodeProductionId
+      || custom.quipslyRawAssetId !== job.source.rawAssetId
+      || custom.quipslySourceId !== job.source.sourceId
+      || custom.quipslySourceLocator !== job.source.locator
+      || custom.quipslySourceGeneration !== job.source.generation
+      || custom.quipslySourceSha256 !== job.source.sha256
+      || custom.quipslyOutputSha256 !== result.output.sha256
+      || custom.quipslyOutputSizeBytes !== String(result.output.sizeBytes)
+      || custom.quipslyProfile !== result.output.profile
+      || custom.quipslyOriginalRemainsSourceTruth !== "true"
+      || custom.quipslyFastStart !== "true"
+    ) {
+      throw new Error("Cloud collaboration proxy output no longer matches its worker and object receipts.");
+    }
+    return;
+  }
   if (job.target.provider !== "local" || result.output.provider !== "local") {
-    throw new Error("This reconciler currently accepts local worker output only; cloud output uses the capture worker control plane.");
+    throw new Error("Collaboration proxy worker provider drifted from its queued target.");
   }
   const outputPath = await resolveAllowedLocalStudioMediaPath(result.output.locator);
   if (!outputPath || !outputPath.endsWith(path.normalize(job.target.locator))) {
@@ -398,6 +563,39 @@ async function assertCurrentOutput(
   ) {
     throw new Error("Local collaboration proxy output no longer matches its worker receipt.");
   }
+}
+
+function exactGcsLocation(locator: string, expectedGeneration: string) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+  if (
+    !match
+    || match[3] !== expectedGeneration
+    || !match[2].startsWith("media-vault/")
+    || match[2].split("/").some((part) => !part || part === "." || part === "..")
+  ) {
+    throw new Error("Collaboration proxy GCS locator is not generation-bound to the media vault.");
+  }
+  return { bucketName: match[1], objectName: match[2], generation: match[3] };
+}
+
+async function loadGcsJsonIfPresent(bucket: any, objectName: string) {
+  const file = bucket.file(objectName);
+  let metadata;
+  try {
+    [metadata] = await file.getMetadata();
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 404) return null;
+    throw error;
+  }
+  const generation = String(metadata.generation || "");
+  if (!/^[1-9][0-9]*$/.test(generation)) {
+    throw new Error("Collaboration proxy control object lacks an immutable generation.");
+  }
+  const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+  return {
+    value: JSON.parse(raw.toString("utf8")) as unknown,
+    generation,
+  };
 }
 
 function statusFromJob(job: any): EpisodeCollaborationProxyStatus {

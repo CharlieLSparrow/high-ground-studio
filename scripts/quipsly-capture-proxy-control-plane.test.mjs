@@ -16,6 +16,9 @@ const finalization = read(
 const queue = read(
   "apps/quipsly/src/lib/server/capture-proxy-processing.ts",
 );
+const processorControl = read(
+  "apps/quipsly/src/lib/server/media-processor-control.ts",
+);
 const reconciliation = read(
   "apps/quipsly/src/lib/server/capture-proxy-reconciliation.ts",
 );
@@ -65,10 +68,13 @@ test("queue control is immutable, private, and explicitly deployed", () => {
     "https://run.googleapis.com/v2/projects/",
     "canonicalManifest.status === \"completed\"",
     "executionRequested: false",
-    "executionRequestIsRecent",
+    "mediaProcessorExecutionRequestIsRecent",
     "executionRequestedAt",
   ]) {
-    assert.ok(queue.includes(contract), contract);
+    assert.ok(
+      queue.includes(contract) || processorControl.includes(contract),
+      contract,
+    );
   }
 });
 
