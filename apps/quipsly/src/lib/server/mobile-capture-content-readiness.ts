@@ -57,7 +57,11 @@ export function recordingContentReadiness(recordingAssets: any[], purpose?: stri
   const evidence = assets.map((asset) => ({
     durationSeconds: recordingDurationSeconds(asset),
     simulator: simulatorRecordingAsset(asset),
-    verified: text(asset?.status)?.toUpperCase() === "VERIFIED",
+    verified: Boolean(
+      asset?.verifiedAt
+      && object(asset?.localManifestJson).exactBytesVerified === true
+      && ["VERIFIED", "HELD"].includes(text(asset?.status)?.toUpperCase() || ""),
+    ),
   }));
   const knownDurations = evidence.flatMap((item) => item.durationSeconds === null ? [] : [item.durationSeconds]);
   const knownDurationSeconds = knownDurations.reduce((total, duration) => total + duration, 0);

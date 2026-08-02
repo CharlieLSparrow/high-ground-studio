@@ -269,19 +269,21 @@ describe("mobile Session recording content readiness", () => {
       {
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
+        verifiedAt: "2026-08-02T18:00:00.000Z",
         durationSeconds: null,
         segmentsJson: [
           { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 3.75 },
           { deviceKind: "Clone 1 of iPhone 17 Pro", durationSeconds: 1.57 },
         ],
-        localManifestJson: {},
+        localManifestJson: { exactBytesVerified: true },
       },
       {
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
+        verifiedAt: "2026-08-02T18:00:00.000Z",
         durationSeconds: 5,
         segmentsJson: [{ deviceKind: "iPhone 17 Pro Simulator", durationSeconds: 5 }],
-        localManifestJson: {},
+        localManifestJson: { exactBytesVerified: true },
       },
     ], "PODCAST")).toMatchObject({
       status: "capture-proof-only",
@@ -297,7 +299,7 @@ describe("mobile Session recording content readiness", () => {
 
   it("requires known duration before calling an asset substantial", () => {
     expect(recordingContentReadiness([
-      { kind: "LOCAL_AUDIO", status: "VERIFIED", durationSeconds: null, segmentsJson: [], localManifestJson: {} },
+      { kind: "LOCAL_AUDIO", status: "VERIFIED", verifiedAt: "2026-08-02T18:00:00.000Z", durationSeconds: null, segmentsJson: [], localManifestJson: { exactBytesVerified: true } },
     ], "COACHING")).toMatchObject({
       status: "capture-proof-only",
       unknownDurationCount: 1,
@@ -310,9 +312,10 @@ describe("mobile Session recording content readiness", () => {
       {
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
+        verifiedAt: "2026-08-02T18:00:00.000Z",
         durationSeconds: 120,
         segmentsJson: [{ deviceKind: "Wall-E’s iPhone", durationSeconds: 120 }],
-        localManifestJson: {},
+        localManifestJson: { exactBytesVerified: true },
       },
     ], "PODCAST");
     expect(result).toMatchObject({
@@ -337,6 +340,21 @@ describe("mobile Session recording content readiness", () => {
     ], "PODCAST")).toMatchObject({
       status: "capture-proof-only",
       verifiedCaptureCount: 0,
+      substantialRecordingCount: 0,
+    });
+  });
+
+  it("counts independently verified bytes even when processing remains held", () => {
+    expect(recordingContentReadiness([{
+      kind: "LOCAL_AUDIO",
+      status: "HELD",
+      verifiedAt: "2026-08-02T18:00:00.000Z",
+      durationSeconds: null,
+      segmentsJson: [],
+      localManifestJson: { exactBytesVerified: true },
+    }], "COACHING")).toMatchObject({
+      status: "capture-proof-only",
+      verifiedCaptureCount: 1,
       substantialRecordingCount: 0,
     });
   });

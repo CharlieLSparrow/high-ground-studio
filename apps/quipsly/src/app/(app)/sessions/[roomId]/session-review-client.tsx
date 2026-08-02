@@ -25,6 +25,7 @@ import { PriorSessionContinuityCard, PriorSessionFollowThroughCard, SessionConti
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import type { SessionPreparation } from "./session-preparation-model";
+import { SessionRecordingImportCard } from "./session-recording-import-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
@@ -441,7 +442,7 @@ function SessionSourceEvidenceCard({
 
   return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/35 p-5" aria-labelledby="source-evidence-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex items-start gap-3"><span className="rounded-xl bg-white p-2 text-emerald-700"><ShieldCheck aria-hidden="true" /></span><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Independent source comparison</p><h2 id="source-evidence-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Phone → cloud → Nest evidence</h2><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">This projection recomputes the match from Nest’s immutable finalization receipt, canonical recording row, private cloud identity, and room boundaries. It does not trust or import a phone-exported receipt as authority.</p></div></div>
+      <div className="flex items-start gap-3"><span className="rounded-xl bg-white p-2 text-emerald-700"><ShieldCheck aria-hidden="true" /></span><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Independent source comparison</p><h2 id="source-evidence-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Source → private vault → Nest evidence</h2><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">This projection recomputes the match from Nest’s immutable finalization receipt, canonical recording row, private-vault identity, and any applied capture boundaries. Phone exports and browser claims are never treated as authority.</p></div></div>
       <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-wide"><span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-emerald-800">{exact} exact</span><span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-900">{held} held</span><span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-rose-900">{needsReview} review</span><a href={`/api/sessions/${encodeURIComponent(roomId)}/source-evidence`} className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-emerald-900 normal-case tracking-normal">Download Nest receipt</a></div>
     </div>
     <div className="mt-4 grid gap-3 xl:grid-cols-2">{evidence.sources.map(sourceArticle)}</div>
@@ -1337,6 +1338,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </> : null}
 
       {mode === "recordings" ? <>
+        <SessionRecordingImportCard roomId={roomId} preparation={preparation} />
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
         <SessionSourceEvidenceCard roomId={roomId} evidence={sourceEvidence} />

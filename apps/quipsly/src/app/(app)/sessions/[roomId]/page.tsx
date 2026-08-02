@@ -168,7 +168,7 @@ export default async function SessionReviewPage({
     const {
       preparation: sessionPreparation,
       consentSnapshot,
-    } = buildSessionPreparationState(room);
+    } = buildSessionPreparationState(room, session.user.id);
     const contentReadiness = recordingContentReadiness(room.recordingAssets, room.purpose);
     const captureReceiptGroups = new Map<string, {
       captureId: string;

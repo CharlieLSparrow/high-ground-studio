@@ -17,11 +17,14 @@ if [[ "${1:-}" == "--run-nest" ]]; then
   cd "${script_repo_root}/apps/quipsly"
   nest_environment=(
     PORT=3012
+    "DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
     FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
     NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
     QUIPSLY_OWNER_OVERRIDE=false
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true
     "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-}"
+    "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-}"
+    "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-http://127.0.0.1:3012}"
     GCLOUD_PROJECT=quipsly-reef
     GOOGLE_CLOUD_PROJECT=quipsly-reef
   )
@@ -89,6 +92,8 @@ database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
 local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node -p 'require("node:path").join(require("node:os").tmpdir(), "quipsly-media-ingest")')}"
+local_capture_vault_root="${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-${local_media_root}/capture-vault}"
+local_capture_upload_origin="${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-${nest_url}}"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 firebase_label="com.quipsly.local.firebase"
@@ -212,6 +217,8 @@ start_macos_job() {
       "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
       "QUIPSLY_LOCAL_DATABASE_URL=${local_database_url}" \
       "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
+      "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${local_capture_vault_root}" \
+      "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${local_capture_upload_origin}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
@@ -364,10 +371,14 @@ else
       cd "${repo_root}/apps/quipsly"
       nohup env \
         PORT=3012 \
+        DATABASE_URL="${local_database_url}" \
         FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
         NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
         QUIPSLY_OWNER_OVERRIDE=false \
         QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
+        QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
+        QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${local_capture_vault_root}" \
+        QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${local_capture_upload_origin}" \
         GCLOUD_PROJECT=quipsly-reef \
         GOOGLE_CLOUD_PROJECT=quipsly-reef \
         pnpm dev \

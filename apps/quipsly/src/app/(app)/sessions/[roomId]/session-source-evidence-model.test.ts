@@ -141,6 +141,7 @@ describe("Session source evidence", () => {
   it("distinguishes a policy hold from integrity drift", () => {
     const input = fixture();
     input.finalizationReceipts[0].processingDisposition = "HELD";
+    input.recordingAssets[0].status = "HELD";
     const result = buildSessionSourceEvidence(input);
     expect(result.sources[0].status).toBe("HELD");
     expect(result.sources[0].issues).toEqual([]);

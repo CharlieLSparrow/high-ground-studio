@@ -47,7 +47,7 @@ describe("Session preparation projection", () => {
         updatedAt: "2026-07-25T18:00:00.000Z",
         metadataJson: currentEvidence(),
       }],
-    });
+    }, "user-1");
 
     expect(state.consentSnapshot).toEqual({ total: 1, granted: 1, transcriptionPermitted: 1 });
     expect(state.preparation).toMatchObject({
@@ -60,7 +60,9 @@ describe("Session preparation projection", () => {
       participants: [{
         id: "participant-1",
         label: "Homer",
+        isCurrentActor: true,
         consent: {
+          id: "consent-1",
           status: "GRANTED",
           recordingReady: true,
           transcriptionReady: true,

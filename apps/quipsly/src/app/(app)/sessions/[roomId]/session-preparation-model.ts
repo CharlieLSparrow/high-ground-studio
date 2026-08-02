@@ -40,8 +40,10 @@ export type SessionPreparation = {
     id: string;
     label: string;
     role: string;
+    isCurrentActor: boolean;
     joinedAt: string | null;
     consent: {
+      id: string | null;
       status: string;
       policyVersion: string | null;
       canRecordAudio: boolean;
@@ -79,7 +81,7 @@ export function buildSessionPreparationState(room: {
   project?: { id: string; name: string; slug: string } | null;
   participants?: PreparationParticipantInput[] | null;
   recordingConsents?: PreparationConsentInput[] | null;
-}): {
+}, actorUserId?: string | null): {
   preparation: SessionPreparation;
   consentSnapshot: SessionConsentSnapshot;
 } {
@@ -126,8 +128,10 @@ export function buildSessionPreparationState(room: {
             || participant.user?.primaryEmail
             || "Participant",
           role: String(participant.role || "GUEST"),
+          isCurrentActor: Boolean(actorUserId && participant.userId === actorUserId),
           joinedAt: iso(participant.joinedAt),
           consent: consent ? {
+            id: consent.consentId,
             status: consent.status,
             policyVersion: consent.policyVersion,
             canRecordAudio: consent.canRecordAudio,

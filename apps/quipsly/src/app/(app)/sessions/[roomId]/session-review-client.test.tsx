@@ -6,6 +6,7 @@ import { SessionReviewClient } from "./session-review-client";
 import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewNoteCandidate, SessionReviewPacket } from "./session-review-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
 
 const candidate: SessionReviewGoalCandidate = {
   id: "packet-goal-build-1-segment-1",
@@ -608,8 +609,10 @@ describe("Session review goal candidates", () => {
           id: "participant-1",
           label: "Homer",
           role: "CLIENT",
+          isCurrentActor: false,
           joinedAt: null,
           consent: {
+            id: "consent-1",
             status: "GRANTED",
             policyVersion: "2026-07-04",
             canRecordAudio: true,
@@ -834,6 +837,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("stop-receipt-1")).toBeInTheDocument();
     expect(screen.getByText(/do not claim the audio uploaded/i)).toBeInTheDocument();
     expect(screen.getByText(/remains on the iPhone until upload succeeds/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Import an existing session recording" })).toBeInTheDocument();
+    expect(screen.getByText(/not attached as a participant/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /upload|retry|transcribe/i })).not.toBeInTheDocument();
   });
 
@@ -880,14 +885,14 @@ describe("Session review goal candidates", () => {
       sourceEvidence={sourceEvidence}
     />);
 
-    expect(screen.getByRole("heading", { name: "Phone → cloud → Nest evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Source → private vault → Nest evidence" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "homer-camera.mov" })).toBeInTheDocument();
     expect(screen.getByText("Verified Match")).toBeInTheDocument();
     expect(screen.getByText("Quipsly Capture 1.0 (9)")).toBeInTheDocument();
     expect(screen.getByText("iPhone17,3 · iOS 26.2")).toBeInTheDocument();
     expect(screen.getByText("Shure MV7i · USBAudio")).toBeInTheDocument();
     expect(screen.getByText("4,096 bytes · generation 1742")).toBeInTheDocument();
-    expect(screen.getByText(/does not trust or import a phone-exported receipt as authority/i)).toBeInTheDocument();
+    expect(screen.getByText(/Phone exports and browser claims are never treated as authority/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download Nest receipt" })).toHaveAttribute(
       "href",
       "/api/sessions/room-1/source-evidence",

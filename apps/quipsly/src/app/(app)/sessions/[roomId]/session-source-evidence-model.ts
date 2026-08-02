@@ -253,7 +253,11 @@ export function buildSessionSourceEvidence(input: {
       }
       if (!stop) missing.push("The applied STOP boundary is incomplete.");
       if (manifest.exactBytesVerified !== true) missing.push("The RecordingAsset manifest does not claim exact-byte verification.");
-      if (String(recording.status) !== "VERIFIED" || !iso(recording.verifiedAt)) {
+      if (
+        !["VERIFIED", "HELD"].includes(String(recording.status))
+        || manifest.exactBytesVerified !== true
+        || !iso(recording.verifiedAt)
+      ) {
         missing.push("The RecordingAsset is not server-verified.");
       }
 

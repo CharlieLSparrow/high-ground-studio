@@ -68,6 +68,18 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /--run-media-worker/);
   assert.match(up, /local-episode-worker\.ts/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
+  assert.match(up, /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/);
+  assert.match(up, /local_capture_upload_origin="\$\{QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-\$\{nest_url\}\}"/);
+  assert.equal(
+    up.match(/QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=/g)?.length,
+    3,
+    "launcher handoff plus both local Nest launch paths must preserve the private Capture vault root",
+  );
+  assert.equal(
+    up.match(/QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=/g)?.length,
+    3,
+    "launcher handoff plus both local Nest launch paths must preserve the loopback upload origin",
+  );
   assert.match(up, /--experimental-transform-types/);
 });
 
