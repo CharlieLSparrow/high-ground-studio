@@ -19,6 +19,7 @@ function note(input: Partial<SessionWorkspaceNote> & Pick<SessionWorkspaceNote, 
     createdAt: input.createdAt ?? "2026-07-24T12:00:00.000Z",
     updatedAt: input.updatedAt ?? "2026-07-24T12:00:00.000Z",
     tags: input.tags ?? [],
+    sourceAnchor: input.sourceAnchor ?? null,
   };
 }
 
@@ -85,6 +86,42 @@ describe("Session Notes workspace", () => {
     expect(screen.queryByRole("heading", { name: "Shared context" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Production note" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Project team" })).not.toBeInTheDocument();
+  });
+
+  it("returns a transcript-derived note to its exact reviewed recording moment", () => {
+    render(<SessionNotesWorkspace
+      roomId="room-1"
+      activeView="all"
+      taxonomy={null}
+      canUseProjectTeamNotes={false}
+      initialNotes={[note({
+        id: "source-note",
+        title: "Coaching insight",
+        originLabel: "Transcript review",
+        sourceAnchor: {
+          schema: "quipsly-transcript-derived-note-v1",
+          roomId: "room-1",
+          transcriptJobId: "job-1",
+          segmentId: "segment-1",
+          startSeconds: 3.66,
+          endSeconds: 4.84,
+          providerTextSha256: "a".repeat(64),
+          providerSpeakerLabel: "Speaker",
+          effectiveTextSnapshot: "Welcome, everybody.",
+          effectiveSpeakerLabelSnapshot: "Charlie",
+          acceptedCorrectionId: "correction-1",
+          recordingAssetId: "asset-1",
+          playbackSourceId: "source-1",
+        },
+      })]}
+    />);
+
+    expect(screen.getByText("Reviewed transcript source")).toBeInTheDocument();
+    expect(screen.getByText("Charlie: Welcome, everybody.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /return to 00:03–00:04/i })).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript#transcript-segment-segment-1",
+    );
   });
 
   it("creates one explicitly shared canonical note without claiming delivery", async () => {

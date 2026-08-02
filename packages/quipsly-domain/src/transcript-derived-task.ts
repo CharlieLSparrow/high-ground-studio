@@ -1,5 +1,6 @@
 export const TRANSCRIPT_DERIVED_TASK_SCHEMA = "quipsly-transcript-derived-task-v1" as const;
 export const TRANSCRIPT_DERIVED_GOAL_SCHEMA = "quipsly-transcript-derived-goal-v1" as const;
+export const TRANSCRIPT_DERIVED_NOTE_SCHEMA = "quipsly-transcript-derived-note-v1" as const;
 
 export type TranscriptDerivedTaskSourceAnchor = {
   schema: typeof TRANSCRIPT_DERIVED_TASK_SCHEMA;
@@ -19,6 +20,10 @@ export type TranscriptDerivedTaskSourceAnchor = {
 
 export type TranscriptDerivedGoalSourceAnchor = Omit<TranscriptDerivedTaskSourceAnchor, "schema"> & {
   schema: typeof TRANSCRIPT_DERIVED_GOAL_SCHEMA;
+};
+
+export type TranscriptDerivedNoteSourceAnchor = Omit<TranscriptDerivedTaskSourceAnchor, "schema"> & {
+  schema: typeof TRANSCRIPT_DERIVED_NOTE_SCHEMA;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -97,6 +102,39 @@ export function readTranscriptDerivedGoalSource(value: unknown): TranscriptDeriv
       || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
   return {
     schema: TRANSCRIPT_DERIVED_GOAL_SCHEMA,
+    roomId,
+    transcriptJobId,
+    segmentId,
+    startSeconds,
+    endSeconds,
+    providerTextSha256,
+    providerSpeakerLabel: nullableText(source.providerSpeakerLabel, 160),
+    effectiveTextSnapshot,
+    effectiveSpeakerLabelSnapshot: nullableText(source.effectiveSpeakerLabelSnapshot, 160),
+    acceptedCorrectionId: nullableText(source.acceptedCorrectionId, 200),
+    recordingAssetId,
+    playbackSourceId,
+  };
+}
+
+/** Parses the immutable transcript pointer preserved on a deliberate Session note. */
+export function readTranscriptDerivedNoteSource(value: unknown): TranscriptDerivedNoteSourceAnchor | null {
+  const source = record(value);
+  if (source.schema !== TRANSCRIPT_DERIVED_NOTE_SCHEMA) return null;
+  const roomId = text(source.roomId, 200);
+  const transcriptJobId = text(source.transcriptJobId, 200);
+  const segmentId = text(source.segmentId, 200);
+  const startSeconds = finiteSeconds(source.startSeconds);
+  const endSeconds = finiteSeconds(source.endSeconds);
+  const providerTextSha256 = text(source.providerTextSha256, 64).toLowerCase();
+  const effectiveTextSnapshot = text(source.effectiveTextSnapshot, 10_000);
+  const recordingAssetId = text(source.recordingAssetId, 200);
+  const playbackSourceId = text(source.playbackSourceId, 200);
+  if (!roomId || !transcriptJobId || !segmentId || startSeconds === null || endSeconds === null
+      || endSeconds < startSeconds || !/^[a-f0-9]{64}$/.test(providerTextSha256)
+      || !effectiveTextSnapshot || !recordingAssetId || !playbackSourceId) return null;
+  return {
+    schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
     roomId,
     transcriptJobId,
     segmentId,

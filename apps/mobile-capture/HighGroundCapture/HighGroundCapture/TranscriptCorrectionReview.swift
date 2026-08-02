@@ -159,6 +159,20 @@ private struct CaptureTranscriptGoalMutationResponse: Codable {
     let goal: GoalRecord?
 }
 
+private struct CaptureTranscriptNoteMutationResponse: Codable {
+    struct NoteRecord: Codable {
+        let id: String
+        let title: String?
+        let body: String
+        let kind: String
+        let visibility: String
+    }
+    let ok: Bool
+    let error: String?
+    let idempotentReplay: Bool?
+    let note: NoteRecord?
+}
+
 private struct CapturePacketActionMutationResponse: Codable {
     struct ActionRecord: Codable {
         let id: String
@@ -545,6 +559,59 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             message = payload.idempotentReplay == true
                 ? "That source-linked goal was already created."
                 : "Goal created in Work: \(goal.title)"
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func createNote(
+        roomID: String,
+        segment: CaptureTranscriptSegment,
+        title: String,
+        body: String,
+        kind: MobileSessionNoteKind,
+        visibility: MobileSessionNoteVisibility,
+        clientRequestID: String,
+        previewOnly: Bool
+    ) async -> Bool {
+        guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
+            errorMessage = previewOnly
+                ? "Preview transcript notes are intentionally disabled."
+                : "Reconnect to Nest before saving a note from transcript evidence."
+            return false
+        }
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/notes") else {
+            errorMessage = "The configured Nest URL is invalid."
+            return false
+        }
+        isMutating = true
+        errorMessage = nil
+        defer { isMutating = false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "roomId": roomID,
+                "segmentId": segment.id,
+                "clientRequestId": clientRequestID,
+                "expectedProviderTextSha256": segment.providerTextSha256,
+                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+                "body": body.trimmingCharacters(in: .whitespacesAndNewlines),
+                "kind": kind.rawValue,
+                "visibility": visibility.rawValue,
+                "surface": "ios-capture-transcript-review",
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(CaptureTranscriptNoteMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok, let note = payload.note else {
+                throw captureTranscriptError(data: data, fallback: payload.error ?? "The source-linked Session note could not be saved.")
+            }
+            message = payload.idempotentReplay == true
+                ? "That exact source-linked Session note was already saved."
+                : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -1037,6 +1104,7 @@ struct CaptureTranscriptReviewView: View {
     let recording: LocalRecording?
     let previewOnly: Bool
     let focusSegmentID: String?
+    let canUseProjectTeamNotes: Bool
 
     @StateObject private var client = CaptureTranscriptCorrectionClient()
     @StateObject private var playback = CaptureTranscriptPlaybackController()
@@ -1049,13 +1117,15 @@ struct CaptureTranscriptReviewView: View {
         sessionTitle: String,
         recording: LocalRecording?,
         previewOnly: Bool,
-        focusSegmentID: String? = nil
+        focusSegmentID: String? = nil,
+        canUseProjectTeamNotes: Bool = false
     ) {
         self.roomID = roomID
         self.sessionTitle = sessionTitle
         self.recording = recording
         self.previewOnly = previewOnly
         self.focusSegmentID = focusSegmentID
+        self.canUseProjectTeamNotes = canUseProjectTeamNotes
     }
 
     var body: some View {
@@ -1066,7 +1136,7 @@ struct CaptureTranscriptReviewView: View {
 
                     if let focusSegmentID {
                         reviewNotice(
-                            title: "Opened from a task source",
+                            title: "Opened from linked work",
                             detail: "Quipsly returned to the exact transcript segment. Press play yourself before making any correction decision.",
                             tint: .blue,
                             icon: "link.circle.fill"
@@ -1203,6 +1273,7 @@ struct CaptureTranscriptReviewView: View {
                     expectedRecordingAssetID: desk.playback?.recordingAssetId,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache,
+                    canUseProjectTeamNotes: canUseProjectTeamNotes,
                     client: client,
                     playback: playback,
                     library: library
@@ -1616,6 +1687,7 @@ private struct CaptureTranscriptSegmentCard: View {
     let expectedRecordingAssetID: String?
     let previewOnly: Bool
     let decisionsLocked: Bool
+    let canUseProjectTeamNotes: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     @ObservedObject var playback: CaptureTranscriptPlaybackController
     let library: LocalRecordingLibrary
@@ -1634,6 +1706,12 @@ private struct CaptureTranscriptSegmentCard: View {
     @State private var goalTitle = ""
     @State private var goalDescription = ""
     @State private var goalRequestID = "iphone-transcript-goal-\(UUID().uuidString)"
+    @State private var isCreatingNote = false
+    @State private var noteTitle = ""
+    @State private var noteBody = ""
+    @State private var noteKind = MobileSessionNoteKind.sessionNote
+    @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
+    @State private var noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1727,6 +1805,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
             }
 
+            transcriptNoteComposer
             transcriptTaskComposer
             transcriptGoalComposer
 
@@ -1939,6 +2018,107 @@ private struct CaptureTranscriptSegmentCard: View {
         }
         .padding(12)
         .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var transcriptNoteComposer: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if isCreatingNote {
+                Label("Deliberate Session note · source linked", systemImage: "note.text.badge.plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.orange)
+                TextField("Note title (optional)", text: $noteTitle, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureTranscriptNoteTitleField")
+                TextField("Note", text: $noteBody, axis: .vertical)
+                    .lineLimit(3...7)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("CaptureTranscriptNoteBodyField")
+                Picker("Purpose", selection: $noteKind) {
+                    ForEach(availableNoteKinds) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("CaptureTranscriptNoteKindPicker")
+                Picker("Audience", selection: $noteVisibility) {
+                    ForEach(availableNoteVisibilities) { visibility in
+                        Text(visibility.title).tag(visibility)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("CaptureTranscriptNoteVisibilityPicker")
+                Text(noteVisibility.boundary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureTranscriptNoteAudienceBoundary")
+                HStack {
+                    Button("Save source-linked note") {
+                        Task {
+                            let saved = await client.createNote(
+                                roomID: roomID,
+                                segment: segment,
+                                title: noteTitle,
+                                body: noteBody,
+                                kind: noteKind,
+                                visibility: noteVisibility,
+                                clientRequestID: noteRequestID,
+                                previewOnly: previewOnly
+                            )
+                            if saved {
+                                isCreatingNote = false
+                                noteRequestID = "iphone-transcript-note-\(UUID().uuidString)"
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: 44)
+                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
+                    .accessibilityIdentifier("CaptureTranscriptCreateNoteButton")
+                    Button("Cancel") { isCreatingNote = false }
+                        .buttonStyle(.bordered)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("CaptureTranscriptCancelNoteButton")
+                }
+                Text("Creates one revisioned canonical Session note with this exact transcript and recording source. It does not correct the transcript, create work, send, deliver, schedule, or publish anything.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureTranscriptNoteBoundary")
+            } else {
+                Button {
+                    noteTitle = "Note — \(defaultTaskTitle)"
+                    noteBody = segment.text
+                    noteKind = .sessionNote
+                    noteVisibility = .authorPrivate
+                    isCreatingNote = true
+                } label: {
+                    Label("Save as Session note", systemImage: "note.text.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(client.isMutating || decisionsLocked)
+                .accessibilityIdentifier("CaptureTranscriptMakeNoteButton")
+                .accessibilityHint("Creates nothing until you choose the purpose and audience and press Save source-linked note.")
+            }
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var availableNoteKinds: [MobileSessionNoteKind] {
+        canUseProjectTeamNotes
+            ? MobileSessionNoteKind.allCases
+            : MobileSessionNoteKind.allCases.filter { $0 != .production }
+    }
+
+    private var availableNoteVisibilities: [MobileSessionNoteVisibility] {
+        canUseProjectTeamNotes
+            ? MobileSessionNoteVisibility.allCases
+            : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
     }
 
     private func proposalReview(_ proposal: CaptureTranscriptCorrection) -> some View {

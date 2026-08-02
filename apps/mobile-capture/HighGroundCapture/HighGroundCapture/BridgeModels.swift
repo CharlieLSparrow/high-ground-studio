@@ -358,6 +358,7 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     let tags: [MobileCaptureTag]
     let createdAt: String?
     let updatedAt: String?
+    let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
 
     var purposeLabel: String {
         switch kind.uppercased() {

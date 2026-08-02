@@ -195,6 +195,59 @@ describe("TranscriptCorrectionDesk", () => {
     });
   });
 
+  it("saves a deliberate client-safe Session note with the exact transcript identity", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        ok: true,
+        idempotentReplay: false,
+        note: { id: "note-1", title: "Coaching insight", href: "/sessions/room-1?mode=notes" },
+      }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
+    fireEvent.change(screen.getByLabelText(/note title/i), { target: { value: "Coaching insight" } });
+    fireEvent.change(screen.getByLabelText(/^note$/i), { target: { value: "Ask what support would make the next step realistic." } });
+    fireEvent.change(screen.getByLabelText(/purpose/i), { target: { value: "DECISION" } });
+    fireEvent.change(screen.getByLabelText(/audience/i), { target: { value: "CLIENT_SAFE" } });
+    expect(screen.getByText(/eligible for a reviewed client follow-up.*not sent automatically/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /save source-linked note/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const request = fetchMock.mock.calls[1];
+    expect(request[0]).toBe("/api/mobile/capture/transcripts/notes");
+    expect(JSON.parse(request[1].body)).toMatchObject({
+      roomId: "room-1",
+      segmentId: "segment-1",
+      expectedProviderTextSha256: "a".repeat(64),
+      title: "Coaching insight",
+      body: "Ask what support would make the next step realistic.",
+      kind: "DECISION",
+      visibility: "CLIENT_SAFE",
+      surface: "nest-session-transcript-review",
+    });
+    expect(await screen.findByRole("link", { name: /open session notes/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
+    expect(screen.getByText(/audience can be revised later without losing the source or revision history/i)).toBeInTheDocument();
+  });
+
+  it("only offers production-team note choices when the Session grants that authority", async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { rerender } = render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
+    expect(screen.queryByRole("option", { name: "Production note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Project team" })).not.toBeInTheDocument();
+
+    rerender(<TranscriptCorrectionDesk roomId="room-1" canUseProjectTeamNotes />);
+    expect(screen.getByRole("option", { name: "Production note" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Project team" })).toBeInTheDocument();
+  });
+
   it("starts a private writing page with the same immutable transcript identity", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

@@ -215,6 +215,13 @@ export async function GET(request: Request) {
             { participants: { some: { userId } } },
             { booking: { clientUserId: userId } },
             { booking: { coachUserId: userId } },
+            ...(actorEmail ? [{
+              project: {
+                accessGrants: {
+                  some: { email: actorEmail, status: "ACTIVE" as const },
+                },
+              },
+            }] : []),
           ],
     },
     orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],

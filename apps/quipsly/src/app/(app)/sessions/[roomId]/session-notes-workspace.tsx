@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   MessageSquarePlus,
   NotebookPen,
+  Play,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   type SessionNoteVisibility,
   type SessionWorkspaceNote,
 } from "./session-notes-model";
+import { timestampForSeconds } from "./session-review-model";
 
 function NoteAudienceIcon({ visibility }: { visibility: SessionNoteVisibility }) {
   if (visibility === "AUTHOR_PRIVATE") return <LockKeyhole className="h-4 w-4" aria-hidden="true" />;
@@ -312,6 +314,15 @@ export function SessionNotesWorkspace({
                 </span>
               </div>
               <p className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#5f4d37]">{note.body}</p>
+              {note.sourceAnchor ? (
+                <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript source</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{note.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.sourceAnchor.effectiveTextSnapshot}</p>
+                  <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">
+                    <Play size={14} aria-hidden="true" />Return to {timestampForSeconds(note.sourceAnchor.startSeconds)}–{timestampForSeconds(note.sourceAnchor.endSeconds)}
+                  </Link>
+                </div>
+              ) : null}
               <TagSearchChips tags={note.tags} label={`${note.title || "Session note"} tags`} />
               <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/45 p-3 text-xs font-semibold leading-5 text-orange-950">
                 <p className="font-black">{audienceHelp(note.visibility)}</p>

@@ -1218,6 +1218,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].exists)
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskReviewSection"].exists)
@@ -1261,6 +1266,21 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectSpeakerField"].exists)
         XCTAssertTrue(app.textFields["CaptureTranscriptCorrectWordsField"].exists)
         XCTAssertFalse(app.buttons["Accept reviewed correction"].isEnabled)
+
+        let makeNote = app.buttons["CaptureTranscriptMakeNoteButton"]
+        reveal(makeNote)
+        XCTAssertTrue(makeNote.isEnabled, "Preview may inspect deliberate note capture without creating canonical state.")
+        makeNote.tap()
+        XCTAssertTrue(app.textFields["CaptureTranscriptNoteTitleField"].exists)
+        XCTAssertTrue(app.textFields["CaptureTranscriptNoteBodyField"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteKindPicker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptNoteVisibilityPicker"].exists)
+        XCTAssertFalse(app.buttons["CaptureTranscriptCreateNoteButton"].isEnabled)
+        let noteBoundary = app.staticTexts["CaptureTranscriptNoteBoundary"]
+        reveal(noteBoundary)
+        XCTAssertTrue(noteBoundary.label.contains("does not correct the transcript, create work, send, deliver, schedule, or publish anything"))
+        app.buttons["CaptureTranscriptCancelNoteButton"].tap()
+
         let makeTask = app.buttons["CaptureTranscriptMakeTaskButton"]
         XCTAssertTrue(makeTask.isEnabled, "Preview may inspect explicit task capture without creating work.")
         makeTask.tap()
@@ -1278,11 +1298,6 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(goalBoundary)
         XCTAssertTrue(goalBoundary.isHittable, "The complete no-side-effects boundary should be readable before goal creation.")
         XCTAssertTrue(goalBoundary.label.contains("creates no task, target date, reminder, calendar event, message, or publication"))
-        try app.performAccessibilityAudit(for: [
-            .hitRegion,
-            .sufficientElementDescription,
-            .textClipped,
-        ])
     }
 
     func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() throws {

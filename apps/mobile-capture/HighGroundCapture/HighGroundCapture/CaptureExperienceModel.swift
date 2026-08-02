@@ -2683,7 +2683,22 @@ extension MobileCaptureSession {
                         MobileCaptureTag(id: "preview-coaching", slug: "coaching", label: "Coaching"),
                     ],
                     createdAt: "2026-07-24T16:00:00.000Z",
-                    updatedAt: "2026-07-24T16:00:00.000Z"
+                    updatedAt: "2026-07-24T16:00:00.000Z",
+                    sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
+                        schema: "quipsly-transcript-derived-note-v1",
+                        roomId: "room-preview-coaching-ready",
+                        transcriptJobId: "preview-transcript-job",
+                        segmentId: "preview-segment",
+                        startSeconds: 3.66,
+                        endSeconds: 4.84,
+                        providerTextSha256: String(repeating: "a", count: 64),
+                        providerSpeakerLabel: "Speaker",
+                        effectiveTextSnapshot: "Ask what would make this session genuinely useful.",
+                        effectiveSpeakerLabelSnapshot: "Charlie",
+                        acceptedCorrectionId: nil,
+                        recordingAssetId: "preview-recording-asset",
+                        playbackSourceId: "preview-playback-source"
+                    )
                 ),
             ],
             afterCaptureNextAction: "Record a local source, then verify upload.",

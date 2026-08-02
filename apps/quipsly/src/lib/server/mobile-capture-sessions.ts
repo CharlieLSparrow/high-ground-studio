@@ -3,6 +3,7 @@ import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
 } from "@high-ground/quipsly-domain/coaching-packet";
+import { readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
@@ -899,7 +900,10 @@ export function mapMobileCaptureSessionsForUser(input: {
       .filter((note: any) => DELIBERATE_SESSION_NOTE_KINDS.has(note.kind))
       .map((note: any) => {
         const source = sourceJson(note.sourceJson);
-        const origin = source.schema === "quipsly-mobile-quick-entry-v1"
+        const sourceAnchor = readTranscriptDerivedNoteSource(note.sourceJson);
+        const origin = sourceAnchor
+          ? "Transcript review"
+          : source.schema === "quipsly-mobile-quick-entry-v1"
           ? "iPhone Capture"
           : source.schema === "quipsly-session-continuity-brief-v1"
             ? "Saved continuity"
@@ -927,6 +931,7 @@ export function mapMobileCaptureSessionsForUser(input: {
             })),
           createdAt: note.createdAt?.toISOString?.() ?? null,
           updatedAt: note.updatedAt?.toISOString?.() ?? null,
+          sourceAnchor: sourceAnchor?.roomId === room.id ? sourceAnchor : null,
         };
       });
     const latestRecordingPromotion = mediaProcessingGate.allowed ? recordingPromotion(latestRecordingAsset) : {};

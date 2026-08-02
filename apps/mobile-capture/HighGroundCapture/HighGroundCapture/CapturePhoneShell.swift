@@ -6178,6 +6178,7 @@ struct CaptureQuickEntrySyncCard: View {
 private struct CaptureSessionNotesCard: View {
     let session: MobileCaptureSession
     @ObservedObject var model: CaptureExperienceModel
+    @StateObject private var library = LocalRecordingLibrary.shared
     @State private var isExpanded = false
     @State private var editingNote: MobileCaptureSessionNote?
 
@@ -6290,6 +6291,40 @@ private struct CaptureSessionNotesCard: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let source = note.sourceAnchor,
+                           source.roomId == session.callRoomId {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("Reviewed transcript source", systemImage: "waveform.and.magnifyingglass")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.blue)
+                                Text("\(source.effectiveSpeakerLabelSnapshot?.nonempty.map { "\($0): " } ?? "")\(source.effectiveTextSnapshot)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                NavigationLink {
+                                    CaptureTranscriptReviewView(
+                                        roomID: source.roomId,
+                                        sessionTitle: session.displayTitle,
+                                        recording: matchingRecording(source),
+                                        previewOnly: model.usesPreviewData,
+                                        focusSegmentID: source.segmentId,
+                                        canUseProjectTeamNotes: session.canUseProjectTeamNotes == true
+                                    )
+                                } label: {
+                                    Label(
+                                        "Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
+                                        systemImage: "play.fill"
+                                    )
+                                    .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .accessibilityIdentifier("CaptureSessionNoteSourceLink_\(note.id)")
+                                .accessibilityHint("Opens the exact transcript segment and retained recording source behind this note without starting playback.")
+                            }
+                            .padding(9)
+                            .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
                         if let protectedEdit {
                             Label(
                                 protectedEdit.disposition == .held
@@ -6357,6 +6392,15 @@ private struct CaptureSessionNotesCard: View {
                 protectedEdit: model.pendingSessionNoteEdit(for: note.id),
                 model: model
             )
+        }
+    }
+
+    private func matchingRecording(_ source: MobileCaptureTodayTranscriptSourceAnchor) -> LocalRecording? {
+        library.recordings.first {
+            $0.callRoomId == source.roomId
+                && $0.recordingAssetId == source.recordingAssetId
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
         }
     }
 }

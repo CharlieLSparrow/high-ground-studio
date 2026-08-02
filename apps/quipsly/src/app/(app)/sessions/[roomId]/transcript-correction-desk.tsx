@@ -2,9 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, FilePenLine, History, ListTodo, LoaderCircle, Play, RefreshCw, ShieldCheck, Sparkles, Target, X } from "lucide-react";
+import { Check, CircleAlert, FilePenLine, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, X } from "lucide-react";
 
 import { timestampForSeconds } from "./session-review-model";
+import {
+  EDITABLE_SESSION_NOTE_KINDS,
+  SESSION_NOTE_VISIBILITIES,
+  sessionNoteKindLabel,
+  sessionNoteVisibilityLabel,
+  type EditableSessionNoteKind,
+  type SessionNoteVisibility,
+} from "./session-notes-model";
 
 type Correction = {
   id: string;
@@ -164,6 +172,7 @@ function ProposalReview({
 function CorrectionEditor({
   roomId,
   segment,
+  canUseProjectTeamNotes,
   playbackReady,
   currentPlaybackPosition,
   busy,
@@ -173,6 +182,7 @@ function CorrectionEditor({
 }: {
   roomId: string;
   segment: Segment;
+  canUseProjectTeamNotes: boolean;
   playbackReady: boolean;
   currentPlaybackPosition: () => number | null;
   busy: boolean;
@@ -194,6 +204,13 @@ function CorrectionEditor({
   const [goalTitle, setGoalTitle] = useState(segment.text.slice(0, 180));
   const [goalDescription, setGoalDescription] = useState(`Source commitment at ${timestampForSeconds(segment.startSeconds)}–${timestampForSeconds(segment.endSeconds)}: ${segment.text}`);
   const [goalRequestId, setGoalRequestId] = useState(() => requestId(`goal-${segment.id}`));
+  const [creatingNote, setCreatingNote] = useState(false);
+  const [noteTitle, setNoteTitle] = useState(`Note — ${segment.text}`.slice(0, 180));
+  const [noteBody, setNoteBody] = useState(segment.text);
+  const [noteKind, setNoteKind] = useState<EditableSessionNoteKind>("SESSION_NOTE");
+  const [noteVisibility, setNoteVisibility] = useState<SessionNoteVisibility>("AUTHOR_PRIVATE");
+  const [noteRequestId, setNoteRequestId] = useState(() => requestId(`note-${segment.id}`));
+  const [noteHref, setNoteHref] = useState<string | null>(null);
   const [creatingDraft, setCreatingDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState(`Draft — ${segment.text}`.slice(0, 180));
   const [draftOpeningNote, setDraftOpeningNote] = useState("");
@@ -207,6 +224,9 @@ function CorrectionEditor({
     setDraftTitle(`Draft — ${segment.text}`.slice(0, 180));
     setDraftOpeningNote("");
     setDraftHref(null);
+    setNoteTitle(`Note — ${segment.text}`.slice(0, 180));
+    setNoteBody(segment.text);
+    setNoteHref(null);
   }, [segment.id, segment.text, segment.speakerLabel, segment.acceptedCorrection?.id]);
 
   async function save() {
@@ -315,6 +335,42 @@ function CorrectionEditor({
       await onSaved(body.idempotentReplay ? "That source-linked goal was already created; no duplicate was added." : `Goal created in Work: ${body.goal?.title || goalTitle}`);
     } catch (goalError) {
       setError(goalError instanceof Error ? goalError.message : "The goal was not created.");
+    }
+  }
+
+  async function createNote() {
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          segmentId: segment.id,
+          clientRequestId: noteRequestId,
+          expectedProviderTextSha256: segment.providerTextSha256,
+          title: noteTitle,
+          body: noteBody,
+          kind: noteKind,
+          visibility: noteVisibility,
+          surface: "nest-session-transcript-review",
+        }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        idempotentReplay?: boolean;
+        note?: { title?: string | null; href?: string };
+      };
+      if (!response.ok || !body.ok || !body.note?.href) throw new Error(body.error || "The source-linked Session note was not saved.");
+      setCreatingNote(false);
+      setNoteHref(body.note.href);
+      setNoteRequestId(requestId(`note-${segment.id}`));
+      await onSaved(body.idempotentReplay
+        ? "That exact source-linked Session note was already saved; no duplicate was added."
+        : `${sessionNoteKindLabel(noteKind)} saved for ${sessionNoteVisibilityLabel(noteVisibility).toLowerCase()} review. Nothing was sent.`);
+    } catch (noteError) {
+      setError(noteError instanceof Error ? noteError.message : "The source-linked Session note was not saved.");
     }
   }
 
@@ -445,8 +501,57 @@ function CorrectionEditor({
         </div>
       )}
 
-      <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+      <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
         {error && !editing && <p role="alert" className="mb-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
+        {noteHref ? (
+          <div>
+            <p className="flex items-center gap-2 text-sm font-black text-orange-950"><NotebookPen size={16} aria-hidden="true" />Canonical source-linked note saved.</p>
+            <Link href={noteHref} className="mt-3 inline-flex min-h-11 items-center rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">Open Session notes</Link>
+            <p className="mt-2 text-xs font-bold leading-relaxed text-orange-800">The note keeps this exact timestamp, transcript job, provider hash, reviewed text, correction identity, and recording asset. Its audience can be revised later without losing the source or revision history.</p>
+          </div>
+        ) : creatingNote ? (
+          <div className="space-y-3">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-900"><NotebookPen size={15} aria-hidden="true" />Deliberate Session note · source linked</p>
+            <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note title <span className="normal-case tracking-normal text-orange-700">(optional)</span>
+              <input value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} maxLength={500} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" />
+            </label>
+            <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note
+              <textarea value={noteBody} onChange={(event) => setNoteBody(event.target.value)} maxLength={20000} rows={4} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold leading-relaxed text-[#3d3122]" />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Purpose
+                <select value={noteKind} onChange={(event) => setNoteKind(event.target.value as EditableSessionNoteKind)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+                  {EDITABLE_SESSION_NOTE_KINDS
+                    .filter((kind) => kind !== "PRODUCTION" || canUseProjectTeamNotes)
+                    .map((kind) => <option key={kind} value={kind}>{sessionNoteKindLabel(kind)}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Audience
+                <select value={noteVisibility} onChange={(event) => setNoteVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+                  {SESSION_NOTE_VISIBILITIES
+                    .filter((visibility) => visibility !== "PROJECT_TEAM" || canUseProjectTeamNotes)
+                    .map((visibility) => <option key={visibility} value={visibility}>{sessionNoteVisibilityLabel(visibility)}</option>)}
+                </select>
+              </label>
+            </div>
+            <p className="rounded-lg border border-orange-200 bg-white p-3 text-xs font-bold leading-relaxed text-orange-900">
+              {noteVisibility === "AUTHOR_PRIVATE" && "Only your account can read it—even staff do not get an override."}
+              {noteVisibility === "SESSION_SHARED" && "People who can access this Session can read it. Nothing is messaged or delivered."}
+              {noteVisibility === "CLIENT_SAFE" && "Eligible for a reviewed client follow-up. It is not sent automatically."}
+              {noteVisibility === "PROJECT_TEAM" && "Visible to Nest owners and editors; owner/editor authority is required. It is not public."}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void createNote()} disabled={busy || !playbackReady || !noteBody.trim()} className="inline-flex items-center gap-2 rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={14} aria-hidden="true" />Save source-linked note</button>
+              <button type="button" onClick={() => setCreatingNote(false)} disabled={busy} className="inline-flex items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50"><X size={14} aria-hidden="true" />Cancel</button>
+            </div>
+            <p className="text-xs font-bold leading-relaxed text-orange-800">Creates one revisioned canonical Session note. It does not correct the transcript, create a task or goal, send a message, add a calendar event, deliver a follow-up, or publish.</p>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setCreatingNote(true)} disabled={busy || !playbackReady} className="inline-flex items-center gap-2 rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-900 disabled:opacity-50"><NotebookPen size={15} aria-hidden="true" />Save as Session note</button>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
         {creatingTask ? (
           <div className="space-y-3">
             <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-900"><ListTodo size={15} aria-hidden="true" />Explicit task · source linked</p>
@@ -476,7 +581,13 @@ function CorrectionEditor({
   );
 }
 
-export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
+export function TranscriptCorrectionDesk({
+  roomId,
+  canUseProjectTeamNotes = false,
+}: {
+  roomId: string;
+  canUseProjectTeamNotes?: boolean;
+}) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -603,6 +714,7 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
               key={segment.id}
               roomId={roomId}
               segment={segment}
+              canUseProjectTeamNotes={canUseProjectTeamNotes}
               playbackReady={Boolean(desk.playback)}
               currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
               busy={busy}

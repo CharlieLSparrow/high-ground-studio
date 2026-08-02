@@ -1203,7 +1203,10 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
           {tasks.length ? <div className="grid gap-3 lg:grid-cols-2">{tasks.map((task) => <article key={task.id} className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><p className="font-black text-[#3d3122]"><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">{task.title}</Link></p>{task.detail && <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}<p className="mt-3 text-xs font-black uppercase tracking-wide text-[#8a7354]">{humanize(task.status)} · {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "No due date"} · assignment not implied</p></article>)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No committed tasks from this packet. Suggestions remain separate until someone accepts one.</div>}
         </section>
 
-        <TranscriptCorrectionDesk roomId={roomId} />
+        <TranscriptCorrectionDesk
+          roomId={roomId}
+          canUseProjectTeamNotes={canUseProjectTeamNotes}
+        />
       </>) : null}
     </div>
   );

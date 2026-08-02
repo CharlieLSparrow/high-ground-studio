@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CircleAlert, LockKeyhole } from "lucide-react";
 import { notFound, unstable_rethrow } from "next/navigation";
+import { readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -280,30 +281,35 @@ export default async function SessionReviewPage({
       .map(({ id, label, slug }: any) => ({ id, label, slug }));
     const noteOriginLabel = (sourceJson: unknown) => {
       const source = jsonObject(sourceJson);
+      if (readTranscriptDerivedNoteSource(sourceJson)) return "Transcript review";
       if (source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA) return "iPhone Capture";
       if (source.schema === "quipsly-session-continuity-brief-v1") return "Saved continuity";
       if (source.schema === "quipsly-session-context-v2") return "Session plan";
       if (source.origin === "nest-session-notes") return "Nest Session note";
       return "Session record";
     };
-    const sessionNotes = sessionNoteRows.map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      body: row.body,
-      kind: String(row.kind) as SessionNoteKind,
-      visibility: String(row.visibility || "AUTHOR_PRIVATE") as SessionNoteVisibility,
-      author: {
-        id: row.authorUserId,
-        label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
-        isCurrentActor: row.authorUserId === session.user.id,
-      },
-      originLabel: noteOriginLabel(row.sourceJson),
-      canEdit: row.authorUserId === session.user.id && row.kind !== "FOLLOW_UP",
-      revisionCount: row._count?.revisions ?? 0,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-      tags: quickEntryTags(row),
-    }));
+    const sessionNotes = sessionNoteRows.map((row: any) => {
+      const parsedSourceAnchor = readTranscriptDerivedNoteSource(row.sourceJson);
+      return {
+        id: row.id,
+        title: row.title,
+        body: row.body,
+        kind: String(row.kind) as SessionNoteKind,
+        visibility: String(row.visibility || "AUTHOR_PRIVATE") as SessionNoteVisibility,
+        author: {
+          id: row.authorUserId,
+          label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
+          isCurrentActor: row.authorUserId === session.user.id,
+        },
+        originLabel: noteOriginLabel(row.sourceJson),
+        canEdit: row.authorUserId === session.user.id && row.kind !== "FOLLOW_UP",
+        revisionCount: row._count?.revisions ?? 0,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        tags: quickEntryTags(row),
+        sourceAnchor: parsedSourceAnchor?.roomId === room.id ? parsedSourceAnchor : null,
+      };
+    });
     const sessionQuickEntries = [
       ...sessionNoteRows.filter((row: any) => row.authorUserId === session.user.id && isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
       ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),

@@ -64,6 +64,8 @@ const fixture = {
   workspaceId: "",
   projectId: "",
   roomId: "",
+  sourceId: `session-collaboration-source-${nonce}`,
+  mediaAssetId: `session-collaboration-media-${nonce}`,
   recordingAssetId: "",
   uploadSessionId: randomUUID(),
   transcriptJobId: "",
@@ -203,6 +205,43 @@ try {
   const storageBucket = "local-dogfood";
   const storageObjectPath = `session-collaboration/${nonce}/audio.wav`;
   const byteSize = 1_024n;
+  const playbackUrl = `/api/ingest/media/${fixture.sourceId}`;
+  await prisma.studioVideoSource.create({
+    data: {
+      id: fixture.sourceId,
+      provider: "local-dogfood",
+      providerSourceId: `session-collaboration/${nonce}/audio.wav`,
+      url: playbackUrl,
+      title: "Disposable coaching-session playback evidence",
+    },
+  });
+  await prisma.studioMediaAsset.create({
+    data: {
+      id: fixture.mediaAssetId,
+      filename: "session-collaboration-dogfood.wav",
+      url: playbackUrl,
+      mimeType: "audio/wav",
+      sizeBytes: byteSize,
+      duration: 18,
+      cloudProvider: "local-dogfood",
+      isGlobal: false,
+    },
+  });
+  await prisma.studioAssetAttachment.create({
+    data: {
+      projectId: project.id,
+      assetId: fixture.mediaAssetId,
+      role: "spine-audio-candidate",
+      source: "quipsly-local-session-collaboration-dogfood",
+      createdByEmail: ownerEmail,
+      metadataJson: {
+        callRoomId: room.id,
+        sourceId: fixture.sourceId,
+        playbackUrl,
+        fixture: true,
+      },
+    },
+  });
   const recordingAsset = await prisma.recordingAsset.create({
     data: {
       roomId: room.id,
@@ -223,6 +262,15 @@ try {
         fixture: true,
         processingDisposition: "RELEASED",
         transcriptionDisposition: "RELEASED",
+        promotion: {
+          status: "promoted-to-studio-media",
+          mediaAssetId: fixture.mediaAssetId,
+          sourceId: fixture.sourceId,
+          playbackUrl,
+          mediaKind: "audio",
+          projectId: project.id,
+          localOnly: true,
+        },
       },
     },
   });
@@ -236,6 +284,8 @@ try {
       processingDisposition: "RELEASED",
       transcriptDisposition: "RELEASED",
       recordingAssetId: recordingAsset.id,
+      sourceId: fixture.sourceId,
+      mediaAssetId: fixture.mediaAssetId,
       releasedByUserId: owner.id,
       releaseReason: "Disposable local collaboration dogfood",
       releasedAt: new Date(),
@@ -523,6 +573,140 @@ try {
     "Rejected empty-lane review unexpectedly changed saved packet state.",
   );
 
+  const transcriptNoteRequest = {
+    roomId: room.id,
+    segmentId: segment.id,
+    clientRequestId: randomUUID(),
+    expectedProviderTextSha256: sha256(transcriptText),
+    title: "Next-session episode outline decision",
+    body: "Before our next coaching Session, draft the revised episode outline and bring it back for review.",
+    kind: "DECISION",
+    visibility: "CLIENT_SAFE",
+    surface: "local-session-collaboration-dogfood",
+  };
+  const viewerTranscriptNoteAttempt = await requestJson(
+    new URL("/api/mobile/capture/transcripts/notes", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(viewerToken), "content-type": "application/json" },
+      body: JSON.stringify({ ...transcriptNoteRequest, clientRequestId: randomUUID() }),
+    },
+  );
+  assert(
+    viewerTranscriptNoteAttempt.status === 404 &&
+      viewerTranscriptNoteAttempt.body?.code === "SESSION_MUTATION_ACCESS_REQUIRED",
+    `Project viewer unexpectedly created a transcript-linked note. HTTP ${viewerTranscriptNoteAttempt.status}`,
+  );
+
+  const transcriptNote = await requestJson(
+    new URL("/api/mobile/capture/transcripts/notes", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify(transcriptNoteRequest),
+    },
+  );
+  assert(
+    transcriptNote.status === 200 &&
+      transcriptNote.body?.ok === true &&
+      transcriptNote.body?.idempotentReplay === false &&
+      transcriptNote.body?.note?.sourceAnchor?.segmentId === segment.id &&
+      transcriptNote.body?.note?.sourceAnchor?.providerTextSha256 === sha256(transcriptText) &&
+      transcriptNote.body?.boundaries?.sourceAnchorPreserved === true &&
+      transcriptNote.body?.boundaries?.taskCreated === false &&
+      transcriptNote.body?.boundaries?.messageSent === false,
+    `Project editor could not create an exact transcript-linked note. HTTP ${transcriptNote.status}`,
+  );
+  const transcriptNoteId = String(transcriptNote.body.note?.id || "");
+  const transcriptNoteUpdatedAt = String(transcriptNote.body.note?.updatedAt || "");
+  assert(
+    transcriptNoteId && transcriptNoteUpdatedAt,
+    "Transcript-linked note response omitted canonical identity or revision time.",
+  );
+
+  const transcriptNoteReplay = await requestJson(
+    new URL("/api/mobile/capture/transcripts/notes", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify(transcriptNoteRequest),
+    },
+  );
+  assert(
+    transcriptNoteReplay.status === 200 &&
+      transcriptNoteReplay.body?.idempotentReplay === true &&
+      transcriptNoteReplay.body?.note?.id === transcriptNoteId &&
+      transcriptNoteReplay.body?.note?.revisionCount === 1,
+    "Transcript-linked note replay duplicated or changed canonical state.",
+  );
+
+  const viewerSessionProjection = await requestJson(
+    new URL("/api/mobile/capture/sessions", baseUrl),
+    { headers: bearer(viewerToken) },
+  );
+  const projectedViewerSession = Array.isArray(viewerSessionProjection.body?.sessions)
+    ? viewerSessionProjection.body.sessions.find((candidate) => candidate?.id === room.id)
+    : null;
+  const projectedTranscriptNote = Array.isArray(projectedViewerSession?.sessionNotes)
+    ? projectedViewerSession.sessionNotes.find((candidate) => candidate?.id === transcriptNoteId)
+    : null;
+  assert(
+    viewerSessionProjection.status === 200 &&
+      projectedTranscriptNote?.visibility === "CLIENT_SAFE" &&
+      projectedTranscriptNote?.sourceAnchor?.segmentId === segment.id,
+    "The iPhone Session projection did not expose the client-safe note and its playback anchor to a project viewer.",
+  );
+
+  const transcriptNoteEditRequestId = randomUUID();
+  const transcriptNoteEdit = await requestJson(
+    new URL(`/api/notes/${encodeURIComponent(transcriptNoteId)}`, baseUrl),
+    {
+      method: "PATCH",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Revised next-session episode outline decision",
+        body: "Before our next coaching Session, draft the revised episode outline, tag open questions, and bring it back for review.",
+        kind: "DECISION",
+        visibility: "AUTHOR_PRIVATE",
+        tagIds: [],
+        expectedUpdatedAt: transcriptNoteUpdatedAt,
+        clientRequestId: transcriptNoteEditRequestId,
+      }),
+    },
+  );
+  assert(
+    transcriptNoteEdit.status === 200 &&
+      transcriptNoteEdit.body?.ok === true &&
+      transcriptNoteEdit.body?.note?.revisionCount === 2 &&
+      transcriptNoteEdit.body?.note?.visibility === "AUTHOR_PRIVATE" &&
+      transcriptNoteEdit.body?.boundaries?.appendOnlyRevision === true,
+    `Project editor could not revise the transcript-linked note. HTTP ${transcriptNoteEdit.status}`,
+  );
+  const storedTranscriptNote = await prisma.coachingNote.findUnique({
+    where: { id: transcriptNoteId },
+    include: { revisions: { orderBy: { revision: "asc" } } },
+  });
+  assert(
+    storedTranscriptNote?.revisions.length === 2 &&
+      object(storedTranscriptNote.sourceJson).schema === "quipsly-transcript-derived-note-v1" &&
+      object(storedTranscriptNote.sourceJson).segmentId === segment.id &&
+      object(storedTranscriptNote.revisions[0]?.snapshotJson).sourceJson !== undefined,
+    "Canonical note revision did not preserve the immutable transcript source anchor.",
+  );
+
+  const viewerPrivateProjection = await requestJson(
+    new URL("/api/mobile/capture/sessions", baseUrl),
+    { headers: bearer(viewerToken) },
+  );
+  const projectedPrivateSession = Array.isArray(viewerPrivateProjection.body?.sessions)
+    ? viewerPrivateProjection.body.sessions.find((candidate) => candidate?.id === room.id)
+    : null;
+  assert(
+    Array.isArray(projectedPrivateSession?.sessionNotes) &&
+      !projectedPrivateSession.sessionNotes.some((candidate) => candidate?.id === transcriptNoteId),
+    "Changing a transcript-linked note to author-private did not remove it from the viewer projection.",
+  );
+
   const noteRequest = {
     clientRequestId: randomUUID(),
     title: "Disposable collaborator Session note",
@@ -690,7 +874,13 @@ try {
     actionItemsCreated: actionCount,
     reviewReceiptsPersisted: receipts.length,
     editorSessionNoteCreated: true,
+    editorTranscriptNoteCreated: true,
+    transcriptNoteReplayIdempotent: true,
+    transcriptNotePlaybackAnchorProjected: true,
+    transcriptNoteRevisionPreservedSource: true,
+    transcriptNoteAudienceChangeEnforced: true,
     viewerSessionNoteCreateDenied: true,
+    viewerTranscriptNoteCreateDenied: true,
     downgradedSessionNoteEditDenied: true,
     downgradedSessionNotePreserved: true,
     downgradedPacketReadAllowed: true,
@@ -738,6 +928,12 @@ async function cleanupFixture() {
   if (fixture.projectId) {
     await prisma.studioProject.deleteMany({ where: { id: fixture.projectId } });
   }
+  if (fixture.mediaAssetId) {
+    await prisma.studioMediaAsset.deleteMany({ where: { id: fixture.mediaAssetId } });
+  }
+  if (fixture.sourceId) {
+    await prisma.studioVideoSource.deleteMany({ where: { id: fixture.sourceId } });
+  }
   if (fixture.workspaceId) {
     await prisma.studioWorkspace.deleteMany({
       where: { id: fixture.workspaceId },
@@ -751,7 +947,7 @@ async function cleanupFixture() {
     },
   });
 
-  const [rooms, projects, workspaces, users, receipts] = await Promise.all([
+  const [rooms, projects, workspaces, users, receipts, mediaAssets, sources] = await Promise.all([
     prisma.callRoom.count({ where: { id: fixture.roomId } }),
     prisma.studioProject.count({ where: { id: fixture.projectId } }),
     prisma.studioWorkspace.count({ where: { id: fixture.workspaceId } }),
@@ -765,10 +961,12 @@ async function cleanupFixture() {
     prisma.mobileCaptureFinalizationReceipt.count({
       where: { uploadSessionId: fixture.uploadSessionId },
     }),
+    prisma.studioMediaAsset.count({ where: { id: fixture.mediaAssetId } }),
+    prisma.studioVideoSource.count({ where: { id: fixture.sourceId } }),
   ]);
   return {
-    ok: rooms + projects + workspaces + users + receipts === 0,
-    remaining: { rooms, projects, workspaces, users, receipts },
+    ok: rooms + projects + workspaces + users + receipts + mediaAssets + sources === 0,
+    remaining: { rooms, projects, workspaces, users, receipts, mediaAssets, sources },
   };
 }
 

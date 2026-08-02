@@ -6,6 +6,7 @@ import {
   type SessionNoteKind,
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
+import type { TranscriptDerivedNoteSourceAnchor } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 export {
   EDITABLE_SESSION_NOTE_KINDS,
@@ -44,6 +45,7 @@ export type SessionWorkspaceNote = {
   createdAt: string;
   updatedAt: string;
   tags: Array<{ id: string; label: string; slug: string }>;
+  sourceAnchor?: TranscriptDerivedNoteSourceAnchor | null;
 };
 
 export function parseSessionNoteView(value: unknown): SessionNoteView {

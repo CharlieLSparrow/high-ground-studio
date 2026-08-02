@@ -91,6 +91,7 @@ function serializedNote(row: any, actorUserId: string) {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     tags: (row.tagLinks || []).map((link: any) => link.tag),
+    sourceAnchor: null,
   };
 }
 
