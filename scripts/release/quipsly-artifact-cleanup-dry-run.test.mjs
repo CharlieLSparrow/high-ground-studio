@@ -10,12 +10,12 @@ const policy = JSON.parse(readFileSync(
   "utf8",
 ));
 
-test("cleanup policy is conservative and cannot target tagged release images", () => {
+test("cleanup policy expires old versions while preserving rollback depth", () => {
   assert.deepEqual(policy, [
     {
-      name: "delete-untagged-after-45-days",
+      name: "delete-any-after-45-days",
       action: { type: "Delete" },
-      condition: { tagState: "untagged", olderThan: "45d" },
+      condition: { tagState: "any", olderThan: "45d" },
     },
     {
       name: "keep-recent-10-per-package",

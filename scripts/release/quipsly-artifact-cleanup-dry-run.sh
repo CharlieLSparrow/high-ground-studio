@@ -39,16 +39,16 @@ const policies = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 if (!Array.isArray(policies) || policies.length !== 2) {
   throw new Error("Expected exactly one conservative delete policy and one keep policy.");
 }
-const remove = policies.find((policy) => policy.name === "delete-untagged-after-45-days");
+const remove = policies.find((policy) => policy.name === "delete-any-after-45-days");
 const keep = policies.find((policy) => policy.name === "keep-recent-10-per-package");
 if (
   remove?.action?.type !== "Delete"
-  || remove?.condition?.tagState !== "untagged"
+  || remove?.condition?.tagState !== "any"
   || remove?.condition?.olderThan !== "45d"
   || remove.condition.tagPrefixes
   || remove.condition.packageNamePrefixes
 ) {
-  throw new Error("Delete policy must remain limited to untagged versions older than 45 days.");
+  throw new Error("Delete policy must remain limited to versions older than 45 days.");
 }
 if (keep?.action?.type !== "Keep" || keep?.mostRecentVersions?.keepCount !== 10) {
   throw new Error("Keep policy must preserve at least the ten newest versions of every package.");

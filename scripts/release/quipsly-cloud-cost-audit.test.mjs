@@ -109,6 +109,10 @@ test("attributes repeated committed-source builds and protects traffic digests",
   assert.equal(receipt.builds.estimatedComputeUsd, 1.248);
   assert.equal(receipt.artifacts.olderThan30DaysCount, 1);
   assert.equal(receipt.artifacts.trafficServingProtectedVersionCount, 2);
+  assert.equal(
+    receipt.artifacts.trafficServingRetentionProtectedVersionCount,
+    2,
+  );
   assert.equal(receipt.cloudRun.minimumInstanceCount, 0);
   assert.equal(receipt.cloudRun.serviceCount, 2);
   assert.equal(receipt.cloudRun.totalMinimumInstanceCount, 1);
@@ -124,6 +128,48 @@ test("attributes repeated committed-source builds and protects traffic digests",
     ],
   );
   assert.equal(receipt.boundaries.artifactDeletionPerformed, false);
+});
+
+test("distinguishes a resolved traffic digest from one protected by retention", () => {
+  const oldLiveDigest = digest("f");
+  const images = Array.from({ length: 11 }, (_, index) => ({
+    package: "studio",
+    version: index === 10 ? oldLiveDigest : digest(String(index)),
+    tags: [`source-${index}`],
+    createTime: index === 10
+      ? "2026-05-01T00:00:00.000Z"
+      : `2026-07-${String(index + 10).padStart(2, "0")}T00:00:00.000Z`,
+    imageSizeBytes: "1000",
+  }));
+  const receipt = summarizeQuipslyCloudCost({
+    auditedAt: "2026-08-01T18:00:00.000Z",
+    windowStartedAt: "2026-07-02T18:00:00.000Z",
+    projectId: "high-ground-odyssey",
+    region: "us-central1",
+    repository: "high-ground-studio",
+    serviceName: "studio",
+    builds: [],
+    images,
+    service: {
+      metadata: { name: "studio" },
+      status: { traffic: [{ revisionName: "studio-old", percent: 100 }] },
+    },
+    services: [],
+    revisions: [
+      {
+        metadata: { name: "studio-old" },
+        status: { imageDigest: oldLiveDigest },
+      },
+    ],
+    cleanupPolicies: [],
+  });
+
+  assert.equal(receipt.artifacts.trafficServingProtectedVersionCount, 1);
+  assert.equal(
+    receipt.artifacts.trafficServingRetentionProtectedVersionCount,
+    0,
+  );
+  assert.equal(receipt.artifacts.retentionCandidateVersionCount, 1);
 });
 
 test("the collab deploy default cannot silently restore idle compute", () => {
