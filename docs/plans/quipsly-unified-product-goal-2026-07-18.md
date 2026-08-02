@@ -6121,6 +6121,25 @@ was restored.
   Full evidence is in
   `docs/coordination/2026-08-01-cloud-cost-pipeline-consolidation.md`.
 
+### Cloud-cost activation and worker benchmark checkpoint — 2026-08-02
+
+- Artifact cleanup is now active behind a guarded operator that proves all
+  traffic-serving digests survive the exact 45-day/keep-ten policy. The first
+  post-activation readback still showed 929 versions and 152,454.130 MB because
+  Google evaluates cleanup asynchronously; 452 versions are eligible.
+- All four Cloud Run services remain at zero minimum instances. Cloud SQL stays
+  on the smallest shared-core tier with backups and deletion protection; its
+  baseline is intentionally not traded for downtime or weaker recovery.
+- The required `E2_HIGHCPU_8` benchmark compiled Nest successfully, then
+  received `SIGKILL` during TypeScript after approximately 22 minutes,
+  consistent with worker memory pressure. It produced no qualified image and
+  cost about as much as a complete
+  32-core build. The default is therefore restored to `E2_HIGHCPU_32`, with
+  exact-source image reuse and the 12-hour cadence—not undersizing—as the main
+  spend controls.
+- The failed exact-source image was not retried blindly. Peak build memory must
+  be reduced or the reliable worker used for the next coherent release.
+
 ### Transcript worker activation-readiness checkpoint — 2026-08-01
 
 - Re-audited the actual transcript production boundary after the provider,

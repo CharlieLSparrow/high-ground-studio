@@ -133,28 +133,28 @@ protected traffic digests, and zero total minimum instances.
 
 ## Next cost decisions
 
-1. After at least one day, inspect dry-run audit logs and enumerate every
-   proposed digest/package/age.
-2. Resolve both live digests and selected rollback revisions again immediately
-   before any cleanup decision.
-3. Decide whether to enable the conservative untagged-only policy. This needs
-   explicit approval because the background evaluator would then delete data.
-4. Observe the new `E2_HIGHCPU_8` default over the next coherent release. A
-   historical successful Nest comparison estimated less than half the compute
-   cost of a representative current 32-core build; retain the explicit 32-core
-   override for measured capacity failures.
-5. Add a retention policy for zero-traffic Cloud Run revisions only after
+1. Monitor the active cleanup evaluator until version count and repository size
+   fall, then re-prove all five live digests and application health.
+2. Keep exact-source reuse and the 12-hour cadence as the primary build-cost
+   controls. The Aug 2 8-core benchmark compiled, then received `SIGKILL`
+   after approximately 22 minutes, consistent with worker memory pressure; it
+   cost about as much as a complete
+   32-core build without producing an image.
+3. Reduce peak Next/TypeScript build memory before another 8-core benchmark.
+   Until then, use the reliable 32-core default only for coherent release
+   candidates rather than paying for undersized failed attempts.
+4. Add a retention policy for zero-traffic Cloud Run revisions only after
    rollback ownership is explicit. Revision count alone is not significant
    Cloud Run spend while minimum instances remain zero.
 
 ## Checkpoint-churn guard
 
-The canonical Nest release path now defaults to `E2_HIGHCPU_8` and refuses to
-buy a new successful-source image within 12 hours of the previous successful
-Nest build. This gate applies only when the exact committed image is absent:
-same-source reuse, smoke, promotion, and retries after a failed build remain
-available. `ALLOW_EARLY_CLOUD_BUILD=1` is reserved for an urgent production
-repair and makes the exception visible at the command boundary.
+The canonical Nest release path defaults to the reliable `E2_HIGHCPU_32` worker
+and refuses to buy a new successful-source image within 12 hours of the
+previous successful Nest build. This gate applies only when the exact committed
+image is absent: same-source reuse, smoke, promotion, and retries after a failed
+build remain available. `ALLOW_EARLY_CLOUD_BUILD=1` is reserved for an urgent
+production repair and makes the exception visible at the command boundary.
 
 Primary references:
 
@@ -206,3 +206,14 @@ data was directly deleted or changed. Two obsolete Cloud Run tag routes were
 removed without changing production traffic. Cleanup runs asynchronously;
 verify the version count, repository size, five traffic digests, and
 application health again after approximately one day.
+
+## 2026-08-02 worker benchmark follow-up
+
+Exact-source build `f747c2b3-09ab-40a1-924d-e15b19ccac13` used
+`E2_HIGHCPU_8`. Next compiled in 76 seconds, then the TypeScript phase ran until
+the container process was killed after roughly 22 minutes. It produced no
+qualified source image. Because that failed attempt's estimated compute cost is
+approximately the same as a representative completed 32-core build, the
+canonical default is again `E2_HIGHCPU_32`. Build-frequency suppression and
+image reuse remain the cost controls; the smaller worker remains an explicit
+benchmark option after peak memory is reduced.

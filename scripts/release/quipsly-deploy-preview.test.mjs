@@ -57,7 +57,7 @@ test("preview deploy reuses one verified image for one committed source", () => 
   assert.match(source, /Reusing exact-source Quipsly image/);
   assert.match(source, /Cloud Build skipped: this committed source already has a verified image/);
   assert.match(source, /REUSE_EXISTING_IMAGE must be 0 or 1/);
-  assert.match(source, /CLOUD_BUILD_MACHINE_TYPE="\$\{CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-8\}"/);
+  assert.match(source, /CLOUD_BUILD_MACHINE_TYPE="\$\{CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32\}"/);
   assert.match(source, /--machine-type "\$\{CLOUD_BUILD_MACHINE_TYPE\}"/);
   assert.match(source, /MIN_CLOUD_BUILD_INTERVAL_HOURS="\$\{MIN_CLOUD_BUILD_INTERVAL_HOURS:-12\}"/);
   assert.match(source, /ALLOW_EARLY_CLOUD_BUILD="\$\{ALLOW_EARLY_CLOUD_BUILD:-0\}"/);

@@ -46,13 +46,17 @@ verified image is reused before deploying the Cloud Run Job by digest.
 
 ## Build worker and release cadence
 
-Ordinary Nest builds default to `e2-highcpu-8`. A successful historical Nest
-build completed on that worker in 603 seconds; at current list prices that is
-less than half the estimated compute cost of a representative 341-second
-`e2-highcpu-32` build. The larger worker remains an explicit diagnostic option:
+Ordinary Nest builds default to `e2-highcpu-32`. An Aug 2 exact-source
+`e2-highcpu-8` build compiled successfully, then spent more than 20 minutes in
+TypeScript before receiving `SIGKILL`, consistent with worker memory pressure.
+That failed
+attempt cost approximately as much as a complete 32-core build. The primary
+savings therefore come from committed-image reuse and the cadence gate, while
+the worker default favors a reliable completed artifact. The smaller worker
+remains an explicit diagnostic option after peak build memory is reduced:
 
 ```bash
-CLOUD_BUILD_MACHINE_TYPE=e2-highcpu-32 \
+CLOUD_BUILD_MACHINE_TYPE=e2-highcpu-8 \
 SOURCE_REF=COMMITTED_SHA \
 bash scripts/release/quipsly-deploy-preview.sh
 ```
@@ -181,20 +185,40 @@ preview pipeline. HGO web and the GitHub Studio workflow also read back the
 exact source tag before deciding to build. Registry errors fail closed instead
 of being treated as a missing image.
 
-Artifact Registry now has this conservative policy in **dry-run** mode:
+Artifact Registry initially received this conservative policy in **dry-run**
+mode. After provider-log review, explicit approval, and a retention-aware proof
+that every traffic-serving digest survives, the policy was activated on
+2026-08-02:
 
-- evaluate only untagged versions older than 45 days for deletion; and
+- evaluate versions older than 45 days for deletion, regardless of tag state;
+  and
 - keep at least the ten newest versions of every package.
 
-Dry-run cannot delete artifacts. Wait at least one day and inspect
-`validateOnly=true` audit logs before considering active cleanup. Active
-deletion still requires exact traffic/rollback digest protection and explicit
-approval.
+Google applies cleanup asynchronously. The activation operator first proves
+that every live digest survives the exact age/keep-ten policy, requires an
+explicit confirmation value, and never directly deletes a named image or
+repository. On the first post-activation readback, 452 versions (about 76.8 GB
+of summed known manifest sizes) were eligible but had not yet been processed.
 
 ```bash
 pnpm quipsly:cloud:cleanup-dry-run
 pnpm quipsly:cloud:cleanup-dry-run -- --apply-dry-run
 ```
 
-The first command is plan-only. The second can only configure dry-run; the
-operator intentionally has no active-deletion flag.
+The first command is plan-only. The second configures dry-run. Active cleanup
+uses the separately guarded `quipsly:cloud:artifact-cleanup:activate` operator.
+
+## Live follow-up — 2026-08-02
+
+Fresh credentialed readback found 113 builds in 30 days: 88 successful, 19
+failed, and 6 canceled. Twelve `E2_HIGHCPU_8` attempts account for about $2.00
+of estimated list-price compute; the historical 83 `E2_HIGHCPU_32` attempts
+still account for $36.14. The latest 8-core exact-source Nest build received
+`SIGKILL` after approximately 22 minutes, consistent with worker memory
+pressure, so the reliable 32-core
+default was restored while the 12-hour cadence and exact-image reuse remain.
+
+Artifact Registry reports 152,454.130 MB, 929 versions, and active cleanup
+(`Dry run is disabled`). The asynchronous evaluator has not yet reduced the
+inventory. All five traffic-serving digests survive the retention policy. All
+four Cloud Run services still report zero minimum instances.
