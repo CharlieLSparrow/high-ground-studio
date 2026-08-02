@@ -302,6 +302,15 @@ Implementation commit: `03a316e1`
   isolation change is unchanged: Build 26 and all safe metadata remain green;
   screenshots, App Privacy, DSA, physical acceptance, production deletion, and
   compatibility remain the six explicit blockers. No Apple state changed.
+- The iPhone-only compatibility audit found a real Xcode default:
+  `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD` resolved `YES`. App and Share
+  Extension source now set Mac, Mac Catalyst, and XR compatibility `NO`; source
+  and signed-artifact gates prove the resolved settings and packaged
+  `UIDeviceFamily=[1]`. Apple still reports Build 26 can run on Apple silicon
+  Mac, so the separate Mac and Vision store-availability controls remain a
+  manual Pricing and Availability opt-out. No new build or provider mutation
+  occurred. Full evidence is in
+  `docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
 
 ## Capture Build 25 public TestFlight checkpoint
 

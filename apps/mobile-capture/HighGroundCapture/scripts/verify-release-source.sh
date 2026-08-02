@@ -176,6 +176,22 @@ app_build="$(setting_value "$app_settings" CURRENT_PROJECT_VERSION)"
 extension_version="$(setting_value "$extension_settings" MARKETING_VERSION)"
 extension_build="$(setting_value "$extension_settings" CURRENT_PROJECT_VERSION)"
 
+[[ "$(setting_value "$app_settings" TARGETED_DEVICE_FAMILY)" == "1" ]] ||
+  fail "Release app must target only the iPhone device family"
+[[ "$(setting_value "$extension_settings" TARGETED_DEVICE_FAMILY)" == "1" ]] ||
+  fail "Release extension must target only the iPhone device family"
+[[ "$(setting_value "$app_settings" SUPPORTS_MACCATALYST)" == "NO" ]] ||
+  fail "Release app must not advertise Mac Catalyst"
+[[ "$(setting_value "$app_settings" SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
+  fail "Release app must opt out of Designed-for-iPhone on Mac"
+[[ "$(setting_value "$app_settings" SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
+  fail "Release app must opt out of Designed-for-iPhone on Apple Vision Pro"
+[[ "$(setting_value "$extension_settings" SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
+  fail "Release extension must opt out of Designed-for-iPhone on Mac"
+[[ "$(setting_value "$extension_settings" SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD)" == "NO" ]] ||
+  fail "Release extension must opt out of Designed-for-iPhone on Apple Vision Pro"
+pass "Release app and extension are explicitly iPhone-only"
+
 [[ -n "$app_version" && -n "$app_build" ]] || fail "Could not resolve the app version from Release build settings"
 [[ "$app_version" == "$extension_version" ]] || fail "App and extension marketing versions differ"
 [[ "$app_build" == "$extension_build" ]] || fail "App and extension build numbers differ"

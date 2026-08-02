@@ -361,7 +361,7 @@ export function validateAppStoreMetadata(
     compatibility.iphone !== true
     || compatibility.appleSiliconMac !== false
     || compatibility.appleVisionPro !== false
-    || compatibility.status !== "requires-provider-cleanup"
+    || compatibility.status !== "source-correct-provider-opt-out-required"
   ) {
     errors.push("compliance.compatibility must preserve the iPhone-only first-release posture until provider cleanup is proved.");
   }

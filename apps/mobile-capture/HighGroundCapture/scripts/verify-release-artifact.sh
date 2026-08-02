@@ -35,6 +35,16 @@ require_plist_value() {
   pass "$key = $expected"
 }
 
+require_plist_json() {
+  local plist="$1"
+  local key="$2"
+  local expected="$3"
+  local actual
+  actual="$(plutil -extract "$key" json -o - "$plist" 2>/dev/null || true)"
+  [[ "$actual" == "$expected" ]] || fail "$key expected '$expected' but found '$actual' in $plist"
+  pass "$key = $expected"
+}
+
 verify_bundle() {
   local bundle_path="$1"
   local expected_identifier="$2"
@@ -55,6 +65,8 @@ verify_capture_app() {
   local microphone_purpose
 
   verify_bundle "$capture_app" "com.highgroundodyssey.HighGroundCapture"
+  require_plist_json "$info_plist" "UIDeviceFamily" '[1]'
+  require_plist_json "$info_plist" "CFBundleSupportedPlatforms" '["iPhoneOS"]'
   require_path "$capture_app/PrivacyInfo.xcprivacy"
   plutil -lint "$capture_app/PrivacyInfo.xcprivacy" >/dev/null
   pass "App privacy manifest is packaged and valid"

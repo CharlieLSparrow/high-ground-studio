@@ -62,6 +62,15 @@ publication, the account-level DSA determination, approved screenshots,
 physical-device acceptance, account-deletion proof, and iPhone-only provider
 compatibility remain open before submission.
 
+The source now resolves `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO` alongside
+the existing iPhone-only family and Mac opt-out settings, and signed Build 26
+proves `UIDeviceFamily=[1]`. Apple still computes Build 26 as capable of running
+on Apple silicon Mac. That does not mean it should be offered there: use
+**Pricing and Availability** to deselect both the Apple Silicon Mac and Apple
+Vision Pro availability controls, save, reload, and preserve visual readback.
+The supported App Store Connect API exposes the computed build compatibility
+but not these two app-level choices.
+
 Apple permits 1–10 screenshots. The canonical plan uses five portrait
 screenshots in one accepted 6.9-inch size, `1320 x 2868`, so App Store Connect
 can scale them for smaller current iPhones. App previews are optional and are

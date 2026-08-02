@@ -227,6 +227,7 @@ export function summarizeSubmissionReadiness({
   options,
   metadata,
   appDocument,
+  buildDocument,
   appInfosDocument,
   versionsDocument,
   availabilityDocument,
@@ -262,6 +263,12 @@ export function summarizeSubmissionReadiness({
   const missingAgeRatingFields = missingAgeFields(ageRating, isMadeForKids);
   const contentRightsValue = app.attributes?.contentRightsDeclaration ?? null;
   const reviewDetailPresent = included(versionsDocument, "appStoreReviewDetails").length > 0;
+  const buildBundle = included(buildDocument, "buildBundles").find(
+    (resource) => resource.attributes?.bundleType === "APP"
+      && resource.attributes?.bundleId === options.bundleId,
+  ) || null;
+  const providerMacCompatibility =
+    buildBundle?.attributes?.isIosBuildMacAppStoreCompatible;
 
   const wantedDisplayTypes = expectedDisplayTypes(metadata);
   const screenshotSets = screenshotSetDocuments.map((document) => {
@@ -301,6 +308,9 @@ export function summarizeSubmissionReadiness({
     appIdentity: app.id === options.appId
       && app.attributes?.name === options.appName
       && app.attributes?.bundleId === options.bundleId,
+    buildIdentity: buildDocument?.data?.id === options.buildId
+      && buildDocument?.data?.attributes?.version === options.build,
+    buildBundleReadback: Boolean(buildBundle),
     appInfoEditable: appInfo.attributes?.appStoreState === "PREPARE_FOR_SUBMISSION",
     versionEditable: version.attributes?.appStoreState === "PREPARE_FOR_SUBMISSION",
     buildAssigned: relationshipId(version, "build") === options.buildId,
@@ -322,6 +332,8 @@ export function summarizeSubmissionReadiness({
 
   const blockers = [];
   if (!checks.appIdentity) addBlocker(blockers, "app-identity-mismatch", "The provider app identity does not match the release target.");
+  if (!checks.buildIdentity) addBlocker(blockers, "build-identity-mismatch", `Provider build ${options.buildId} does not resolve as Build ${options.build}.`);
+  if (!checks.buildBundleReadback) addBlocker(blockers, "build-bundle-readback-missing", "Apple did not return the assigned app bundle's computed compatibility metadata.");
   if (!checks.buildAssigned) addBlocker(blockers, "build-not-assigned", `Build ${options.version} (${options.build}) is not assigned.`);
   if (!checks.reviewDetailPresent) addBlocker(blockers, "review-detail-missing", "App Review information is missing.");
   if (!checks.contentRightsDeclared) addBlocker(blockers, "content-rights-missing", "The App Store content-rights declaration is unset.", "legal");
@@ -342,7 +354,17 @@ export function summarizeSubmissionReadiness({
   addBlocker(blockers, `physical-build${options.build}-acceptance`, `Install Build ${options.build} from TestFlight on a physical iPhone and prove capture, recovery, upload, playback, alignment, and cross-device readback.`, "manual");
   addBlocker(blockers, "production-account-deletion-proof", "Prove account deletion against a disposable production account with independent readback.", "manual");
   if (metadata.compliance.compatibility.status !== "complete") {
-    addBlocker(blockers, "device-compatibility-provider-cleanup", "Confirm iPhone-only availability and remove unintended Mac or Vision compatibility.", "manual");
+    const macDetail = providerMacCompatibility === true
+      ? "Apple reports that the uploaded iOS binary can run on Apple silicon Mac. "
+      : providerMacCompatibility === false
+        ? "Apple reports that the uploaded iOS binary is not Mac-compatible. "
+        : "Apple's computed Mac compatibility could not be resolved. ";
+    addBlocker(
+      blockers,
+      "device-compatibility-provider-cleanup",
+      `${macDetail}In App Store Connect, opt the app out of Apple Silicon Mac and Apple Vision Pro availability, save, and independently read back both app-level choices.`,
+      "manual",
+    );
   }
 
   const reviewSubmissions = (reviewSubmissionsDocument?.data || []).map((submission) => ({
@@ -365,6 +387,23 @@ export function summarizeSubmissionReadiness({
       bundleId: app.attributes?.bundleId || null,
       primaryLocale: app.attributes?.primaryLocale || null,
       isOrEverWasMadeForKids: app.attributes?.isOrEverWasMadeForKids === true,
+    },
+    compatibility: {
+      desiredDeviceFamily: "iPhone",
+      appBundleId: buildBundle?.attributes?.bundleId || null,
+      appBundleType: buildBundle?.attributes?.bundleType || null,
+      supportedArchitectures:
+        buildBundle?.attributes?.supportedArchitectures || [],
+      requiredCapabilities: buildBundle?.attributes?.requiredCapabilities || [],
+      iosBuildMacAppStoreCompatible:
+        typeof providerMacCompatibility === "boolean"
+          ? providerMacCompatibility
+          : null,
+      macAvailabilityApiVerifiable: false,
+      visionAvailabilityApiVerifiable: false,
+      desiredMacAvailability: metadata.compliance.compatibility.appleSiliconMac,
+      desiredVisionAvailability: metadata.compliance.compatibility.appleVisionPro,
+      status: "manual-app-level-opt-out-required",
     },
     version: {
       id: version.id,
@@ -437,15 +476,17 @@ export function summarizeSubmissionReadiness({
 async function discover({ options, key, locale }) {
   const requests = {
     app: makeRequest(`/v1/apps/${options.appId}`, [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration"]]),
+    build: makeRequest(`/v1/builds/${options.buildId}`, [["include", "buildBundles"]]),
     appInfos: makeRequest(`/v1/apps/${options.appId}/appInfos`, [["include", "ageRatingDeclaration,appInfoLocalizations"], ["limit", "20"], ["limit[appInfoLocalizations]", "50"]]),
     versions: makeRequest(`/v1/apps/${options.appId}/appStoreVersions`, [["filter[platform]", "IOS"], ["filter[versionString]", options.version], ["include", "appStoreVersionLocalizations,appStoreReviewDetail,build"], ["limit", "20"], ["limit[appStoreVersionLocalizations]", "50"]]),
     availability: makeRequest(`/v1/apps/${options.appId}/appAvailabilityV2`),
     priceSchedule: makeRequest(`/v1/apps/${options.appId}/appPriceSchedule`),
     reviewSubmissions: makeRequest(`/v1/apps/${options.appId}/reviewSubmissions`, [["filter[platform]", "IOS"], ["include", "items,appStoreVersionForReview"], ["limit", "200"], ["limit[items]", "50"]]),
   };
-  const [appDocument, appInfosDocument, versionsDocument, availabilityDocument,
+  const [appDocument, buildDocument, appInfosDocument, versionsDocument, availabilityDocument,
     priceScheduleDocument, reviewSubmissionsDocument] = await Promise.all([
     requestJson({ request: requests.app, key }),
+    requestJson({ request: requests.build, key }),
     requestJson({ request: requests.appInfos, key }),
     requestJson({ request: requests.versions, key }),
     requestJson({ request: requests.availability, key, optionalNotFound: true }),
@@ -493,6 +534,7 @@ async function discover({ options, key, locale }) {
   }
   return {
     appDocument,
+    buildDocument,
     appInfosDocument,
     versionsDocument,
     availabilityDocument,

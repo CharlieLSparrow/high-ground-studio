@@ -6320,6 +6320,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   Full evidence is in
   `docs/coordination/2026-08-02-account-deletion-local-operation-and-provider-contract.md`.
 
+### Capture iPhone-only compatibility checkpoint — 2026-08-02
+
+- Traced the remaining compatibility blocker from committed Xcode settings to
+  the exact signed Build 26 package and live App Store Connect build metadata.
+  The archive/IPA already prove `UIDeviceFamily=[1]` and only `iPhoneOS`, but
+  Xcode still resolved Designed-for-iPhone visionOS compatibility `YES`.
+- App and Share Extension Debug/Release source now explicitly disable Mac
+  Catalyst, Designed-for-iPhone on Mac, and Designed-for-iPhone on Apple Vision
+  Pro. Release source, static, and packaged-artifact gates enforce the contract.
+- The supported provider API now contributes Apple's computed build-bundle
+  compatibility to the readiness receipt and fails closed if that relationship
+  is absent. Apple reports Build 26 can run on Apple silicon Mac; the API does
+  not expose the separate Mac or Vision store-availability choices.
+- Metadata/readiness coverage passes 12/12, the Capture App Store contract
+  passes 1,009/1,009, resolved Release settings and source verification pass,
+  and the exact Build 26 archive/IPA pass the strengthened verifier.
+- The browser session required fresh Apple authentication, so no provider
+  mutation was attempted. The loop-back is exact: sign in, open Pricing and
+  Availability, deselect both app-level availability controls, save, reload,
+  and preserve readback. Build 26 remains public and no new build, upload,
+  submission, release, or cloud cost occurred. Full evidence is in
+  `docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
+
 ### Transcript packet to canonical Session note checkpoint — 2026-08-02
 
 - Added one shared explicit review boundary across Nest and Quipsly Capture for

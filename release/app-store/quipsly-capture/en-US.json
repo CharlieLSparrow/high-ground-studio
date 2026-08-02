@@ -102,7 +102,7 @@
       "iphone": true,
       "appleSiliconMac": false,
       "appleVisionPro": false,
-      "status": "requires-provider-cleanup"
+      "status": "source-correct-provider-opt-out-required"
     }
   },
   "screenshots": {

@@ -31,6 +31,10 @@ test("canonical App Store metadata passes its source contract", () => {
   assert.equal(result.metrics.keywordsBytes, 87);
   assert.equal(result.screenshotCount, 5);
   assert.equal(result.submissionReadiness, "blocked");
+  assert.equal(
+    canonicalMetadata().compliance.compatibility.status,
+    "source-correct-provider-opt-out-required",
+  );
 });
 
 test("field limits and secret-like keys fail closed", () => {

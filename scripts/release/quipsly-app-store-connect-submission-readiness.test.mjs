@@ -31,6 +31,24 @@ function completeFixture() {
         },
       },
     },
+    buildDocument: {
+      data: {
+        type: "builds",
+        id: options.buildId,
+        attributes: { version: options.build },
+      },
+      included: [{
+        type: "buildBundles",
+        id: "build-bundle-1",
+        attributes: {
+          bundleId: options.bundleId,
+          bundleType: "APP",
+          isIosBuildMacAppStoreCompatible: true,
+          supportedArchitectures: ["arm64"],
+          requiredCapabilities: ["arm64"],
+        },
+      }],
+    },
     appInfosDocument: {
       data: [{
         type: "appInfos",
@@ -148,6 +166,8 @@ test("complete provider state still preserves manual legal and physical gates", 
   assert.equal(receipt.screenshots.providerCount, 5);
   assert.equal(receipt.pricing.complete, true);
   assert.equal(receipt.availability.complete, true);
+  assert.equal(receipt.compatibility.iosBuildMacAppStoreCompatible, true);
+  assert.equal(receipt.compatibility.macAvailabilityApiVerifiable, false);
   assert.deepEqual(
     receipt.blockers.map(({ code }) => code),
     [
@@ -228,6 +248,18 @@ test("missing provider declarations produce exact fail-closed blockers", () => {
   assert.equal(receipt.ageRating.answeredQuestionCount, 0);
   assert.equal(receipt.screenshots.providerCount, 0);
   assert.equal(receipt.providerChecksPassed, false);
+});
+
+test("fails closed when Apple omits computed build compatibility metadata", () => {
+  const fixture = completeFixture();
+  fixture.buildDocument.included = [];
+  const receipt = summarizeSubmissionReadiness(fixture);
+  assert.equal(receipt.checks.buildBundleReadback, false);
+  assert.equal(receipt.providerChecksPassed, false);
+  assert.equal(
+    receipt.blockers.some(({ code }) => code === "build-bundle-readback-missing"),
+    true,
+  );
 });
 
 test("receipt excludes provider secrets and asset upload details", () => {

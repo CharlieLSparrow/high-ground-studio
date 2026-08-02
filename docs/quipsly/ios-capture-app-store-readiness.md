@@ -516,8 +516,11 @@ The remaining release gates are therefore:
 3. Capture, visually approve, and upload all five planned largest-iPhone
    screenshots from the exact Build 26 experience with synthetic/private-safe
    content. Draft simulator compositions remain layout evidence only.
-4. Confirm iPhone-only distribution and remove unintended Apple-silicon Mac or
-   Vision compatibility.
+4. In App Store Connect **Pricing and Availability**, deselect **Make this app
+   available** under **iPhone and iPad Apps on Apple Silicon Mac**, deselect
+   **Make this app available on Apple Vision Pro**, save, reload, and preserve
+   readback of both unchecked controls. Source and packaged device-family gates
+   do not prove these separate app-level choices.
 5. Install Build 26 from TestFlight on a physical iPhone and prove microphone
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,

@@ -319,6 +319,8 @@ requireRegex(projectText, /IPHONEOS_DEPLOYMENT_TARGET = 17\.0;/, "supported iOS 
 requireRegex(projectText, /SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/, "iPhone-only supported platforms");
 requireRegex(projectText, /TARGETED_DEVICE_FAMILY = 1;/, "iPhone-only target family");
 requireRegex(projectText, /SUPPORTS_MACCATALYST = NO;/, "Mac Catalyst is not accidentally advertised");
+requireRegex(projectText, /SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone Mac compatibility is disabled in source");
+requireRegex(projectText, /SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;/, "Designed-for-iPhone visionOS compatibility is disabled in source");
 requireIncludes(appInfoText, "<string>Quipsly Capture</string>", "customer-facing app name");
 requireIncludes(
   rehearsalRunbookText,

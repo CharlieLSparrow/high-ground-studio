@@ -105,6 +105,14 @@ The fresh post-provider-isolation audit is unchanged at the Apple boundary:
 Build 26 remains assigned, all safe metadata checks remain green, and Apple
 still reports zero screenshots. It performed no external mutation.
 
+Compatibility investigation later proved that Build 26 is packaged only for
+iPhone, while Apple computes the binary as runnable on Apple silicon Mac. It
+also found and fixed the next-release source default that left Designed-for-
+iPhone visionOS compatibility enabled. The supported provider API cannot read
+the two app-level availability toggles, so Mac/Vision opt-out remains one exact
+Pricing and Availability operation. Evidence is in
+`docs/coordination/2026-08-02-capture-iphone-only-compatibility.md`.
+
 ## Screenshot candidate operation
 
 The five private-data-safe screenshot stories were operated again from a clean
