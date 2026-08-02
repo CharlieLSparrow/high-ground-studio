@@ -15,6 +15,12 @@ export const CAPTURE_PROXY_RESULT_PREFIX =
   "media-vault/control/capture-proxy/results" as const;
 export const CAPTURE_PROXY_DEAD_LETTER_PREFIX =
   "media-vault/control/capture-proxy/dead-letter" as const;
+export const COLLABORATION_PROXY_PROFILE =
+  "collaboration-1080p-h264-aac-v1" as const;
+export const EPISODE_COLLABORATION_PROXY_JOB_KIND =
+  "quipsly-episode-collaboration-proxy-job-v1" as const;
+export const EPISODE_COLLABORATION_PROXY_RESULT_KIND =
+  "quipsly-episode-collaboration-proxy-result-v1" as const;
 
 const SAFE_ID = /^[A-Za-z0-9_-]{8,128}$/;
 const SAFE_PATH_PART = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -635,4 +641,296 @@ function finitePositive(value: unknown) {
     throw new Error("Expected a positive finite number.");
   }
   return parsed;
+}
+
+export type EpisodeCollaborationProxyProvider = "local" | "gcs";
+
+export type EpisodeCollaborationProxySource = {
+  provider: EpisodeCollaborationProxyProvider;
+  locator: string;
+  generation: string;
+  sizeBytes: number;
+  sha256: string;
+  contentType: string;
+  rawAssetId: string;
+  sourceId: string;
+};
+
+export type EpisodeCollaborationProxyTarget = {
+  provider: EpisodeCollaborationProxyProvider;
+  locator: string;
+  contentType: "video/mp4";
+  profile: typeof COLLABORATION_PROXY_PROFILE;
+};
+
+export type EpisodeCollaborationProxyJob = {
+  kind: typeof EPISODE_COLLABORATION_PROXY_JOB_KIND;
+  version: 1;
+  jobId: string;
+  projectId: string;
+  projectSlug: string;
+  episodeProductionId: string;
+  episodeSlug: string;
+  actorUserId: string | null;
+  actorEmail: string;
+  queuedAt: string;
+  source: EpisodeCollaborationProxySource;
+  target: EpisodeCollaborationProxyTarget;
+};
+
+export type EpisodeCollaborationProxyResult = {
+  kind: typeof EPISODE_COLLABORATION_PROXY_RESULT_KIND;
+  version: 1;
+  jobId: string;
+  completedAt: string;
+  source: EpisodeCollaborationProxySource;
+  output: {
+    provider: EpisodeCollaborationProxyProvider;
+    locator: string;
+    generation: string;
+    sizeBytes: number;
+    sha256: string;
+    contentType: "video/mp4";
+    profile: typeof COLLABORATION_PROXY_PROFILE;
+    metadata: CaptureProxyTechnicalEvidence;
+  };
+  worker: {
+    executionId: string;
+    buildId: string;
+    attempt: number;
+  };
+  originalRemainsSourceTruth: true;
+};
+
+export function buildEpisodeCollaborationProxyTargetLocator(input: {
+  projectSlug: string;
+  episodeSlug: string;
+  rawAssetId: string;
+  sourceSha256: string;
+}) {
+  const sourceSha256 = normalizedText(input.sourceSha256);
+  if (!SHA256.test(sourceSha256)) {
+    throw new Error("Episode collaboration proxy source SHA-256 is invalid.");
+  }
+  return [
+    "media-vault",
+    "proxy",
+    "episode-collaboration",
+    safePathPart(input.projectSlug),
+    safePathPart(input.episodeSlug),
+    safePathPart(input.rawAssetId),
+    `${COLLABORATION_PROXY_PROFILE}-${sourceSha256.slice(0, 20)}.mp4`,
+  ].join("/");
+}
+
+export function newEpisodeCollaborationProxyJob(
+  input: Omit<EpisodeCollaborationProxyJob, "kind" | "version">,
+): EpisodeCollaborationProxyJob {
+  return parseEpisodeCollaborationProxyJob({
+    kind: EPISODE_COLLABORATION_PROXY_JOB_KIND,
+    version: 1,
+    ...input,
+  });
+}
+
+export function parseEpisodeCollaborationProxyJob(
+  value: unknown,
+  expectedJobId?: string,
+): EpisodeCollaborationProxyJob {
+  const row = record(value);
+  const source = parseEpisodeCollaborationProxySource(row.source);
+  const target = parseEpisodeCollaborationProxyTarget(row.target);
+  const job: EpisodeCollaborationProxyJob = {
+    kind: row.kind as EpisodeCollaborationProxyJob["kind"],
+    version: Number(row.version) as 1,
+    jobId: normalizedText(row.jobId),
+    projectId: normalizedText(row.projectId),
+    projectSlug: normalizedText(row.projectSlug),
+    episodeProductionId: normalizedText(row.episodeProductionId),
+    episodeSlug: normalizedText(row.episodeSlug),
+    actorUserId: normalizedText(row.actorUserId) || null,
+    actorEmail: normalizedText(row.actorEmail),
+    queuedAt: normalizedText(row.queuedAt),
+    source,
+    target,
+  };
+  if (
+    job.kind !== EPISODE_COLLABORATION_PROXY_JOB_KIND
+    || job.version !== 1
+    || !normalizeCaptureProxyJobId(job.jobId)
+    || (expectedJobId && job.jobId !== expectedJobId)
+    || !SAFE_ID.test(job.projectId)
+    || !SAFE_PATH_PART.test(job.projectSlug)
+    || !SAFE_ID.test(job.episodeProductionId)
+    || !SAFE_PATH_PART.test(job.episodeSlug)
+    || (job.actorUserId !== null && !SAFE_ID.test(job.actorUserId))
+    || !isEmail(job.actorEmail)
+    || !isIsoDate(job.queuedAt)
+    || source.provider !== target.provider
+  ) {
+    throw new Error("Episode collaboration proxy job is invalid.");
+  }
+  return job;
+}
+
+export function newEpisodeCollaborationProxyResult(
+  input: Omit<EpisodeCollaborationProxyResult, "kind" | "version" | "originalRemainsSourceTruth">,
+): EpisodeCollaborationProxyResult {
+  return parseEpisodeCollaborationProxyResult({
+    kind: EPISODE_COLLABORATION_PROXY_RESULT_KIND,
+    version: 1,
+    ...input,
+    originalRemainsSourceTruth: true,
+  });
+}
+
+export function parseEpisodeCollaborationProxyResult(
+  value: unknown,
+  expectedJob?: EpisodeCollaborationProxyJob,
+): EpisodeCollaborationProxyResult {
+  const row = record(value);
+  const source = parseEpisodeCollaborationProxySource(row.source);
+  const outputRow = record(row.output);
+  const workerRow = record(row.worker);
+  const output = {
+    provider: normalizedText(outputRow.provider) as EpisodeCollaborationProxyProvider,
+    locator: normalizedText(outputRow.locator),
+    generation: normalizedText(outputRow.generation),
+    sizeBytes: positiveSafeInteger(outputRow.sizeBytes),
+    sha256: normalizedText(outputRow.sha256),
+    contentType: normalizedText(outputRow.contentType) as "video/mp4",
+    profile: normalizedText(outputRow.profile) as typeof COLLABORATION_PROXY_PROFILE,
+    metadata: parseTechnicalEvidence(outputRow.metadata),
+  };
+  const result: EpisodeCollaborationProxyResult = {
+    kind: row.kind as EpisodeCollaborationProxyResult["kind"],
+    version: Number(row.version) as 1,
+    jobId: normalizedText(row.jobId),
+    completedAt: normalizedText(row.completedAt),
+    source,
+    output,
+    worker: {
+      executionId: normalizedText(workerRow.executionId),
+      buildId: normalizedText(workerRow.buildId),
+      attempt: positiveSafeInteger(workerRow.attempt),
+    },
+    originalRemainsSourceTruth: row.originalRemainsSourceTruth as true,
+  };
+  if (
+    result.kind !== EPISODE_COLLABORATION_PROXY_RESULT_KIND
+    || result.version !== 1
+    || !normalizeCaptureProxyJobId(result.jobId)
+    || !isIsoDate(result.completedAt)
+    || !result.worker.executionId
+    || !result.worker.buildId
+    || result.originalRemainsSourceTruth !== true
+    || output.provider !== source.provider
+    || !validProviderLocator(output.provider, output.locator, true)
+    || !output.generation
+    || !SHA256.test(output.sha256)
+    || output.contentType !== "video/mp4"
+    || output.profile !== COLLABORATION_PROXY_PROFILE
+    || (expectedJob && (
+      result.jobId !== expectedJob.jobId
+      || !sameEpisodeCollaborationProxySource(source, expectedJob.source)
+      || output.provider !== expectedJob.target.provider
+      || !outputLocatorMatchesTarget(output.provider, output.locator, expectedJob.target.locator)
+    ))
+  ) {
+    throw new Error("Episode collaboration proxy result is invalid.");
+  }
+  return result;
+}
+
+function parseEpisodeCollaborationProxySource(
+  value: unknown,
+): EpisodeCollaborationProxySource {
+  const row = record(value);
+  const source = {
+    provider: normalizedText(row.provider) as EpisodeCollaborationProxyProvider,
+    locator: normalizedText(row.locator),
+    generation: normalizedText(row.generation),
+    sizeBytes: positiveSafeInteger(row.sizeBytes),
+    sha256: normalizedText(row.sha256),
+    contentType: normalizedText(row.contentType),
+    rawAssetId: normalizedText(row.rawAssetId),
+    sourceId: normalizedText(row.sourceId),
+  };
+  if (
+    !validProvider(source.provider)
+    || !validProviderLocator(source.provider, source.locator, false)
+    || !source.generation
+    || !SHA256.test(source.sha256)
+    || !source.contentType.startsWith("video/")
+    || !SAFE_ID.test(source.rawAssetId)
+    || !SAFE_ID.test(source.sourceId)
+  ) {
+    throw new Error("Episode collaboration proxy source is invalid.");
+  }
+  return source;
+}
+
+function parseEpisodeCollaborationProxyTarget(
+  value: unknown,
+): EpisodeCollaborationProxyTarget {
+  const row = record(value);
+  const target = {
+    provider: normalizedText(row.provider) as EpisodeCollaborationProxyProvider,
+    locator: normalizedText(row.locator),
+    contentType: normalizedText(row.contentType) as "video/mp4",
+    profile: normalizedText(row.profile) as typeof COLLABORATION_PROXY_PROFILE,
+  };
+  if (
+    !validProvider(target.provider)
+    || !validProxyTargetLocator(target.locator)
+    || target.contentType !== "video/mp4"
+    || target.profile !== COLLABORATION_PROXY_PROFILE
+  ) {
+    throw new Error("Episode collaboration proxy target is invalid.");
+  }
+  return target;
+}
+
+function sameEpisodeCollaborationProxySource(
+  left: EpisodeCollaborationProxySource,
+  right: EpisodeCollaborationProxySource,
+) {
+  return left.provider === right.provider
+    && left.locator === right.locator
+    && left.generation === right.generation
+    && left.sizeBytes === right.sizeBytes
+    && left.sha256 === right.sha256
+    && left.contentType === right.contentType
+    && left.rawAssetId === right.rawAssetId
+    && left.sourceId === right.sourceId;
+}
+
+function validProvider(value: string): value is EpisodeCollaborationProxyProvider {
+  return value === "local" || value === "gcs";
+}
+
+function validProviderLocator(
+  provider: EpisodeCollaborationProxyProvider,
+  locator: string,
+  output: boolean,
+) {
+  if (!locator || locator.length > 4_096 || locator.includes("\0")) return false;
+  if (provider === "gcs") return /^gcs:\/\/[a-z0-9][a-z0-9._-]+\/.+/.test(locator);
+  return locator.startsWith("/") && (output ? locator.endsWith(".mp4") : true);
+}
+
+function validProxyTargetLocator(locator: string) {
+  return locator.length <= 1_024
+    && locator.startsWith("media-vault/proxy/episode-collaboration/")
+    && locator.endsWith(".mp4")
+    && !locator.split("/").some((segment) => !segment || segment === "." || segment === "..");
+}
+
+function outputLocatorMatchesTarget(
+  provider: EpisodeCollaborationProxyProvider,
+  outputLocator: string,
+  targetLocator: string,
+) {
+  if (provider === "gcs") return outputLocator.includes(`/${targetLocator}`);
+  return outputLocator.endsWith(`/${targetLocator}`);
 }

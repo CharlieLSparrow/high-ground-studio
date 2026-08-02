@@ -84,8 +84,16 @@ export type EpisodeImportedMediaAsset = {
     recordingSync?: Record<string, unknown>;
   };
   proxy: {
-    status: "queued" | "ready" | "not-required" | "failed" | "external-preview";
+    status: "not-queued" | "queued" | "ready" | "not-required" | "failed" | "external-preview";
     proxyUrl?: string;
+    proxyAssetId?: string;
+    sourceId?: string;
+    variantId?: string;
+    jobId?: string;
+    profile?: string;
+    completedAt?: string;
+    sourceOriginalPreserved?: boolean;
+    immutableObjectEvidence?: Record<string, unknown>;
     note?: string;
   };
 };

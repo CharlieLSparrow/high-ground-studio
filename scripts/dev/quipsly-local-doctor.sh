@@ -7,6 +7,7 @@ Usage: scripts/dev/quipsly-local-doctor.sh
 
 Inspect the local Quipsly development lane:
   - Nest health and signed-out shell
+  - durable local episode media worker
   - Firebase Auth emulator
   - PostgreSQL container
   - retired authorization bypasses
@@ -85,6 +86,32 @@ untracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) == "
 echo "Quipsly local services"
 report_http "Nest health" "${nest_url%/}/api/health" "200"
 report_http "Nest signed-out shell" "${nest_url%/}/login?callbackUrl=%2Fprojects" "200"
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  media_worker_label="com.quipsly.local.media-worker"
+  recorded_media_worker_label=""
+  if [[ -f "${state_dir}/media-worker.label" ]]; then
+    recorded_media_worker_label="$(tr -d '[:space:]' <"${state_dir}/media-worker.label")"
+  fi
+  if [[ "${recorded_media_worker_label}" == "${media_worker_label}" ]] \
+    && launchctl print "gui/$(id -u)/${media_worker_label}" 2>/dev/null | rg -q "state = running"; then
+    printf "PASS  %-24s job %s\n" "Episode media worker" "${media_worker_label}"
+  else
+    printf "FAIL  %-24s job %s is not launcher-owned and running\n" "Episode media worker" "${media_worker_label}"
+    failed=1
+  fi
+else
+  media_worker_pid=""
+  if [[ -f "${state_dir}/media-worker.pid" ]]; then
+    media_worker_pid="$(tr -d '[:space:]' <"${state_dir}/media-worker.pid")"
+  fi
+  if [[ "${media_worker_pid}" =~ ^[0-9]+$ ]] && kill -0 "${media_worker_pid}" 2>/dev/null; then
+    printf "PASS  %-24s PID %s\n" "Episode media worker" "${media_worker_pid}"
+  else
+    printf "FAIL  %-24s launcher-owned process is not running\n" "Episode media worker"
+    failed=1
+  fi
+fi
 
 nest_listener="$(quipsly_local_port_listener_pid 3012)"
 nest_cwd=""

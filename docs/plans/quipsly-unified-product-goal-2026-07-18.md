@@ -6520,3 +6520,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   acceptance. No cloud build/deploy or external side effect occurred. Full
   evidence is in
   `docs/coordination/2026-08-02-episode-8-source-backed-room-operation.md`.
+
+### Episode 8 durable collaboration proxy checkpoint — 2026-08-02
+
+- Replaced the editor's metadata-only proxy placeholder with a provider-neutral
+  immutable job/result contract, a durable leased local worker, independent
+  reconciliation, and canonical proxy source, asset, variant, and attachment
+  registration. Originals remain render/provenance truth.
+- Operated the signed-in real Episode 8 editor with the retained 19,100,059-byte
+  `Ted Lasso Be Curious.mp4`. `Build collaboration proxy` generated and
+  registered a distinct 24,599,184-byte H.264/AAC fast-start derivative while
+  the original SHA-256 remained unchanged.
+- The rendered program monitor selected the registered proxy, decoded it at
+  `readyState=4`, advanced through `Play active edit`, and stopped through
+  `Pause`. Authorized replay returned the same job and derivative identities;
+  a separate ungranted account received exact HTTP 403 before source access.
+- Real operation found and repaired PostgreSQL timestamp inference, FFmpeg
+  atomic-partial extension, macOS `/var` versus `/private/var` authority, and
+  legacy fake-ready UI defects. New imports now say `not-queued` until a
+  registered derivative actually exists.
+- Local worker/recovery 5/5, API authorization 6/6, lifecycle 8/8, strict
+  Quipsly/media-processor TypeScript, owned-service doctor, database/hash/media
+  readback, idempotency, outsider denial, play, and pause all pass.
+- This is local Episode 8 evidence, not cloud-worker, production, physical
+  iPhone, second-episode, coaching, transcript-correction, portable restore, or
+  App Store completion. The exact next media boundary is a qualified GCS lane
+  through the immutable cloud processor and zero-traffic authenticated preview.
+  Full evidence is in
+  `docs/coordination/2026-08-02-episode-8-collaboration-proxy-operation.md`.

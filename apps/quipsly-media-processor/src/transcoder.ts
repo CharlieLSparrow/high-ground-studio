@@ -30,6 +30,7 @@ export class ProxyTranscodeError extends Error {
 
 export interface CaptureProxyTranscoder {
   transcode(inputPath: string, outputPath: string): Promise<TranscodedProxy>;
+  inspect?(outputPath: string): Promise<TranscodedProxy>;
 }
 
 export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
@@ -86,7 +87,19 @@ export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
       outputPath,
     ], "ffmpeg-transcode-failed");
 
-    const probe = await runProcess(this.ffprobePath, [
+    return inspectTranscodedProxy(outputPath, this.ffprobePath);
+  }
+
+  async inspect(outputPath: string) {
+    return inspectTranscodedProxy(outputPath, this.ffprobePath);
+  }
+}
+
+export async function inspectTranscodedProxy(
+  outputPath: string,
+  ffprobePath = process.env.QUIPSLY_FFPROBE_PATH?.trim() || "ffprobe",
+) {
+    const probe = await runProcess(ffprobePath, [
       "-v",
       "error",
       "-show_entries",
@@ -114,7 +127,6 @@ export class FfmpegCaptureProxyTranscoder implements CaptureProxyTranscoder {
       sha256: await sha256File(outputPath),
       technical,
     };
-  }
 }
 
 async function runProcess(
@@ -199,7 +211,7 @@ function technicalEvidence(value: unknown): CaptureProxyTechnicalEvidence {
   };
 }
 
-async function hasFastStart(filePath: string) {
+export async function hasFastStart(filePath: string) {
   const handle = await open(filePath, "r");
   try {
     const buffer = Buffer.alloc(4 * 1024 * 1024);
@@ -213,7 +225,7 @@ async function hasFastStart(filePath: string) {
   }
 }
 
-async function sha256File(filePath: string) {
+export async function sha256File(filePath: string) {
   const hash = createHash("sha256");
   const handle = await open(filePath, "r");
   try {

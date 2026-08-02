@@ -65,6 +65,10 @@ test("machine-wide services use machine-wide ownership state", () => {
     2,
     "both local Nest launch paths must opt in to the development-only media vault",
   );
+  assert.match(up, /--run-media-worker/);
+  assert.match(up, /local-episode-worker\.ts/);
+  assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
+  assert.match(up, /--experimental-transform-types/);
 });
 
 test("Docker control-plane calls are bounded and fail closed", () => {
@@ -148,7 +152,9 @@ test("replacement and shutdown remain confined to Quipsly app jobs", () => {
   for (const script of [up, down]) {
     assert.match(script, /com\.quipsly\.local\.nest/);
     assert.match(script, /com\.quipsly\.local\.firebase/);
+    assert.match(script, /com\.quipsly\.local\.media-worker/);
   }
+  assert.match(doctor, /Episode media worker/);
   assert.doesNotMatch(up, /docker compose down/);
   assert.doesNotMatch(down, /docker compose down/);
   assert.match(down, /PostgreSQL was intentionally left running/);

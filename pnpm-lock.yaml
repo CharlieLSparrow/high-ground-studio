@@ -575,10 +575,16 @@ importers:
       '@high-ground/quipsly-media-processing':
         specifier: workspace:*
         version: link:../../packages/quipsly-media-processing
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: 25.3.3
         version: 25.3.3
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.0
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2

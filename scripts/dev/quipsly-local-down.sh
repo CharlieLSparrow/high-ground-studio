@@ -103,9 +103,11 @@ stop_macos_job() {
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "nest" "com.quipsly.local.nest"
+  stop_macos_job "media-worker" "com.quipsly.local.media-worker"
   stop_macos_job "firebase" "com.quipsly.local.firebase"
 else
   stop_owned_process "nest"
+  stop_owned_process "media-worker"
   stop_owned_process "firebase"
 fi
 

@@ -158,8 +158,29 @@ type ImportedMediaAsset = {
   proxy?: {
     status?: string;
     proxyUrl?: string;
+    proxyAssetId?: string;
+    sourceId?: string;
+    variantId?: string;
+    jobId?: string;
+    profile?: string;
+    completedAt?: string;
+    sourceOriginalPreserved?: boolean;
+    immutableObjectEvidence?: Record<string, unknown>;
     note?: string;
   };
+};
+
+type EpisodeCollaborationProxyClientStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
+  proxyUrl: string | null;
+  proxyAssetId: string | null;
+  proxySourceId: string | null;
+  variantId: string | null;
+  outputEvidence: Record<string, unknown> | null;
+  error: string | null;
+  updatedAt: string | null;
+  originalRemainsSourceTruth: true;
 };
 
 type EpisodeMediaTruth = {
@@ -631,6 +652,28 @@ function normalizeImportedMediaAssets(value: unknown): ImportedMediaAsset[] {
       } satisfies ImportedMediaAsset;
     })
     .filter((asset): asset is ImportedMediaAsset => asset !== null);
+}
+
+function patchImportedMediaProxy(
+  value: unknown,
+  asset: Pick<ImportedMediaAsset, "id" | "sourceId">,
+  patch: Record<string, unknown>,
+) {
+  const root = asObject(value);
+  if (!root) return value;
+  let matched = false;
+  const importedMedia = coerceArray<Record<string, unknown>>(root.importedMedia).map((entry) => {
+    if (entry.id !== asset.id && entry.sourceId !== asset.sourceId) return entry;
+    matched = true;
+    return {
+      ...entry,
+      proxy: {
+        ...(asObject(entry.proxy) ?? {}),
+        ...patch,
+      },
+    };
+  });
+  return matched ? { ...root, importedMedia } : value;
 }
 
 function draftNumber(value: unknown, fallback = 0) {
@@ -1814,9 +1857,23 @@ function sourceLabelForClip(clip: TimelineClip, assets: ImportedMediaAsset[]) {
   return asset?.originalName || clip.name || "Video feed";
 }
 
+function hasVerifiedCollaborationProxy(asset: ImportedMediaAsset) {
+  return asset.proxy?.status === "ready"
+    && Boolean(asset.proxy.proxyAssetId)
+    && Boolean(asset.proxy.sourceId)
+    && Boolean(asset.proxy.variantId)
+    && Boolean(asset.proxy.proxyUrl)
+    && asset.proxy.proxyUrl !== asset.playbackUrl
+    && asset.proxy.sourceOriginalPreserved === true
+    && Boolean(asset.proxy.immutableObjectEvidence);
+}
+
 function sourceUrlForClip(clip: TimelineClip, assets: ImportedMediaAsset[]) {
   const asset = selectedClipLinkedAsset(clip, assets);
-  return sanitizeTrackSource(asset?.playbackUrl || asset?.gcsUri || clip.assetId);
+  const collaborationPreview = asset && hasVerifiedCollaborationProxy(asset)
+    ? asset.proxy?.proxyUrl || ""
+    : "";
+  return sanitizeTrackSource(collaborationPreview || asset?.playbackUrl || asset?.gcsUri || clip.assetId);
 }
 
 function videoTrackOrderValue(trackId: string) {
@@ -2807,6 +2864,7 @@ function CloudEditorContent() {
   const [applyingAiSuggestionIds, setApplyingAiSuggestionIds] = useState<Set<string>>(() => new Set());
   const [transcriptAssistingAssetIds, setTranscriptAssistingAssetIds] = useState<Set<string>>(() => new Set());
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
+  const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
   const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
   const [restoringTimelineBackupId, setRestoringTimelineBackupId] = useState<string | null>(null);
@@ -4720,7 +4778,91 @@ function CloudEditorContent() {
     }
   }, [episodeSlug, resolvedProjectSlug]);
 
+  const operateCollaborationProxy = useCallback(async (asset: ImportedMediaAsset) => {
+    const jobKey = `${asset.id}:collaboration-proxy`;
+    const updateStatus = (status: EpisodeCollaborationProxyClientStatus) => {
+      setCollaborationProxyStatusByAsset((previous) => ({
+        ...previous,
+        [asset.id]: status,
+        [asset.sourceId]: status,
+      }));
+      setProductionState((previous) => previous
+        ? {
+          ...previous,
+          productionJson: patchImportedMediaProxy(previous.productionJson, asset, {
+            status: status.status === "completed" ? "ready" : status.status,
+            proxyUrl: status.proxyUrl,
+            proxyAssetId: status.proxyAssetId,
+            sourceId: status.proxySourceId,
+            variantId: status.variantId,
+            jobId: status.jobId,
+            completedAt: status.status === "completed" ? status.updatedAt : undefined,
+            sourceOriginalPreserved: true,
+            immutableObjectEvidence: status.outputEvidence,
+            note: "The collaboration proxy is for responsive review; the immutable original remains render truth.",
+          }),
+        }
+        : previous);
+    };
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/episode-production/collaboration-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          assetId: asset.id,
+          sourceId: asset.sourceId,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<EpisodeCollaborationProxyClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error || `Collaboration proxy returned HTTP ${response.status}.`);
+      }
+      const status = payload as { ok: true } & EpisodeCollaborationProxyClientStatus;
+      updateStatus(status);
+      return status;
+    };
+
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Queueing a durable collaboration proxy for ${asset.originalName}...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 150 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed" || status.status === "blocked") {
+          throw new Error(status.error || `Collaboration proxy ${status.status}.`);
+        }
+        setMediaImportStatus(
+          status.status === "output-ready"
+            ? `Verifying and registering ${asset.originalName}...`
+            : `Building collaboration proxy for ${asset.originalName}; the original remains untouched...`,
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed" || !status.proxyUrl) {
+        throw new Error("Collaboration proxy is still processing. It can be resumed safely from this card.");
+      }
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(`Collaboration proxy ready for ${asset.originalName}. Preview uses it; exports keep the immutable original.`);
+    } catch (error) {
+      console.warn("Could not complete collaboration proxy.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not complete collaboration proxy.");
+    } finally {
+      setQueueingMediaJobKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(jobKey);
+        return next;
+      });
+    }
+  }, [episodeSlug, resolvedProjectSlug]);
+
   const queueMediaAnalysisJob = useCallback(async (asset: ImportedMediaAsset, type: MediaAnalysisJobType) => {
+    if (type === "proxy-needed") {
+      await operateCollaborationProxy(asset);
+      return;
+    }
     const jobKey = `${asset.id}:${type}`;
     setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
     setMediaImportStatus(`Saving ${mediaAnalysisJobLabel(type).toLowerCase()} job for ${asset.originalName}...`);
@@ -4742,13 +4884,7 @@ function CloudEditorContent() {
             suggestedTrackId: asset.sync?.suggestedTrackId ?? importedAssetTrackId(asset),
             note: "Queued for deeper sync analysis. Current result is metadata-only.",
           }
-          : type === "proxy-needed"
-            ? {
-              proxyStatus: asset.proxy?.status ?? "unknown",
-              needsProxy: asset.kind === "video" && asset.proxy?.status !== "ready",
-              note: asset.kind === "video" ? "Video assets need proxy/render readiness checks." : "Audio assets usually do not need video proxies.",
-            }
-            : {
+          : {
               note: "Use Gemini transcript assist to generate transcript suggestions.",
             };
 
@@ -4790,7 +4926,7 @@ function CloudEditorContent() {
         return next;
       });
     }
-  }, [episodeSlug, resolvedProjectSlug]);
+  }, [episodeSlug, operateCollaborationProxy, resolvedProjectSlug]);
 
   const addEditorCoPilotLog = useCallback((entry: Omit<EditorCoPilotLogEntry, "id">) => {
     const id = makeId("copilot");
@@ -7981,6 +8117,11 @@ function CloudEditorContent() {
                 const transcriptAssistReport = transcriptAssistReportsByAsset.get(asset.id) ?? transcriptAssistReportsByAsset.get(asset.sourceId);
                 const isTranscriptAssisting = transcriptAssistingAssetIds.has(asset.id);
                 const assetJobs = mediaAnalysisJobsByAsset.get(asset.id) ?? mediaAnalysisJobsByAsset.get(asset.sourceId) ?? [];
+                const collaborationProxyStatus = collaborationProxyStatusByAsset[asset.id]
+                  ?? collaborationProxyStatusByAsset[asset.sourceId];
+                const proxyStatus = collaborationProxyStatus?.status
+                  ?? (hasVerifiedCollaborationProxy(asset) ? "completed" : "not-queued");
+                const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const health = importedAssetHealth(asset);
                 const confidenceStatus = importedAssetConfidenceStatus(asset, health);
                 const isSpineAsset = persistedSpineAudio?.assetId === asset.id || persistedSpineAudio?.assetId === asset.sourceId;
@@ -8135,6 +8276,37 @@ function CloudEditorContent() {
                       </div>
                     </button>
                   )}
+                  {(asset.kind === "video" || asset.contentType.startsWith("video/")) && (
+                    <button
+                      type="button"
+                      onClick={() => void operateCollaborationProxy(asset)}
+                      disabled={isCollaborationProxyWorking || proxyStatus === "completed"}
+                      className={`mt-2 w-full rounded-lg border px-3 py-2 text-left font-black disabled:cursor-default ${
+                        proxyStatus === "completed"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                          : proxyStatus === "failed" || proxyStatus === "blocked"
+                            ? "border-rose-200 bg-rose-50 text-rose-900 hover:bg-rose-100"
+                            : "border-violet-200 bg-violet-50 text-violet-950 hover:bg-violet-100 disabled:cursor-wait"
+                      }`}
+                    >
+                      {proxyStatus === "completed"
+                        ? "Collaboration proxy ready"
+                        : isCollaborationProxyWorking
+                          ? "Building collaboration proxy..."
+                          : proxyStatus === "failed" || proxyStatus === "blocked"
+                            ? "Retry collaboration proxy"
+                            : proxyStatus === "processing" || proxyStatus === "output-ready" || proxyStatus === "queued"
+                              ? "Resume collaboration proxy"
+                              : "Build collaboration proxy"}
+                      <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">
+                        {proxyStatus === "completed"
+                          ? "Editor preview is optimized. Export and provenance continue to reference the immutable original."
+                          : collaborationProxyStatus?.error
+                            ? collaborationProxyStatus.error
+                            : "Creates an app-owned H.264/AAC review derivative with byte and fast-start verification. The source is never overwritten."}
+                      </div>
+                    </button>
+                  )}
                   <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2 ${realEditingMode ? "hidden" : ""}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-black text-[#3d3122]">Media analysis jobs</div>
@@ -8156,7 +8328,7 @@ function CloudEditorContent() {
                       </div>
                     )}
                     <div className="mt-2 grid grid-cols-2 gap-1">
-                      {(["file-triage", "sync-suggestion", "proxy-needed", "transcript"] as MediaAnalysisJobType[]).map((jobType) => {
+                      {(["file-triage", "sync-suggestion", "transcript"] as MediaAnalysisJobType[]).map((jobType) => {
                         const jobKey = `${asset.id}:${jobType}`;
                         const isQueueing = queueingMediaJobKeys.has(jobKey);
                         return (

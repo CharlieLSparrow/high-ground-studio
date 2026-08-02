@@ -852,7 +852,7 @@ export async function POST(request: Request) {
       prisma,
       projectId: project.id,
       assetId: mediaAsset.id,
-      type: kind === "video" ? "asset-proxy" : "asset-register",
+      type: "asset-register",
       source: "episode-import-media.upload",
       inputJson: {
         projectSlug,
@@ -862,6 +862,7 @@ export async function POST(request: Request) {
         bucketName: uploaded.bucketName,
         objectName: uploaded.objectName,
         playbackUrl,
+        proxyPolicy: kind === "video" ? "app-owned-on-demand" : "not-required",
       },
     });
 
@@ -898,10 +899,10 @@ export async function POST(request: Request) {
           : `${importRoleLabel(importRole)} imported into the episode source bin. Ready to sync.`,
       },
       proxy: {
-        status: kind === "video" ? "ready" : "not-required",
-        proxyUrl: playbackUrl,
+        status: kind === "video" ? "not-queued" : "not-required",
+        proxyUrl: kind === "video" ? undefined : playbackUrl,
         note: kind === "video"
-          ? "Direct playback is ready through the episode media endpoint. A transcode worker can replace this with a lighter proxy later."
+          ? "The immutable original is available through the episode media endpoint. Build an app-owned collaboration proxy for responsive review."
           : "Audio imports do not require a video proxy.",
       },
     };

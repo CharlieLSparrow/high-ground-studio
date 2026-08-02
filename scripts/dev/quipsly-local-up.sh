@@ -21,6 +21,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
     QUIPSLY_OWNER_OVERRIDE=false
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true
+    "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-}"
     GCLOUD_PROJECT=quipsly-reef
     GOOGLE_CLOUD_PROJECT=quipsly-reef
   )
@@ -36,6 +37,31 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     "${nest_environment[@]}" \
     "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" \
     dev
+fi
+
+if [[ "${1:-}" == "--run-media-worker" ]]; then
+  cd "${script_repo_root}"
+  worker_environment=(
+    "DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
+    "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-}"
+    "QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=${QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID:-local-development}"
+  )
+  worker_command=(
+    "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}"
+    --experimental-transform-types
+    --import "${script_repo_root}/scripts/register-ts-extension-loader.mjs"
+    "${script_repo_root}/apps/quipsly-media-processor/src/local-episode-worker.ts"
+  )
+  if [[ -n "${QUIPSLY_LOCAL_ENV_FILE:-}" ]]; then
+    worker_command=(
+      "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}"
+      "--env-file=${QUIPSLY_LOCAL_ENV_FILE}"
+      --experimental-transform-types
+      --import "${script_repo_root}/scripts/register-ts-extension-loader.mjs"
+      "${script_repo_root}/apps/quipsly-media-processor/src/local-episode-worker.ts"
+    )
+  fi
+  exec /usr/bin/env "${worker_environment[@]}" "${worker_command[@]}"
 fi
 
 replace_existing=0
@@ -62,10 +88,12 @@ firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
+local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node -p 'require("node:path").join(require("node:os").tmpdir(), "quipsly-media-ingest")')}"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
+media_worker_label="com.quipsly.local.media-worker"
 umask 077
 mkdir -p "${state_dir}"
 
@@ -143,7 +171,7 @@ wait_for_port_release() {
 
 replace_macos_jobs() {
   local label
-  for label in "${nest_label}" "${firebase_label}"; do
+  for label in "${nest_label}" "${firebase_label}" "${media_worker_label}"; do
     if launchctl_job_exists "${label}"; then
       launchctl remove "${label}"
       printf "STOP  %-24s job %s\n" "Existing local service" "${label}"
@@ -154,6 +182,7 @@ replace_macos_jobs() {
   rm -f \
     "${state_dir}/nest.label" \
     "${state_dir}/firebase.label" \
+    "${state_dir}/media-worker.label" \
     "${state_dir}/repo-root" \
     "${state_dir}/source-revision"
 }
@@ -181,6 +210,8 @@ start_macos_job() {
       "QUIPSLY_LOCAL_PNPM_BIN=${pnpm_bin}" \
       "QUIPSLY_LOCAL_NODE_BIN=${node_bin}" \
       "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
+      "QUIPSLY_LOCAL_DATABASE_URL=${local_database_url}" \
+      "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
@@ -235,6 +266,42 @@ printf "PASS  %-24s current worktree schema\n" "Prisma client"
 echo "Applying committed local database migrations..."
 DATABASE_URL="${local_database_url}" pnpm exec prisma migrate deploy
 printf "PASS  %-24s committed schema current\n" "PostgreSQL migrations"
+
+rm -f "${state_dir}/media-worker.pid" "${state_dir}/media-worker.cwd"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if launchctl_job_exists "${media_worker_label}"; then
+    printf "REUSE %-24s job %s\n" "Episode media worker" "${media_worker_label}"
+  else
+    start_macos_job "media-worker" "${media_worker_label}" "--run-media-worker"
+    sleep 1
+  fi
+  if ! launchctl print "gui/$(id -u)/${media_worker_label}" 2>/dev/null | rg -q "state = running"; then
+    echo "Episode media worker did not remain running." >&2
+    tail -40 "${state_dir}/media-worker.log" >&2 || true
+    exit 1
+  fi
+  printf "PASS  %-24s durable local processor\n" "Episode media worker"
+else
+  (
+    cd "${repo_root}"
+    nohup env \
+      DATABASE_URL="${local_database_url}" \
+      QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
+      node --experimental-transform-types \
+        --import "${repo_root}/scripts/register-ts-extension-loader.mjs" \
+        "${repo_root}/apps/quipsly-media-processor/src/local-episode-worker.ts" \
+        >"${state_dir}/media-worker.log" 2>&1 &
+    record_process "media-worker" "$!" "${repo_root}"
+  )
+  sleep 1
+  worker_pid="$(sed -n '1p' "${state_dir}/media-worker.pid")"
+  if ! kill -0 "${worker_pid}" 2>/dev/null; then
+    echo "Episode media worker did not remain running." >&2
+    tail -40 "${state_dir}/media-worker.log" >&2 || true
+    exit 1
+  fi
+  printf "PASS  %-24s PID %s\n" "Episode media worker" "${worker_pid}"
+fi
 
 firebase_status="$(http_status "${firebase_url%/}/emulator/v1/projects/quipsly-reef/config")"
 if [[ "${firebase_status}" == "200" ]]; then
