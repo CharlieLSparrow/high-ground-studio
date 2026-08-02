@@ -79,6 +79,14 @@ type Desk = {
     workerBuildId: string | null;
   };
   gate: { allowed: boolean; error?: string };
+  recording: null | {
+    id: string;
+    status: string;
+    kind: string;
+    fileName: string;
+    durationSeconds: number | null;
+    eligibleForProtectedPlaybackPreparation: boolean;
+  };
   playback: null | {
     sourceId: string;
     url: string;
@@ -591,6 +599,7 @@ export function TranscriptCorrectionDesk({
   const [desk, setDesk] = useState<Desk | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
 
@@ -652,6 +661,35 @@ export function TranscriptCorrectionDesk({
     setBusy(false);
   }
 
+  async function prepareProtectedPlayback() {
+    const recordingAssetId = desk?.recording?.id;
+    if (!recordingAssetId) return;
+    setPreparingPlayback(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/mobile/capture/recordings/promote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ recordingAssetId }),
+      });
+      const payload = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        playbackUrl?: string;
+      };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || payload.message || "Protected playback could not be prepared.");
+      }
+      setMessage(payload.message || "Protected playback is ready from the verified recording source.");
+      await load(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Protected playback could not be prepared.");
+    } finally {
+      setPreparingPlayback(false);
+    }
+  }
+
   if (loading) return <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Loading protected playback and correction history…</section>;
   if (!desk) return <section className="rounded-2xl border border-rose-200 bg-rose-50 p-6" role="status"><CircleAlert className="text-rose-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript correction is unavailable.</h2><p className="mt-2 text-sm font-semibold text-[#765f40]">{message || "No transcript text is substituted and no evidence was changed."}</p><button type="button" onClick={() => void load()} className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900"><RefreshCw size={14} aria-hidden="true" />Retry</button></section>;
 
@@ -703,7 +741,18 @@ export function TranscriptCorrectionDesk({
               : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" className="w-full" aria-label="Protected session recording" />}
           </div>
         ) : (
-          <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">The transcript is readable, but accepted correction is disabled until the verified recording is promoted to protected Quipsly media. This prevents “I listened” from becoming a paperwork checkbox with no playable source.</p>
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
+            <p>The transcript is readable, but accepted correction is disabled until the verified recording is prepared as protected Quipsly playback. This prevents “I listened” from becoming a paperwork checkbox with no playable source.</p>
+            {desk.recording?.eligibleForProtectedPlaybackPreparation ? (
+              <div className="mt-4">
+                <button type="button" onClick={() => void prepareProtectedPlayback()} disabled={preparingPlayback || busy} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {preparingPlayback ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}
+                  {preparingPlayback ? "Preparing protected playback…" : "Prepare protected playback"}
+                </button>
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-amber-900">Registers the existing verified source behind Quipsly’s access and release checks. It does not copy or alter the recording, rerun transcription, create work, send anything, or publish.</p>
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
 

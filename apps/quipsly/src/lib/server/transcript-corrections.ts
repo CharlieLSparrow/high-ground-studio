@@ -80,6 +80,19 @@ function playbackFromAsset(asset: any) {
   };
 }
 
+function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
+  if (!asset?.id) return null;
+  return {
+    id: asset.id as string,
+    status: text(asset.status) || "UNKNOWN",
+    kind: text(asset.kind) || "UNKNOWN",
+    fileName: text(asset.fileName) || "Session recording",
+    durationSeconds: typeof asset.durationSeconds === "number" ? asset.durationSeconds : null,
+    eligibleForProtectedPlaybackPreparation:
+      gateAllowed && text(asset.status).toUpperCase() === "VERIFIED",
+  };
+}
+
 async function transcriptProcessingGate(prisma: any, recordingAsset: any) {
   const [receipts, room] = await Promise.all([
     prisma.mobileCaptureFinalizationReceipt.findMany({
@@ -326,6 +339,7 @@ export async function readTranscriptCorrectionDesk(input: {
       transcriptStatus: job?.status ?? null,
       processing: transcriptProcessingSummary(job),
       gate: { allowed: false, error: "No recording-backed transcript is available." },
+      recording: null,
       playback: null,
       segments: [],
       boundaries: transcriptCorrectionBoundaries(),
@@ -342,6 +356,7 @@ export async function readTranscriptCorrectionDesk(input: {
       transcriptStatus: job.status,
       processing: transcriptProcessingSummary(job),
       gate,
+      recording: recordingForPlaybackPreparation(job.asset, false),
       playback: null,
       segments: [],
       boundaries: transcriptCorrectionBoundaries(),
@@ -356,6 +371,7 @@ export async function readTranscriptCorrectionDesk(input: {
     transcriptStatus: job.status,
     processing: transcriptProcessingSummary(job),
     gate,
+    recording: recordingForPlaybackPreparation(job.asset, true),
     playback: playbackFromAsset(job.asset),
     segments: job.segments.map((segment: any) => {
       const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;

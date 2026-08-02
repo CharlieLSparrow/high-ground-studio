@@ -27,6 +27,11 @@ assert.match(finalization, /studioAssetAttachment\.upsert/,
 assert.match(finalization, /studioWorkflowJob\.create/,
   "released Capture sources must enter the durable processing ledger");
 assert.match(finalization, /type: isVideo \? "asset-proxy" : "asset-register"/);
+assert.match(finalization, /status: isVideo \? "queued" : "completed"/,
+  "video proxy work must remain queued while synchronous audio registration is complete");
+assert.match(finalization, /quipsly-asset-registration-receipt-v1/,
+  "audio registration must leave a durable completed receipt instead of an orphaned queue row");
+assert.match(finalization, /originalRemainsSourceTruth: true/);
 assert.match(finalization, /proxy-required-before-collaborative-playback/);
 assert.match(finalization, /canonicalField:\s+"StudioEpisodeProduction\.productionJson\.importedMedia"/);
 assert.match(finalization, /addCaptureGroupOffsetsToImportedMedia/,

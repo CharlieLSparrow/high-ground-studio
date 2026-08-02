@@ -118,7 +118,14 @@ describe("mobile transcript run versioning", () => {
     } as any);
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recordingAssetId: "asset-1" }) }));
     expect(response.status).toBe(202);
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "job-v1" }, data: expect.objectContaining({ status: "QUEUED" }) }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "job-v1" },
+      data: expect.objectContaining({
+        status: "QUEUED",
+        requestedBy: "user-1",
+        resultJson: expect.objectContaining({ requestedByUserId: "user-1" }),
+      }),
+    }));
     expect(create).not.toHaveBeenCalled();
   });
 

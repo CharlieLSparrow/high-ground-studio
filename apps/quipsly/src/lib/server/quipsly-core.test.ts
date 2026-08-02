@@ -1,4 +1,5 @@
 import {
+  createWorkflowJob,
   createNestWithOwner,
   QuipslyNestCreateIdentityConflictError,
 } from "@/lib/server/quipsly-core";
@@ -222,5 +223,80 @@ describe("createNestWithOwner ownership and replay boundary", () => {
       prisma: prisma as never,
     })).rejects.toThrow("readable name");
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("createWorkflowJob synchronous registration receipts", () => {
+  it("records an already-attached asset as completed instead of queueing nonexistent work", async () => {
+    const create = jest.fn(async ({ data }: any) => ({
+      id: "job-register-1",
+      ...data,
+      error: null,
+    }));
+
+    const result = await createWorkflowJob({
+      type: "asset-register",
+      source: "recording-media-promotion",
+      projectId: "project-1",
+      assetId: "asset-1",
+      inputJson: { sourceId: "source-1" },
+      prisma: { studioWorkflowJob: { create } } as never,
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: "asset-register",
+        status: "completed",
+        startedAt: expect.any(Date),
+        completedAt: expect.any(Date),
+        inputJson: { sourceId: "source-1" },
+        resultJson: {
+          schema: "quipsly-asset-registration-receipt-v1",
+          state: "completed",
+          assetId: "asset-1",
+          projectId: "project-1",
+          source: "recording-media-promotion",
+          completedSynchronously: true,
+          originalRemainsSourceTruth: true,
+        },
+      }),
+    });
+    const data = create.mock.calls[0]?.[0]?.data;
+    expect(data.startedAt).toEqual(data.completedAt);
+    expect(result).toMatchObject({
+      id: "job-register-1",
+      type: "asset-register",
+      status: "completed",
+      assetId: "asset-1",
+      result: {
+        schema: "quipsly-asset-registration-receipt-v1",
+        state: "completed",
+      },
+    });
+  });
+
+  it("leaves real asynchronous work on the database queue default", async () => {
+    const create = jest.fn(async ({ data }: any) => ({
+      id: "job-proxy-1",
+      ...data,
+      status: "queued",
+      resultJson: null,
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    }));
+
+    const result = await createWorkflowJob({
+      type: "asset-proxy",
+      source: "recording-media-promotion",
+      assetId: "asset-video-1",
+      prisma: { studioWorkflowJob: { create } } as never,
+    });
+
+    const data = create.mock.calls[0]?.[0]?.data;
+    expect(data).not.toHaveProperty("status");
+    expect(data).not.toHaveProperty("startedAt");
+    expect(data).not.toHaveProperty("completedAt");
+    expect(result.status).toBe("queued");
   });
 });

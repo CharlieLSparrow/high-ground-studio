@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
@@ -389,12 +390,95 @@ function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureRecei
   </section>;
 }
 
+function HeldSourceReleaseControl({
+  source,
+}: {
+  source: SessionSourceEvidence["sources"][number];
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const release = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setNotice(null);
+    if (!source.uploadSessionId) {
+      setNotice({ tone: "error", message: "This source has no immutable upload-session binding." });
+      return;
+    }
+    if (reason.trim().length < 20 || !confirmed) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/mobile/capture/uploads/resumable/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadSessionId: source.uploadSessionId, reason: reason.trim() }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        processingDisposition?: string;
+        transcriptDisposition?: string;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error || "Quipsly could not release this held source.");
+      }
+      setNotice({
+        tone: "success",
+        message: `${humanize(body.processingDisposition)} processing · ${humanize(body.transcriptDisposition)} transcript. Nest saved the audited staff decision and is refreshing source evidence.`,
+      });
+      router.refresh();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Quipsly could not release this held source.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reasonId = `release-reason-${source.recordingAssetId}`;
+  const confirmationId = `release-confirmation-${source.recordingAssetId}`;
+  return <form onSubmit={release} className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4">
+    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-800">Staff release review</p>
+    <h4 className="mt-1 font-serif text-lg font-black text-violet-950">Release these exact verified bytes</h4>
+    <p className="mt-2 text-xs font-semibold leading-5 text-violet-900">This is an exceptional external-import boundary. It does not invent phone START/STOP receipts. Media can proceed only after this audited decision; transcript release still requires current transcription consent from every signed-in participant.</p>
+    <label htmlFor={reasonId} className="mt-4 block text-xs font-black text-violet-950">Why is this exact source safe to release?</label>
+    <textarea
+      id={reasonId}
+      value={reason}
+      onChange={(event) => setReason(event.target.value)}
+      rows={3}
+      maxLength={2000}
+      placeholder="Record the source review, all-party consent, and intended session use."
+      className="mt-2 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122] outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+    />
+    <p className="mt-1 text-[10px] font-bold text-violet-800">{reason.trim().length}/20 minimum characters</p>
+    <label htmlFor={confirmationId} className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-white p-3 text-xs font-bold leading-5 text-violet-950">
+      <input id={confirmationId} type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-violet-700" />
+      <span>I reviewed this exact source ledger and the current all-party recording consent.</span>
+    </label>
+    <button type="submit" disabled={busy || !confirmed || reason.trim().length < 20} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full bg-violet-800 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45">
+      {busy ? <><LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />Rechecking immutable source…</> : "Release exact source"}
+    </button>
+    {notice ? <p role="status" className={`mt-3 rounded-lg border p-3 text-xs font-black leading-5 ${notice.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-rose-200 bg-rose-50 text-rose-950"}`}>{notice.message}</p> : null}
+  </form>;
+}
+
 function SessionSourceEvidenceCard({
   roomId,
   evidence,
+  canReleaseHeldMedia,
 }: {
   roomId: string;
   evidence: SessionSourceEvidence;
+  canReleaseHeldMedia: boolean;
 }) {
   const exact = evidence.counts.VERIFIED_MATCH;
   const held = evidence.counts.HELD;
@@ -426,7 +510,9 @@ function SessionSourceEvidenceCard({
         <div><p className="font-black uppercase tracking-wide text-[#8a7354]">Server boundaries</p><p className="mt-1 break-all font-mono">START {source.startBoundary?.receiptId || "absent"}</p><p className="mt-1 break-all font-mono">STOP {source.stopBoundary?.receiptId || "absent"}</p></div>
       </div>
 
-      {source.issues.length ? <ul className={`mt-4 space-y-1 rounded-lg border p-3 text-xs font-bold leading-5 ${drift ? "border-rose-200 bg-rose-50 text-rose-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>{source.issues.map((issue) => <li key={issue}>• {issue}</li>)}</ul> : verified ? <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black leading-5 text-emerald-950">Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and applied START/STOP boundaries.</p> : <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-black leading-5 text-amber-950">The immutable source identity matches, but its processing policy remains held. Review the saved disposition before creating transcript or output work.</p>}
+      {source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT" && source.releaseAudit ? <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-950"><p className="font-black">Audited external-import boundary</p><p className="mt-1">No phone START/STOP receipts exist. Staff accepted the exact verified source after all-party consent review on {new Date(source.releaseAudit.releasedAt).toLocaleString()}.</p><p className="mt-2 font-semibold">{source.releaseAudit.reason}</p>{source.releaseAudit.transcriptReleasedAt ? <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-violet-800">Transcript separately released {new Date(source.releaseAudit.transcriptReleasedAt).toLocaleString()}</p> : <p className="mt-2 text-[10px] font-black uppercase tracking-wide text-amber-800">Transcript remains governed by its separate consent disposition</p>}</div> : null}
+
+      {source.issues.length ? <ul className={`mt-4 space-y-1 rounded-lg border p-3 text-xs font-bold leading-5 ${drift ? "border-rose-200 bg-rose-50 text-rose-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>{source.issues.map((issue) => <li key={issue}>• {issue}</li>)}</ul> : verified ? <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black leading-5 text-emerald-950">{source.boundaryAuthority === "STAFF_REVIEWED_EXTERNAL_IMPORT" ? "Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and durable staff release audit. No phone boundary is inferred." : "Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and applied START/STOP boundaries."}</p> : <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-black leading-5 text-amber-950">The immutable source identity matches, but its processing policy remains held. Review the saved disposition before creating transcript or output work.</p>}
 
       <details className="mt-3 rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
         <summary className="cursor-pointer text-xs font-black text-[#5b472f]">Inspect exact cloud identity</summary>
@@ -437,6 +523,13 @@ function SessionSourceEvidenceCard({
           <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Dispositions</dt><dd className="mt-1">{humanize(source.processingDisposition)} processing · {humanize(source.transcriptDisposition)} transcript</dd></div>
         </dl>
       </details>
+      {source.status === "HELD" && source.uploadSessionId
+        ? source.sourceOrigin === "NEST_EXTERNAL_IMPORT"
+          ? canReleaseHeldMedia
+            ? <HeldSourceReleaseControl source={source} />
+            : <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-black leading-5 text-amber-950">Staff review is required to release this held external import. No participant-facing control can bypass the immutable source and consent checks.</p>
+          : <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-black leading-5 text-amber-950">This native Capture source remains held. Restore or reconcile its signed START/STOP receipt trail; the external-import exception is unavailable.</p>
+        : null}
     </article>;
   };
 
@@ -1103,7 +1196,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1112,6 +1205,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sourceEvidence?: SessionSourceEvidence;
+  canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
   sessionNotes?: SessionWorkspaceNote[];
@@ -1122,6 +1216,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 }) {
   const [packet, setPacket] = useState<SessionReviewPacket | null>(null);
   const [loading, setLoading] = useState(mode === "transcript");
+  const [runningTranscript, setRunningTranscript] = useState(false);
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
   const [busyLaneId, setBusyLaneId] = useState<string | null>(null);
@@ -1172,6 +1267,45 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       setMessage(error instanceof Error ? error.message : "The review packet was not built.");
     } finally {
       setBuildingPacket(false);
+    }
+  }
+
+  async function runTranscript() {
+    const transcriptJobId = packet?.transcriptJob?.id;
+    if (!transcriptJobId) return;
+    const retryFromRecording = packet?.transcriptJob?.status === "FAILED";
+    const recordingAssetId = packet?.transcriptJob?.asset?.id;
+    if (retryFromRecording && !recordingAssetId) {
+      setMessage("This failed transcript has no immutable recording binding to retry from.");
+      return;
+    }
+    setRunningTranscript(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(retryFromRecording ? { recordingAssetId } : { transcriptJobId }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        status?: string;
+        alreadyCompleted?: boolean;
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error || "Quipsly could not start this transcript job.");
+      }
+      await load();
+      setMessage(body.alreadyCompleted
+        ? "This exact transcript job was already complete; Quipsly created no duplicate transcript."
+        : body.status === "COMPLETED"
+          ? "Transcription completed. Review every segment against playback before relying on derived notes or work."
+          : "Transcription started from the released immutable source. Refresh while the durable worker runs.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Quipsly could not start this transcript job.");
+    } finally {
+      setRunningTranscript(false);
     }
   }
 
@@ -1341,7 +1475,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         <SessionRecordingImportCard roomId={roomId} preparation={preparation} />
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
-        <SessionSourceEvidenceCard roomId={roomId} evidence={sourceEvidence} />
+        <SessionSourceEvidenceCard roomId={roomId} evidence={sourceEvidence} canReleaseHeldMedia={canReleaseHeldMedia} />
       </> : null}
 
       {mode === "notes" ? <SessionNotesWorkspace
@@ -1369,7 +1503,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       {mode === "transcript" ? (loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the Session’s transcript evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript workspace is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved Session was not changed.</p></section> : <>
         <section className="grid gap-4 lg:grid-cols-3" aria-label="Session evidence status">
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><ShieldCheck className="text-sky-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Consent & release</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : packet.transcriptProcessingGate?.allowed ? "RELEASED" : "NOT_READY")}`}>{held ? "Transcript held" : packet.transcriptProcessingGate?.allowed ? "Release evidence verified" : "Release not ready"}</p><p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">{held ? packet.transcriptProcessingGate?.error : "Packet review reads only released transcript evidence; recording and consent are not changed here."}</p><p className="mt-2 text-xs font-bold text-[#8a7354]">{consentSnapshot.granted}/{consentSnapshot.total} persisted consent record(s) granted · {consentSnapshot.transcriptionPermitted} permit transcription</p></div>
-          <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><FileAudio className="text-violet-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Transcript</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.transcriptJob?.status)}`}>{humanize(packet.transcriptJob?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.transcriptJob?.segmentCount ?? 0} persisted segment(s) · {packet.transcriptJob?.asset?.fileName || "no bound recording asset"}</p></div>
+          <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><FileAudio className="text-violet-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Transcript</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.transcriptJob?.status)}`}>{humanize(packet.transcriptJob?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.transcriptJob?.segmentCount ?? 0} persisted segment(s) · {packet.transcriptJob?.asset?.fileName || "no bound recording asset"}</p>{packet.packet?.safeActions?.find((action) => action.id === "repair-transcript-first" && action.enabled) ? <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3"><button type="button" onClick={() => void runTranscript()} disabled={runningTranscript || loading} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{runningTranscript ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Mic2 size={15} aria-hidden="true" />}{runningTranscript ? "Starting durable worker…" : packet.transcriptJob?.status === "FAILED" ? "Retry transcription" : "Start transcription"}</button><p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">Runs only the released, source-bound transcript job. It creates derived text—not notes, tasks, goals, or client delivery.</p></div> : null}</div>
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><MessageSquareText className="text-emerald-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Packet</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.packet?.status)}`}>{humanize(packet.packet?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.packet?.nextAction}</p></div>
         </section>
 

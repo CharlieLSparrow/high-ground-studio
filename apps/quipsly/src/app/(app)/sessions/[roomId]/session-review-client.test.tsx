@@ -4,9 +4,11 @@ import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
 import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewNoteCandidate, SessionReviewPacket } from "./session-review-model";
+import type { SessionSourceEvidence } from "./session-source-evidence-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+const mockRouterRefresh = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mockRouterRefresh }) }));
 
 const candidate: SessionReviewGoalCandidate = {
   id: "packet-goal-build-1-segment-1",
@@ -183,10 +185,53 @@ function packetReadyToBuild() {
   };
 }
 
+function heldSourceEvidence(): SessionSourceEvidence {
+  return {
+    sources: [{
+      recordingAssetId: "held-asset-1",
+      fileName: "coaching-import.wav",
+      kind: "LOCAL_AUDIO",
+      recordingStatus: "HELD",
+      status: "HELD" as const,
+      captureId: "capture-1",
+      captureGroupId: null,
+      uploadSessionId: "aba9da45-c487-488d-99ae-13ffbf27f7bc",
+      startBoundary: null,
+      stopBoundary: null,
+      sourceOrigin: "NEST_EXTERNAL_IMPORT",
+      boundaryAuthority: null,
+      cloud: {
+        sha256: "a".repeat(64),
+        byteSize: "756742",
+        generation: "local-generation-1",
+        bucket: "local-development",
+        objectPath: "mobile/coaching-import.wav",
+        verifiedAt: "2026-08-02T20:00:00.000Z",
+      },
+      captureRuntime: {
+        appVersion: null,
+        appBuild: null,
+        deviceModel: null,
+        operatingSystem: null,
+        audioRoute: null,
+      },
+      processingDisposition: "HELD",
+      transcriptDisposition: "HELD",
+      releaseAudit: null,
+      issues: [
+        "The applied START boundary is incomplete.",
+        "The applied STOP boundary is incomplete.",
+      ],
+    }],
+    counts: { VERIFIED_MATCH: 0, HELD: 1, DRIFT: 0, INCOMPLETE: 0 },
+  };
+}
+
 describe("Session review goal candidates", () => {
   const originalFetch = global.fetch;
   afterEach(() => {
     global.fetch = originalFetch;
+    mockRouterRefresh.mockReset();
     jest.restoreAllMocks();
   });
 
@@ -279,6 +324,85 @@ describe("Session review goal candidates", () => {
     expect(
       fetchMock.mock.calls.some(([url]) => String(url).includes("/transcripts/")),
     ).toBe(false);
+  });
+
+  it("starts the durable released transcript job from the Session workspace", async () => {
+    const queued = packetReadyToBuild();
+    queued.transcriptJob = {
+      ...queued.transcriptJob!,
+      status: "QUEUED",
+      segmentCount: 0,
+    };
+    queued.packet = {
+      ...queued.packet!,
+      status: "NOT_READY",
+      safeActions: [{
+        id: "repair-transcript-first",
+        label: "Repair transcript first",
+        enabled: true,
+        risk: "medium",
+        why: "The released transcript job is queued.",
+        boundary: "Creates derived transcript evidence only.",
+      }],
+    };
+    const running = JSON.parse(JSON.stringify(queued)) as SessionReviewPacket;
+    running.transcriptJob!.status = "RUNNING";
+    running.packet!.safeActions = [];
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(queued))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "RUNNING", executionRequested: true }, 202))
+      .mockResolvedValueOnce(jsonResponse(running));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }} />);
+    const start = await screen.findByRole("button", { name: "Start transcription" });
+    expect(screen.getByText(/creates derived text—not notes, tasks, goals, or client delivery/i)).toBeInTheDocument();
+    await user.click(start);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/run");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ transcriptJobId: "job-1" });
+    expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start transcription" })).not.toBeInTheDocument();
+  });
+
+  it("retries a failed transcript from its immutable recording binding", async () => {
+    const failed = packetReadyToBuild();
+    failed.transcriptJob = {
+      ...failed.transcriptJob!,
+      status: "FAILED",
+      segmentCount: 0,
+    };
+    failed.packet = {
+      ...failed.packet!,
+      status: "NOT_READY",
+      safeActions: [{
+        id: "repair-transcript-first",
+        label: "Repair transcript first",
+        enabled: true,
+        risk: "medium",
+        why: "The released transcript job failed.",
+        boundary: "Creates a retry from the immutable recording binding.",
+      }],
+    };
+    const running = JSON.parse(JSON.stringify(failed)) as SessionReviewPacket;
+    running.transcriptJob!.status = "RUNNING";
+    running.packet!.safeActions = [];
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(failed))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "RUNNING", executionRequested: false }, 202))
+      .mockResolvedValueOnce(jsonResponse(running));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }} />);
+    await user.click(await screen.findByRole("button", { name: "Retry transcription" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ recordingAssetId: "asset-1" });
+    expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
   });
 
   it("persists source-grounded packet lane review without creating downstream work", async () => {
@@ -856,6 +980,7 @@ describe("Session review goal candidates", () => {
         uploadSessionId: "upload-1",
         startBoundary: { receiptId: "start-receipt-1", occurredAt: "2026-07-29T15:00:00.000Z" },
         stopBoundary: { receiptId: "stop-receipt-1", occurredAt: "2026-07-29T15:04:00.000Z" },
+        sourceOrigin: "CAPTURE" as const,
         cloud: {
           sha256: "a".repeat(64),
           byteSize: "4096",
@@ -898,6 +1023,117 @@ describe("Session review goal candidates", () => {
       "/api/sessions/room-1/source-evidence",
     );
     expect(screen.queryByText(/actor-private/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a held source to participants without exposing a release bypass", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
+      consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }}
+      sourceEvidence={heldSourceEvidence()}
+    />);
+
+    expect(screen.getByText(/staff review is required to release this held external import/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release exact source" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/why is this exact source safe to release/i)).not.toBeInTheDocument();
+  });
+
+  it("never offers the external-import exception to a native Capture source", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    const evidence = heldSourceEvidence();
+    evidence.sources[0].sourceOrigin = "CAPTURE";
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
+      consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }}
+      sourceEvidence={evidence}
+      canReleaseHeldMedia
+    />);
+
+    expect(screen.getByText(/restore or reconcile its signed START\/STOP receipt trail/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release exact source" })).not.toBeInTheDocument();
+  });
+
+  it("requires an exact-source acknowledgement and sends only the audited release contract", async () => {
+    const user = userEvent.setup();
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      processingDisposition: "RELEASED",
+      transcriptDisposition: "HELD",
+    }));
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
+      consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }}
+      sourceEvidence={heldSourceEvidence()}
+      canReleaseHeldMedia
+    />);
+
+    const releaseButton = screen.getByRole("button", { name: "Release exact source" });
+    expect(releaseButton).toBeDisabled();
+    await user.type(screen.getByLabelText(/why is this exact source safe to release/i), "All three participants consented and I reviewed these exact bytes.");
+    expect(releaseButton).toBeDisabled();
+    await user.click(screen.getByLabelText(/I reviewed this exact source ledger/i));
+    expect(releaseButton).toBeEnabled();
+    await user.click(releaseButton);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mobile/capture/uploads/resumable/release",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      uploadSessionId: "aba9da45-c487-488d-99ae-13ffbf27f7bc",
+      reason: "All three participants consented and I reviewed these exact bytes.",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Released processing · Held transcript");
+    expect(screen.getByRole("status")).not.toHaveTextContent(/transcript released/i);
+    expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the durable external-import authority without inventing phone boundaries", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    const evidence = heldSourceEvidence();
+    evidence.sources[0] = {
+      ...evidence.sources[0],
+      status: "VERIFIED_MATCH",
+      recordingStatus: "VERIFIED",
+      processingDisposition: "RELEASED",
+      transcriptDisposition: "RELEASED",
+      boundaryAuthority: "STAFF_REVIEWED_EXTERNAL_IMPORT",
+      releaseAudit: {
+        releasedAt: "2026-08-02T20:00:00.000Z",
+        reason: "All three participants consented and staff reviewed these exact imported bytes.",
+        transcriptReleasedAt: "2026-08-02T20:00:00.000Z",
+        transcriptReason: "All three participants consented to transcription.",
+      },
+      issues: [],
+    };
+    evidence.counts = { VERIFIED_MATCH: 1, HELD: 0, DRIFT: 0, INCOMPLETE: 0 };
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
+      consentSnapshot={{ total: 3, granted: 3, transcriptionPermitted: 3 }}
+      sourceEvidence={evidence}
+      canReleaseHeldMedia
+    />);
+
+    expect(screen.getByText("Audited external-import boundary")).toBeInTheDocument();
+    expect(screen.getByText(/No phone START\/STOP receipts exist/i)).toBeInTheDocument();
+    expect(screen.getByText(/All three participants consented and staff reviewed/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transcript separately released/i)).toBeInTheDocument();
+    expect(screen.getByText("START absent")).toBeInTheDocument();
+    expect(screen.getByText("STOP absent")).toBeInTheDocument();
+    expect(screen.getByText(/No phone boundary is inferred/i)).toBeInTheDocument();
+    expect(screen.queryByText(/and applied START\/STOP boundaries/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release exact source" })).not.toBeInTheDocument();
   });
 
   it("shows simulator uploads as plumbing proof rather than usable production content", async () => {

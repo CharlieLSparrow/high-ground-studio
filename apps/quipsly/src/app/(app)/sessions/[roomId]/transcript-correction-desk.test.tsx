@@ -61,6 +61,14 @@ function desk(playback: boolean) {
       workerBuildId: "build-1",
     },
     gate: { allowed: true },
+    recording: {
+      id: "asset-1",
+      status: "VERIFIED",
+      kind: "LOCAL_AUDIO",
+      fileName: "session.wav",
+      durationSeconds: 120,
+      eligibleForProtectedPlaybackPreparation: true,
+    },
     playback: playback ? {
       sourceId: "source-1",
       url: "/api/ingest/media/source-1",
@@ -123,6 +131,22 @@ describe("TranscriptCorrectionDesk", () => {
     const button = await screen.findByRole("button", { name: /correct against playback/i });
     expect(button).toBeDisabled();
     expect(screen.getByText(/prevents “I listened” from becoming a paperwork checkbox/i)).toBeInTheDocument();
+  });
+
+  it("prepares protected playback through the canonical recording handoff", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(false) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, message: "Verified recording is now available as Quipsly media." }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => desk(true) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /prepare protected playback/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/recordings/promote");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ recordingAssetId: "asset-1" });
+    expect(await screen.findByLabelText("Protected session recording")).toBeInTheDocument();
   });
 
   it("records a playback-backed reviewed-as-is decision without fabricating a correction", async () => {

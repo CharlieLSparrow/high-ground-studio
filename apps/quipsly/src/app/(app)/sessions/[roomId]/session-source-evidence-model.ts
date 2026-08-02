@@ -25,6 +25,10 @@ type FinalizationEvidenceRow = {
   processingDisposition: string;
   transcriptDisposition: string;
   recordingAssetId: string | null;
+  releaseReason?: string | null;
+  releasedAt?: Date | string | null;
+  transcriptReleaseReason?: string | null;
+  transcriptReleasedAt?: Date | string | null;
   metadataJson: unknown;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -59,6 +63,8 @@ export type SessionSourceEvidence = {
     uploadSessionId: string | null;
     startBoundary: { receiptId: string; occurredAt: string } | null;
     stopBoundary: { receiptId: string; occurredAt: string } | null;
+    sourceOrigin: "CAPTURE" | "NEST_EXTERNAL_IMPORT";
+    boundaryAuthority?: "CAPTURE_RECEIPTS" | "STAFF_REVIEWED_EXTERNAL_IMPORT" | null;
     cloud: {
       sha256: string | null;
       byteSize: string | null;
@@ -76,6 +82,12 @@ export type SessionSourceEvidence = {
     };
     processingDisposition: string | null;
     transcriptDisposition: string | null;
+    releaseAudit?: {
+      releasedAt: string;
+      reason: string;
+      transcriptReleasedAt: string | null;
+      transcriptReason: string | null;
+    } | null;
     issues: string[];
   }>;
   counts: Record<SessionSourceEvidenceStatus, number>;
@@ -185,6 +197,13 @@ function isProviderReceiptSlot(row: RecordingAssetEvidenceRow) {
     && manifest.source === "provider-recording-receipt-slot";
 }
 
+function isNestExternalRecordingImport(manifest: UnknownRecord) {
+  const profile = object(manifest.reportedSourceProfile);
+  return profile.kind === "quipsly-nest-external-recording-import-v1"
+    && profile.source === "nest-session-recordings"
+    && profile.originalPreserved === true;
+}
+
 export function buildSessionSourceEvidence(input: {
   roomId: string;
   recordingAssets: RecordingAssetEvidenceRow[];
@@ -219,6 +238,20 @@ export function buildSessionSourceEvidence(input: {
       const assetSize = scalarText(recording.byteSize);
       const manifestGeneration = scalarText(manifest.storageGeneration);
       const finalizationStartReceiptId = text(finalization?.startReceiptId);
+      const releaseReason = text(finalization?.releaseReason);
+      const releasedAt = iso(finalization?.releasedAt);
+      const transcriptReleaseReason = text(finalization?.transcriptReleaseReason);
+      const transcriptReleasedAt = iso(finalization?.transcriptReleasedAt);
+      const externalImport = isNestExternalRecordingImport(manifest);
+      const durableStaffRelease = Boolean(
+        externalImport
+        && !start
+        && !stop
+        && finalization?.processingDisposition === "RELEASED"
+        && releaseReason
+        && releaseReason.length >= 20
+        && releasedAt,
+      );
 
       sameValue(issues, "Upload session", bindingUploadSessionId, uploadSessionId);
       sameValue(issues, "Capture ID", bindingCaptureId, captureId);
@@ -248,10 +281,10 @@ export function buildSessionSourceEvidence(input: {
       if (!bindingBucket || !recording.storageBucket) missing.push("The storage-bucket comparison is absent.");
       if (!bindingObjectPath || !recording.storageObjectPath) missing.push("The storage-path comparison is absent.");
       if (!bindingGeneration || !manifestGeneration) missing.push("The object-generation comparison is absent.");
-      if (!bindingStartReceiptId || !finalizationStartReceiptId || !start) {
+      if (!durableStaffRelease && (!bindingStartReceiptId || !finalizationStartReceiptId || !start)) {
         missing.push("The applied START boundary is incomplete.");
       }
-      if (!stop) missing.push("The applied STOP boundary is incomplete.");
+      if (!durableStaffRelease && !stop) missing.push("The applied STOP boundary is incomplete.");
       if (manifest.exactBytesVerified !== true) missing.push("The RecordingAsset manifest does not claim exact-byte verification.");
       if (
         !["VERIFIED", "HELD"].includes(String(recording.status))
@@ -263,6 +296,11 @@ export function buildSessionSourceEvidence(input: {
 
       const processingDisposition = text(finalization?.processingDisposition);
       const transcriptDisposition = text(finalization?.transcriptDisposition);
+      const boundaryAuthority = start && stop
+        ? "CAPTURE_RECEIPTS" as const
+        : durableStaffRelease
+          ? "STAFF_REVIEWED_EXTERNAL_IMPORT" as const
+          : null;
       const status: SessionSourceEvidenceStatus = issues.length
         ? "DRIFT"
         : processingDisposition && processingDisposition !== "RELEASED"
@@ -286,6 +324,10 @@ export function buildSessionSourceEvidence(input: {
         stopBoundary: stop
           ? { receiptId: stop.row.receiptId, occurredAt: stop.occurredAt }
           : null,
+        sourceOrigin: externalImport
+          ? "NEST_EXTERNAL_IMPORT" as const
+          : "CAPTURE" as const,
+        boundaryAuthority,
         cloud: {
           sha256: bindingHash ?? assetHash,
           byteSize: bindingSize ?? assetSize,
@@ -297,6 +339,14 @@ export function buildSessionSourceEvidence(input: {
         captureRuntime: sourceRuntime(manifest),
         processingDisposition,
         transcriptDisposition,
+        releaseAudit: durableStaffRelease && releasedAt && releaseReason
+          ? {
+              releasedAt,
+              reason: releaseReason,
+              transcriptReleasedAt,
+              transcriptReason: transcriptReleaseReason,
+            }
+          : null,
         issues: [...issues, ...missing],
       };
     });

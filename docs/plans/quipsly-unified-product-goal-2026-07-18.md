@@ -6580,3 +6580,37 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   zero-traffic Nest import/build/reconcile/play/outsider-denial acceptance, and
   only then promotion. Full evidence is in
   `docs/coordination/2026-08-02-episode-collaboration-proxy-gcs-qualification.md`.
+
+### Held coaching recording to protected transcript playback checkpoint — 2026-08-02
+
+- Operated the retained synthetic coaching Session through three separately
+  persisted participant consent grants, explicit scoped-coach processing and
+  transcript release, exact local-vault source verification, durable local
+  Whisper transcription, canonical media promotion, signed-in playback, and
+  playback-linked correction review.
+- Full playback returned the exact 756,742 source bytes and SHA-256. A 384-byte
+  range returned HTTP 206 and matched the same source slice. Signed-out access
+  returned 401; a newly distinct verified nonstaff identity with no project,
+  room, booking, or participant grant received privacy-preserving 404. The old
+  fixture called `outsider` was correctly identified as a collaborating room
+  producer with VIEWER access and is no longer misused for privacy proof.
+- The transcript desk buffered and played the 17.157914-second protected
+  source, staged the obvious `Quipsley` to `Quipsly` correction, and kept the
+  acceptance action disabled until a person attests to exact-timestamp
+  listening. The draft was canceled: 0 corrections, 0 verifications, 0/5
+  reviewed segments, and no packet/note/task/goal or external effect.
+- Fixed requeue requester provenance, added a lifecycle-owned local transcript
+  worker, and made external-import playback preparation reachable through the
+  mature protected-media route. `asset-register` now records truthful completed
+  synchronous receipts; a guarded dry-run-first operator reconciled seven
+  legacy rows with surviving canonical assets and held 61 orphaned rows.
+- The exceptional staff-reviewed boundary now requires the persisted
+  `quipsly-nest-external-recording-import-v1` source profile. A native Capture
+  source with missing START/STOP receipts remains incomplete and cannot borrow
+  the import exception or its UX language.
+- Verification passes: 21 lifecycle/worker/fixture tests, 82 focused Nest tests,
+  245 Quipsly contracts, strict domain/Nest TypeScript, and live local doctor.
+  Disposable test credentials were rotated and trashed. This is synthetic
+  local evidence, not a genuine coaching workflow, physical-iPhone capture, or
+  human transcript acceptance. Full evidence is in
+  `docs/coordination/2026-08-02-coaching-held-release-transcript-operation.md`.

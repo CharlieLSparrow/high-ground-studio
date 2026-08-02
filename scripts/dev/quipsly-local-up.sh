@@ -25,6 +25,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-}"
     "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-}"
     "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-http://127.0.0.1:3012}"
+    "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE:-0}"
     GCLOUD_PROJECT=quipsly-reef
     GOOGLE_CLOUD_PROJECT=quipsly-reef
   )
@@ -67,6 +68,21 @@ if [[ "${1:-}" == "--run-media-worker" ]]; then
   exec /usr/bin/env "${worker_environment[@]}" "${worker_command[@]}"
 fi
 
+if [[ "${1:-}" == "--run-transcript-worker" ]]; then
+  cd "${script_repo_root}"
+  exec /usr/bin/env \
+    "DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}" \
+    "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-}" \
+    "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-}" \
+    "QUIPSLY_LOCAL_WHISPER_EXECUTABLE=${QUIPSLY_LOCAL_WHISPER_EXECUTABLE:?Missing local Whisper executable}" \
+    "QUIPSLY_LOCAL_WHISPER_MODEL=${QUIPSLY_LOCAL_WHISPER_MODEL:-large-v3-turbo}" \
+    "QUIPSLY_LOCAL_WHISPER_DEVICE=${QUIPSLY_LOCAL_WHISPER_DEVICE:-cpu}" \
+    "QUIPSLY_LOCAL_WHISPER_LANGUAGE=${QUIPSLY_LOCAL_WHISPER_LANGUAGE:-en}" \
+    "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-local-development}" \
+    "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
+    "${script_repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs"
+fi
+
 replace_existing=0
 if [[ "${1:-}" == "--replace" ]]; then
   replace_existing=1
@@ -99,6 +115,25 @@ docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
 media_worker_label="com.quipsly.local.media-worker"
+transcript_worker_label="com.quipsly.local.transcript-worker"
+local_whisper_executable="${QUIPSLY_LOCAL_WHISPER_EXECUTABLE:-}"
+if [[ -z "${local_whisper_executable}" ]]; then
+  local_whisper_executable="$(command -v whisper 2>/dev/null || true)"
+fi
+if [[ -z "${local_whisper_executable}" && -x "/opt/homebrew/Caskroom/miniconda/base/bin/whisper" ]]; then
+  local_whisper_executable="/opt/homebrew/Caskroom/miniconda/base/bin/whisper"
+fi
+local_whisper_model="${QUIPSLY_LOCAL_WHISPER_MODEL:-large-v3-turbo}"
+local_whisper_device="${QUIPSLY_LOCAL_WHISPER_DEVICE:-cpu}"
+local_whisper_language="${QUIPSLY_LOCAL_WHISPER_LANGUAGE:-en}"
+local_transcript_worker_available=0
+if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
+  local_transcript_worker_available=1
+fi
+local_transcript_worker_build_id="${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-$(git rev-parse HEAD)}"
+if [[ -n "$(git status --porcelain=v1 --untracked-files=all -- scripts/dev/quipsly-local-transcript-worker.mjs)" ]]; then
+  local_transcript_worker_build_id="${local_transcript_worker_build_id}-dirty"
+fi
 umask 077
 mkdir -p "${state_dir}"
 
@@ -176,7 +211,7 @@ wait_for_port_release() {
 
 replace_macos_jobs() {
   local label
-  for label in "${nest_label}" "${firebase_label}" "${media_worker_label}"; do
+  for label in "${nest_label}" "${firebase_label}" "${media_worker_label}" "${transcript_worker_label}"; do
     if launchctl_job_exists "${label}"; then
       launchctl remove "${label}"
       printf "STOP  %-24s job %s\n" "Existing local service" "${label}"
@@ -188,6 +223,8 @@ replace_macos_jobs() {
     "${state_dir}/nest.label" \
     "${state_dir}/firebase.label" \
     "${state_dir}/media-worker.label" \
+    "${state_dir}/transcript-worker.label" \
+    "${state_dir}/transcript-worker.enabled" \
     "${state_dir}/repo-root" \
     "${state_dir}/source-revision"
 }
@@ -219,6 +256,12 @@ start_macos_job() {
       "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
       "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${local_capture_vault_root}" \
       "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${local_capture_upload_origin}" \
+      "QUIPSLY_LOCAL_WHISPER_EXECUTABLE=${local_whisper_executable}" \
+      "QUIPSLY_LOCAL_WHISPER_MODEL=${local_whisper_model}" \
+      "QUIPSLY_LOCAL_WHISPER_DEVICE=${local_whisper_device}" \
+      "QUIPSLY_LOCAL_WHISPER_LANGUAGE=${local_whisper_language}" \
+      "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${local_transcript_worker_available}" \
+      "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${local_transcript_worker_build_id}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
@@ -273,6 +316,58 @@ printf "PASS  %-24s current worktree schema\n" "Prisma client"
 echo "Applying committed local database migrations..."
 DATABASE_URL="${local_database_url}" pnpm exec prisma migrate deploy
 printf "PASS  %-24s committed schema current\n" "PostgreSQL migrations"
+
+rm -f \
+  "${state_dir}/transcript-worker.pid" \
+  "${state_dir}/transcript-worker.cwd" \
+  "${state_dir}/transcript-worker.enabled"
+if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
+  printf "%s\n" "${local_whisper_executable}" >"${state_dir}/transcript-worker.enabled"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if launchctl_job_exists "${transcript_worker_label}"; then
+      printf "REUSE %-24s job %s\n" "Transcript worker" "${transcript_worker_label}"
+    else
+      start_macos_job "transcript-worker" "${transcript_worker_label}" "--run-transcript-worker"
+      sleep 1
+    fi
+    if ! launchctl print "gui/$(id -u)/${transcript_worker_label}" 2>/dev/null | rg -q "state = running"; then
+      echo "Transcript worker did not remain running." >&2
+      tail -40 "${state_dir}/transcript-worker.log" >&2 || true
+      exit 1
+    fi
+    printf "PASS  %-24s durable local Whisper processor\n" "Transcript worker"
+  else
+    (
+      cd "${repo_root}"
+      nohup env \
+        DATABASE_URL="${local_database_url}" \
+        QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
+        QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${local_capture_vault_root}" \
+        QUIPSLY_LOCAL_WHISPER_EXECUTABLE="${local_whisper_executable}" \
+        QUIPSLY_LOCAL_WHISPER_MODEL="${local_whisper_model}" \
+        QUIPSLY_LOCAL_WHISPER_DEVICE="${local_whisper_device}" \
+        QUIPSLY_LOCAL_WHISPER_LANGUAGE="${local_whisper_language}" \
+        QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID="${local_transcript_worker_build_id}" \
+        node "${repo_root}/scripts/dev/quipsly-local-transcript-worker.mjs" \
+        >"${state_dir}/transcript-worker.log" 2>&1 &
+      record_process "transcript-worker" "$!" "${repo_root}"
+    )
+    sleep 1
+    transcript_worker_pid="$(sed -n '1p' "${state_dir}/transcript-worker.pid")"
+    if ! kill -0 "${transcript_worker_pid}" 2>/dev/null; then
+      echo "Transcript worker did not remain running." >&2
+      tail -40 "${state_dir}/transcript-worker.log" >&2 || true
+      exit 1
+    fi
+    printf "PASS  %-24s PID %s\n" "Transcript worker" "${transcript_worker_pid}"
+  fi
+else
+  if [[ "$(uname -s)" == "Darwin" ]] && launchctl_job_exists "${transcript_worker_label}"; then
+    launchctl remove "${transcript_worker_label}"
+  fi
+  rm -f "${state_dir}/transcript-worker.label"
+  printf "SKIP  %-24s install Whisper or set QUIPSLY_LOCAL_WHISPER_EXECUTABLE\n" "Transcript worker"
+fi
 
 rm -f "${state_dir}/media-worker.pid" "${state_dir}/media-worker.cwd"
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -379,6 +474,7 @@ else
         QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT="${local_media_root}" \
         QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="${local_capture_vault_root}" \
         QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="${local_capture_upload_origin}" \
+        QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE="${local_transcript_worker_available}" \
         GCLOUD_PROJECT=quipsly-reef \
         GOOGLE_CLOUD_PROJECT=quipsly-reef \
         pnpm dev \

@@ -7,6 +7,7 @@ Usage: scripts/dev/quipsly-local-doctor.sh
 
 Inspect the local Quipsly development lane:
   - Nest health and signed-out shell
+  - durable local transcript worker
   - durable local episode media worker
   - Firebase Auth emulator
   - PostgreSQL container
@@ -86,6 +87,41 @@ untracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) == "
 echo "Quipsly local services"
 report_http "Nest health" "${nest_url%/}/api/health" "200"
 report_http "Nest signed-out shell" "${nest_url%/}/login?callbackUrl=%2Fprojects" "200"
+
+transcript_worker_enabled=""
+if [[ -f "${state_dir}/transcript-worker.enabled" ]]; then
+  transcript_worker_enabled="$(sed -n '1p' "${state_dir}/transcript-worker.enabled")"
+fi
+if [[ -z "${transcript_worker_enabled}" ]]; then
+  printf "SKIP  %-24s Whisper CLI was unavailable at startup\n" "Transcript worker"
+elif [[ ! -x "${transcript_worker_enabled}" ]]; then
+  printf "FAIL  %-24s executable missing: %s\n" "Transcript worker" "${transcript_worker_enabled}"
+  failed=1
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  transcript_worker_label="com.quipsly.local.transcript-worker"
+  recorded_transcript_worker_label=""
+  if [[ -f "${state_dir}/transcript-worker.label" ]]; then
+    recorded_transcript_worker_label="$(tr -d '[:space:]' <"${state_dir}/transcript-worker.label")"
+  fi
+  if [[ "${recorded_transcript_worker_label}" == "${transcript_worker_label}" ]] \
+    && launchctl print "gui/$(id -u)/${transcript_worker_label}" 2>/dev/null | rg -q "state = running"; then
+    printf "PASS  %-24s job %s\n" "Transcript worker" "${transcript_worker_label}"
+  else
+    printf "FAIL  %-24s job %s is not launcher-owned and running\n" "Transcript worker" "${transcript_worker_label}"
+    failed=1
+  fi
+else
+  transcript_worker_pid=""
+  if [[ -f "${state_dir}/transcript-worker.pid" ]]; then
+    transcript_worker_pid="$(tr -d '[:space:]' <"${state_dir}/transcript-worker.pid")"
+  fi
+  if [[ "${transcript_worker_pid}" =~ ^[0-9]+$ ]] && kill -0 "${transcript_worker_pid}" 2>/dev/null; then
+    printf "PASS  %-24s PID %s\n" "Transcript worker" "${transcript_worker_pid}"
+  else
+    printf "FAIL  %-24s launcher-owned process is not running\n" "Transcript worker"
+    failed=1
+  fi
+fi
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   media_worker_label="com.quipsly.local.media-worker"

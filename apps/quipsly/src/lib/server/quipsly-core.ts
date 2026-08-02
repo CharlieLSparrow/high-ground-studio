@@ -597,10 +597,19 @@ export async function createWorkflowJob(input: {
   inputJson?: Record<string, unknown>;
   prisma?: PrismaClient;
 }): Promise<QuipslyWorkflowJob> {
+  // `asset-register` records work that has already completed in the same
+  // transaction: the canonical asset and its Nest attachment exist before
+  // this helper is called. No registration worker exists or is needed. Leaving
+  // those receipts queued creates a permanent false processing state, while
+  // proxy/transcript/render jobs remain genuinely asynchronous.
+  const registrationCompletedAt = input.type === "asset-register"
+    ? new Date()
+    : null;
+  const source = input.source ?? "app";
   const job = await db(input.prisma).studioWorkflowJob.create({
     data: {
       type: input.type,
-      source: input.source ?? "app",
+      source,
       priority: input.priority ?? 100,
       projectId: input.projectId ?? null,
       assetId: input.assetId ?? null,
@@ -608,6 +617,22 @@ export async function createWorkflowJob(input: {
       outputPacketId: input.outputPacketId ?? null,
       requestedByEmail: input.requestedByEmail ?? null,
       inputJson: json(input.inputJson),
+      ...(registrationCompletedAt
+        ? {
+            status: "completed",
+            startedAt: registrationCompletedAt,
+            completedAt: registrationCompletedAt,
+            resultJson: json({
+              schema: "quipsly-asset-registration-receipt-v1",
+              state: "completed",
+              assetId: input.assetId ?? null,
+              projectId: input.projectId ?? null,
+              source,
+              completedSynchronously: true,
+              originalRemainsSourceTruth: true,
+            }),
+          }
+        : {}),
     },
   });
 

@@ -103,15 +103,20 @@ stop_macos_job() {
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   stop_macos_job "nest" "com.quipsly.local.nest"
+  stop_macos_job "transcript-worker" "com.quipsly.local.transcript-worker"
   stop_macos_job "media-worker" "com.quipsly.local.media-worker"
   stop_macos_job "firebase" "com.quipsly.local.firebase"
 else
   stop_owned_process "nest"
+  stop_owned_process "transcript-worker"
   stop_owned_process "media-worker"
   stop_owned_process "firebase"
 fi
 
-rm -f "${state_dir}/repo-root" "${state_dir}/source-revision"
+rm -f \
+  "${state_dir}/repo-root" \
+  "${state_dir}/source-revision" \
+  "${state_dir}/transcript-worker.enabled"
 
 echo
 echo "PostgreSQL was intentionally left running to preserve local data."

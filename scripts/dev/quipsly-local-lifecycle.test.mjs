@@ -66,19 +66,26 @@ test("machine-wide services use machine-wide ownership state", () => {
     "both local Nest launch paths must opt in to the development-only media vault",
   );
   assert.match(up, /--run-media-worker/);
+  assert.match(up, /--run-transcript-worker/);
   assert.match(up, /local-episode-worker\.ts/);
+  assert.match(up, /quipsly-local-transcript-worker\.mjs/);
   assert.match(up, /QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT/);
   assert.match(up, /local_capture_vault_root="\$\{QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-\$\{local_media_root\}\/capture-vault\}"/);
   assert.match(up, /local_capture_upload_origin="\$\{QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-\$\{nest_url\}\}"/);
   assert.equal(
     up.match(/QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=/g)?.length,
-    3,
-    "launcher handoff plus both local Nest launch paths must preserve the private Capture vault root",
+    5,
+    "launcher handoff, Nest, and transcript worker paths must preserve the private Capture vault root",
   );
   assert.equal(
     up.match(/QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=/g)?.length,
     3,
     "launcher handoff plus both local Nest launch paths must preserve the loopback upload origin",
+  );
+  assert.equal(
+    up.match(/QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=/g)?.length,
+    3,
+    "launcher handoff plus both local Nest launch paths must expose the verified local-worker state",
   );
   assert.match(up, /--experimental-transform-types/);
 });
@@ -165,8 +172,10 @@ test("replacement and shutdown remain confined to Quipsly app jobs", () => {
     assert.match(script, /com\.quipsly\.local\.nest/);
     assert.match(script, /com\.quipsly\.local\.firebase/);
     assert.match(script, /com\.quipsly\.local\.media-worker/);
+    assert.match(script, /com\.quipsly\.local\.transcript-worker/);
   }
   assert.match(doctor, /Episode media worker/);
+  assert.match(doctor, /Transcript worker/);
   assert.doesNotMatch(up, /docker compose down/);
   assert.doesNotMatch(down, /docker compose down/);
   assert.match(down, /PostgreSQL was intentionally left running/);

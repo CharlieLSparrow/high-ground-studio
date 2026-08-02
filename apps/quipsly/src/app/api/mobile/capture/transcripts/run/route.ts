@@ -150,6 +150,7 @@ export async function POST(request: Request) {
             data: {
               status: "QUEUED",
               provider: "pending",
+              requestedBy: userId,
               errorMessage: null,
               resultJson: {
                 source: "mobile-capture-transcript-run",

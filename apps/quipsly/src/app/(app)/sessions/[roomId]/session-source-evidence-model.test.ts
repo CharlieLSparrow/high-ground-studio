@@ -92,6 +92,17 @@ function fixture(): Parameters<typeof buildSessionSourceEvidence>[0] {
   };
 }
 
+function markAsNestExternalImport(input: ReturnType<typeof fixture>) {
+  input.recordingAssets[0].localManifestJson = {
+    ...input.recordingAssets[0].localManifestJson as Record<string, unknown>,
+    reportedSourceProfile: {
+      kind: "quipsly-nest-external-recording-import-v1",
+      source: "nest-session-recordings",
+      originalPreserved: true,
+    },
+  };
+}
+
 describe("Session source evidence", () => {
   it("reports an exact source match while keeping transcript disposition separate", () => {
     const result = buildSessionSourceEvidence(fixture());
@@ -108,6 +119,8 @@ describe("Session source evidence", () => {
       uploadSessionId,
       startBoundary: { receiptId: startReceiptId },
       stopBoundary: { receiptId: stopReceiptId },
+      sourceOrigin: "CAPTURE",
+      boundaryAuthority: "CAPTURE_RECEIPTS",
       cloud: {
         sha256,
         byteSize: "4096",
@@ -122,6 +135,7 @@ describe("Session source evidence", () => {
       },
       processingDisposition: "RELEASED",
       transcriptDisposition: "HELD",
+      releaseAudit: null,
       issues: [],
     });
     expect(JSON.stringify(result)).not.toContain("cameraDeviceUniqueID");
@@ -160,6 +174,90 @@ describe("Session source evidence", () => {
       "The object-generation comparison is absent.",
       "The applied STOP boundary is incomplete.",
     ]));
+  });
+
+  it("keeps an exact external import held while its phone boundaries are absent", () => {
+    const input = fixture();
+    markAsNestExternalImport(input);
+    input.finalizationReceipts[0].processingDisposition = "HELD";
+    input.finalizationReceipts[0].startReceiptId = null;
+    (input.finalizationReceipts[0].metadataJson as any).immutableUploadBinding.startReceiptId = null;
+    input.recordingAssets[0].status = "HELD";
+    input.stateReceipts = [];
+
+    const result = buildSessionSourceEvidence(input);
+    expect(result.sources[0]).toMatchObject({
+      status: "HELD",
+      sourceOrigin: "NEST_EXTERNAL_IMPORT",
+      boundaryAuthority: null,
+      releaseAudit: null,
+      issues: expect.arrayContaining([
+        "The applied START boundary is incomplete.",
+        "The applied STOP boundary is incomplete.",
+      ]),
+    });
+  });
+
+  it("accepts an external import only through a durable audited staff boundary", () => {
+    const input = fixture();
+    markAsNestExternalImport(input);
+    input.finalizationReceipts[0].startReceiptId = null;
+    input.finalizationReceipts[0].releaseReason = "All participants consented and the exact imported source was reviewed.";
+    input.finalizationReceipts[0].releasedAt = new Date("2026-08-02T20:00:00Z");
+    input.finalizationReceipts[0].transcriptReleaseReason = "All participants consented to transcription before staff release.";
+    input.finalizationReceipts[0].transcriptReleasedAt = new Date("2026-08-02T20:00:00Z");
+    (input.finalizationReceipts[0].metadataJson as any).immutableUploadBinding.startReceiptId = null;
+    input.stateReceipts = [];
+
+    const result = buildSessionSourceEvidence(input);
+    expect(result.sources[0]).toMatchObject({
+      status: "VERIFIED_MATCH",
+      startBoundary: null,
+      stopBoundary: null,
+      boundaryAuthority: "STAFF_REVIEWED_EXTERNAL_IMPORT",
+      releaseAudit: {
+        releasedAt: "2026-08-02T20:00:00.000Z",
+        reason: "All participants consented and the exact imported source was reviewed.",
+        transcriptReleasedAt: "2026-08-02T20:00:00.000Z",
+      },
+      issues: [],
+    });
+    expect(JSON.stringify(result)).not.toContain("actor-private-1");
+  });
+
+  it("does not treat a released external import without a durable audit as complete", () => {
+    const input = fixture();
+    markAsNestExternalImport(input);
+    input.finalizationReceipts[0].startReceiptId = null;
+    (input.finalizationReceipts[0].metadataJson as any).immutableUploadBinding.startReceiptId = null;
+    input.stateReceipts = [];
+
+    const result = buildSessionSourceEvidence(input);
+    expect(result.sources[0]).toMatchObject({
+      status: "INCOMPLETE",
+      boundaryAuthority: null,
+      releaseAudit: null,
+    });
+  });
+
+  it("does not upgrade a native Capture source through an external-import staff audit", () => {
+    const input = fixture();
+    input.finalizationReceipts[0].startReceiptId = null;
+    input.finalizationReceipts[0].releaseReason = "Staff reviewed these bytes, but this is still a native Capture source.";
+    input.finalizationReceipts[0].releasedAt = new Date("2026-08-02T20:00:00Z");
+    (input.finalizationReceipts[0].metadataJson as any).immutableUploadBinding.startReceiptId = null;
+    input.stateReceipts = [];
+
+    expect(buildSessionSourceEvidence(input).sources[0]).toMatchObject({
+      status: "INCOMPLETE",
+      sourceOrigin: "CAPTURE",
+      boundaryAuthority: null,
+      releaseAudit: null,
+      issues: expect.arrayContaining([
+        "The applied START boundary is incomplete.",
+        "The applied STOP boundary is incomplete.",
+      ]),
+    });
   });
 
   it("omits provider receipt slots from local source evidence", () => {

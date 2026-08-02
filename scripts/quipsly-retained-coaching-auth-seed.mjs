@@ -17,7 +17,7 @@ const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 
 const PROJECT_ID = "quipsly-reef";
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
-const IDENTITIES = [
+export const RETAINED_COACHING_AUTH_IDENTITIES = [
   {
     role: "coach",
     uid: "quipsly-coach-retained-20260731",
@@ -35,6 +35,16 @@ const IDENTITIES = [
     uid: "quipsly-followup-outsider-retained-20260731",
     email: "quipsly-followup-outsider-retained-20260731@example.test",
     name: "Quipsly Retained Room Producer",
+  },
+  {
+    // Keep this identity deliberately absent from every retained coaching
+    // project grant, booking, room, and participant. The older `outsider`
+    // fixture is a collaborating room producer with VIEWER access and cannot
+    // prove the private-media boundary.
+    role: "privacy-outsider",
+    uid: "quipsly-privacy-outsider-retained-20260802",
+    email: "quipsly-privacy-outsider-retained-20260802@example.test",
+    name: "Quipsly Retained Privacy Outsider",
   },
 ];
 
@@ -130,7 +140,7 @@ export async function main() {
   if (credentialDirectory)
     await assertPrivateCredentialDirectory(credentialDirectory);
   try {
-    for (const identity of IDENTITIES) {
+    for (const identity of RETAINED_COACHING_AUTH_IDENTITIES) {
       const password =
         store === "keychain"
           ? readRetainedQAPassword({
@@ -158,7 +168,7 @@ export async function main() {
     ok: true,
     localOnly: true,
     projectId: PROJECT_ID,
-    identitiesRestored: IDENTITIES.length,
+    identitiesRestored: RETAINED_COACHING_AUTH_IDENTITIES.length,
     credentialStore: store,
     credentialDirectory,
     databaseMutated: false,

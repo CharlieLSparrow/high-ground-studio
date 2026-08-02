@@ -207,6 +207,19 @@ async function main() {
         },
       });
     }
+    await prisma.userRole.upsert({
+      where: {
+        userId_role: {
+          userId: userByRole.coach.id,
+          role: "COACH",
+        },
+      },
+      update: {},
+      create: {
+        userId: userByRole.coach.id,
+        role: "COACH",
+      },
+    });
 
     const scheduledStart = new Date("2026-07-31T16:00:00.000Z");
     const scheduledEnd = new Date("2026-07-31T17:00:00.000Z");

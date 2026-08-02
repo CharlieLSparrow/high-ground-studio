@@ -136,16 +136,6 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       "The immutable recording object could not be found.",
     );
   }
-  if (evidence.storageBackend !== "gcs") {
-    return {
-      status: "configuration-required",
-      transcriptJobId: job.id,
-      queueObjectName: null,
-      manifestObjectName: null,
-      resultObjectName: null,
-      executionRequested: false,
-    };
-  }
   const sizeBytes = bigintAsPositiveNumber(job.asset.byteSize);
   const sha256 = requiredSha256(job.asset.checksum);
   const contentType = requiredMediaType(
@@ -162,6 +152,18 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       "TRANSCRIPT_SOURCE_INTEGRITY_FAILED",
       "Stored recording evidence does not match its canonical asset binding.",
     );
+  }
+  if (evidence.storageBackend === "local-development") {
+    return {
+      status: localCaptureTranscriptWorkerEnabled()
+        ? "queued"
+        : "configuration-required",
+      transcriptJobId: job.id,
+      queueObjectName: null,
+      manifestObjectName: null,
+      resultObjectName: null,
+      executionRequested: false,
+    };
   }
 
   const manifestObjectName = buildCaptureTranscriptManifestObjectName(job.id);
@@ -347,6 +349,19 @@ export function captureTranscriptWorkerEnabled() {
     && transcriptWorkerEnvironmentNames.every(
       (name) => Boolean(process.env[name]?.trim()),
     );
+}
+
+export function localCaptureTranscriptWorkerEnabled() {
+  if (
+    process.env.NODE_ENV === "production"
+    || process.env.QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE !== "1"
+  ) return false;
+  try {
+    const database = new URL(process.env.DATABASE_URL || "");
+    return ["localhost", "127.0.0.1", "::1"].includes(database.hostname);
+  } catch {
+    return false;
+  }
 }
 
 const transcriptWorkerEnvironmentNames = [

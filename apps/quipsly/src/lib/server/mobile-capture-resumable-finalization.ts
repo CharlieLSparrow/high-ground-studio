@@ -526,6 +526,18 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
       ? "proxy-required-before-collaborative-playback"
       : "audio-source-registered",
   };
+  const registrationCompletedAt = isVideo ? null : new Date();
+  const registrationResult = registrationCompletedAt
+    ? {
+        schema: "quipsly-asset-registration-receipt-v1",
+        state: "completed",
+        assetId: mediaAsset.id,
+        projectId: manifest.projectId,
+        source: "mobile-capture-finalization",
+        completedSynchronously: true,
+        originalRemainsSourceTruth: true,
+      }
+    : null;
   const existingWorkflow = await transaction.studioWorkflowJob.findFirst({
     where: {
       projectId: manifest.projectId,
@@ -541,10 +553,17 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         projectId: manifest.projectId,
         assetId: mediaAsset.id,
         type: isVideo ? "asset-proxy" : "asset-register",
-        status: "queued",
+        status: isVideo ? "queued" : "completed",
         source: "mobile-capture-finalization",
         requestedByEmail: manifest.actorEmail,
         inputJson: workflowInput,
+        ...(registrationCompletedAt
+          ? {
+              startedAt: registrationCompletedAt,
+              completedAt: registrationCompletedAt,
+              resultJson: registrationResult,
+            }
+          : {}),
       },
     });
   } else {
@@ -556,6 +575,15 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
           ...asObject(existingWorkflow.inputJson),
           ...workflowInput,
         },
+        ...(!isVideo && registrationCompletedAt
+          ? {
+              status: "completed",
+              startedAt: registrationCompletedAt,
+              completedAt: registrationCompletedAt,
+              error: null,
+              resultJson: registrationResult,
+            }
+          : {}),
       },
     });
   }

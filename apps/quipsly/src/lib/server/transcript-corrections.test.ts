@@ -166,6 +166,12 @@ describe("transcript correction desk", () => {
       }),
     }));
     expect(result.playback).toMatchObject({ sourceId: "source-1", url: "/api/ingest/media/source-1" });
+    expect(result.recording).toMatchObject({
+      id: "asset-1",
+      status: "VERIFIED",
+      fileName: "session.m4a",
+      eligibleForProtectedPlaybackPreparation: true,
+    });
     expect(result.segments[0]).toMatchObject({
       id: "segment-1",
       text: "We should ship the proof-watch tomorrow.",
@@ -217,6 +223,25 @@ describe("transcript correction desk", () => {
         reviewKind: "confirmed-as-is",
         reviewedAt: "2026-08-01T23:30:00.000Z",
       },
+    });
+  });
+
+  it("keeps the verified recording identity available when protected playback still needs preparation", async () => {
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ promoted: false })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    expect(result.playback).toBeNull();
+    expect(result.recording).toMatchObject({
+      id: "asset-1",
+      status: "VERIFIED",
+      eligibleForProtectedPlaybackPreparation: true,
     });
   });
 

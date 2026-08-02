@@ -151,8 +151,12 @@ export type QuipslyJobType =
 
 export type QuipslyJobStatus =
   | "queued"
+  | "processing"
   | "running"
   | "waiting"
+  | "completed"
+  | "output-ready"
+  | "configuration-required"
   | "succeeded"
   | "failed"
   | "held"
