@@ -100,6 +100,27 @@ Mode-0600 provider receipts are:
 - `/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/listing-apply-20260802T141900Z.json`
 - `/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/submission-readiness-20260802T141950Z.json`
 
+## Screenshot candidate operation
+
+The five private-data-safe screenshot stories were operated again from a clean
+detached checkout of the exact Build 26 source. All five exported at Apple's
+planned 1320 x 2868 size with individual SHA-256 receipts and were visually
+inspected. The retained evidence is:
+
+`/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Screenshot Drafts/283d522058bb/20260802T142000Z-build26`
+
+Visual inspection found one real Work-copy defect: the singular archived-tag
+sentence used the plural verb. Source `c621af95aa0e0d0318ee4c40bd1cf8c3a5f054e2`
+repairs the product UI, adds an operated screenshot assertion, passes all
+1,007 App Store static checks, and independently regenerated the five-screen
+set from a clean detached checkout. That source is queued for a later spaced
+release; it did not trigger a new upload or change the canonical Build 26
+binary.
+
+Both receipts deliberately report `submissionEligible=false`. These images are
+strong exact-source composition evidence, not signed/TestFlight physical-device
+approval, and were not uploaded to App Store Connect.
+
 ## Remaining acceptance boundary
 
 Install Build 26 through TestFlight on a physical iPhone and operate the real

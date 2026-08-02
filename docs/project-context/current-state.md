@@ -264,6 +264,12 @@ Implementation commit: `03a316e1`
   verified-email, native bearer, Home Nest, and capture-session checks. A
   physical TestFlight installation and operated real-iPhone audio/video,
   recovery, upload, playback, alignment, and cross-device readback remain open.
+- Exact Build 26 source also regenerated and visually passed all five 1320 x
+  2868 App Store screenshot stories. The review exposed and fixed one singular
+  archived-tag grammar defect in pushed source `c621af95`; that change is held
+  for a later spaced release rather than triggering another immediate upload.
+  Screenshot receipts remain submission-ineligible until signed/TestFlight
+  physical-device recapture and approval.
   Evidence is in
   `docs/coordination/2026-08-02-capture-build26-public-release.md`.
 

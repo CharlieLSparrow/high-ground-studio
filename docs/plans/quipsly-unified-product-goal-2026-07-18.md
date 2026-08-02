@@ -5518,6 +5518,12 @@ was restored.
   capture Sessions. A physical TestFlight install and real-iPhone operation
   remain separate red gates. Complete evidence is in
   `docs/coordination/2026-08-02-capture-build26-public-release.md`.
+- Exact Build 26 source also regenerated five 1320 x 2868 private-safe
+  screenshot stories from a clean detached checkout. Visual review found and
+  fixed one real singular archived-tag grammar defect in pushed source
+  `c621af95`; 1,007 static App Store checks and the exact-commit five-screen
+  journey pass. No new upload was triggered, and the images remain explicitly
+  ineligible until signed/TestFlight physical recapture and approval.
 
 ### 2026-08-01 Quipsly Capture Build 25 public TestFlight checkpoint
 

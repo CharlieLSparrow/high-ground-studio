@@ -55,10 +55,12 @@ and demo-account identity; it never prints or stores the password or API key.
 - Release: manual after App Review approval
 
 These categories, copyright, manual release, the en-US listing, policy URLs,
-Build 25, and App Review details are now applied and read back in App Store
-Connect. The account holder still must confirm the legal copyright owner, age
-rating, content rights, DSA trader status, pricing, and territory availability
-before the packet can become submission ready.
+Build 26, and App Review details are now applied and read back in App Store
+Connect. Content rights, all current age-rating questions, IDFA false, Free
+pricing, and USA-only availability also have provider readback. App Privacy
+publication, the account-level DSA determination, approved screenshots,
+physical-device acceptance, account-deletion proof, and iPhone-only provider
+compatibility remain open before submission.
 
 Apple permits 1–10 screenshots. The canonical plan uses five portrait
 screenshots in one accepted 6.9-inch size, `1320 x 2868`, so App Store Connect
@@ -111,11 +113,13 @@ canonical approved-assets directory. Re-run the same five stories on the exact
 signed candidate or its TestFlight install with the approved reviewer account,
 then inspect and approve those final captures separately.
 
-The 2026-08-01 6.9-inch draft run produced five valid `1320 x 2868` images and
-was visually inspected. Record, Library, and Account communicate the intended
-trust story. Today and Work need a quieter synthetic final composition, and all
-preview banners must disappear in the signed-candidate recapture. The complete
-draft bundle is retained outside Git under the Quipsly QA artifacts volume.
+The 2026-08-02 exact Build 26 source run produced five valid `1320 x 2868`
+images without preview banners and passed visual inspection. That review found
+one singular archived-tag grammar defect in Work; pushed source `c621af95`
+fixed it, added an operated assertion, and regenerated the complete clean-source
+set. Both bundles remain draft evidence with `submissionEligible:false`. The
+complete evidence is retained outside Git under the Quipsly QA artifacts
+volume.
 
 ## Submission ownership
 
