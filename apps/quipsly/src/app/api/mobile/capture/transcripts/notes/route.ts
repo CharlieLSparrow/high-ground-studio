@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  transcriptPacketNoteCandidateId,
+  TRANSCRIPT_PACKET_SOURCE,
+} from "@high-ground/quipsly-domain/coaching-packet";
+import {
   readTranscriptDerivedNoteSource,
   TRANSCRIPT_DERIVED_NOTE_SCHEMA,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
@@ -12,6 +16,13 @@ import {
   type SessionNoteVisibility,
 } from "@/lib/session-note-contract";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  packetSnapshotMatches,
+  selectLatestCorrelatedPacketNotes,
+  TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
+} from "@/lib/server/coaching-packets";
+import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
@@ -24,6 +35,14 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function array(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function hasOwn(value: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function text(value: unknown, max: number, preserveLineBreaks = false) {
@@ -40,7 +59,7 @@ function noteIdentity(userId: string, clientRequestId: string) {
   return `transcript-note-${createHash("sha256").update(`${userId}|${clientRequestId}`).digest("hex").slice(0, 24)}`;
 }
 
-function transcriptDerivedNoteBoundaries(noteCreated: boolean) {
+function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate = false) {
   return {
     explicitHumanAction: true,
     canonicalIdentity: true,
@@ -48,6 +67,8 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean) {
     sessionAccessRechecked: true,
     sourceAnchorPreserved: true,
     explicitVisibility: true,
+    packetCandidateReviewed: packetCandidate,
+    packetSnapshotRechecked: packetCandidate,
     noteCreated,
     providerTranscriptMutated: false,
     correctionOverlayMutated: false,
@@ -71,9 +92,26 @@ function sourceMatches(sourceJson: unknown, input: {
   body: string;
   kind: EditableSessionNoteKind;
   visibility: SessionNoteVisibility;
+  packetContext: {
+    transcriptJobId: string;
+    recordingAssetId: string;
+    summaryNoteId: string;
+    packetBuildId: string;
+    packetNoteCandidateId: string;
+    packetLaneId: string;
+  } | null;
 }) {
   const source = record(sourceJson);
-  return source.schema === TRANSCRIPT_DERIVED_NOTE_SCHEMA
+  const packetMatches = !input.packetContext || (
+    source.transcriptJobId === input.packetContext.transcriptJobId
+    && source.recordingAssetId === input.packetContext.recordingAssetId
+    && source.packetSummaryNoteId === input.packetContext.summaryNoteId
+    && source.packetBuildId === input.packetContext.packetBuildId
+    && source.packetNoteCandidateId === input.packetContext.packetNoteCandidateId
+    && source.packetLaneId === input.packetContext.packetLaneId
+  );
+  return packetMatches
+    && source.schema === TRANSCRIPT_DERIVED_NOTE_SCHEMA
     && source.createdByUserId === input.actorUserId
     && source.roomId === input.roomId
     && source.segmentId === input.segmentId
@@ -145,10 +183,37 @@ export async function POST(request: Request) {
   const noteBody = text(input.body, 20_000, true);
   const kind = isEditableSessionNoteKind(input.kind) ? input.kind : null;
   const visibility = isSessionNoteVisibility(input.visibility) ? input.visibility : null;
+  const packetFieldNames = [
+    "transcriptJobId",
+    "recordingAssetId",
+    "summaryNoteId",
+    "packetBuildId",
+    "packetNoteCandidateId",
+    "packetLaneId",
+  ];
+  const packetFieldsPresent = packetFieldNames.filter((field) => hasOwn(input, field));
+  const packetContext = packetFieldsPresent.length
+    ? {
+        transcriptJobId: text(input.transcriptJobId, 200),
+        recordingAssetId: text(input.recordingAssetId, 200),
+        summaryNoteId: text(input.summaryNoteId, 200),
+        packetBuildId: text(input.packetBuildId, 200),
+        packetNoteCandidateId: text(input.packetNoteCandidateId, 700),
+        packetLaneId: text(input.packetLaneId, 200),
+      }
+    : null;
   if (!roomId || !segmentId || !clientRequestId || !/^[a-f0-9]{64}$/.test(expectedProviderTextSha256)
       || !noteBody || !kind || !visibility) {
     return NextResponse.json(
       { ok: false, code: "INVALID_INPUT", error: "Room, exact transcript evidence, request identity, note text, purpose, and audience are required." },
+      { status: 400 },
+    );
+  }
+  if (packetContext && (packetFieldsPresent.length !== packetFieldNames.length
+      || Object.values(packetContext).some((value) => !value)
+      || packetContext.packetNoteCandidateId !== clientRequestId)) {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_PACKET_NOTE_CONTEXT", error: "The complete packet, lane, candidate, and transcript identity is required." },
       { status: 400 },
     );
   }
@@ -171,10 +236,12 @@ export async function POST(request: Request) {
     body: noteBody,
     kind,
     visibility,
+    packetContext,
   };
 
   try {
     const result = await prisma.$transaction(async (tx: any) => {
+      let packetLaneLabel: string | null = null;
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, session.user),
         select: {
@@ -200,6 +267,64 @@ export async function POST(request: Request) {
       );
       if ((visibility === "PROJECT_TEAM" || kind === "PRODUCTION") && !canUseProjectTeam) {
         throw new TranscriptCorrectionError("Only a Nest owner or editor can create production-team notes.", 403, "PROJECT_ROLE_REQUIRED");
+      }
+
+      if (packetContext) {
+        await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${packetContext.transcriptJobId}`);
+        await tx.$queryRaw`SELECT "id" FROM "CoachingNote" WHERE "id" = ${packetContext.summaryNoteId} FOR UPDATE`;
+        const packetSummaries = await tx.coachingNote.findMany({
+          where: { roomId, kind: "SUMMARY" },
+          orderBy: [{ createdAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
+          take: 100,
+          select: { id: true, kind: true, sourceJson: true, createdAt: true, updatedAt: true },
+        });
+        const correlatedSummaries = packetSummaries.filter((note: any) => {
+          const source = record(note.sourceJson);
+          return source.source === TRANSCRIPT_PACKET_SOURCE
+            && source.transcriptJobId === packetContext.transcriptJobId;
+        });
+        const currentPacket = selectLatestCorrelatedPacketNotes(correlatedSummaries).summary;
+        const packetSource = record(currentPacket?.sourceJson);
+        if (!currentPacket
+            || currentPacket.id !== packetContext.summaryNoteId
+            || packetSource.packetBuildId !== packetContext.packetBuildId
+            || packetSource.recordingAssetId !== packetContext.recordingAssetId
+            || packetSource.roomId !== roomId) {
+          throw new TranscriptCorrectionError("This note candidate is not part of the current Session packet. Refresh before saving it.", 409, "STALE_PACKET_NOTE_CANDIDATE");
+        }
+
+        const lockedTranscriptJob = await tx.transcriptJob.findFirst({
+          where: { id: packetContext.transcriptJobId, roomId, assetId: packetContext.recordingAssetId },
+          include: {
+            asset: true,
+            segments: {
+              orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
+              include: {
+                corrections: { where: { status: "accepted" }, orderBy: { updatedAt: "desc" } },
+                verifications: { orderBy: { createdAt: "desc" } },
+              },
+            },
+          },
+        });
+        if (!lockedTranscriptJob?.asset || lockedTranscriptJob.status !== "COMPLETED") {
+          throw new TranscriptCorrectionError("Completed recording-backed transcript evidence is required.", 409, "TRANSCRIPT_NOTE_EVIDENCE_HELD");
+        }
+        const lockedGate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: lockedTranscriptJob.asset });
+        if (!lockedGate.allowed) {
+          throw new TranscriptCorrectionError(lockedGate.error || "Transcript evidence is held.", 409, lockedGate.errorCode || "TRANSCRIPT_NOTE_EVIDENCE_HELD");
+        }
+        if (!packetSnapshotMatches(packetSource, lockedTranscriptJob.segments)) {
+          throw new TranscriptCorrectionError("Transcript review changed after this packet was built. Build the current packet before saving a note.", 409, "TRANSCRIPT_REVIEW_CHANGED");
+        }
+        const lane = array(packetSource.reviewLanes).map(record).find((candidate) => candidate.id === packetContext.packetLaneId);
+        const laneStatus = text(lane?.status, 80);
+        const item = array(lane?.items).map(record).find((candidate) => candidate.segmentId === segmentId);
+        const expectedCandidateId = transcriptPacketNoteCandidateId(packetContext.packetBuildId, packetContext.packetLaneId, segmentId);
+        if (!lane || !item || packetContext.packetNoteCandidateId !== expectedCandidateId
+            || laneStatus === "EMPTY" || laneStatus === "REJECTED_BY_HUMAN") {
+          throw new TranscriptCorrectionError("This packet note candidate is unavailable or its lane is closed. Refresh before saving it.", 409, "PACKET_NOTE_CANDIDATE_UNAVAILABLE");
+        }
+        packetLaneLabel = text(lane.label, 240) || "Session note";
       }
 
       const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor });
@@ -251,8 +376,17 @@ export async function POST(request: Request) {
         initialBody: noteBody,
         initialKind: kind,
         initialVisibility: visibility,
+        ...(packetContext ? {
+          packetSummaryNoteId: packetContext.summaryNoteId,
+          packetBuildId: packetContext.packetBuildId,
+          packetNoteCandidateId: packetContext.packetNoteCandidateId,
+          packetLaneId: packetContext.packetLaneId,
+          packetLaneLabel,
+          packetCandidate: true,
+          materializedFromPacket: true,
+        } : {}),
         aiGenerated: false,
-        boundaries: transcriptDerivedNoteBoundaries(true),
+        boundaries: transcriptDerivedNoteBoundaries(true, Boolean(packetContext)),
       };
       const note = await tx.coachingNote.create({
         data: {
@@ -269,7 +403,7 @@ export async function POST(request: Request) {
             create: {
               id: randomUUID(),
               revision: 1,
-              operation: "created-from-transcript",
+              operation: packetContext ? "created-from-transcript-packet" : "created-from-transcript",
               actorUserId: actor.id,
               snapshotJson: { title: title || null, body: noteBody, kind, visibility, sourceJson },
             },
@@ -284,7 +418,7 @@ export async function POST(request: Request) {
       ok: true,
       idempotentReplay: result.idempotentReplay,
       note: serializedNote(result.note, actor.id),
-      boundaries: transcriptDerivedNoteBoundaries(!result.idempotentReplay),
+      boundaries: transcriptDerivedNoteBoundaries(!result.idempotentReplay, Boolean(packetContext)),
     });
   } catch (error) {
     if (error instanceof TranscriptCorrectionError) {
@@ -297,7 +431,7 @@ export async function POST(request: Request) {
           ok: true,
           idempotentReplay: true,
           note: serializedNote(raced, actor.id),
-          boundaries: transcriptDerivedNoteBoundaries(false),
+          boundaries: transcriptDerivedNoteBoundaries(false, Boolean(packetContext)),
         });
       }
       return NextResponse.json(

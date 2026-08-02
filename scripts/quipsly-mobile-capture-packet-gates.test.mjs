@@ -39,6 +39,13 @@ const goalReviewRoute = readFileSync(
   ),
   "utf8",
 );
+const noteMaterializationRoute = readFileSync(
+  new URL(
+    "../apps/quipsly/src/app/api/mobile/capture/transcripts/notes/route.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const sessionAccess = readFileSync(
   new URL("../apps/quipsly/src/lib/server/session-access.ts", import.meta.url),
   "utf8",
@@ -77,6 +84,9 @@ assert.match(packetRoute, /legacyCandidateCompatibility/);
 assert.match(packetRoute, /selectLatestCorrelatedPacketNotes\(packetNotes\)/);
 assert.match(packetRoute, /correlationMode/);
 assert.match(packetRoute, /taskMaterialization/);
+assert.match(packetRoute, /buildPacketNoteCandidates/);
+assert.match(packetRoute, /noteCandidates/);
+assert.match(packetRoute, /transcriptPacketNoteCandidateId/);
 assert.match(packetRoute, /selectedForSession/);
 assert.match(packetRoute, /ownerChoices: \["ACTOR", "UNASSIGNED"\]/);
 assert.match(packetRoute, /mergedIntoTagId: null/);
@@ -147,6 +157,20 @@ assert.match(goalReviewRoute, /REJECT/);
 assert.match(goalReviewRoute, /DEFER/);
 assert.match(goalReviewRoute, /taskCreated: false/);
 assert.match(goalReviewRoute, /calendarMutated: false/);
+assert.match(noteMaterializationRoute, /getQuipslySessionFromRequest/);
+assert.match(noteMaterializationRoute, /sessionMutationAccessWhere/);
+assert.match(noteMaterializationRoute, /SESSION_MUTATION_ACCESS_REQUIRED/);
+assert.match(noteMaterializationRoute, /mobileCaptureTranscriptProcessingGate/);
+assert.match(noteMaterializationRoute, /FOR UPDATE/);
+assert.match(noteMaterializationRoute, /packetSnapshotMatches/);
+assert.match(noteMaterializationRoute, /transcriptPacketNoteCandidateId/);
+assert.match(noteMaterializationRoute, /packetCandidateReviewed/);
+assert.match(noteMaterializationRoute, /packetSnapshotRechecked/);
+assert.match(noteMaterializationRoute, /created-from-transcript-packet/);
+assert.match(
+  noteMaterializationRoute,
+  /No task, message, delivery, calendar event, or publication was created/,
+);
 assert.match(packetRoute, /sessionActorAccessWhere/);
 assert.match(packetRoute, /sessionMutationActorAccessWhere/);
 assert.match(packetRoute, /sessionMutationAccessWhere/);
@@ -161,6 +185,11 @@ assert.match(collaborationDogfood, /emptyLaneReviewDenied: true/);
 assert.match(collaborationDogfood, /actionableLaneReviewPersisted: true/);
 assert.match(collaborationDogfood, /revokedGrantDeniedImmediately: true/);
 assert.match(collaborationDogfood, /actionItemsCreated: actionCount/);
+assert.match(collaborationDogfood, /packetNoteCandidateProjected: true/);
+assert.match(collaborationDogfood, /packetNoteCandidateMaterialized: true/);
+assert.match(collaborationDogfood, /packetNoteCandidateSnapshotRechecked: true/);
+assert.match(collaborationDogfood, /packetNoteCandidateProjectedCommittedIdentity: true/);
+assert.match(collaborationDogfood, /transcriptNoteChangedIntentRejected: true/);
 assert.match(collaborationDogfood, /externalSideEffects: false/);
 assert.match(collaborationDogfood, /assertLoopbackUrl/);
 

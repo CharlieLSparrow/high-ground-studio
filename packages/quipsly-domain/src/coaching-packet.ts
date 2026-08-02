@@ -223,6 +223,11 @@ export function isTranscriptGoalReviewStatus(
   return TRANSCRIPT_GOAL_REVIEW_STATUSES.some((status) => status === value);
 }
 
+/** Stable identity shared by packet read models and deliberate note writes. */
+export function transcriptPacketNoteCandidateId(packetBuildId: string, laneId: string, segmentId: string) {
+  return `packet-note-${packetBuildId}-${laneId}-${segmentId}`;
+}
+
 export function hasCorrelatedTranscriptPacketProvenance(
   value: unknown,
 ): value is TranscriptPacketProvenance {

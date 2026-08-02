@@ -1207,6 +1207,41 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave() throws {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let reviewLink = app.buttons["CapturePacketNoteReviewPreviewLink"]
+        reveal(reviewLink)
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 5))
+        reviewLink.tap()
+
+        XCTAssertTrue(app.scrollViews["CapturePacketNoteReviewPreviewView"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["CapturePacketNotePreviewBoundary"].exists)
+        XCTAssertTrue(app.buttons["CapturePacketNoteSourceButton_packet-note-preview-build-coaching-insights-preview-segment"].exists)
+        let packetNoteReview = app.buttons["CapturePacketReviewNoteButton"]
+        XCTAssertTrue(packetNoteReview.isEnabled, "Preview may inspect note purpose and audience while the final write stays disabled.")
+        packetNoteReview.tap()
+        XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
+        XCTAssertTrue(app.textFields["CapturePacketNoteBodyField"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteKindPicker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteVisibilityPicker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteAudienceBoundary"].exists)
+        XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton"].isEnabled)
+        let packetNoteBoundary = app.staticTexts["CapturePacketNoteBoundary"]
+        reveal(packetNoteBoundary)
+        XCTAssertTrue(packetNoteBoundary.label.contains("no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication"))
+        let packetNoteScreenshot = XCTAttachment(screenshot: app.screenshot())
+        packetNoteScreenshot.name = "Transcript note materialization review"
+        packetNoteScreenshot.lifetime = .keepAlways
+        add(packetNoteScreenshot)
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
@@ -2008,36 +2043,45 @@ final class CaptureExperienceUITests: XCTestCase {
         // windowed iPad layouts. Bounded drags avoid oscillating above and
         // below a short control when a full-page swipe overshoots it.
         let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
-        let scrollSurface = namedForm.exists ? namedForm : app.scrollViews.firstMatch
-        for _ in 0..<16 {
-            let shouldMoveContentDown =
-                element.exists && element.frame.maxY <= app.frame.minY + 72
-            if scrollSurface.exists {
-                let startY = shouldMoveContentDown ? 0.34 : 0.72
-                let endY = shouldMoveContentDown ? 0.64 : 0.42
-                scrollSurface
-                    .coordinate(
-                        withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
-                    )
-                    .press(
-                        forDuration: 0.05,
-                        thenDragTo: scrollSurface.coordinate(
-                            withNormalizedOffset: CGVector(dx: 0.5, dy: endY)
+        let transcriptReview = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        let scrollSurface = namedForm.exists
+            ? namedForm
+            : transcriptReview.exists ? transcriptReview : app.scrollViews.firstMatch
+        // A LazyVStack removes distant rows from the accessibility tree. If a
+        // target does not currently exist, search above first, then below,
+        // instead of assuming every unseen control is farther down the page.
+        for searchAbove in [true, false] {
+            for _ in 0..<16 {
+                let shouldMoveContentDown = element.exists
+                    ? element.frame.maxY <= app.frame.minY + 72
+                    : searchAbove
+                if scrollSurface.exists {
+                    let startY = shouldMoveContentDown ? 0.34 : 0.72
+                    let endY = shouldMoveContentDown ? 0.64 : 0.42
+                    scrollSurface
+                        .coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
                         )
+                        .press(
+                            forDuration: 0.05,
+                            thenDragTo: scrollSurface.coordinate(
+                                withNormalizedOffset: CGVector(dx: 0.5, dy: endY)
+                            )
+                        )
+                    RunLoop.current.run(
+                        until: Date().addingTimeInterval(0.15)
                     )
-                RunLoop.current.run(
-                    until: Date().addingTimeInterval(0.15)
-                )
-            } else if shouldMoveContentDown {
-                app.swipeDown()
-            } else {
-                app.swipeUp()
-            }
-            if element.exists,
-               element.isHittable,
-               element.frame.minY >= app.frame.minY + 72,
-               element.frame.maxY <= visibleBottom {
-                return
+                } else if shouldMoveContentDown {
+                    app.swipeDown()
+                } else {
+                    app.swipeUp()
+                }
+                if element.exists,
+                   element.isHittable,
+                   element.frame.minY >= app.frame.minY + 72,
+                   element.frame.maxY <= visibleBottom {
+                    return
+                }
             }
         }
     }

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   isTranscriptGoalReviewDecision,
+  transcriptPacketNoteCandidateId,
   type TranscriptGoalReviewStatus,
 } from "@high-ground/quipsly-domain/coaching-packet";
+import { TRANSCRIPT_DERIVED_NOTE_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -137,6 +139,79 @@ export function buildPacketGoalCandidates(input: {
       } : null,
     }];
   });
+}
+
+export function buildPacketNoteCandidates(input: {
+  summary: any;
+  latestTranscriptJob: any;
+  notes: any[];
+  packetBuildId: string | null;
+  actorUserId: string;
+}) {
+  if (!input.summary || !input.packetBuildId || input.latestTranscriptJob?.status !== "COMPLETED") return [];
+  const summarySource = sourceJson(input.summary.sourceJson);
+  const lanes = asArray(summarySource.reviewLanes).filter(isObject);
+  if (!lanes.length) return [];
+  const projectedSegments = projectTranscriptSegmentsForPacket(asArray(input.latestTranscriptJob.segments));
+  const segments = new Map(projectedSegments.map((segment) => [segment.id, segment]));
+  const committedByCandidate = new Map(input.notes.flatMap((note) => {
+    const source = sourceJson(note.sourceJson);
+    const candidateId = text(source.packetNoteCandidateId);
+    return source.schema === TRANSCRIPT_DERIVED_NOTE_SCHEMA
+      && note.authorUserId === input.actorUserId
+      && candidateId
+      ? [[candidateId, note]]
+      : [];
+  }));
+  const seen = new Set<string>();
+  const candidates: any[] = [];
+
+  for (const lane of lanes) {
+    const laneId = text(lane.id);
+    const laneLabel = text(lane.label) || "Session note";
+    const laneStatus = text(lane.status) || "READY_FOR_HUMAN_REVIEW";
+    if (!laneId || laneStatus === "EMPTY") continue;
+    for (const item of asArray(lane.items).filter(isObject)) {
+      const segmentId = text(item.segmentId);
+      const segment = segments.get(segmentId);
+      if (!segment || !segmentId) continue;
+      const id = transcriptPacketNoteCandidateId(input.packetBuildId, laneId, segmentId);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const committed = committedByCandidate.get(id) ?? null;
+      const sourceText = text(segment.text);
+      if (!sourceText) continue;
+      candidates.push({
+        id,
+        clientRequestId: id,
+        roomId: input.latestTranscriptJob.roomId,
+        transcriptJobId: input.latestTranscriptJob.id,
+        recordingAssetId: input.latestTranscriptJob.assetId,
+        summaryNoteId: input.summary.id,
+        packetBuildId: input.packetBuildId,
+        laneId,
+        laneLabel,
+        laneStatus,
+        segmentId,
+        speakerLabel: text(segment.speakerLabel) || null,
+        startSeconds: segment.startSeconds,
+        endSeconds: segment.endSeconds,
+        sourceText,
+        providerTextSha256: segment.providerTextSha256,
+        acceptedReviewId: segment.acceptedReviewId,
+        acceptedCorrectionId: segment.acceptedCorrectionId,
+        transcriptReviewStatus: segment.reviewStatus,
+        suggestedTitle: laneLabel,
+        suggestedBody: sourceText,
+        suggestedKind: "SESSION_NOTE",
+        suggestedVisibility: "AUTHOR_PRIVATE",
+        humanApprovalRequired: !committed,
+        committedNoteId: committed?.id ?? null,
+      });
+      if (candidates.length >= 30) return candidates;
+    }
+  }
+  return candidates;
 }
 
 function reviewLaneReadyCount(lanes: unknown[]) {
@@ -451,6 +526,7 @@ export async function GET(request: Request) {
         title: true,
         body: true,
         sourceJson: true,
+        authorUserId: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -573,6 +649,15 @@ export async function GET(request: Request) {
     goals: goalRows,
     packetBuildId: selectedPacketBuild.packetBuildId,
   });
+  const noteCandidates = transcriptProcessingAllowed && !packetStale
+    ? buildPacketNoteCandidates({
+        summary,
+        latestTranscriptJob,
+        notes,
+        packetBuildId: selectedPacketBuild.packetBuildId,
+        actorUserId: actor.id,
+      })
+    : [];
 
   return NextResponse.json({
     ok: true,
@@ -657,6 +742,7 @@ export async function GET(request: Request) {
         source: sourceJson(note.sourceJson),
         createdAt: note.createdAt?.toISOString?.() ?? null,
       })),
+      noteCandidates,
       actionCandidates,
       goalCandidates,
       goalCandidateReview: {
@@ -703,6 +789,7 @@ export async function GET(request: Request) {
       })),
       counts: {
         highlights: highlights.length,
+        noteCandidates: noteCandidates.length,
         actionCandidates: actionCandidates.length,
         goalCandidates: goalCandidates.length,
         actionItems: packetActionItems.length,

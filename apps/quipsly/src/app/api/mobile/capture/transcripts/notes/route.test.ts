@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
+import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
+import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
@@ -8,6 +12,8 @@ import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
+jest.mock("@/lib/server/prisma-advisory-lock", () => ({ acquirePrismaAdvisoryTransactionLock: jest.fn() }));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -94,6 +100,7 @@ describe("explicit transcript-derived Session note", () => {
     jest.clearAllMocks();
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue(desk as any);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
   });
 
   it("rejects before private reads when signed out", async () => {
@@ -192,5 +199,135 @@ describe("explicit transcript-derived Session note", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: true, note: { title: "Later edited title", revisionCount: 2 }, boundaries: { noteCreated: false } });
     expect(tx.coachingNote.create).not.toHaveBeenCalled();
+  });
+
+  it("materializes a current packet lane item into one private canonical note", async () => {
+    const providerText = "Welcome, everybody.";
+    const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
+    const segments = [{
+      id: "segment-1",
+      speakerLabel: "Speaker",
+      startSeconds: 3.66,
+      endSeconds: 4.84,
+      text: providerText,
+      corrections: [],
+      verifications: [],
+    }];
+    const summary = {
+      id: "summary-1",
+      kind: "SUMMARY",
+      sourceJson: {
+        source: "transcript-packet-builder",
+        roomId: "room-1",
+        transcriptJobId: "job-1",
+        recordingAssetId: "asset-1",
+        packetBuildId: "build-1",
+        transcriptSnapshot: transcriptPacketSnapshot(segments),
+        reviewLanes: [{
+          id: "coaching-insights",
+          label: "Insights and decisions",
+          status: "READY_FOR_HUMAN_REVIEW",
+          items: [{ segmentId: "segment-1", text: providerText }],
+        }],
+      },
+      createdAt: new Date("2026-08-02T02:00:00.000Z"),
+      updatedAt: new Date("2026-08-02T02:00:00.000Z"),
+    };
+    const packetRequestId = "packet-note-build-1-coaching-insights-segment-1";
+    const tx = {
+      $queryRaw: jest.fn(),
+      callRoom: { findFirst: jest.fn().mockResolvedValue({ id: "room-1", bookingId: "booking-1", project: { accessGrants: [] } }) },
+      coachingNote: {
+        findMany: jest.fn().mockResolvedValue([summary]),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(async (args: any) => note({ sourceJson: args.data.sourceJson, visibility: "AUTHOR_PRIVATE" })),
+      },
+      transcriptJob: {
+        findFirst: jest.fn().mockResolvedValue({ id: "job-1", roomId: "room-1", assetId: "asset-1", status: "COMPLETED", asset: { id: "asset-1" }, segments }),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn((callback: any) => callback(tx)),
+      coachingNote: { findUnique: jest.fn() },
+    } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      ...desk,
+      segments: [{ ...desk.segments[0], providerTextSha256, acceptedCorrection: null }],
+    } as any);
+
+    const response = await POST(request({
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      title: "Insights and decisions",
+      body: "A reviewed note from this exact moment.",
+      visibility: "AUTHOR_PRIVATE",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      note: { visibility: "AUTHOR_PRIVATE", sourceAnchor: { segmentId: "segment-1" } },
+      boundaries: { packetCandidateReviewed: true, packetSnapshotRechecked: true, noteCreated: true, externalDelivery: false },
+    });
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(tx, "transcript-job-packet-source:job-1");
+    expect(tx.coachingNote.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        sourceJson: expect.objectContaining({
+          packetSummaryNoteId: "summary-1",
+          packetBuildId: "build-1",
+          packetNoteCandidateId: packetRequestId,
+          packetLaneId: "coaching-insights",
+          packetLaneLabel: "Insights and decisions",
+          materializedFromPacket: true,
+        }),
+        revisions: { create: expect.objectContaining({ operation: "created-from-transcript-packet" }) },
+      }),
+    }));
+  });
+
+  it("rejects a packet note after transcript review changes", async () => {
+    const providerText = "Welcome, everybody.";
+    const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
+    const oldSegments = [{ id: "segment-1", speakerLabel: "Speaker", startSeconds: 3.66, endSeconds: 4.84, text: providerText, corrections: [], verifications: [] }];
+    const currentSegments = [{ ...oldSegments[0], verifications: [{ id: "verification-1", reviewKind: "confirmed-as-is", providerTextSha256, providerSpeakerLabel: "Speaker", createdAt: new Date("2026-08-02T02:10:00.000Z") }] }];
+    const packetRequestId = "packet-note-build-1-coaching-insights-segment-1";
+    const summary = {
+      id: "summary-1",
+      kind: "SUMMARY",
+      sourceJson: {
+        source: "transcript-packet-builder", roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", packetBuildId: "build-1",
+        transcriptSnapshot: transcriptPacketSnapshot(oldSegments),
+        reviewLanes: [{ id: "coaching-insights", label: "Insights", status: "READY_FOR_HUMAN_REVIEW", items: [{ segmentId: "segment-1" }] }],
+      },
+      createdAt: new Date("2026-08-02T02:00:00.000Z"), updatedAt: new Date("2026-08-02T02:00:00.000Z"),
+    };
+    const tx = {
+      $queryRaw: jest.fn(),
+      callRoom: { findFirst: jest.fn().mockResolvedValue({ id: "room-1", bookingId: null, project: { accessGrants: [] } }) },
+      coachingNote: { findMany: jest.fn().mockResolvedValue([summary]), findUnique: jest.fn(), create: jest.fn() },
+      transcriptJob: { findFirst: jest.fn().mockResolvedValue({ id: "job-1", roomId: "room-1", assetId: "asset-1", status: "COMPLETED", asset: { id: "asset-1" }, segments: currentSegments }) },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)), coachingNote: { findUnique: jest.fn() } } as any);
+    const response = await POST(request({
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "TRANSCRIPT_REVIEW_CHANGED" });
+    expect(tx.coachingNote.create).not.toHaveBeenCalled();
+    expect(readTranscriptCorrectionDesk).not.toHaveBeenCalled();
   });
 });

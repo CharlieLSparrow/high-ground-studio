@@ -3,6 +3,7 @@ import {
   type TranscriptActionReviewDecision,
   type TranscriptGoalReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
+import type { EditableSessionNoteKind, SessionNoteVisibility } from "@/lib/session-note-contract";
 
 export type SessionReviewCandidate = {
   id: string;
@@ -39,6 +40,34 @@ export type SessionReviewGoalCandidate = {
   reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_GOAL";
   humanApprovalRequired: boolean;
   committedGoalId: string | null;
+};
+
+export type SessionReviewNoteCandidate = {
+  id: string;
+  clientRequestId: string;
+  roomId: string;
+  transcriptJobId: string;
+  recordingAssetId: string;
+  summaryNoteId: string;
+  packetBuildId: string;
+  laneId: string;
+  laneLabel: string;
+  laneStatus: string;
+  segmentId: string;
+  speakerLabel: string | null;
+  startSeconds: number;
+  endSeconds: number;
+  sourceText: string;
+  providerTextSha256: string;
+  acceptedReviewId: string | null;
+  acceptedCorrectionId: string | null;
+  transcriptReviewStatus: "provider" | "human-reviewed";
+  suggestedTitle: string;
+  suggestedBody: string;
+  suggestedKind: EditableSessionNoteKind;
+  suggestedVisibility: SessionNoteVisibility;
+  humanApprovalRequired: boolean;
+  committedNoteId: string | null;
 };
 
 export type SessionReviewLaneStatus =
@@ -81,6 +110,7 @@ export type SessionReviewPacket = {
     build: { packetBuildId: string | null; correlationMode: string } | null;
     summary: { id: string; title: string | null; body: string; source?: Record<string, unknown>; createdAt: string | null } | null;
     highlights: Array<{ id: string; title: string | null; body: string; createdAt: string | null }>;
+    noteCandidates?: SessionReviewNoteCandidate[];
     actionCandidates: SessionReviewCandidate[];
     goalCandidates?: SessionReviewGoalCandidate[];
     reviewLanes?: SessionReviewLane[];
@@ -104,6 +134,34 @@ export type SessionReviewPacket = {
     }>;
   };
 };
+
+export function noteCandidateMaterializationRequest(input: {
+  candidate: SessionReviewNoteCandidate;
+  title: string;
+  body: string;
+  kind: EditableSessionNoteKind;
+  visibility: SessionNoteVisibility;
+}) {
+  const body = input.body.trim();
+  if (!body || input.candidate.committedNoteId) return null;
+  return {
+    roomId: input.candidate.roomId,
+    segmentId: input.candidate.segmentId,
+    clientRequestId: input.candidate.clientRequestId,
+    expectedProviderTextSha256: input.candidate.providerTextSha256,
+    title: input.title.trim(),
+    body,
+    kind: input.kind,
+    visibility: input.visibility,
+    surface: "nest-session-packet-review",
+    transcriptJobId: input.candidate.transcriptJobId,
+    recordingAssetId: input.candidate.recordingAssetId,
+    summaryNoteId: input.candidate.summaryNoteId,
+    packetBuildId: input.candidate.packetBuildId,
+    packetNoteCandidateId: input.candidate.id,
+    packetLaneId: input.candidate.laneId,
+  };
+}
 
 export function timestampForSeconds(value: number) {
   const total = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;

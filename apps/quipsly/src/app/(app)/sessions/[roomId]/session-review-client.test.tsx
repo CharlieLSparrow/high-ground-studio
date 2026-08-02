@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
-import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewPacket } from "./session-review-model";
+import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewNoteCandidate, SessionReviewPacket } from "./session-review-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
 
@@ -42,6 +42,34 @@ const actionCandidate: SessionReviewCandidate = {
   reviewStatus: "READY_FOR_HUMAN_REVIEW",
   humanApprovalRequired: true,
   committedActionItemId: null,
+};
+
+const noteCandidate: SessionReviewNoteCandidate = {
+  id: "packet-note-build-1-coaching-insights-segment-1",
+  clientRequestId: "packet-note-build-1-coaching-insights-segment-1",
+  roomId: "room-1",
+  transcriptJobId: "job-1",
+  recordingAssetId: "asset-1",
+  summaryNoteId: "summary-1",
+  packetBuildId: "build-1",
+  laneId: "coaching-insights",
+  laneLabel: "Insights and decisions",
+  laneStatus: "READY_FOR_HUMAN_REVIEW",
+  segmentId: "segment-1",
+  speakerLabel: "Homer",
+  startSeconds: 12.4,
+  endSeconds: 17.8,
+  sourceText: "I realized the weekly review makes follow-through visible.",
+  providerTextSha256: "a".repeat(64),
+  acceptedReviewId: "verification-1",
+  acceptedCorrectionId: null,
+  transcriptReviewStatus: "human-reviewed",
+  suggestedTitle: "Insights and decisions",
+  suggestedBody: "I realized the weekly review makes follow-through visible.",
+  suggestedKind: "SESSION_NOTE",
+  suggestedVisibility: "AUTHOR_PRIVATE",
+  humanApprovalRequired: true,
+  committedNoteId: null,
 };
 
 function packet(goalCandidate = candidate): SessionReviewPacket {
@@ -110,6 +138,18 @@ function packetWithAction(candidateValue = actionCandidate): SessionReviewPacket
     packet: {
       ...value.packet!,
       actionCandidates: [candidateValue],
+      goalCandidates: [],
+    },
+  };
+}
+
+function packetWithNote(candidateValue = noteCandidate): SessionReviewPacket {
+  const value = packet();
+  return {
+    ...value,
+    packet: {
+      ...value.packet!,
+      noteCandidates: [candidateValue],
       goalCandidates: [],
     },
   };
@@ -440,6 +480,52 @@ describe("Session review goal candidates", () => {
     });
     expect(await screen.findByRole("status")).toHaveTextContent("One unassigned Quipsly task was created and 1 project tag");
     expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
+  });
+
+  it("reviews packet wording, purpose, and audience before saving a source-linked note", async () => {
+    const acceptedNote: SessionReviewNoteCandidate = {
+      ...noteCandidate,
+      humanApprovalRequired: false,
+      committedNoteId: "note-1",
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithNote()))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, note: { id: "note-1", visibility: "CLIENT_SAFE" } }))
+      .mockResolvedValueOnce(jsonResponse(packetWithNote(acceptedNote)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    await user.click(await screen.findByRole("button", { name: "Review & save note" }));
+    const noteBody = screen.getByRole("textbox", { name: "Note" });
+    await user.clear(noteBody);
+    await user.type(noteBody, "The weekly review makes follow-through visible.");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Purpose" }), "DECISION");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Audience" }), "CLIENT_SAFE");
+    expect(screen.getByText(/Eligible for a separately reviewed client follow-up/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save source-linked note" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/notes");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "packet-note-build-1-coaching-insights-segment-1",
+      expectedProviderTextSha256: "a".repeat(64),
+      title: "Insights and decisions",
+      body: "The weekly review makes follow-through visible.",
+      kind: "DECISION",
+      visibility: "CLIENT_SAFE",
+      surface: "nest-session-packet-review",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      packetNoteCandidateId: "packet-note-build-1-coaching-insights-segment-1",
+      packetLaneId: "coaching-insights",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("client-safe visibility");
+    expect(screen.getByRole("link", { name: "Open notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {

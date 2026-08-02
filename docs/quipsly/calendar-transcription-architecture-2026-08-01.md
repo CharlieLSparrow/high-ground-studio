@@ -646,6 +646,32 @@ separate iPhone 17 Pro operation inspected the native choices and passed its
 accessibility audit without enabling Preview writes. See
 `docs/coordination/2026-08-02-transcript-task-materialization.md`.
 
+## 2026-08-02 canonical transcript-note checkpoint
+
+Packet review now projects source-linked note candidates from the reviewed
+transcript lanes without creating another persistence model. A reviewer on
+Nest or iPhone must inspect final title, body, purpose, and audience before one
+canonical `CoachingNote` and its first append-only revision can exist.
+
+The Serializable materialization transaction rechecks Session mutation access,
+production-team policy, the current packet build and lane, transcript-review
+snapshot, released recording evidence, provider digest, accepted correction,
+and protected playback source. Exact retries recover the same note; changed
+intent conflicts. A refreshed packet projects the committed canonical note ID
+back onto the reviewed candidate.
+
+The audience choice is an access boundary rather than delivery: Only me,
+Session participants, client-safe, and authorized production-team scope are
+stored and filtered by canonical Session projections. Saving the note creates
+no task, goal, reminder, calendar event, message, client follow-up, Studio edit,
+or publication.
+
+Operated acceptance covered the complete iPhone review and accessibility flow,
+the broader transcript truth-boundary flow, real local HTTP/PostgreSQL
+persistence, viewer denial, exact replay and conflict, audience narrowing, and
+zero-residue cleanup. Full evidence is in
+`docs/coordination/2026-08-02-transcript-note-materialization.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:

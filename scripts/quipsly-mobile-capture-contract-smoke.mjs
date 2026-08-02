@@ -938,6 +938,7 @@ function checkTranscriptCorrectionContractSources() {
     sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/packet/route-implementation.ts"),
   ].join("\n");
   const packetGoalReviewRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/packet/goals/route.ts");
+  const noteMaterializationRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/notes/route.ts");
   const taskDomainText = sourceText("packages/quipsly-domain/src/transcript-derived-task.ts");
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
@@ -1528,6 +1529,38 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("Every other decision creates no task, assignment, date, reminder, calendar event, message, delivery, or publication."),
     "packetGoalCandidateExplicitReviewBoundary",
     "Packet goal-language stays candidate-only until an actor explicitly accepts one exact-source canonical Goal; edit, reject, and defer remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",
+  );
+  expect(
+    packetRouteText.includes("buildPacketNoteCandidates")
+      && packetRouteText.includes("transcriptPacketNoteCandidateId")
+      && packetRouteText.includes("noteCandidates")
+      && noteMaterializationRouteText.includes("sessionMutationAccessWhere")
+      && noteMaterializationRouteText.includes("mobileCaptureTranscriptProcessingGate")
+      && noteMaterializationRouteText.includes("FOR UPDATE")
+      && noteMaterializationRouteText.includes("packetSnapshotMatches")
+      && noteMaterializationRouteText.includes("packetCandidateReviewed")
+      && noteMaterializationRouteText.includes("packetSnapshotRechecked")
+      && noteMaterializationRouteText.includes("created-from-transcript-packet")
+      && sessionReviewModelText.includes("noteCandidateMaterializationRequest")
+      && sessionReviewText.includes("Keep what matters, with its source")
+      && sessionReviewText.includes("It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication")
+      && nativeText.includes("CapturePacketNoteReviewSection")
+      && nativeText.includes("CapturePacketNoteSourceButton_")
+      && nativeText.includes("CapturePacketNoteTitleField")
+      && nativeText.includes("CapturePacketNoteBodyField")
+      && nativeText.includes("CapturePacketNoteKindPicker")
+      && nativeText.includes("CapturePacketNoteVisibilityPicker")
+      && nativeText.includes("CapturePacketNoteAudienceBoundary")
+      && nativeText.includes("CapturePacketNoteBoundary")
+      && nativeText.includes("CapturePacketNoteReviewPreviewView")
+      && nativeText.includes("CaptureTranscriptJumpMenu")
+      && nativeText.includes("CaptureTranscriptJumpToNotes")
+      && nativeText.includes("createPacketNote")
+      && nativeText.includes('"packetNoteCandidateId": candidate.id')
+      && shellText.includes("CapturePacketNoteReviewPreviewLink")
+      && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave"),
+    "packetNoteCandidateExplicitMaterializationBoundary",
+    "Packet note candidates remain source-linked projections until an actor reviews title, body, purpose, and audience and explicitly creates one canonical CoachingNote against the rechecked packet snapshot.",
   );
   expect(
     workPageText.includes("initialSnapshot.tasks.some((task) => task.id === requestedTaskId)")

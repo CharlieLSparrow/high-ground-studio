@@ -11,12 +11,14 @@ import {
   candidateReviewRequest,
   committedTasks,
   goalCandidateReviewRequest,
+  noteCandidateMaterializationRequest,
   packetLaneReviewRequest,
   timestampForSeconds,
   type SessionReviewCandidate,
   type SessionReviewGoalCandidate,
   type SessionReviewLane,
   type SessionReviewLaneStatus,
+  type SessionReviewNoteCandidate,
   type SessionReviewPacket,
 } from "./session-review-model";
 import { PriorSessionContinuityCard, PriorSessionFollowThroughCard, SessionContinuityCard } from "./session-continuity-card";
@@ -26,8 +28,16 @@ import type { SessionPreparation } from "./session-preparation-model";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
+  EditableSessionNoteKind,
   SessionNoteView,
+  SessionNoteVisibility,
   SessionWorkspaceNote,
+} from "./session-notes-model";
+import {
+  EDITABLE_SESSION_NOTE_KINDS,
+  SESSION_NOTE_VISIBILITIES,
+  sessionNoteKindLabel,
+  sessionNoteVisibilityLabel,
 } from "./session-notes-model";
 import {
   SESSION_WORKSPACE_MODES,
@@ -653,6 +663,59 @@ function statusTone(value: string | null | undefined) {
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function PacketNoteCandidateCard({
+  candidate,
+  busy,
+  canUseProjectTeamNotes,
+  onCreate,
+}: {
+  candidate: SessionReviewNoteCandidate;
+  busy: boolean;
+  canUseProjectTeamNotes: boolean;
+  onCreate: (candidate: SessionReviewNoteCandidate, draft: {
+    title: string;
+    body: string;
+    kind: EditableSessionNoteKind;
+    visibility: SessionNoteVisibility;
+  }) => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState(candidate.suggestedTitle);
+  const [body, setBody] = useState(candidate.suggestedBody);
+  const [kind, setKind] = useState<EditableSessionNoteKind>(candidate.suggestedKind);
+  const [visibility, setVisibility] = useState<SessionNoteVisibility>(candidate.suggestedVisibility);
+  const accepted = Boolean(candidate.committedNoteId);
+  const laneRejected = candidate.laneStatus === "REJECTED_BY_HUMAN";
+  const allowedKinds = EDITABLE_SESSION_NOTE_KINDS.filter((value) => value !== "PRODUCTION" || canUseProjectTeamNotes);
+  const allowedVisibilities = SESSION_NOTE_VISIBILITIES.filter((value) => value !== "PROJECT_TEAM" || canUseProjectTeamNotes);
+
+  useEffect(() => {
+    setTitle(candidate.suggestedTitle);
+    setBody(candidate.suggestedBody);
+    setKind(canUseProjectTeamNotes || candidate.suggestedKind !== "PRODUCTION" ? candidate.suggestedKind : "SESSION_NOTE");
+    setVisibility(canUseProjectTeamNotes || candidate.suggestedVisibility !== "PROJECT_TEAM" ? candidate.suggestedVisibility : "AUTHOR_PRIVATE");
+    setCreating(false);
+  }, [canUseProjectTeamNotes, candidate.id, candidate.suggestedBody, candidate.suggestedKind, candidate.suggestedTitle, candidate.suggestedVisibility]);
+
+  return <article className="rounded-2xl border border-orange-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-orange-800">{candidate.laneLabel} · {timestampForSeconds(candidate.startSeconds)}–{timestampForSeconds(candidate.endSeconds)}</p><h3 className="mt-1 text-lg font-black text-[#3d3122]">{candidate.speakerLabel || "Unlabelled speaker"}</h3></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(accepted ? "ACCEPTED" : candidate.laneStatus)}`}>{accepted ? "Saved" : humanize(candidate.laneStatus)}</span></div>
+    <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{candidate.sourceText}</p>
+    <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline">Review exact transcript source</a>
+    {accepted ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Saved as one canonical Session note. <Link href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`} className="underline">Open notes</Link></p> : creating ? <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+      <div><p className="text-xs font-black uppercase tracking-wide text-orange-950">Save one source-linked Session note</p><p className="mt-1 text-xs font-semibold leading-5 text-orange-900">Review the wording, purpose, and audience. The source remains attached; nothing is sent or shared outside its selected in-app visibility.</p></div>
+      <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note title <span className="normal-case tracking-normal text-orange-800">(optional)</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
+      <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note<textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={20000} rows={4} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Purpose<select value={kind} onChange={(event) => setKind(event.target.value as EditableSessionNoteKind)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]">{allowedKinds.map((value) => <option key={value} value={value}>{sessionNoteKindLabel(value)}</option>)}</select></label>
+        <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Audience<select value={visibility} onChange={(event) => setVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]">{allowedVisibilities.map((value) => <option key={value} value={value}>{sessionNoteVisibilityLabel(value)}</option>)}</select></label>
+      </div>
+      <p className="rounded-lg border border-orange-200 bg-white p-3 text-xs font-bold leading-relaxed text-orange-950">{visibility === "AUTHOR_PRIVATE" ? "Only your account can read this note." : visibility === "SESSION_SHARED" ? "People who can access this Session can read it inside Quipsly." : visibility === "CLIENT_SAFE" ? "Eligible for a separately reviewed client follow-up; it is not sent automatically." : "Visible to Nest owners and editors; it is not public."}</p>
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !body.trim()} onClick={() => onCreate(candidate, { title, body, kind, visibility })} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Saving…" : "Save source-linked note"}</button><button type="button" disabled={busy} onClick={() => setCreating(false)} className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50">Cancel</button></div>
+      <p className="text-xs font-bold leading-relaxed text-orange-950">Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.</p>
+    </div> : <div className="mt-4"><button type="button" disabled={busy || laneRejected} onClick={() => setCreating(true)} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; save note</button>{laneRejected ? <p className="mt-2 text-xs font-bold text-rose-800">This lane was rejected. Reopen the lane before turning its candidates into notes.</p> : null}</div>}
+  </article>;
+}
+
 function CandidateCard({
   candidate,
   busy,
@@ -1101,6 +1164,38 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
+  async function savePacketNote(candidate: SessionReviewNoteCandidate, draft: {
+    title: string;
+    body: string;
+    kind: EditableSessionNoteKind;
+    visibility: SessionNoteVisibility;
+  }) {
+    const request = noteCandidateMaterializationRequest({ candidate, ...draft });
+    if (!request) {
+      setMessage("This packet note is already saved or has no reviewed note text. Refresh before trying again.");
+      return;
+    }
+    setBusyCandidateId(candidate.id);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/notes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; note?: { id: string; visibility: string } };
+      if (!response.ok || !payload.ok || !payload.note?.id) throw new Error(payload.error || "The packet note was not saved.");
+      await load();
+      setMessage(payload.idempotentReplay
+        ? "This exact packet note choice was already saved; nothing was duplicated."
+        : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note.visibility as SessionNoteVisibility).toLowerCase()} visibility. No message, delivery, calendar event, task, goal, or publication was created.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The packet note was not saved.");
+    } finally {
+      setBusyCandidateId(null);
+    }
+  }
+
   async function reviewGoal(candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string }) {
     if (!packet) return;
     const request = goalCandidateReviewRequest({ packet, candidate, decision, ...draft });
@@ -1259,6 +1354,11 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
           <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">Each lane is a source-grounded way to inspect the packet. Approving it means the material is useful for continued work inside Quipsly; it does not make the text a canonical Session note or authorize client delivery.</p>
           {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Packet lane review is held because transcript review changed. Build the current packet first." : "Packet lane review is held until the transcript release evidence is valid. No review state can be changed."}</div> : actionableReviewLanes.length ? <div className="grid gap-4 xl:grid-cols-2">{actionableReviewLanes.map((lane) => <PacketReviewLaneCard key={lane.id} lane={lane} busy={busyLaneId === lane.id} onDecision={reviewLane} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No packet lanes contain candidate material. Quipsly will not infer approval or create replacement notes.</div>}
           {!reviewHeld && emptyReviewLanes.length ? <details className="mt-4 rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]"><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">{emptyReviewLanes.length} {emptyReviewLanes.length === 1 ? "review category has" : "review categories have"} no candidates</summary><p className="mt-3 font-semibold leading-relaxed">{emptyReviewLanes.map((lane) => lane.label).join(" · ")}. Empty categories have no decision controls.</p></details> : null}
+        </section>
+
+        <section aria-labelledby="note-candidate-heading">
+          <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-orange-50 p-2 text-orange-700"><NotebookPen aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Candidate notes · not canonical yet</p><h2 id="note-candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Keep what matters, with its source</h2></div></div>
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Note review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can become a canonical note."}</div> : (packet.packet?.noteCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.noteCandidates ?? []).map((candidate) => <PacketNoteCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} canUseProjectTeamNotes={canUseProjectTeamNotes} onCreate={savePacketNote} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No source-linked note candidates are waiting in this packet.</div>}
         </section>
 
         <section aria-labelledby="candidate-heading">

@@ -1,4 +1,4 @@
-import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, packetLaneReviewRequest, timestampForSeconds } from "./session-review-model";
+import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, noteCandidateMaterializationRequest, packetLaneReviewRequest, timestampForSeconds } from "./session-review-model";
 
 describe("session review model", () => {
   const packet: any = {
@@ -87,5 +87,45 @@ describe("session review model", () => {
       note: "Reviewed for internal use.",
     });
     expect(packetLaneReviewRequest({ packet: { ...packet, room: null }, lane, status: "NEEDS_REVISION" })).toBeNull();
+  });
+
+  it("binds a deliberate note to its packet lane and exact transcript evidence", () => {
+    const noteCandidate: any = {
+      id: "packet-note-build-1-coaching-insights-segment-1",
+      clientRequestId: "packet-note-build-1-coaching-insights-segment-1",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      laneId: "coaching-insights",
+      segmentId: "segment-1",
+      providerTextSha256: "a".repeat(64),
+      committedNoteId: null,
+    };
+    expect(noteCandidateMaterializationRequest({
+      candidate: noteCandidate,
+      title: "  Insights and decisions  ",
+      body: "  A reviewed private insight.  ",
+      kind: "DECISION",
+      visibility: "AUTHOR_PRIVATE",
+    })).toEqual({
+      roomId: "room-1",
+      segmentId: "segment-1",
+      clientRequestId: "packet-note-build-1-coaching-insights-segment-1",
+      expectedProviderTextSha256: "a".repeat(64),
+      title: "Insights and decisions",
+      body: "A reviewed private insight.",
+      kind: "DECISION",
+      visibility: "AUTHOR_PRIVATE",
+      surface: "nest-session-packet-review",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      packetNoteCandidateId: "packet-note-build-1-coaching-insights-segment-1",
+      packetLaneId: "coaching-insights",
+    });
+    expect(noteCandidateMaterializationRequest({ candidate: { ...noteCandidate, committedNoteId: "note-1" }, title: "Done", body: "Already saved", kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" })).toBeNull();
   });
 });

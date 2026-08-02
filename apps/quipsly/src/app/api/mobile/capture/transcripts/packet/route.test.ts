@@ -6,7 +6,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
-import { buildPacketGoalCandidates } from "./route-implementation";
+import { buildPacketGoalCandidates, buildPacketNoteCandidates } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -115,5 +115,98 @@ describe("packet goal candidates", () => {
   it("fails closed for a non-candidate or uncorrelated brief", () => {
     expect(buildPacketGoalCandidates({ summary: { sourceJson: { packetBrief: { ...summary.sourceJson.packetBrief, candidateOnly: false } } }, latestTranscriptJob, goals: [], packetBuildId })).toEqual([]);
     expect(buildPacketGoalCandidates({ summary, latestTranscriptJob: { ...latestTranscriptJob, status: "RUNNING" }, goals: [], packetBuildId })).toEqual([]);
+  });
+});
+
+describe("packet note candidates", () => {
+  const noteSummary = {
+    id: "summary-1",
+    sourceJson: {
+      reviewLanes: [{
+        id: "coaching-insights",
+        label: "Insights and decisions",
+        status: "READY_FOR_HUMAN_REVIEW",
+        items: [{ segmentId: "segment-1", text: "My goal is to build a repeatable coaching review habit." }],
+      }],
+    },
+  };
+
+  it("projects exact reviewed transcript evidence into an author-private note candidate", () => {
+    expect(buildPacketNoteCandidates({
+      summary: noteSummary,
+      latestTranscriptJob,
+      notes: [],
+      packetBuildId,
+      actorUserId: "user-1",
+    })).toEqual([expect.objectContaining({
+      id: "packet-note-packet-build-1-coaching-insights-segment-1",
+      summaryNoteId: "summary-1",
+      laneId: "coaching-insights",
+      laneLabel: "Insights and decisions",
+      segmentId: "segment-1",
+      sourceText: "My goal is to build a repeatable coaching review habit.",
+      providerTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      suggestedKind: "SESSION_NOTE",
+      suggestedVisibility: "AUTHOR_PRIVATE",
+      humanApprovalRequired: true,
+      committedNoteId: null,
+    })]);
+  });
+
+  it("correlates only the current actor's deliberate canonical note", () => {
+    const sourceJson = {
+      schema: "quipsly-transcript-derived-note-v1",
+      packetNoteCandidateId: "packet-note-packet-build-1-coaching-insights-segment-1",
+    };
+    const notes = [
+      { id: "other-private-note", authorUserId: "user-2", sourceJson },
+      { id: "actor-note", authorUserId: "user-1", sourceJson },
+    ];
+    expect(buildPacketNoteCandidates({ summary: noteSummary, latestTranscriptJob, notes, packetBuildId, actorUserId: "user-1" })[0]).toMatchObject({
+      humanApprovalRequired: false,
+      committedNoteId: "actor-note",
+    });
+    expect(buildPacketNoteCandidates({ summary: noteSummary, latestTranscriptJob, notes: notes.slice(0, 1), packetBuildId, actorUserId: "user-1" })[0]).toMatchObject({
+      humanApprovalRequired: true,
+      committedNoteId: null,
+    });
+  });
+
+  it("uses the accepted correction while preserving the immutable provider hash", () => {
+    const providerText = latestTranscriptJob.segments[0].text;
+    const correctedJob = {
+      ...latestTranscriptJob,
+      segments: [{
+        ...latestTranscriptJob.segments[0],
+        corrections: [{
+          id: "correction-1",
+          status: "accepted",
+          baseTextSha256: createHash("sha256").update(providerText).digest("hex"),
+          expectedSpeakerLabel: "Homer",
+          correctedText: "I learned that a weekly review makes follow-through visible.",
+          correctedSpeakerLabel: "Scott",
+          updatedAt: new Date("2026-08-02T02:00:00.000Z"),
+        }],
+      }],
+    };
+    expect(buildPacketNoteCandidates({ summary: noteSummary, latestTranscriptJob: correctedJob, notes: [], packetBuildId, actorUserId: "user-1" })[0]).toMatchObject({
+      sourceText: "I learned that a weekly review makes follow-through visible.",
+      suggestedBody: "I learned that a weekly review makes follow-through visible.",
+      speakerLabel: "Scott",
+      acceptedReviewId: "correction-1",
+      acceptedCorrectionId: "correction-1",
+      transcriptReviewStatus: "human-reviewed",
+      providerTextSha256: createHash("sha256").update(providerText).digest("hex"),
+    });
+  });
+
+  it("omits empty or unresolvable lane items", () => {
+    expect(buildPacketNoteCandidates({
+      summary: { id: "summary-1", sourceJson: { reviewLanes: [{ id: "empty", label: "Empty", status: "EMPTY", items: [{ segmentId: "segment-1" }] }] } },
+      latestTranscriptJob,
+      notes: [],
+      packetBuildId,
+      actorUserId: "user-1",
+    })).toEqual([]);
   });
 });

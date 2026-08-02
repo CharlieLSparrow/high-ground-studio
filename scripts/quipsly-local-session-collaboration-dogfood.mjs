@@ -475,6 +475,25 @@ try {
       materializationTags[0]?.selectedForSession === true,
     "Packet read did not expose the exact Session project, canonical tag vocabulary, and actor-owned default for review.",
   );
+  const packetNoteCandidates = Array.isArray(viewerRead.body?.packet?.noteCandidates)
+    ? viewerRead.body.packet.noteCandidates.map(object)
+    : [];
+  const packetNoteCandidate = packetNoteCandidates.find(
+    (candidate) => candidate.segmentId === segment.id && candidate.laneId === "internal-summary",
+  );
+  assert(
+    packetNoteCandidate?.id &&
+      packetNoteCandidate.clientRequestId === packetNoteCandidate.id &&
+      packetNoteCandidate.roomId === room.id &&
+      packetNoteCandidate.transcriptJobId === transcriptJob.id &&
+      packetNoteCandidate.recordingAssetId === recordingAsset.id &&
+      packetNoteCandidate.summaryNoteId === summary.id &&
+      packetNoteCandidate.packetBuildId === packetBuildId &&
+      packetNoteCandidate.providerTextSha256 === sha256(transcriptText) &&
+      packetNoteCandidate.humanApprovalRequired === true &&
+      packetNoteCandidate.committedNoteId === null,
+    "Packet read did not project an uncommitted note candidate with exact transcript, packet, lane, and recording identity.",
+  );
 
   const laneReviewBody = {
     roomId: room.id,
@@ -680,12 +699,18 @@ try {
   const transcriptNoteRequest = {
     roomId: room.id,
     segmentId: segment.id,
-    clientRequestId: randomUUID(),
-    expectedProviderTextSha256: sha256(transcriptText),
+    clientRequestId: packetNoteCandidate.clientRequestId,
+    expectedProviderTextSha256: packetNoteCandidate.providerTextSha256,
     title: "Next-session episode outline decision",
     body: "Before our next coaching Session, draft the revised episode outline and bring it back for review.",
     kind: "DECISION",
     visibility: "CLIENT_SAFE",
+    transcriptJobId: packetNoteCandidate.transcriptJobId,
+    recordingAssetId: packetNoteCandidate.recordingAssetId,
+    summaryNoteId: packetNoteCandidate.summaryNoteId,
+    packetBuildId: packetNoteCandidate.packetBuildId,
+    packetNoteCandidateId: packetNoteCandidate.id,
+    packetLaneId: packetNoteCandidate.laneId,
     surface: "local-session-collaboration-dogfood",
   };
   const viewerTranscriptNoteAttempt = await requestJson(
@@ -693,7 +718,7 @@ try {
     {
       method: "POST",
       headers: { ...bearer(viewerToken), "content-type": "application/json" },
-      body: JSON.stringify({ ...transcriptNoteRequest, clientRequestId: randomUUID() }),
+      body: JSON.stringify(transcriptNoteRequest),
     },
   );
   assert(
@@ -717,7 +742,11 @@ try {
       transcriptNote.body?.note?.sourceAnchor?.segmentId === segment.id &&
       transcriptNote.body?.note?.sourceAnchor?.providerTextSha256 === sha256(transcriptText) &&
       transcriptNote.body?.boundaries?.sourceAnchorPreserved === true &&
+      transcriptNote.body?.boundaries?.packetCandidateReviewed === true &&
+      transcriptNote.body?.boundaries?.packetSnapshotRechecked === true &&
       transcriptNote.body?.boundaries?.taskCreated === false &&
+      transcriptNote.body?.boundaries?.goalCreated === false &&
+      transcriptNote.body?.boundaries?.calendarMutated === false &&
       transcriptNote.body?.boundaries?.messageSent === false,
     `Project editor could not create an exact transcript-linked note. HTTP ${transcriptNote.status}`,
   );
@@ -742,6 +771,42 @@ try {
       transcriptNoteReplay.body?.note?.id === transcriptNoteId &&
       transcriptNoteReplay.body?.note?.revisionCount === 1,
     "Transcript-linked note replay duplicated or changed canonical state.",
+  );
+
+  const transcriptNoteChangedIntent = await requestJson(
+    new URL("/api/mobile/capture/transcripts/notes", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify({
+        ...transcriptNoteRequest,
+        visibility: "AUTHOR_PRIVATE",
+      }),
+    },
+  );
+  assert(
+    transcriptNoteChangedIntent.status === 409 &&
+      transcriptNoteChangedIntent.body?.code === "IDEMPOTENCY_CONFLICT",
+    "Changed note intent unexpectedly rewrote an already materialized packet candidate.",
+  );
+
+  const packetAfterNote = await requestJson(
+    new URL(
+      `/api/mobile/capture/transcripts/packet?callRoomId=${encodeURIComponent(room.id)}`,
+      baseUrl,
+    ),
+    { headers: bearer(collaboratorToken) },
+  );
+  const committedPacketNoteCandidate = Array.isArray(packetAfterNote.body?.packet?.noteCandidates)
+    ? packetAfterNote.body.packet.noteCandidates
+        .map(object)
+        .find((candidate) => candidate.id === packetNoteCandidate.id)
+    : null;
+  assert(
+    packetAfterNote.status === 200 &&
+      committedPacketNoteCandidate?.committedNoteId === transcriptNoteId &&
+      committedPacketNoteCandidate?.humanApprovalRequired === false,
+    "Packet refresh did not project the canonical note identity back onto the reviewed candidate.",
   );
 
   const viewerSessionProjection = await requestJson(
@@ -991,7 +1056,12 @@ try {
     reviewReceiptsPersisted: receipts.length,
     editorSessionNoteCreated: true,
     editorTranscriptNoteCreated: true,
+    packetNoteCandidateProjected: true,
+    packetNoteCandidateMaterialized: true,
+    packetNoteCandidateSnapshotRechecked: true,
+    packetNoteCandidateProjectedCommittedIdentity: true,
     transcriptNoteReplayIdempotent: true,
+    transcriptNoteChangedIntentRejected: true,
     transcriptNotePlaybackAnchorProjected: true,
     transcriptNoteRevisionPreservedSource: true,
     transcriptNoteAudienceChangeEnforced: true,

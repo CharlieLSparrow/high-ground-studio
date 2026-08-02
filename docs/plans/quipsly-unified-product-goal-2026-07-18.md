@@ -6244,3 +6244,23 @@ was restored.
   verified sender is configured and one disposable production account is
   independently proven deleted. Full evidence is in
   `docs/coordination/2026-08-01-account-deletion-worker-boundary.md`.
+
+### Transcript packet to canonical Session note checkpoint — 2026-08-02
+
+- Added one shared explicit review boundary across Nest and Quipsly Capture for
+  packet-derived notes: final title, body, purpose, audience, and exact-source
+  playback must remain visible before the actor saves.
+- Materialization now creates one canonical revisioned `CoachingNote`, preserves
+  packet/transcript/recording/playback provenance, rechecks the current packet
+  snapshot and Session authority in the transaction, recovers exact retries,
+  and rejects changed intent.
+- Audience remains an access policy, not a delivery claim. The note mutation
+  creates no task, goal, reminder, calendar event, message, client delivery,
+  Studio edit, or publication.
+- The operated iPhone note-review and full transcript journeys pass, focused
+  web/server coverage passes 73/73, strict production build passes, and the
+  disposable real HTTP/PostgreSQL operation proves canonical persistence,
+  viewer denial, privacy narrowing, exact replay/conflict, committed-ID
+  projection, and zero-residue cleanup.
+- No Cloud Build or Cloud Run release was created. Full evidence is in
+  `docs/coordination/2026-08-02-transcript-note-materialization.md`.

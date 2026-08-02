@@ -7381,6 +7381,15 @@ private struct CaptureLibraryView: View {
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
                         NavigationLink {
+                            CapturePacketNoteReviewPreviewView()
+                        } label: {
+                            Label("Review source-linked note", systemImage: "note.text.badge.plus")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CapturePacketNoteReviewPreviewLink")
+                        NavigationLink {
                             CaptureTranscriptReviewView(
                                 roomID: "room-preview-coaching-ready",
                                 sessionTitle: "Leadership coaching session",
