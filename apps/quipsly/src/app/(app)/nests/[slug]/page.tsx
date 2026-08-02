@@ -50,6 +50,16 @@ import {
 import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 import { CreateDocumentButton } from "./CreateDocumentButton";
+import {
+  EpisodeRoomDirectory,
+  type EpisodeRoomDirectoryEpisode,
+  type EpisodeRoomSourceCandidate,
+} from "./EpisodeRoomDirectory";
+import {
+  sourceEpisodeNumber,
+  suggestedEpisodeSlug,
+  suggestedEpisodeTitle,
+} from "./episode-room-suggestions";
 import { NestQuickCapture } from "./NestQuickCapture";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +104,12 @@ function documentActionLabel(kind: StudioNestKind) {
 function projectHref(slug: string, view: ProjectView) {
   const base = `/nests/${encodeURIComponent(slug)}`;
   return view === "overview" ? base : `${base}?view=${view}`;
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function ToolCard({
@@ -166,6 +182,15 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
   const prisma = getPrismaClient();
   const project = await findStudioProjectForAccess(slug, prisma);
   if (!project) notFound();
+  const episodeSourceProjectSlug = project.slug === "high-ground-odyssey"
+    ? "high-ground-odyssey-manuscript"
+    : project.slug;
+  const episodeSourceAccess = await resolveStudioProjectAccess({
+    projectSlug: episodeSourceProjectSlug,
+    email: actorEmail,
+    action: "read",
+    prisma,
+  });
 
   const actorRoomVisibility = {
     OR: [
@@ -182,7 +207,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
     ],
   };
 
-  const [documents, grants, assets, mediaBins, projectFollowThrough, tags, rooms, episodeProductions] = await Promise.all([
+  const [documents, grants, assets, mediaBins, projectFollowThrough, tags, rooms, episodeProductions, episodeSourceDocuments] = await Promise.all([
     prisma.studioDocument.findMany({
       where: {
         projectId: project.id,
@@ -257,11 +282,35 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
         slug: true,
         title: true,
         status: true,
+        productionJson: true,
+        document: { select: { title: true } },
+        milestones: { select: { status: true } },
         updatedAt: true,
       },
       orderBy: [{ updatedAt: "desc" }, { slug: "asc" }],
       take: 24,
     }),
+    episodeSourceAccess.allowed && episodeSourceAccess.projectId
+      ? prisma.studioDocument.findMany({
+          where: {
+            projectId: episodeSourceAccess.projectId,
+            personalOwnerUserId: null,
+            blocks: { some: { archivedAt: null } },
+            ...(project.slug === "high-ground-odyssey"
+              ? { sourceLabel: { contains: "hgo-draft-kind:podcast-episode" } }
+              : { NOT: { sourceLabel: { contains: "document-kind:episode-room-manuscript" } } }),
+          },
+          select: {
+            id: true,
+            title: true,
+            sourceLabel: true,
+            updatedAt: true,
+            _count: { select: { blocks: { where: { archivedAt: null } } } },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 100,
+        })
+      : Promise.resolve([]),
   ]);
 
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
@@ -280,6 +329,46 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
   const episodeSlug = defaultEpisodeForNest(project.slug);
   const activeEpisode = episodeProductions.find((episode) => episode.slug === episodeSlug)
     ?? episodeProductions[0];
+  const episodeDirectory: EpisodeRoomDirectoryEpisode[] = episodeProductions.map((episode) => {
+    const sourceImport = jsonRecord(jsonRecord(episode.productionJson).sourceImport);
+    return {
+      id: episode.id,
+      slug: episode.slug,
+      title: episode.title,
+      status: episode.status,
+      documentTitle: episode.document.title,
+      updatedAt: episode.updatedAt.toISOString(),
+      milestoneCount: episode.milestones.length,
+      completedMilestoneCount: episode.milestones.filter((milestone) => milestone.status === "COMPLETED").length,
+      sourceDocumentTitle: typeof sourceImport.sourceDocumentTitle === "string" ? sourceImport.sourceDocumentTitle : null,
+      sourceBlockCount: typeof sourceImport.sourceBlockCount === "number" ? sourceImport.sourceBlockCount : null,
+    };
+  });
+  const existingEpisodeBySourceDocument = new Map(
+    episodeProductions.flatMap((episode) => {
+      const sourceImport = jsonRecord(jsonRecord(episode.productionJson).sourceImport);
+      return typeof sourceImport.sourceDocumentId === "string"
+        ? [[sourceImport.sourceDocumentId, episode.slug] as const]
+        : [];
+    }),
+  );
+  const episodeSourceCandidates: EpisodeRoomSourceCandidate[] = episodeSourceDocuments
+    .map((document) => {
+      const episodeNumber = sourceEpisodeNumber(document.sourceLabel, document.title);
+      const title = suggestedEpisodeTitle(document.title, episodeNumber);
+      return {
+        id: document.id,
+        projectSlug: episodeSourceProjectSlug,
+        title: document.title,
+        suggestedTitle: title,
+        suggestedSlug: suggestedEpisodeSlug(title, episodeNumber),
+        episodeNumber,
+        blockCount: document._count.blocks,
+        updatedAt: document.updatedAt.toISOString(),
+        existingEpisodeSlug: existingEpisodeBySourceDocument.get(document.id) ?? null,
+      };
+    })
+    .sort((left, right) => (left.episodeNumber ?? Number.MAX_SAFE_INTEGER) - (right.episodeNumber ?? Number.MAX_SAFE_INTEGER));
   const outputs = listOutputsForNestKind(nestKind === "home" ? "study" : nestKind).slice(0, 6);
   const hasVisualResearchLab = project.slug === "marine-biology-research" || nestKind === "gallery";
 
@@ -412,6 +501,14 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                   ) : null}
                 </div>
               </section>
+
+              <EpisodeRoomDirectory
+                projectSlug={project.slug}
+                episodes={episodeDirectory}
+                sourceCandidates={episodeSourceCandidates}
+                canManage={canManage}
+                collaboratorCount={activeCollaborators.length}
+              />
 
               <section aria-labelledby="project-tags-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(135deg,#f7fcff,#fffdf9)] p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">

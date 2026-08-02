@@ -188,6 +188,12 @@ type EpisodeMediaTruth = {
     importRole?: string | null;
     syncStatus?: string | null;
     proxyStatus?: string | null;
+    proxyReadiness?: {
+      ready: boolean;
+      needed: boolean;
+      status: "ready" | "needed" | "unknown";
+      source: "media-asset" | "import-metadata" | "unknown";
+    };
     recordingAssetId?: string | null;
     sessionContext?: {
       roomId: string;
@@ -3608,7 +3614,7 @@ function CloudEditorContent() {
     });
 
     timelineState.clips.forEach((clip) => {
-      const sourceUrl = sanitizeTrackSource(clip.assetId);
+      const sourceUrl = sourceUrlForClip(clip, importedMediaAssets);
       if (!sourceUrl || isMissingProductionSource(clip)) return;
       items.set(`clip:${clip.id}`, {
         id: `clip:${clip.id}`,
@@ -7866,9 +7872,14 @@ function CloudEditorContent() {
                                   <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.kind ?? "media"}</span>
                                   <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.importRole ?? "role pending"}</span>
                                   <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.syncStatus ?? "sync pending"}</span>
-                                  <span className={`rounded-full px-2 py-1 ${item.asset?.readiness?.needsProxy || item.proxyStatus === "queued" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-900"}`}>
-                                    {item.asset?.readiness?.needsProxy || item.proxyStatus === "queued" ? "proxy needed" : item.asset?.readiness?.hasProxy || item.proxyStatus === "ready" ? "proxy ready" : "proxy unknown"}
+                                  <span className={`rounded-full px-2 py-1 ${item.proxyReadiness?.status === "needed" ? "bg-amber-100 text-amber-900" : item.proxyReadiness?.status === "ready" ? "bg-green-100 text-green-900" : "bg-slate-100 text-slate-700"}`}>
+                                    {item.proxyReadiness?.status === "needed" ? "proxy needed" : item.proxyReadiness?.status === "ready" ? "proxy ready" : "proxy unknown"}
                                   </span>
+                                  {item.proxyReadiness?.source && item.proxyReadiness.source !== "unknown" ? (
+                                    <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                                      {item.proxyReadiness.source === "media-asset" ? "asset truth" : "import fallback"}
+                                    </span>
+                                  ) : null}
                                   {item.recordingAssetId ? (
                                     <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-900">recording linked</span>
                                   ) : null}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { importedMediaProxyReadiness } from "@/lib/episode-production/media-proxy-readiness";
 
 import {
   canonicalEpisodeImportedMedia,
@@ -473,18 +474,24 @@ export async function GET(request: Request) {
     processingByRecordingId.set(recording.id, { media, transcript });
   }));
 
-  const imported = importedMedia.map((item) => importedMediaPublic(
-    item,
-    assetById,
-    recordingById,
-    processingByRecordingId,
-  ));
+  const imported = importedMedia.map((item) => {
+    const publicItem = importedMediaPublic(
+      item,
+      assetById,
+      recordingById,
+      processingByRecordingId,
+    );
+    return {
+      ...publicItem,
+      proxyReadiness: importedMediaProxyReadiness(publicItem),
+    };
+  });
   const mediaReleased = (item: any) => !item.unresolvedRecordingReference
     && (!item.recording || item.recording.readiness.mediaProcessingReleased);
   const proxyNeededCount = imported.filter((item: any) => mediaReleased(item)
-    && (item.asset?.readiness?.needsProxy || item.proxyStatus === "queued")).length;
+    && item.proxyReadiness.needed).length;
   const proxyReadyCount = imported.filter((item: any) => mediaReleased(item)
-    && (item.asset?.readiness?.hasProxy || item.proxyStatus === "ready")).length;
+    && item.proxyReadiness.ready).length;
   const releasedRecordingEvidence = recordingEvidence.filter((recording: any) => (
     processingByRecordingId.get(recording.id)?.media.allowed === true
   ));

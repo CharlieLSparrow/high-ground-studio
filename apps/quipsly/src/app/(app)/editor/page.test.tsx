@@ -265,6 +265,68 @@ describe("CloudEditor production truth UX", () => {
     });
   });
 
+  it("probes a timeline derivative through its canonical imported-media playback URL", async () => {
+    mockEpisodeProduction({
+      timelineJson: {
+        payloadVersion: 3,
+        projectSlug: "high-ground-odyssey",
+        episodeSlug: "episode-8-i-wasnt-born-a-leader",
+        timelineClips: [{
+          id: "episode-room-watch-be-curious",
+          assetId: "vault-asset-be-curious",
+          trackId: "V9",
+          kind: "video",
+          startIn: 9.064,
+          duration: 13.182,
+          sourceStart: 0,
+          sourceEnd: 13.182,
+          name: "Watched · Ted Lasso Be Curious.mp4",
+          color: "#d37b43",
+          generatedFrom: "quipsly-episode-room-watch.v1",
+        }],
+        transcript: [],
+      },
+      productionJson: {
+        importedMedia: [{
+          id: "vault-asset-be-curious",
+          sourceId: "ingest-source-be-curious",
+          projectSlug: "high-ground-odyssey",
+          episodeSlug: "episode-8-i-wasnt-born-a-leader",
+          originalName: "Ted Lasso Be Curious.mp4",
+          contentType: "video/mp4",
+          size: 19_100_059,
+          kind: "video",
+          gcsUri: "gcs://quipsly-media/be-curious.mp4",
+          playbackUrl: "/api/ingest/media/ingest-source-be-curious",
+          importedAt: "2026-08-02T00:00:00.000Z",
+        }],
+      },
+    });
+
+    render(<CloudEditor />);
+
+    await waitFor(() => {
+      const healthCall = jest.mocked(globalThis.fetch).mock.calls.find(([url]) => (
+        String(url) === "/api/episode-production/media-health"
+      ));
+      expect(healthCall).toBeDefined();
+      const body = JSON.parse(String(healthCall?.[1]?.body));
+      expect(body.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: "clip:episode-room-watch-be-curious",
+          sourceUrl: "/api/ingest/media/ingest-source-be-curious",
+          expectedKind: "video",
+        }),
+      ]));
+      expect(body.items).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: "clip:episode-room-watch-be-curious",
+          sourceUrl: "vault-asset-be-curious",
+        }),
+      ]));
+    });
+  });
+
   it("loads a transcript-only saved artifact without borrowing demo clips", async () => {
     mockEpisodeProduction({
       timelineJson: {

@@ -6494,3 +6494,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   genuine HGO episode, and physical Capture media proving source upload before
   editorial completion. Full evidence is in
   `docs/coordination/2026-08-02-episode-production-milestone-runway.md`.
+
+### Episode 8 source-backed room and real Shared Watch checkpoint — 2026-08-02
+
+- Operated the signed-in local product against the actual 114-block Episode 8
+  manuscript and created `Episode 8: I wasn't born a leader` through the
+  rendered owner-confirmed Episode Room boundary. Serializable creation
+  retained 114 unique source anchors, one reversible receipt, an unchanged
+  source hash/timestamp, and explicit false external-effect claims.
+- Imported the real 19,100,059-byte `Ted Lasso Be Curious.mp4`, retained its
+  SHA-256 and immutable source identity, watched 13.182 seconds through Shared
+  Watch, and projected the receipt-backed span onto V9 at 00:09.064-00:22.246.
+- Real editor operation found and repaired a canonical-ID-versus-playback-URL
+  health defect. The exact timeline now reports 2/2 preview- and render-usable,
+  zero broken sources, and Render-ready.
+- Proxy inventory can no longer count one source as both ready and needed.
+  Registered media-asset readiness wins over import metadata, with an explicit
+  fallback provenance label. The current original is renderable; the dedicated
+  collaboration proxy remains honestly required.
+- Rendered Cue in, Play active edit, and Pause advanced and stopped decoded
+  1280 by 638 video monitors with `readyState=4`, exact 254.630023-second
+  duration, and no media error. The original checksum remained unchanged.
+- This is strong local real-episode evidence, not physical-iPhone, production,
+  second-episode, coaching, transcript-correction, final Studio, or portable
+  acceptance. No cloud build/deploy or external side effect occurred. Full
+  evidence is in
+  `docs/coordination/2026-08-02-episode-8-source-backed-room-operation.md`.
