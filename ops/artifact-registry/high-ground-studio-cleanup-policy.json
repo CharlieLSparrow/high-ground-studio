@@ -1,11 +1,11 @@
 [
   {
-    "name": "delete-untagged-after-45-days",
+    "name": "delete-any-after-45-days",
     "action": {
       "type": "Delete"
     },
     "condition": {
-      "tagState": "untagged",
+      "tagState": "any",
       "olderThan": "45d"
     }
   },

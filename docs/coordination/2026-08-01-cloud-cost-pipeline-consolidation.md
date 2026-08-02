@@ -1,7 +1,7 @@
 # Quipsly cloud-cost pipeline consolidation
 
 Date: 2026-08-01
-Status: future duplicate-build and checkpoint-churn prevention implemented; Artifact Registry cleanup evaluating in non-deleting dry-run
+Status: future duplicate-build and checkpoint-churn prevention implemented; guarded 45-day Artifact Registry retention active
 
 ## What the billing chart represented
 
@@ -161,3 +161,48 @@ Primary references:
 - [Cloud Build pricing](https://cloud.google.com/build/pricing)
 - [Configure Artifact Registry cleanup policies](https://docs.cloud.google.com/artifact-registry/docs/repositories/cleanup-policy)
 - [Artifact Registry cleanup overview](https://docs.cloud.google.com/artifact-registry/docs/repositories/cleanup-policy-overview)
+
+## 2026-08-02 active retention follow-up
+
+Charlie explicitly asked whether the deployment spend could be reduced. A new
+guarded activation operator now requires both an activation flag and the exact
+`CONFIRM_ARTIFACT_DELETION=high-ground-studio-45d-keep10` acknowledgement. It
+reruns the credentialed cloud-cost audit immediately before mutation and
+refuses to continue unless every traffic-serving Cloud Run digest resolves to
+a protected Artifact Registry version.
+
+The active policy now deletes versions after 45 days regardless of tag state,
+while the keep policy preserves the newest 10 versions of every package. A
+separate candidate calculation found 452 versions beyond both the age and
+keep-ten boundaries, representing approximately 76.8 GB of summed known
+manifest sizes. Shared layers mean that figure is not the exact billed storage
+reduction. The provider reported 151,895.139 MB of repository storage at
+activation time.
+
+The initial activation guard only proved that all seven traffic-or-tag-serving
+digests still existed in the repository. A stronger retention-aware proof then
+correctly found that only five of seven would survive the new policy: the two
+exceptions were obsolete `cloudsql-smoke` and `story-smoke` tag URLs on web
+revisions 33 and 34. Cleanup was immediately returned to dry-run. Those two
+stale tag routes were removed while web production remained 100% on revision
+147 and `web-preview` remained on that same revision. The IAM policy SHA-256
+was identical before and after, the web root and `/api/health` returned 200,
+and Nest `/api/healthz` remained healthy. No build or new revision was created.
+
+The audit and operator now distinguish a digest that merely exists from one
+that survives the exact 45-day/keep-ten policy. Reactivation passed that
+stronger boundary for all five remaining traffic-serving digests before Google
+accepted the policy.
+
+Artifact Registry accepted both policies and reported `Dry run is disabled`.
+The API omits the proto3 `cleanupPolicyDryRun` boolean when false, so the first
+operator readback incorrectly treated the missing field as a failure after the
+provider had already accepted the setting. The operator now treats an omitted
+field as false, still fails closed on an explicit `true`, and reads the exact
+policies back after activation. Reapplying the same policy is idempotent.
+
+No named image, repository, Cloud Run revision, database, IAM binding, or source
+data was directly deleted or changed. Two obsolete Cloud Run tag routes were
+removed without changing production traffic. Cleanup runs asynchronously;
+verify the version count, repository size, five traffic digests, and
+application health again after approximately one day.

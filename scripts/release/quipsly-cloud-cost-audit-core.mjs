@@ -7,6 +7,9 @@ const CLOUD_BUILD_RATES_US_CENTRAL1 = Object.freeze({
   N1_HIGHCPU_32: 0.0624,
 });
 
+const ARTIFACT_RETENTION_DAYS = 45;
+const ARTIFACT_KEEP_RECENT_PER_PACKAGE = 10;
+
 export function summarizeQuipslyCloudCost(input) {
   const now = parseDate(input.auditedAt, "auditedAt");
   const builds = Array.isArray(input.builds) ? input.builds : [];
@@ -220,13 +223,21 @@ function summarizeImages(images, now, protectedDigests) {
   let olderThan30DaysCount = 0;
   let knownSizeVersionCount = 0;
   let knownSizeBytes = 0;
-  let protectedVersionCount = 0;
+  const resolvedProtectedDigests = new Set();
+  const retentionProtectedDigests = new Set();
+  let retentionCandidateVersionCount = 0;
+  let retentionCandidateKnownSizeBytes = 0;
   const packages = new Set();
+  const recentVersionDigests = recentDigestsByPackage(
+    images,
+    ARTIFACT_KEEP_RECENT_PER_PACKAGE,
+  );
   for (const image of images) {
     const tags = Array.isArray(image.tags) ? image.tags.filter(Boolean) : [];
     if (tags.length > 0) taggedVersionCount += 1;
     else untaggedVersionCount += 1;
     const updatedAt = dateOrNull(image.updateTime ?? image.createTime);
+    const createdAt = dateOrNull(image.createTime ?? image.updateTime);
     if (updatedAt && now.getTime() - updatedAt.getTime() > 30 * 86_400_000) {
       olderThan30DaysCount += 1;
     }
@@ -240,7 +251,24 @@ function summarizeImages(images, now, protectedDigests) {
       knownSizeBytes += sizeBytes;
     }
     const digest = imageDigest(image);
-    if (digest && protectedDigests.has(digest)) protectedVersionCount += 1;
+    if (digest && protectedDigests.has(digest)) {
+      resolvedProtectedDigests.add(digest);
+      const youngerThanRetention = createdAt
+        ? now.getTime() - createdAt.getTime()
+          <= ARTIFACT_RETENTION_DAYS * 86_400_000
+        : false;
+      if (youngerThanRetention || recentVersionDigests.has(digest)) {
+        retentionProtectedDigests.add(digest);
+      }
+    }
+    const beyondRetentionAge = createdAt
+      ? now.getTime() - createdAt.getTime()
+        > ARTIFACT_RETENTION_DAYS * 86_400_000
+      : false;
+    if (beyondRetentionAge && (!digest || !recentVersionDigests.has(digest))) {
+      retentionCandidateVersionCount += 1;
+      retentionCandidateKnownSizeBytes += sizeBytes ?? 0;
+    }
     const packageName = imagePackage(image);
     if (packageName) packages.add(packageName);
   }
@@ -253,8 +281,39 @@ function summarizeImages(images, now, protectedDigests) {
     knownSizeVersionCount,
     unknownSizeVersionCount: images.length - knownSizeVersionCount,
     knownSizeBytes,
-    trafficServingProtectedVersionCount: protectedVersionCount,
+    trafficServingProtectedVersionCount: resolvedProtectedDigests.size,
+    trafficServingRetentionProtectedVersionCount:
+      retentionProtectedDigests.size,
+    retentionDays: ARTIFACT_RETENTION_DAYS,
+    keepRecentPerPackage: ARTIFACT_KEEP_RECENT_PER_PACKAGE,
+    retentionCandidateVersionCount,
+    retentionCandidateKnownSizeBytes,
   };
+}
+
+function recentDigestsByPackage(images, keepCount) {
+  const byPackage = new Map();
+  for (const image of images) {
+    const packageName = imagePackage(image);
+    if (!packageName) continue;
+    const packageImages = byPackage.get(packageName) ?? [];
+    packageImages.push(image);
+    byPackage.set(packageName, packageImages);
+  }
+  const digests = new Set();
+  for (const packageImages of byPackage.values()) {
+    packageImages
+      .toSorted((left, right) => {
+        const leftTime = dateOrNull(left.createTime ?? left.updateTime)?.getTime() ?? 0;
+        const rightTime = dateOrNull(right.createTime ?? right.updateTime)?.getTime() ?? 0;
+        return rightTime - leftTime;
+      })
+      .slice(0, keepCount)
+      .map(imageDigest)
+      .filter(Boolean)
+      .forEach((digest) => digests.add(digest));
+  }
+  return digests;
 }
 
 function protectedRevisionNames(service) {
