@@ -78,6 +78,8 @@ function packetBrief(summary: PacketSummary) {
 function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
   const brief = packetBrief(summary);
   if (!brief) return <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{summary.body}</p>;
+  const populatedSections = brief.sections.filter((section) => section.items.length > 0);
+  const emptySections = brief.sections.filter((section) => section.items.length === 0);
   return <div className="mt-5 space-y-5">
     <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]">
       <span className="rounded-full border border-[#d9c7a5] bg-[#fffaf0] px-3 py-1.5">{brief.overview.segmentCount} source segments</span>
@@ -85,12 +87,13 @@ function ReviewPacketSummary({ summary }: { summary: PacketSummary }) {
       <span className="rounded-full border border-[#d9c7a5] bg-[#fffaf0] px-3 py-1.5">{timestampForSeconds(brief.overview.startSeconds)}–{timestampForSeconds(brief.overview.endSeconds)}</span>
       {brief.humanApprovalRequired && <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-800">Human review required</span>}
     </div>
-    <div className="grid gap-3 lg:grid-cols-2">
-      {brief.sections.map((section) => <section key={section.id} className="rounded-xl border border-[#eadfc9] bg-[#fffdf8] p-4" aria-labelledby={`packet-section-${section.id}`}>
+    {populatedSections.length ? <div className="grid gap-3 lg:grid-cols-2">
+      {populatedSections.map((section) => <section key={section.id} className="rounded-xl border border-[#eadfc9] bg-[#fffdf8] p-4" aria-labelledby={`packet-section-${section.id}`}>
         <div className="flex items-center justify-between gap-3"><h3 id={`packet-section-${section.id}`} className="font-serif text-xl font-black text-[#3d3122]">{section.label}</h3><span className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-[#8a7354]">{section.items.length}</span></div>
-        {section.items.length ? <ul className="mt-3 space-y-2">{section.items.map((item) => <li key={`${section.id}-${item.segmentId}`}><a href={`#transcript-segment-${encodeURIComponent(item.segmentId)}`} className="block rounded-lg border border-sky-100 bg-white p-3 text-sm font-semibold text-[#5f4d37] transition hover:border-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"><span className="block text-[10px] font-black uppercase tracking-wide text-sky-800">{item.timeLabel || "Source timestamp"}{item.speakerLabel ? ` · ${item.speakerLabel}` : ""}</span><span className="mt-1 block leading-relaxed">{item.text}</span></a></li>)}</ul> : <p className="mt-3 text-xs font-semibold leading-relaxed text-[#8a7354]">No source-linked candidates in this lane. Quipsly created nothing to fill the space.</p>}
+        <ul className="mt-3 space-y-2">{section.items.map((item) => <li key={`${section.id}-${item.segmentId}`}><a href={`#transcript-segment-${encodeURIComponent(item.segmentId)}`} className="block rounded-lg border border-sky-100 bg-white p-3 text-sm font-semibold text-[#5f4d37] transition hover:border-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"><span className="block text-[10px] font-black uppercase tracking-wide text-sky-800">{item.timeLabel || "Source timestamp"}{item.speakerLabel ? ` · ${item.speakerLabel}` : ""}</span><span className="mt-1 block leading-relaxed">{item.text}</span></a></li>)}</ul>
       </section>)}
-    </div>
+    </div> : <p className="rounded-xl border border-dashed border-[#d8c7a7] bg-[#fffdf8] p-4 text-sm font-semibold text-[#765f40]">This packet contains no source-linked brief candidates. Quipsly created nothing to fill the space.</p>}
+    {emptySections.length ? <details className="rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]"><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">{emptySections.length} {emptySections.length === 1 ? "category has" : "categories have"} no candidates</summary><p className="mt-3 font-semibold leading-relaxed">{emptySections.map((section) => section.label).join(" · ")}. These categories stay visible as taxonomy, not review work.</p></details> : null}
     <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold leading-relaxed text-emerald-950">{brief.sourceTruth}</p>
     <details className="rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]"><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">Inspect exact saved packet text</summary><p className="mt-4 whitespace-pre-wrap font-semibold leading-relaxed">{summary.body}</p></details>
   </div>;
@@ -107,6 +110,8 @@ function PacketReviewLaneCard({ lane, busy, onDecision }: {
   useEffect(() => {
     setNote(lane.humanReview?.note ?? "");
   }, [lane.humanReview?.note, lane.id]);
+
+  if (lane.itemCount <= 0) return null;
 
   return <article className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1080,6 +1085,9 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   const held = packet?.transcriptProcessingGate?.allowed === false;
   const packetStale = packet?.packet?.transcriptReview?.packetStale === true;
   const reviewHeld = held || packetStale;
+  const reviewLanes = packet?.packet?.reviewLanes ?? [];
+  const actionableReviewLanes = reviewLanes.filter((lane) => lane.itemCount > 0);
+  const emptyReviewLanes = reviewLanes.filter((lane) => lane.itemCount <= 0);
   const activeMode = sessionWorkspaceDefinition(mode);
 
   return (
@@ -1176,7 +1184,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
             <Link href={sessionWorkspaceHref(roomId, "notes")} className="rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] hover:border-sky-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">Open canonical Notes</Link>
           </div>
           <p className="mb-4 max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">Each lane is a source-grounded way to inspect the packet. Approving it means the material is useful for continued work inside Quipsly; it does not make the text a canonical Session note or authorize client delivery.</p>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Packet lane review is held because transcript review changed. Build the current packet first." : "Packet lane review is held until the transcript release evidence is valid. No review state can be changed."}</div> : (packet.packet?.reviewLanes ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.reviewLanes ?? []).map((lane) => <PacketReviewLaneCard key={lane.id} lane={lane} busy={busyLaneId === lane.id} onDecision={reviewLane} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No packet review lanes were saved for this transcript. Quipsly will not infer approval or create replacement notes.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Packet lane review is held because transcript review changed. Build the current packet first." : "Packet lane review is held until the transcript release evidence is valid. No review state can be changed."}</div> : actionableReviewLanes.length ? <div className="grid gap-4 xl:grid-cols-2">{actionableReviewLanes.map((lane) => <PacketReviewLaneCard key={lane.id} lane={lane} busy={busyLaneId === lane.id} onDecision={reviewLane} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No packet lanes contain candidate material. Quipsly will not infer approval or create replacement notes.</div>}
+          {!reviewHeld && emptyReviewLanes.length ? <details className="mt-4 rounded-xl border border-[#eadfc9] bg-white p-4 text-sm text-[#765f40]"><summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#5b472f]">{emptyReviewLanes.length} {emptyReviewLanes.length === 1 ? "review category has" : "review categories have"} no candidates</summary><p className="mt-3 font-semibold leading-relaxed">{emptyReviewLanes.map((lane) => lane.label).join(" · ")}. Empty categories have no decision controls.</p></details> : null}
         </section>
 
         <section aria-labelledby="candidate-heading">

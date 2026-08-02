@@ -178,4 +178,61 @@ describe("packet mutation Session access", () => {
     }
     expect(prisma.coachingNote.update).not.toHaveBeenCalled();
   });
+
+  it("rejects a review decision when the saved lane has no candidate material", async () => {
+    const summary = {
+      id: summaryNoteId,
+      kind: "SUMMARY",
+      roomId,
+      title: "Session brief",
+      sourceJson: {
+        source: "transcript-packet-builder",
+        transcriptJobId,
+        packetBuildId: "packet-build-1",
+        reviewLanes: [{
+          id: "goals-and-tasks",
+          status: "EMPTY",
+          itemCount: 0,
+          items: [],
+        }],
+      },
+      createdAt: new Date("2026-08-01T18:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T18:00:00.000Z"),
+    };
+    const prisma: any = {
+      callRoom: { findFirst: jest.fn().mockResolvedValue({ id: roomId }) },
+      coachingNote: {
+        findMany: jest.fn().mockResolvedValue([summary]),
+        findUnique: jest.fn().mockResolvedValue(summary),
+        update: jest.fn(),
+      },
+      transcriptJob: { findFirst: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prisma.$transaction = jest.fn((callback: (tx: any) => Promise<unknown>) =>
+      callback(prisma),
+    );
+    jest.mocked(getPrismaClient).mockReturnValue(prisma);
+
+    const response = await PATCH(
+      new Request("http://localhost/api/mobile/capture/transcripts/packet", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roomId,
+          transcriptJobId,
+          summaryNoteId,
+          laneId: "goals-and-tasks",
+          status: "APPROVED_FOR_INTERNAL_USE",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.errorCode).toBe("PACKET_REVIEW_LANE_EMPTY");
+    expect(payload.error).toMatch(/no candidate material/i);
+    expect(prisma.transcriptJob.findFirst).not.toHaveBeenCalled();
+    expect(prisma.coachingNote.update).not.toHaveBeenCalled();
+  });
 });

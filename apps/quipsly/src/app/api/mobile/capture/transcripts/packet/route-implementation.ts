@@ -865,8 +865,10 @@ export async function PATCH(request: Request) {
     take: 200,
     select: {
       id: true,
+      kind: true,
       title: true,
       sourceJson: true,
+      createdAt: true,
       updatedAt: true,
     },
   });
@@ -919,6 +921,17 @@ export async function PATCH(request: Request) {
       if (!lockedSummary || lockedSummary.roomId !== roomId || text(source.transcriptJobId) !== packetTranscriptJobId) {
         throw new PacketReviewBoundaryError(409, "STALE_PACKET_BUILD", "The packet changed before lane review completed.");
       }
+      const lanes = asArray(source.reviewLanes).filter(isObject);
+      const lane = lanes.find((candidate: any) => text(candidate.id) === laneId);
+      if (!lane) {
+        throw new PacketReviewBoundaryError(404, "PACKET_REVIEW_LANE_NOT_FOUND", "Packet review lane was not found on this packet.");
+      }
+      const laneItemCount = typeof lane.itemCount === "number" && Number.isFinite(lane.itemCount)
+        ? lane.itemCount
+        : asArray(lane.items).length;
+      if (laneItemCount <= 0) {
+        throw new PacketReviewBoundaryError(409, "PACKET_REVIEW_LANE_EMPTY", "This packet lane has no candidate material to review.");
+      }
       const packetTranscriptJob = await tx.transcriptJob.findFirst({
         where: { id: packetTranscriptJobId, roomId },
         include: {
@@ -941,11 +954,6 @@ export async function PATCH(request: Request) {
       }
       if (!packetSnapshotMatches(source, packetTranscriptJob.segments)) {
         throw new PacketReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing this lane.");
-      }
-      const lanes = asArray(source.reviewLanes).filter(isObject);
-      const lane = lanes.find((candidate: any) => text(candidate.id) === laneId);
-      if (!lane) {
-        throw new PacketReviewBoundaryError(404, "PACKET_REVIEW_LANE_NOT_FOUND", "Packet review lane was not found on this packet.");
       }
       const reviewedAt = new Date().toISOString();
       const reviewRecord = {

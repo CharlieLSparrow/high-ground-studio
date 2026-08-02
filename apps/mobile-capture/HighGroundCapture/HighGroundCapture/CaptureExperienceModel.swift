@@ -2737,6 +2737,18 @@ extension MobileCaptureSession {
                 externalSideEffects: false,
                 humanReview: nil
             ),
+            MobileCapturePacketReviewLane(
+                id: "empty-quotes",
+                label: "Quote candidates",
+                status: "EMPTY",
+                itemCount: 0,
+                meaning: "Candidate quotes for deliberate editorial review.",
+                sourceTruth: "No source-linked quote candidates were found.",
+                reviewRule: "Empty categories have no decision controls.",
+                humanApprovalRequired: true,
+                externalSideEffects: false,
+                humanReview: nil
+            ),
         ]
     }
 }

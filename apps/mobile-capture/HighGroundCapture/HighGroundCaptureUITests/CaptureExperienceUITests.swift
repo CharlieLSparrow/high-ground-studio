@@ -563,6 +563,8 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "no note, task, goal, client delivery")
         ).firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketReviewEmptyLaneSummary"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["CapturePacketReviewLane_empty-quotes"].exists)
         clientLane.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketLaneReviewSheet"].waitForExistence(timeout: 5))

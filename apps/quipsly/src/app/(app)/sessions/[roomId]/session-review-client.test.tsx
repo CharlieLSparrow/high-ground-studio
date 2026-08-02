@@ -46,7 +46,10 @@ function packet(goalCandidate = candidate): SessionReviewPacket {
             overview: { segmentCount: 1, speakerCount: 1, startSeconds: 12.4, endSeconds: 17.8 },
             humanApprovalRequired: true,
             sourceTruth: "Every brief item points to immutable transcript evidence.",
-            sections: [{ id: "goals", label: "Candidate goals", items: [{ segmentId: "segment-1", timeLabel: "00:12-00:17", speakerLabel: "Homer", text: "Build a repeatable coaching review habit." }] }],
+            sections: [
+              { id: "goals", label: "Candidate goals", items: [{ segmentId: "segment-1", timeLabel: "00:12-00:17", speakerLabel: "Homer", text: "Build a repeatable coaching review habit." }] },
+              { id: "quotes", label: "Quote candidates", items: [] },
+            ],
           },
         },
         createdAt: "2026-07-18T18:00:00.000Z",
@@ -62,6 +65,17 @@ function packet(goalCandidate = candidate): SessionReviewPacket {
         meaning: "Candidate recap material for the client or coachee.",
         sourceTruth: "Derived from transcript packet summary evidence only.",
         reviewRule: "Human approval is required before client delivery.",
+        humanApprovalRequired: true,
+        externalSideEffects: false,
+        humanReview: null,
+      }, {
+        id: "goals-and-tasks",
+        label: "Goals and tasks",
+        status: "EMPTY",
+        itemCount: 0,
+        meaning: "Candidate commitments that may become work.",
+        sourceTruth: "Derived from transcript-backed candidates only.",
+        reviewRule: "Only actual candidates may be reviewed.",
         humanApprovalRequired: true,
         externalSideEffects: false,
         humanReview: null,
@@ -219,6 +233,10 @@ describe("Session review goal candidates", () => {
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
 
     expect(await screen.findByRole("heading", { name: "Review notes by purpose" })).toBeInTheDocument();
+    expect(screen.getByText("1 category has no candidates")).toBeInTheDocument();
+    expect(screen.getByText("1 review category has no candidates")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Goals and tasks" })).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Review note")).toHaveLength(1);
     expect(screen.getByText(/does not make the text a canonical Session note or authorize client delivery/i)).toBeInTheDocument();
     expect(screen.getByText(/creates no canonical note, task, goal, client delivery, message, calendar event, or publication/i)).toBeInTheDocument();
     await user.type(screen.getByLabelText("Review note"), "Useful recap once the client-safe wording is authored deliberately.");

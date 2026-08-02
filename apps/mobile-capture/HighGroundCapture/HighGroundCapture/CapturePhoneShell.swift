@@ -5644,6 +5644,14 @@ private struct CapturePacketReviewLanesCard: View {
         return model.sessionClient.latestPacketBuildResponse?.reviewLanes ?? []
     }
 
+    private var actionableLanes: [MobileCapturePacketReviewLane] {
+        lanes.filter { ($0.itemCount ?? 0) > 0 }
+    }
+
+    private var emptyLanes: [MobileCapturePacketReviewLane] {
+        lanes.filter { ($0.itemCount ?? 0) <= 0 }
+    }
+
     var body: some View {
         if session.coachingPacketSummaryNoteId != nil || !lanes.isEmpty {
             DisclosureGroup(isExpanded: $isExpanded) {
@@ -5653,14 +5661,16 @@ private struct CapturePacketReviewLanesCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if lanes.isEmpty {
-                        Text("No packet review lanes were returned. Capture will not infer approval or create replacement notes.")
+                    if actionableLanes.isEmpty {
+                        Text(lanes.isEmpty
+                            ? "No packet review lanes were returned. Capture will not infer approval or create replacement notes."
+                            : "No packet lanes contain candidate material. Empty categories have no decision controls.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    ForEach(lanes) { lane in
+                    ForEach(actionableLanes) { lane in
                         Button {
                             selectedLane = lane
                         } label: {
@@ -5695,6 +5705,14 @@ private struct CapturePacketReviewLanesCard: View {
                         .accessibilityIdentifier("CapturePacketReviewLane_\(lane.id)")
                     }
 
+                    if !emptyLanes.isEmpty {
+                        Text("\(emptyLanes.count) \(emptyLanes.count == 1 ? "category has" : "categories have") no candidates: \(emptyLanes.map(\.titleLabel).joined(separator: " · ")).")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("CapturePacketReviewEmptyLaneSummary")
+                    }
+
                     Text("Internal review only · no note, task, goal, client delivery, message, calendar event, or publication")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -5702,7 +5720,7 @@ private struct CapturePacketReviewLanesCard: View {
                 }
                 .padding(.top, 8)
             } label: {
-                Label("Packet note lanes (\(lanes.count))", systemImage: "list.bullet.clipboard")
+                Label("Packet review (\(actionableLanes.count) ready)", systemImage: "list.bullet.clipboard")
                     .font(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("CapturePacketReviewLanesToggle")
             }
@@ -5730,7 +5748,8 @@ private struct CapturePacketLaneReviewSheet: View {
     }
 
     private var canSave: Bool {
-        !model.usesPreviewData
+        (lane.itemCount ?? 0) > 0
+            && !model.usesPreviewData
             && !model.isSessionContextLocked
             && AuthManager.shared.networkActionsAllowed
             && !isSaving
