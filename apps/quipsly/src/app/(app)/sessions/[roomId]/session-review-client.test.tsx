@@ -400,10 +400,13 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     expect(await screen.findByRole("heading", { name: "Choose what deserves to become a goal" })).toBeInTheDocument();
-    expect(screen.getByText(/only “accept as goal” writes one actor-owned active goal/i)).toBeInTheDocument();
+    expect(screen.getByText(/only “review & create goal” can write one actor-owned active goal/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Accept as goal" }));
+    await user.click(screen.getByRole("button", { name: "Review & create goal" }));
+    expect(screen.getByRole("textbox", { name: "Goal title" })).toHaveValue("Build a repeatable coaching review habit.");
+    expect(screen.getByText(/tasks, focus blocks, reminders, calendar placement, messages, delivery, and publication remain separate decisions/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create goal" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const request = fetchMock.mock.calls[1];
@@ -418,8 +421,10 @@ describe("Session review goal candidates", () => {
       decision: "ACCEPT",
       title: "Build a repeatable coaching review habit.",
       description: "My goal is to build a repeatable coaching review habit.",
+      targetAt: null,
+      tagIds: [],
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("No task, date, focus block, calendar event, message, or delivery was added");
+    expect(await screen.findByRole("status")).toHaveTextContent("One actor-owned canonical goal was created. No task, focus block, calendar event, message, or delivery was added.");
     expect(screen.getByRole("link", { name: "Open goal" })).toHaveAttribute("href", "/work?goal=goal-1");
   });
 
