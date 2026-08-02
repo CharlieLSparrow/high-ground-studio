@@ -6,7 +6,7 @@ const DEFAULT_REGION = "us-central1";
 const DEFAULT_SERVICE = "studio-collab";
 const DEFAULT_ARTIFACT_REPOSITORY = "high-ground-studio";
 const DEFAULT_IMAGE_NAME = "studio-collab";
-const DEFAULT_MIN_INSTANCES = "1";
+const DEFAULT_MIN_INSTANCES = "0";
 const DEFAULT_MAX_INSTANCES = "1";
 const DEFAULT_CONCURRENCY = "80";
 const DEFAULT_TIMEOUT_SECONDS = "3600";
@@ -278,9 +278,12 @@ if (deployedTimeout !== Number(timeoutSeconds)) {
   );
 }
 
-if (templateAnnotations["autoscaling.knative.dev/minScale"] !== minInstances) {
+const deployedMinInstances =
+  templateAnnotations["autoscaling.knative.dev/minScale"] || "0";
+
+if (deployedMinInstances !== minInstances) {
   throw new Error(
-    `Expected minScale ${minInstances}, got ${templateAnnotations["autoscaling.knative.dev/minScale"]}.`,
+    `Expected minScale ${minInstances}, got ${deployedMinInstances}.`,
   );
 }
 

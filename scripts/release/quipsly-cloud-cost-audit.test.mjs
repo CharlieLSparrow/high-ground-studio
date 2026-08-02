@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { summarizeQuipslyCloudCost } from "./quipsly-cloud-cost-audit-core.mjs";
@@ -53,6 +54,7 @@ test("attributes repeated committed-source builds and protects traffic digests",
       },
     ],
     service: {
+      metadata: { name: "studio" },
       status: { traffic: [{ revisionName: "studio-001", percent: 100 }] },
       spec: {
         template: {
@@ -62,10 +64,41 @@ test("attributes repeated committed-source builds and protects traffic digests",
         },
       },
     },
+    services: [
+      {
+        metadata: { name: "studio" },
+        status: { traffic: [{ revisionName: "studio-001", percent: 100 }] },
+        spec: {
+          template: {
+            metadata: {
+              annotations: { "autoscaling.knative.dev/minScale": "0" },
+            },
+          },
+        },
+      },
+      {
+        metadata: { name: "studio-collab" },
+        status: {
+          latestReadyRevisionName: "studio-collab-001",
+          traffic: [{ revisionName: "studio-collab-001", percent: 100 }],
+        },
+        spec: {
+          template: {
+            metadata: {
+              annotations: { "autoscaling.knative.dev/minScale": "1" },
+            },
+          },
+        },
+      },
+    ],
     revisions: [
       {
         metadata: { name: "studio-001" },
         status: { imageDigest: digest("1") },
+      },
+      {
+        metadata: { name: "studio-collab-001" },
+        status: { imageDigest: digest("2") },
       },
     ],
     cleanupPolicies: [],
@@ -75,18 +108,35 @@ test("attributes repeated committed-source builds and protects traffic digests",
   assert.equal(receipt.builds.repeatedCommittedSourceBuildCount, 1);
   assert.equal(receipt.builds.estimatedComputeUsd, 1.248);
   assert.equal(receipt.artifacts.olderThan30DaysCount, 1);
-  assert.equal(receipt.artifacts.trafficServingProtectedVersionCount, 1);
+  assert.equal(receipt.artifacts.trafficServingProtectedVersionCount, 2);
   assert.equal(receipt.cloudRun.minimumInstanceCount, 0);
-  assert.equal(receipt.cloudRun.trafficServingDigestCount, 1);
+  assert.equal(receipt.cloudRun.serviceCount, 2);
+  assert.equal(receipt.cloudRun.totalMinimumInstanceCount, 1);
+  assert.equal(receipt.cloudRun.alwaysWarmServiceCount, 1);
+  assert.equal(receipt.cloudRun.trafficServingDigestCount, 2);
   assert.deepEqual(
     receipt.recommendations.map((entry) => entry.code),
     [
       "reuse-exact-source-image",
       "benchmark-smaller-build-worker",
       "dry-run-artifact-cleanup",
+      "review-always-warm-cloud-run-services",
     ],
   );
   assert.equal(receipt.boundaries.artifactDeletionPerformed, false);
+});
+
+test("the collab deploy default cannot silently restore idle compute", () => {
+  const deploySource = readFileSync(
+    "scripts/studio-collab-cloud-run-deploy.mjs",
+    "utf8",
+  );
+  assert.match(deploySource, /const DEFAULT_MIN_INSTANCES = "0";/);
+  assert.match(deploySource, /"--min-instances",\s*minInstances/);
+  assert.match(
+    deploySource,
+    /templateAnnotations\["autoscaling\.knative\.dev\/minScale"\] \|\| "0"/,
+  );
 });
 
 test("blocks cleanup recommendations from implying safety without a live digest", () => {

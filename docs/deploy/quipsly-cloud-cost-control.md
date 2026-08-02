@@ -68,10 +68,11 @@ worker appear successful.
 ## Read-only cost audit
 
 The audit reads the previous 30 days of Cloud Build, Artifact Registry, and
-Cloud Run state. It estimates build compute from current public list prices,
-counts repeated committed-source builds, resolves traffic-serving revision
-digests, inventories old/tagged/untagged images, and reads existing cleanup
-policies. It performs no mutation.
+every Cloud Run service in the selected region. It estimates build compute from
+current public list prices, counts repeated committed-source builds, resolves
+all traffic-serving revision digests, inventories old/tagged/untagged images,
+reports minimum instances per service, and reads existing cleanup policies. It
+performs no mutation.
 
 ```bash
 cd /Users/wall-e/Dev/high-ground-studio-product
@@ -116,8 +117,10 @@ destructive.
 ## Cloud Run, SQL, and Gemini
 
 - Keep Cloud Run request-based and `minScale=0` unless measured latency makes a
-  warm instance worth its idle charge. Increase concurrency only after the
-  application and database pool are proven safe under parallel requests.
+  warm instance worth its idle charge. The project-wide audit must report every
+  service so a warm auxiliary service cannot be hidden by checking only Nest.
+  Increase concurrency only after the application and database pool are proven
+  safe under parallel requests.
 - Keep zero-traffic preview revisions short-lived at the operational layer, but
   never delete the live or selected rollback evidence merely to make a chart
   smaller.
@@ -144,6 +147,15 @@ Credentialed readback of `high-ground-odyssey` found:
   minimum instances; and
 - four repeated committed-source build groups detected from available source
   identities.
+
+The first version of this audit scoped Cloud Run readback to `studio`, so its
+"zero minimum instances" result did not cover `studio-collab`. A project-wide
+readback found that the idle collaboration service had retained
+`minScale=1` since May despite no request logs in the preceding 30 days. On
+2026-08-01 it was changed to `minScale=0`; its existing image, `maxScale=1`,
+3600-second WebSocket timeout, Cloud SQL attachment, service account, public
+invoker posture, IAM policy, and 100% traffic contract were preserved. The
+replacement revision passed `/health`, and no Cloud Build ran.
 
 The repository still exposed a second timestamp-tag deployment path through
 package scripts, the HGO/Quipsly conductor, readiness output, and coaching

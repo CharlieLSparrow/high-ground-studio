@@ -15,7 +15,7 @@ try {
   ).toISOString();
   runGcloud(["auth", "print-access-token"], { discard: true });
   const repositoryRoot = `${options.region}-docker.pkg.dev/${options.project}/${options.repository}`;
-  const [builds, images, revisions, service, cleanupPolicies] = [
+  const [builds, images, revisions, service, services, cleanupPolicies] = [
     runJson([
       "builds",
       "list",
@@ -40,7 +40,6 @@ try {
       "list",
       `--project=${options.project}`,
       `--region=${options.region}`,
-      `--service=${options.service}`,
       "--format=json",
     ]),
     runJson([
@@ -48,6 +47,14 @@ try {
       "services",
       "describe",
       options.service,
+      `--project=${options.project}`,
+      `--region=${options.region}`,
+      "--format=json",
+    ]),
+    runJson([
+      "run",
+      "services",
+      "list",
       `--project=${options.project}`,
       `--region=${options.region}`,
       "--format=json",
@@ -73,6 +80,7 @@ try {
     images,
     revisions,
     service,
+    services,
     cleanupPolicies,
   });
   const serialized = `${JSON.stringify(receipt, null, 2)}\n`;

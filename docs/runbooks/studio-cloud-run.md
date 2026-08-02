@@ -116,8 +116,8 @@ writes disabled in Cloud Run.
   - requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1`
   - runs `node --check apps/studio-collab/server.mjs` and Studio Cloud Run
     readiness tests unless `SKIP_LOCAL_CHECKS=1`
-  - deploys the collaboration service with MVP-safe defaults:
-    `--min-instances=1`, `--max-instances=1`, `--timeout=3600s`, and
+  - deploys the collaboration service with cost-safe defaults:
+    `--min-instances=0`, `--max-instances=1`, `--timeout=3600s`, and
     `--concurrency=80`
   - smokes `/health` and prints a rollback command
 - `.dockerignore`
@@ -311,9 +311,10 @@ pnpm studio:collab:cloudrun:deploy
 ```
 
 For the current two-person co-editing goal, the collaboration service should
-prefer stability and shared memory over elastic scaling:
+scale to zero while preserving a single shared room process after startup:
 
-- `min-instances=1` keeps the first join from paying a cold-start penalty.
+- `min-instances=0` removes idle compute charges; the first join after an idle
+  period may pay a short cold-start penalty.
 - `max-instances=1` keeps Charlie and Homer in the same Yjs room process.
 - `timeout=3600s` prevents Cloud Run from dropping WebSocket sessions every
   five minutes.
@@ -326,6 +327,13 @@ group, introduce a proper shared coordination layer before raising max
 instances.
 
 Useful overrides:
+
+```bash
+STUDIO_COLLAB_MIN_INSTANCES=1 pnpm studio:collab:cloudrun:deploy
+```
+
+Only use a warm instance after measured collaboration traffic shows that its
+latency benefit is worth the ongoing idle charge.
 
 ```bash
 STUDIO_COLLAB_MIN_INSTANCES=1 \

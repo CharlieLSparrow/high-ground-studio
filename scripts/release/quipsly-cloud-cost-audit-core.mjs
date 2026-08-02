@@ -16,7 +16,9 @@ export function summarizeQuipslyCloudCost(input) {
     ? input.cleanupPolicies
     : [];
   const service = object(input.service);
-  const protectedRevisions = protectedRevisionNames(service);
+  const listedServices = array(input.services);
+  const auditedServices = listedServices.length > 0 ? listedServices : [service];
+  const protectedRevisions = protectedRevisionNamesForServices(auditedServices);
   const protectedDigests = new Set(
     revisions
       .filter((revision) =>
@@ -27,6 +29,13 @@ export function summarizeQuipslyCloudCost(input) {
   );
   const buildSummary = summarizeBuilds(builds);
   const imageSummary = summarizeImages(images, now, protectedDigests);
+  const cloudRunServices = auditedServices
+    .map(summarizeCloudRunService)
+    .filter((entry) => entry.name)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const warmServices = cloudRunServices.filter(
+    (entry) => (entry.minimumInstanceCount ?? 0) > 0,
+  );
 
   const recommendations = [];
   if (buildSummary.repeatedCommittedSourceBuildCount > 0) {
@@ -70,6 +79,20 @@ export function summarizeQuipslyCloudCost(input) {
         "Do not enable Artifact Registry deletion until live revision digest readback succeeds.",
     });
   }
+  if (warmServices.length > 0) {
+    recommendations.push({
+      priority: "high",
+      code: "review-always-warm-cloud-run-services",
+      finding: `${warmServices.length} Cloud Run service(s) reserve ${warmServices.reduce(
+        (sum, entry) => sum + entry.minimumInstanceCount,
+        0,
+      )} minimum instance(s): ${warmServices
+        .map((entry) => `${entry.name}=${entry.minimumInstanceCount}`)
+        .join(", ")}.`,
+      action:
+        "Set idle services to minScale=0 unless measured latency justifies the recurring charge; preserve timeout, maximum-instance, database, identity, and traffic settings.",
+    });
+  }
 
   return {
     schema: "quipsly-cloud-cost-audit-v1",
@@ -86,10 +109,17 @@ export function summarizeQuipslyCloudCost(input) {
       cleanupMutationPerformed: false,
     },
     cloudRun: {
+      serviceCount: cloudRunServices.length,
       revisionCount: revisions.length,
       trafficServingRevisionCount: protectedRevisions.size,
       trafficServingDigestCount: protectedDigests.size,
       minimumInstanceCount: minimumInstanceCount(service),
+      totalMinimumInstanceCount: cloudRunServices.reduce(
+        (sum, entry) => sum + (entry.minimumInstanceCount ?? 0),
+        0,
+      ),
+      alwaysWarmServiceCount: warmServices.length,
+      services: cloudRunServices,
       billingMode:
         text(
           object(object(service.metadata).annotations)[
@@ -236,6 +266,31 @@ function protectedRevisionNames(service) {
       names.add(revisionName);
   }
   return names;
+}
+
+function protectedRevisionNamesForServices(services) {
+  const names = new Set();
+  for (const service of services) {
+    for (const name of protectedRevisionNames(service)) names.add(name);
+  }
+  return names;
+}
+
+function summarizeCloudRunService(service) {
+  const metadata = object(service.metadata);
+  const status = object(service.status);
+  const annotations = object(metadata.annotations);
+  return {
+    name: text(metadata.name),
+    minimumInstanceCount: minimumInstanceCount(service),
+    billingMode:
+      text(annotations["run.googleapis.com/billing-mode"]) || "unspecified",
+    latestReadyRevisionName: text(status.latestReadyRevisionName),
+    trafficPercent: array(status.traffic).reduce(
+      (sum, entry) => sum + nonNegativeNumber(object(entry).percent),
+      0,
+    ),
+  };
 }
 
 function revisionDigest(revision) {

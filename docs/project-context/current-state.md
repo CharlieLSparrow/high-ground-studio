@@ -2,6 +2,27 @@
 
 Date: 2026-08-01
 
+## Cloud cost-control checkpoint
+
+- The supported Nest release paths now reuse an exact committed-source image
+  before building, so retries and promotion do not pay for duplicate images.
+- Artifact Registry has a conservative untagged-after-45-days cleanup policy
+  evaluating in dry-run mode. No image deletion has been enabled; wait at least
+  one day and inspect the proposed deletions before making that separate
+  destructive decision.
+- The cost auditor now covers every Cloud Run service and every
+  traffic-serving revision in the region. This fixed a blind spot that had
+  omitted the always-warm `studio-collab` service.
+- Live `studio-collab` revision `studio-collab-00005-xht` reuses the existing
+  image and serves 100% of traffic with zero minimum instances. Readback keeps
+  `maxScale=1`, concurrency 80, timeout 3600 seconds, Cloud SQL, service
+  account, IAM policy, and `/health` intact. No Cloud Build ran for the change.
+- The post-change audit reads four services, 492 revisions, seven protected
+  live digests, and zero total minimum instances. The deploy helper defaults to
+  zero and a regression test prevents restoration of the former warm default.
+- Full evidence and remaining cost decisions are in
+  `docs/coordination/2026-08-01-cloud-cost-pipeline-consolidation.md`.
+
 ## Production account-deletion worker checkpoint
 
 - In-process account-deletion execution no longer belongs to public Nest. Staff

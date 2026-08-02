@@ -20,6 +20,11 @@ than 30 days, and roughly 229 GB across versions with reported sizes. Cloud Run
 had 396 revisions but only two traffic-serving revisions and no minimum
 instances.
 
+That initial Cloud Run statement was scoped only to the primary `studio`
+service. The corrected project-wide auditor found four services and exposed
+`studio-collab` at one minimum instance. The underlying deployment helper had
+hardcoded that warm-instance default.
+
 These are list-price estimates from the build history, not the final invoice.
 Google currently lists `e2-highcpu-8` at $0.0156/minute and
 `e2-highcpu-32` at $0.0624/minute in `us-central1`.
@@ -103,6 +108,28 @@ operator.
 - post-policy audit: still 927 versions and two protected traffic digests,
   proving no immediate deletion; and
 - `git diff --check`: pass.
+
+## Immediate Cloud Run reduction
+
+The collaboration deploy helper now defaults to `min-instances=0` and treats
+Google's omitted zero-value annotation as zero during readback. A regression
+test prevents the old always-warm default from returning. A warm instance
+remains an explicit opt-in for measured latency needs.
+
+Live revision `studio-collab-00005-xht` was created from the existing image
+without a build and now serves 100% of traffic. Provider readback proves:
+
+- all four regional Cloud Run services have zero minimum instances;
+- the collaboration service remains Ready with `maxScale=1`, concurrency 80,
+  timeout 3600 seconds, and its existing Cloud SQL attachment and service
+  account;
+- the before/after IAM policy SHA-256 is identical;
+- `/health` returns the expected `high-ground-studio-collab` identity; and
+- the most recent Cloud Build predates the Cloud Run configuration change.
+
+The cost audit now lists all regional services and all traffic-serving revision
+digests. Its live post-change result covers four services, 492 revisions, seven
+protected traffic digests, and zero total minimum instances.
 
 ## Next cost decisions
 
