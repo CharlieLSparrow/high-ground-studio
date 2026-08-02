@@ -401,13 +401,16 @@ elif [[ "${image_readback_status}" == "2" ]]; then
   exit 2
 else
   if [[ "${ALLOW_EARLY_CLOUD_BUILD}" == "0" && "${MIN_CLOUD_BUILD_INTERVAL_HOURS}" != "0" ]]; then
-    latest_successful_build_time="$(
+    recent_builds_json="$(
       gcloud builds list \
         --project="${PROJECT_ID}" \
-        --filter="status=SUCCESS AND substitutions._IMAGE_NAME=${IMAGE_NAME}" \
         --sort-by="~createTime" \
-        --limit=1 \
-        --format="value(createTime)"
+        --limit=500 \
+        --format='json(createTime,status,substitutions)'
+    )"
+    latest_successful_build_time="$(
+      printf '%s' "${recent_builds_json}" \
+        | node "${repo_root}/scripts/release/quipsly-latest-successful-build.mjs" "${IMAGE_NAME}"
     )"
     if [[ -n "${latest_successful_build_time}" ]]; then
       cadence_result="$(

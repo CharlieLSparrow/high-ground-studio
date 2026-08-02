@@ -61,7 +61,9 @@ test("preview deploy reuses one verified image for one committed source", () => 
   assert.match(source, /--machine-type "\$\{CLOUD_BUILD_MACHINE_TYPE\}"/);
   assert.match(source, /MIN_CLOUD_BUILD_INTERVAL_HOURS="\$\{MIN_CLOUD_BUILD_INTERVAL_HOURS:-12\}"/);
   assert.match(source, /ALLOW_EARLY_CLOUD_BUILD="\$\{ALLOW_EARLY_CLOUD_BUILD:-0\}"/);
-  assert.match(source, /status=SUCCESS AND substitutions\._IMAGE_NAME=\$\{IMAGE_NAME\}/);
+  assert.match(source, /--format='json\(createTime,status,substitutions\)'/);
+  assert.match(source, /quipsly-latest-successful-build\.mjs/);
+  assert.doesNotMatch(source, /--filter="status=SUCCESS AND substitutions\._IMAGE_NAME=/);
   assert.match(source, /Cloud Build cadence gate/);
   assert.match(source, /For an urgent production repair only/);
   assert.match(source, /requested existing image is unavailable/);
