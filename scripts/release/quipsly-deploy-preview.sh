@@ -8,7 +8,9 @@ SERVICE_NAME="${SERVICE_NAME:-studio}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REQUESTED_IMAGE_TAG="${IMAGE_TAG:-}"
 REUSE_EXISTING_IMAGE="${REUSE_EXISTING_IMAGE:-1}"
-CLOUD_BUILD_MACHINE_TYPE="${CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32}"
+CLOUD_BUILD_MACHINE_TYPE="${CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-8}"
+MIN_CLOUD_BUILD_INTERVAL_HOURS="${MIN_CLOUD_BUILD_INTERVAL_HOURS:-12}"
+ALLOW_EARLY_CLOUD_BUILD="${ALLOW_EARLY_CLOUD_BUILD:-0}"
 PREVIEW_TAG="${PREVIEW_TAG:-quipsly-preview}"
 SOURCE_SHA="${SOURCE_SHA:-manual-preview}"
 DEPLOYED_BY="${DEPLOYED_BY:-$(whoami)}"
@@ -43,6 +45,16 @@ fi
 
 if [[ "${REUSE_EXISTING_IMAGE}" != "0" && "${REUSE_EXISTING_IMAGE}" != "1" ]]; then
   echo "REUSE_EXISTING_IMAGE must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ ! "${MIN_CLOUD_BUILD_INTERVAL_HOURS}" =~ ^[0-9]+$ ]] || (( MIN_CLOUD_BUILD_INTERVAL_HOURS > 168 )); then
+  echo "MIN_CLOUD_BUILD_INTERVAL_HOURS must be an integer from 0 through 168." >&2
+  exit 2
+fi
+
+if [[ "${ALLOW_EARLY_CLOUD_BUILD}" != "0" && "${ALLOW_EARLY_CLOUD_BUILD}" != "1" ]]; then
+  echo "ALLOW_EARLY_CLOUD_BUILD must be 0 or 1." >&2
   exit 2
 fi
 
@@ -388,6 +400,35 @@ elif [[ "${REUSE_EXISTING_IMAGE}" == "1" && "${image_readback_status}" == "0" ]]
 elif [[ "${image_readback_status}" == "2" ]]; then
   exit 2
 else
+  if [[ "${ALLOW_EARLY_CLOUD_BUILD}" == "0" && "${MIN_CLOUD_BUILD_INTERVAL_HOURS}" != "0" ]]; then
+    latest_successful_build_time="$(
+      gcloud builds list \
+        --project="${PROJECT_ID}" \
+        --filter="status=SUCCESS AND substitutions._IMAGE_NAME=${IMAGE_NAME}" \
+        --sort-by="~createTime" \
+        --limit=1 \
+        --format="value(createTime)"
+    )"
+    if [[ -n "${latest_successful_build_time}" ]]; then
+      cadence_result="$(
+        LATEST_SUCCESSFUL_BUILD_TIME="${latest_successful_build_time}" \
+        MIN_CLOUD_BUILD_INTERVAL_HOURS="${MIN_CLOUD_BUILD_INTERVAL_HOURS}" \
+        node <<'NODE'
+const latest = Date.parse(process.env.LATEST_SUCCESSFUL_BUILD_TIME || "");
+const minimumHours = Number(process.env.MIN_CLOUD_BUILD_INTERVAL_HOURS || "0");
+if (!Number.isFinite(latest) || !Number.isInteger(minimumHours)) process.exit(2);
+const remainingMs = latest + minimumHours * 60 * 60 * 1000 - Date.now();
+process.stdout.write(String(Math.max(0, Math.ceil(remainingMs / 60000))));
+NODE
+      )"
+      if (( cadence_result > 0 )); then
+        echo "Cloud Build cadence gate: the last successful ${IMAGE_NAME} build was ${latest_successful_build_time}." >&2
+        echo "Wait about ${cadence_result} minutes so product work ships as a coherent release train." >&2
+        echo "For an urgent production repair only, rerun with ALLOW_EARLY_CLOUD_BUILD=1." >&2
+        exit 2
+      fi
+    fi
+  fi
   echo "Building Quipsly image ${IMAGE_URI} from committed source ${SOURCE_SHA}"
   echo "Cloud Build worker: ${CLOUD_BUILD_MACHINE_TYPE}"
   gcloud builds submit \

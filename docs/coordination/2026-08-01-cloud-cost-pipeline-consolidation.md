@@ -1,7 +1,7 @@
 # Quipsly cloud-cost pipeline consolidation
 
 Date: 2026-08-01
-Status: future duplicate-build prevention implemented; Artifact Registry cleanup evaluating in non-deleting dry-run
+Status: future duplicate-build and checkpoint-churn prevention implemented; Artifact Registry cleanup evaluating in non-deleting dry-run
 
 ## What the billing chart represented
 
@@ -139,12 +139,22 @@ protected traffic digests, and zero total minimum instances.
    before any cleanup decision.
 3. Decide whether to enable the conservative untagged-only policy. This needs
    explicit approval because the background evaluator would then delete data.
-4. Benchmark one real non-urgent Nest release on `E2_HIGHCPU_8`. Keep the
-   32-core default unless the smaller worker completes reliably and materially
-   cheaper; do not infer Nest memory behavior from unrelated worker images.
+4. Observe the new `E2_HIGHCPU_8` default over the next coherent release. A
+   historical successful Nest comparison estimated less than half the compute
+   cost of a representative current 32-core build; retain the explicit 32-core
+   override for measured capacity failures.
 5. Add a retention policy for zero-traffic Cloud Run revisions only after
    rollback ownership is explicit. Revision count alone is not significant
    Cloud Run spend while minimum instances remain zero.
+
+## Checkpoint-churn guard
+
+The canonical Nest release path now defaults to `E2_HIGHCPU_8` and refuses to
+buy a new successful-source image within 12 hours of the previous successful
+Nest build. This gate applies only when the exact committed image is absent:
+same-source reuse, smoke, promotion, and retries after a failed build remain
+available. `ALLOW_EARLY_CLOUD_BUILD=1` is reserved for an urgent production
+repair and makes the exception visible at the command boundary.
 
 Primary references:
 

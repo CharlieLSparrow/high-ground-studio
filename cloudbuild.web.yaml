@@ -67,4 +67,4 @@ steps:
         exit 1
 
 options:
-  machineType: E2_HIGHCPU_32
+  machineType: E2_HIGHCPU_8

@@ -44,24 +44,26 @@ The dedicated transcript-worker release follows the same rule. Its default tag
 is the full committed source SHA, registry failures fail closed, and an existing
 verified image is reused before deploying the Cloud Run Job by digest.
 
-## Build worker benchmark
+## Build worker and release cadence
 
-The current safe default remains `e2-highcpu-32` until one real non-urgent
-release proves a smaller worker. The deploy command accepts a validated
-override:
+Ordinary Nest builds default to `e2-highcpu-8`. A successful historical Nest
+build completed on that worker in 603 seconds; at current list prices that is
+less than half the estimated compute cost of a representative 341-second
+`e2-highcpu-32` build. The larger worker remains an explicit diagnostic option:
 
 ```bash
-CLOUD_BUILD_MACHINE_TYPE=e2-highcpu-8 \
+CLOUD_BUILD_MACHINE_TYPE=e2-highcpu-32 \
 SOURCE_REF=COMMITTED_SHA \
 bash scripts/release/quipsly-deploy-preview.sh
 ```
 
-Compare total wall time, billed build minutes, success, peak-memory behavior,
-cache reuse, and total estimated cost. The smaller worker is one-quarter of
-the current per-minute list price in `us-central1`; it is a savings only if it
-finishes reliably in less than four times the duration. Do not lower Node's
-memory ceiling or weaken route/build verification merely to make a smaller
-worker appear successful.
+New successful Nest image builds are also separated by a 12-hour default
+cadence. Exact-source image reuse, local testing, failed-build retries, preview
+smoke, and promotion do not consume this interval. An urgent production repair
+can use `ALLOW_EARLY_CLOUD_BUILD=1`; using that override for routine checkpoint
+deployment violates the release contract. The interval can be changed with
+`MIN_CLOUD_BUILD_INTERVAL_HOURS`, including `0` for a deliberately unthrottled
+diagnostic run.
 
 [Current Cloud Build pricing](https://cloud.google.com/build/pricing)
 
