@@ -89,6 +89,18 @@ grep -Eq '^releaseRunID=[A-Za-z0-9._-]+$' "$receipt" ||
 grep -Fqx "arguments=<--device><iPhone Test>" "$receipt" ||
   fail "Fastlane arguments were not preserved exactly."
 
+MOCK_RECEIPT_PATH="$receipt" \
+QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
+"${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
+  upload_qualified \
+  --revision "$source_revision" \
+  'receipt_path:/tmp/Quipsly Capture/release.json'
+
+grep -Fqx "lane=upload_qualified" "$receipt" ||
+  fail "Runner did not receive the sealed-candidate upload lane."
+grep -Fqx "arguments=<receipt_path:/tmp/Quipsly Capture/release.json>" "$receipt" ||
+  fail "Qualified receipt path was not preserved exactly."
+
 runner_cwd="$(sed -n 's/^cwd=//p' "$receipt")"
 [[ "$runner_cwd" != "$fixture_repo" ]] ||
   fail "Runner executed in the caller's dirty worktree."

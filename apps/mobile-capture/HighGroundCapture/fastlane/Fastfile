@@ -65,6 +65,7 @@ end
 def write_release_receipt(receipt_path, receipt)
   temporary_path = "#{receipt_path}.tmp-#{Process.pid}"
   File.write(temporary_path, JSON.pretty_generate(receipt) + "\n")
+  File.chmod(0o600, temporary_path)
   FileUtils.mv(temporary_path, receipt_path)
 ensure
   FileUtils.rm_f(temporary_path) if defined?(temporary_path)
@@ -75,6 +76,119 @@ def update_release_receipt(paths)
   receipt = JSON.parse(File.read(receipt_path))
   yield(receipt)
   write_release_receipt(receipt_path, receipt)
+  receipt_path
+end
+
+def qualified_release_paths(receipt_path)
+  UI.user_error!("Set receipt_path to a qualified Capture release receipt.") if receipt_path.to_s.empty?
+  expanded_receipt_path = File.expand_path(receipt_path)
+  UI.user_error!("Qualified receipt is not a regular file: #{expanded_receipt_path}") unless File.file?(expanded_receipt_path)
+  UI.user_error!("Qualified receipt must not be group- or world-readable.") unless (File.stat(expanded_receipt_path).mode & 0o077).zero?
+
+  receipt = JSON.parse(File.read(expanded_receipt_path))
+  UI.user_error!("Unsupported qualified receipt schema.") unless receipt["schema"] == "quipsly-capture-release-receipt-v1"
+  UI.user_error!("Candidate qualification is not recorded.") unless receipt["candidateQualified"] == true
+  UI.user_error!("Deterministic UI qualification is not recorded.") unless receipt["deterministicUITestPerformed"] == true
+  UI.user_error!("Candidate source was not isolated.") unless receipt["sourceIsolation"] == "detached-worktree"
+  UI.user_error!("Candidate upload was already attempted; use App Store Connect readback.") unless
+    receipt["uploadAttempted"] == false && receipt["uploadOutcome"] == "not-attempted"
+
+  source_revision = receipt["sourceRevision"].to_s
+  UI.user_error!("Qualified source revision is invalid.") unless source_revision.match?(/\A[0-9a-f]{40}\z/)
+  UI.user_error!("Qualified source commit is unavailable in this repository.") unless
+    system("git", "-C", REPO_ROOT, "cat-file", "-e", "#{source_revision}^{commit}", out: File::NULL, err: File::NULL)
+  UI.user_error!("Upload tooling must descend from the qualified source commit.") unless
+    system("git", "-C", REPO_ROOT, "merge-base", "--is-ancestor", source_revision, "HEAD", out: File::NULL, err: File::NULL)
+
+  output_directory = File.dirname(expanded_receipt_path)
+  version = receipt["version"].to_s
+  build = receipt["build"].to_s
+  UI.user_error!("Qualified receipt version is invalid.") unless version.match?(/\A[0-9]+(?:\.[0-9]+){1,2}\z/)
+  UI.user_error!("Qualified receipt build is invalid.") unless build.match?(/\A[0-9]+\z/)
+  stem = "QuipslyCapture-#{version}.#{build}"
+  paths = {
+    version: version,
+    build: build,
+    output_directory: output_directory,
+    archive_path: File.expand_path(receipt["archivePath"].to_s),
+    ipa_path: File.expand_path(receipt["ipaPath"].to_s),
+  }
+  UI.user_error!("Qualified receipt is not colocated with its archive and IPA.") unless
+    File.dirname(paths[:archive_path]) == output_directory && File.dirname(paths[:ipa_path]) == output_directory
+  UI.user_error!("Qualified receipt name does not match its version and build.") unless
+    File.basename(expanded_receipt_path) == "#{stem}-release-receipt.json"
+  UI.user_error!("Qualified archive name does not match its receipt.") unless File.basename(paths[:archive_path]) == "#{stem}.xcarchive"
+  UI.user_error!("Qualified IPA name does not match its receipt.") unless File.basename(paths[:ipa_path]) == "#{stem}.ipa"
+  UI.user_error!("Qualified archive is unavailable.") unless File.directory?(paths[:archive_path])
+  UI.user_error!("Qualified IPA is unavailable.") unless File.file?(paths[:ipa_path])
+  UI.user_error!("Qualified IPA byte count changed.") unless File.size(paths[:ipa_path]) == receipt["ipaBytes"]
+  UI.user_error!("Qualified IPA digest changed.") unless Digest::SHA256.file(paths[:ipa_path]).hexdigest == receipt["ipaSHA256"]
+
+  ui_evidence_path = File.expand_path(receipt["uiTestEvidencePath"].to_s)
+  UI.user_error!("Qualified UI result bundle is unavailable.") unless
+    File.directory?(ui_evidence_path) && File.file?(File.join(ui_evidence_path, "Info.plist"))
+  sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
+  UI.success("Qualified candidate receipt and packaged artifact passed upload reuse verification.")
+  paths
+end
+
+def upload_capture_candidate(paths, options)
+  api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+  UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
+  expanded_api_key_path = File.expand_path(api_key_path)
+  UI.user_error!("App Store Connect API key is not a regular file.") unless File.file?(expanded_api_key_path)
+  UI.user_error!("App Store Connect API key must not be group- or world-readable.") unless
+    (File.stat(expanded_api_key_path).mode & 0o077).zero?
+
+  # Fastlane 2.236.1 interpolates parts of its transporter command through a
+  # shell string. Retain canonical evidence on the configured volume, while
+  # uploading a byte-identical copy from a path that cannot split on spaces.
+  upload_staging_root = Dir.mktmpdir("quipsly-capture-upload-", "/private/tmp")
+  upload_ipa_path = File.join(upload_staging_root, File.basename(paths[:ipa_path]))
+  FileUtils.cp(paths[:ipa_path], upload_ipa_path)
+  UI.user_error!("TestFlight staging changed the verified IPA bytes.") unless
+    Digest::SHA256.file(upload_ipa_path).hexdigest == Digest::SHA256.file(paths[:ipa_path]).hexdigest
+
+  previous_tmpdir = ENV["TMPDIR"]
+  ENV["TMPDIR"] = "/private/tmp"
+  begin
+    update_release_receipt(paths) do |receipt|
+      receipt["uploadAttempted"] = true
+      receipt["uploadAttemptedAt"] = Time.now.utc.iso8601
+      receipt["uploadOutcome"] = "unknown-until-app-store-connect-readback"
+    end
+    upload_to_testflight(
+      api_key_path: expanded_api_key_path,
+      ipa: upload_ipa_path,
+      apple_id: APPLE_APP_ID,
+      app_identifier: APP_IDENTIFIER,
+      changelog: options[:changelog] || ENV["QUIPSLY_CAPTURE_WHAT_TO_TEST"],
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      notify_external_testers: false,
+    )
+  ensure
+    if previous_tmpdir.nil?
+      ENV.delete("TMPDIR")
+    else
+      ENV["TMPDIR"] = previous_tmpdir
+    end
+    FileUtils.rm_rf(upload_staging_root)
+  end
+  receipt_path = update_release_receipt(paths) do |receipt|
+    receipt["uploadAttempted"] = true
+    receipt["uploadPerformed"] = true
+    receipt["uploadReturnedAt"] = Time.now.utc.iso8601
+    receipt["uploadOutcome"] = "returned-successfully"
+    receipt["buildProcessingWaitReturned"] = true
+    receipt["externalDistributionRequested"] = false
+    receipt["externalNotificationRequested"] = false
+    receipt["testerAssignmentPerformed"] = false
+    receipt["physicalTestFlightInstallReadbackPerformed"] = false
+  end
+  UI.success("TestFlight upload and processing wait returned successfully.")
+  UI.important("Tester assignment and a physical TestFlight install still require independent readback.")
+  UI.success("Updated release receipt: #{receipt_path}")
   receipt_path
 end
 
@@ -270,68 +384,21 @@ platform :ios do
 
   desc "Qualify and upload to TestFlight without silently changing the committed build number"
   lane :beta do |options|
-    api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
-    UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
-
     candidate(options)
     paths = release_paths(options)
-    update_release_receipt(paths) do |receipt|
-      receipt["uploadAttempted"] = true
-      receipt["uploadAttemptedAt"] = Time.now.utc.iso8601
-      receipt["uploadOutcome"] = "unknown-until-app-store-connect-readback"
-    end
-    # Fastlane 2.236.1's altool adapter interpolates the IPA path into a shell
-    # command without preserving spaces. Keep the canonical verified artifact
-    # and receipt on the release volume, but upload a byte-identical staging
-    # copy from an explicitly space-free system path.
-    upload_staging_root = Dir.mktmpdir("quipsly-capture-upload-", "/private/tmp")
-    upload_ipa_path = File.join(upload_staging_root, File.basename(paths[:ipa_path]))
-    FileUtils.cp(paths[:ipa_path], upload_ipa_path)
-    UI.user_error!("TestFlight staging changed the verified IPA bytes.") unless
-      Digest::SHA256.file(upload_ipa_path).hexdigest == Digest::SHA256.file(paths[:ipa_path]).hexdigest
+    upload_capture_candidate(paths, options)
+  end
 
-    # Fastlane's altool adapter still assembles part of its transporter command
-    # as a shell string. A trusted external build volume may legitimately have
-    # spaces in its path, but allowing that TMPDIR to reach the adapter causes
-    # the command to split before Apple receives the upload. Keep all retained
-    # evidence on the configured volume while bounding only the transporter's
-    # disposable state to Apple's space-free system temporary directory.
-    previous_tmpdir = ENV["TMPDIR"]
-    ENV["TMPDIR"] = "/private/tmp"
-    begin
-      upload_to_testflight(
-        api_key_path: File.expand_path(api_key_path),
-        ipa: upload_ipa_path,
-        apple_id: APPLE_APP_ID,
-        app_identifier: APP_IDENTIFIER,
-        changelog: options[:changelog] || ENV["QUIPSLY_CAPTURE_WHAT_TO_TEST"],
-        skip_waiting_for_build_processing: false,
-        distribute_external: false,
-        notify_external_testers: false,
+  desc "Reverify and upload a sealed qualified candidate without rebuilding it"
+  lane :upload_qualified do |options|
+    unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
+      UI.user_error!(
+        "Qualified upload must use scripts/release/quipsly-capture-release-from-commit.sh from an exact committed revision.",
       )
-    ensure
-      if previous_tmpdir.nil?
-        ENV.delete("TMPDIR")
-      else
-        ENV["TMPDIR"] = previous_tmpdir
-      end
-      FileUtils.rm_rf(upload_staging_root)
     end
-    receipt_path = update_release_receipt(paths) do |receipt|
-      receipt["uploadAttempted"] = true
-      receipt["uploadPerformed"] = true
-      receipt["uploadReturnedAt"] = Time.now.utc.iso8601
-      receipt["uploadOutcome"] = "returned-successfully"
-      receipt["buildProcessingWaitReturned"] = true
-      receipt["externalDistributionRequested"] = false
-      receipt["externalNotificationRequested"] = false
-      receipt["testerAssignmentPerformed"] = false
-      receipt["physicalTestFlightInstallReadbackPerformed"] = false
-    end
-    UI.success("TestFlight upload and processing wait returned successfully.")
-    UI.important(
-      "Tester assignment and a physical TestFlight install still require independent readback.",
-    )
-    UI.success("Updated release receipt: #{receipt_path}")
+
+    receipt_path = options[:receipt_path] || ENV["QUIPSLY_CAPTURE_QUALIFIED_RECEIPT"]
+    paths = qualified_release_paths(receipt_path)
+    upload_capture_candidate(paths, options)
   end
 end
