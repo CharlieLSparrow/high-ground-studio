@@ -348,7 +348,7 @@ try {
   });
   fixture.transcriptJobId = transcriptJob.id;
   const transcriptText =
-    "I will send the revised episode outline before next time.";
+    "My goal is to publish the pilot, and I will send the revised episode outline before next time.";
   const segment = await prisma.transcriptSegment.create({
     data: {
       transcriptJobId: transcriptJob.id,
@@ -386,6 +386,15 @@ try {
         roomId: room.id,
         packetBuildId,
         transcriptSnapshot,
+        packetBrief: {
+          kind: "quipsly-transcript-packet-brief-v1",
+          candidateOnly: true,
+          humanApprovalRequired: true,
+          sections: [{
+            id: "goals",
+            items: [{ segmentId: segment.id, text: "Publish the pilot with a repeatable review habit" }],
+          }],
+        },
         reviewLanes: [
           {
             id: "internal-summary",
@@ -493,6 +502,18 @@ try {
       packetNoteCandidate.humanApprovalRequired === true &&
       packetNoteCandidate.committedNoteId === null,
     "Packet read did not project an uncommitted note candidate with exact transcript, packet, lane, and recording identity.",
+  );
+  const packetGoalCandidates = Array.isArray(viewerRead.body?.packet?.goalCandidates)
+    ? viewerRead.body.packet.goalCandidates.map(object)
+    : [];
+  const packetGoalCandidate = packetGoalCandidates.find((candidate) => candidate.segmentId === segment.id);
+  assert(
+    packetGoalCandidate?.id === `packet-goal-${packetBuildId}-${segment.id}` &&
+      packetGoalCandidate.clientRequestId === packetGoalCandidate.id &&
+      packetGoalCandidate.providerTextSha256 === sha256(transcriptText) &&
+      packetGoalCandidate.humanApprovalRequired === true &&
+      packetGoalCandidate.committedGoalId === null,
+    "Packet read did not project one uncommitted goal candidate with exact transcript and packet identity.",
   );
 
   const laneReviewBody = {
@@ -642,12 +663,86 @@ try {
     "Changed owner intent unexpectedly rewrote an already accepted candidate.",
   );
 
-  const [storedSummary, storedActionItems] = await Promise.all([
+  const goalTargetAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const goalReviewBody = {
+    callRoomId: room.id,
+    transcriptJobId: transcriptJob.id,
+    recordingAssetId: recordingAsset.id,
+    summaryNoteId: summary.id,
+    packetBuildId,
+    goalCandidateId: packetGoalCandidate.id,
+    decision: "ACCEPT",
+    title: "Publish the pilot with a repeatable review habit",
+    description: "Review one real cut every week and make the release decision deliberately.",
+    targetAt: goalTargetAt,
+    tagIds: [taskTag.id],
+    note: "Explicitly authorized local product operation; no external delivery or publication is represented.",
+  };
+  const goalReview = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/goals", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify(goalReviewBody),
+    },
+  );
+  const goalReviewDiagnostics = goalReview.status === 200 ? [] : (await prisma.coachingNote.findMany({
+    where: { roomId: room.id, kind: "SUMMARY" },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, sourceJson: true },
+  })).map((note) => ({
+    id: note.id,
+    source: object(note.sourceJson).source,
+    packetBuildId: object(note.sourceJson).packetBuildId,
+    transcriptJobId: object(note.sourceJson).transcriptJobId,
+  }));
+  assert(
+    goalReview.status === 200 &&
+      goalReview.body?.ok === true &&
+      goalReview.body?.goal?.status === "ACTIVE" &&
+      goalReview.body?.goal?.targetAt === goalTargetAt &&
+      goalReview.body?.goal?.tags?.[0]?.id === taskTag.id &&
+      goalReview.body?.boundaries?.targetDateCreated === true &&
+      goalReview.body?.boundaries?.projectTagsApplied === true &&
+      goalReview.body?.boundaries?.taskCreated === false &&
+      goalReview.body?.boundaries?.calendarMutated === false,
+    `Active project collaborator could not accept the goal with reviewed target date and project tag. HTTP ${goalReview.status} ${goalReview.body?.errorCode || goalReview.body?.code || ""}: ${goalReview.body?.error || "unknown error"}; requested=${JSON.stringify({ summaryNoteId: summary.id, packetBuildId, transcriptJobId: transcriptJob.id })}; summaries=${JSON.stringify(goalReviewDiagnostics)}`,
+  );
+  const exactGoalReplay = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/goals", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify(goalReviewBody),
+    },
+  );
+  assert(
+    exactGoalReplay.status === 200 &&
+      exactGoalReplay.body?.idempotentReplay === true &&
+      exactGoalReplay.body?.goal?.id === goalReview.body.goal.id,
+    "Exact goal materialization replay did not recover the same canonical Goal.",
+  );
+  const changedGoalIntent = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/goals", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify({ ...goalReviewBody, targetAt: new Date(Date.now() + 60 * 86_400_000).toISOString() }),
+    },
+  );
+  assert(
+    changedGoalIntent.status === 409 &&
+      changedGoalIntent.body?.errorCode === "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT",
+    "Changed goal target intent unexpectedly rewrote an already accepted candidate.",
+  );
+
+  const [storedSummary, storedActionItems, storedGoals] = await Promise.all([
     prisma.coachingNote.findUnique({ where: { id: summary.id } }),
     prisma.actionItem.findMany({
       where: { roomId: room.id },
       include: { tagLinks: { include: { tag: true } } },
     }),
+    prisma.goal.findMany({ where: { roomId: room.id }, include: { tagLinks: { include: { tag: true } } } }),
   ]);
   const actionCount = storedActionItems.length;
   const storedSource = object(storedSummary?.sourceJson);
@@ -672,6 +767,14 @@ try {
     "ACCEPT did not persist exactly one owned, dated, tagged ActionItem with its playback anchor.",
   );
   assert(
+    storedGoals.length === 1 &&
+      storedGoals[0]?.id === goalReview.body.goal.id &&
+      storedGoals[0]?.targetAt?.toISOString() === goalTargetAt &&
+      storedGoals[0]?.tagLinks?.[0]?.tag?.id === taskTag.id &&
+      object(storedGoals[0]?.sourceJson).playbackSourceId === fixture.sourceId,
+    "ACCEPT did not persist exactly one actor-owned, dated, tagged Goal with its playback anchor.",
+  );
+  assert(
     receipts.length === 1 &&
       object(receipts[0]).decision === "ACCEPT" &&
       object(object(receipts[0]).materializationIntent).assignedUserId === "ACTOR" &&
@@ -684,6 +787,7 @@ try {
     password,
     title: reviewBody.title,
     tagLabel: taskTag.label,
+    goalTitle: goalReviewBody.title,
   });
   assert(
     object(storedReviewedLane).status === "APPROVED_FOR_INTERNAL_USE" &&
@@ -1053,6 +1157,15 @@ try {
     acceptedTaskRenderedInSession: renderedTask.session,
     acceptedTaskRenderedInWork: renderedTask.work,
     acceptedTaskPhoneWidthNoOverflow: renderedTask.phoneWidthNoOverflow,
+    packetGoalCandidateProjected: true,
+    acceptedGoalCreated: true,
+    acceptedGoalTargetDatePersisted: true,
+    acceptedGoalTagPersisted: true,
+    acceptedGoalPlaybackAnchorProjected: true,
+    acceptedGoalExactReplayRecovered: true,
+    acceptedGoalChangedIntentRejected: true,
+    acceptedGoalRenderedInSession: renderedTask.goalInSession,
+    acceptedGoalRenderedInWork: renderedTask.goalInWork,
     reviewReceiptsPersisted: receipts.length,
     editorSessionNoteCreated: true,
     editorTranscriptNoteCreated: true,
@@ -1129,6 +1242,8 @@ async function inspectRenderedAcceptedTask(input) {
     const sessionText = await main.innerText();
     assert(sessionText.includes(input.title), "Rendered Session review lost the accepted task title.");
     assert(sessionText.includes("Committed as canonical Quipsly work"), "Rendered Session review did not distinguish committed work from a candidate.");
+    assert(sessionText.includes(input.goalTitle), "Rendered Session review lost the accepted goal title.");
+    assert(sessionText.includes("Accepted as one canonical goal"), "Rendered Session review did not distinguish the accepted goal from a candidate.");
     await assertNoHorizontalOverflow(main, "desktop accepted transcript task");
 
     await page.getByRole("link", { name: "Open task", exact: true }).click();
@@ -1136,6 +1251,7 @@ async function inspectRenderedAcceptedTask(input) {
     await page.getByRole("heading", { name: "Work Queue", exact: true }).waitFor({ timeout: 20_000 });
     const workText = await page.getByRole("main").last().innerText();
     assert(workText.includes(input.title), "Rendered Work Queue lost the accepted transcript task.");
+    assert(workText.includes(input.goalTitle), "Rendered Work Queue lost the accepted transcript goal.");
     assert(workText.includes(input.tagLabel), "Rendered Work Queue lost the selected canonical tag.");
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1144,7 +1260,7 @@ async function inspectRenderedAcceptedTask(input) {
     await assertNoHorizontalOverflow(page.getByRole("main").last(), "phone-width accepted transcript task");
     assert(pageErrors.length === 0, `Rendered accepted task raised client errors: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseUrl.origin, identity.role);
-    return { session: true, work: true, phoneWidthNoOverflow: true };
+    return { session: true, work: true, goalInSession: true, goalInWork: true, phoneWidthNoOverflow: true };
   } finally {
     await context.close();
     await browser.close();
@@ -1182,7 +1298,7 @@ async function cleanupFixture() {
     },
   });
 
-  const [rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, tags, actionTagLinks, roomTagLinks] = await Promise.all([
+  const [rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, goals, tags, actionTagLinks, goalTagLinks, roomTagLinks] = await Promise.all([
     prisma.callRoom.count({ where: { id: fixture.roomId } }),
     prisma.studioProject.count({ where: { id: fixture.projectId } }),
     prisma.studioWorkspace.count({ where: { id: fixture.workspaceId } }),
@@ -1199,14 +1315,16 @@ async function cleanupFixture() {
     prisma.studioMediaAsset.count({ where: { id: fixture.mediaAssetId } }),
     prisma.studioVideoSource.count({ where: { id: fixture.sourceId } }),
     prisma.actionItem.count({ where: { roomId: fixture.roomId } }),
+    prisma.goal.count({ where: { roomId: fixture.roomId } }),
     prisma.studioTag.count({ where: { projectId: fixture.projectId } }),
     prisma.actionItemTagLink.count({ where: { actionItem: { roomId: fixture.roomId } } }),
+    prisma.goalTagLink.count({ where: { goal: { roomId: fixture.roomId } } }),
     prisma.callRoomTagLink.count({ where: { roomId: fixture.roomId } }),
   ]);
-  const remainingCount = rooms + projects + workspaces + users + receipts + mediaAssets + sources + actions + tags + actionTagLinks + roomTagLinks;
+  const remainingCount = rooms + projects + workspaces + users + receipts + mediaAssets + sources + actions + goals + tags + actionTagLinks + goalTagLinks + roomTagLinks;
   return {
     ok: remainingCount === 0,
-    remaining: { rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, tags, actionTagLinks, roomTagLinks },
+    remaining: { rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, goals, tags, actionTagLinks, goalTagLinks, roomTagLinks },
   };
 }
 

@@ -627,32 +627,73 @@ function SessionTaxonomyCard({ roomId, initial }: { roomId: string; initial: Ses
   </section>;
 }
 
+function localDateInputValue(value: Date) {
+  return [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, "0"),
+    String(value.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function GoalCandidateCard({
   candidate,
   busy,
   onDecision,
+  projectTags,
+  defaultTagIds,
 }: {
   candidate: SessionReviewGoalCandidate;
   busy: boolean;
-  onDecision: (candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string }) => void;
+  onDecision: (candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string; targetAt?: string | null; tagIds?: string[] }) => void;
+  projectTags: SessionTaxonomy["catalog"];
+  defaultTagIds: string[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(candidate.suggestedTitle);
   const [description, setDescription] = useState(candidate.suggestedDescription);
+  const [hasTargetDate, setHasTargetDate] = useState(false);
+  const [targetDate, setTargetDate] = useState(() => {
+    const value = new Date();
+    value.setDate(value.getDate() + 30);
+    return localDateInputValue(value);
+  });
+  const [tagIds, setTagIds] = useState(() => new Set(defaultTagIds));
+  const defaultTagKey = defaultTagIds.join("\u0000");
   const accepted = Boolean(candidate.committedGoalId) || candidate.reviewStatus === "ACCEPTED_AS_GOAL";
 
   useEffect(() => {
     setTitle(candidate.suggestedTitle);
     setDescription(candidate.suggestedDescription);
     setEditing(false);
-  }, [candidate.reviewStatus, candidate.suggestedDescription, candidate.suggestedTitle]);
+    setCreating(false);
+    setHasTargetDate(false);
+    setTagIds(new Set(defaultTagIds));
+  }, [candidate.reviewStatus, candidate.suggestedDescription, candidate.suggestedTitle, defaultTagKey]);
+
+  function toggleTag(tagId: string) {
+    setTagIds((current) => {
+      const next = new Set(current);
+      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      return next;
+    });
+  }
 
   return <article className="rounded-2xl border border-violet-200 bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-violet-700">{timestampForSeconds(candidate.startSeconds)}–{timestampForSeconds(candidate.endSeconds)} · {candidate.speakerLabel || "Unlabelled speaker"}</p><h3 className="mt-1 text-lg font-black text-[#3d3122]">{candidate.suggestedTitle}</h3></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(candidate.reviewStatus)}`}>{humanize(candidate.reviewStatus)}</span></div>
     <p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">{candidate.sourceText}</p>
     <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline">Review exact transcript source</a>
-    {accepted && candidate.committedGoalId ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Accepted as one canonical goal. <Link href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`} className="underline">Open goal</Link></p> : editing ? <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4"><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !title.trim()} onClick={() => onDecision(candidate, "EDIT", { title, description })} className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Save for review</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div></div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => onDecision(candidate, "ACCEPT", { title, description })} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Accept as goal</button><button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button></div>}
-    {!accepted && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Accept as goal” writes one actor-owned ACTIVE Goal. Edit, defer, and reject preserve the review record without creating a goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.</p>}
+    {accepted && candidate.committedGoalId ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Accepted as one canonical goal. <Link href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`} className="underline">Open goal</Link></p> : creating ? <div className="mt-4 space-y-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+      <div><p className="text-xs font-black uppercase tracking-wide text-violet-950">Create one canonical goal</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-900">Review every field. Only the title, definition, target date, and tags shown here become goal state.</p></div>
+      <label className="block text-xs font-black uppercase tracking-wide text-violet-950">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
+      <label className="block text-xs font-black uppercase tracking-wide text-violet-950">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
+      <label className="flex min-h-11 items-center gap-3 text-sm font-black text-violet-950"><input type="checkbox" checked={hasTargetDate} onChange={(event) => setHasTargetDate(event.target.checked)} /> Add a target date</label>
+      {hasTargetDate ? <label className="block text-xs font-black uppercase tracking-wide text-violet-950">Target date<input type="date" value={targetDate} min={localDateInputValue(new Date())} onChange={(event) => setTargetDate(event.target.value)} className="mt-1 block min-h-11 rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label> : null}
+      {projectTags.length ? <fieldset><legend className="text-xs font-black uppercase tracking-wide text-violet-950">Project tags</legend><div className="mt-2 flex flex-wrap gap-2">{projectTags.map((tag) => <button key={tag.id} type="button" aria-pressed={tagIds.has(tag.id)} onClick={() => toggleTag(tag.id)} className={`min-h-11 rounded-full border px-3 py-2 text-xs font-black ${tagIds.has(tag.id) ? "border-violet-700 bg-violet-700 text-white" : "border-violet-300 bg-white text-violet-950"}`}>{tagIds.has(tag.id) ? "✓ " : ""}{tag.label}</button>)}</div></fieldset> : <p className="text-xs font-semibold text-violet-900">This Session has no active project tags yet. Its canonical project identity will still be preserved.</p>}
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !title.trim() || (hasTargetDate && !targetDate)} onClick={() => onDecision(candidate, "ACCEPT", { title, description, targetAt: hasTargetDate ? new Date(`${targetDate}T12:00:00`).toISOString() : null, tagIds: [...tagIds] })} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Creating…" : "Create goal"}</button><button type="button" disabled={busy} onClick={() => setCreating(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div>
+      <p className="text-xs font-bold leading-relaxed text-violet-950">The exact transcript segment and protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, messages, delivery, and publication remain separate decisions.</p>
+    </div> : editing ? <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4"><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !title.trim()} onClick={() => onDecision(candidate, "EDIT", { title, description })} className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Save for review</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div></div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => setCreating(true)} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; create goal</button><button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button></div>}
+    {!accepted && !creating && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Review &amp; create goal” can write one actor-owned ACTIVE Goal after its wording, target date, and tags are inspected. Every other decision creates no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.</p>}
   </article>;
 }
 
@@ -1196,7 +1237,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
-  async function reviewGoal(candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string }) {
+  async function reviewGoal(candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string; targetAt?: string | null; tagIds?: string[] }) {
     if (!packet) return;
     const request = goalCandidateReviewRequest({ packet, candidate, decision, ...draft });
     if (!request) {
@@ -1207,10 +1248,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     setMessage(null);
     try {
       const response = await fetch("/api/mobile/capture/transcripts/packet/goals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
-      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; goal?: { id: string } };
+      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; goal?: { id: string; targetAt?: string | null; tags?: Array<{ id: string }> } };
       if (!response.ok || !body.ok || (decision === "ACCEPT" && !body.goal?.id)) throw new Error(body.error || "The goal review decision was not saved.");
       const successMessage = decision === "ACCEPT"
-        ? body.idempotentReplay ? "This candidate was already accepted as one canonical goal; nothing was duplicated." : "One actor-owned canonical goal was created. No task, date, focus block, calendar event, message, or delivery was added."
+        ? body.idempotentReplay
+          ? "This exact goal choice was already accepted; nothing was duplicated."
+          : `One actor-owned canonical goal was created${body.goal?.targetAt ? " with its reviewed target date" : ""}${body.goal?.tags?.length ? " and project tags" : ""}. No task, focus block, calendar event, message, or delivery was added.`
         : `${humanize(decision)} saved as goal review state. No goal or task was created.`;
       await load();
       setMessage(successMessage);
@@ -1368,7 +1411,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <section aria-labelledby="goal-candidate-heading">
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-violet-50 p-2 text-violet-700"><Target aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Candidate goals · not committed</p><h2 id="goal-candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Choose what deserves to become a goal</h2></div></div>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Goal review is held because this packet predates the current transcript review. Build the current packet first." : "Goal review is held until the released transcript and recording evidence are valid. Nothing can become a goal."}</div> : (packet.packet?.goalCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.goalCandidates ?? []).map((candidate) => <GoalCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={reviewGoal} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No goal-language segments are waiting in this packet. Quipsly will not invent a goal to fill the space.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Goal review is held because this packet predates the current transcript review. Build the current packet first." : "Goal review is held until the released transcript and recording evidence are valid. Nothing can become a goal."}</div> : (packet.packet?.goalCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.goalCandidates ?? []).map((candidate) => <GoalCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={reviewGoal} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No goal-language segments are waiting in this packet. Quipsly will not invent a goal to fill the space.</div>}
         </section>
 
         <section aria-labelledby="tasks-heading">

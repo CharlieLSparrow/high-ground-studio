@@ -174,6 +174,8 @@ export function goalCandidateReviewRequest(input: {
   decision: TranscriptGoalReviewDecision;
   title?: string;
   description?: string;
+  targetAt?: string | null;
+  tagIds?: string[];
   note?: string;
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
@@ -189,6 +191,10 @@ export function goalCandidateReviewRequest(input: {
     decision: input.decision,
     ...(input.title !== undefined ? { title: input.title.trim() } : {}),
     ...(input.description !== undefined ? { description: input.description.trim() } : {}),
+    ...(input.decision === "ACCEPT" && input.targetAt !== undefined ? { targetAt: input.targetAt } : {}),
+    ...(input.decision === "ACCEPT" && input.tagIds !== undefined
+      ? { tagIds: [...new Set(input.tagIds.map((tagId) => tagId.trim()).filter(Boolean))].sort() }
+      : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
   };
 }

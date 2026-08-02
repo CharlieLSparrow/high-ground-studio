@@ -68,10 +68,15 @@ function harness() {
     } as Record<string, unknown>,
   };
   const goals: any[] = [];
+  const goalTagLinks: Array<{ goalId: string; tagId: string }> = [];
   const goalCreate = jest.fn(async ({ data }: any) => {
     const goal = { ...data, createdAt: new Date("2026-07-18T21:00:00.000Z") };
     goals.push(goal);
     return goal;
+  });
+  const goalTagLinkCreateMany = jest.fn(async ({ data }: any) => {
+    goalTagLinks.push(...data);
+    return { count: data.length };
   });
   const prisma: any = {
     callRoom: { findFirst: jest.fn().mockResolvedValue({ id: roomId }) },
@@ -90,13 +95,18 @@ function harness() {
     }) },
     goal: {
       findMany: jest.fn(async () => goals),
-      findUnique: jest.fn(async ({ where }: any) => goals.find((goal) => goal.id === where.id) ?? null),
+      findUnique: jest.fn(async ({ where }: any) => {
+        const goal = goals.find((item) => item.id === where.id);
+        return goal ? { ...goal, tagLinks: goalTagLinks.filter((link) => link.goalId === goal.id) } : null;
+      }),
       create: goalCreate,
     },
+    studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-coaching", label: "Coaching", slug: "coaching" }]) },
+    goalTagLink: { createMany: goalTagLinkCreateMany },
     $queryRaw: jest.fn().mockResolvedValue([{ id: summaryNoteId }]),
   };
   prisma.$transaction = jest.fn((callback: any) => callback(prisma));
-  return { prisma, summary, goalCreate };
+  return { prisma, summary, goalCreate, goalTagLinkCreateMany };
 }
 
 describe("packet goal review route", () => {
@@ -226,6 +236,7 @@ describe("packet goal review route", () => {
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
       roomId,
+      projectId: "project-1",
       transcriptJobId,
       gate: { allowed: true },
       playback: { sourceId: "source-1", recordingAssetId },
@@ -251,17 +262,57 @@ describe("packet goal review route", () => {
       decision: "ACCEPT",
       title: "Build a repeatable review habit",
       description: "Review one real session every week.",
+      targetAt: "2026-09-01T18:00:00.000Z",
+      tagIds: ["tag-coaching"],
     }));
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload).toMatchObject({
       ok: true,
       decision: "ACCEPT",
-      goal: { status: "ACTIVE", roomId },
-      boundaries: { acceptCreatesOneActorOwnedGoal: true, taskCreated: false, targetDateCreated: false },
+      goal: { status: "ACTIVE", roomId, targetAt: "2026-09-01T18:00:00.000Z", tags: [{ id: "tag-coaching" }] },
+      boundaries: { acceptCreatesOneActorOwnedGoal: true, taskCreated: false, targetDateCreated: true, projectTagsApplied: true },
     });
     expect(state.goalCreate).toHaveBeenCalledTimes(1);
+    expect(state.prisma.coachingNote.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ kind: true }),
+    }));
     const receipt = (state.summary.sourceJson.goalCandidateReviewReceipts as any[])[0];
-    expect(receipt).toMatchObject({ decision: "ACCEPT", goalCandidateId, goalId: payload.goal.id, taskCreated: false, calendarMutated: false });
+    expect(receipt).toMatchObject({ decision: "ACCEPT", goalCandidateId, goalId: payload.goal.id, taskCreated: false, targetDateCreated: true, projectTagsApplied: true, calendarMutated: false, materializationIntent: { title: "Build a repeatable review habit", description: "Review one real session every week.", targetAt: "2026-09-01T18:00:00.000Z", tagIds: ["tag-coaching"] } });
+    expect(state.goalTagLinkCreateMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ tagId: "tag-coaching", createdByUserId: "user-1" })] });
+
+    const exactReplay = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "ACCEPT",
+      title: "Build a repeatable review habit",
+      description: "Review one real session every week.",
+      targetAt: "2026-09-01T18:00:00.000Z",
+      tagIds: ["tag-coaching"],
+    }));
+    expect(exactReplay.status).toBe(200);
+    expect(await exactReplay.json()).toMatchObject({ ok: true, idempotentReplay: true, goal: { id: payload.goal.id } });
+    expect(state.goalCreate).toHaveBeenCalledTimes(1);
+
+    const changedIntent = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "ACCEPT",
+      title: "Build a repeatable review habit",
+      description: "Review one real session every week.",
+      targetAt: "2026-10-01T18:00:00.000Z",
+      tagIds: ["tag-coaching"],
+    }));
+    expect(changedIntent.status).toBe(409);
+    expect(await changedIntent.json()).toMatchObject({ ok: false, errorCode: "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT" });
+    expect(state.goalCreate).toHaveBeenCalledTimes(1);
   });
 });

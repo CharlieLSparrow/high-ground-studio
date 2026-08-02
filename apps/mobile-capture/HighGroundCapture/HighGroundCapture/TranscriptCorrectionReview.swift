@@ -149,9 +149,16 @@ private struct CaptureTranscriptTaskMutationResponse: Codable {
 
 private struct CaptureTranscriptGoalMutationResponse: Codable {
     struct GoalRecord: Codable {
+        struct TagRecord: Codable {
+            let id: String
+            let label: String
+            let slug: String
+        }
         let id: String
         let title: String
         let status: String
+        let targetAt: String?
+        let tags: [TagRecord]?
     }
     let ok: Bool
     let error: String?
@@ -774,6 +781,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         decision: String,
         title: String?,
         description: String?,
+        targetAt: Date? = nil,
+        tagIDs: [String]? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -803,6 +812,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             ]
             if let title { body["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines) }
             if let description { body["description"] = description.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if decision == "ACCEPT" {
+                body["targetAt"] = targetAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull()
+                body["tagIds"] = Array(Set(tagIDs ?? [])).sorted()
+            }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -814,7 +827,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The goal review decision could not be saved.")
             }
             message = decision == "ACCEPT"
-                ? (payload.idempotentReplay == true ? "That packet goal was already accepted." : "One source-linked goal was accepted. No task, date, calendar event, message, or delivery was added.")
+                ? (payload.idempotentReplay == true
+                    ? "That exact packet goal choice was already accepted."
+                    : "One source-linked goal was created\(payload.goal?.targetAt == nil ? "" : " with its target date")\((payload.goal?.tags?.isEmpty == false) ? " and project tags" : ""). No task, focus block, calendar event, message, or delivery was added.")
                 : "\(decision.capitalized) saved in packet history. No goal or task was created."
             await loadPacketCandidates(roomID: candidate.roomId)
             return true
@@ -1599,6 +1614,8 @@ struct CaptureTranscriptReviewView: View {
             ForEach(client.packetGoalCandidates) { candidate in
                 CapturePacketGoalCandidateCard(
                     candidate: candidate,
+                    projectName: client.packetTaskProjectName,
+                    availableTags: client.packetTaskTags,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache,
                     client: client,
@@ -2110,29 +2127,40 @@ private struct CapturePacketTaskCandidateCard: View {
 
 private struct CapturePacketGoalCandidateCard: View {
     let candidate: CapturePacketGoalCandidate
+    let projectName: String?
+    let availableTags: [CapturePacketTaskTag]
     let previewOnly: Bool
     let decisionsLocked: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     let onOpenSource: () -> Void
 
     @State private var isEditing = false
+    @State private var isCreating = false
     @State private var title: String
     @State private var description: String
+    @State private var hasTargetDate = false
+    @State private var targetAt = Date().addingTimeInterval(30 * 86_400)
+    @State private var selectedTagIDs: Set<String>
 
     init(
         candidate: CapturePacketGoalCandidate,
+        projectName: String?,
+        availableTags: [CapturePacketTaskTag],
         previewOnly: Bool,
         decisionsLocked: Bool,
         client: CaptureTranscriptCorrectionClient,
         onOpenSource: @escaping () -> Void
     ) {
         self.candidate = candidate
+        self.projectName = projectName
+        self.availableTags = availableTags
         self.previewOnly = previewOnly
         self.decisionsLocked = decisionsLocked
         self.client = client
         self.onOpenSource = onOpenSource
         _title = State(initialValue: candidate.suggestedTitle)
         _description = State(initialValue: candidate.suggestedDescription)
+        _selectedTagIDs = State(initialValue: Set(availableTags.filter(\.selectedForSession).map(\.id)))
     }
 
     private var accepted: Bool {
@@ -2175,6 +2203,87 @@ private struct CapturePacketGoalCandidateCard: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
+            } else if isCreating {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Create one canonical goal", systemImage: "target")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.purple)
+                    Text("Review every field. Only the choices shown here become goal state.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Goal title", text: $title, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("CapturePacketGoalCreateTitleField")
+                    TextField("Definition of progress (optional)", text: $description, axis: .vertical)
+                        .lineLimit(2...5)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("CapturePacketGoalCreateDescriptionField")
+                    Toggle("Add a target date", isOn: $hasTargetDate)
+                        .accessibilityIdentifier("CapturePacketGoalTargetDateToggle")
+                    if hasTargetDate {
+                        DatePicker(
+                            "Target",
+                            selection: $targetAt,
+                            in: Date()...,
+                            displayedComponents: [.date]
+                        )
+                        .accessibilityIdentifier("CapturePacketGoalTargetDatePicker")
+                    }
+                    if !availableTags.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(projectName.map { "\($0) tags" } ?? "Project tags")
+                                .font(.caption.weight(.bold))
+                            ForEach(availableTags) { tag in
+                                Button {
+                                    if selectedTagIDs.contains(tag.id) {
+                                        selectedTagIDs.remove(tag.id)
+                                    } else {
+                                        selectedTagIDs.insert(tag.id)
+                                    }
+                                } label: {
+                                    Label(tag.label, systemImage: selectedTagIDs.contains(tag.id) ? "checkmark.circle.fill" : "circle")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("CapturePacketGoalTag_\(tag.id)")
+                            }
+                        }
+                    } else {
+                        Text("This Session has no active project tags yet. Its canonical project identity will still be preserved.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Create goal") {
+                            Task {
+                                let normalizedTarget = hasTargetDate
+                                    ? Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: targetAt)
+                                    : nil
+                                _ = await client.reviewPacketGoal(
+                                    candidate: candidate,
+                                    decision: "ACCEPT",
+                                    title: title,
+                                    description: description,
+                                    targetAt: normalizedTarget,
+                                    tagIDs: Array(selectedTagIDs),
+                                    previewOnly: previewOnly
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                        .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("CapturePacketGoalCreateButton")
+                        Button("Cancel") { isCreating = false }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CapturePacketGoalCancelCreateButton")
+                    }
+                    Text("The exact transcript segment and protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, delivery, and publication remain separate decisions.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if isEditing {
                 TextField("Goal title", text: $title, axis: .vertical)
                     .lineLimit(2...4)
@@ -2206,20 +2315,10 @@ private struct CapturePacketGoalCandidateCard: View {
                 }
             } else {
                 HStack {
-                    Button("Accept as goal") {
-                        Task {
-                            _ = await client.reviewPacketGoal(
-                                candidate: candidate,
-                                decision: "ACCEPT",
-                                title: title,
-                                description: description,
-                                previewOnly: previewOnly
-                            )
-                        }
-                    }
+                    Button("Review & create goal") { isCreating = true }
                     .buttonStyle(.borderedProminent)
                     .tint(.purple)
-                    .disabled(decisionsDisabled)
+                    .disabled(decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketGoalAcceptButton")
                     Button("Edit") { isEditing = true }
                         .buttonStyle(.bordered)
@@ -2241,8 +2340,8 @@ private struct CapturePacketGoalCandidateCard: View {
                     .accessibilityIdentifier("CapturePacketGoalRejectButton")
                 }
             }
-            if !accepted {
-                Text("Only Accept as goal creates one actor-owned ACTIVE Goal. Every other decision creates no goal, task, date, reminder, calendar event, message, delivery, or publication.")
+            if !accepted && !isCreating {
+                Text("Only Review & create goal can write one actor-owned ACTIVE Goal after its wording, target date, and tags are inspected. Every other decision creates no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2254,6 +2353,13 @@ private struct CapturePacketGoalCandidateCard: View {
             title = candidate.suggestedTitle
             description = candidate.suggestedDescription
             isEditing = false
+            isCreating = false
+            hasTargetDate = false
+            selectedTagIDs = Set(availableTags.filter(\.selectedForSession).map(\.id))
+        }
+        .onChange(of: availableTags) { _, tags in
+            guard !isCreating else { return }
+            selectedTagIDs = Set(tags.filter(\.selectedForSession).map(\.id))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePacketGoalCandidate_\(candidate.id)")

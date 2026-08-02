@@ -22,6 +22,10 @@ import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
   createTranscriptDerivedGoalInTransaction,
+  normalizeTranscriptGoalTagIds,
+  normalizeTranscriptGoalTargetAt,
+  sameTranscriptGoalMaterializationIntent,
+  transcriptGoalMaterializationIntent,
   transcriptDerivedGoalBoundaries,
 } from "../../goals/route-implementation";
 import { buildPacketGoalCandidates } from "../route-implementation";
@@ -62,7 +66,7 @@ function decision(value: unknown): TranscriptGoalReviewDecision | null {
   return isTranscriptGoalReviewDecision(normalized) ? normalized : null;
 }
 
-function boundaries() {
+function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean } = {}) {
   return {
     explicitHumanDecision: true,
     acceptCreatesOneActorOwnedGoal: true,
@@ -70,21 +74,46 @@ function boundaries() {
     canonicalSessionAccess: true,
     canonicalSessionMutationAccess: true,
     sessionAccessRechecked: true,
-    ...transcriptDerivedGoalBoundaries(),
+    ...transcriptDerivedGoalBoundaries(input),
   };
+}
+
+function acceptedReceiptIntentMatches(
+  receipt: Record<string, unknown>,
+  expected: ReturnType<typeof transcriptGoalMaterializationIntent>,
+) {
+  if (sameTranscriptGoalMaterializationIntent(receipt.materializationIntent, expected)) return true;
+  // Pre-target/tag receipts always created an undated, untagged goal from the
+  // reviewed draft. Preserve exact replay for that one historical shape.
+  if (Object.keys(object(receipt.materializationIntent)).length) return false;
+  const draft = object(receipt.candidateDraftAfter);
+  return expected.targetAt === null
+    && expected.tagIds.length === 0
+    && text(draft.title) === expected.title
+    && (text(draft.description) || null) === expected.description;
 }
 
 function goalMatches(goal: any, input: {
   actorId: string;
   roomId: string;
   clientRequestId: string;
+  materializationIntent: ReturnType<typeof transcriptGoalMaterializationIntent>;
 }) {
   const source = object(goal?.sourceJson);
+  const linkedTagIds = Array.isArray(goal?.tagLinks)
+    ? goal.tagLinks.map((link: any) => text(link?.tagId)).filter(Boolean).sort()
+    : [];
   return goal?.ownerUserId === input.actorId
     && goal?.roomId === input.roomId
     && source.schema === TRANSCRIPT_DERIVED_GOAL_SCHEMA
     && text(source.clientRequestId) === input.clientRequestId
-    && text(source.createdByUserId) === input.actorId;
+    && text(source.createdByUserId) === input.actorId
+    && goal?.title === input.materializationIntent.title
+    && (goal?.description ?? null) === input.materializationIntent.description
+    && (goal?.targetAt instanceof Date ? goal.targetAt.toISOString() : goal?.targetAt ?? null) === input.materializationIntent.targetAt
+    && JSON.stringify(linkedTagIds) === JSON.stringify(input.materializationIntent.tagIds)
+    && (sameTranscriptGoalMaterializationIntent(source.materializationIntent, input.materializationIntent)
+      || !Object.keys(object(source.materializationIntent)).length);
 }
 
 export async function POST(request: Request) {
@@ -102,6 +131,8 @@ export async function POST(request: Request) {
   const goalCandidateId = text(body.goalCandidateId);
   const reviewDecision = decision(body.decision);
   const reviewNote = text(body.note) || null;
+  const targetAt = normalizeTranscriptGoalTargetAt(body.targetAt);
+  const tagIds = normalizeTranscriptGoalTagIds(body.tagIds);
 
   if (!roomId || !transcriptJobId || !recordingAssetId || !summaryNoteId || !packetBuildId || !goalCandidateId) {
     return NextResponse.json({
@@ -136,6 +167,19 @@ export async function POST(request: Request) {
   if (reviewNote && reviewNote.length > MAX_REVIEW_NOTE_LENGTH) {
     return NextResponse.json({ ok: false, errorCode: "GOAL_CANDIDATE_REVIEW_NOTE_TOO_LONG", error: `Review notes may be at most ${MAX_REVIEW_NOTE_LENGTH} characters.` }, { status: 400 });
   }
+  if (targetAt === undefined) {
+    return NextResponse.json({ ok: false, errorCode: "GOAL_CANDIDATE_TARGET_AT_INVALID", error: "Choose a valid target date within ten years." }, { status: 400 });
+  }
+  if (tagIds === null) {
+    return NextResponse.json({ ok: false, errorCode: "GOAL_CANDIDATE_TAGS_INVALID", error: "Choose at most 24 valid project tags." }, { status: 400 });
+  }
+  if (reviewDecision !== "ACCEPT" && (hasOwn(body, "targetAt") || hasOwn(body, "tagIds"))) {
+    return NextResponse.json({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MATERIALIZATION_OPTIONS_INVALID",
+      error: "Target date and tags apply only when accepting a candidate as a canonical goal.",
+    }, { status: 400 });
+  }
 
   const prisma = getPrismaClient() as any;
   const actor = {
@@ -169,7 +213,7 @@ export async function POST(request: Request) {
       const summaryCandidates = await tx.coachingNote.findMany({
         where: { roomId, kind: "SUMMARY" },
         orderBy: { createdAt: "desc" },
-        select: { id: true, roomId: true, sourceJson: true, createdAt: true, updatedAt: true },
+        select: { id: true, roomId: true, kind: true, sourceJson: true, createdAt: true, updatedAt: true },
       });
       const transcriptSummaries = summaryCandidates.filter((summary: any) => {
         const source = object(summary.sourceJson);
@@ -229,13 +273,35 @@ export async function POST(request: Request) {
         throw new GoalReviewBoundaryError(409, "STALE_GOAL_CANDIDATE", "The goal candidate is missing from the current packet build. Refresh before reviewing it.");
       }
 
+      const before = { title: candidate.suggestedTitle, description: candidate.suggestedDescription };
+      const after = {
+        title: hasOwn(body, "title") ? text(body.title) : before.title,
+        description: hasOwn(body, "description") ? text(body.description) : before.description,
+      };
+      const requestedIntent = transcriptGoalMaterializationIntent({
+        title: after.title,
+        description: after.description || null,
+        targetAt,
+        tagIds,
+      });
+
       const receipts = objects(lockedSource.goalCandidateReviewReceipts);
       const acceptedReceipt = receipts.find((receipt) => text(receipt.goalCandidateId) === goalCandidateId && text(receipt.decision) === "ACCEPT");
       if (acceptedReceipt) {
         if (reviewDecision !== "ACCEPT") {
           throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate already became a Goal and cannot be edited, rejected, or deferred as an uncommitted draft.");
         }
-        const acceptedGoal = await tx.goal.findUnique({ where: { id: text(acceptedReceipt.goalId) } });
+        if (!acceptedReceiptIntentMatches(acceptedReceipt, requestedIntent)) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT",
+            "This candidate was already accepted with different wording, target date, or tags. Open the canonical goal to edit it.",
+          );
+        }
+        const acceptedGoal = await tx.goal.findUnique({
+          where: { id: text(acceptedReceipt.goalId) },
+          include: { tagLinks: { select: { tagId: true } } },
+        });
         if (
           acceptedReceipt.kind !== REVIEW_RECEIPT_KIND
           || text(acceptedReceipt.transcriptJobId) !== transcriptJobId
@@ -244,7 +310,12 @@ export async function POST(request: Request) {
           || text(acceptedReceipt.summaryNoteId) !== summaryNoteId
           || text(acceptedReceipt.roomId) !== roomId
           || text(acceptedReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
-          || !goalMatches(acceptedGoal, { actorId: actor.id, roomId, clientRequestId: candidate.clientRequestId })
+          || !goalMatches(acceptedGoal, {
+            actorId: actor.id,
+            roomId,
+            clientRequestId: candidate.clientRequestId,
+            materializationIntent: requestedIntent,
+          })
         ) {
           throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_RECEIPT_MISMATCH", "The accepted candidate receipt no longer matches one canonical goal.");
         }
@@ -254,11 +325,6 @@ export async function POST(request: Request) {
         throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate is already bound to a canonical Goal.");
       }
 
-      const before = { title: candidate.suggestedTitle, description: candidate.suggestedDescription };
-      const after = {
-        title: hasOwn(body, "title") ? text(body.title) : before.title,
-        description: hasOwn(body, "description") ? text(body.description) : before.description,
-      };
       const reviewedAt = new Date().toISOString();
       const receiptId = randomUUID();
       let goal: any = null;
@@ -274,6 +340,8 @@ export async function POST(request: Request) {
             expectedProviderTextSha256: candidate.providerTextSha256,
             title: after.title,
             description: after.description || null,
+            targetAt,
+            tagIds,
             surface: "nest-session-packet-goal-review",
           },
         });
@@ -303,10 +371,15 @@ export async function POST(request: Request) {
         reviewNote,
         candidateDraftBefore: before,
         candidateDraftAfter: after,
+        materializationIntent: requestedIntent,
+        appliedTags: reviewDecision === "ACCEPT" && Array.isArray(object(goal?.sourceJson).appliedTags)
+          ? object(goal?.sourceJson).appliedTags
+          : [],
         goalId: goal?.id ?? null,
         externalSideEffects: false,
         taskCreated: false,
-        targetDateCreated: false,
+        targetDateCreated: reviewDecision === "ACCEPT" && targetAt !== null,
+        projectTagsApplied: reviewDecision === "ACCEPT" && tagIds.length > 0,
         reminderCreated: false,
         calendarMutated: false,
         deliveryClaimed: false,
@@ -325,11 +398,22 @@ export async function POST(request: Request) {
       goalCandidateId,
       candidate: result.candidate,
       receipt: result.receipt,
-      goal: result.goal ? { id: result.goal.id, title: result.goal.title, description: result.goal.description, status: result.goal.status, roomId: result.goal.roomId } : null,
+      goal: result.goal ? {
+        id: result.goal.id,
+        title: result.goal.title,
+        description: result.goal.description,
+        status: result.goal.status,
+        roomId: result.goal.roomId,
+        targetAt: result.goal.targetAt instanceof Date ? result.goal.targetAt.toISOString() : result.goal.targetAt,
+        tags: Array.isArray(object(result.receipt).appliedTags) ? object(result.receipt).appliedTags : [],
+      } : null,
       idempotentReplay: result.idempotentReplay,
-      boundaries: boundaries(),
+      boundaries: boundaries({
+        targetDateCreated: reviewDecision === "ACCEPT" && targetAt !== null,
+        tagsApplied: reviewDecision === "ACCEPT" && tagIds.length > 0,
+      }),
       nextAction: reviewDecision === "ACCEPT"
-        ? "The reviewed draft is now one actor-owned canonical Goal. Tasks, dates, focus blocks, reminders, calendar events, messages, and delivery remain separate explicit actions."
+        ? `The reviewed draft is now one actor-owned canonical Goal${targetAt ? " with an explicit target date" : ""}${tagIds.length ? " and reviewed project tags" : ""}. Tasks, focus blocks, reminders, calendar events, messages, and delivery remain separate explicit actions.`
         : reviewDecision === "EDIT"
           ? "The packet goal draft was edited for further review; no Goal or task was created."
           : reviewDecision === "REJECT"
