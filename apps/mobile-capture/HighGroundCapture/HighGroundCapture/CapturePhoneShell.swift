@@ -1065,7 +1065,10 @@ private struct CaptureWorkView: View {
                     .accessibilityIdentifier("CaptureWorkTagFocus")
                 }
                 if !retiredTags.isEmpty {
-                    Text("\(retiredTags.count) retired tag\(retiredTags.count == 1 ? "" : "s") remain preserved for history.")
+                    Text(
+                        "\(retiredTags.count) retired tag\(retiredTags.count == 1 ? "" : "s") "
+                            + "\(retiredTags.count == 1 ? "remains" : "remain") preserved for history."
+                    )
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

@@ -2317,6 +2317,7 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         )
         XCTAssertFalse(app.buttons["CaptureWorkNewProject"].exists)
         XCTAssertFalse(app.buttons["CaptureWorkNewProjectInline"].exists)
+        XCTAssertTrue(app.staticTexts["1 retired tag remains preserved for history."].exists)
         keepScreenshot("03-work.png")
 
         launch(tab: "library", waitingFor: app.navigationBars["Library"])
