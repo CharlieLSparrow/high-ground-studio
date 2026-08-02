@@ -109,10 +109,12 @@ External evidence:
   avoid returning an unchanged body without turning an anonymous capability
   route into a shared-cache object.
 - Next's request logger now ignores only the bearer subscription path. Cloud
-  Run creates its own request logs, so release preflight also requires a named,
-  exact-route exclusion on the project's `_Default` Cloud Logging sink. The
-  calendar provider still necessarily receives the private URL it subscribes
-  to; accidental disclosure requires rotation.
+  Run creates its own request logs, so release preflight also requires the
+  named, exact-route exclusion now active on the project's `_Default` Cloud
+  Logging sink. A live paired probe proves ordinary health requests remain
+  observable while synthetic bearer-style calendar paths do not enter the
+  sink. The calendar provider still necessarily receives the private URL it
+  subscribes to; accidental disclosure requires rotation.
 - The migration replayed all 37 migrations in a fresh PostgreSQL database,
   reported zero schema diff, denied a second simultaneous active link at the
   database boundary, allowed an explicit revoke-and-replace, backfilled safe
@@ -126,12 +128,12 @@ External evidence:
   contact, and a cleared browser session. The first failed selector run mutated
   nothing; both evidence directories were preserved.
 - Local Nest logging proof retained 27 ordinary calendar-management request
-  entries while recording zero bearer subscription paths. The Cloud Logging
-  exclusion could not be read or applied because the current gcloud user token
-  is expired. Reauthenticate with `gcloud auth login --update-adc --brief`, run
-  `pnpm quipsly:release:calendar-log-privacy:apply`, and require the read-only
-  `pnpm quipsly:release:calendar-log-privacy` check to pass before the next
-  preview or production release.
+  entries while recording zero bearer subscription paths. After Google Cloud
+  authentication was restored, the production `_Default` sink received only
+  `exclude-quipsly-calendar-feed-capabilities`; the base sink filter,
+  destination, `_Required` sink, and ordinary request logging remain intact.
+  The read-only `pnpm quipsly:release:calendar-log-privacy` check now passes and
+  remains a release-preflight gate.
 
 ## Transcription and packet slice
 
@@ -182,6 +184,8 @@ External evidence:
 - App Store listing operator tests: 4/4.
 - Transcript worker tests: 10/10.
 - Calendar, Google adapter, packet, and private route tests: 18/18.
+- Calendar capability-log exclusion operator tests: 4/4; production readback
+  and paired ordinary/excluded request proof pass after provider propagation.
 - Quipsly TypeScript: pass.
 - Media-processing and transcript-worker TypeScript: pass.
 - Public mobile contract: pass.

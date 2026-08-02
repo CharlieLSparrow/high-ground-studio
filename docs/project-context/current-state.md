@@ -23,6 +23,25 @@ Date: 2026-08-01
 - Full evidence and remaining cost decisions are in
   `docs/coordination/2026-08-01-cloud-cost-pipeline-consolidation.md`.
 
+## Calendar bearer-log privacy checkpoint
+
+- The production `_Default` Cloud Logging sink now has one enabled,
+  exact-route exclusion for `studio` Cloud Run request logs matching
+  `/api/calendar/feeds/<capability>`. It does not broaden the sink filter or
+  disable ordinary request observability.
+- A live paired probe returned HTTP 200 for an ordinary health route and HTTP
+  404 for a synthetic invalid calendar capability. After Google's propagation
+  window, Logging contained the ordinary request exactly once and the
+  capability-style request zero times.
+- Independent readback proves the base `_Default` filter and destination are
+  unchanged, `_Required` remains enabled, and the named exclusion matches the
+  checked-in release contract exactly.
+- The operator now distinguishes an apply request from a real mutation, and
+  tests prove it can only add or repair the named exclusion. Read-only
+  verification remains mandatory in release preflight.
+- Full provider evidence and the remaining rotation boundary are in
+  `docs/coordination/2026-08-01-calendar-capability-log-privacy.md`.
+
 ## Production account-deletion worker checkpoint
 
 - In-process account-deletion execution no longer belongs to public Nest. Staff

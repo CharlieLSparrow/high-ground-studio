@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   EXCLUSION_NAME,
   calendarCapabilityRequestLogFilter,
+  calendarCapabilityExclusionUpdateArguments,
   inspectCalendarCapabilityExclusion,
 } from "./quipsly-calendar-capability-log-exclusion.mjs";
 
@@ -48,4 +49,30 @@ test("calendar capability exclusion accepts the exact enabled policy", () => {
   });
   assert.equal(result.ok, true);
   assert.equal(result.reason, "configured");
+});
+
+test("calendar capability exclusion update is a named additive sink mutation", () => {
+  const expectedFilter = calendarCapabilityRequestLogFilter("studio");
+  const addArguments = calendarCapabilityExclusionUpdateArguments(
+    { project: "high-ground-odyssey" },
+    { reason: "missing", expectedFilter },
+  );
+  assert.deepEqual(addArguments.slice(0, 4), [
+    "logging",
+    "sinks",
+    "update",
+    "_Default",
+  ]);
+  assert.match(addArguments[4], /^--add-exclusion=name=/);
+  assert.match(addArguments[4], new RegExp(EXCLUSION_NAME));
+  assert.ok(addArguments[4].includes(expectedFilter));
+  assert.ok(addArguments.includes("--project=high-ground-odyssey"));
+  assert.ok(addArguments.includes("--quiet"));
+
+  const repairArguments = calendarCapabilityExclusionUpdateArguments(
+    { project: "high-ground-odyssey" },
+    { reason: "filter-mismatch", expectedFilter },
+  );
+  assert.match(repairArguments[4], /^--update-exclusion=name=/);
+  assert.doesNotMatch(repairArguments.join(" "), /delete|remove/);
 });

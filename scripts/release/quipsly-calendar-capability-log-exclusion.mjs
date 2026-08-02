@@ -92,7 +92,10 @@ function readDefaultSink(project) {
   );
 }
 
-function applyExclusion(options, inspection) {
+export function calendarCapabilityExclusionUpdateArguments(
+  options,
+  inspection,
+) {
   const flag =
     inspection.reason === "missing" ? "--add-exclusion" : "--update-exclusion";
   const value = [
@@ -100,7 +103,7 @@ function applyExclusion(options, inspection) {
     "description=Keep revocable Quipsly calendar bearer URLs out of Cloud Logging storage.",
     `filter=${inspection.expectedFilter}`,
   ].join(",");
-  runGcloud([
+  return [
     "logging",
     "sinks",
     "update",
@@ -108,7 +111,11 @@ function applyExclusion(options, inspection) {
     `${flag}=${value}`,
     `--project=${options.project}`,
     "--quiet",
-  ]);
+  ];
+}
+
+function applyExclusion(options, inspection) {
+  runGcloud(calendarCapabilityExclusionUpdateArguments(options, inspection));
 }
 
 async function main() {
@@ -125,8 +132,10 @@ the project's _Default Cloud Logging sink, then reads it back.`);
 
   let sink = readDefaultSink(options.project);
   let inspection = inspectCalendarCapabilityExclusion(sink, options.service);
+  let mutationPerformed = false;
   if (!inspection.ok && options.apply) {
     applyExclusion(options, inspection);
+    mutationPerformed = true;
     sink = readDefaultSink(options.project);
     inspection = inspectCalendarCapabilityExclusion(sink, options.service);
   }
@@ -140,7 +149,8 @@ the project's _Default Cloud Logging sink, then reads it back.`);
         sink: "_Default",
         exclusion: EXCLUSION_NAME,
         reason: inspection.reason,
-        applied: options.apply,
+        applyRequested: options.apply,
+        mutationPerformed,
       },
       null,
       2,
