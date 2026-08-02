@@ -2,6 +2,8 @@
 
 Date: 2026-08-02
 
+Implementation commit: `03a316e1`
+
 ## Outcome
 
 Quipsly now turns canonical goals, linked tasks, weekly commitments, coaching

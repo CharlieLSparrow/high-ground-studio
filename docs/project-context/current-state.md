@@ -4,6 +4,8 @@ Date: 2026-08-02
 
 ## Evidence-backed weekly review checkpoint
 
+Implementation commit: `03a316e1`
+
 - Nest Work and Capture Today now use one deterministic domain projection for
   goals, linked tasks, weekly commitments, Session contribution, blockers, and
   next work. No model decides whether a week was good, and the projection has
