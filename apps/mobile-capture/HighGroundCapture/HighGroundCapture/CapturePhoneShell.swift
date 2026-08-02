@@ -5485,6 +5485,22 @@ private struct MobilePriorSessionFollowThroughCard: View {
                                     Text(progress.progressPercent.map { "Latest check-in \($0)%" } ?? "Latest check-in recorded")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.purple)
+                                    if let evidence = progress.note?.nonempty {
+                                        Text("Evidence: \(evidence)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                if goal.progressedSinceRelease == true {
+                                    Text("New check-in since release")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.blue)
+                                }
+                                if goal.changedSinceRelease {
+                                    Text(unavailable ? "Changed since release" : "Goal definition or status differs from the released snapshot")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.blue)
                                 }
                             }
                         }

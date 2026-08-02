@@ -118,6 +118,23 @@ then reads PostgreSQL back, proves nothing was copied into Session 2, and
 records no external side effect. Repeating the same snapshot reuses its saved
 brief instead of creating semantic duplicates.
 
+Operate the shared client follow-through itself through separate client,
+coach, and outsider accounts with:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \
+QUIPSLY_RETAINED_COACHING_BASE_URL=http://127.0.0.1:3012 \
+pnpm quipsly:retained:coaching-follow-through
+```
+
+The client follows exact same-ID links from Session 2 into Work, completes the
+retained Task, and appends a 75% Goal progress receipt with an evidence note.
+The next Session must immediately show both live updates. The coach sees them
+read-only; the outsider sees neither title. PostgreSQL readback requires
+exactly one new progress receipt, no copied work, an unchanged released hash,
+and no Calendar or delivery side effect. Four visual readbacks plus a redacted
+receipt are retained on the external QA volume.
+
 Run the same retained projection through the compiled iPhone app and preserve
 the exact XCTest result bundle:
 
@@ -126,8 +143,9 @@ pnpm quipsly:retained:native-coaching-continuity
 ```
 
 This operator reads the coach password through the repository Keychain helper,
-selects Session 2 by canonical ID, reveals the carried-forward brief, checks
-the no-copy boundary, and switches to the exact source Session. It never prints
+selects Session 2 by canonical ID, reads the Task status plus post-release Goal
+percentage and evidence note, reveals the carried-forward brief, checks the
+no-copy boundary, and switches to the exact source Session. It never prints
 credentials, and the runtime runner removes its short-lived credential packet
 on exit.
 

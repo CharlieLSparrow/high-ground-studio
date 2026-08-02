@@ -32,8 +32,12 @@ test("retained native coaching continuity stays local, credential-safe, and comp
   assert.match(nativeTest, /testPriorCoachingContinuityProjectsIntoExactNextSession/);
   assert.match(nativeTest, /CapturePriorSessionContinuity/);
   assert.match(nativeTest, /CapturePriorSessionFollowThrough/);
+  assert.match(nativeTest, /Latest check-in 75%/);
+  assert.match(nativeTest, /Evidence: I used the smaller boundary/);
   assert.match(shell, /CapturePriorContinuityOpenSource/);
   assert.match(shell, /CaptureFollowThroughOpenSource/);
+  assert.ok(shell.includes('Text("Evidence: \\(evidence)")'));
+  assert.match(shell, /New check-in since release/);
   assert.match(shell, /no copied work/);
   assert.match(shell, /current Session unchanged/);
 });

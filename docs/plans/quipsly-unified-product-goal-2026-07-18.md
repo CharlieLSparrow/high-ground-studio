@@ -6293,3 +6293,29 @@ was restored.
   two-account coaching use remains a unified-goal acceptance gate. Full
   evidence is in
   `docs/coordination/2026-08-02-client-safe-follow-up-source-return.md`.
+
+### Coaching goal progress readback checkpoint — 2026-08-02
+
+- Closed the semantic gap where a visible client Goal check-in did not count as
+  a post-release update. Definition/status drift and new progress evidence are
+  now separate facts, and only a receipt strictly newer than the immutable
+  release is labelled **New check-in since release**.
+- Operated the retained client through Session 2, exact same-ID Work links,
+  Task completion, and a 75% evidence-backed Goal check-in. The assigned coach
+  saw both live updates read-only; the outsider learned neither title.
+- PostgreSQL proved exactly one appended Goal progress receipt, unchanged Goal
+  status `ACTIVE`, zero copied Session 2 work, unchanged released SHA-256, and
+  no Calendar, delivery, current-Session, or external side effect.
+- Quipsly Capture now shows the evidence note as well as its percentage. The
+  signed local iPhone simulator journey authenticated as the retained coach,
+  read both, opened the private continuity brief, and returned to the exact
+  source Session; 1/1 passed with no unexpected runtime warnings.
+- Focused web/server/Work tests pass 30/30, strict TypeScript passes, mobile
+  contracts pass 84/84, and Capture/App Store static contracts pass 999/999.
+- This advances complete coaching follow-through but is still synthetic local
+  QA. Two genuine coaching workflows, physical two-account use, deployed
+  parity, TestFlight repetition, and the remaining active-goal gates stay open.
+  No cloud build, deploy, TestFlight upload, message, provider-calendar write,
+  publication, billing action, or production database mutation occurred. Full
+  evidence is in
+  `docs/coordination/2026-08-02-coaching-goal-progress-readback.md`.

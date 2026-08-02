@@ -1534,6 +1534,9 @@ requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureStudioHa
 requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable originals");
 requireIncludes(capturePhoneShellText, "CaptureSourceTruthFootnote", "shipping recorder reaches source-truth guidance");
 requireIncludes(capturePhoneShellText, "only a verified, released upload becomes editor input", "shipping recorder states the editor-input verification gate");
+requireIncludes(bridgeText, "let progressedSinceRelease: Bool?", "native follow-through remains backward-compatible while decoding post-release goal progress");
+requireIncludes(capturePhoneShellText, "New check-in since release", "native coaching preparation distinguishes new progress from a changed goal definition");
+requireIncludes(capturePhoneShellText, "Evidence: \\(evidence)", "native coaching preparation preserves the client's evidence note with goal progress");
 for (const retiredRoot of [
   "struct MobileCaptureRunwayPanel",
   "struct MobileCaptureReviewDigestPanel",

@@ -141,6 +141,7 @@ export type SessionFollowThroughGoal = {
   updatedAt: string | null;
   availability: "CURRENT" | "UNAVAILABLE";
   changedSinceRelease: boolean;
+  progressedSinceRelease: boolean;
   releasedStatus: string;
   releasedContentSha256: string;
   latestProgress: {

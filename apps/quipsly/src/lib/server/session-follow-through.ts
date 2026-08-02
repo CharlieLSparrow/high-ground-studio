@@ -325,6 +325,7 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         updatedAt: null,
         availability: "UNAVAILABLE" as const,
         changedSinceRelease: true,
+        progressedSinceRelease: false,
         releasedStatus: released.status,
         releasedContentSha256: released.contentSha256,
         latestProgress: null,
@@ -336,6 +337,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         targetAt: iso(current.targetAt),
       };
       const progress = current.progressReceipts?.[0] || null;
+      const progressedSinceRelease = Boolean(
+        progress?.occurredAt
+        && progress.occurredAt.getTime() > selection.output.releasedAt.getTime()
+      );
       return {
         id: current.id,
         title: current.title,
@@ -346,6 +351,7 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         updatedAt: iso(current.updatedAt),
         availability: "CURRENT" as const,
         changedSinceRelease: clientFollowUpSha256(currentContent) !== released.contentSha256,
+        progressedSinceRelease,
         releasedStatus: released.status,
         releasedContentSha256: released.contentSha256,
         latestProgress: progress ? {
@@ -358,7 +364,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
       };
     });
     const unavailableCount = [...tasks, ...goals].filter((row) => row.availability === "UNAVAILABLE").length;
-    const changedSinceReleaseCount = [...tasks, ...goals].filter((row) => row.changedSinceRelease).length;
+    const changedSinceReleaseCount = [
+      ...tasks.map((row) => row.changedSinceRelease),
+      ...goals.map((row) => row.changedSinceRelease || row.progressedSinceRelease),
+    ].filter(Boolean).length;
     result[selection.target.id] = {
       schema: SESSION_FOLLOW_THROUGH_SCHEMA,
       viewerRole: selection.viewerRole,

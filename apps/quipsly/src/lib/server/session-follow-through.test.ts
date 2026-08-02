@@ -173,13 +173,14 @@ describe("Session follow-through projection", () => {
         status: "ACTIVE",
         availability: "CURRENT",
         changedSinceRelease: false,
+        progressedSinceRelease: true,
         latestProgress: { progressPercent: 60 },
       }],
       summary: {
         openTaskCount: 0,
         completedTaskCount: 1,
         activeGoalCount: 1,
-        changedSinceReleaseCount: 1,
+        changedSinceReleaseCount: 2,
         unavailableCount: 0,
       },
       canOpenWork,
@@ -206,6 +207,25 @@ describe("Session follow-through projection", () => {
       rooms: [tampered.target],
     })).resolves.toEqual({});
     expect(tampered.prisma.actionItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it("does not relabel progress recorded before the immutable release as new follow-through", async () => {
+    const retained = fixture();
+    const goals = await retained.prisma.goal.findMany();
+    goals[0].progressReceipts[0].occurredAt = new Date("2026-07-31T17:59:59.000Z");
+    retained.prisma.goal.findMany.mockResolvedValue(goals);
+
+    const result = await loadPriorSessionFollowThroughByRoomId({
+      prisma: retained.prisma,
+      actor: CLIENT,
+      rooms: [retained.target],
+    });
+
+    expect(result[retained.target.id]).toMatchObject({
+      tasks: [{ changedSinceRelease: true }],
+      goals: [{ changedSinceRelease: false, progressedSinceRelease: false }],
+      summary: { changedSinceReleaseCount: 1 },
+    });
   });
 
   it("conceals live work that moved outside the released coaching project", async () => {

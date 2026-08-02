@@ -24,6 +24,8 @@ const TASK_ID = "retained-follow-up-client-task-20260731";
 const GOAL_ID = "retained-follow-up-client-goal-20260731";
 const TASK_TITLE = "Run one protected rehearsal";
 const GOAL_TITLE = "Use a sustainable boundary";
+const GOAL_PROGRESS_PERCENT = 75;
+const GOAL_PROGRESS_NOTE = "I used the smaller boundary in one difficult conversation and recovered before overcommitting.";
 const CLIENT_EMAIL = "quipsly-client-retained-20260731@example.test";
 const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
 const OUTSIDER_EMAIL = "quipsly-followup-outsider-retained-20260731@example.test";
@@ -43,9 +45,24 @@ function stamp() {
 }
 
 async function databaseSnapshot(prisma) {
-  const [task, goal, sourceOutput, nextTasks, nextGoals, deliveryCount, calendarCount, outputCount] = await Promise.all([
+  const [task, goal, goalProgressCount, sourceOutput, nextTasks, nextGoals, deliveryCount, calendarCount, outputCount] = await Promise.all([
     prisma.actionItem.findUniqueOrThrow({ where: { id: TASK_ID }, select: { id: true, roomId: true, assignedUserId: true, status: true, completedAt: true, updatedAt: true } }),
-    prisma.goal.findUniqueOrThrow({ where: { id: GOAL_ID }, select: { id: true, roomId: true, ownerUserId: true, status: true, updatedAt: true } }),
+    prisma.goal.findUniqueOrThrow({
+      where: { id: GOAL_ID },
+      select: {
+        id: true,
+        roomId: true,
+        ownerUserId: true,
+        status: true,
+        updatedAt: true,
+        progressReceipts: {
+          orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+          take: 1,
+          select: { id: true, kind: true, progressPercent: true, note: true, occurredAt: true },
+        },
+      },
+    }),
+    prisma.goalProgressReceipt.count({ where: { goalId: GOAL_ID } }),
     prisma.sessionOutput.findFirstOrThrow({ where: { roomId: PRIOR_ROOM_ID, kind: "CLIENT_FOLLOW_UP", status: "RELEASED" }, orderBy: [{ releasedAt: "desc" }, { revision: "desc" }], select: { id: true, contentSha256: true, revision: true, status: true, recipientUserId: true, createdByUserId: true } }),
     prisma.actionItem.count({ where: { roomId: NEXT_ROOM_ID } }),
     prisma.goal.count({ where: { roomId: NEXT_ROOM_ID } }),
@@ -55,7 +72,15 @@ async function databaseSnapshot(prisma) {
   ]);
   return {
     task: { ...task, completedAt: task.completedAt?.toISOString() ?? null, updatedAt: task.updatedAt.toISOString() },
-    goal: { ...goal, updatedAt: goal.updatedAt.toISOString() },
+    goal: {
+      ...goal,
+      updatedAt: goal.updatedAt.toISOString(),
+      latestProgress: goal.progressReceipts[0]
+        ? { ...goal.progressReceipts[0], occurredAt: goal.progressReceipts[0].occurredAt.toISOString() }
+        : null,
+      progressReceipts: undefined,
+    },
+    goalProgressCount,
     sourceOutput,
     nextTasks,
     nextGoals,
@@ -123,12 +148,40 @@ async function operateClient(browser, baseURL, artifactDirectory) {
     const currentTask = surface.getByText(TASK_TITLE, { exact: true }).locator("xpath=ancestor::*[self::a or self::div][1]");
     await currentTask.getByText("Done", { exact: true }).waitFor({ timeout: 20_000 });
     await currentTask.getByText(/Updated since release · was Open/i).waitFor();
+
+    const currentGoalLink = surface.getByRole("link", { name: new RegExp(GOAL_TITLE, "i") });
+    await currentGoalLink.click();
+    const goalHeading = page.getByRole("heading", { name: GOAL_TITLE, exact: true });
+    await goalHeading.waitFor({ timeout: 20_000 });
+    const goalCard = goalHeading.locator("xpath=ancestor::article[1]");
+    await goalCard.getByRole("combobox", { name: "Progress", exact: true }).selectOption(String(GOAL_PROGRESS_PERCENT));
+    await goalCard.getByRole("textbox", { name: "Evidence note", exact: true }).fill(GOAL_PROGRESS_NOTE);
+    await goalCard.getByRole("button", { name: "Save progress", exact: true }).click();
+    await goalCard.getByText(/Progress evidence saved\. Goal status did not change automatically\./i).waitFor({ timeout: 20_000 });
+
+    await page.goto(`${baseURL}/sessions/${NEXT_ROOM_ID}?mode=prepare`, { waitUntil: "domcontentloaded" });
+    surface = await followThroughSurface(page);
+    const currentGoal = surface.getByText(GOAL_TITLE, { exact: true }).locator("xpath=ancestor::*[self::a or self::div][1]");
+    await currentGoal.getByText(`${GOAL_PROGRESS_PERCENT}% at latest check-in`, { exact: false }).waitFor({ timeout: 20_000 });
+    await currentGoal.getByText(GOAL_PROGRESS_NOTE, { exact: false }).waitFor();
+    await currentGoal.getByText("New check-in since release", { exact: true }).waitFor();
+    await surface.getByText("2 updated", { exact: true }).waitFor();
     await surface.getByText(/same canonical IDs · no copied work/i).waitFor();
     await assertNoHorizontalOverflow(surface, identity.role);
     await captureWholeSurface(page, surface, path.join(artifactDirectory, "client-after.png"));
     assert(pageErrors.length === 0, `Client follow-through operation raised ${pageErrors.length} browser exception(s).`);
     await clearRenderedSession(page, baseURL, identity.role);
-    return { role: identity.role, exactTaskLink: true, exactGoalLink: true, taskDecision: "DONE", liveProjection: "DONE", browserExceptions: 0, sessionClear: "passed" };
+    return {
+      role: identity.role,
+      exactTaskLink: true,
+      exactGoalLink: true,
+      taskDecision: "DONE",
+      goalProgress: GOAL_PROGRESS_PERCENT,
+      goalEvidenceVisible: true,
+      liveProjection: "DONE_AND_PROGRESS_CHECK_IN",
+      browserExceptions: 0,
+      sessionClear: "passed",
+    };
   } finally {
     await context.close();
   }
@@ -147,13 +200,19 @@ async function verifyCoach(browser, baseURL, artifactDirectory) {
     await taskText.waitFor();
     const taskContainer = taskText.locator("xpath=ancestor::div[1]");
     await taskContainer.getByText("Done", { exact: true }).waitFor();
+    const goalText = surface.getByText(GOAL_TITLE, { exact: true });
+    await goalText.waitFor();
+    const goalContainer = goalText.locator("xpath=ancestor::div[1]");
+    await goalContainer.getByText(`${GOAL_PROGRESS_PERCENT}% at latest check-in`, { exact: false }).waitFor();
+    await goalContainer.getByText(GOAL_PROGRESS_NOTE, { exact: false }).waitFor();
+    await goalContainer.getByText("New check-in since release", { exact: true }).waitFor();
     assert(await surface.getByRole("link", { name: new RegExp(TASK_TITLE, "i") }).count() === 0, "Coach received a client-owned Work mutation link.");
     const source = surface.getByRole("link", { name: "Open release source", exact: true });
     assert(await source.getAttribute("href") === `/sessions/${PRIOR_ROOM_ID}?mode=outputs`, "Coach lost the exact released-output source route.");
     await assertNoHorizontalOverflow(surface, identity.role);
     await captureWholeSurface(page, surface, path.join(artifactDirectory, "coach-readback.png"));
     await clearRenderedSession(page, baseURL, identity.role);
-    return { role: identity.role, liveProjection: "DONE", clientMutationLink: "denied", exactSourceLink: true, sessionClear: "passed" };
+    return { role: identity.role, liveProjection: "DONE_AND_PROGRESS_CHECK_IN", clientMutationLink: "denied", goalEvidenceVisible: true, exactSourceLink: true, sessionClear: "passed" };
   } finally {
     await context.close();
   }
@@ -197,7 +256,10 @@ async function main() {
     ];
     const after = await databaseSnapshot(prisma);
     assert(after.task.status === "DONE" && after.task.completedAt, "Canonical client task was not completed through Work.");
-    assert(after.goal.id === before.goal.id && after.goal.status === before.goal.status, "Follow-through task operation changed the canonical goal.");
+    assert(after.goal.id === before.goal.id && after.goal.status === before.goal.status, "Progress check-in changed the canonical goal definition or status.");
+    assert(after.goalProgressCount === before.goalProgressCount + 1, "Rendered progress check-in did not append exactly one canonical receipt.");
+    assert(after.goal.latestProgress?.progressPercent === GOAL_PROGRESS_PERCENT, "The latest canonical goal receipt lost the operated progress percentage.");
+    assert(after.goal.latestProgress?.note === GOAL_PROGRESS_NOTE, "The latest canonical goal receipt lost the operated evidence note.");
     assert(after.nextTasks === 0 && after.nextGoals === 0, "Follow-through projection copied canonical work into the next Session.");
     assert(after.sourceOutput.id === before.sourceOutput.id && after.sourceOutput.contentSha256 === before.sourceOutput.contentSha256, "Live status operation rewrote the released follow-up.");
     assert(after.deliveryCount === before.deliveryCount, "Follow-through operation created a delivery event.");
@@ -218,6 +280,11 @@ async function main() {
         taskCompletedAt: after.task.completedAt,
         goalId: after.goal.id,
         goalStatus: after.goal.status,
+        goalProgressReceiptId: after.goal.latestProgress.id,
+        goalProgressPercent: after.goal.latestProgress.progressPercent,
+        goalProgressNote: after.goal.latestProgress.note,
+        goalProgressReceiptCountBefore: before.goalProgressCount,
+        goalProgressReceiptCountAfter: after.goalProgressCount,
         releasedOutputId: after.sourceOutput.id,
         releasedContentSha256: after.sourceOutput.contentSha256,
         copiedTaskCount: after.nextTasks,
@@ -225,7 +292,8 @@ async function main() {
       },
       boundaries: {
         canonicalTaskMutatedByClient: true,
-        canonicalGoalMutated: false,
+        canonicalGoalDefinitionOrStatusMutated: false,
+        canonicalGoalProgressReceiptAppendedByClient: true,
         releasedOutputMutated: false,
         currentSessionMutated: false,
         externalDeliveryEventCreated: false,

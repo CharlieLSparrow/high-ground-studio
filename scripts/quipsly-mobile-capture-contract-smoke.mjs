@@ -958,6 +958,8 @@ function checkTranscriptCorrectionContractSources() {
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
   const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
   const clientFollowUpWebText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-client-follow-up-card.tsx");
+  const sessionFollowThroughServiceText = sourceText("apps/quipsly/src/lib/server/session-follow-through.ts");
+  const sessionContinuityCardText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-continuity-card.tsx");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
@@ -1581,6 +1583,16 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("testCoachFollowUpPreservesExactSourceWithoutReleasingPreview"),
     "clientSafeFollowUpExactSourceReturn",
     "Selected client-safe notes and client-owned work preserve bounded same-Session transcript anchors in the immutable follow-up revision, expose exact-source return on Nest and iPhone, and keep preview save/release side effects disabled.",
+  );
+  expect(
+    sessionFollowThroughServiceText.includes("progressedSinceRelease")
+      && sessionFollowThroughServiceText.includes("progress.occurredAt.getTime() > selection.output.releasedAt.getTime()")
+      && sessionContinuityCardText.includes("New check-in since release")
+      && bridgeText.includes("let progressedSinceRelease: Bool?")
+      && shellText.includes("goal.progressedSinceRelease == true")
+      && shellText.includes("New check-in since release"),
+    "coachingGoalProgressSinceRelease",
+    "A client goal check-in after the immutable release is counted and labelled as new progress across Nest and iPhone without pretending the goal definition or status changed.",
   );
   expect(
     workPageText.includes("initialSnapshot.tasks.some((task) => task.id === requestedTaskId)")

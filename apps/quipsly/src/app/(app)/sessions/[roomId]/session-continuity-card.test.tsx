@@ -216,6 +216,7 @@ describe("SessionContinuityCard", () => {
         updatedAt: "2026-07-19T18:00:00.000Z",
         availability: "CURRENT",
         changedSinceRelease: false,
+        progressedSinceRelease: true,
         releasedStatus: "ACTIVE",
         releasedContentSha256: "1".repeat(64),
         latestProgress: {
@@ -231,7 +232,7 @@ describe("SessionContinuityCard", () => {
         completedTaskCount: 1,
         activeGoalCount: 1,
         achievedGoalCount: 0,
-        changedSinceReleaseCount: 1,
+        changedSinceReleaseCount: 2,
         unavailableCount: 0,
       },
       relationship: "same-project-purpose-client-and-coach",
@@ -248,6 +249,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByRole("link", { name: /use a sustainable boundary/i })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByText(/updated since release · was Open/i)).toBeInTheDocument();
     expect(screen.getByText(/60% at latest check-in/i)).toBeInTheDocument();
+    expect(screen.getByText(/new check-in since release/i)).toBeInTheDocument();
     expect(screen.getByText(/same canonical IDs · no copied work/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open release source" })).toHaveAttribute("href", "/sessions/room-previous?mode=outputs");
   });

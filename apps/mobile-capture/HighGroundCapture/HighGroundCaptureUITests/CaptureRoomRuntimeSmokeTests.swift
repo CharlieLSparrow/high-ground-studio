@@ -2644,6 +2644,22 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)
         XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts["Latest check-in 75%"].firstMatch,
+                in: app,
+                timeout: 12,
+                swipeAttempts: 8
+            ),
+            "Capture should show the client's latest canonical goal progress in next-Session preparation."
+        )
+        XCTAssertTrue(
+            app.staticTexts[
+                "Evidence: I used the smaller boundary in one difficult conversation and recovered before overcommitting."
+            ].firstMatch.exists,
+            "Capture should preserve the client's evidence note with the progress receipt."
+        )
+        XCTAssertTrue(app.staticTexts["New check-in since release"].firstMatch.exists)
+        XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS %@", "no copied work")
             ).firstMatch.exists,

@@ -642,6 +642,7 @@ struct MobileCaptureFollowThroughGoal: Codable, Identifiable, Hashable {
     let updatedAt: String?
     let availability: String
     let changedSinceRelease: Bool
+    let progressedSinceRelease: Bool?
     let releasedStatus: String
     let releasedContentSha256: String
     let latestProgress: MobileCaptureFollowThroughProgress?

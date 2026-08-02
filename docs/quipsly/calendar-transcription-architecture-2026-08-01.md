@@ -697,6 +697,26 @@ creates no message, provider-calendar mutation, publication, completion,
 billing action, consent change, or source rewrite. Full evidence is in
 `docs/coordination/2026-08-02-client-safe-follow-up-source-return.md`.
 
+## 2026-08-02 coaching goal progress readback checkpoint
+
+The next-Session follow-through projection now treats client evidence as a
+first-class longitudinal event. A Goal definition/status hash difference and a
+new `GoalProgressReceipt` are distinct facts: Nest and Capture label a receipt
+strictly newer than the immutable release as **New check-in since release**,
+while older progress is not relabelled. The summary counts the Goal once even
+if both facts are true.
+
+The retained client operated the rendered product through the exact Goal and
+saved a 75% evidence check-in. The client and coach read it back in Session 2;
+the coach remained read-only; the outsider learned neither title. PostgreSQL
+proved one appended receipt, an unchanged Active Goal definition/status,
+unchanged released SHA-256, no copied Session 2 work, and no Calendar or
+delivery side effect. The compiled iPhone preparation journey also showed the
+percentage and evidence note and returned to the exact source Session.
+
+Full evidence is in
+`docs/coordination/2026-08-02-coaching-goal-progress-readback.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:
