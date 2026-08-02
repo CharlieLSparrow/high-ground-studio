@@ -814,6 +814,7 @@ final class LocalRecordingLibrary: ObservableObject {
         _ id: UUID,
         sourceId: String?,
         mediaAssetId: String? = nil,
+        recordingAssetId: String? = nil,
         transcriptJobId: String? = nil,
         serverVerificationStatus: String?,
         sourceSHA256: String? = nil,
@@ -834,7 +835,10 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.uploadProgress = 1
             recording.uploadedSourceId = self.nonempty(sourceId)
             recording.uploadedMediaAssetId = self.nonempty(mediaAssetId)
+            recording.recordingAssetId = self.nonempty(recordingAssetId)
+                ?? recording.recordingAssetId
             recording.transcriptJobId = self.nonempty(transcriptJobId)
+                ?? recording.transcriptJobId
             recording.serverVerificationStatus = self.nonempty(serverVerificationStatus)
             recording.sourceSHA256 = self.normalizedSHA256(sourceSHA256)
             recording.verifiedCloudSHA256 = self.normalizedSHA256(
@@ -858,6 +862,15 @@ final class LocalRecordingLibrary: ObservableObject {
         try mutate(id) { recording in
             recording.status = .uploadHeld
             recording.statusMessage = message
+        }
+    }
+
+    func markOnDeviceTranscriptAttached(_ id: UUID, transcriptJobId: String) throws {
+        guard let normalizedJobId = nonempty(transcriptJobId) else {
+            throw LibraryError.recordingNotFound
+        }
+        try mutate(id) { recording in
+            recording.transcriptJobId = normalizedJobId
         }
     }
 

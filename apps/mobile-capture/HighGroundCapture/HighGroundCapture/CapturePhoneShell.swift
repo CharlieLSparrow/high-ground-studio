@@ -9357,6 +9357,8 @@ private struct UploadActivityCard: View {
 }
 
 private struct LocalRecordingRow: View {
+    @ObservedObject private var transcriptManager = OnDeviceTranscriptManager.shared
+
     let recording: LocalRecording
     let fileURL: URL?
     let isPlaying: Bool
@@ -9491,6 +9493,8 @@ private struct LocalRecordingRow: View {
                 Spacer()
             }
 
+            onDeviceTranscriptControl
+
             if let callRoomID = recording.callRoomId?.nonempty {
                 NavigationLink {
                     CaptureTranscriptReviewView(
@@ -9548,8 +9552,169 @@ private struct LocalRecordingRow: View {
             }
         }
         .captureCard()
+        .onAppear {
+            transcriptManager.restoreState(for: recording)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("LocalRecordingRow_\(recording.id)")
+    }
+
+    @ViewBuilder
+    private var onDeviceTranscriptControl: some View {
+        if #available(iOS 26.0, *) {
+            let phase = transcriptManager.phase(for: recording.id)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: transcriptStatusIcon(phase))
+                        .foregroundStyle(transcriptStatusTint(phase))
+                        .frame(width: 24, height: 24)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(transcriptStatusTitle(phase))
+                            .font(.subheadline.weight(.semibold))
+                        Text(transcriptStatusDetail(phase))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                if phase.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(transcriptStatusTitle(phase))
+                } else if let action = transcriptAction(phase) {
+                    Button {
+                        action()
+                    } label: {
+                        Label(transcriptActionLabel(phase), systemImage: transcriptActionIcon(phase))
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(previewOnly || fileURL == nil || !recording.status.isPlaybackEligible)
+                    .accessibilityIdentifier("CaptureOnDeviceTranscriptAction_\(recording.id)")
+                }
+            }
+            .padding(12)
+            .background(CapturePalette.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureOnDeviceTranscript_\(recording.id)")
+        } else {
+            Label("On-device transcription requires iOS 26 or later.", systemImage: "iphone.slash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func transcriptAction(_ phase: OnDeviceTranscriptPhase) -> (() -> Void)? {
+        switch phase {
+        case .attached:
+            return nil
+        case .savedLocally, .waitingForVerifiedUpload:
+            guard recording.status.isVerified else { return nil }
+            return { transcriptManager.submitSavedTranscript(recording: recording) }
+        case .modelDownloadRequired:
+            return {
+                guard let fileURL else { return }
+                transcriptManager.begin(recording: recording, fileURL: fileURL, allowModelDownload: true)
+            }
+        case .failed where hasSavedTranscript:
+            return { transcriptManager.submitSavedTranscript(recording: recording) }
+        case .idle, .failed:
+            return {
+                guard let fileURL else { return }
+                transcriptManager.begin(recording: recording, fileURL: fileURL)
+            }
+        case .checkingSupport, .installingModel, .transcribing, .submitting:
+            return nil
+        }
+    }
+
+    private func transcriptActionLabel(_ phase: OnDeviceTranscriptPhase) -> String {
+        switch phase {
+        case .modelDownloadRequired:
+            return "Download model & transcribe"
+        case .savedLocally:
+            return "Attach saved transcript"
+        case .waitingForVerifiedUpload:
+            return "Retry verified attachment"
+        case .failed:
+            return hasSavedTranscript ? "Retry saved attachment" : "Retry on-device transcription"
+        default:
+            return "Transcribe on this iPhone"
+        }
+    }
+
+    private func transcriptActionIcon(_ phase: OnDeviceTranscriptPhase) -> String {
+        switch phase {
+        case .modelDownloadRequired: return "arrow.down.circle"
+        case .savedLocally, .waitingForVerifiedUpload: return "icloud.and.arrow.up"
+        case .failed: return "arrow.clockwise"
+        default: return "waveform.badge.mic"
+        }
+    }
+
+    private func transcriptStatusTitle(_ phase: OnDeviceTranscriptPhase) -> String {
+        switch phase {
+        case .idle: return "Private on-device transcript"
+        case .checkingSupport: return "Checking on-device speech support…"
+        case .modelDownloadRequired: return "Speech model download required"
+        case .installingModel: return "Installing Apple's on-device model…"
+        case .transcribing: return "Transcribing on this iPhone…"
+        case .savedLocally: return "Transcript protected on this iPhone"
+        case .waitingForVerifiedUpload: return "Transcript waiting for verified source"
+        case .submitting: return "Rechecking consent and source…"
+        case .attached: return "On-device transcript attached"
+        case .failed: return "Transcript needs attention"
+        }
+    }
+
+    private func transcriptStatusDetail(_ phase: OnDeviceTranscriptPhase) -> String {
+        switch phase {
+        case .idle:
+            return "Recognition runs locally. Quipsly attaches only finalized text after the exact recording is cloud-verified and current all-party transcription consent is rechecked. Speaker labels still require human review."
+        case .checkingSupport:
+            return "No model is downloaded without another explicit tap. The original recording remains unchanged."
+        case .modelDownloadRequired(let locale):
+            return "Apple's \(locale) speech model is not installed. Downloading it is an explicit device action; your recording is not uploaded to Apple."
+        case .installingModel:
+            return "Keep Quipsly open while iOS installs the speech model. Recording bytes remain on this iPhone."
+        case .transcribing:
+            return "Quipsly is reading the immutable local source. Only finalized timed text will be saved."
+        case .savedLocally(let segmentCount):
+            return "\(segmentCount) finalized segment\(segmentCount == 1 ? "" : "s") saved with complete file protection. Attachment still requires online account, source, and consent verification."
+        case .waitingForVerifiedUpload(let segmentCount):
+            return "\(segmentCount) segment\(segmentCount == 1 ? "" : "s") remain local. Upload and verify these exact recording bytes before attachment."
+        case .submitting(let segmentCount):
+            return "Nest is validating account ownership, SHA-256, byte count, Session access, and current transcription consent for \(segmentCount) segment\(segmentCount == 1 ? "" : "s")."
+        case .attached(_, let segmentCount):
+            return "\(segmentCount) source-timed segment\(segmentCount == 1 ? "" : "s") are available for playback review. No speaker diarization was claimed."
+        case .failed(let message, _):
+            return message
+        }
+    }
+
+    private func transcriptStatusIcon(_ phase: OnDeviceTranscriptPhase) -> String {
+        switch phase {
+        case .attached: return "checkmark.seal.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .savedLocally, .waitingForVerifiedUpload: return "lock.doc.fill"
+        case .modelDownloadRequired: return "arrow.down.circle.fill"
+        case .checkingSupport, .installingModel, .transcribing, .submitting: return "waveform"
+        case .idle: return "iphone.and.arrow.forward"
+        }
+    }
+
+    private func transcriptStatusTint(_ phase: OnDeviceTranscriptPhase) -> Color {
+        switch phase {
+        case .attached: return .green
+        case .failed, .waitingForVerifiedUpload, .modelDownloadRequired: return .orange
+        default: return CapturePalette.accent
+        }
+    }
+
+    private var hasSavedTranscript: Bool {
+        (try? OnDeviceTranscriptStore.load(for: recording.id)) != nil
     }
 
     private var canDeleteLocalOriginal: Bool {

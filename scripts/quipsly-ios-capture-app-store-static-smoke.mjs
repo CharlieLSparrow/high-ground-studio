@@ -53,11 +53,13 @@ const files = {
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
+  onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
+  onDeviceTranscriptRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/transcripts/on-device/route.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
   mobileSourceInboxRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/inbox/route.ts"),
@@ -185,12 +187,14 @@ const capturePhoneShellText = read(files.capturePhoneShell);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
+const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
 const shippingCaptureUIText = `${capturePhoneShellText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
+const onDeviceTranscriptRouteText = read(files.onDeviceTranscriptRoute);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
 const mobileTodayRouteText = read(files.mobileTodayRoute);
 const mobileSourceInboxRouteText = read(files.mobileSourceInboxRoute);
@@ -296,6 +300,9 @@ requireIncludes(projectText, "GENERATE_INFOPLIST_FILE = NO", "explicit app infor
 requireIncludes(projectText, "INFOPLIST_FILE = HighGroundCapture/Info.plist", "app information property list source");
 requireIncludes(appInfoText, "NSMicrophoneUsageDescription", "microphone usage string");
 requireIncludes(appInfoText, "after you explicitly start recording", "microphone usage explicit action");
+requireIncludes(appInfoText, "NSSpeechRecognitionUsageDescription", "on-device speech usage string");
+requireIncludes(appInfoText, "after you explicitly choose Transcribe", "on-device speech requires explicit action");
+requireIncludes(appInfoText, "audio stays on-device during recognition", "on-device speech disclosure does not imply an Apple upload");
 requireIncludes(appInfoText, "NSCameraUsageDescription", "camera usage string required by linked session SDK");
 requireIncludes(appInfoText, "only after you explicitly choose video", "camera usage explicit video choice");
 requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
@@ -399,6 +406,62 @@ requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPP
 requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
 requireIncludes(capturePhoneShellText, "CapturePacketReviewLanesCard", "the production phone recorder reaches persisted transcript packet note lanes");
+for (const needle of [
+  "CaptureOnDeviceTranscriptAction_",
+  "Download model & transcribe",
+  "Recognition runs locally",
+  "current all-party transcription consent is rechecked",
+  "No speaker diarization was claimed",
+]) {
+  requireIncludes(
+    capturePhoneShellText,
+    needle,
+    "Capture exposes an honest and reachable on-device transcript lifecycle",
+  );
+}
+for (const needle of [
+  "SpeechTranscriber.isAvailable",
+  "AssetInventory.status(forModules:",
+  "allowModelDownload",
+  "downloadAndInstall()",
+  "guard result.isFinal",
+  "result.range.start.seconds",
+  "OnDeviceTranscriptSource.fingerprint(fileURL)",
+  "guard before == after",
+  "FileProtectionType.complete",
+  ".withoutOverwriting",
+  "clientRequestId: sidecar.clientRequestId",
+  "artifactURLs(for: recordingId",
+  "expectedOwnerAccountID: stored.sidecar.ownerAccountId",
+  "verifiedCloudSHA256",
+  "verifiedCloudSizeBytes",
+  'speakerDiarization: "unavailable"',
+  "humanPlaybackReviewRequired: true",
+]) {
+  requireIncludes(
+    onDeviceTranscriptManagerText,
+    needle,
+    "on-device transcript evidence remains protected, source-bound, and explicit",
+  );
+}
+for (const needle of [
+  'const PROVIDER = "apple-speech-transcriber-on-device"',
+  "acquirePrismaAdvisoryTransactionLock",
+  'asset.status !== "VERIFIED"',
+  "mobileCaptureTranscriptProcessingGate",
+  "ON_DEVICE_TRANSCRIPT_SOURCE_MISMATCH",
+  "ON_DEVICE_TRANSCRIPT_IDEMPOTENCY_CONFLICT",
+  'speakerDiarization: "unavailable"',
+  "humanPlaybackReviewRequired: true",
+  'isolationLevel: "Serializable"',
+]) {
+  requireIncludes(
+    onDeviceTranscriptRouteText,
+    needle,
+    "Nest ingests on-device text only through the immutable consent and source boundary",
+  );
+}
+requireIncludes(uploadText, "lastRecordingAssetId", "Capture preserves canonical RecordingAsset identity separately from Studio MediaAsset identity");
 requireIncludes(capturePhoneShellText, "Internal review only · no note, task, goal, client delivery, message, calendar event, or publication", "packet lane review states its no-side-effect boundary on the phone");
 requireIncludes(capturePhoneShellText, "Preview shows the production review workflow without changing saved packet state.", "packet lane preview remains demonstrative and read-only");
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");

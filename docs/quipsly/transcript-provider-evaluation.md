@@ -66,7 +66,12 @@ On iOS 26, `SpeechAnalyzer` with `SpeechTranscriber` supports long-form,
 conversational on-device transcription. Language assets are installed through
 `AssetInventory`, results arrive asynchronously, and the audio-time-range
 option can support playback synchronization. The documented transcriber does
-not provide a built-in multi-speaker diarization contract.
+not provide a built-in multi-speaker diarization contract. Apple's permission
+guidance says the explicit `SFSpeechRecognizer.requestAuthorization` flow is
+for the older recognizer that can send speech to Apple; `SpeechAnalyzer`
+transcriber modules do not send the voice audio to Apple. Capture still ships a
+plain-language `NSSpeechRecognitionUsageDescription`, and this prerecorded-file
+lane does not request microphone access.
 
 Evaluation rule:
 
@@ -82,7 +87,67 @@ Evaluation rule:
 Official references:
 
 - [Apple SpeechAnalyzer documentation](https://developer.apple.com/documentation/Speech/SpeechAnalyzer)
+- [Apple speech-recognition permission guidance](https://developer.apple.com/documentation/Speech/asking-permission-to-use-speech-recognition)
 - [WWDC25: Bring advanced speech-to-text to your app with SpeechAnalyzer](https://developer.apple.com/videos/play/wwdc2025/277/)
+
+#### Implemented Capture lane
+
+Quipsly Capture now has a production-bound on-device candidate lane for iOS 26
+and later. It is deliberately not promoted as the default provider yet.
+
+The iPhone workflow:
+
+1. checks `SpeechTranscriber` and locale support without downloading a model;
+2. requires a second explicit action before `AssetInventory` installs a model;
+3. fingerprints the immutable local recording before recognition;
+4. extracts an audio-only protected temporary derivative for video sources;
+5. keeps only finalized `SpeechTranscriber` results and their real time ranges;
+6. fingerprints the original again and discards the result if the bytes changed;
+7. writes a create-once, request-versioned transcript sidecar under complete
+   file protection, with its own SHA-256, account owner, app/build, device/OS,
+   locale, preset, config hash, and an explicit
+   `speakerDiarization=unavailable` declaration; later attempts cannot
+   overwrite earlier evidence;
+8. preserves the sidecar locally while the matching recording is not verified;
+9. submits finalized text only through the authenticated Nest boundary; and
+10. retains the sidecar plus a separate protected submission receipt for crash
+    recovery and idempotent replay.
+
+Nest accepts the candidate only after rechecking, inside one serializable and
+per-recording locked transaction:
+
+- current signed-in account and Session mutation access;
+- `RecordingAsset.status=VERIFIED`, cloud object identity, SHA-256, byte count,
+  and immutable finalization evidence;
+- current all-party source and transcription consent;
+- bounded, ordered, non-empty finalized timing ranges;
+- sidecar and recognition-configuration hashes; and
+- exact idempotency intent for the client request UUID.
+
+Acceptance creates one new immutable completed `TranscriptJob` version with
+provider `apple-speech-transcriber-on-device`. It creates no provider words,
+speaker labels, notes, tasks, goals, calendar events, messages, deliveries, or
+publication effects. Those remain separate human review decisions.
+
+Automated evidence as of 2026-08-01:
+
+- focused Nest ingestion and cloud-run route suites: 11 tests passed;
+- Quipsly TypeScript passed;
+- iOS 17 deployment-target build against the iOS 26.2 SDK passed for both
+  simulator architectures;
+- the built app contains the speech-purpose disclosure;
+- a Foundation runtime probe proved the protected create-only sidecar write
+  rejects a second write and preserves the first bytes;
+- the canonical upload ledger now preserves `RecordingAsset` identity
+  separately from Studio `MediaAsset` identity.
+
+Physical-device evidence is still required before this candidate can become a
+default. The first acceptance pass must cover audio and 4K-camera movie input,
+installed and missing-model states, airplane-mode recognition after install,
+foreground interruption/retry, battery/thermal behavior on a long recording,
+account switch denial, transcript-consent revocation denial, byte-mismatch
+denial, crash/relaunch sidecar recovery, idempotent submission replay, playback
+timing review, and a full HGO/coaching correction pass.
 
 ## Private High Ground corpus
 

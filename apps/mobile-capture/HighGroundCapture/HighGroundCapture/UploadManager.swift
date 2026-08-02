@@ -100,6 +100,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         var currentChunk: Int
         let sessionId: String
         var lastMediaAssetId: String?
+        var lastRecordingAssetId: String? = nil
         var lastSourceId: String?
         var lastTranscriptJobId: String?
         var lastTranscriptJobStatus: String? = nil
@@ -1436,7 +1437,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 : "Server verified \(expectedSizeBytes) bytes and SHA-256 \(expectedSHA256)."
             uploadSession.lastSourceId = captureRecords?.sourceId
             uploadSession.lastMediaAssetId = captureRecords?.mediaAssetId
-                ?? captureRecords?.recordingAssetId
+            uploadSession.lastRecordingAssetId = captureRecords?.recordingAssetId
                 ?? envelope.serverVerification?.recordingAssetId
             uploadSession.lastTranscriptJobId = captureRecords?.transcriptJobId
                 ?? envelope.serverVerification?.transcriptJobId
@@ -1875,6 +1876,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             localRecordingID,
             sourceId: session.lastSourceId,
             mediaAssetId: session.lastMediaAssetId,
+            recordingAssetId: session.lastRecordingAssetId ?? session.recordingAssetId,
             transcriptJobId: session.lastTranscriptJobId,
             serverVerificationStatus: session.lastServerVerificationStatus,
             sourceSHA256: session.expectedSHA256,
@@ -2148,7 +2150,7 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                     self.lastServerVerificationDetail = reason
                 }
                 if let recordingAssetId = serverVerification["recordingAssetId"] as? String {
-                    uploadSession.lastMediaAssetId = recordingAssetId
+                    uploadSession.lastRecordingAssetId = recordingAssetId
                 }
                 if let transcriptJobId = serverVerification["transcriptJobId"] as? String {
                     uploadSession.lastTranscriptJobId = transcriptJobId
