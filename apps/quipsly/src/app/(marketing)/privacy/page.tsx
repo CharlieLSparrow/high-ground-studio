@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Mic, Shield, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, KeyRound, Mic, Shield, Trash2 } from "lucide-react";
 
 export default function PrivacyPage() {
   return (
@@ -42,6 +42,36 @@ export default function PrivacyPage() {
             </p>
           </section>
           <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
+            <CalendarDays className="mb-3 h-6 w-6 text-[#a96735]" />
+            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Optional Google Calendar connection</h2>
+            <div className="space-y-3 leading-relaxed text-[#7a604c]">
+              <p>
+                Connecting Google Calendar is optional and separate from signing in to Quipsly. Quipsly asks only to read the list of calendars available to you and to view and manage events on calendars you own. You choose the owned calendar and the Quipsly production or coaching lane before any event is written.
+              </p>
+              <p>
+                Quipsly uses this access to show your selected calendar in Quipsly, create or update the events you explicitly project, detect scheduling conflicts, and reconcile later changes so you can review them. Quipsly stores the selected calendar identifier, encrypted refresh credentials, provider event identifiers, synchronization cursors, and audit receipts needed to keep that connection reliable. Short-lived Google access tokens are not stored.
+              </p>
+              <p>
+                Google Calendar data is not sold, used for advertising, or used to train general-purpose AI models. It is not shared with other Quipsly members unless you deliberately place the resulting schedule information in a shared workspace. Infrastructure providers may process the minimum data needed to operate Quipsly under their service agreements. Quipsly&apos;s use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including its Limited Use requirements.
+              </p>
+            </div>
+          </section>
+          <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
+            <KeyRound className="mb-3 h-6 w-6 text-[#a96735]" />
+            <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Calendar control and revocation</h2>
+            <p className="leading-relaxed text-[#7a604c]">
+              You can disconnect Google Calendar from Quipsly at any time. Quipsly then asks Google to revoke the credential, deletes the encrypted credential from the active connection, and stops future calendar access. Events already created in your Google Calendar remain under your control. You can also review or revoke Quipsly from your Google Account&apos;s third-party access settings.
+            </p>
+            <a
+              href="https://myaccount.google.com/connections"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-5 inline-flex rounded-full border border-[#c99768] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#6c4329] transition hover:bg-[#f7e7d5]"
+            >
+              Google account access
+            </a>
+          </section>
+          <section className="rounded-3xl border border-[#ead8c2] bg-[#fffaf3] p-6 font-sans md:col-span-2">
             <Trash2 className="mb-3 h-6 w-6 text-[#a96735]" />
             <h2 className="mb-2 font-serif text-2xl font-bold text-[#3d2618]">Deletion requests</h2>
             <p className="leading-relaxed text-[#7a604c]">
@@ -53,9 +83,12 @@ export default function PrivacyPage() {
           </section>
         </div>
 
-        <p className="mt-8 text-sm text-[#a96735] font-sans italic">
-          Beta policy surface. Last updated: July 2026.
-        </p>
+        <div className="mt-8 space-y-2 text-sm text-[#a96735] font-sans">
+          <p>
+            Privacy questions: <a className="font-bold underline underline-offset-4" href="mailto:charlie@highgroundodyssey.com">charlie@highgroundodyssey.com</a>
+          </p>
+          <p className="italic">Beta policy surface. Last updated: August 2026.</p>
+        </div>
       </div>
       </main>
     </div>
