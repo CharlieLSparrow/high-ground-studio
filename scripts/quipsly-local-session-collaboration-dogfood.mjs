@@ -310,6 +310,32 @@ try {
         roomId: room.id,
         packetBuildId,
         transcriptSnapshot,
+        reviewLanes: [
+          {
+            id: "internal-summary",
+            label: "Internal summary",
+            status: "READY_FOR_HUMAN_REVIEW",
+            itemCount: 1,
+            meaning: "Disposable candidate material used to verify packet lane review.",
+            sourceTruth: "Derived only from this generated transcript fixture.",
+            reviewRule: "Human review is required before internal use.",
+            humanApprovalRequired: true,
+            externalSideEffects: false,
+            items: [{ noteId: "self", segmentId: segment.id, text: transcriptText }],
+          },
+          {
+            id: "empty-goals",
+            label: "Goals",
+            status: "EMPTY",
+            itemCount: 0,
+            meaning: "No goal candidates were derived from this fixture.",
+            sourceTruth: "No source-linked goal candidate exists.",
+            reviewRule: "Empty categories have no decision controls.",
+            humanApprovalRequired: true,
+            externalSideEffects: false,
+            items: [],
+          },
+        ],
         actionCandidates: [
           {
             id: actionCandidateId,
@@ -358,6 +384,65 @@ try {
   assert(
     viewerRead.status === 200 && viewerRead.body?.ok === true,
     `Project viewer could not read the disposable packet. HTTP ${viewerRead.status}`,
+  );
+
+  const laneReviewBody = {
+    roomId: room.id,
+    transcriptJobId: transcriptJob.id,
+    summaryNoteId: summary.id,
+    status: "APPROVED_FOR_INTERNAL_USE",
+    note: "Disposable route acceptance only; no canonical work or delivery was created.",
+  };
+  const viewerLaneMutation = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet", baseUrl),
+    {
+      method: "PATCH",
+      headers: { ...bearer(viewerToken), "content-type": "application/json" },
+      body: JSON.stringify({ ...laneReviewBody, laneId: "internal-summary" }),
+    },
+  );
+  assert(
+    viewerLaneMutation.status === 404 && viewerLaneMutation.body?.ok === false,
+    `Project viewer unexpectedly reviewed a packet lane. HTTP ${viewerLaneMutation.status}`,
+  );
+
+  const emptyLaneMutation = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet", baseUrl),
+    {
+      method: "PATCH",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ ...laneReviewBody, laneId: "empty-goals" }),
+    },
+  );
+  assert(
+    emptyLaneMutation.status === 409 &&
+      emptyLaneMutation.body?.errorCode === "PACKET_REVIEW_LANE_EMPTY",
+    `Empty packet lane did not fail closed. HTTP ${emptyLaneMutation.status}`,
+  );
+
+  const laneReview = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet", baseUrl),
+    {
+      method: "PATCH",
+      headers: {
+        ...bearer(collaboratorToken),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ ...laneReviewBody, laneId: "internal-summary" }),
+    },
+  );
+  assert(
+    laneReview.status === 200 &&
+      laneReview.body?.ok === true &&
+      laneReview.body?.reviewLaneStatus === "APPROVED_FOR_INTERNAL_USE" &&
+      laneReview.body?.reviewLane?.humanReview?.externalSideEffects === false &&
+      laneReview.body?.boundaries?.noExternalMutation === true &&
+      laneReview.body?.boundaries?.noClientDelivery === true &&
+      laneReview.body?.boundaries?.noPublicationClaim === true,
+    `Active project collaborator could not review the disposable packet lane. HTTP ${laneReview.status}`,
   );
 
   const reviewBody = {
@@ -413,10 +498,29 @@ try {
   const receipts = Array.isArray(storedSource.actionCandidateReviewReceipts)
     ? storedSource.actionCandidateReviewReceipts
     : [];
+  const storedReviewLanes = Array.isArray(storedSource.reviewLanes)
+    ? storedSource.reviewLanes
+    : [];
+  const storedReviewedLane = storedReviewLanes.find(
+    (lane) => object(lane).id === "internal-summary",
+  );
+  const storedEmptyLane = storedReviewLanes.find(
+    (lane) => object(lane).id === "empty-goals",
+  );
   assert(actionCount === 0, "DEFER unexpectedly materialized an ActionItem.");
   assert(
     receipts.length === 1 && object(receipts[0]).decision === "DEFER",
     "Disposable DEFER review receipt was not persisted.",
+  );
+  assert(
+    object(storedReviewedLane).status === "APPROVED_FOR_INTERNAL_USE" &&
+      object(object(storedReviewedLane).humanReview).externalSideEffects === false,
+    "Disposable packet lane review receipt was not persisted without side effects.",
+  );
+  assert(
+    object(storedEmptyLane).status === "EMPTY" &&
+      !object(storedEmptyLane).humanReview,
+    "Rejected empty-lane review unexpectedly changed saved packet state.",
   );
 
   const noteRequest = {
@@ -578,6 +682,10 @@ try {
     outsiderDenied: true,
     projectViewerReadAllowed: true,
     projectViewerMutationDenied: true,
+    projectViewerLaneReviewDenied: true,
+    emptyLaneReviewDenied: true,
+    actionableLaneReviewPersisted: true,
+    laneReviewExternalSideEffects: false,
     disposableDecision: "DEFER",
     actionItemsCreated: actionCount,
     reviewReceiptsPersisted: receipts.length,

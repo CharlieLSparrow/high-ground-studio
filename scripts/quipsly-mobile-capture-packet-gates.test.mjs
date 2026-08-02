@@ -100,6 +100,7 @@ assert.match(
   packetRoute,
   /Packet review requires bound transcript and recording asset evidence/,
 );
+assert.match(packetRoute, /PACKET_REVIEW_LANE_EMPTY/);
 assert.ok(
   packetRoute.indexOf(
     "const transcriptGate = await mobileCaptureTranscriptProcessingGate",
@@ -145,6 +146,9 @@ assert.match(sessionAccess, /SESSION_MUTATION_PROJECT_ROLES/);
 assert.match(collaborationDogfood, /activeProjectGrantUsed: true/);
 assert.match(collaborationDogfood, /outsiderDenied: true/);
 assert.match(collaborationDogfood, /projectViewerMutationDenied: true/);
+assert.match(collaborationDogfood, /projectViewerLaneReviewDenied: true/);
+assert.match(collaborationDogfood, /emptyLaneReviewDenied: true/);
+assert.match(collaborationDogfood, /actionableLaneReviewPersisted: true/);
 assert.match(collaborationDogfood, /revokedGrantDeniedImmediately: true/);
 assert.match(collaborationDogfood, /actionItemsCreated: actionCount/);
 assert.match(collaborationDogfood, /externalSideEffects: false/);
