@@ -6264,3 +6264,32 @@ was restored.
   projection, and zero-residue cleanup.
 - No Cloud Build or Cloud Run release was created. Full evidence is in
   `docs/coordination/2026-08-02-transcript-note-materialization.md`.
+
+### Client-safe follow-up exact-source return checkpoint — 2026-08-02
+
+- Closed the provenance gap between canonical reviewed Session records and the
+  immutable client follow-up revision. Selected client-safe notes and
+  client-owned goals/tasks now retain their exact transcript-derived anchors in
+  both the body snapshot and source manifest, covered by revision hashes.
+- A same-Session projection guard drops malformed or cross-Session anchors.
+  The returned link is not new authority: Nest and Capture still recheck the
+  current actor's Session and transcript access at the destination.
+- Nest announces exact-source inclusion before save and exposes source-return
+  links after save/release. Capture decodes the same anchors, focuses the real
+  transcript segment, and keeps deterministic Preview Save and Release
+  controls present but disabled.
+- Operated iPhone acceptance found and repaired two accessibility defects: a
+  container identifier that overwrote descendant source-link identifiers and
+  a transcript AI decision row that clipped at larger Dynamic Type sizes. The
+  exact-source/no-release journey now passes 1/1 with hit-region, description,
+  and text-clipping audits.
+- Mobile source contracts pass 83/83, Capture/App Store static contracts pass
+  996/996, focused Nest/API/session projections pass 28/28, strict TypeScript
+  passes, and the persisted PostgreSQL privacy/idempotency/concurrency
+  operation passes 1/1 while proving anchors remain immutable after source
+  edits.
+- No cloud release, TestFlight build, provider request, message, calendar
+  mutation, publication, or production database mutation occurred. Physical
+  two-account coaching use remains a unified-goal acceptance gate. Full
+  evidence is in
+  `docs/coordination/2026-08-02-client-safe-follow-up-source-return.md`.

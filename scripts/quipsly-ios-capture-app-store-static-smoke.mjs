@@ -472,6 +472,13 @@ requireIncludes(mobileText, "CaptureCoachFollowUpSave", "the native coach editor
 requireIncludes(mobileText, "CaptureCoachFollowUpKeyboardDone", "the native coach editor exposes a reachable keyboard dismissal action across its long form");
 requireIncludes(mobileText, "CaptureCoachFollowUpReleaseConfirmation", "the native coach editor requires exact-revision release confirmation");
 requireIncludes(mobileText, "CaptureCoachFollowUpRelease", "the native coach editor exposes the bounded in-app release action");
+requireIncludes(mobileText, "CaptureClientFollowUpSource_", "released follow-up records return to their exact permitted transcript source");
+requireIncludes(mobileText, "Exact source ·", "the native follow-up snapshot makes its immutable source range visible");
+requireIncludes(mobileText, ".disabled(previewOnly || isSaving", "deterministic preview cannot save a private follow-up revision");
+requireIncludes(mobileText, ".disabled(previewOnly || !releaseConfirmed", "deterministic preview cannot release a follow-up");
+requireIncludes(bridgeText, "let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?", "native follow-up rows decode their immutable transcript anchors");
+requireIncludes(captureExperienceModelText, "capturePreviewClientFollowUpWorkspace", "deterministic Capture preview operates the real coach follow-up source-return card");
+requireIncludes(deterministicUITestsText, "testCoachFollowUpPreservesExactSourceWithoutReleasingPreview", "operated iPhone coverage verifies source return without preview mutation");
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
 requireIncludes(bridgeText, '"action": action', "the native bridge uses canonical create-or-revise follow-up actions");

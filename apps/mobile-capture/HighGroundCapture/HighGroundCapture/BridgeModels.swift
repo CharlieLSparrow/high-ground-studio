@@ -477,6 +477,7 @@ struct MobileCaptureClientFollowUpNote: Codable, Identifiable, Hashable {
     let title: String?
     let body: String
     let kind: String
+    let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
 }
 
 struct MobileCaptureClientFollowUpGoal: Codable, Identifiable, Hashable {
@@ -485,6 +486,7 @@ struct MobileCaptureClientFollowUpGoal: Codable, Identifiable, Hashable {
     let description: String?
     let status: String
     let targetAt: String?
+    let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
 }
 
 struct MobileCaptureClientFollowUpTask: Codable, Identifiable, Hashable {
@@ -493,6 +495,7 @@ struct MobileCaptureClientFollowUpTask: Codable, Identifiable, Hashable {
     let detail: String?
     let status: String
     let dueAt: String?
+    let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
 }
 
 struct MobileCaptureClientFollowUp: Codable, Identifiable, Hashable {
@@ -1274,7 +1277,7 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
     }
 }
 
-struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable {
+struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable, Identifiable {
     let schema: String
     let roomId: String
     let transcriptJobId: String
@@ -1288,6 +1291,8 @@ struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable {
     let acceptedCorrectionId: String?
     let recordingAssetId: String
     let playbackSourceId: String
+
+    var id: String { "\(roomId)|\(transcriptJobId)|\(segmentId)" }
 }
 
 struct MobileCaptureTodayProject: Codable, Identifiable, Hashable {

@@ -116,6 +116,21 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       },
     });
     roomId = room.id;
+    const sourceAnchor = (schema: string, segmentId: string) => ({
+      schema,
+      roomId,
+      transcriptJobId: `follow-up-transcript-${nonce}`,
+      segmentId,
+      startSeconds: 63.4,
+      endSeconds: 68.9,
+      providerTextSha256: "a".repeat(64),
+      providerSpeakerLabel: "Speaker 2",
+      effectiveTextSnapshot: "I will rehearse the boundary once and bring the evidence back.",
+      effectiveSpeakerLabelSnapshot: "Client",
+      acceptedCorrectionId: `follow-up-correction-${nonce}`,
+      recordingAssetId: `follow-up-recording-${nonce}`,
+      playbackSourceId: `follow-up-playback-${nonce}`,
+    });
 
     const [clientSafeNote, privateNote, sharedNote, task, candidateTask, goal] =
       await Promise.all([
@@ -128,6 +143,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
             kind: "FOLLOW_UP",
             title: "Practice evidence",
             body: "Bring one specific example of the new boundary in use.",
+            sourceJson: sourceAnchor("quipsly-transcript-derived-note-v1", "follow-up-note-segment"),
           },
         }),
         prisma.coachingNote.create({
@@ -160,6 +176,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
             title: "Run one protected rehearsal",
             detail: "Write down what changed and what stayed difficult.",
             dueAt: new Date("2026-08-03T18:00:00.000Z"),
+            sourceJson: sourceAnchor("quipsly-transcript-derived-task-v1", "follow-up-task-segment"),
           },
         }),
         prisma.actionItem.create({
@@ -183,6 +200,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
             description:
               "Prefer repeatable evidence over a perfect performance.",
             targetAt: new Date("2026-08-14T18:00:00.000Z"),
+            sourceJson: sourceAnchor("quipsly-transcript-derived-goal-v1", "follow-up-goal-segment"),
           },
         }),
       ]);
@@ -240,6 +258,13 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
     expect(JSON.stringify(coachBefore)).not.toContain(privateNoteId);
     expect(JSON.stringify(coachBefore)).not.toContain(sharedNoteId);
     expect(JSON.stringify(coachBefore)).not.toContain(candidateTaskId);
+    expect(coachBefore.eligible?.notes[0]?.sourceAnchor).toMatchObject({
+      roomId,
+      segmentId: "follow-up-note-segment",
+      playbackSourceId: `follow-up-playback-${nonce}`,
+    });
+    expect(coachBefore.eligible?.tasks[0]?.sourceAnchor?.segmentId).toBe("follow-up-task-segment");
+    expect(coachBefore.eligible?.goals[0]?.sourceAnchor?.segmentId).toBe("follow-up-goal-segment");
 
     const draftRequestId = randomUUID();
     const draft = await createClientFollowUpDraft(prisma as never, {
@@ -279,6 +304,19 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
     expect(draftReplay).toMatchObject({
       idempotentReplay: true,
       output: { id: draft.output.id },
+    });
+    expect(draft.output.body).toMatchObject({
+      notes: [{ id: clientSafeNoteId, sourceAnchor: { segmentId: "follow-up-note-segment" } }],
+      tasks: [{ id: taskId, sourceAnchor: { segmentId: "follow-up-task-segment" } }],
+      goals: [{ id: goalId, sourceAnchor: { segmentId: "follow-up-goal-segment" } }],
+    });
+    expect(draft.output.sourceManifest).toMatchObject({
+      boundaries: { sourceAnchorsRestrictedToSession: true },
+      records: {
+        notes: [{ sourceAnchor: { roomId, segmentId: "follow-up-note-segment" } }],
+        tasks: [{ sourceAnchor: { roomId, segmentId: "follow-up-task-segment" } }],
+        goals: [{ sourceAnchor: { roomId, segmentId: "follow-up-goal-segment" } }],
+      },
     });
 
     const updateRequestId = randomUUID();
@@ -450,8 +488,15 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
             {
               id: clientSafeNoteId,
               body: "Bring one specific example of the new boundary in use.",
+              sourceAnchor: {
+                roomId,
+                segmentId: "follow-up-note-segment",
+                effectiveTextSnapshot: "I will rehearse the boundary once and bring the evidence back.",
+              },
             },
           ],
+          tasks: [{ id: taskId, sourceAnchor: { segmentId: "follow-up-task-segment" } }],
+          goals: [{ id: goalId, sourceAnchor: { segmentId: "follow-up-goal-segment" } }],
         },
       },
     });

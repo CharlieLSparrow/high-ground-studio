@@ -2449,7 +2449,8 @@ extension MobileCaptureSession {
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: coachingStart),
                 scheduledEnd: ISO8601DateFormatter().string(from: coachingStart.addingTimeInterval(50 * 60)),
-                packetReviewLanes: capturePreviewPacketReviewLanes
+                packetReviewLanes: capturePreviewPacketReviewLanes,
+                clientFollowUpWorkspace: capturePreviewClientFollowUpWorkspace
             ),
             capturePreview(
                 id: "preview-podcast-consent",
@@ -2550,7 +2551,8 @@ extension MobileCaptureSession {
         scheduledStart: String?,
         scheduledEnd: String? = nil,
         captureSources: [MobileCaptureSourceSummary] = [],
-        packetReviewLanes: [MobileCapturePacketReviewLane] = []
+        packetReviewLanes: [MobileCapturePacketReviewLane] = [],
+        clientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace? = nil
     ) -> MobileCaptureSession {
         let audioConsentGranted = consentGranted && (canRecordAudio ?? true)
         let videoConsentGranted = consentGranted && (canRecordVideo ?? true)
@@ -2666,6 +2668,7 @@ extension MobileCaptureSession {
             coachingPacketFirstOpenActionItemId: nil,
             coachingPacketStatus: packetReviewLanes.isEmpty ? nil : "READY_FOR_REVIEW",
             coachingPacketReviewLanes: packetReviewLanes.isEmpty ? nil : packetReviewLanes,
+            clientFollowUpWorkspace: clientFollowUpWorkspace,
             canUseProjectTeamNotes: true,
             sessionNotes: [
                 MobileCaptureSessionNote(
@@ -2765,5 +2768,58 @@ extension MobileCaptureSession {
                 humanReview: nil
             ),
         ]
+    }
+
+    private static var capturePreviewClientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace {
+        let anchor = MobileCaptureTodayTranscriptSourceAnchor(
+            schema: "quipsly-transcript-derived-note-v1",
+            roomId: "room-preview-coaching-ready",
+            transcriptJobId: "preview-transcript-job",
+            segmentId: "preview-segment",
+            startSeconds: 3.66,
+            endSeconds: 4.84,
+            providerTextSha256: String(repeating: "a", count: 64),
+            providerSpeakerLabel: "Speaker",
+            effectiveTextSnapshot: "Ask what would make this session genuinely useful.",
+            effectiveSpeakerLabelSnapshot: "Charlie",
+            acceptedCorrectionId: nil,
+            recordingAssetId: "preview-recording-asset",
+            playbackSourceId: "preview-playback-source"
+        )
+        let note = MobileCaptureClientFollowUpNote(
+            id: "preview-follow-up-note",
+            title: "Opening question",
+            body: "Ask what would make this session genuinely useful.",
+            kind: "DECISION",
+            sourceAnchor: anchor
+        )
+        let output = MobileCaptureClientFollowUp(
+            id: "preview-client-follow-up",
+            status: "DRAFT",
+            title: "Follow-up — Leadership coaching session",
+            intro: "A private draft assembled from the reviewed Session records.",
+            nextSessionFocus: "Return to the question after trying one concrete change.",
+            contentSha256: String(repeating: "c", count: 64),
+            revision: 1,
+            releasedAt: nil,
+            recipientLabel: "Homer",
+            openedAt: nil,
+            canAcknowledge: false,
+            notes: [note],
+            goals: [],
+            tasks: []
+        )
+        return MobileCaptureClientFollowUpWorkspace(
+            role: "COACH",
+            room: MobileCaptureClientFollowUpRoom(
+                id: "room-preview-coaching-ready",
+                title: "Leadership coaching session",
+                scheduledStart: nil,
+                coach: MobileCaptureClientFollowUpParty(id: "preview-coach", label: "Charlie"),
+                client: MobileCaptureClientFollowUpParty(id: "preview-client", label: "Homer")
+            ),
+            eligible: MobileCaptureClientFollowUpEligible(notes: [note], goals: [], tasks: []),
+            output: output
+        )
     }
 }

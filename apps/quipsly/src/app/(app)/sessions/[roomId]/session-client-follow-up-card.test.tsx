@@ -20,6 +20,22 @@ const room = {
   client: { id: "client-1", label: "Client Test" },
 };
 
+const sourceAnchor = (schema: string, segmentId: string) => ({
+  schema,
+  roomId: "room-1",
+  transcriptJobId: "transcript-1",
+  segmentId,
+  startSeconds: 63.4,
+  endSeconds: 68.9,
+  providerTextSha256: "b".repeat(64),
+  providerSpeakerLabel: "Speaker 2",
+  effectiveTextSnapshot: "I will rehearse the boundary once and bring the evidence back.",
+  effectiveSpeakerLabelSnapshot: "Client Test",
+  acceptedCorrectionId: "correction-1",
+  recordingAssetId: "asset-1",
+  playbackSourceId: "playback-1",
+});
+
 const eligible = {
   notes: [
     {
@@ -27,6 +43,7 @@ const eligible = {
       title: "Practice evidence",
       body: "Bring one concrete example.",
       kind: "FOLLOW_UP",
+      sourceAnchor: sourceAnchor("quipsly-transcript-derived-note-v1", "note-segment"),
       revisionCount: 1,
       updatedAt: "2026-07-31T17:00:00.000Z",
     },
@@ -39,6 +56,7 @@ const eligible = {
       status: "OPEN",
       dueAt: null,
       completedAt: null,
+      sourceAnchor: sourceAnchor("quipsly-transcript-derived-task-v1", "task-segment"),
       updatedAt: "2026-07-31T17:00:00.000Z",
     },
   ],
@@ -50,6 +68,7 @@ const eligible = {
       status: "ACTIVE",
       targetAt: null,
       achievedAt: null,
+      sourceAnchor: sourceAnchor("quipsly-transcript-derived-goal-v1", "goal-segment"),
       updatedAt: "2026-07-31T17:00:00.000Z",
     },
   ],
@@ -81,6 +100,7 @@ const releasedOutput = {
         title: "Practice evidence",
         body: "Bring one concrete example.",
         kind: "FOLLOW_UP",
+        sourceAnchor: sourceAnchor("quipsly-transcript-derived-note-v1", "note-segment"),
       },
     ],
     tasks: [
@@ -90,6 +110,7 @@ const releasedOutput = {
         detail: "Write down what changed.",
         status: "OPEN",
         dueAt: null,
+        sourceAnchor: sourceAnchor("quipsly-transcript-derived-task-v1", "task-segment"),
       },
     ],
     goals: [
@@ -99,6 +120,7 @@ const releasedOutput = {
         description: "Prefer repeatable evidence.",
         status: "ACTIVE",
         targetAt: null,
+        sourceAnchor: sourceAnchor("quipsly-transcript-derived-goal-v1", "goal-segment"),
       },
     ],
     nextSessionFocus: "Review the rehearsal evidence.",
@@ -166,6 +188,7 @@ describe("SessionClientFollowUpCard", () => {
     expect(
       screen.getByText(/3 canonical records selected/i),
     ).toBeInTheDocument();
+    expect(screen.getAllByText(/Includes exact source 01:03–01:08/i)).toHaveLength(3);
 
     await user.click(
       screen.getByRole("button", { name: /create private draft/i }),
@@ -233,6 +256,24 @@ describe("SessionClientFollowUpCard", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Bring one concrete example.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Return to exact source for Practice evidence at 01:03" }),
+    ).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript#transcript-segment-note-segment",
+    );
+    expect(
+      screen.getByRole("link", { name: "Return to exact source for Run one protected rehearsal at 01:03" }),
+    ).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript#transcript-segment-task-segment",
+    );
+    expect(
+      screen.getByRole("link", { name: "Return to exact source for Use a sustainable boundary at 01:03" }),
+    ).toHaveAttribute(
+      "href",
+      "/sessions/room-1?mode=transcript#transcript-segment-goal-segment",
+    );
     expect(
       screen.queryByRole("button", { name: /create private draft/i }),
     ).not.toBeInTheDocument();

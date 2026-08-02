@@ -1242,6 +1242,55 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testCoachFollowUpPreservesExactSourceWithoutReleasingPreview() throws {
+        app.buttons["CaptureOpenNextSessionButton"].tap()
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+
+        let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
+        reveal(followUp)
+        XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["Private revision 1"].waitForExistence(timeout: 5),
+            "The coach must see the exact private revision before reviewing or releasing it."
+        )
+
+        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
+        let source = app.descendants(matching: .any)["CaptureClientFollowUpSource_note_preview-follow-up-note"].firstMatch
+        revealBelow(source, in: recorderScroll)
+        let sourceBoundaryScreenshot = XCTAttachment(screenshot: app.screenshot())
+        sourceBoundaryScreenshot.name = "Coach follow-up exact source boundary"
+        sourceBoundaryScreenshot.lifetime = .keepAlways
+        add(sourceBoundaryScreenshot)
+        XCTAssertTrue(
+            source.waitForExistence(timeout: 5),
+            "The immutable coaching follow-up must retain a reachable exact-source control.\n\(app.debugDescription)"
+        )
+        XCTAssertTrue(source.label.contains("Return to exact source for Opening question at 00:03"))
+        source.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSegment_preview-segment"].waitForExistence(timeout: 5))
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+
+        let back = app.navigationBars["Transcript review"].buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+
+        let save = app.buttons["CaptureCoachFollowUpSave"]
+        revealBelow(save, in: recorderScroll)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertFalse(save.isEnabled, "Preview may inspect the canonical draft but must not save another revision.")
+        let release = app.buttons["CaptureCoachFollowUpRelease"]
+        revealBelow(release, in: recorderScroll)
+        XCTAssertTrue(release.waitForExistence(timeout: 5))
+        XCTAssertFalse(release.isEnabled, "Preview must not release a coaching follow-up.")
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
@@ -2082,6 +2131,31 @@ final class CaptureExperienceUITests: XCTestCase {
                    element.frame.maxY <= visibleBottom {
                     return
                 }
+            }
+        }
+    }
+
+    private func revealBelow(_ element: XCUIElement, in scrollSurface: XCUIElement) {
+        let visibleBottom = app.frame.maxY - 96
+        for _ in 0..<16 {
+            if element.exists,
+               element.isHittable,
+               element.frame.minY >= app.frame.minY + 72,
+               element.frame.maxY <= visibleBottom {
+                return
+            }
+            if scrollSurface.exists {
+                scrollSurface
+                    .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                    .press(
+                        forDuration: 0.05,
+                        thenDragTo: scrollSurface.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)
+                        )
+                    )
+                RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+            } else {
+                app.swipeUp()
             }
         }
     }

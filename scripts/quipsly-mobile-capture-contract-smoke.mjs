@@ -956,6 +956,9 @@ function checkTranscriptCorrectionContractSources() {
   const sessionReviewText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-client.tsx");
   const sessionNotesWorkspaceText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-notes-workspace.tsx");
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
+  const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
+  const clientFollowUpWebText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-client-follow-up-card.tsx");
+  const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
   const workspaceSearchText = sourceText("apps/quipsly/src/lib/server/workspace-search.ts");
@@ -1561,6 +1564,23 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave"),
     "packetNoteCandidateExplicitMaterializationBoundary",
     "Packet note candidates remain source-linked projections until an actor reviews title, body, purpose, and audience and explicitly creates one canonical CoachingNote against the rechecked packet snapshot.",
+  );
+  expect(
+    clientFollowUpServiceText.includes("readTranscriptDerivedNoteSource")
+      && clientFollowUpServiceText.includes("readTranscriptDerivedTaskSource")
+      && clientFollowUpServiceText.includes("readTranscriptDerivedGoalSource")
+      && clientFollowUpServiceText.includes("sourceAnchorForRoom")
+      && clientFollowUpServiceText.includes("sourceAnchorsRestrictedToSession: true")
+      && clientFollowUpWebText.includes("Includes exact source")
+      && clientFollowUpWebText.includes("mode=transcript#transcript-segment-")
+      && bridgeText.includes("let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?")
+      && mobileComponentsText.includes("CaptureClientFollowUpSource_")
+      && mobileComponentsText.includes("CaptureTranscriptReviewView")
+      && mobileComponentsText.includes("previewOnly || isSaving")
+      && captureExperienceText.includes("capturePreviewClientFollowUpWorkspace")
+      && captureUITestText.includes("testCoachFollowUpPreservesExactSourceWithoutReleasingPreview"),
+    "clientSafeFollowUpExactSourceReturn",
+    "Selected client-safe notes and client-owned work preserve bounded same-Session transcript anchors in the immutable follow-up revision, expose exact-source return on Nest and iPhone, and keep preview save/release side effects disabled.",
   );
   expect(
     workPageText.includes("initialSnapshot.tasks.some((task) => task.id === requestedTaskId)")

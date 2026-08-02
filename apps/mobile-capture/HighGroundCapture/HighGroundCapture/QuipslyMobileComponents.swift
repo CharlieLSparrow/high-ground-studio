@@ -466,13 +466,56 @@ struct CaptureSessionContextDraft: Codable, Equatable {
 }
 
 
+private func mobileFollowUpTime(_ value: TimeInterval) -> String {
+    let total = max(0, Int(value.rounded(.down)))
+    let hours = total / 3_600
+    let minutes = (total % 3_600) / 60
+    let seconds = total % 60
+    return hours > 0
+        ? String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        : String(format: "%02d:%02d", minutes, seconds)
+}
+
 private struct MobileClientFollowUpSnapshot: View {
     let followUp: MobileCaptureClientFollowUp
+    let session: MobileCaptureSession
+    let previewOnly: Bool
     var showsOpenStatus = true
 
     private func nonempty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    @ViewBuilder
+    private func exactSourceLink(
+        _ anchor: MobileCaptureTodayTranscriptSourceAnchor?,
+        recordID: String,
+        recordLabel: String
+    ) -> some View {
+        if let anchor, anchor.roomId == session.callRoomId {
+            NavigationLink {
+                CaptureTranscriptReviewView(
+                    roomID: anchor.roomId,
+                    sessionTitle: session.displayTitle,
+                    recording: nil,
+                    previewOnly: previewOnly,
+                    focusSegmentID: anchor.segmentId,
+                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true
+                )
+            } label: {
+                Label(
+                    "Exact source · \(mobileFollowUpTime(anchor.startSeconds))–\(mobileFollowUpTime(anchor.endSeconds))",
+                    systemImage: "play.fill"
+                )
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityIdentifier("CaptureClientFollowUpSource_\(recordID)")
+            .accessibilityLabel("Return to exact source for \(recordLabel) at \(mobileFollowUpTime(anchor.startSeconds))")
+            .accessibilityHint("Opens the exact transcript segment and permitted Session playback without changing the released snapshot or starting playback.")
+        }
     }
 
     var body: some View {
@@ -490,6 +533,7 @@ private struct MobileClientFollowUpSnapshot: View {
                     )
                 }
             }
+            .accessibilityIdentifier("CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)")
 
             Text(followUp.title)
                 .font(.headline)
@@ -517,6 +561,11 @@ private struct MobileClientFollowUpSnapshot: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                            exactSourceLink(
+                                note.sourceAnchor,
+                                recordID: "note_\(note.id)",
+                                recordLabel: nonempty(note.title) ?? "Session note"
+                            )
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -541,6 +590,11 @@ private struct MobileClientFollowUpSnapshot: View {
                                 Text(goal.status.replacingOccurrences(of: "_", with: " ").capitalized)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                exactSourceLink(
+                                    goal.sourceAnchor,
+                                    recordID: "goal_\(goal.id)",
+                                    recordLabel: goal.title
+                                )
                             }
                         }
                     }
@@ -565,6 +619,11 @@ private struct MobileClientFollowUpSnapshot: View {
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
+                                exactSourceLink(
+                                    task.sourceAnchor,
+                                    recordID: "task_\(task.id)",
+                                    recordLabel: task.title
+                                )
                             }
                         }
                     }
@@ -592,13 +651,13 @@ private struct MobileClientFollowUpSnapshot: View {
         }
         .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityIdentifier("CaptureClientFollowUpSnapshot_\(followUp.id)_r\(followUp.revision)")
     }
 }
 
 struct MobileClientFollowUpCard: View {
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
+    let previewOnly: Bool
     @State private var isExpanded = true
     @State private var isConfirmingOpen = false
 
@@ -606,7 +665,11 @@ struct MobileClientFollowUpCard: View {
         if let followUp = session.clientFollowUp {
             DisclosureGroup(isExpanded: $isExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
-                    MobileClientFollowUpSnapshot(followUp: followUp)
+                    MobileClientFollowUpSnapshot(
+                        followUp: followUp,
+                        session: session,
+                        previewOnly: previewOnly
+                    )
 
                     if followUp.canAcknowledge {
                         Button {
@@ -667,6 +730,7 @@ struct MobileCoachClientFollowUpCard: View {
 
     let session: MobileCaptureSession
     @ObservedObject var sessionClient: CaptureSessionClient
+    let previewOnly: Bool
     @State private var isExpanded = true
     @State private var draft = MobileCaptureClientFollowUpDraft(
         title: "",
@@ -703,6 +767,14 @@ struct MobileCoachClientFollowUpCard: View {
         )
     }
 
+    private func selectionDetail(
+        _ detail: String,
+        source: MobileCaptureTodayTranscriptSourceAnchor?
+    ) -> String {
+        guard let source, source.roomId == session.callRoomId else { return detail }
+        return "\(detail) · exact source \(mobileFollowUpTime(source.startSeconds))–\(mobileFollowUpTime(source.endSeconds)) will be included"
+    }
+
     var body: some View {
         if let workspace, workspace.isCoach {
             DisclosureGroup(isExpanded: $isExpanded) {
@@ -723,7 +795,12 @@ struct MobileCoachClientFollowUpCard: View {
                             Text(output.status == "DRAFT" ? "Exact private server snapshot" : "Latest released server snapshot")
                                 .font(.caption.bold())
                                 .foregroundStyle(.secondary)
-                            MobileClientFollowUpSnapshot(followUp: output, showsOpenStatus: false)
+                            MobileClientFollowUpSnapshot(
+                                followUp: output,
+                                session: session,
+                                previewOnly: previewOnly,
+                                showsOpenStatus: false
+                            )
                         }
                     }
 
@@ -763,19 +840,25 @@ struct MobileCoachClientFollowUpCard: View {
                         MobileCoachFollowUpSelectionSection(
                             title: "Client-safe notes",
                             systemImage: "checkmark.shield",
-                            rows: eligible.notes.map { ($0.id, $0.title ?? "Session note", $0.body) },
+                            rows: eligible.notes.map {
+                                ($0.id, $0.title ?? "Session note", selectionDetail($0.body, source: $0.sourceAnchor))
+                            },
                             selected: { selectionBinding(\.noteIDs, id: $0) }
                         )
                         MobileCoachFollowUpSelectionSection(
                             title: "Client-owned goals",
                             systemImage: "target",
-                            rows: eligible.goals.map { ($0.id, $0.title, $0.status.replacingOccurrences(of: "_", with: " ").capitalized) },
+                            rows: eligible.goals.map {
+                                ($0.id, $0.title, selectionDetail($0.status.replacingOccurrences(of: "_", with: " ").capitalized, source: $0.sourceAnchor))
+                            },
                             selected: { selectionBinding(\.goalIDs, id: $0) }
                         )
                         MobileCoachFollowUpSelectionSection(
                             title: "Client-owned commitments",
                             systemImage: "checklist",
-                            rows: eligible.tasks.map { ($0.id, $0.title, $0.detail ?? $0.status.replacingOccurrences(of: "_", with: " ").capitalized) },
+                            rows: eligible.tasks.map {
+                                ($0.id, $0.title, selectionDetail($0.detail ?? $0.status.replacingOccurrences(of: "_", with: " ").capitalized, source: $0.sourceAnchor))
+                            },
                             selected: { selectionBinding(\.taskIDs, id: $0) }
                         )
                     }
@@ -808,7 +891,7 @@ struct MobileCoachClientFollowUpCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.teal)
-                    .disabled(isSaving || isReleasing || !draft.isValid || !AuthManager.shared.networkActionsAllowed)
+                    .disabled(previewOnly || isSaving || isReleasing || !draft.isValid || !AuthManager.shared.networkActionsAllowed)
                     .accessibilityIdentifier("CaptureCoachFollowUpSave")
                     .accessibilityHint("Saves a new immutable private revision in Nest. It does not release or send the follow-up.")
 
@@ -837,7 +920,7 @@ struct MobileCoachClientFollowUpCard: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
-                            .disabled(!releaseConfirmed || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
+                            .disabled(previewOnly || !releaseConfirmed || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
                             .accessibilityIdentifier("CaptureCoachFollowUpRelease")
                         }
                         .padding(10)

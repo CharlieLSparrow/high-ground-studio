@@ -3,6 +3,11 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import {
+  readTranscriptDerivedGoalSource,
+  readTranscriptDerivedNoteSource,
+  readTranscriptDerivedTaskSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { sessionAccessWhere, type SessionAccessActor } from "./session-access";
 
@@ -241,6 +246,7 @@ async function loadEligibleRecords(client: RestoreClient, room: any) {
         title: true,
         body: true,
         kind: true,
+        sourceJson: true,
         updatedAt: true,
         _count: { select: { revisions: true } },
       },
@@ -269,6 +275,7 @@ async function loadEligibleRecords(client: RestoreClient, room: any) {
         status: true,
         targetAt: true,
         achievedAt: true,
+        sourceJson: true,
         updatedAt: true,
       },
     }),
@@ -281,6 +288,7 @@ async function loadEligibleRecords(client: RestoreClient, room: any) {
 
 function eligibleSummary(
   records: Awaited<ReturnType<typeof loadEligibleRecords>>,
+  roomId: string,
 ) {
   return {
     notes: records.notes.map((note: any) => ({
@@ -288,6 +296,7 @@ function eligibleSummary(
       title: note.title,
       body: note.body,
       kind: note.kind,
+      sourceAnchor: sourceAnchorForRoom(readTranscriptDerivedNoteSource(note.sourceJson), roomId),
       revisionCount: note._count.revisions,
       updatedAt: note.updatedAt.toISOString(),
     })),
@@ -298,6 +307,7 @@ function eligibleSummary(
       status: task.status,
       dueAt: task.dueAt?.toISOString() ?? null,
       completedAt: task.completedAt?.toISOString() ?? null,
+      sourceAnchor: sourceAnchorForRoom(readTranscriptDerivedTaskSource(task.sourceJson), roomId),
       updatedAt: task.updatedAt.toISOString(),
     })),
     goals: records.goals.map((goal: any) => ({
@@ -307,9 +317,14 @@ function eligibleSummary(
       status: goal.status,
       targetAt: goal.targetAt?.toISOString() ?? null,
       achievedAt: goal.achievedAt?.toISOString() ?? null,
+      sourceAnchor: sourceAnchorForRoom(readTranscriptDerivedGoalSource(goal.sourceJson), roomId),
       updatedAt: goal.updatedAt.toISOString(),
     })),
   };
+}
+
+function sourceAnchorForRoom<T extends { roomId: string }>(anchor: T | null, roomId: string): T | null {
+  return anchor?.roomId === roomId ? anchor : null;
 }
 
 function choose<T extends { id: string }>(
@@ -357,6 +372,18 @@ function buildDraftContent(input: {
   const notes = choose(input.records.notes, input.selected.noteIds, "note");
   const tasks = choose(input.records.tasks, input.selected.taskIds, "task");
   const goals = choose(input.records.goals, input.selected.goalIds, "goal");
+  const noteSourceAnchor = (note: any) => sourceAnchorForRoom(
+    readTranscriptDerivedNoteSource(note.sourceJson),
+    input.room.id,
+  );
+  const taskSourceAnchor = (task: any) => sourceAnchorForRoom(
+    readTranscriptDerivedTaskSource(task.sourceJson),
+    input.room.id,
+  );
+  const goalSourceAnchor = (goal: any) => sourceAnchorForRoom(
+    readTranscriptDerivedGoalSource(goal.sourceJson),
+    input.room.id,
+  );
   if (
     notes.length + tasks.length + goals.length === 0 &&
     !input.intro &&
@@ -383,6 +410,7 @@ function buildDraftContent(input: {
       title: note.title,
       body: note.body,
       kind: note.kind,
+      sourceAnchor: noteSourceAnchor(note),
     })),
     goals: goals.map((goal: any) => ({
       id: goal.id,
@@ -390,6 +418,7 @@ function buildDraftContent(input: {
       description: goal.description,
       status: goal.status,
       targetAt: goal.targetAt?.toISOString() ?? null,
+      sourceAnchor: goalSourceAnchor(goal),
     })),
     tasks: tasks.map((task: any) => ({
       id: task.id,
@@ -397,6 +426,7 @@ function buildDraftContent(input: {
       detail: task.detail,
       status: task.status,
       dueAt: task.dueAt?.toISOString() ?? null,
+      sourceAnchor: taskSourceAnchor(task),
     })),
     nextSessionFocus: input.nextSessionFocus || null,
   };
@@ -409,30 +439,36 @@ function buildDraftContent(input: {
         id: note.id,
         revisionCount: note._count.revisions,
         updatedAt: note.updatedAt.toISOString(),
+        sourceAnchor: noteSourceAnchor(note),
         contentSha256: clientFollowUpSha256({
           title: note.title,
           body: note.body,
           kind: note.kind,
+          sourceAnchor: noteSourceAnchor(note),
         }),
       })),
       goals: goals.map((goal: any) => ({
         id: goal.id,
         updatedAt: goal.updatedAt.toISOString(),
+        sourceAnchor: goalSourceAnchor(goal),
         contentSha256: clientFollowUpSha256({
           title: goal.title,
           description: goal.description,
           status: goal.status,
           targetAt: goal.targetAt?.toISOString() ?? null,
+          sourceAnchor: goalSourceAnchor(goal),
         }),
       })),
       tasks: tasks.map((task: any) => ({
         id: task.id,
         updatedAt: task.updatedAt.toISOString(),
+        sourceAnchor: taskSourceAnchor(task),
         contentSha256: clientFollowUpSha256({
           title: task.title,
           detail: task.detail,
           status: task.status,
           dueAt: task.dueAt?.toISOString() ?? null,
+          sourceAnchor: taskSourceAnchor(task),
         }),
       })),
     },
@@ -441,6 +477,7 @@ function buildDraftContent(input: {
       sessionSharedNotesIncluded: false,
       projectTeamNotesIncluded: false,
       unreviewedCandidatesIncluded: false,
+      sourceAnchorsRestrictedToSession: true,
       externalMessageSent: false,
       providerCalendarMutated: false,
       publicationPerformed: false,
@@ -497,7 +534,7 @@ export async function readClientFollowUp(
           "Client",
       },
     },
-    eligible: records ? eligibleSummary(records) : null,
+    eligible: records ? eligibleSummary(records, boundary.room.id) : null,
     output: serializeOutput(output),
     boundaries: {
       draftsVisibleToClient: false,

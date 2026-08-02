@@ -2714,40 +2714,17 @@ private struct CaptureTranscriptSegmentCard: View {
             if let reason = captureTranscriptNonempty(proposal.reason) {
                 Text("Reason: \(reason)").font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
-                Button("Accept after listening") {
-                    guard let playbackPosition else { return }
-                    Task {
-                        await client.reviewAIProposal(
-                            roomID: roomID,
-                            segment: segment,
-                            proposal: proposal,
-                            decision: "accept",
-                            playbackPosition: playbackPosition,
-                            previewOnly: previewOnly
-                        )
-                    }
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    acceptAIProposalButton(proposal)
+                    rejectAIProposalButton(proposal)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-                .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
-                .accessibilityIdentifier("CaptureTranscriptAcceptAIButton")
-
-                Button("Reject") {
-                    Task {
-                        await client.reviewAIProposal(
-                            roomID: roomID,
-                            segment: segment,
-                            proposal: proposal,
-                            decision: "reject",
-                            playbackPosition: nil,
-                            previewOnly: previewOnly
-                        )
-                    }
+                VStack(spacing: 8) {
+                    acceptAIProposalButton(proposal)
+                        .frame(maxWidth: .infinity)
+                    rejectAIProposalButton(proposal)
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .disabled(client.isMutating || previewOnly || decisionsLocked)
-                .accessibilityIdentifier("CaptureTranscriptRejectAIButton")
             }
             Text("Until accepted here, this proposal does not change the effective transcript.")
                 .font(.caption2.weight(.semibold))
@@ -2755,6 +2732,52 @@ private struct CaptureTranscriptSegmentCard: View {
         }
         .padding(12)
         .background(Color.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func acceptAIProposalButton(_ proposal: CaptureTranscriptCorrection) -> some View {
+        Button {
+            guard let playbackPosition else { return }
+            Task {
+                await client.reviewAIProposal(
+                    roomID: roomID,
+                    segment: segment,
+                    proposal: proposal,
+                    decision: "accept",
+                    playbackPosition: playbackPosition,
+                    previewOnly: previewOnly
+                )
+            }
+        } label: {
+            Text("Accept after listening")
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.purple)
+        .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
+        .accessibilityIdentifier("CaptureTranscriptAcceptAIButton")
+    }
+
+    private func rejectAIProposalButton(_ proposal: CaptureTranscriptCorrection) -> some View {
+        Button {
+            Task {
+                await client.reviewAIProposal(
+                    roomID: roomID,
+                    segment: segment,
+                    proposal: proposal,
+                    decision: "reject",
+                    playbackPosition: nil,
+                    previewOnly: previewOnly
+                )
+            }
+        } label: {
+            Text("Reject")
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.bordered)
+        .disabled(client.isMutating || previewOnly || decisionsLocked)
+        .accessibilityIdentifier("CaptureTranscriptRejectAIButton")
     }
 
     private var playbackPosition: TimeInterval? {

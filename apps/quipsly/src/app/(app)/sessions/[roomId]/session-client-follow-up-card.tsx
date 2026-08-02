@@ -6,17 +6,35 @@ import {
   ClipboardCheck,
   Eye,
   LockKeyhole,
+  Play,
   RotateCcw,
   Send,
   ShieldCheck,
   Target,
 } from "lucide-react";
 
+type FollowUpSourceAnchor = {
+  schema: string;
+  roomId: string;
+  transcriptJobId: string;
+  segmentId: string;
+  startSeconds: number;
+  endSeconds: number;
+  providerTextSha256: string;
+  providerSpeakerLabel: string | null;
+  effectiveTextSnapshot: string;
+  effectiveSpeakerLabelSnapshot: string | null;
+  acceptedCorrectionId: string | null;
+  recordingAssetId: string;
+  playbackSourceId: string;
+};
+
 type EligibleNote = {
   id: string;
   title: string | null;
   body: string;
   kind: string;
+  sourceAnchor?: FollowUpSourceAnchor | null;
   revisionCount: number;
   updatedAt: string;
 };
@@ -28,6 +46,7 @@ type EligibleTask = {
   status: string;
   dueAt: string | null;
   completedAt: string | null;
+  sourceAnchor?: FollowUpSourceAnchor | null;
   updatedAt: string;
 };
 
@@ -38,6 +57,7 @@ type EligibleGoal = {
   status: string;
   targetAt: string | null;
   achievedAt: string | null;
+  sourceAnchor?: FollowUpSourceAnchor | null;
   updatedAt: string;
 };
 
@@ -66,6 +86,7 @@ type FollowUpOutput = {
       title: string | null;
       body: string;
       kind: string;
+      sourceAnchor?: FollowUpSourceAnchor | null;
     }>;
     tasks?: Array<{
       id: string;
@@ -73,6 +94,7 @@ type FollowUpOutput = {
       detail: string | null;
       status: string;
       dueAt: string | null;
+      sourceAnchor?: FollowUpSourceAnchor | null;
     }>;
     goals?: Array<{
       id: string;
@@ -80,6 +102,7 @@ type FollowUpOutput = {
       description: string | null;
       status: string;
       targetAt: string | null;
+      sourceAnchor?: FollowUpSourceAnchor | null;
     }>;
     nextSessionFocus?: string | null;
   };
@@ -132,6 +155,28 @@ function formatDate(value: string | null | undefined) {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date);
+}
+
+function formatMediaTime(value: number) {
+  const total = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  const hours = Math.floor(total / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const seconds = total % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnchor | null | undefined; recordLabel: string }) {
+  if (!anchor) return null;
+  return <a
+    href={`/sessions/${encodeURIComponent(anchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(anchor.segmentId)}`}
+    className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+    aria-label={`Return to exact source for ${recordLabel} at ${formatMediaTime(anchor.startSeconds)}`}
+  >
+    <Play size={14} aria-hidden="true" />
+    Exact source · {formatMediaTime(anchor.startSeconds)}–{formatMediaTime(anchor.endSeconds)}
+  </a>;
 }
 
 function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
@@ -193,6 +238,10 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
                 <p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-5 text-[#53675a]">
                   {note.body}
                 </p>
+                <FollowUpSourceLink
+                  anchor={note.sourceAnchor}
+                  recordLabel={note.title || "Session note"}
+                />
               </div>
             ))}
           </div>
@@ -227,6 +276,10 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
                     ? ` · target ${formatDate(goal.targetAt)}`
                     : ""}
                 </p>
+                <FollowUpSourceLink
+                  anchor={goal.sourceAnchor}
+                  recordLabel={goal.title}
+                />
               </div>
             ))}
           </div>
@@ -259,6 +312,10 @@ function FollowUpArtifact({ output }: { output: FollowUpOutput }) {
                   {task.status}
                   {task.dueAt ? ` · due ${formatDate(task.dueAt)}` : ""}
                 </p>
+                <FollowUpSourceLink
+                  anchor={task.sourceAnchor}
+                  recordLabel={task.title}
+                />
               </div>
             ))}
           </div>
@@ -640,6 +697,11 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                           <span className="mt-1 block line-clamp-3 text-xs font-semibold leading-5 text-[#5c7163]">
                             {note.body}
                           </span>
+                          {note.sourceAnchor ? (
+                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
+                              Includes exact source {formatMediaTime(note.sourceAnchor.startSeconds)}–{formatMediaTime(note.sourceAnchor.endSeconds)}
+                            </span>
+                          ) : null}
                         </span>
                       </label>
                     ))
@@ -680,6 +742,11 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                               ? ` · target ${formatDate(goal.targetAt)}`
                               : ""}
                           </span>
+                          {goal.sourceAnchor ? (
+                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
+                              Includes exact source {formatMediaTime(goal.sourceAnchor.startSeconds)}–{formatMediaTime(goal.sourceAnchor.endSeconds)}
+                            </span>
+                          ) : null}
                         </span>
                       </label>
                     ))
@@ -720,6 +787,11 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                               ? ` · due ${formatDate(task.dueAt)}`
                               : ""}
                           </span>
+                          {task.sourceAnchor ? (
+                            <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-sky-800">
+                              Includes exact source {formatMediaTime(task.sourceAnchor.startSeconds)}–{formatMediaTime(task.sourceAnchor.endSeconds)}
+                            </span>
+                          ) : null}
                         </span>
                       </label>
                     ))

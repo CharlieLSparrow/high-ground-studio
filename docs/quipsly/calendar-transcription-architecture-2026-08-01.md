@@ -672,6 +672,31 @@ persistence, viewer denial, exact replay and conflict, audience narrowing, and
 zero-residue cleanup. Full evidence is in
 `docs/coordination/2026-08-02-transcript-note-materialization.md`.
 
+## 2026-08-02 client-safe follow-up exact-source checkpoint
+
+The coaching follow-up revision now preserves the typed transcript-derived
+anchor for each deliberately selected client-safe note and client-owned goal or
+task. The anchor is accepted only when it belongs to the same Session, copied
+into the immutable body and source manifest, and covered by both revision
+hashes. A later source-record edit therefore cannot silently rewrite the
+evidence that a coach released.
+
+Nest and Quipsly Capture expose the same exact-source return. The destination
+is the canonical Session transcript surface, not a capability URL, so it
+rechecks the actor's current Session and transcript permission before exposing
+text or playback. The coach sees the included time range while selecting
+records. Preview can inspect the complete source-backed revision while both
+Save and Release remain disabled.
+
+The operated iPhone journey returned from a private coaching follow-up to the
+exact transcript segment, passed accessibility audit, returned to the coaching
+workspace, and proved both mutation controls existed but were unavailable.
+Persisted PostgreSQL acceptance additionally proves source anchors survive
+draft, release, replay, concurrency, and later source edits. Release still
+creates no message, provider-calendar mutation, publication, completion,
+billing action, consent change, or source rewrite. Full evidence is in
+`docs/coordination/2026-08-02-client-safe-follow-up-source-return.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:
