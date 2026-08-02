@@ -1768,6 +1768,10 @@ struct TodayFollowThroughCard: View {
         previewOnly || client.isUsingProtectedCache || client.isMutating || !AuthManager.shared.networkActionsAllowed
     }
 
+    private func focusDecisionDisabled(_ focus: MobileCaptureTodayFocusBlock) -> Bool {
+        previewOnly || client.isMutating || client.pendingFocusDecision(for: focus.id) != nil
+    }
+
     private var reminderDecisionsDisabled: Bool {
         previewOnly || client.isMutating
     }
@@ -1831,12 +1835,65 @@ struct TodayFollowThroughCard: View {
                         Label("Record work", systemImage: "checkmark.circle")
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(decisionsDisabled)
-                    .accessibilityHint("Asks for actual minutes, then completes only this personal focus block. The task or goal remains unchanged.")
+                    .disabled(focusDecisionDisabled(focus))
+                    .accessibilityHint("Asks for actual minutes, protects the decision on this iPhone, then completes only this personal focus block when Nest acknowledges it. The task or goal remains unchanged.")
                     .accessibilityIdentifier("CaptureTodayFocusDoneButton")
                 }
                 .padding(12)
                 .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            if !client.focusDecisions.isEmpty {
+                VStack(alignment: .leading, spacing: 9) {
+                    Label("Protected focus outbox", systemImage: "iphone.and.arrow.forward")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(client.heldFocusDecisionCount > 0 ? Color.orange : Color.indigo)
+                    ForEach(client.focusDecisions) { decision in
+                        let title = client.focusBlocks.first(where: { $0.id == decision.blockID })?.title
+                            ?? "Focus block \(decision.blockID.prefix(8))"
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(title).font(.subheadline.weight(.semibold))
+                            Label(
+                                decision.disposition == .held
+                                    ? "Needs review before Nest can apply it"
+                                    : "Saved on this iPhone · waiting for Nest",
+                                systemImage: decision.disposition == .held
+                                    ? "exclamationmark.triangle.fill"
+                                    : "lock.doc.fill"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(decision.disposition == .held ? Color.orange : Color.indigo)
+                            if let minutes = decision.actualMinutes {
+                                Text("\(minutes) actual minute\(minutes == 1 ? "" : "s") · linked work unchanged")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let message = decision.lastErrorMessage, !message.isEmpty {
+                                Text(message).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+                            }
+                            HStack(spacing: 8) {
+                                Button("Retry") {
+                                    Task { await client.retryFocusDecision(for: decision.blockID) }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                                .accessibilityIdentifier("CaptureTodayFocusDecisionRetry_\(decision.blockID)")
+                                if decision.disposition == .held {
+                                    Button("Discard", role: .destructive) {
+                                        Task { await client.discardHeldFocusDecision(for: decision.blockID) }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(previewOnly || client.isMutating)
+                                    .accessibilityIdentifier("CaptureTodayFocusDecisionDiscard_\(decision.blockID)")
+                                }
+                            }
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("CaptureTodayFocusDecision_\(decision.blockID)")
+                    }
+                }
+                .padding(12)
+                .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             if !client.tasks.isEmpty {
@@ -2589,7 +2646,7 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion records explicit actual minutes and never completes its task or goal. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Focus completion, task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus retries keep one stable operation identity, record explicit actual minutes, and never complete the linked task or goal. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")

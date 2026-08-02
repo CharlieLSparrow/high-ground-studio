@@ -1062,6 +1062,16 @@ final class AuthManager: ObservableObject {
     /// A refresh token must still exist; signing out therefore hides every local
     /// account partition without deleting a source file.
     nonisolated static func currentStoredOwnerID() -> String? {
+        #if DEBUG && targetEnvironment(simulator)
+        // The deterministic UI-test identity is deliberately launch-scoped and
+        // has no network authority. Keep every protected store on the same
+        // explicit owner even when an unsigned simulator build cannot persist
+        // the marker credential in Keychain. Release and physical-device builds
+        // can never enter this path.
+        if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
+            return normalizedOwnerID(previewOwner)
+        }
+        #endif
         guard getKeychainItem(account: "refreshToken") != nil else { return nil }
         return normalizedOwnerID(getKeychainItem(account: "accountOwnerID"))
     }

@@ -987,18 +987,66 @@ describe("mobile Capture Today contract", () => {
 
   it("completes a personal focus block without mutating its task or goal", async () => {
     signedIn();
+    const clientRequestId = "63aeb0ea-8ba7-4b89-b007-d969df3cefe4";
     const tx = { workPlanBlock: {
       findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", actualMinutes: null, sourceJson: {}, updatedAt: expected }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUnique: jest.fn().mockResolvedValue({ status: "COMPLETED", actualMinutes: 35, updatedAt: persisted }),
     } };
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as any);
-    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString() }) }));
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString(), clientRequestId }) }));
     const payload = await response.json();
-    expect(payload).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: 35, boundaries: { completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, providerMutated: false } });
+    expect(payload).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: 35, clientRequestId, receiptId: `mobile-focus-status-${clientRequestId}`, idempotentReplay: false, boundaries: { completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, providerMutated: false } });
     expect(tx).not.toHaveProperty("actionItem");
     expect(tx).not.toHaveProperty("goal");
-    expect(tx.workPlanBlock.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ sourceJson: expect.objectContaining({ planReceipts: [expect.objectContaining({ surface: "ios-capture-today", targetStatusMutated: false })] }) }) }));
+    expect(tx.workPlanBlock.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ sourceJson: expect.objectContaining({
+      lastMobileFocusOperation: expect.objectContaining({ id: `mobile-focus-status-${clientRequestId}`, clientRequestId, blockId: "block-1", expectedUpdatedAt: expected.toISOString(), surface: "ios-capture-today", targetStatusMutated: false }),
+      planReceipts: [expect.objectContaining({ id: `mobile-focus-status-${clientRequestId}`, clientRequestId, blockId: "block-1", expectedUpdatedAt: expected.toISOString(), surface: "ios-capture-today", targetStatusMutated: false })],
+    }) }) }));
+  });
+
+  it("acknowledges an already-applied focus decision after a lost response even beyond bounded receipt history", async () => {
+    signedIn();
+    const clientRequestId = "63aeb0ea-8ba7-4b89-b007-d969df3cefe4";
+    const receiptId = `mobile-focus-status-${clientRequestId}`;
+    const tx = { workPlanBlock: {
+      findFirst: jest.fn().mockResolvedValue({
+        status: "COMPLETED",
+        actualMinutes: 35,
+        updatedAt: persisted,
+        sourceJson: {
+          lastMobileFocusOperation: { id: receiptId, clientRequestId, blockId: "block-1", expectedUpdatedAt: expected.toISOString(), kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", nextStatus: "COMPLETED", actualMinutes: 35 },
+          planReceipts: Array.from({ length: 30 }, (_, index) => ({ id: `newer-plan-receipt-${index}` })),
+        },
+      }),
+      updateMany: jest.fn(),
+      findUnique: jest.fn(),
+    } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString(), clientRequestId }) }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: 35, receiptId, clientRequestId, idempotentReplay: true });
+    expect(tx.workPlanBlock.updateMany).not.toHaveBeenCalled();
+    expect(tx.workPlanBlock.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects reuse of one focus request identity for different actual time", async () => {
+    signedIn();
+    const clientRequestId = "63aeb0ea-8ba7-4b89-b007-d969df3cefe4";
+    const tx = { workPlanBlock: {
+      findFirst: jest.fn().mockResolvedValue({
+        status: "COMPLETED",
+        actualMinutes: 20,
+        updatedAt: persisted,
+        sourceJson: { lastMobileFocusOperation: { id: `mobile-focus-status-${clientRequestId}`, clientRequestId, blockId: "block-1", expectedUpdatedAt: expected.toISOString(), kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", nextStatus: "COMPLETED", actualMinutes: 20 } },
+      }),
+      updateMany: jest.fn(),
+    } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString(), clientRequestId }) }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(tx.workPlanBlock.updateMany).not.toHaveBeenCalled();
   });
 
   it("keeps an installed legacy Capture build working without inventing actual time", async () => {

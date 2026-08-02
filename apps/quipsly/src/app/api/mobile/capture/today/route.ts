@@ -1002,30 +1002,58 @@ export async function POST(request: Request) {
     }
     if (action === "focus-status") {
       const nextStatus = text(input.nextStatus, 20).toUpperCase();
+      const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+      const clientRequestIdWasProvided = Object.prototype.hasOwnProperty.call(input, "clientRequestId");
       const actualMinutes = Number(input.actualMinutes);
       const validActualMinutes = Number.isInteger(actualMinutes) && actualMinutes >= 1 && actualMinutes <= 1_440;
       const actualMinutesWasProvided = Object.prototype.hasOwnProperty.call(input, "actualMinutes");
       if (!["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"].includes(nextStatus)
+          || (clientRequestIdWasProvided && !UUID_PATTERN.test(clientRequestId))
           || (nextStatus === "COMPLETED" && actualMinutesWasProvided && !validActualMinutes)) {
-        return NextResponse.json({ ok: false, error: "Choose a valid focus-block status and record actual minutes for completed work." }, { status: 400 });
+        return NextResponse.json({ ok: false, error: "Choose a valid focus-block status, stable phone request, and actual minutes for completed work." }, { status: 400 });
       }
       // Build 25 predates explicit actual-time capture. Preserve that installed
       // client's ability to finish a block, but never infer actual time from the
       // plan. Current clients always send an explicit value.
       const recordedActualMinutes = nextStatus === "COMPLETED" && validActualMinutes ? actualMinutes : null;
+      const focusReceiptId = clientRequestId
+        ? `mobile-focus-status-${clientRequestId}`
+        : receiptId;
       const result = await prisma.$transaction(async (tx: any) => {
         const current = await tx.workPlanBlock.findFirst({ where: { id, ownerUserId: userId }, select: { status: true, actualMinutes: true, sourceJson: true, updatedAt: true } });
         if (!current) return { kind: "not-found" as const };
-        if (current.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
         const source = record(current.sourceJson);
-        const receipt = { id: receiptId, kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", previousStatus: current.status, nextStatus, previousActualMinutes: current.actualMinutes, actualMinutes: recordedActualMinutes, actualTimeState: nextStatus !== "COMPLETED" ? "not-applicable" : recordedActualMinutes === null ? "not-recorded-legacy-client" : "recorded", changedAt: now.toISOString(), changedByUserId: userId, externalCalendarMutated: false, targetStatusMutated: false };
-        const updated = await tx.workPlanBlock.updateMany({ where: { id, ownerUserId: userId, updatedAt: expected }, data: { status: nextStatus, completedAt: nextStatus === "COMPLETED" ? now : null, actualMinutes: recordedActualMinutes, sourceJson: { ...source, planReceipts: [...receipts(source, "planReceipts"), receipt] } } });
+        const latestMobileFocusOperation = record(source.lastMobileFocusOperation);
+        const priorReceipt = clientRequestId
+          ? latestMobileFocusOperation.id === focusReceiptId
+            ? latestMobileFocusOperation
+            : receipts(source, "planReceipts")
+              .map(record)
+              .find((candidate) => candidate.id === focusReceiptId)
+          : null;
+        if (priorReceipt) {
+          const sameIntent = priorReceipt.kind === "quipsly-work-plan-block-status-v1"
+            && priorReceipt.surface === "ios-capture-today"
+            && priorReceipt.clientRequestId === clientRequestId
+            && priorReceipt.blockId === id
+            && priorReceipt.expectedUpdatedAt === expected.toISOString()
+            && priorReceipt.nextStatus === nextStatus
+            && (priorReceipt.actualMinutes ?? null) === recordedActualMinutes;
+          if (!sameIntent) return { kind: "identity-conflict" as const };
+          if (current.status !== nextStatus || (current.actualMinutes ?? null) !== recordedActualMinutes) {
+            return { kind: "conflict" as const };
+          }
+          return { kind: "saved" as const, idempotentReplay: true, record: current };
+        }
+        if (current.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
+        const receipt = { id: focusReceiptId, clientRequestId: clientRequestId || null, blockId: id, expectedUpdatedAt: expected.toISOString(), kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", previousStatus: current.status, nextStatus, previousActualMinutes: current.actualMinutes, actualMinutes: recordedActualMinutes, actualTimeState: nextStatus !== "COMPLETED" ? "not-applicable" : recordedActualMinutes === null ? "not-recorded-legacy-client" : "recorded", changedAt: now.toISOString(), changedByUserId: userId, externalCalendarMutated: false, targetStatusMutated: false };
+        const updated = await tx.workPlanBlock.updateMany({ where: { id, ownerUserId: userId, updatedAt: expected }, data: { status: nextStatus, completedAt: nextStatus === "COMPLETED" ? now : null, actualMinutes: recordedActualMinutes, sourceJson: { ...source, lastMobileFocusOperation: receipt, planReceipts: [...receipts(source, "planReceipts"), receipt] } } });
         if (updated.count !== 1) return { kind: "conflict" as const };
-        return { kind: "saved" as const, record: await tx.workPlanBlock.findUnique({ where: { id }, select: { status: true, actualMinutes: true, updatedAt: true } }) };
+        return { kind: "saved" as const, idempotentReplay: false, record: await tx.workPlanBlock.findUnique({ where: { id }, select: { status: true, actualMinutes: true, updatedAt: true } }) };
       });
       if (result.kind === "not-found") return NextResponse.json({ ok: false, error: "Only the focus-block owner can change this plan." }, { status: 404 });
-      if (result.kind === "conflict" || !result.record) return NextResponse.json({ ok: false, error: "This focus block changed elsewhere. Refresh Today before deciding again.", code: "CONFLICT" }, { status: 409 });
-      return NextResponse.json({ ok: true, action, id, status: result.record.status, actualMinutes: result.record.actualMinutes, updatedAt: result.record.updatedAt.toISOString(), receiptId, boundaries: responseBoundaries() });
+      if (result.kind === "conflict" || result.kind === "identity-conflict" || !result.record) return NextResponse.json({ ok: false, error: "This focus block changed elsewhere. Refresh Today before deciding again.", code: "CONFLICT" }, { status: 409 });
+      return NextResponse.json({ ok: true, action, id, status: result.record.status, actualMinutes: result.record.actualMinutes, updatedAt: result.record.updatedAt.toISOString(), receiptId: focusReceiptId, clientRequestId: clientRequestId || null, idempotentReplay: result.idempotentReplay, boundaries: responseBoundaries() });
     }
     if (action === "source-annotation-draft") {
       const actorEmail = text(session.user.primaryEmail || session.user.email, 320).toLowerCase();

@@ -1064,6 +1064,54 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTodayShowsProtectedOfflineFocusDecisionAcrossRelaunch() {
+        app.terminate()
+        let owner = "focus-outbox-ui-\(UUID().uuidString.lowercased())"
+        let launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=today",
+            "--capture-share-owner-ui-preview=\(owner)",
+            "--capture-focus-outbox-ui-test",
+        ]
+        app.launchArguments = launchArguments
+        app.launch()
+
+        let decision = app.descendants(matching: .any)[
+            "CaptureTodayFocusDecision_preview-block"
+        ]
+        reveal(decision)
+        XCTAssertTrue(
+            decision.waitForExistence(timeout: 8),
+            "An offline completion must remain visibly protected before Nest acknowledges it. \(app.debugDescription)"
+        )
+        XCTAssertTrue(app.staticTexts["Protected focus outbox"].exists)
+        XCTAssertTrue(app.staticTexts["Saved on this iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(app.staticTexts["35 actual minutes · linked work unchanged"].exists)
+        let retry = app.buttons["CaptureTodayFocusDecisionRetry_preview-block"]
+        XCTAssertTrue(retry.exists)
+        XCTAssertFalse(
+            retry.isEnabled,
+            "The deterministic preview has no network authority and must not fake a retry."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureTodayFocusDecisionDiscard_preview-block"].exists,
+            "A retryable decision is not discardable until Nest reports a review conflict."
+        )
+
+        app.terminate()
+        app.launchArguments = launchArguments
+        app.launch()
+        let recoveredDecision = app.descendants(matching: .any)[
+            "CaptureTodayFocusDecision_preview-block"
+        ]
+        reveal(recoveredDecision)
+        XCTAssertTrue(
+            recoveredDecision.waitForExistence(timeout: 8),
+            "The protected decision must survive a full Capture relaunch."
+        )
+        XCTAssertTrue(app.staticTexts["35 actual minutes · linked work unchanged"].exists)
+    }
+
     func testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks() {
         let card = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
         reveal(card)

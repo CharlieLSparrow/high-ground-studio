@@ -3464,6 +3464,8 @@ final class CaptureTodayClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
     @Published private(set) var isUsingProtectedCache = false
+    @Published private(set) var pendingFocusDecisionCount = 0
+    @Published private(set) var heldFocusDecisionCount = 0
     @Published private(set) var pendingReminderDecisionCount = 0
     @Published private(set) var heldReminderDecisionCount = 0
     @Published private(set) var pendingWorkTagDecisionCount = 0
@@ -3473,9 +3475,11 @@ final class CaptureTodayClient: ObservableObject {
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+    private let focusDecisionOutbox = FocusBlockDecisionOutbox.shared
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
     private let workTagDecisionOutbox = WorkTagDecisionOutbox.shared
     private let writingDraftOutbox = SourceAnnotationDraftOutbox.shared
+    private var isFlushingFocusDecisions = false
     private var isFlushingReminderDecisions = false
     private var isFlushingWorkTagDecisions = false
     private var isFlushingWritingDraftDecisions = false
@@ -3491,10 +3495,15 @@ final class CaptureTodayClient: ObservableObject {
     var tasks: [MobileCaptureTodayTask] { brief?.tasks ?? [] }
     var goals: [MobileCaptureTodayGoal] { brief?.goals ?? [] }
     var focusBlocks: [MobileCaptureTodayFocusBlock] { brief?.focusBlocks ?? [] }
+    var focusDecisions: [PendingFocusBlockDecision] { focusDecisionOutbox.entries }
     var weeklyReview: MobileCaptureWeeklyReview? { brief?.weeklyReview }
     var transcriptReviews: [MobileCaptureTodayTranscriptReview] { brief?.transcriptReviews ?? [] }
     var sourceAnnotations: [MobileCaptureTodaySourceAnnotation] { brief?.sourceAnnotations ?? [] }
     var weeklyPlan: MobileCaptureTodayWeeklyPlan? { brief?.weeklyPlan }
+
+    func pendingFocusDecision(for blockID: String) -> PendingFocusBlockDecision? {
+        focusDecisionOutbox.decision(forBlockID: blockID)
+    }
 
     func pendingReminderDecision(for taskID: String) -> PendingTaskReminderDecision? {
         reminderDecisionOutbox.decision(forTaskID: taskID)
@@ -3569,10 +3578,32 @@ final class CaptureTodayClient: ObservableObject {
     }
 
     func loadPreview() {
+        let now = Date()
+        if CaptureLaunchConfiguration.usesFocusOutboxUITest,
+           let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
+            // The App installs the simulator credential before SwiftUI builds
+            // this client. Activate the same explicit partition here as well
+            // so the test proves relaunch recovery instead of depending on an
+            // observer having existed when the identity notification fired.
+            focusDecisionOutbox.activateOwner(previewOwner)
+            if focusDecisionOutbox.decision(forBlockID: "preview-block") == nil {
+                do {
+                    _ = try focusDecisionOutbox.enqueue(
+                        blockID: "preview-block",
+                        nextStatus: "COMPLETED",
+                        actualMinutes: 35,
+                        expectedUpdatedAt: ISO8601DateFormatter().string(from: now),
+                        capturedAt: now
+                    )
+                } catch {
+                    errorMessage = "Focus outbox UI proof could not stage its protected decision: \(error.localizedDescription)"
+                }
+            }
+        }
+        publishFocusDecisionCounts()
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
         publishWritingDraftDecisionCounts()
-        let now = Date()
         let start = ISO8601DateFormatter().string(from: now.addingTimeInterval(1_800))
         let end = ISO8601DateFormatter().string(from: now.addingTimeInterval(4_800))
         brief = MobileCaptureTodayResponse(
@@ -3661,11 +3692,15 @@ final class CaptureTodayClient: ObservableObject {
             boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false)
         )
         isUsingProtectedCache = false
-        errorMessage = nil
+        if !CaptureLaunchConfiguration.usesFocusOutboxUITest
+            || focusDecisionOutbox.decision(forBlockID: "preview-block") != nil {
+            errorMessage = nil
+        }
     }
 
     func load() async {
         guard !isLoading, let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return }
+        publishFocusDecisionCounts()
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
         publishWritingDraftDecisionCounts()
@@ -3696,10 +3731,11 @@ final class CaptureTodayClient: ObservableObject {
                     requestPermissionIfNeeded: false
                 )
             }
+            let synchronizedFocus = await flushFocusDecisions()
             let synchronizedReminders = await flushReminderDecisions()
             let synchronizedTags = await flushWorkTagDecisions()
             let synchronizedWritingDrafts = await flushWritingDraftDecisions()
-            if synchronizedReminders || synchronizedTags || synchronizedWritingDrafts {
+            if synchronizedFocus || synchronizedReminders || synchronizedTags || synchronizedWritingDrafts {
                 Task { [weak self] in
                     await self?.load()
                 }
@@ -3707,7 +3743,7 @@ final class CaptureTodayClient: ObservableObject {
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing a protected Today snapshot; tags and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
+                ? "Nest is unavailable. Showing a protected Today snapshot; focus completion, reminders, tags, and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
                 : error.localizedDescription
         }
     }
@@ -4076,13 +4112,56 @@ final class CaptureTodayClient: ObservableObject {
     }
 
     func setFocusStatus(_ block: MobileCaptureTodayFocusBlock, status: String, actualMinutes: Int? = nil) async -> Bool {
-        await mutate(
-            action: "focus-status",
-            id: block.id,
-            nextStatus: status,
-            expectedUpdatedAt: block.updatedAt,
-            additionalFields: actualMinutes.map { ["actualMinutes": $0] } ?? [:]
-        )
+        do {
+            let decision = try focusDecisionOutbox.enqueue(
+                blockID: block.id,
+                nextStatus: status,
+                actualMinutes: actualMinutes,
+                expectedUpdatedAt: block.updatedAt
+            )
+            publishFocusDecisionCounts()
+            guard AuthManager.shared.networkActionsAllowed else {
+                errorMessage = "Actual time is protected on this iPhone and queued for Nest. The linked task and goal remain unchanged."
+                return true
+            }
+            isMutating = true
+            defer { isMutating = false }
+            let synchronized = await syncFocusDecision(decision)
+            if synchronized {
+                errorMessage = nil
+                await load()
+            }
+            // The durable phone ledger is the offline success boundary even
+            // when delivery is retryable or held for conflict review.
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retryFocusDecision(for blockID: String) async {
+        guard let decision = focusDecisionOutbox.decision(forBlockID: blockID) else { return }
+        if decision.disposition == .held {
+            focusDecisionOutbox.releaseForRetry(decision.id)
+        }
+        publishFocusDecisionCounts()
+        guard AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "The focus decision remains protected for retry when Nest reconnects."
+            return
+        }
+        isMutating = true
+        defer { isMutating = false }
+        _ = await syncFocusDecision(focusDecisionOutbox.decision(forBlockID: blockID) ?? decision)
+        await load()
+    }
+
+    func discardHeldFocusDecision(for blockID: String) async {
+        guard let decision = focusDecisionOutbox.decision(forBlockID: blockID),
+              decision.disposition == .held else { return }
+        focusDecisionOutbox.markAcknowledged(decision.id)
+        publishFocusDecisionCounts()
+        errorMessage = nil
     }
 
     func setSourceAnnotationStatus(_ annotation: MobileCaptureTodaySourceAnnotation, status: String) async -> Bool {
@@ -4340,6 +4419,89 @@ final class CaptureTodayClient: ObservableObject {
     private func publishWritingDraftDecisionCounts() {
         pendingWritingDraftDecisionCount = writingDraftOutbox.pendingCount
         heldWritingDraftDecisionCount = writingDraftOutbox.heldCount
+    }
+
+    @discardableResult
+    private func flushFocusDecisions() async -> Bool {
+        guard !isFlushingFocusDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishFocusDecisionCounts()
+            return false
+        }
+        isFlushingFocusDecisions = true
+        defer {
+            isFlushingFocusDecisions = false
+            publishFocusDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in focusDecisionOutbox.entries where decision.disposition == .pending {
+            if await syncFocusDecision(decision) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncFocusDecision(_ decision: PendingFocusBlockDecision) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var requestBody: [String: Any] = [
+                "action": "focus-status",
+                "id": decision.blockID,
+                "nextStatus": decision.nextStatus,
+                "expectedUpdatedAt": decision.expectedUpdatedAt,
+                "clientRequestId": decision.clientRequestID,
+            ]
+            if let actualMinutes = decision.actualMinutes {
+                requestBody["actualMinutes"] = actualMinutes
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                let message = payload.error ?? "Nest could not reconcile this focus decision."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    focusDecisionOutbox.markRetryable(decision.id, message: message)
+                } else {
+                    focusDecisionOutbox.markHeld(decision.id, code: payload.code, message: message)
+                }
+                errorMessage = message
+                publishFocusDecisionCounts()
+                return false
+            }
+            guard payload.action == "focus-status",
+                  payload.id == decision.blockID,
+                  payload.status == decision.nextStatus,
+                  payload.actualMinutes == decision.actualMinutes,
+                  payload.clientRequestId == decision.clientRequestID,
+                  payload.receiptId == "mobile-focus-status-\(decision.clientRequestID)",
+                  payload.updatedAt?.isEmpty == false,
+                  payload.boundaries?.focusBlockActualTimeExplicitOnly == true,
+                  payload.boundaries?.completingFocusBlockMutatesTarget == false,
+                  payload.boundaries?.externalCalendarMutated == false else {
+                let message = "Nest returned different focus time, identity, or safety boundaries. The protected phone decision is held for review."
+                focusDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
+                errorMessage = message
+                publishFocusDecisionCounts()
+                return false
+            }
+            focusDecisionOutbox.markAcknowledged(decision.id)
+            publishFocusDecisionCounts()
+            return true
+        } catch {
+            focusDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Focus decision remains protected for retry: \(error.localizedDescription)"
+            publishFocusDecisionCounts()
+            return false
+        }
+    }
+
+    private func publishFocusDecisionCounts() {
+        pendingFocusDecisionCount = focusDecisionOutbox.pendingCount
+        heldFocusDecisionCount = focusDecisionOutbox.heldCount
     }
 
     @discardableResult

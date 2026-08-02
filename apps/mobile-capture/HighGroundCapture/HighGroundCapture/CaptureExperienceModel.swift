@@ -113,7 +113,7 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
 }
 
 enum CaptureLaunchConfiguration {
-    private static let shareOwnerPreviewPrefix = "--capture-share-owner-ui-preview="
+    nonisolated private static let shareOwnerPreviewPrefix = "--capture-share-owner-ui-preview="
 
     static var usesLoginPreview: Bool {
         #if DEBUG
@@ -155,6 +155,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesFocusOutboxUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-focus-outbox-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var previewTab: CaptureRootTab? {
         #if DEBUG
         let prefix = "--capture-ui-preview-tab="
@@ -169,7 +180,7 @@ enum CaptureLaunchConfiguration {
 
     /// A simulator-only owner used to exercise the real Share Extension and
     /// protected handoff without a production account or network mutation.
-    static var shareExtensionUITestOwner: String? {
+    nonisolated static var shareExtensionUITestOwner: String? {
         #if DEBUG && targetEnvironment(simulator)
         guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(shareOwnerPreviewPrefix) }) else {
             return nil
