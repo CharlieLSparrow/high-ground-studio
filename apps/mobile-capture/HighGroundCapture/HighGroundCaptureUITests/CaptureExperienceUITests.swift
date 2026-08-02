@@ -1227,9 +1227,27 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(packetTaskAccept)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskReviewSection"].exists)
         XCTAssertTrue(app.buttons["CapturePacketTaskSource_preview-segment"].exists)
-        XCTAssertFalse(packetTaskAccept.isEnabled)
+        XCTAssertTrue(packetTaskAccept.isEnabled, "Preview may inspect task materialization choices while the final write stays disabled.")
         XCTAssertFalse(app.buttons["CapturePacketTaskDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketTaskRejectButton"].isEnabled)
+        packetTaskAccept.tap()
+        XCTAssertTrue(app.textFields["CapturePacketTaskCreateTitleField"].exists)
+        XCTAssertTrue(app.textFields["CapturePacketTaskCreateDetailField"].exists)
+        XCTAssertTrue(app.segmentedControls["CapturePacketTaskOwnerPicker"].exists)
+        XCTAssertTrue(app.switches["CapturePacketTaskDueDateToggle"].exists)
+        XCTAssertTrue(app.buttons["CapturePacketTaskTag_preview-follow-through"].exists)
+        XCTAssertTrue(app.buttons["CapturePacketTaskTag_preview-coaching"].exists)
+        XCTAssertFalse(app.buttons["CapturePacketTaskCreateButton"].isEnabled)
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+        let taskReviewScreenshot = XCTAttachment(screenshot: app.screenshot())
+        taskReviewScreenshot.name = "Transcript task materialization review"
+        taskReviewScreenshot.lifetime = .keepAlways
+        add(taskReviewScreenshot)
+        app.buttons["CapturePacketTaskCancelCreateButton"].tap()
         let editPacketTask = app.buttons["CapturePacketTaskEditButton"]
         XCTAssertTrue(editPacketTask.isEnabled, "Preview may inspect a packet task draft while every review mutation stays disabled.")
         editPacketTask.tap()

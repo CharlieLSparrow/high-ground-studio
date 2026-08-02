@@ -151,10 +151,14 @@ export function candidateReviewRequest(input: {
   title?: string;
   detail?: string;
   note?: string;
+  assignToMe?: boolean;
+  dueAt?: string | null;
+  tagIds?: string[];
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id) return null;
+  const acceptsCanonicalWork = input.decision === "ACCEPT";
 
   return {
     callRoomId: input.candidate.roomId,
@@ -167,6 +171,9 @@ export function candidateReviewRequest(input: {
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.detail !== undefined ? { detail: input.detail } : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    ...(acceptsCanonicalWork && input.assignToMe !== undefined ? { assignToMe: input.assignToMe } : {}),
+    ...(acceptsCanonicalWork && input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
+    ...(acceptsCanonicalWork && input.tagIds !== undefined ? { tagIds: [...new Set(input.tagIds.map((tagId) => tagId.trim()).filter(Boolean))].sort() } : {}),
   };
 }
 

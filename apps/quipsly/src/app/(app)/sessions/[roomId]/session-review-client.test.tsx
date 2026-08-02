@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
-import type { SessionReviewGoalCandidate, SessionReviewPacket } from "./session-review-model";
+import type { SessionReviewCandidate, SessionReviewGoalCandidate, SessionReviewPacket } from "./session-review-model";
 
 jest.mock("./transcript-correction-desk", () => ({ TranscriptCorrectionDesk: () => <div>Exact transcript desk</div> }));
 
@@ -25,6 +25,23 @@ const candidate: SessionReviewGoalCandidate = {
   reviewStatus: "READY_FOR_HUMAN_REVIEW",
   humanApprovalRequired: true,
   committedGoalId: null,
+};
+
+const actionCandidate: SessionReviewCandidate = {
+  id: "action-candidate-1",
+  title: "Send the revised episode outline",
+  detail: "Share the source-backed outline after the coaching review.",
+  transcriptJobId: "job-1",
+  recordingAssetId: "asset-1",
+  roomId: "room-1",
+  packetBuildId: "build-1",
+  segmentId: "segment-1",
+  speakerLabel: "Homer",
+  startSeconds: 12.4,
+  endSeconds: 17.8,
+  reviewStatus: "READY_FOR_HUMAN_REVIEW",
+  humanApprovalRequired: true,
+  committedActionItemId: null,
 };
 
 function packet(goalCandidate = candidate): SessionReviewPacket {
@@ -82,6 +99,18 @@ function packet(goalCandidate = candidate): SessionReviewPacket {
       }],
       actionItems: [],
       nextAction: "Review the packet.",
+    },
+  };
+}
+
+function packetWithAction(candidateValue = actionCandidate): SessionReviewPacket {
+  const value = packet();
+  return {
+    ...value,
+    packet: {
+      ...value.packet!,
+      actionCandidates: [candidateValue],
+      goalCandidates: [],
     },
   };
 }
@@ -352,6 +381,65 @@ describe("Session review goal candidates", () => {
     });
     expect(await screen.findByRole("status")).toHaveTextContent("No task, date, focus block, calendar event, message, or delivery was added");
     expect(screen.getByRole("link", { name: "Open goal" })).toHaveAttribute("href", "/work?goal=goal-1");
+  });
+
+  it("loads late Session tags into the task review form and submits the explicit materialization choices", async () => {
+    const acceptedAction: SessionReviewCandidate = {
+      ...actionCandidate,
+      reviewStatus: "ACCEPTED_AS_ACTION_ITEM",
+      humanApprovalRequired: false,
+      committedActionItemId: "task-1",
+    };
+    const taxonomy = {
+      project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+      tags: [
+        { id: "tag-follow", label: "Follow-through", slug: "follow-through", category: "workflow", projectId: "project-1" },
+        { id: "tag-coaching", label: "Coaching", slug: "coaching", category: "format", projectId: "project-1" },
+      ],
+      catalog: [
+        { id: "tag-follow", label: "Follow-through", slug: "follow-through", category: "workflow", projectId: "project-1" },
+        { id: "tag-coaching", label: "Coaching", slug: "coaching", category: "format", projectId: "project-1" },
+      ],
+      canManage: true,
+      canManageVocabulary: true,
+      updatedAt: "2026-08-01T18:00:00.000Z",
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithAction()))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, actionItem: { id: "task-1", assignedUserId: null, dueAt: null, tagIds: ["tag-follow"] } }))
+      .mockResolvedValueOnce(jsonResponse(packetWithAction(acceptedAction)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    const { rerender } = render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    expect(await screen.findByRole("button", { name: "Review & create task" })).toBeInTheDocument();
+    rerender(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} sessionTaxonomy={taxonomy} />);
+    await user.click(screen.getByRole("button", { name: "Review & create task" }));
+
+    expect(screen.getByRole("checkbox", { name: "Follow-through" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Coaching" })).toBeChecked();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Owner" }), "unassigned");
+    await user.click(screen.getByRole("checkbox", { name: "Coaching" }));
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/mobile/capture/transcripts/packet/actions");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      callRoomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      actionCandidateId: "action-candidate-1",
+      decision: "ACCEPT",
+      title: "Send the revised episode outline",
+      detail: "Share the source-backed outline after the coaching review.",
+      assignToMe: false,
+      dueAt: null,
+      tagIds: ["tag-follow"],
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("One unassigned Quipsly task was created and 1 project tag");
+    expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {

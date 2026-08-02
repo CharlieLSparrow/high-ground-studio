@@ -416,6 +416,20 @@ export async function GET(request: Request) {
         status: true,
         scheduledStart: true,
         scheduledEnd: true,
+        projectId: true,
+        project: {
+          select: {
+            id: true,
+            name: true,
+            tags: {
+              where: { isActive: true, mergedIntoTagId: null },
+              orderBy: [{ label: "asc" }, { id: "asc" }],
+              take: 100,
+              select: { id: true, label: true, slug: true },
+            },
+          },
+        },
+        tagLinks: { select: { tagId: true } },
         booking: {
           select: {
             id: true,
@@ -663,7 +677,19 @@ export async function GET(request: Request) {
           "actionCandidateId",
         ],
         boundary:
-          "Only ACCEPT materializes one unassigned Quipsly ActionItem. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
+          "Only ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
+      },
+      taskMaterialization: {
+        project: room?.project ? { id: room.project.id, name: room.project.name } : null,
+        tags: (room?.project?.tags ?? []).map((tag: any) => ({
+          id: tag.id,
+          label: tag.label,
+          slug: tag.slug,
+          selectedForSession: (room?.tagLinks ?? []).some((link: any) => link.tagId === tag.id),
+        })),
+        ownerChoices: ["ACTOR", "UNASSIGNED"],
+        defaultOwner: "ACTOR",
+        boundary: "This is a review form, not an inference. Tags are active canonical vocabulary from the exact Session project; no reminder, calendar event, delivery, or publication is implied.",
       },
       actionItems: packetActionItems.map((item: any) => ({
         id: item.id,

@@ -29,9 +29,20 @@ describe("session review model", () => {
   });
 
   it("binds every review decision to the packet evidence", () => {
-    expect(candidateReviewRequest({ packet, candidate, decision: "EDIT", title: "Clarified" })).toEqual({
+    expect(candidateReviewRequest({
+      packet,
+      candidate,
+      decision: "ACCEPT",
+      title: "Clarified",
+      assignToMe: true,
+      dueAt: "2026-08-08T18:00:00.000Z",
+      tagIds: [" tag-proof ", "tag-episode", "tag-proof"],
+    })).toEqual({
       callRoomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", summaryNoteId: "summary-1",
-      packetBuildId: "build-1", actionCandidateId: "candidate-1", decision: "EDIT", title: "Clarified",
+      packetBuildId: "build-1", actionCandidateId: "candidate-1", decision: "ACCEPT", title: "Clarified",
+      assignToMe: true,
+      dueAt: "2026-08-08T18:00:00.000Z",
+      tagIds: ["tag-episode", "tag-proof"],
     });
   });
 

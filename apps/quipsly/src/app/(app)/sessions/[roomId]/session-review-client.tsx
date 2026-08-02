@@ -655,19 +655,63 @@ function statusTone(value: string | null | undefined) {
 
 function CandidateCard({
   candidate,
-  packet,
   busy,
   onDecision,
+  projectTags,
+  defaultTagIds,
 }: {
   candidate: SessionReviewCandidate;
-  packet: SessionReviewPacket;
   busy: boolean;
-  onDecision: (candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string }) => void;
+  onDecision: (candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[] }) => void;
+  projectTags: SessionTaxonomy["catalog"];
+  defaultTagIds: string[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState(candidate.title);
   const [detail, setDetail] = useState(candidate.detail);
+  const [assignToMe, setAssignToMe] = useState(true);
+  const [dueLocal, setDueLocal] = useState("");
+  const [tagIds, setTagIds] = useState(defaultTagIds);
+  const defaultTagIdsKey = [...defaultTagIds].sort().join("\u0000");
   const accepted = candidate.committedActionItemId || candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM";
+
+  useEffect(() => {
+    setTitle(candidate.title);
+    setDetail(candidate.detail);
+    setEditing(false);
+    setCreating(false);
+    setAssignToMe(true);
+    setDueLocal("");
+  }, [candidate.detail, candidate.reviewStatus, candidate.title]);
+
+  useEffect(() => {
+    if (!creating) {
+      setTagIds(defaultTagIdsKey ? defaultTagIdsKey.split("\u0000") : []);
+    }
+  }, [creating, defaultTagIdsKey]);
+
+  function toggleTag(tagId: string) {
+    setTagIds((current) => current.includes(tagId)
+      ? current.filter((candidateId) => candidateId !== tagId)
+      : [...current, tagId].sort());
+  }
+
+  function accept() {
+    let dueAt: string | null = null;
+    if (dueLocal) {
+      const parsed = new Date(dueLocal);
+      if (!Number.isFinite(parsed.getTime())) return;
+      dueAt = parsed.toISOString();
+    }
+    onDecision(candidate, "ACCEPT", {
+      title: title.trim(),
+      detail: detail.trim(),
+      assignToMe,
+      dueAt,
+      tagIds,
+    });
+  }
 
   return (
     <article className="rounded-2xl border border-[#e5d5b7] bg-white p-5 shadow-sm">
@@ -682,7 +726,34 @@ function CandidateCard({
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{candidate.detail}</p>
       {accepted ? (
-        <p className="mt-4 flex items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Committed as a Quipsly task. It is still unassigned until someone explicitly assigns it.</p>
+        <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Committed as canonical Quipsly work.{candidate.committedActionItemId ? <Link href={`/work?task=${encodeURIComponent(candidate.committedActionItemId)}`} className="underline">Open task</Link> : null}</p>
+      ) : creating ? (
+        <div className="mt-4 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div><p className="text-xs font-black uppercase tracking-wide text-emerald-950">Create one canonical task</p><p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">Review every field. Nothing is assigned, dated, tagged, reminded, shared, or placed on a calendar unless it is shown here.</p></div>
+          <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Task title
+            <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" />
+          </label>
+          <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Detail <span className="normal-case tracking-normal text-emerald-800">(optional)</span>
+            <textarea value={detail} onChange={(event) => setDetail(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Owner
+              <select value={assignToMe ? "me" : "unassigned"} onChange={(event) => setAssignToMe(event.target.value === "me")} className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]">
+                <option value="me">Me</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+            </label>
+            <label className="block text-xs font-black uppercase tracking-wide text-emerald-950">Due <span className="normal-case tracking-normal text-emerald-800">(optional)</span>
+              <input type="datetime-local" value={dueLocal} onChange={(event) => setDueLocal(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" />
+            </label>
+          </div>
+          {projectTags.length ? <fieldset><legend className="text-xs font-black uppercase tracking-wide text-emerald-950">Project tags <span className="normal-case tracking-normal text-emerald-800">(optional)</span></legend><div className="mt-2 flex flex-wrap gap-2">{projectTags.map((tag) => <label key={tag.id} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950"><input type="checkbox" checked={tagIds.includes(tag.id)} onChange={() => toggleTag(tag.id)} />{tag.label}</label>)}</div></fieldset> : <p className="text-xs font-semibold text-emerald-900">This Session has no active project tags yet. The task will still keep its Session and project identity.</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy || !title.trim()} onClick={accept} className="rounded-full bg-emerald-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Creating…" : "Create task"}</button>
+            <button type="button" disabled={busy} onClick={() => setCreating(false)} className="rounded-full border border-emerald-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-950 disabled:opacity-50">Cancel</button>
+          </div>
+          <p className="text-xs font-bold leading-relaxed text-emerald-950">The exact transcript segment and protected playback source stay attached. Reminder, calendar placement, client delivery, and publication remain separate decisions.</p>
+        </div>
       ) : editing ? (
         <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
           <label className="block text-xs font-black uppercase tracking-wide text-violet-900">Title
@@ -698,13 +769,13 @@ function CandidateCard({
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" disabled={busy} onClick={() => onDecision(candidate, "ACCEPT")} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Accept as task</button>
+          <button type="button" disabled={busy} onClick={() => setCreating(true)} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; create task</button>
           <button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button>
           <button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button>
           <button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button>
         </div>
       )}
-      {!accepted && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Accept as task” writes one unassigned ActionItem. Edit, defer, and reject preserve the review record without creating work, assigning anyone, sending follow-up, or publishing.</p>}
+      {!accepted && !creating && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Review &amp; create task” can write one canonical ActionItem after you inspect owner, due date, and tags. Edit, defer, and reject preserve review history without creating work, assigning anyone, sending follow-up, or publishing.</p>}
     </article>
   );
 }
@@ -999,7 +1070,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
-  async function review(candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string }) {
+  async function review(candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[] }) {
     if (!packet) return;
     const request = candidateReviewRequest({ packet, candidate, decision, ...draft });
     if (!request) {
@@ -1014,10 +1085,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         headers: { "content-type": "application/json" },
         body: JSON.stringify(request),
       });
-      const body = await response.json() as { ok?: boolean; error?: string; actionItem?: { id: string } | null; idempotentReplay?: boolean };
+      const body = await response.json() as { ok?: boolean; error?: string; actionItem?: { id: string; assignedUserId?: string | null; dueAt?: string | null; tagIds?: string[] } | null; idempotentReplay?: boolean };
       if (!response.ok || !body.ok) throw new Error(body.error || "The review decision was not saved.");
       const successMessage = decision === "ACCEPT"
-        ? body.idempotentReplay ? "This candidate was already accepted as one task; nothing was duplicated." : "One unassigned Quipsly task was created from this accepted candidate."
+        ? body.idempotentReplay
+          ? "This exact candidate, owner, due-date, and tag choice was already accepted; nothing was duplicated."
+          : `One ${body.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task was created${body.actionItem?.dueAt ? " with a due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} project tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.`
         : `${humanize(decision)} saved as review state. No task was created.`;
       await load();
       setMessage(successMessage);
@@ -1190,7 +1263,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <section aria-labelledby="candidate-heading">
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-violet-50 p-2 text-violet-700"><ListTodo aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quarantined suggestions</p><h2 id="candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Decide candidate by candidate</h2></div></div>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Task review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can be accepted or turned into a task."}</div> : packet.packet?.actionCandidates.length ? <div className="grid gap-4 xl:grid-cols-2">{packet.packet.actionCandidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} packet={packet} busy={busyCandidateId === candidate.id} onDecision={review} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No transcript action candidates are waiting for human review.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Task review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can be accepted or turned into a task."}</div> : packet.packet?.actionCandidates.length ? <div className="grid gap-4 xl:grid-cols-2">{packet.packet.actionCandidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={review} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No transcript action candidates are waiting for human review.</div>}
         </section>
 
         <section aria-labelledby="goal-candidate-heading">

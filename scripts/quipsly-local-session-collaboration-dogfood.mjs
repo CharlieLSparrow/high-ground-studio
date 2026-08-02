@@ -11,6 +11,12 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "../apps/quipsly/src/lib/mobile-capture-consent-policy.js";
+import {
+  assertNoHorizontalOverflow,
+  clearRenderedSession,
+  loadPlaywright,
+  signInThroughRenderedLogin,
+} from "./lib/retained-qa-browser.mjs";
 
 const enabled = process.env.QUIPSLY_LOCAL_COLLABORATION_DOGFOOD === "1";
 const baseUrl = new URL(
@@ -129,6 +135,15 @@ try {
     },
   });
   fixture.projectId = project.id;
+  const taskTag = await prisma.studioTag.create({
+    data: {
+      projectId: project.id,
+      slug: `follow-through-${nonce}`,
+      label: "Follow-through",
+      description: "Disposable canonical tag for transcript-task dogfood.",
+      isPrivate: true,
+    },
+  });
   await prisma.studioProjectAccessGrant.createMany({
     data: [
       {
@@ -164,6 +179,17 @@ try {
     },
   });
   fixture.roomId = room.id;
+  await prisma.callRoomTagLink.create({
+    data: {
+      roomId: room.id,
+      tagId: taskTag.id,
+      createdByUserId: owner.id,
+      sourceJson: {
+        source: "quipsly-local-session-collaboration-dogfood",
+        disposable: true,
+      },
+    },
+  });
   const participant = await prisma.callParticipant.create({
     data: {
       roomId: room.id,
@@ -435,6 +461,20 @@ try {
     viewerRead.status === 200 && viewerRead.body?.ok === true,
     `Project viewer could not read the disposable packet. HTTP ${viewerRead.status}`,
   );
+  const taskMaterialization = object(viewerRead.body?.packet?.taskMaterialization);
+  const materializationProject = object(taskMaterialization.project);
+  const materializationTags = Array.isArray(taskMaterialization.tags)
+    ? taskMaterialization.tags.map(object)
+    : [];
+  assert(
+    materializationProject.id === project.id &&
+      materializationProject.name === project.name &&
+      taskMaterialization.defaultOwner === "ACTOR" &&
+      materializationTags.length === 1 &&
+      materializationTags[0]?.id === taskTag.id &&
+      materializationTags[0]?.selectedForSession === true,
+    "Packet read did not expose the exact Session project, canonical tag vocabulary, and actor-owned default for review.",
+  );
 
   const laneReviewBody = {
     roomId: room.id,
@@ -502,8 +542,13 @@ try {
     summaryNoteId: summary.id,
     packetBuildId,
     actionCandidateId,
-    decision: "DEFER",
-    note: "Explicitly authorized disposable dogfood decision; no real work was created.",
+    decision: "ACCEPT",
+    title: "Send the reviewed episode outline",
+    detail: "A disposable accepted task used to verify transcript evidence, ownership, due-date, and taxonomy continuity.",
+    assignToMe: true,
+    dueAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+    tagIds: [taskTag.id],
+    note: "Explicitly authorized disposable dogfood acceptance; no real client or episode work is represented.",
   };
   const viewerMutation = await requestJson(
     new URL("/api/mobile/capture/transcripts/packet/actions", baseUrl),
@@ -533,17 +578,59 @@ try {
   assert(
     review.status === 200 &&
       review.body?.ok === true &&
-      review.body?.actionItem === null &&
+      review.body?.actionItem?.assignedUserId &&
+      review.body?.actionItem?.dueAt === reviewBody.dueAt &&
+      review.body?.actionItem?.projectId === project.id &&
+      Array.isArray(review.body?.actionItem?.tagIds) &&
+      review.body.actionItem.tagIds.length === 1 &&
+      review.body.actionItem.tagIds[0] === taskTag.id &&
+      review.body?.actionItem?.source?.schema === "quipsly-transcript-derived-task-v1" &&
+      review.body?.actionItem?.source?.segmentId === segment.id &&
+      review.body?.actionItem?.source?.playbackSourceId === fixture.sourceId &&
+      review.body?.boundaries?.assignedToActor === true &&
+      review.body?.boundaries?.dueDateCreated === true &&
+      review.body?.boundaries?.projectTagsApplied === true &&
       review.body?.boundaries?.canonicalSessionAccess === true &&
       review.body?.boundaries?.canonicalSessionMutationAccess === true &&
       review.body?.boundaries?.sessionAccessRechecked === true,
-    `Active project collaborator could not defer the disposable candidate. HTTP ${review.status}`,
+    `Active project collaborator could not accept the disposable candidate as source-linked work. HTTP ${review.status}`,
+  );
+  const exactReplay = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/actions", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify(reviewBody),
+    },
+  );
+  assert(
+    exactReplay.status === 200 &&
+      exactReplay.body?.idempotentReplay === true &&
+      exactReplay.body?.actionItem?.id === review.body.actionItem.id,
+    "Exact candidate materialization replay did not recover the same canonical task.",
+  );
+  const changedIntent = await requestJson(
+    new URL("/api/mobile/capture/transcripts/packet/actions", baseUrl),
+    {
+      method: "POST",
+      headers: { ...bearer(collaboratorToken), "content-type": "application/json" },
+      body: JSON.stringify({ ...reviewBody, assignToMe: false }),
+    },
+  );
+  assert(
+    changedIntent.status === 409 &&
+      changedIntent.body?.errorCode === "ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT",
+    "Changed owner intent unexpectedly rewrote an already accepted candidate.",
   );
 
-  const [storedSummary, actionCount] = await Promise.all([
+  const [storedSummary, storedActionItems] = await Promise.all([
     prisma.coachingNote.findUnique({ where: { id: summary.id } }),
-    prisma.actionItem.count({ where: { roomId: room.id } }),
+    prisma.actionItem.findMany({
+      where: { roomId: room.id },
+      include: { tagLinks: { include: { tag: true } } },
+    }),
   ]);
+  const actionCount = storedActionItems.length;
   const storedSource = object(storedSummary?.sourceJson);
   const receipts = Array.isArray(storedSource.actionCandidateReviewReceipts)
     ? storedSource.actionCandidateReviewReceipts
@@ -557,11 +644,28 @@ try {
   const storedEmptyLane = storedReviewLanes.find(
     (lane) => object(lane).id === "empty-goals",
   );
-  assert(actionCount === 0, "DEFER unexpectedly materialized an ActionItem.");
   assert(
-    receipts.length === 1 && object(receipts[0]).decision === "DEFER",
-    "Disposable DEFER review receipt was not persisted.",
+    actionCount === 1 &&
+      storedActionItems[0]?.assignedUserId === review.body.actionItem.assignedUserId &&
+      storedActionItems[0]?.dueAt?.toISOString() === reviewBody.dueAt &&
+      storedActionItems[0]?.tagLinks?.[0]?.tag?.id === taskTag.id &&
+      object(storedActionItems[0]?.sourceJson).playbackSourceId === fixture.sourceId,
+    "ACCEPT did not persist exactly one owned, dated, tagged ActionItem with its playback anchor.",
   );
+  assert(
+    receipts.length === 1 &&
+      object(receipts[0]).decision === "ACCEPT" &&
+      object(object(receipts[0]).materializationIntent).assignedUserId === "ACTOR" &&
+      object(receipts[0]).assignmentClaimed === true,
+    "Disposable ACCEPT review receipt did not preserve the exact materialization intent.",
+  );
+  const renderedTask = await inspectRenderedAcceptedTask({
+    roomId: room.id,
+    email: collaboratorEmail,
+    password,
+    title: reviewBody.title,
+    tagLabel: taskTag.label,
+  });
   assert(
     object(storedReviewedLane).status === "APPROVED_FOR_INTERNAL_USE" &&
       object(object(storedReviewedLane).humanReview).externalSideEffects === false,
@@ -870,8 +974,20 @@ try {
     emptyLaneReviewDenied: true,
     actionableLaneReviewPersisted: true,
     laneReviewExternalSideEffects: false,
-    disposableDecision: "DEFER",
+    disposableDecision: "ACCEPT",
     actionItemsCreated: actionCount,
+    acceptedTaskAssignedToActor: true,
+    acceptedTaskDueDatePersisted: true,
+    acceptedTaskTagPersisted: true,
+    acceptedTaskPlaybackAnchorProjected: true,
+    acceptedTaskExactReplayRecovered: true,
+    acceptedTaskChangedIntentRejected: true,
+    packetTaskProjectRead: true,
+    packetTaskActiveTagsRead: true,
+    packetTaskSessionTagsSelectedByDefault: true,
+    acceptedTaskRenderedInSession: renderedTask.session,
+    acceptedTaskRenderedInWork: renderedTask.work,
+    acceptedTaskPhoneWidthNoOverflow: renderedTask.phoneWidthNoOverflow,
     reviewReceiptsPersisted: receipts.length,
     editorSessionNoteCreated: true,
     editorTranscriptNoteCreated: true,
@@ -916,6 +1032,55 @@ process.stdout.write(
   `${JSON.stringify({ ok: true, operation, cleanup }, null, 2)}\n`,
 );
 
+async function inspectRenderedAcceptedTask(input) {
+  const { chromium } = await loadPlaywright();
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    colorScheme: "light",
+    locale: "en-US",
+    timezoneId: "America/Denver",
+    reducedMotion: "reduce",
+  });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const identity = { role: "session-collaboration-editor", email: input.email };
+  try {
+    await signInThroughRenderedLogin({
+      page,
+      baseURL: baseUrl.origin,
+      identity,
+      password: input.password,
+      callbackPath: `/sessions/${input.roomId}?mode=transcript`,
+    });
+    const main = page.getByRole("main").last();
+    await page.getByRole("heading", { name: "Decide candidate by candidate", exact: true }).waitFor({ timeout: 20_000 });
+    const sessionText = await main.innerText();
+    assert(sessionText.includes(input.title), "Rendered Session review lost the accepted task title.");
+    assert(sessionText.includes("Committed as canonical Quipsly work"), "Rendered Session review did not distinguish committed work from a candidate.");
+    await assertNoHorizontalOverflow(main, "desktop accepted transcript task");
+
+    await page.getByRole("link", { name: "Open task", exact: true }).click();
+    await page.waitForURL((url) => url.origin === baseUrl.origin && url.pathname === "/work");
+    await page.getByRole("heading", { name: "Work Queue", exact: true }).waitFor({ timeout: 20_000 });
+    const workText = await page.getByRole("main").last().innerText();
+    assert(workText.includes(input.title), "Rendered Work Queue lost the accepted transcript task.");
+    assert(workText.includes(input.tagLabel), "Rendered Work Queue lost the selected canonical tag.");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${baseUrl.origin}/sessions/${input.roomId}?mode=transcript`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "Decide candidate by candidate", exact: true }).waitFor({ timeout: 20_000 });
+    await assertNoHorizontalOverflow(page.getByRole("main").last(), "phone-width accepted transcript task");
+    assert(pageErrors.length === 0, `Rendered accepted task raised client errors: ${pageErrors.join(" | ")}`);
+    await clearRenderedSession(page, baseUrl.origin, identity.role);
+    return { session: true, work: true, phoneWidthNoOverflow: true };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function cleanupFixture() {
   if (fixture.uploadSessionId) {
     await prisma.mobileCaptureFinalizationReceipt.deleteMany({
@@ -947,7 +1112,7 @@ async function cleanupFixture() {
     },
   });
 
-  const [rooms, projects, workspaces, users, receipts, mediaAssets, sources] = await Promise.all([
+  const [rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, tags, actionTagLinks, roomTagLinks] = await Promise.all([
     prisma.callRoom.count({ where: { id: fixture.roomId } }),
     prisma.studioProject.count({ where: { id: fixture.projectId } }),
     prisma.studioWorkspace.count({ where: { id: fixture.workspaceId } }),
@@ -963,10 +1128,15 @@ async function cleanupFixture() {
     }),
     prisma.studioMediaAsset.count({ where: { id: fixture.mediaAssetId } }),
     prisma.studioVideoSource.count({ where: { id: fixture.sourceId } }),
+    prisma.actionItem.count({ where: { roomId: fixture.roomId } }),
+    prisma.studioTag.count({ where: { projectId: fixture.projectId } }),
+    prisma.actionItemTagLink.count({ where: { actionItem: { roomId: fixture.roomId } } }),
+    prisma.callRoomTagLink.count({ where: { roomId: fixture.roomId } }),
   ]);
+  const remainingCount = rooms + projects + workspaces + users + receipts + mediaAssets + sources + actions + tags + actionTagLinks + roomTagLinks;
   return {
-    ok: rooms + projects + workspaces + users + receipts + mediaAssets + sources === 0,
-    remaining: { rooms, projects, workspaces, users, receipts, mediaAssets, sources },
+    ok: remainingCount === 0,
+    remaining: { rooms, projects, workspaces, users, receipts, mediaAssets, sources, actions, tags, actionTagLinks, roomTagLinks },
   };
 }
 

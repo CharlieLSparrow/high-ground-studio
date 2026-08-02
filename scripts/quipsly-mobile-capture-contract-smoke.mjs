@@ -1517,6 +1517,14 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("CapturePacketTaskReviewSection")
       && nativeText.includes("CapturePacketTaskSource_")
       && nativeText.includes("CapturePacketTaskAcceptButton")
+      && nativeText.includes("CapturePacketTaskCreateButton")
+      && nativeText.includes("CapturePacketTaskOwnerPicker")
+      && nativeText.includes("CapturePacketTaskDueDateToggle")
+      && nativeText.includes("CapturePacketTaskTag_")
+      && nativeText.includes("taskMaterialization")
+      && nativeText.includes('body["assignToMe"]')
+      && nativeText.includes('body["dueAt"]')
+      && nativeText.includes('body["tagIds"]')
       && nativeText.includes("Every other decision creates no task, assignment, date, reminder, calendar event, message, delivery, or publication."),
     "packetGoalCandidateExplicitReviewBoundary",
     "Packet goal-language stays candidate-only until an actor explicitly accepts one exact-source canonical Goal; edit, reject, and defer remain receipt-backed non-work decisions with no implied task, schedule, calendar, message, delivery, or publication.",

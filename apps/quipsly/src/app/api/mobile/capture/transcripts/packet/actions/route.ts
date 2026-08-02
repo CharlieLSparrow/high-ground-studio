@@ -6,11 +6,13 @@ import {
   TRANSCRIPT_PACKET_SOURCE,
   isTranscriptActionReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
+import { TRANSCRIPT_DERIVED_TASK_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
   packetSnapshotMatches,
   packetActionCandidatesFromSource,
+  projectTranscriptSegmentsForPacket,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   type TranscriptActionCandidate,
@@ -25,6 +27,9 @@ const MATERIALIZED_ACTION_SOURCE = "transcript-action-candidate-acceptance";
 const MAX_ACTION_TITLE_LENGTH = 500;
 const MAX_ACTION_DETAIL_LENGTH = 5_000;
 const MAX_REVIEW_NOTE_LENGTH = 2_000;
+const MAX_TAG_COUNT = 24;
+const MAX_TAG_ID_LENGTH = 200;
+const MAX_DUE_DATE_DISTANCE_MS = 10 * 365 * 86_400_000;
 
 class ReviewBoundaryError extends Error {
   constructor(
@@ -54,6 +59,55 @@ function text(value: unknown) {
 
 function hasOwn(value: Record<string, unknown>, key: string) {
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function normalizedTagIds(value: unknown) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_TAG_COUNT) return null;
+  const normalized = value.map((tagId) => text(tagId));
+  if (normalized.some((tagId) => !tagId || tagId.length > MAX_TAG_ID_LENGTH)) return null;
+  return [...new Set(normalized)].sort();
+}
+
+function normalizedDueAt(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const dueAt = new Date(value);
+  if (!Number.isFinite(dueAt.getTime())) return undefined;
+  if (Math.abs(dueAt.getTime() - Date.now()) > MAX_DUE_DATE_DISTANCE_MS) return undefined;
+  return dueAt;
+}
+
+function playbackSourceId(recordingAsset: any) {
+  const promotion = sourceJson(sourceJson(recordingAsset?.localManifestJson).promotion);
+  const sourceId = text(promotion.sourceId);
+  return sourceId && text(promotion.playbackUrl) === `/api/ingest/media/${sourceId}` ? sourceId : "";
+}
+
+function materializationIntent(input: {
+  assignToMe: boolean;
+  dueAt: Date | null;
+  tagIds: string[];
+}) {
+  return {
+    assignedUserId: input.assignToMe ? "ACTOR" : null,
+    dueAt: input.dueAt?.toISOString() ?? null,
+    tagIds: input.tagIds,
+  };
+}
+
+function sameMaterializationIntent(value: unknown, expected: ReturnType<typeof materializationIntent>) {
+  const saved = sourceJson(value);
+  // Receipts created before this richer review surface were always unassigned,
+  // undated, and untagged. Preserve exact replay for that one legacy intent.
+  if (!Object.keys(saved).length) {
+    return expected.assignedUserId === null && expected.dueAt === null && expected.tagIds.length === 0;
+  }
+  const savedTags = normalizedTagIds(saved.tagIds);
+  return (saved.assignedUserId === "ACTOR" ? "ACTOR" : null) === expected.assignedUserId
+    && (text(saved.dueAt) || null) === expected.dueAt
+    && savedTags !== null
+    && JSON.stringify(savedTags) === JSON.stringify(expected.tagIds);
 }
 
 function normalizedDecision(value: unknown) {
@@ -140,14 +194,18 @@ function acceptedActionMatches(item: any, input: {
     && text(source.packetBuildId) === input.packetBuildId;
 }
 
-function responseBoundaries() {
+function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?: boolean; tagsApplied?: boolean } = {}) {
   return {
     humanDecisionRequired: true,
     noExternalAssignment: true,
     noClientDelivery: true,
     noCalendarMutation: true,
     noPublicationClaim: true,
-    acceptCreatesOneUnassignedActionItem: true,
+    acceptCreatesOneCanonicalActionItem: true,
+    assignmentRequiresExplicitActorChoice: true,
+    assignedToActor: input.assignedToActor === true,
+    dueDateCreated: input.dueDateCreated === true,
+    projectTagsApplied: input.tagsApplied === true,
     editRejectDeferCreateNoOpenWork: true,
     recordingAndTranscriptEvidenceRequired: true,
     canonicalSessionAccess: true,
@@ -174,6 +232,9 @@ export async function POST(request: Request) {
   const actionCandidateId = text(body.actionCandidateId);
   const decision = normalizedDecision(body.decision);
   const reviewNote = text(body.note) || null;
+  const assignToMe = body.assignToMe === true;
+  const dueAt = normalizedDueAt(body.dueAt);
+  const tagIds = normalizedTagIds(body.tagIds);
 
   if (!roomId || !transcriptJobId || !recordingAssetId || !summaryNoteId || !packetBuildId || !actionCandidateId) {
     return NextResponse.json(
@@ -193,6 +254,30 @@ export async function POST(request: Request) {
         error: "Choose ACCEPT, EDIT, REJECT, or DEFER.",
         allowedDecisions: TRANSCRIPT_ACTION_REVIEW_DECISIONS,
       },
+      { status: 400 },
+    );
+  }
+  if (hasOwn(body, "assignToMe") && typeof body.assignToMe !== "boolean") {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_ASSIGNMENT_INVALID", error: "assignToMe must be true or false." },
+      { status: 400 },
+    );
+  }
+  if (dueAt === undefined) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_DUE_AT_INVALID", error: "Choose a valid due date within ten years." },
+      { status: 400 },
+    );
+  }
+  if (tagIds === null) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_TAGS_INVALID", error: `Choose at most ${MAX_TAG_COUNT} valid project tags.` },
+      { status: 400 },
+    );
+  }
+  if (decision !== "ACCEPT" && (hasOwn(body, "assignToMe") || hasOwn(body, "dueAt") || hasOwn(body, "tagIds"))) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_MATERIALIZATION_OPTIONS_INVALID", error: "Owner, due date, and tags apply only when accepting a candidate as canonical work." },
       { status: 400 },
     );
   }
@@ -433,6 +518,11 @@ export async function POST(request: Request) {
         );
       }
       validateCandidateEvidence({ candidate, roomId, transcriptJobId, recordingAssetId, packetBuildId });
+      const projectedSegment = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments)
+        .find((segment) => segment.id === candidate.segmentId);
+      const sourcePlaybackId = playbackSourceId(lockedTranscriptJob.asset);
+
+      const requestedIntent = materializationIntent({ assignToMe, dueAt, tagIds });
 
       const receipts = asObjects(lockedSource.actionCandidateReviewReceipts);
       const acceptedReceipt = receipts.find((receipt) => (
@@ -460,6 +550,13 @@ export async function POST(request: Request) {
             409,
             "ACTION_CANDIDATE_RECEIPT_MISMATCH",
             "The accepted candidate receipt no longer matches this packet build and source evidence.",
+          );
+        }
+        if (!sameMaterializationIntent(acceptedReceipt.materializationIntent, requestedIntent)) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT",
+            "This candidate was already accepted with different owner, due-date, or tag choices. Open the canonical task to edit it.",
           );
         }
         const acceptedActionItemId = text(acceptedReceipt.actionItemId);
@@ -509,8 +606,43 @@ export async function POST(request: Request) {
         detail: hasOwn(body, "detail") ? String(body.detail).trim() : candidate.detail,
       };
       let actionItem: any = null;
+      let acceptedTags: Array<{ id: string; label: string; slug: string }> = [];
 
       if (decision === "ACCEPT") {
+        if (!projectedSegment || !sourcePlaybackId) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_PLAYBACK_EVIDENCE_REQUIRED",
+            "The current transcript segment must remain linked to protected playback before it can become work.",
+          );
+        }
+        const projectId = text(lockedSummary.room?.projectId) || null;
+        if (tagIds.length && !projectId) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_PROJECT_REQUIRED",
+            "This Session needs a canonical Nest project before its accepted task can use project tags.",
+          );
+        }
+        if (tagIds.length) {
+          acceptedTags = await tx.studioTag.findMany({
+            where: {
+              id: { in: tagIds },
+              projectId,
+              isActive: true,
+              mergedIntoTagId: null,
+            },
+            orderBy: { id: "asc" },
+            select: { id: true, label: true, slug: true },
+          });
+          if (acceptedTags.length !== tagIds.length) {
+            throw new ReviewBoundaryError(
+              409,
+              "ACTION_CANDIDATE_TAG_SELECTION_STALE",
+              "One or more selected tags are archived, merged, or outside this Session's project. Refresh before accepting the task.",
+            );
+          }
+        }
         const packetActionItems = await tx.actionItem.findMany({
           where: { roomId, noteId: summaryNoteId },
         });
@@ -540,13 +672,15 @@ export async function POST(request: Request) {
           data: {
             roomId,
             bookingId: lockedSummary.bookingId ?? null,
-            projectId: lockedSummary.room?.projectId ?? null,
+            projectId,
             noteId: summaryNoteId,
-            assignedUserId: null,
+            assignedUserId: assignToMe ? userId : null,
             title: draftAfter.title,
             detail: draftAfter.detail || null,
             status: "OPEN",
+            dueAt,
             sourceJson: {
+              schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
               source: TRANSCRIPT_PACKET_SOURCE,
               materializationSource: MATERIALIZED_ACTION_SOURCE,
               candidate: false,
@@ -560,18 +694,43 @@ export async function POST(request: Request) {
               transcriptSnapshotSha256,
               roomId,
               segmentId: candidate.segmentId,
-              speakerLabel: candidate.speakerLabel,
-              startSeconds: candidate.startSeconds,
-              endSeconds: candidate.endSeconds,
+              startSeconds: projectedSegment.startSeconds,
+              endSeconds: projectedSegment.endSeconds,
+              providerText: projectedSegment.providerText,
+              providerTextSha256: projectedSegment.providerTextSha256,
+              providerSpeakerLabel: projectedSegment.providerSpeakerLabel,
+              effectiveTextSnapshot: projectedSegment.text,
+              effectiveSpeakerLabelSnapshot: projectedSegment.speakerLabel,
+              acceptedCorrectionId: projectedSegment.acceptedCorrectionId,
+              playbackSourceId: sourcePlaybackId,
               acceptedAt: reviewedAt,
               acceptedByUserId: userId,
               externalSideEffects: false,
-              assignmentClaimed: false,
+              assignmentClaimed: assignToMe,
+              assignedToUserId: assignToMe ? userId : null,
+              dueAt: dueAt?.toISOString() ?? null,
+              tagIds,
               deliveryClaimed: false,
               publicationClaimed: false,
             },
           },
         });
+        if (tagIds.length) {
+          await tx.actionItemTagLink.createMany({
+            data: tagIds.map((tagId) => ({
+              actionItemId: actionItem.id,
+              tagId,
+              createdByUserId: userId,
+              sourceJson: {
+                source: MATERIALIZED_ACTION_SOURCE,
+                reviewReceiptId: receiptId,
+                roomId,
+                packetBuildId,
+                externalSideEffects: false,
+              },
+            })),
+          });
+        }
       }
 
       const receipt = {
@@ -590,9 +749,11 @@ export async function POST(request: Request) {
         reviewNote,
         candidateDraftBefore: draftBefore,
         candidateDraftAfter: draftAfter,
+        materializationIntent: requestedIntent,
+        appliedTags: acceptedTags,
         actionItemId: actionItem?.id ?? null,
         externalSideEffects: false,
-        assignmentClaimed: false,
+        assignmentClaimed: assignToMe,
         deliveryClaimed: false,
         publicationClaimed: false,
       };
@@ -647,13 +808,20 @@ export async function POST(request: Request) {
             detail: result.actionItem.detail,
             status: result.actionItem.status,
             assignedUserId: result.actionItem.assignedUserId ?? null,
+            dueAt: result.actionItem.dueAt instanceof Date ? result.actionItem.dueAt.toISOString() : result.actionItem.dueAt ?? null,
+            projectId: result.actionItem.projectId ?? null,
+            tagIds: Array.isArray(result.receipt?.materializationIntent?.tagIds) ? result.receipt.materializationIntent.tagIds : [],
             source: sourceJson(result.actionItem.sourceJson),
           }
         : null,
       idempotentReplay: result.idempotentReplay,
-      boundaries: responseBoundaries(),
+      boundaries: responseBoundaries({
+        assignedToActor: Boolean(result.actionItem?.assignedUserId),
+        dueDateCreated: Boolean(result.actionItem?.dueAt),
+        tagsApplied: Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0,
+      }),
       nextAction: decision === "ACCEPT"
-        ? "The accepted draft is now one unassigned Quipsly ActionItem. Assignment, scheduling, delivery, and publication remain separate explicit actions."
+        ? `The accepted draft is now one ${result.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task${result.actionItem?.dueAt ? " with an explicit due date" : ""}${Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0 ? " and reviewed project tags" : ""}. Calendar placement, reminders, delivery, and publication remain separate explicit actions.`
         : decision === "EDIT"
           ? "The packet draft was edited for further review; no open work was created."
           : decision === "REJECT"

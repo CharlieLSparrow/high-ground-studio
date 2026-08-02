@@ -619,6 +619,33 @@ iPhone simulator journey. Production operation remains correctly gated on an
 eligible released transcript and the durable transcript worker described
 above; no TestFlight or Cloud Run release was replaced for this checkpoint.
 
+## 2026-08-02 canonical transcript-task checkpoint
+
+Action candidates now cross into committed work through an explicit review
+sheet for final wording, actor ownership or deliberate non-assignment, optional
+due date, and active same-project tags. Acceptance stores the shared
+playback-backed transcript anchor, so Today, Work, Schedule, Nest, Session
+continuity, Capture, and Studio can retain one source identity instead of
+treating packet-created tasks as legacy exceptions.
+
+The packet read carries that exact Session project, its active unmerged tag
+vocabulary, which tags already describe the Session, and the actor-owned
+default. Capture renders the same choices natively. Its Preview state permits
+inspection and accessibility auditing of the complete review form while the
+final network write remains disabled; authenticated Capture and Nest submit the
+same owner, due-date, and tag intent to the canonical transaction.
+
+The write is one Serializable transaction. It rechecks mutation authority,
+recording/transcription release, packet digest, current correction overlay,
+protected playback, and selected taxonomy. Exact retries recover one task;
+changed materialization intent conflicts and must be edited on the canonical
+task. The operated local acceptance covered real HTTP, PostgreSQL, Firebase
+emulator identities, desktop and phone-width rendering, viewer/revocation
+denial, exact replay, changed-intent rejection, and zero-residue cleanup. A
+separate iPhone 17 Pro operation inspected the native choices and passed its
+accessibility audit without enabling Preview writes. See
+`docs/coordination/2026-08-02-transcript-task-materialization.md`.
+
 ## Research basis
 
 - Apple EventKit access levels and iOS 17 usage descriptions:

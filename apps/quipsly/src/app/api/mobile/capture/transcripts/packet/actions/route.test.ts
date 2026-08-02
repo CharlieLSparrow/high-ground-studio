@@ -61,6 +61,7 @@ function createPrismaHarness() {
     kind: "SUMMARY",
     roomId: ROOM_ID,
     bookingId: "booking-1",
+    room: { projectId: "project-1" },
     createdAt: new Date("2026-07-18T12:00:00.000Z"),
     updatedAt: new Date("2026-07-18T12:00:00.000Z"),
     sourceJson: {
@@ -90,7 +91,17 @@ function createPrismaHarness() {
               roomId: ROOM_ID,
               assetId: RECORDING_ASSET_ID,
               status: "COMPLETED",
-              asset: { id: RECORDING_ASSET_ID, roomId: ROOM_ID },
+              asset: {
+                id: RECORDING_ASSET_ID,
+                roomId: ROOM_ID,
+                localManifestJson: {
+                  promotion: {
+                    sourceId: "protected-source-1",
+                    playbackUrl: "/api/ingest/media/protected-source-1",
+                    mediaKind: "audio",
+                  },
+                },
+              },
               segments,
             }
           : null
@@ -122,6 +133,12 @@ function createPrismaHarness() {
         actionItems.push(item);
         return item;
       }),
+    },
+    studioTag: {
+      findMany: jest.fn(async ({ where }: any) => (where.id.in as string[]).map((id) => ({ id, label: `Tag ${id}`, slug: id }))),
+    },
+    actionItemTagLink: {
+      createMany: jest.fn(async ({ data }: any) => ({ count: data.length })),
     },
     $queryRaw: jest.fn(async () => [{ id: SUMMARY_NOTE_ID }]),
   };
@@ -300,6 +317,89 @@ describe("action candidate review route", () => {
     }));
   });
 
+  it("atomically creates actor-owned, dated, tagged work with an exact playback source anchor", async () => {
+    const dueAt = "2026-08-08T18:00:00.000Z";
+    const response = await POST(reviewRequest("ACCEPT", {
+      title: "Send the final outline",
+      detail: "Include the reviewed chapter beats.",
+      assignToMe: true,
+      dueAt,
+      tagIds: ["tag-proof", "tag-episode", "tag-proof"],
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.actionItem).toMatchObject({
+      id: "action-1",
+      assignedUserId: "coach-1",
+      dueAt,
+      projectId: "project-1",
+      tagIds: ["tag-episode", "tag-proof"],
+      source: {
+        schema: "quipsly-transcript-derived-task-v1",
+        segmentId: "segment-1",
+        providerTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        effectiveTextSnapshot: "I will send the revised episode outline.",
+        recordingAssetId: RECORDING_ASSET_ID,
+        playbackSourceId: "protected-source-1",
+        assignmentClaimed: true,
+        assignedToUserId: "coach-1",
+        dueAt,
+        tagIds: ["tag-episode", "tag-proof"],
+      },
+    });
+    expect(payload.boundaries).toMatchObject({
+      acceptCreatesOneCanonicalActionItem: true,
+      assignmentRequiresExplicitActorChoice: true,
+      assignedToActor: true,
+      dueDateCreated: true,
+      projectTagsApplied: true,
+      noCalendarMutation: true,
+    });
+    expect(harness.prisma.actionItemTagLink.createMany).toHaveBeenCalledWith({
+      data: ["tag-episode", "tag-proof"].map((tagId) => expect.objectContaining({
+        actionItemId: "action-1",
+        tagId,
+        createdByUserId: "coach-1",
+      })),
+    });
+    expect((harness.summary.sourceJson as any).actionCandidateReviewReceipts[0]).toMatchObject({
+      materializationIntent: {
+        assignedUserId: "ACTOR",
+        dueAt,
+        tagIds: ["tag-episode", "tag-proof"],
+      },
+      assignmentClaimed: true,
+    });
+  });
+
+  it("allows only an exact replay after acceptance and directs changed intent to canonical task editing", async () => {
+    const first = await POST(reviewRequest("ACCEPT", { assignToMe: true, tagIds: ["tag-proof"] }));
+    expect(first.status).toBe(200);
+
+    const replay = await POST(reviewRequest("ACCEPT", { assignToMe: true, tagIds: ["tag-proof"] }));
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({ idempotentReplay: true, actionItem: { id: "action-1" } });
+
+    const changed = await POST(reviewRequest("ACCEPT", { assignToMe: false, tagIds: ["tag-proof"] }));
+    const payload = await changed.json();
+    expect(changed.status).toBe(409);
+    expect(payload.errorCode).toBe("ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT");
+    expect(harness.prisma.actionItem.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects archived or cross-project tags before creating the task", async () => {
+    harness.prisma.studioTag.findMany.mockResolvedValue([{ id: "tag-proof", label: "Proof", slug: "proof" }]);
+
+    const response = await POST(reviewRequest("ACCEPT", { tagIds: ["tag-proof", "tag-other"] }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.errorCode).toBe("ACTION_CANDIDATE_TAG_SELECTION_STALE");
+    expect(harness.prisma.actionItem.create).not.toHaveBeenCalled();
+    expect(harness.prisma.actionItemTagLink.createMany).not.toHaveBeenCalled();
+  });
+
   it.each(["REJECT", "DEFER"] as const)("records %s without materializing open work", async (decision) => {
     const response = await POST(reviewRequest(decision, { note: `${decision.toLowerCase()} for review` }));
     const payload = await response.json();
@@ -409,6 +509,9 @@ describe("action candidate review route", () => {
     ["title", "EDIT", { title: "x".repeat(501) }, "ACTION_CANDIDATE_TITLE_TOO_LONG"],
     ["detail", "EDIT", { detail: "x".repeat(5_001) }, "ACTION_CANDIDATE_DETAIL_TOO_LONG"],
     ["note", "DEFER", { note: "x".repeat(2_001) }, "ACTION_CANDIDATE_REVIEW_NOTE_TOO_LONG"],
+    ["dueAt", "ACCEPT", { dueAt: "not-a-date" }, "ACTION_CANDIDATE_DUE_AT_INVALID"],
+    ["tagIds", "ACCEPT", { tagIds: [42] }, "ACTION_CANDIDATE_TAGS_INVALID"],
+    ["materialization", "DEFER", { assignToMe: true }, "ACTION_CANDIDATE_MATERIALIZATION_OPTIONS_INVALID"],
   ] as const)("bounds %s before reading packet data", async (_field, decision, overrides, errorCode) => {
     const response = await POST(reviewRequest(decision, overrides));
     const payload = await response.json();

@@ -178,11 +178,21 @@ private struct CapturePacketActionMutationResponse: Codable {
         let id: String
         let title: String
         let status: String
+        let assignedUserId: String?
+        let dueAt: String?
+        let tagIds: [String]?
     }
     let ok: Bool
     let error: String?
     let idempotentReplay: Bool?
     let actionItem: ActionRecord?
+}
+
+struct CapturePacketTaskTag: Codable, Identifiable, Equatable {
+    let id: String
+    let label: String
+    let slug: String
+    let selectedForSession: Bool
 }
 
 struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
@@ -272,10 +282,18 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
         struct Build: Codable { let packetBuildId: String? }
         struct Summary: Codable { let id: String }
+        struct TaskMaterialization: Codable {
+            struct Project: Codable { let id: String; let name: String }
+            let project: Project?
+            let tags: [CapturePacketTaskTag]
+            let defaultOwner: String
+            let boundary: String
+        }
         let build: Build?
         let summary: Summary?
         let actionCandidates: [CapturePacketActionCandidate]?
         let goalCandidates: [CapturePacketGoalCandidate]?
+        let taskMaterialization: TaskMaterialization?
     }
     let ok: Bool
     let error: String?
@@ -292,6 +310,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var packetGoalCandidates: [CapturePacketGoalCandidate] = []
     @Published private(set) var packetActionCandidates: [CapturePacketActionCandidate] = []
+    @Published private(set) var packetTaskTags: [CapturePacketTaskTag] = []
+    @Published private(set) var packetTaskProjectName: String?
     @Published private(set) var packetReviewError: String?
 
     private var packetGoalReviewContext: CapturePacketGoalReviewContext?
@@ -313,6 +333,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             desk = .preview(roomID: roomID)
             packetGoalCandidates = [.preview(roomID: roomID)]
             packetActionCandidates = [.preview(roomID: roomID)]
+            packetTaskTags = [
+                .init(id: "preview-follow-through", label: "Follow-through", slug: "follow-through", selectedForSession: true),
+                .init(id: "preview-coaching", label: "Coaching", slug: "coaching", selectedForSession: true),
+            ]
+            packetTaskProjectName = "High Ground Odyssey"
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
             isUsingProtectedCache = false
@@ -323,6 +348,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         guard AuthManager.shared.networkActionsAllowed else {
             packetGoalCandidates = []
             packetActionCandidates = []
+            packetTaskTags = []
+            packetTaskProjectName = nil
             packetGoalReviewContext = nil
             if restoreProtectedCache(roomID: roomID) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
@@ -361,6 +388,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         } catch {
             packetGoalCandidates = []
             packetActionCandidates = []
+            packetTaskTags = []
+            packetTaskProjectName = nil
             packetGoalReviewContext = nil
             if restoreProtectedCache(roomID: roomID) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
@@ -679,6 +708,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         decision: String,
         title: String?,
         detail: String?,
+        assignToMe: Bool? = nil,
+        dueAt: Date? = nil,
+        tagIDs: [String]? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -708,6 +740,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             ]
             if let title { body["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines) }
             if let detail { body["detail"] = detail.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if decision == "ACCEPT" {
+                body["assignToMe"] = assignToMe ?? false
+                body["dueAt"] = dueAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull()
+                body["tagIds"] = Array(Set(tagIDs ?? [])).sorted()
+            }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -719,7 +756,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The task review decision could not be saved.")
             }
             message = decision == "ACCEPT"
-                ? (payload.idempotentReplay == true ? "That packet task was already accepted." : "One unassigned source-linked task was accepted. No date, calendar event, message, or delivery was added.")
+                ? (payload.idempotentReplay == true
+                    ? "That exact packet task choice was already accepted."
+                    : "One \(payload.actionItem?.assignedUserId == nil ? "unassigned" : "actor-owned") source-linked task was created\(payload.actionItem?.dueAt == nil ? "" : " with a due date")\((payload.actionItem?.tagIds?.isEmpty == false) ? " and project tags" : ""). No reminder, calendar event, message, or delivery was added.")
                 : "\(decision.capitalized) saved in packet history. No task was created."
             await loadPacketCandidates(roomID: candidate.roomId)
             return true
@@ -734,6 +773,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
             packetGoalCandidates = []
             packetActionCandidates = []
+            packetTaskTags = []
+            packetTaskProjectName = nil
             packetGoalReviewContext = nil
             return
         }
@@ -751,6 +792,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
             packetActionCandidates = payload.packet?.actionCandidates ?? []
+            packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
+            packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
             if let summaryNoteId = payload.packet?.summary?.id,
                let packetBuildId = payload.packet?.build?.packetBuildId,
                !summaryNoteId.isEmpty,
@@ -763,6 +806,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         } catch {
             packetGoalCandidates = []
             packetActionCandidates = []
+            packetTaskTags = []
+            packetTaskProjectName = nil
             packetGoalReviewContext = nil
             packetReviewError = error.localizedDescription
         }
@@ -1364,13 +1409,15 @@ struct CaptureTranscriptReviewView: View {
             Label("Tasks suggested by this session", systemImage: "checklist")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.blue)
-            Text("Suggestions are not open work. Accept creates one unassigned Quipsly task; edit, defer, and reject stay in packet review history.")
+            Text("Suggestions are not open work. Review owner, due date, and project tags before creating one canonical task; edit, defer, and reject stay in packet history.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(client.packetActionCandidates) { candidate in
                 CapturePacketTaskCandidateCard(
                     candidate: candidate,
+                    projectName: client.packetTaskProjectName,
+                    availableTags: client.packetTaskTags,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache,
                     client: client,
@@ -1396,29 +1443,41 @@ struct CaptureTranscriptReviewView: View {
 
 private struct CapturePacketTaskCandidateCard: View {
     let candidate: CapturePacketActionCandidate
+    let projectName: String?
+    let availableTags: [CapturePacketTaskTag]
     let previewOnly: Bool
     let decisionsLocked: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     let onOpenSource: () -> Void
 
     @State private var isEditing = false
+    @State private var isCreating = false
     @State private var title: String
     @State private var detail: String
+    @State private var assignToMe = true
+    @State private var hasDueDate = false
+    @State private var dueAt = Date().addingTimeInterval(7 * 86_400)
+    @State private var selectedTagIDs: Set<String>
 
     init(
         candidate: CapturePacketActionCandidate,
+        projectName: String?,
+        availableTags: [CapturePacketTaskTag],
         previewOnly: Bool,
         decisionsLocked: Bool,
         client: CaptureTranscriptCorrectionClient,
         onOpenSource: @escaping () -> Void
     ) {
         self.candidate = candidate
+        self.projectName = projectName
+        self.availableTags = availableTags
         self.previewOnly = previewOnly
         self.decisionsLocked = decisionsLocked
         self.client = client
         self.onOpenSource = onOpenSource
         _title = State(initialValue: candidate.title)
         _detail = State(initialValue: candidate.detail)
+        _selectedTagIDs = State(initialValue: Set(availableTags.filter(\.selectedForSession).map(\.id)))
     }
 
     private var accepted: Bool {
@@ -1457,10 +1516,94 @@ private struct CapturePacketTaskCandidateCard: View {
                 .accessibilityIdentifier("CapturePacketTaskSource_\(candidate.segmentId)")
 
             if accepted {
-                Label("Accepted as one unassigned Quipsly task", systemImage: "checkmark.shield.fill")
+                Label("Accepted as canonical Quipsly work", systemImage: "checkmark.shield.fill")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
+            } else if isCreating {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Create one canonical task", systemImage: "checklist.checked")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                    Text("Review every field. Only the choices shown here become task state.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Task title", text: $title, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("CapturePacketTaskCreateTitleField")
+                    TextField("Detail (optional)", text: $detail, axis: .vertical)
+                        .lineLimit(2...5)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("CapturePacketTaskCreateDetailField")
+                    Picker("Owner", selection: $assignToMe) {
+                        Text("Me").tag(true)
+                        Text("Unassigned").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("CapturePacketTaskOwnerPicker")
+                    Toggle("Add a due date", isOn: $hasDueDate)
+                        .accessibilityIdentifier("CapturePacketTaskDueDateToggle")
+                    if hasDueDate {
+                        DatePicker(
+                            "Due",
+                            selection: $dueAt,
+                            in: Date()...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .accessibilityIdentifier("CapturePacketTaskDueDatePicker")
+                    }
+                    if !availableTags.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(projectName.map { "\($0) tags" } ?? "Project tags")
+                                .font(.caption.weight(.bold))
+                            ForEach(availableTags) { tag in
+                                Button {
+                                    if selectedTagIDs.contains(tag.id) {
+                                        selectedTagIDs.remove(tag.id)
+                                    } else {
+                                        selectedTagIDs.insert(tag.id)
+                                    }
+                                } label: {
+                                    Label(tag.label, systemImage: selectedTagIDs.contains(tag.id) ? "checkmark.circle.fill" : "circle")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("CapturePacketTaskTag_\(tag.id)")
+                            }
+                        }
+                    } else {
+                        Text("This Session has no active project tags yet. Its canonical project identity will still be preserved.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Create task") {
+                            Task {
+                                _ = await client.reviewPacketAction(
+                                    candidate: candidate,
+                                    decision: "ACCEPT",
+                                    title: title,
+                                    detail: detail,
+                                    assignToMe: assignToMe,
+                                    dueAt: hasDueDate ? dueAt : nil,
+                                    tagIDs: Array(selectedTagIDs),
+                                    previewOnly: previewOnly
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("CapturePacketTaskCreateButton")
+                        Button("Cancel") { isCreating = false }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CapturePacketTaskCancelCreateButton")
+                    }
+                    Text("The exact transcript segment and protected playback source stay attached. Reminder, calendar placement, delivery, and publication remain separate decisions.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if isEditing {
                 TextField("Task title", text: $title, axis: .vertical)
                     .lineLimit(2...4)
@@ -1483,11 +1626,9 @@ private struct CapturePacketTaskCandidateCard: View {
                 }
             } else {
                 HStack {
-                    Button("Accept as task") {
-                        Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "ACCEPT", title: title, detail: detail, previewOnly: previewOnly) }
-                    }
+                    Button("Review & create task") { isCreating = true }
                     .buttonStyle(.borderedProminent)
-                    .disabled(decisionsDisabled)
+                    .disabled(decisionsLocked || client.isMutating)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
                     Button("Edit") { isEditing = true }
                         .buttonStyle(.bordered)
@@ -1509,8 +1650,8 @@ private struct CapturePacketTaskCandidateCard: View {
                     .accessibilityIdentifier("CapturePacketTaskRejectButton")
                 }
             }
-            if !accepted {
-                Text("Only Accept as task creates one unassigned OPEN ActionItem. Every other decision creates no task, assignment, date, reminder, calendar event, message, delivery, or publication.")
+            if !accepted && !isCreating {
+                Text("Only Review & create task can write one canonical OPEN ActionItem after owner, due date, and tags are inspected. Every other decision creates no task, assignment, date, reminder, calendar event, message, delivery, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1522,6 +1663,14 @@ private struct CapturePacketTaskCandidateCard: View {
             title = candidate.title
             detail = candidate.detail
             isEditing = false
+            isCreating = false
+            assignToMe = true
+            hasDueDate = false
+            selectedTagIDs = Set(availableTags.filter(\.selectedForSession).map(\.id))
+        }
+        .onChange(of: availableTags) { _, tags in
+            guard !isCreating else { return }
+            selectedTagIDs = Set(tags.filter(\.selectedForSession).map(\.id))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePacketTaskCandidate_\(candidate.id)")
