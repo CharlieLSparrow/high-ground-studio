@@ -9,6 +9,7 @@ import {
   validateAppStoreMetadata,
 } from "./quipsly-capture-app-store-metadata.mjs";
 import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
+import { summarizeTerritoryAvailability } from "./quipsly-app-store-connect-availability.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
@@ -17,6 +18,7 @@ const defaultMetadataPath = path.join(repositoryRoot, "release/app-store/quipsly
 
 export const AGE_RATING_QUESTION_FIELDS = Object.freeze([
   "advertising",
+  "ageAssurance",
   "alcoholTobaccoOrDrugUseOrReferences",
   "contests",
   "gambling",
@@ -228,6 +230,7 @@ export function summarizeSubmissionReadiness({
   appInfosDocument,
   versionsDocument,
   availabilityDocument,
+  territoryAvailabilitiesDocument,
   priceScheduleDocument,
   baseTerritoryDocument,
   manualPricesDocument,
@@ -280,18 +283,14 @@ export function summarizeSubmissionReadiness({
     (selection) => Number(selection.customerPrice) === 0,
   );
 
-  const territoryResources = included(availabilityDocument, "territoryAvailabilities");
-  const territories = territoryResources.map((resource) => ({
-    id: relationshipId(resource, "territory") || resource.id,
-    available: resource.attributes?.available === true,
-    contentStatuses: [...(resource.attributes?.contentStatuses || [])].sort(),
-  }));
-  const territoryTotal = availabilityDocument?.data?.relationships?.territoryAvailabilities
-    ?.meta?.paging?.total ?? territories.length;
-  const blockingStatuses = [...new Set(territories.flatMap((entry) => entry.contentStatuses).filter(
-    (status) => status !== "AVAILABLE" && !status.startsWith("PROCESSING_TO_"),
-  ))].sort();
-  const traderStatusBlockers = blockingStatuses.filter((status) => status.startsWith("TRADER_STATUS_"));
+  const availability = summarizeTerritoryAvailability({
+    availabilityDocument,
+    territoryAvailabilitiesDocument,
+  });
+  const territories = availability.rows;
+  const territoryTotal = availability.reportedTerritoryCount;
+  const blockingStatuses = availability.blockingContentStatuses;
+  const traderStatusBlockers = availability.traderStatusBlockers;
   const expectedTerritoryIds = metadata.compliance.territories.recommendedFirstRelease.map(
     (name) => name === "United States" ? "USA" : name,
   );
@@ -316,8 +315,7 @@ export function summarizeSubmissionReadiness({
     priceConfigured: Boolean(priceScheduleDocument?.data) && priceSelections.length > 0,
     expectedFreePriceConfigured: freePriceConfigured,
     availabilityConfigured: Boolean(availabilityDocument?.data),
-    territoryInventoryComplete: Boolean(availabilityDocument?.data)
-      && territories.length === territoryTotal,
+    territoryInventoryComplete: availability.inventoryComplete,
     expectedTerritoriesAvailable,
     territoryStatusesClear: blockingStatuses.length === 0,
   };
@@ -406,9 +404,9 @@ export function summarizeSubmissionReadiness({
     availability: {
       id: availabilityDocument?.data?.id || null,
       reportedTerritoryCount: territoryTotal,
-      readTerritoryCount: territories.length,
+      readTerritoryCount: availability.readTerritoryCount,
       expectedTerritoryIds,
-      availableTerritoryIds: territories.filter((entry) => entry.available).map((entry) => entry.id).sort(),
+      availableTerritoryIds: availability.availableTerritoryIds,
       blockingContentStatuses: blockingStatuses,
       traderStatusBlockers,
       complete: checks.availabilityConfigured
@@ -441,7 +439,7 @@ async function discover({ options, key, locale }) {
     app: makeRequest(`/v1/apps/${options.appId}`, [["fields[apps]", "name,bundleId,primaryLocale,isOrEverWasMadeForKids,contentRightsDeclaration"]]),
     appInfos: makeRequest(`/v1/apps/${options.appId}/appInfos`, [["include", "ageRatingDeclaration,appInfoLocalizations"], ["limit", "20"], ["limit[appInfoLocalizations]", "50"]]),
     versions: makeRequest(`/v1/apps/${options.appId}/appStoreVersions`, [["filter[platform]", "IOS"], ["filter[versionString]", options.version], ["include", "appStoreVersionLocalizations,appStoreReviewDetail,build"], ["limit", "20"], ["limit[appStoreVersionLocalizations]", "50"]]),
-    availability: makeRequest(`/v1/apps/${options.appId}/appAvailabilityV2`, [["include", "territoryAvailabilities"], ["limit[territoryAvailabilities]", "50"]]),
+    availability: makeRequest(`/v1/apps/${options.appId}/appAvailabilityV2`),
     priceSchedule: makeRequest(`/v1/apps/${options.appId}/appPriceSchedule`),
     reviewSubmissions: makeRequest(`/v1/apps/${options.appId}/reviewSubmissions`, [["filter[platform]", "IOS"], ["include", "items,appStoreVersionForReview"], ["limit", "200"], ["limit[items]", "50"]]),
   };
@@ -472,6 +470,16 @@ async function discover({ options, key, locale }) {
 
   let baseTerritoryDocument = null;
   let manualPricesDocument = null;
+  let territoryAvailabilitiesDocument = null;
+  if (availabilityDocument?.data?.id) {
+    territoryAvailabilitiesDocument = await requestJson({
+      request: makeRequest(
+        `/v2/appAvailabilities/${availabilityDocument.data.id}/territoryAvailabilities`,
+        [["include", "territory"], ["limit", "200"]],
+      ),
+      key,
+    });
+  }
   if (priceScheduleDocument?.data?.id) {
     const scheduleId = priceScheduleDocument.data.id;
     [baseTerritoryDocument, manualPricesDocument] = await Promise.all([
@@ -488,6 +496,7 @@ async function discover({ options, key, locale }) {
     appInfosDocument,
     versionsDocument,
     availabilityDocument,
+    territoryAvailabilitiesDocument,
     priceScheduleDocument,
     baseTerritoryDocument,
     manualPricesDocument,

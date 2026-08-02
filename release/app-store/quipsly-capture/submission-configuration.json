@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "appId": "6780995957",
+  "version": "1.0",
+  "build": "25",
+  "contentRightsDeclaration": "USES_THIRD_PARTY_CONTENT",
+  "contentRightsBasis": "Quipsly can import, display, synchronize, and discuss media selected by authorized users. The conservative App Store declaration is that the app uses third-party content.",
+  "usesIdfa": false,
+  "ageRating": {
+    "advertising": false,
+    "ageAssurance": false,
+    "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+    "contests": "NONE",
+    "gambling": false,
+    "gamblingSimulated": "NONE",
+    "gunsOrOtherWeapons": "NONE",
+    "healthOrWellnessTopics": false,
+    "horrorOrFearThemes": "NONE",
+    "lootBox": false,
+    "matureOrSuggestiveThemes": "NONE",
+    "medicalOrTreatmentInformation": "NONE",
+    "messagingAndChat": true,
+    "parentalControls": false,
+    "profanityOrCrudeHumor": "NONE",
+    "sexualContentGraphicAndNudity": "NONE",
+    "sexualContentOrNudity": "NONE",
+    "socialMedia": false,
+    "socialMediaAgeRestricted": false,
+    "unrestrictedWebAccess": false,
+    "userGeneratedContent": true,
+    "violenceCartoonOrFantasy": "NONE",
+    "violenceRealistic": "NONE",
+    "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+    "ageRatingOverrideV2": "THIRTEEN_PLUS"
+  },
+  "ageRatingBasis": [
+    "The shipping app records and privately shares user-created audio, video, notes, and project work.",
+    "Episode collaboration includes direct messaging and chat between authorized collaborators.",
+    "The app has no advertising, open web browser, public social feed, gambling, contests, loot boxes, or app-authored mature content.",
+    "A conservative 13+ override avoids presenting a professional recording and collaboration product as intended for young children."
+  ],
+  "pricing": {
+    "customerPrice": "0.0",
+    "baseTerritory": "USA"
+  },
+  "availability": {
+    "availableInNewTerritories": false,
+    "territories": ["USA"]
+  },
+  "screenshots": {
+    "uploadApproved": false,
+    "reason": "DEBUG preview screenshots are layout evidence only. Upload requires approved images from the signed candidate or its TestFlight installation."
+  },
+  "reviewSubmission": {
+    "allowed": false
+  }
+}

@@ -49,6 +49,22 @@ test("field limits and secret-like keys fail closed", () => {
   assert.match(result.errors.join("\n"), /Secret-like metadata keys are forbidden/);
 });
 
+test("provider-complete status fails closed without exact readback evidence", () => {
+  const metadata = canonicalMetadata();
+  metadata.compliance.contentRights.providerReadback = null;
+  metadata.compliance.price.providerReadback.customerPrice = "1.99";
+  metadata.compliance.providerTarget.build = "24";
+
+  const result = validateAppStoreMetadata(metadata, {
+    root: repositoryRoot,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /exact Quipsly Capture Build 25/);
+  assert.match(result.errors.join("\n"), /prove USES_THIRD_PARTY_CONTENT/);
+  assert.match(result.errors.join("\n"), /prove Free pricing/);
+});
+
 test("submission mode requires approved assets and zero blockers", () => {
   const result = validateAppStoreMetadata(canonicalMetadata(), {
     root: repositoryRoot,

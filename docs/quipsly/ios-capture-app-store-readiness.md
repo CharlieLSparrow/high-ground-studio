@@ -480,25 +480,30 @@ separate proofs. The operator has no mutation or submit mode and never prints
 review contact details, demo credentials, screenshot upload capabilities, or
 API-key material.
 
-Live readback on 2026-08-01 proves the safe listing, App Review detail, exact
-Build 25 assignment, manual release type, and editable 1.0 record. It also
-proves these current provider gaps:
+Live configuration and independent readback on 2026-08-01 prove the safe
+listing, App Review detail, exact Build 25 assignment, manual release type, and
+editable 1.0 record. The bounded operator configured and Apple read back:
 
-- content rights are unset;
-- all 23 current age-rating questions are unanswered and no derived rating
-  exists;
-- the IDFA declaration is unset;
-- Apple has zero screenshot sets for the `en-US` version;
-- the price-schedule shell exists, but no active Free price is selected;
-- no App Availability resource exists, so the intended first territory
-  (`USA`) is not configured; and
-- no App Store review submission exists yet.
+- `USES_THIRD_PARTY_CONTENT` content rights;
+- all 24 current age-rating answers, with Apple reporting `TWELVE_PLUS`;
+- `usesIdfa: false`;
+- an active Free price with the United States base territory; and
+- a complete 175-territory App Availability inventory with only `USA` enabled,
+  automatic future-territory enablement off, and no blocking status for the
+  available territory.
+
+Apple still reports zero screenshot sets for the `en-US` version and no App
+Store review submission. The source-backed configuration operator cannot
+upload screenshots, publish App Privacy, change DSA identity, create a review
+submission, submit a version, or release the app. Mutation JWTs are short-lived
+and unscoped because Apple supports the JWT `scope` claim only for GET requests;
+the operator, exact target confirmation, and Team Admin key role provide the
+write boundary.
 
 The remaining release gates are therefore:
 
-1. Account Holder/Admin confirms content rights, the complete age-rating
-   questionnaire, no-IDFA answer, Free price, United States availability, and
-   the EU DSA trader determination in App Store Connect.
+1. Complete and verify the account-level EU DSA trader determination in App
+   Store Connect.
 2. Publish accurate App Privacy answers. Apple requires the answers to cover
    Quipsly and integrated third parties across every platform; the public API
    does not expose a trustworthy publication readback for this gate.

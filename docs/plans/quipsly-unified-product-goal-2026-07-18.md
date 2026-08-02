@@ -6178,6 +6178,41 @@ was restored.
   review submission changed. Full evidence is in
   `docs/coordination/2026-08-01-capture-app-store-submission-readiness.md`.
 
+### Capture App Store source-backed configuration checkpoint — 2026-08-01
+
+- Added a second bounded operator for exact Quipsly Capture 1.0 Build 25. Its
+  default is read-only; mutation requires `--apply` plus the literal
+  `6780995957/1.0/25` confirmation. It can only set content rights, the complete
+  age-rating questionnaire, no-IDFA, Free pricing, and USA-first availability.
+  Screenshot upload, App Privacy publication, DSA identity, review submission,
+  version submission, release, and publication are absent from its mutation
+  surface.
+- Apple accepted and independent readback proves
+  `USES_THIRD_PARTY_CONTENT`, all 24 current age-rating answers with derived
+  `TWELVE_PLUS`, `usesIdfa: false`, active Free pricing with USA as the base
+  territory, and a complete 175-territory availability matrix with only USA
+  enabled and automatic new territories off.
+- Real provider operation exposed and repaired three false assumptions: JWT
+  scope claims authorize GET only; inline compound-create resources require
+  `${local-id}` identifiers; and App Availability must send and then read the
+  complete live territory catalog through the v2 relationship endpoint. Each
+  failed attempt stopped at the exact provider boundary, wrote or preserved a
+  mode-`0600` receipt, and independent readback identified the mutations that
+  had actually completed before retry.
+- The availability auditor now decodes Apple's opaque territory IDs, consumes
+  all 175 rows instead of a 50-row include, ignores statuses from disabled
+  territories, and recognizes the expected unreleased-app status pair without
+  weakening real content-status failures.
+- Configuration/readiness coverage passes 12/12, the complete Apple operator
+  suite passes 48/48, and the Capture static gate passes 949/949. Final live readiness remains
+  correctly blocked by zero approved screenshots, manual App Privacy
+  publication, account-level DSA determination, physical Build 25 acceptance,
+  disposable production account deletion, and iPhone-only compatibility
+  cleanup. No screenshot, privacy answer, DSA record, review submission,
+  submission action, or release was created.
+- Full evidence is in
+  `docs/coordination/2026-08-01-capture-app-store-submission-configuration.md`.
+
 ### Production account-deletion worker checkpoint — 2026-08-01
 
 - Removed in-process account-deletion execution from the public Nest process.

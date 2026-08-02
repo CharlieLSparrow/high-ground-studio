@@ -46,12 +46,26 @@
     "publicationStatus": "requires-account-holder-approval"
   },
   "compliance": {
+    "providerTarget": {
+      "appId": "6780995957",
+      "version": "1.0",
+      "build": "25",
+      "auditedAt": "2026-08-02T00:18:23.530Z"
+    },
     "contentRights": {
-      "status": "requires-account-holder-approval",
-      "recommendedAnswer": "Quipsly may display or process user-selected third-party media only when the user is authorized to use it."
+      "status": "configured-and-read-back",
+      "recommendedAnswer": "USES_THIRD_PARTY_CONTENT",
+      "providerReadback": {
+        "value": "USES_THIRD_PARTY_CONTENT"
+      }
     },
     "ageRating": {
-      "status": "requires-account-holder-approval",
+      "status": "configured-and-read-back",
+      "providerReadback": {
+        "answeredQuestionCount": 24,
+        "expectedQuestionCount": 24,
+        "appStoreAgeRating": "TWELVE_PLUS"
+      },
       "shippingFacts": [
         "No advertising, gambling, loot boxes, open web browser, or public social feed.",
         "No anonymous public chat or stranger matching.",
@@ -65,13 +79,24 @@
       "recommendedAssessment": "Likely trader if Quipsly is distributed commercially in the European Union; Apple may require verified public business contact details."
     },
     "price": {
-      "status": "requires-account-holder-approval",
-      "recommendedValue": "Free"
+      "status": "configured-and-read-back",
+      "recommendedValue": "Free",
+      "providerReadback": {
+        "customerPrice": "0.0",
+        "baseTerritory": "USA"
+      }
     },
     "territories": {
-      "status": "requires-account-holder-approval",
+      "status": "configured-and-read-back",
       "recommendedFirstRelease": ["United States"],
-      "expansionRule": "Add countries only after support, privacy, tax, content-rights, and local documentation requirements are reviewed."
+      "expansionRule": "Add countries only after support, privacy, tax, content-rights, and local documentation requirements are reviewed.",
+      "providerReadback": {
+        "reportedTerritoryCount": 175,
+        "readTerritoryCount": 175,
+        "availableTerritoryIds": ["USA"],
+        "availableInNewTerritories": false,
+        "blockingContentStatuses": []
+      }
     },
     "compatibility": {
       "iphone": true,
@@ -135,7 +160,7 @@
   "submission": {
     "readiness": "blocked",
     "blockers": [
-      "Confirm the legal copyright owner, age rating, content rights, DSA trader status, and territory availability in App Store Connect.",
+      "Complete the account-level DSA trader determination and confirm iPhone-only compatibility in App Store Connect.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
       "Install Build 25 from TestFlight on a physical iPhone, then prove audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."

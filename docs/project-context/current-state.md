@@ -32,24 +32,32 @@ Date: 2026-08-01
 
 ## Capture App Store submission-readiness checkpoint
 
-- A new credentialed read-only operator audits App Store submission state from
-  the exact Build 25 release ledger. It uses request-scoped JWTs, mode-`0600`
-  keys/receipts, no apply or submit mode, and never prints review credentials
-  or asset-upload capabilities.
-- Live Apple readback proves the safe listing, App Review detail, editable 1.0
-  version, manual release type, and exact Build 25 assignment. It also proves
-  content rights unset, 0/23 age-rating answers, IDFA unset, zero screenshots,
-  no active Free price, no App Availability/USA territory, and no review
-  submission.
+- The credentialed read-only auditor remains bound to exact Build 25 and cannot
+  mutate or submit. A separate exact-confirmation operator can configure only
+  source-backed content rights, age rating, IDFA, Free pricing, and USA-first
+  availability; it cannot upload screenshots, publish App Privacy, change DSA
+  identity, create a review submission, submit, or release.
+- Live Apple configuration and independent readback now prove the safe listing,
+  App Review detail, editable 1.0 version, manual release type, exact Build 25,
+  `USES_THIRD_PARTY_CONTENT`, 24/24 age-rating answers, `usesIdfa: false`, an
+  active Free/USA price, and a complete 175-territory inventory with only USA
+  enabled. Apple reports zero screenshots and no review submission.
+- Provider debugging fixed three real API-boundary defects: Apple JWT scope is
+  GET-only; compound-create resources require `${local-id}` IDs; and App
+  Availability creation/readback requires the full live territory catalog plus
+  the v2 200-item relationship endpoint. The expected pre-release
+  `CANNOT_SELL` plus `AVAILABLE_FOR_SALE_UNRELEASED_APP` pair is no longer
+  misreported as a legal failure.
 - Provider checks remain separate from manual App Privacy publication, EU DSA
   trader verification, iPhone-only compatibility cleanup, physical Build 25
   acceptance, and production disposable-account deletion proof. The operator
   cannot turn those human/legal boundaries green by inference.
-- Focused coverage passes 4/4, the complete Apple operator suite passes 42/42,
-  syntax and diff checks pass, the live read completed with expected readiness
-  exit 2, its redacted receipt is mode `0600`, and no Apple record or
-  submission was mutated. Full evidence is in
-  `docs/coordination/2026-08-01-capture-app-store-submission-readiness.md`.
+- Focused configuration/readiness coverage passes 12/12, the complete Apple
+  operator suite passes 48/48, and the Capture static gate passes 949/949. The final redacted
+  configuration and readiness receipts are mode `0600`; readiness exits 2 only
+  for the preserved screenshot, privacy, DSA, physical-device, deletion, and
+  compatibility gates. Full evidence is in
+  `docs/coordination/2026-08-01-capture-app-store-submission-configuration.md`.
 - Final verification exposed 11.98 GiB of repeated temporary screenshot
   `DerivedData`. The evidence assets were preserved, the regenerable trees were
   removed, and successful direct/exact-commit screenshot runs now clean that

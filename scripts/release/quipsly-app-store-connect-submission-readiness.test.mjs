@@ -88,7 +88,9 @@ function completeFixture() {
           territoryAvailabilities: { meta: { paging: { total: 1 } } },
         },
       },
-      included: [{
+    },
+    territoryAvailabilitiesDocument: {
+      data: [{
         type: "territoryAvailabilities",
         id: "availability-usa",
         attributes: { available: true, contentStatuses: ["AVAILABLE"] },
@@ -158,6 +160,48 @@ test("complete provider state still preserves manual legal and physical gates", 
   );
 });
 
+test("decodes Apple territory IDs and accepts the expected unreleased status pair", () => {
+  const fixture = completeFixture();
+  fixture.territoryAvailabilitiesDocument.data[0] = {
+    type: "territoryAvailabilities",
+    id: Buffer.from(JSON.stringify({ s: options.appId, t: "USA" })).toString("base64url"),
+    attributes: {
+      available: true,
+      contentStatuses: ["CANNOT_SELL", "AVAILABLE_FOR_SALE_UNRELEASED_APP"],
+    },
+  };
+  const receipt = summarizeSubmissionReadiness(fixture);
+  assert.deepEqual(receipt.availability.availableTerritoryIds, ["USA"]);
+  assert.deepEqual(receipt.availability.blockingContentStatuses, []);
+  assert.equal(receipt.availability.complete, true);
+});
+
+test("ignores disabled-territory legal status but blocks it on an enabled territory", () => {
+  const fixture = completeFixture();
+  fixture.availabilityDocument.data.relationships.territoryAvailabilities.meta.paging.total = 2;
+  fixture.territoryAvailabilitiesDocument.data.push({
+    type: "territoryAvailabilities",
+    id: "availability-deu",
+    attributes: {
+      available: false,
+      contentStatuses: ["TRADER_STATUS_NOT_PROVIDED"],
+    },
+    relationships: { territory: { data: { type: "territories", id: "DEU" } } },
+  });
+  let receipt = summarizeSubmissionReadiness(fixture);
+  assert.deepEqual(receipt.availability.blockingContentStatuses, []);
+  assert.equal(receipt.availability.complete, true);
+
+  fixture.territoryAvailabilitiesDocument.data[0].attributes.contentStatuses = [
+    "TRADER_STATUS_NOT_PROVIDED",
+  ];
+  receipt = summarizeSubmissionReadiness(fixture);
+  assert.deepEqual(receipt.availability.blockingContentStatuses, [
+    "TRADER_STATUS_NOT_PROVIDED",
+  ]);
+  assert.equal(receipt.availability.complete, false);
+});
+
 test("missing provider declarations produce exact fail-closed blockers", () => {
   const fixture = completeFixture();
   fixture.appDocument.data.attributes.contentRightsDeclaration = null;
@@ -167,6 +211,7 @@ test("missing provider declarations produce exact fail-closed blockers", () => {
   );
   fixture.versionsDocument.data[0].attributes.usesIdfa = null;
   fixture.availabilityDocument = null;
+  fixture.territoryAvailabilitiesDocument = null;
   fixture.manualPricesDocument = null;
   fixture.screenshotSetDocuments = [];
 

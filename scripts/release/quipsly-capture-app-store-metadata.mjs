@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
@@ -290,11 +292,69 @@ export function validateAppStoreMetadata(
     errors.push("privacy.publicationStatus must remain account-holder gated until provider publication is proved.");
   }
 
-  for (const field of ["contentRights", "ageRating", "digitalServicesAct", "price", "territories"]) {
-    const decision = isRecord(compliance[field]) ? compliance[field] : {};
-    if (decision.status !== "requires-account-holder-approval") {
-      errors.push(`compliance.${field}.status must remain requires-account-holder-approval until provider readback exists.`);
+  const providerConfiguredFields = ["contentRights", "ageRating", "price", "territories"];
+  const configuredFields = providerConfiguredFields.filter(
+    (field) => compliance[field]?.status === "configured-and-read-back",
+  );
+  for (const field of providerConfiguredFields) {
+    const status = compliance[field]?.status;
+    if (!["requires-account-holder-approval", "configured-and-read-back"].includes(status)) {
+      errors.push(`compliance.${field}.status must be account-holder gated or provider-read-back.`);
     }
+  }
+  if (configuredFields.length > 0) {
+    const target = isRecord(compliance.providerTarget) ? compliance.providerTarget : {};
+    if (
+      target.appId !== QUIPSLY_CAPTURE_RELEASE_TARGET.appId
+      || target.version !== QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
+      || target.build !== QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber
+      || !Number.isFinite(Date.parse(target.auditedAt))
+    ) {
+      errors.push("compliance.providerTarget must bind provider readback to exact Quipsly Capture Build 25 with a valid audit timestamp.");
+    }
+  }
+  const contentRightsReadback = compliance.contentRights?.providerReadback;
+  if (
+    compliance.contentRights?.status === "configured-and-read-back"
+    && (!isRecord(contentRightsReadback)
+      || contentRightsReadback.value !== "USES_THIRD_PARTY_CONTENT")
+  ) {
+    errors.push("compliance.contentRights.providerReadback must prove USES_THIRD_PARTY_CONTENT.");
+  }
+  const ageRatingReadback = compliance.ageRating?.providerReadback;
+  if (
+    compliance.ageRating?.status === "configured-and-read-back"
+    && (!isRecord(ageRatingReadback)
+      || ageRatingReadback.answeredQuestionCount !== 24
+      || ageRatingReadback.expectedQuestionCount !== 24
+      || ageRatingReadback.appStoreAgeRating !== "TWELVE_PLUS")
+  ) {
+    errors.push("compliance.ageRating.providerReadback must prove 24/24 answers and TWELVE_PLUS.");
+  }
+  const priceReadback = compliance.price?.providerReadback;
+  if (
+    compliance.price?.status === "configured-and-read-back"
+    && (!isRecord(priceReadback)
+      || priceReadback.customerPrice !== "0.0"
+      || priceReadback.baseTerritory !== "USA")
+  ) {
+    errors.push("compliance.price.providerReadback must prove Free pricing with USA as base territory.");
+  }
+  const territoryReadback = compliance.territories?.providerReadback;
+  if (
+    compliance.territories?.status === "configured-and-read-back"
+    && (!isRecord(territoryReadback)
+      || territoryReadback.reportedTerritoryCount !== 175
+      || territoryReadback.readTerritoryCount !== 175
+      || JSON.stringify(territoryReadback.availableTerritoryIds) !== JSON.stringify(["USA"])
+      || territoryReadback.availableInNewTerritories !== false
+      || !Array.isArray(territoryReadback.blockingContentStatuses)
+      || territoryReadback.blockingContentStatuses.length !== 0)
+  ) {
+    errors.push("compliance.territories.providerReadback must prove a complete 175-row USA-only availability matrix.");
+  }
+  if (compliance.digitalServicesAct?.status !== "requires-account-holder-approval") {
+    errors.push("compliance.digitalServicesAct.status must remain requires-account-holder-approval until account-level verification is proved.");
   }
   const compatibility = isRecord(compliance.compatibility) ? compliance.compatibility : {};
   if (
