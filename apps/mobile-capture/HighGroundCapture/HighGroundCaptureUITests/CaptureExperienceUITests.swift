@@ -981,7 +981,7 @@ final class CaptureExperienceUITests: XCTestCase {
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
-        let complete = app.buttons["Block done"]
+        let complete = app.buttons["CaptureTodayFocusDoneButton"]
         XCTAssertTrue(complete.exists)
         XCTAssertFalse(complete.isEnabled, "Preview work must never call Nest or imply a real task/focus mutation.")
 
@@ -1018,11 +1018,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertEqual(reopenAnnotation.label, "Reopen")
         XCTAssertFalse(reopenAnnotation.isEnabled, "Preview resolved annotations must remain read-only.")
 
-        let boundary = app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "Focus completion never completes its task or goal.")
-        ).firstMatch
+        let boundary = app.descendants(matching: .any)["CaptureTodayFollowThroughBoundary"]
         reveal(boundary)
         XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("never complete the linked task or goal"))
 
         for _ in 0..<8 where !sourceLink.isHittable {
             app.swipeDown()

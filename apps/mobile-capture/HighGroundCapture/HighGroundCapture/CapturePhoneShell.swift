@@ -1485,6 +1485,7 @@ private struct CaptureWorkView: View {
 }
 
 private struct CaptureCalendarContinuityCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var client: CaptureCalendarSubscriptionClient
     let projects: [MobileCaptureWorkProject]
     let previewOnly: Bool
@@ -1503,32 +1504,57 @@ private struct CaptureCalendarContinuityCard: View {
         previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed
     }
 
+    private var calendarHeading: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.title2)
+                .foregroundStyle(.blue)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Calendar continuity")
+                    .font(.title3.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Subscribe once; keep Quipsly as the source of truth")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var manageButton: some View {
+        Button(isExpanded ? "Close" : "Manage") {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+            }
+        }
+        .font(.caption.weight(.bold))
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("CaptureCalendarManage")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "calendar.badge.plus")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Calendar continuity")
-                        .font(.title3.weight(.bold))
-                    Text("Subscribe once; keep Quipsly as the source of truth")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if client.isLoading || client.isMutating {
-                    ProgressView().controlSize(.small)
-                }
-                Button(isExpanded ? "Close" : "Manage") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    calendarHeading
+                    HStack {
+                        if client.isLoading || client.isMutating {
+                            ProgressView().controlSize(.small)
+                        }
+                        Spacer()
+                        manageButton
                     }
                 }
-                .font(.caption.weight(.bold))
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("CaptureCalendarManage")
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    calendarHeading
+                    Spacer()
+                    if client.isLoading || client.isMutating {
+                        ProgressView().controlSize(.small)
+                    }
+                    manageButton
+                }
             }
 
             if isExpanded {
