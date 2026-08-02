@@ -6315,7 +6315,9 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   production mutation occurred. Resend sign-in is parked at the explicit
   third-party authorization boundary. App Store readiness remains red until
   the private worker and one independently verified disposable production
-  deletion are complete. Full evidence is in
+  deletion are complete. Fresh read-only source-bound worker and App Store
+  audits preserve the same honest blockers and performed no external mutation.
+  Full evidence is in
   `docs/coordination/2026-08-02-account-deletion-local-operation-and-provider-contract.md`.
 
 ### Transcript packet to canonical Session note checkpoint — 2026-08-02

@@ -99,6 +99,11 @@ Mode-0600 provider receipts are:
 
 - `/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/listing-apply-20260802T141900Z.json`
 - `/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/submission-readiness-20260802T141950Z.json`
+- `/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/submission-readiness-20260802T150500Z.json`
+
+The fresh post-provider-isolation audit is unchanged at the Apple boundary:
+Build 26 remains assigned, all safe metadata checks remain green, and Apple
+still reports zero screenshots. It performed no external mutation.
 
 ## Screenshot candidate operation
 

@@ -82,3 +82,11 @@ were entered and no DNS record was changed.
    email, detached receipt, idempotent replay, and outsider denial.
 
 The App Store account-deletion gate stays red until step 6 succeeds.
+
+Fresh read-only provider audit at pushed source
+`f2a06951d13f7a3ec94e129e807a4dced9e30e33` confirms both public deletion
+policy pages still return HTTP 200 while the exact-source image, worker,
+provider secrets, worker IAM, schema proof, and disposable deletion remain
+absent. The redacted mode-0600 receipt is:
+
+`/Volumes/My Passport/Quipsly QA Artifacts/Account Deletion/worker-readiness-20260802T150000Z-f2a06951.json`

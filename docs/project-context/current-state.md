@@ -116,6 +116,9 @@ Implementation commit: `03a316e1`
 - Resend sign-in, DNS, secrets, image build, worker deploy, IAM, and production
   deletion were intentionally not performed. The App Store gate remains red
   until one disposable production account is independently proven deleted.
+  Fresh read-only provider audit at pushed source `f2a06951` confirms both
+  public policy pages are HTTP 200 and every undeployed boundary remains
+  truthfully red.
   Full evidence is in
   `docs/coordination/2026-08-02-account-deletion-local-operation-and-provider-contract.md`.
 
@@ -295,6 +298,10 @@ Implementation commit: `03a316e1`
   physical-device recapture and approval.
   Evidence is in
   `docs/coordination/2026-08-02-capture-build26-public-release.md`.
+- A fresh credentialed read-only App Store audit after the deletion-provider
+  isolation change is unchanged: Build 26 and all safe metadata remain green;
+  screenshots, App Privacy, DSA, physical acceptance, production deletion, and
+  compatibility remain the six explicit blockers. No Apple state changed.
 
 ## Capture Build 25 public TestFlight checkpoint
 
