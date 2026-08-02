@@ -58,6 +58,33 @@ Main route areas in `apps/web/src/app`:
    - newsletter/announcement flags
 5. App pages and server actions gate access from those roles and session fields.
 
+## Quipsly Media Processing Boundary
+
+`apps/quipsly` owns the authenticated control plane and canonical database
+registration. `apps/quipsly-media-processor` is a private, database-free Cloud
+Run Job that receives only generation-bound GCS work:
+
+- Native Capture recordings and imported episode clips use separate immutable
+  manifest schemas and queue prefixes. They share one storage adapter,
+  transcoder, service identity, image, and release boundary without inventing
+  identities across domains.
+- Nest commits its canonical workflow first, then projects a create-once GCS
+  outbox. A crash between those steps is replayable.
+- The processor can read `media-vault/recordings/` and `media-vault/raw/`, write
+  only proxy/control objects, and has no database credentials.
+- Output creation uses `ifGenerationMatch: 0`; manifest claims and retirement
+  use exact generation preconditions. Originals are never overwritten.
+- Nest independently verifies authorization, source/output generations,
+  SHA-256, CRC32C, technical metadata, and deterministic target authority before
+  a serializable transaction registers the proxy source, asset, attachment,
+  variant, and Episode projection.
+- The local episode worker reads only `local` provider jobs from loopback
+  PostgreSQL. The cloud worker accepts only generation-bound `gcs` jobs, so the
+  two execution environments cannot steal each other's work.
+
+Release and operated-provider evidence is in
+`docs/coordination/2026-08-02-episode-collaboration-proxy-gcs-qualification.md`.
+
 ## Team Workflow Architecture
 
 Team workflows are server-rendered pages plus server actions:

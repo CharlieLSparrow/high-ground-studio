@@ -6548,3 +6548,35 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   through the immutable cloud processor and zero-traffic authenticated preview.
   Full evidence is in
   `docs/coordination/2026-08-02-episode-8-collaboration-proxy-operation.md`.
+
+### Imported-episode collaboration proxy GCS qualification — 2026-08-02
+
+- Extended the existing private media-processor Job with a separate imported-
+  episode GCS manifest and queue. The cloud worker has no database access and
+  the domain contract does not invent native Capture/session identities.
+- Nest now projects the database workflow through a create-once GCS outbox,
+  requests the shared processor through one centralized Cloud Run control,
+  then independently re-hashes source/output generations and verifies CRC32C,
+  metadata, authorization, and original preservation before serializable
+  canonical registration.
+- Fixed a provider-ownership defect before it could reach production: the
+  local database worker now selects only `local` jobs, while the cloud manifest
+  accepts only generation-bound `gcs` jobs. Neither worker can steal and fail
+  the other's queue.
+- Added read-only processor scope for the exact `media-vault/raw/` managed
+  folder used by imported clips. Writes remain confined to the existing proxy
+  and control folders; the worker still receives no database credentials.
+- Operated exact commit `59506e8bcc066006745f818fd3b26c5d53b08ab0`
+  against a real isolated object in `high-ground-odyssey-media`. Source and
+  output SHA-256, output CRC32C, H.264/AAC/yuv420p, 1280x720, 30 fps,
+  fast-start, create-once replay, and original preservation passed. Independent
+  all-version readback proved exact fixture cleanup.
+- The processor production bundle, shared/processor/Nest strict TypeScript,
+  11 worker/recovery tests, 10 control-plane tests, six route authorization
+  tests, and the complete 238-test Quipsly contract run pass.
+- This qualifies real GCS semantics, not the currently deployed image or Nest
+  revision. The exact next media release boundary is one deliberately batched
+  immutable processor build, raw-folder IAM readback, deployed fixture,
+  zero-traffic Nest import/build/reconcile/play/outsider-denial acceptance, and
+  only then promotion. Full evidence is in
+  `docs/coordination/2026-08-02-episode-collaboration-proxy-gcs-qualification.md`.

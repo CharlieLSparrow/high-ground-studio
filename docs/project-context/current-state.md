@@ -2,6 +2,27 @@
 
 Date: 2026-08-02
 
+## Imported-episode collaboration proxy GCS qualification
+
+- Exact committed source `59506e8bcc066006745f818fd3b26c5d53b08ab0`
+  extends the existing private media processor with a separate, generation-
+  leased imported-episode queue. It does not invent native Capture identities
+  or grant the worker database access.
+- Nest now owns a crash-replayable GCS transactional outbox and independently
+  verifies source/output generations, SHA-256, CRC32C, technical metadata,
+  authorization, and original preservation before common serializable proxy
+  registration.
+- A real two-second GCS fixture passed source/output byte readback, H.264/AAC
+  fast-start inspection, create-once replay, and exact all-version cleanup in
+  `high-ground-odyssey-media`. The processor bundle and strict TypeScript pass;
+  the full Quipsly contract run is 238/238.
+- No Cloud Build, Cloud Run Job execution, Nest deploy, or production database
+  write occurred. The exact next boundary is a deliberately batched immutable
+  processor release, read-only raw-folder IAM readback, deployed fixture, and
+  zero-traffic authenticated Nest operation.
+- Architecture, real GCS evidence, and the release checklist are in
+  `docs/coordination/2026-08-02-episode-collaboration-proxy-gcs-qualification.md`.
+
 ## Episode production milestone runway checkpoint
 
 - Episode Room now owns revisioned, typed production milestones with exact
