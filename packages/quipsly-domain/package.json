@@ -72,6 +72,10 @@
       "types": "./src/transcript-derived-task.ts",
       "import": "./src/transcript-derived-task.ts"
     },
+    "./weekly-review": {
+      "types": "./src/weekly-review.ts",
+      "import": "./src/weekly-review.ts"
+    },
     "./core": {
       "types": "./src/core.ts",
       "import": "./src/core.ts"

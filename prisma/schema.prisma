@@ -2258,6 +2258,9 @@ model WorkPlanBlock {
   timezone     String
   status       WorkPlanBlockStatus @default(PLANNED)
   completedAt  DateTime?
+  // Explicitly reported work, not inferred from the planned window. Historical
+  // completed blocks may remain null so review surfaces can say "not recorded".
+  actualMinutes Int?
   sourceJson   Json                @default("{}")
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt

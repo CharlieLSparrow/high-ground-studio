@@ -48,14 +48,20 @@ function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefre
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const duration = planBlockDurationMinutes(block);
+  const [actualMinutes, setActualMinutes] = useState(String(block.actualMinutes ?? duration ?? 50));
 
   function decide(nextStatus: SchedulePlanBlockStatus) {
     if (nextStatus === "CANCELED" && !window.confirm("Cancel this personal focus block? The planning receipt stays in Quipsly and no external calendar event will be touched.")) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await updateWorkPlanBlockStatus({ planBlockId: block.id, nextStatus, expectedUpdatedAt: block.updatedAt });
+      const result = await updateWorkPlanBlockStatus({
+        planBlockId: block.id,
+        nextStatus,
+        expectedUpdatedAt: block.updatedAt,
+        actualMinutes: nextStatus === "COMPLETED" ? Number(actualMinutes) : null,
+      });
       if (!result.ok) { setMessage(result.error); if (result.code === "CONFLICT") onRefresh(); return; }
-      setMessage(nextStatus === "COMPLETED" ? "Focus block completed. The task and goal status stayed unchanged." : `${humanizeScheduleValue(nextStatus)} saved inside Quipsly.`);
+      setMessage(nextStatus === "COMPLETED" ? `${result.actualMinutes} actual minutes recorded. The task and goal status stayed unchanged.` : `${humanizeScheduleValue(nextStatus)} saved inside Quipsly.`);
       onRefresh();
     });
   }
@@ -85,11 +91,13 @@ function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefre
     </div>
     <ScheduleTagChips tags={block.tags} />
     <div className="mt-4 flex flex-wrap gap-2">
-      {block.status !== "COMPLETED" && <button type="button" disabled={pending} onClick={() => decide("COMPLETED")} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={13} aria-hidden="true" />Block done</button>}
+      {block.status !== "COMPLETED" && <label className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[10px] font-black uppercase tracking-wide text-emerald-900">Actual minutes<input aria-label="Actual minutes worked" type="number" min={1} max={1440} required value={actualMinutes} onChange={(event) => setActualMinutes(event.target.value)} className="w-16 rounded-lg border border-emerald-200 bg-white px-2 py-1 text-sm font-bold normal-case tracking-normal" /></label>}
+      {block.status !== "COMPLETED" && <button type="button" disabled={pending || !Number.isInteger(Number(actualMinutes)) || Number(actualMinutes) < 1 || Number(actualMinutes) > 1440} onClick={() => decide("COMPLETED")} className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={13} aria-hidden="true" />Record done</button>}
       {block.status === "PLANNED" && <button type="button" disabled={pending} onClick={() => decide("SKIPPED")} className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-amber-800 disabled:opacity-50"><SkipForward size={13} aria-hidden="true" />Skip</button>}
       {block.status !== "PLANNED" && <button type="button" disabled={pending} onClick={() => decide("PLANNED")} className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-sky-800 disabled:opacity-50"><RotateCcw size={13} aria-hidden="true" />Plan again</button>}
       {block.status !== "CANCELED" && <button type="button" disabled={pending} onClick={() => decide("CANCELED")} className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-rose-700 disabled:opacity-50"><CircleSlash2 size={13} aria-hidden="true" />Cancel block</button>}
     </div>
+    {block.status === "COMPLETED" && <p className="mt-3 text-xs font-bold text-emerald-800">{block.actualMinutes ? `${block.actualMinutes} actual minutes recorded` : "Completed before actual-time receipts were available · time not recorded"}</p>}
     {block.sourceAnchor && block.roomId ? <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Focus source · reviewed transcript</p><p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{block.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${block.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{block.sourceAnchor.effectiveTextSnapshot}</p><Link href={`/sessions/${encodeURIComponent(block.roomId)}#transcript-segment-${encodeURIComponent(block.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">Return to {formatScheduleMediaTime(block.sourceAnchor.startSeconds)}–{formatScheduleMediaTime(block.sourceAnchor.endSeconds)}</Link></div> : null}
     <form action={move} className="mt-4 grid gap-2 rounded-xl border border-[#eadfc9] bg-[#fffaf0] p-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
       <label className="text-[10px] font-black uppercase tracking-wide text-[#6f573b]">Move to · {block.timezone}<input name="startsAt" type="datetime-local" required defaultValue={planBlockLocalInputValue(block.startsAt, block.timezone)} className="mt-1 block w-full rounded-lg border border-[#d9c7a5] bg-white px-3 py-2 text-xs font-bold normal-case tracking-normal" /></label>
@@ -143,6 +151,6 @@ export function SchedulePlanner({ initialBlocks, targets }: { initialBlocks: Sch
     </form> : <div className="mt-6 rounded-2xl border border-dashed border-sky-200 bg-white/70 p-5 text-sm font-semibold text-[#765f40]">There are no accessible open tasks or active owned goals to plan. Capture committed work in <Link href="/work" className="font-black text-sky-800 underline">Work Queue</Link> first.</div>}
     <p className="mt-3 text-[11px] font-semibold text-[#927b5b]">Planning timezone: {timezone ?? "detecting…"}. Quipsly stores this block internally and does not call Google Calendar or send invitations.</p>
     {message && <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</p>}
-    <div className="mt-7 space-y-6">{dayGroups.map((group) => <section key={group.date} aria-label={`${formatPlanDay(group.date)} focus blocks`}><h3 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#765f40]">{formatPlanDay(group.date)}</h3><div className="grid gap-3 lg:grid-cols-2">{group.blocks.map((block) => <PlanBlockCard key={block.id} block={block} onRefresh={() => router.refresh()} />)}</div></section>)}{initialBlocks.length === 0 && <p className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/70 p-5 text-sm font-semibold text-[#7a6548]">No personal focus blocks are saved yet. Start with one realistic block, then use its completion receipt during weekly review.</p>}</div>
+    <div className="mt-7 space-y-6">{dayGroups.map((group) => <section key={group.date} aria-label={`${formatPlanDay(group.date)} focus blocks`}><h3 className="mb-3 text-sm font-black uppercase tracking-[0.14em] text-[#765f40]">{formatPlanDay(group.date)}</h3><div className="grid gap-3 lg:grid-cols-2">{group.blocks.map((block) => <PlanBlockCard key={`${block.id}:${block.updatedAt}`} block={block} onRefresh={() => router.refresh()} />)}</div></section>)}{initialBlocks.length === 0 && <p className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/70 p-5 text-sm font-semibold text-[#7a6548]">No personal focus blocks are saved yet. Start with one realistic block, then use its completion receipt during weekly review.</p>}</div>
   </section>;
 }

@@ -1,4 +1,4 @@
-import { buildWorkSnapshot, isActiveSessionGoal, taskProvenance } from "./work-model";
+import { buildWorkSnapshot, isActiveSessionGoal, sharedWorkRoomIds, taskProvenance } from "./work-model";
 
 const now = "2026-07-18T18:00:00.000Z";
 
@@ -21,6 +21,32 @@ function task(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Work Queue model", () => {
+  it("shares unbooked production work without leaking booking-backed coaching work to generic room participants", () => {
+    expect(sharedWorkRoomIds([
+      { id: "episode-room", bookingId: null },
+      { id: "coaching-room", bookingId: "private-booking" },
+      { id: "legacy-production-room" },
+    ])).toEqual(["episode-room", "legacy-production-room"]);
+  });
+
+  it("projects another person's weekly review only for the explicitly assigned reviewer", () => {
+    const commitment = {
+      id: "client-week",
+      clientUserId: "client-1",
+      weekStartsAt: "2026-07-13T12:00:00.000Z",
+      commitmentOne: "Private client promise",
+      status: "ACTIVE" as const,
+      updatedAt: now,
+      clientUser: { name: "Private Client", primaryEmail: "client@example.test" },
+    };
+    const denied = buildWorkSnapshot({ now, actorUserId: "coach-1", tasks: [], goals: [], canonicalGoals: [], commitments: [commitment], planBlocks: [] });
+    expect(denied.weeklyReviews).toHaveLength(1);
+    expect(denied.weeklyReviews[0].relationship).toBe("self");
+
+    const allowed = buildWorkSnapshot({ now, actorUserId: "coach-1", tasks: [], goals: [], canonicalGoals: [], commitments: [{ ...commitment, reviewedByUserId: "coach-1" }], planBlocks: [] });
+    expect(allowed.weeklyReviews.map((review) => review.relationship)).toEqual(["self", "coach-review"]);
+  });
+
   it("promotes only a complete room-matched transcript receipt into an exact source anchor", () => {
     const sourceJson = {
       schema: "quipsly-transcript-derived-task-v1",

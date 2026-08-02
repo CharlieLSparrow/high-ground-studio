@@ -933,6 +933,40 @@ function WeeklyCommitmentEditor({ commitments, onRefresh }: { commitments: WorkC
   </div>;
 }
 
+function formatReviewMinutes(value: number) {
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  if (!hours) return `${minutes}m`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function WeeklyReviewCard({ review }: { review: WorkSnapshot["weeklyReviews"][number] }) {
+  const healthTone = {
+    moving: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    "needs-attention": "border-amber-200 bg-amber-50 text-amber-900",
+    "no-recent-evidence": "border-stone-200 bg-stone-50 text-stone-700",
+    achieved: "border-sky-200 bg-sky-50 text-sky-900",
+  } as const;
+  return <article className="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm md:p-6">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{review.relationship === "coach-review" ? `Coach view · ${review.subjectLabel ?? "Client"}` : "Your evidence-backed week"}</p><h3 className="mt-1 font-serif text-2xl font-black">Week of <LocalDateTime value={review.weekStartsAt} mode="date" /></h3><p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">Quipsly summarizes saved evidence. It never guesses unrecorded work or marks a goal healthy by itself.</p></div>
+      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-900">{humanize(review.reviewState)}</span>
+    </div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4"><p className="text-2xl font-black text-sky-950">{formatReviewMinutes(review.plannedMinutes)}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-sky-800">Planned focus</p></div>
+      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4"><p className="text-2xl font-black text-emerald-950">{formatReviewMinutes(review.actualMinutes)}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-emerald-800">Explicit actual time</p></div>
+      <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4"><p className="text-2xl font-black text-stone-800">{review.completedBlocksWithoutActualMinutes}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-stone-600">Completed · time not recorded</p></div>
+    </div>
+    {review.goals.length ? <div className="mt-5 grid gap-3 lg:grid-cols-2">{review.goals.map((goal) => <section key={goal.id} className="rounded-2xl border border-[#e4d3b3] bg-[#fffdf8] p-4"><div className="flex flex-wrap items-start justify-between gap-2"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="min-h-11 flex-1 py-2 text-base font-black underline decoration-[#c7ad7a] decoration-2 underline-offset-4">{goal.title}</Link><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${healthTone[goal.health]}`}>{goal.healthLabel}</span></div><div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-[#765f40]"><span>{goal.progressPercent === null ? "No percentage" : `${goal.progressPercent}% reported`}</span><span>{goal.completedTaskCount}/{goal.linkedTaskCount} linked tasks done</span><span>{formatReviewMinutes(goal.actualMinutes)} actual</span></div>{goal.latestEvidence ? <p className="mt-3 rounded-xl bg-white p-3 text-xs font-semibold leading-5 text-[#5f4b32]"><strong>Latest evidence:</strong> {goal.latestEvidence}</p> : <p className="mt-3 text-xs font-semibold text-stone-600">No recent evidence receipt. Add a check-in, complete linked work, or record actual focus time.</p>}{goal.blockers.length ? <p className="mt-3 text-xs font-bold text-amber-900"><strong>Blocking:</strong> {goal.blockers.join(" · ")}</p> : null}{goal.nextTask ? <Link href={`/work?task=${encodeURIComponent(goal.nextTask.id)}`} className="mt-3 inline-flex min-h-11 items-center text-xs font-black text-violet-900 underline">Next task · {goal.nextTask.title}</Link> : null}</section>)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-stone-200 bg-stone-50 p-4 text-sm font-semibold text-stone-700">No active or recently achieved canonical goals are available for this review yet.</p>}
+    <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Blockers & support</p>{review.blockers.length ? <ul className="mt-2 space-y-2">{review.blockers.map((blocker) => <li key={blocker} className="rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">{blocker}</li>)}</ul> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">No blocker is recorded.</p>}</section>
+      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Next commitments</p>{review.nextCommitments.length ? <ol className="mt-2 space-y-2">{review.nextCommitments.map((item, index) => <li key={`${item.kind}:${item.id}`} className="text-xs font-bold leading-5"><span className="mr-2 text-emerald-800">{index + 1}.</span>{item.kind === "task" ? <Link href={`/work?task=${encodeURIComponent(item.id)}`} className="underline">{item.title}</Link> : item.title}</li>)}</ol> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">Choose the next commitment in the weekly plan below.</p>}</section>
+      <section><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">Session contribution</p>{review.sessionContributions.length ? <ul className="mt-2 space-y-2">{review.sessionContributions.map((session) => <li key={session.roomId}><Link href={`/sessions/${encodeURIComponent(session.roomId)}`} className="inline-flex min-h-11 items-center text-xs font-black text-sky-900 underline">{session.title} · {session.evidenceCount} receipt{session.evidenceCount === 1 ? "" : "s"}</Link></li>)}</ul> : <p className="mt-2 text-xs font-semibold text-[#806a4d]">No session-linked evidence landed this week.</p>}</section>
+    </div>
+    {review.reflection ? <p className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-sm font-semibold leading-6 text-emerald-950"><strong>Reflection:</strong> {review.reflection}</p> : null}
+  </article>;
+}
+
 export function WorkClient({
   initialSnapshot,
   projectOptions = [],
@@ -1138,6 +1172,12 @@ export function WorkClient({
           </p>
         </section>
       )}
+
+      <section aria-labelledby="weekly-review-heading">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">Review what actually happened</p>
+        <h2 id="weekly-review-heading" className="mt-1 font-serif text-3xl font-black">Weekly review</h2>
+        <div className="mt-4 grid gap-4">{snapshot.weeklyReviews.map((review) => <WeeklyReviewCard key={`${review.subjectUserId}:${review.weekStartsAt}`} review={review} />)}</div>
+      </section>
 
       <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>

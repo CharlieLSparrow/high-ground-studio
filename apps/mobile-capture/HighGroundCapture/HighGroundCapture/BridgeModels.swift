@@ -1386,6 +1386,7 @@ struct MobileCaptureTodayFocusBlock: Codable, Identifiable, Hashable {
     let timezone: String
     let status: String
     let completedAt: String?
+    let actualMinutes: Int?
     let updatedAt: String
 }
 
@@ -1397,6 +1398,65 @@ struct MobileCaptureTodayWeeklyPlan: Codable, Hashable {
     let progressNotes: String?
     let clientReviewedAt: String?
     let updatedAt: String
+}
+
+struct MobileCaptureWeeklyReviewNextTask: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let dueAt: String?
+}
+
+struct MobileCaptureWeeklyReviewGoal: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let status: String
+    let health: String
+    let healthLabel: String
+    let progressPercent: Int?
+    let latestEvidence: String?
+    let latestEvidenceAt: String?
+    let plannedMinutes: Int
+    let actualMinutes: Int
+    let completedBlocksWithoutActualMinutes: Int
+    let linkedTaskCount: Int
+    let completedTaskCount: Int
+    let openTaskCount: Int
+    let overdueTaskCount: Int
+    let blockers: [String]
+    let nextTask: MobileCaptureWeeklyReviewNextTask?
+}
+
+struct MobileCaptureWeeklyReviewCommitment: Codable, Identifiable, Hashable {
+    let kind: String
+    let id: String
+    let title: String
+    let dueAt: String?
+}
+
+struct MobileCaptureWeeklyReviewSession: Codable, Identifiable, Hashable {
+    var id: String { roomId }
+    let roomId: String
+    let title: String
+    let evidenceCount: Int
+}
+
+struct MobileCaptureWeeklyReview: Codable, Hashable {
+    let schema: String
+    let subjectUserId: String
+    let subjectLabel: String?
+    let relationship: String
+    let weekStartsAt: String
+    let weekEndsAt: String
+    let generatedAt: String
+    let reviewState: String
+    let plannedMinutes: Int
+    let actualMinutes: Int
+    let completedBlocksWithoutActualMinutes: Int
+    let goals: [MobileCaptureWeeklyReviewGoal]
+    let blockers: [String]
+    let nextCommitments: [MobileCaptureWeeklyReviewCommitment]
+    let sessionContributions: [MobileCaptureWeeklyReviewSession]
+    let reflection: String?
 }
 
 struct MobileCaptureTodaySourceAnnotation: Codable, Identifiable, Hashable {
@@ -1443,6 +1503,7 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let sourceMutated: Bool?
     let immutableSourceAnchors: Bool?
     let completingFocusBlockMutatesTarget: Bool?
+    let focusBlockActualTimeExplicitOnly: Bool?
     let aiOutputRequiresHumanReview: Bool?
     let transcriptReviewMutatesWork: Bool?
     let transcriptReviewRequiresReleasedPlayback: Bool?
@@ -1479,6 +1540,7 @@ struct MobileCaptureTodayResponse: Codable, Hashable {
     let tasks: [MobileCaptureTodayTask]?
     let goals: [MobileCaptureTodayGoal]?
     let focusBlocks: [MobileCaptureTodayFocusBlock]?
+    let weeklyReview: MobileCaptureWeeklyReview?
     let transcriptReviews: [MobileCaptureTodayTranscriptReview]?
     let sourceAnnotations: [MobileCaptureTodaySourceAnnotation]?
     let weeklyPlan: MobileCaptureTodayWeeklyPlan?
@@ -1519,6 +1581,7 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let action: String?
     let id: String?
     let status: String?
+    let actualMinutes: Int?
     let updatedAt: String?
     let receiptId: String?
     let title: String?
@@ -3428,6 +3491,7 @@ final class CaptureTodayClient: ObservableObject {
     var tasks: [MobileCaptureTodayTask] { brief?.tasks ?? [] }
     var goals: [MobileCaptureTodayGoal] { brief?.goals ?? [] }
     var focusBlocks: [MobileCaptureTodayFocusBlock] { brief?.focusBlocks ?? [] }
+    var weeklyReview: MobileCaptureWeeklyReview? { brief?.weeklyReview }
     var transcriptReviews: [MobileCaptureTodayTranscriptReview] { brief?.transcriptReviews ?? [] }
     var sourceAnnotations: [MobileCaptureTodaySourceAnnotation] { brief?.sourceAnnotations ?? [] }
     var weeklyPlan: MobileCaptureTodayWeeklyPlan? { brief?.weeklyPlan }
@@ -3562,7 +3626,25 @@ final class CaptureTodayClient: ObservableObject {
                 reminder: nil
             )],
             goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Leadership coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), canEditTags: false, tagIds: ["preview-coaching", "preview-follow-through"], tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Guest", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"))],
-            focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
+            focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, actualMinutes: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
+            weeklyReview: MobileCaptureWeeklyReview(
+                schema: "quipsly-weekly-review-v1",
+                subjectUserId: "preview-user",
+                subjectLabel: "Preview client",
+                relationship: "self",
+                weekStartsAt: ISO8601DateFormatter().string(from: now),
+                weekEndsAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(7 * 86_400)),
+                generatedAt: ISO8601DateFormatter().string(from: now),
+                reviewState: "draft",
+                plannedMinutes: 50,
+                actualMinutes: 35,
+                completedBlocksWithoutActualMinutes: 0,
+                goals: [MobileCaptureWeeklyReviewGoal(id: "preview-goal", title: "Leave the client with one clear next move", status: "ACTIVE", health: "moving", healthLabel: "Moving with evidence", progressPercent: 50, latestEvidence: "Session notes are captured.", latestEvidenceAt: ISO8601DateFormatter().string(from: now), plannedMinutes: 50, actualMinutes: 35, completedBlocksWithoutActualMinutes: 0, linkedTaskCount: 1, completedTaskCount: 0, openTaskCount: 1, overdueTaskCount: 1, blockers: [], nextTask: MobileCaptureWeeklyReviewNextTask(id: "preview-task", title: "Proof-listen the coaching recap", dueAt: nil))],
+                blockers: ["A second listener for the final recap"],
+                nextCommitments: [MobileCaptureWeeklyReviewCommitment(kind: "weekly-plan", id: "preview-week:1", title: "Proof-listen one real session", dueAt: nil)],
+                sessionContributions: [MobileCaptureWeeklyReviewSession(roomId: "room-preview-coaching-ready", title: "Leadership coaching session", evidenceCount: 2)],
+                reflection: nil
+            ),
             transcriptReviews: [MobileCaptureTodayTranscriptReview(id: "preview-transcript-proposal", roomId: "room-preview-coaching-ready", sessionTitle: "Leadership coaching session", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerText: "Welcome, everybody.", providerSpeakerLabel: "Speaker", proposedText: nil, proposedSpeakerLabel: "Host", reason: "The isolated host track suggests this speaker label.", recordingAssetId: "preview-recording-asset", playbackAvailable: true, updatedAt: ISO8601DateFormatter().string(from: now))],
             sourceAnnotations: [
                 MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, canChangeStatus: true, canStartWriting: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", writingDraftHref: nil, tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now)),
@@ -3576,7 +3658,7 @@ final class CaptureTodayClient: ObservableObject {
                 MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
                 MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
             ],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false)
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false)
         )
         isUsingProtectedCache = false
         errorMessage = nil
@@ -3993,8 +4075,14 @@ final class CaptureTodayClient: ObservableObject {
         )
     }
 
-    func setFocusStatus(_ block: MobileCaptureTodayFocusBlock, status: String) async -> Bool {
-        await mutate(action: "focus-status", id: block.id, nextStatus: status, expectedUpdatedAt: block.updatedAt)
+    func setFocusStatus(_ block: MobileCaptureTodayFocusBlock, status: String, actualMinutes: Int? = nil) async -> Bool {
+        await mutate(
+            action: "focus-status",
+            id: block.id,
+            nextStatus: status,
+            expectedUpdatedAt: block.updatedAt,
+            additionalFields: actualMinutes.map { ["actualMinutes": $0] } ?? [:]
+        )
     }
 
     func setSourceAnnotationStatus(_ annotation: MobileCaptureTodaySourceAnnotation, status: String) async -> Bool {

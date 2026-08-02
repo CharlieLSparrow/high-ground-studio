@@ -56,17 +56,18 @@ describe("personal focus-block decisions", () => {
   it("completes the personal block without completing its task or goal", async () => {
     signedIn();
     const tx = { workPlanBlock: {
-      findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", sourceJson: {}, updatedAt: expected }),
+      findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", actualMinutes: null, sourceJson: {}, updatedAt: expected }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUnique: jest.fn().mockResolvedValue({ updatedAt: persisted }),
+      findUnique: jest.fn().mockResolvedValue({ actualMinutes: 35, updatedAt: persisted }),
     } };
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    const result = await updateWorkPlanBlockStatus({ planBlockId: "block-1", nextStatus: "COMPLETED", expectedUpdatedAt: expected.toISOString() });
-    expect(result).toMatchObject({ ok: true, status: "COMPLETED", updatedAt: persisted.toISOString() });
+    const result = await updateWorkPlanBlockStatus({ planBlockId: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString() });
+    expect(result).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: 35, updatedAt: persisted.toISOString() });
     expect(tx.workPlanBlock.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: "COMPLETED",
       completedAt: expect.any(Date),
+      actualMinutes: 35,
       sourceJson: expect.objectContaining({ planReceipts: [expect.objectContaining({ externalCalendarMutated: false, targetStatusMutated: false })] }),
     }) }));
     expect(tx).not.toHaveProperty("actionItem");
@@ -78,7 +79,7 @@ describe("personal focus-block decisions", () => {
     const tx = { workPlanBlock: {
       findFirst: jest.fn().mockResolvedValue({ status: "SKIPPED", sourceJson: {}, updatedAt: expected }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUnique: jest.fn().mockResolvedValue({ status: "PLANNED", updatedAt: persisted }),
+      findUnique: jest.fn().mockResolvedValue({ status: "PLANNED", actualMinutes: null, updatedAt: persisted }),
     } };
     const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);

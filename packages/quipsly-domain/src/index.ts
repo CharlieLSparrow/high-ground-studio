@@ -13,6 +13,7 @@ export * from "./art-recipes";
 export * from "./output-catalog";
 export * from "./coaching-packet";
 export * from "./transcript-derived-task";
+export * from "./weekly-review";
 
 export type VerificationStatus =
   | "verified"

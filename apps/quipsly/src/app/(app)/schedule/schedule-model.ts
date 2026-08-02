@@ -51,6 +51,7 @@ export type SchedulePlanBlock = {
   timezone: string;
   status: SchedulePlanBlockStatus;
   completedAt: string | null;
+  actualMinutes: number | null;
   updatedAt: string;
   roomId: string | null;
   sourceAnchor: ScheduleTranscriptSourceAnchor | null;

@@ -185,6 +185,7 @@ export type PortableNestPlanBlock = {
   timezone: string;
   status: string;
   completedAt: string | null;
+  actualMinutes: number | null;
   sourceJson: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -777,13 +778,15 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const timezone = stringValue(raw.timezone, 200);
     const status = stringValue(raw.status, 40);
     const completedAt = dateString(raw.completedAt, true);
+    const actualMinutes = raw.actualMinutes == null ? null : safeInteger(raw.actualMinutes, 1);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
     if (!id || taskId === undefined || goalId === undefined || Boolean(taskId) === Boolean(goalId)
       || (taskId && !taskIds.has(taskId)) || (goalId && !goalIds.has(goalId))
       || !startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt)
       || !timezone || !status || !PLAN_BLOCK_STATUSES.has(status)
-      || completedAt === undefined || !createdAt || !updatedAt) {
+      || completedAt === undefined || (raw.actualMinutes != null && (actualMinutes === null || actualMinutes > 1_440))
+      || !createdAt || !updatedAt) {
       return { ok: false, error: "A focus block is incomplete or points outside the exported work graph." };
     }
     planBlocks.push({
@@ -795,6 +798,7 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       timezone,
       status,
       completedAt,
+      actualMinutes,
       sourceJson: jsonRecord(raw.sourceJson),
       createdAt,
       updatedAt,

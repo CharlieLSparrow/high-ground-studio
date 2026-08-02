@@ -1033,6 +1033,37 @@ final class CaptureExperienceUITests: XCTestCase {
         assertFocusedTranscriptSegment("preview-segment")
     }
 
+    func testTodayWeeklyReviewKeepsPlannedActualAndMissingTimeTruthDistinct() {
+        let review = app.descendants(matching: .any)["CaptureTodayWeeklyReview"]
+        reveal(review)
+        XCTAssertTrue(
+            review.waitForExistence(timeout: 5),
+            "Today should expose the same deterministic evidence-backed review as Nest."
+        )
+        XCTAssertTrue(review.staticTexts["Weekly review"].exists)
+        XCTAssertTrue(review.staticTexts["50m"].exists, "Planned time should remain visible as a plan.")
+        XCTAssertTrue(review.staticTexts["35m"].exists, "Only explicit actual time should appear as actual work.")
+        XCTAssertTrue(review.staticTexts["0"].exists, "Completed blocks without time need their own count.")
+        XCTAssertTrue(review.staticTexts["Leave the client with one clear next move"].exists)
+        XCTAssertTrue(review.staticTexts["Moving with evidence"].exists)
+        XCTAssertTrue(
+            review.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "A second listener for the final recap")
+            ).firstMatch.exists
+        )
+        XCTAssertTrue(
+            review.staticTexts["Actual time appears only when someone records it. Quipsly does not infer missing work."].exists
+        )
+
+        let record = app.buttons["CaptureTodayFocusDoneButton"]
+        reveal(record)
+        XCTAssertEqual(record.label, "Record work")
+        XCTAssertFalse(
+            record.isEnabled,
+            "Preview should show the explicit actual-time workflow without pretending to save canonical work."
+        )
+    }
+
     func testTodayExposesReadOnlyCalendarContinuityWithoutLeakingPrivateLinks() {
         let card = app.descendants(matching: .any)["CaptureCalendarContinuityCard"]
         reveal(card)

@@ -142,6 +142,7 @@ function payload(): PortableNestBundlePayload {
       timezone: "America/Denver",
       status: "PLANNED",
       completedAt: null,
+      actualMinutes: null,
       sourceJson: { source: "personal planning" },
       createdAt,
       updatedAt: createdAt,

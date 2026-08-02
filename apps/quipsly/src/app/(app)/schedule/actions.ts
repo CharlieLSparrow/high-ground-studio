@@ -23,7 +23,7 @@ export type CreateWorkPlanBlockResult =
   | PlanFailure;
 
 export type UpdateWorkPlanBlockResult =
-  | { ok: true; planBlockId: string; status: SchedulePlanBlockStatus; updatedAt: string; receiptId: string }
+  | { ok: true; planBlockId: string; status: SchedulePlanBlockStatus; actualMinutes: number | null; updatedAt: string; receiptId: string }
   | PlanFailure;
 
 function cleanId(value: unknown, max = 200) {
@@ -150,12 +150,16 @@ export async function updateWorkPlanBlockStatus(input: {
   planBlockId: string;
   nextStatus: SchedulePlanBlockStatus;
   expectedUpdatedAt: string;
+  actualMinutes?: number | null;
 }): Promise<UpdateWorkPlanBlockResult> {
   const session = await getQuipslySession();
   if (!session?.user?.id) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before changing private planning." };
   const planBlockId = cleanId(input?.planBlockId);
   const expected = expectedRevision(input?.expectedUpdatedAt);
-  if (!planBlockId || !expected || !["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"].includes(input?.nextStatus)) {
+  const actualMinutes = Number(input?.actualMinutes);
+  const validActualMinutes = Number.isInteger(actualMinutes) && actualMinutes >= 1 && actualMinutes <= 1_440;
+  if (!planBlockId || !expected || !["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"].includes(input?.nextStatus)
+      || (input.nextStatus === "COMPLETED" && !validActualMinutes)) {
     return { ok: false, code: "INVALID_INPUT", error: "The focus-block decision is incomplete or invalid." };
   }
 
@@ -165,7 +169,7 @@ export async function updateWorkPlanBlockStatus(input: {
     const receiptId = randomUUID();
     const now = new Date();
     const result = await prisma.$transaction(async (tx: any) => {
-      const current = await tx.workPlanBlock.findFirst({ where: { id: planBlockId, ownerUserId: userId }, select: { status: true, sourceJson: true, updatedAt: true } });
+      const current = await tx.workPlanBlock.findFirst({ where: { id: planBlockId, ownerUserId: userId }, select: { status: true, actualMinutes: true, sourceJson: true, updatedAt: true } });
       if (!current) return { kind: "not-found" as const };
       if (current.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
       const source = safeRecord(current.sourceJson);
@@ -174,6 +178,8 @@ export async function updateWorkPlanBlockStatus(input: {
         kind: "quipsly-work-plan-block-status-v1",
         previousStatus: current.status,
         nextStatus: input.nextStatus,
+        previousActualMinutes: current.actualMinutes,
+        actualMinutes: input.nextStatus === "COMPLETED" ? actualMinutes : null,
         changedAt: now.toISOString(),
         changedByUserId: userId,
         externalCalendarMutated: false,
@@ -184,17 +190,18 @@ export async function updateWorkPlanBlockStatus(input: {
         data: {
           status: input.nextStatus,
           completedAt: input.nextStatus === "COMPLETED" ? now : null,
+          actualMinutes: input.nextStatus === "COMPLETED" ? actualMinutes : null,
           sourceJson: { ...source, planReceipts: [...existingReceipts(source), receipt] },
         },
       });
       if (updated.count !== 1) return { kind: "conflict" as const };
-      const persisted = await tx.workPlanBlock.findUnique({ where: { id: planBlockId }, select: { updatedAt: true } });
+      const persisted = await tx.workPlanBlock.findUnique({ where: { id: planBlockId }, select: { actualMinutes: true, updatedAt: true } });
       return { kind: "saved" as const, persisted };
     });
     if (result.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "Only the focus-block owner can change this plan." };
     if (result.kind === "conflict" || !result.persisted) return { ok: false, code: "CONFLICT", error: "This focus block changed elsewhere. Refresh before deciding again." };
     revalidatePlanningSurfaces();
-    return { ok: true, planBlockId, status: input.nextStatus, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
+    return { ok: true, planBlockId, status: input.nextStatus, actualMinutes: result.persisted.actualMinutes, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
   } catch (error) {
     console.error("[schedule] failed to update focus-block status", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this planning decision. No task, goal, appointment, or external calendar was changed." };
@@ -249,17 +256,18 @@ export async function rescheduleWorkPlanBlock(input: {
           timezone,
           status: "PLANNED",
           completedAt: null,
+          actualMinutes: null,
           sourceJson: { ...source, planReceipts: [...existingReceipts(source), receipt] },
         },
       });
       if (updated.count !== 1) return { kind: "conflict" as const };
-      const persisted = await tx.workPlanBlock.findUnique({ where: { id: planBlockId }, select: { status: true, updatedAt: true } });
+      const persisted = await tx.workPlanBlock.findUnique({ where: { id: planBlockId }, select: { status: true, actualMinutes: true, updatedAt: true } });
       return { kind: "saved" as const, persisted };
     });
     if (result.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "Only the focus-block owner can reschedule this plan." };
     if (result.kind === "conflict" || !result.persisted) return { ok: false, code: "CONFLICT", error: "This focus block changed elsewhere. Refresh before rescheduling." };
     revalidatePlanningSurfaces();
-    return { ok: true, planBlockId, status: result.persisted.status, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
+    return { ok: true, planBlockId, status: result.persisted.status, actualMinutes: result.persisted.actualMinutes, updatedAt: result.persisted.updatedAt.toISOString(), receiptId };
   } catch (error) {
     console.error("[schedule] failed to reschedule focus block", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not move this focus block. No external calendar was changed." };

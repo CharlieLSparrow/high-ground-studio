@@ -988,17 +988,45 @@ describe("mobile Capture Today contract", () => {
   it("completes a personal focus block without mutating its task or goal", async () => {
     signedIn();
     const tx = { workPlanBlock: {
-      findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", sourceJson: {}, updatedAt: expected }),
+      findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", actualMinutes: null, sourceJson: {}, updatedAt: expected }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-      findUnique: jest.fn().mockResolvedValue({ status: "COMPLETED", updatedAt: persisted }),
+      findUnique: jest.fn().mockResolvedValue({ status: "COMPLETED", actualMinutes: 35, updatedAt: persisted }),
     } };
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as any);
-    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", expectedUpdatedAt: expected.toISOString() }) }));
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 35, expectedUpdatedAt: expected.toISOString() }) }));
     const payload = await response.json();
-    expect(payload).toMatchObject({ ok: true, status: "COMPLETED", boundaries: { completingFocusBlockMutatesTarget: false, providerMutated: false } });
+    expect(payload).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: 35, boundaries: { completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, providerMutated: false } });
     expect(tx).not.toHaveProperty("actionItem");
     expect(tx).not.toHaveProperty("goal");
     expect(tx.workPlanBlock.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ sourceJson: expect.objectContaining({ planReceipts: [expect.objectContaining({ surface: "ios-capture-today", targetStatusMutated: false })] }) }) }));
+  });
+
+  it("keeps an installed legacy Capture build working without inventing actual time", async () => {
+    signedIn();
+    const tx = { workPlanBlock: {
+      findFirst: jest.fn().mockResolvedValue({ status: "PLANNED", actualMinutes: null, sourceJson: {}, updatedAt: expected }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn().mockResolvedValue({ status: "COMPLETED", actualMinutes: null, updatedAt: persisted }),
+    } };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", expectedUpdatedAt: expected.toISOString() }) }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, status: "COMPLETED", actualMinutes: null });
+    expect(tx.workPlanBlock.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        actualMinutes: null,
+        sourceJson: expect.objectContaining({ planReceipts: [expect.objectContaining({ actualTimeState: "not-recorded-legacy-client", actualMinutes: null })] }),
+      }),
+    }));
+  });
+
+  it("rejects invalid actual time supplied by a current Capture client", async () => {
+    signedIn();
+    const transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "focus-status", id: "block-1", nextStatus: "COMPLETED", actualMinutes: 0, expectedUpdatedAt: expected.toISOString() }) }));
+    expect(response.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it("records an owner-only goal check-in without completing the goal or causing external actions", async () => {

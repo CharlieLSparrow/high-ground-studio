@@ -70,6 +70,8 @@
     "quipsly:schema:release:test": "bash scripts/release/quipsly-schema-release.test.sh && node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs",
     "quipsly:schema:fixture:local": "node scripts/quipsly-local-schema-fixture.mjs",
     "quipsly:retained:product-progress": "node scripts/quipsly-retained-product-progress-operation.mjs",
+    "quipsly:retained:weekly-review": "node scripts/quipsly-retained-weekly-review-operation.mjs",
+    "quipsly:retained:weekly-review:test": "node --test scripts/quipsly-retained-weekly-review-operation.test.mjs",
     "quipsly:retained:calendar-overview": "node scripts/quipsly-retained-calendar-overview-operation.mjs",
     "quipsly:retained:calendar-subscription": "node scripts/quipsly-retained-calendar-subscription-operation.mjs",
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",

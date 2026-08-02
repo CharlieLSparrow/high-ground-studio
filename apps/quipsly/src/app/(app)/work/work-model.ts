@@ -1,7 +1,14 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, type TranscriptDerivedGoalSourceAnchor, type TranscriptDerivedTaskSourceAnchor } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { buildWeeklyReview, type WeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 export const SESSION_CONTEXT_SOURCE = "quipsly-capture-session-context-v2";
+
+export function sharedWorkRoomIds(
+  rooms: Array<{ id: string; bookingId?: string | null }>,
+) {
+  return rooms.filter((room) => room.bookingId == null).map((room) => room.id);
+}
 
 export type WorkTaskStatus = "OPEN" | "DONE" | "CANCELED";
 export type WorkGoalStatus = "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED";
@@ -111,6 +118,7 @@ export type RawCanonicalGoal = {
 export type RawWeeklyCommitment = {
   id: string;
   clientUserId: string;
+  reviewedByUserId?: string | null;
   weekStartsAt: Date | string;
   commitmentOne: string;
   commitmentTwo?: string | null;
@@ -124,6 +132,17 @@ export type RawWeeklyCommitment = {
   updatedAt: Date | string;
   clientUser?: { name?: string | null; primaryEmail?: string | null } | null;
   reviewedByUser?: { name?: string | null; primaryEmail?: string | null } | null;
+};
+
+export type RawWorkPlanBlock = {
+  id: string;
+  ownerUserId: string;
+  actionItemId?: string | null;
+  goalId?: string | null;
+  startsAt: Date | string;
+  endsAt: Date | string;
+  status: "PLANNED" | "COMPLETED" | "SKIPPED" | "CANCELED";
+  actualMinutes?: number | null;
 };
 
 export type WorkTask = {
@@ -213,6 +232,7 @@ export type WorkSnapshot = {
   tasks: WorkTask[];
   goals: WorkGoal[];
   commitments: WorkCommitment[];
+  weeklyReviews: WeeklyReview[];
   counts: {
     openTasks: number;
     attentionTasks: number;
@@ -288,6 +308,7 @@ export function buildWorkSnapshot(input: {
   goals: RawWorkGoal[];
   canonicalGoals?: RawCanonicalGoal[];
   commitments: RawWeeklyCommitment[];
+  planBlocks?: RawWorkPlanBlock[];
   now?: Date | string;
   taskLimit?: number;
   actorUserId?: string;
@@ -471,10 +492,93 @@ export function buildWorkSnapshot(input: {
     .filter((commitment) => commitment.commitments.length > 0)
     .sort((left, right) => right.weekStartsAt.localeCompare(left.weekStartsAt));
 
+  const nowDate = new Date(now);
+  const mondayDelta = (nowDate.getUTCDay() + 6) % 7;
+  const currentWeekStartsAt = new Date(Date.UTC(
+    nowDate.getUTCFullYear(),
+    nowDate.getUTCMonth(),
+    nowDate.getUTCDate() - mondayDelta,
+    12,
+  ));
+  const currentWeekKey = currentWeekStartsAt.toISOString().slice(0, 10);
+  const currentCommitments = input.commitments.filter((commitment) => (
+    (iso(commitment.weekStartsAt) ?? "").slice(0, 10) === currentWeekKey
+  ));
+  const reviewSubjects = new Map<string, { label: string | null; relationship: "self" | "coach-review" }>();
+  if (input.actorUserId) reviewSubjects.set(input.actorUserId, { label: null, relationship: "self" });
+  for (const commitment of currentCommitments) {
+    if (!input.actorUserId
+        || commitment.clientUserId === input.actorUserId
+        || commitment.reviewedByUserId !== input.actorUserId) continue;
+    reviewSubjects.set(commitment.clientUserId, {
+      label: personLabel(commitment.clientUser),
+      relationship: "coach-review",
+    });
+  }
+  const weeklyReviews = [...reviewSubjects.entries()].map(([subjectUserId, subject]) => {
+    const weeklyPlan = currentCommitments.find((commitment) => commitment.clientUserId === subjectUserId) ?? null;
+    return buildWeeklyReview({
+      subjectUserId,
+      subjectLabel: subject.label,
+      relationship: subject.relationship,
+      weekStartsAt: weeklyPlan ? iso(weeklyPlan.weekStartsAt)! : currentWeekStartsAt.toISOString(),
+      generatedAt: now,
+      tasks: input.tasks
+        .filter((task) => task.assignedUserId === subjectUserId && !isUnreviewedTranscriptActionItemSource(task.sourceJson))
+        .map((task) => ({
+          id: task.id,
+          title: clean(task.title) || "Untitled task",
+          status: task.status,
+          dueAt: iso(task.dueAt),
+          completedAt: iso(task.completedAt),
+          roomId: task.room?.id ?? task.booking?.callRoom?.id ?? null,
+          sessionTitle: sessionTitle(task),
+        })),
+      goals: (input.canonicalGoals ?? [])
+        .filter((goal) => goal.ownerUserId === subjectUserId)
+        .map((goal) => ({
+          id: goal.id,
+          title: clean(goal.title) || "Untitled goal",
+          status: goal.status,
+          targetAt: iso(goal.targetAt),
+          roomId: goal.room?.id ?? goal.booking?.callRoom?.id ?? null,
+          sessionTitle: sessionTitle(goal),
+          progressReceipts: (goal.progressReceipts ?? []).map((receipt) => ({
+            progressPercent: receipt.progressPercent,
+            note: receipt.note,
+            occurredAt: iso(receipt.occurredAt)!,
+          })),
+          taskLinks: (goal.taskLinks ?? []).map((link) => ({
+            taskId: link.actionItem.id,
+            relationship: link.relationship,
+          })),
+        })),
+      planBlocks: (input.planBlocks ?? [])
+        .filter((block) => block.ownerUserId === subjectUserId)
+        .map((block) => ({
+          id: block.id,
+          taskId: block.actionItemId ?? null,
+          goalId: block.goalId ?? null,
+          startsAt: iso(block.startsAt)!,
+          endsAt: iso(block.endsAt)!,
+          status: block.status,
+          actualMinutes: block.actualMinutes ?? null,
+        })),
+      weeklyPlan: weeklyPlan ? {
+        id: weeklyPlan.id,
+        commitments: [weeklyPlan.commitmentOne, weeklyPlan.commitmentTwo, weeklyPlan.commitmentThree].map(clean).filter(Boolean),
+        supportNeeded: clean(weeklyPlan.supportNeeded) || null,
+        progressNotes: clean(weeklyPlan.progressNotes) || null,
+        clientReviewedAt: iso(weeklyPlan.clientReviewedAt),
+      } : null,
+    });
+  });
+
   return {
     tasks,
     goals,
     commitments,
+    weeklyReviews,
     counts: {
       openTasks: tasks.filter((task) => task.status === "OPEN").length,
       attentionTasks: tasks.filter((task) => task.attentionReason !== null).length,

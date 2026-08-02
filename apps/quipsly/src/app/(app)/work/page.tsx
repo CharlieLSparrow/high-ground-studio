@@ -8,7 +8,7 @@ import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 import { StudioAccessShell } from "../studio-access-shell";
 import { WorkClient } from "./work-client";
-import { buildWorkSnapshot, type WorkProjectOption } from "./work-model";
+import { buildWorkSnapshot, sharedWorkRoomIds, type WorkProjectOption } from "./work-model";
 
 export const dynamic = "force-dynamic";
 
@@ -42,14 +42,17 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     { participants: { some: { userId } } },
   ];
   if (bookingIds.length) roomOr.push({ bookingId: { in: bookingIds } });
-  const roomRows = await prisma.callRoom.findMany({ where: { OR: roomOr }, select: { id: true }, take: 500 });
-  const roomIds = roomRows.map((room: { id: string }) => room.id);
+  const roomRows = await prisma.callRoom.findMany({ where: { OR: roomOr }, select: { id: true, bookingId: true }, take: 500 });
+  // Booking-backed coaching work follows the explicit client/coach relationship,
+  // not generic room participation. Unbooked production rooms remain shared with
+  // their participants so episode collaboration still works as expected.
+  const sharedProductionRoomIds = sharedWorkRoomIds(roomRows);
 
   const taskOr: any[] = [{ assignedUserId: userId }];
   const goalOr: any[] = [{ authorUserId: userId }];
-  if (roomIds.length) {
-    taskOr.push({ roomId: { in: roomIds } });
-    goalOr.push({ roomId: { in: roomIds } });
+  if (sharedProductionRoomIds.length) {
+    taskOr.push({ roomId: { in: sharedProductionRoomIds } });
+    goalOr.push({ roomId: { in: sharedProductionRoomIds } });
   }
   if (bookingIds.length) {
     taskOr.push({ bookingId: { in: bookingIds } });
@@ -85,7 +88,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     prisma.goal.findMany({
       where: { OR: [
         { ownerUserId: userId },
-        ...(roomIds.length ? [{ roomId: { in: roomIds } }] : []),
+        ...(sharedProductionRoomIds.length ? [{ roomId: { in: sharedProductionRoomIds } }] : []),
         ...(bookingIds.length ? [{ bookingId: { in: bookingIds } }] : []),
       ] },
       orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
@@ -106,9 +109,35 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       where: { OR: [{ clientUserId: userId }, { reviewedByUserId: userId }] },
       orderBy: { weekStartsAt: "desc" },
       take: 104,
-      select: { id: true, clientUserId: true, weekStartsAt: true, commitmentOne: true, commitmentTwo: true, commitmentThree: true, supportNeeded: true, progressNotes: true, clientReviewedAt: true, coachNotes: true, status: true, reviewedAt: true, updatedAt: true, clientUser: { select: { name: true, primaryEmail: true } }, reviewedByUser: { select: { name: true, primaryEmail: true } } },
+      select: { id: true, clientUserId: true, reviewedByUserId: true, weekStartsAt: true, commitmentOne: true, commitmentTwo: true, commitmentThree: true, supportNeeded: true, progressNotes: true, clientReviewedAt: true, coachNotes: true, status: true, reviewedAt: true, updatedAt: true, clientUser: { select: { name: true, primaryEmail: true } }, reviewedByUser: { select: { name: true, primaryEmail: true } } },
     }),
   ]);
+  const reviewSubjectIds = [...new Set([
+    userId,
+    ...commitmentRows
+      .filter((commitment: any) => commitment.reviewedByUserId === userId || commitment.clientUserId === userId)
+      .map((commitment: any) => commitment.clientUserId),
+  ])];
+  const reviewWindowStart = new Date(Date.now() - 8 * 86_400_000);
+  const reviewWindowEnd = new Date(Date.now() + 8 * 86_400_000);
+  const planBlockRows = await prisma.workPlanBlock.findMany({
+    where: {
+      ownerUserId: { in: reviewSubjectIds },
+      startsAt: { gte: reviewWindowStart, lt: reviewWindowEnd },
+    },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+    take: 1_000,
+    select: {
+      id: true,
+      ownerUserId: true,
+      actionItemId: true,
+      goalId: true,
+      startsAt: true,
+      endsAt: true,
+      status: true,
+      actualMinutes: true,
+    },
+  });
 
   const visibleProjects = new Set(visibleProjectIds);
   return buildWorkSnapshot({
@@ -124,6 +153,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       tagLinks: (goal.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
     })),
     commitments: commitmentRows,
+    planBlocks: planBlockRows,
     taskLimit: 500,
     actorUserId: userId,
   });

@@ -51,6 +51,7 @@ describe("schedule runway model", () => {
       timezone: "America/Denver",
       status: "PLANNED" as const,
       completedAt: null,
+      actualMinutes: null,
       updatedAt: "2026-07-18T18:00:00.000Z",
       roomId: null,
       tags: [],

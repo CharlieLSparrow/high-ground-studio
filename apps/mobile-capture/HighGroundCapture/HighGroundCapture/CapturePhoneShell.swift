@@ -1757,6 +1757,7 @@ struct TodayFollowThroughCard: View {
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var sourceToFile: MobileSourceInboxSource?
+    @State private var focusToComplete: MobileCaptureTodayFocusBlock?
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -1825,13 +1826,13 @@ struct TodayFollowThroughCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button {
-                        Task { _ = await client.setFocusStatus(focus, status: "COMPLETED") }
+                        focusToComplete = focus
                     } label: {
-                        Label("Block done", systemImage: "checkmark.circle")
+                        Label("Record work", systemImage: "checkmark.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(decisionsDisabled)
-                    .accessibilityHint("Completes only this personal focus block. The task or goal remains unchanged.")
+                    .accessibilityHint("Asks for actual minutes, then completes only this personal focus block. The task or goal remains unchanged.")
                     .accessibilityIdentifier("CaptureTodayFocusDoneButton")
                 }
                 .padding(12)
@@ -2495,6 +2496,69 @@ struct TodayFollowThroughCard: View {
                 .accessibilityIdentifier("CaptureSourceInbox")
             }
 
+            if let review = client.weeklyReview {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("Weekly review", systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.headline)
+                        Spacer()
+                        Text(review.reviewState.replacingOccurrences(of: "-", with: " ").capitalized)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.green)
+                    }
+                    HStack(spacing: 10) {
+                        weeklyReviewMetric("Planned", minutes: review.plannedMinutes)
+                        weeklyReviewMetric("Actual", minutes: review.actualMinutes)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(review.completedBlocksWithoutActualMinutes)")
+                                .font(.title3.weight(.bold))
+                            Text("Time missing")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    ForEach(review.goals.prefix(3)) { goal in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(goal.title).font(.subheadline.weight(.semibold))
+                                Spacer(minLength: 8)
+                                Text(goal.healthLabel).font(.caption2.weight(.bold)).foregroundStyle(goal.health == "needs-attention" ? Color.orange : Color.green)
+                            }
+                            Text(goal.latestEvidence ?? "No recent evidence receipt")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                    if !review.blockers.isEmpty {
+                        Text("Blocker: \(review.blockers.prefix(2).joined(separator: " · "))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                    if !review.nextCommitments.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Next commitments").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            ForEach(review.nextCommitments.prefix(3)) { commitment in
+                                Text("• \(commitment.title)").font(.caption)
+                            }
+                        }
+                    }
+                    if !review.sessionContributions.isEmpty {
+                        Text("Sessions: \(review.sessionContributions.prefix(2).map { "\($0.title) (\($0.evidenceCount))" }.joined(separator: " · "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Actual time appears only when someone records it. Quipsly does not infer missing work.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTodayWeeklyReview")
+            }
+
             if let weekly = client.weeklyPlan {
                 VStack(alignment: .leading, spacing: 7) {
                     Label("This week", systemImage: "calendar.badge.checkmark")
@@ -2512,7 +2576,7 @@ struct TodayFollowThroughCard: View {
                 }
             }
 
-            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.weeklyPlan == nil, !client.isLoading, !inboxClient.isLoading {
+            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.weeklyPlan == nil, client.weeklyReview == nil, !client.isLoading, !inboxClient.isLoading {
                 Text("No committed follow-through is available yet. Add a task, goal, focus block, weekly plan, or source annotation in Nest; Today will use the same canonical record.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -2525,7 +2589,7 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion records explicit actual minutes and never completes its task or goal. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -2538,6 +2602,10 @@ struct TodayFollowThroughCard: View {
                 previewOnly: previewOnly
             )
             .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $focusToComplete) { focus in
+            CaptureFocusCompletionSheet(client: client, block: focus)
+                .presentationDetents([.medium])
         }
         .navigationDestination(for: TranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -2851,6 +2919,70 @@ struct TodayFollowThroughCard: View {
             return "Time needs review · \(focus.timezone)"
         }
         return "\(start.formatted(date: .abbreviated, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened)) · \(focus.timezone)"
+    }
+
+    private func weeklyReviewMetric(_ label: String, minutes: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m")
+                .font(.title3.weight(.bold))
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CaptureFocusCompletionSheet: View {
+    @ObservedObject var client: CaptureTodayClient
+    let block: MobileCaptureTodayFocusBlock
+    @Environment(\.dismiss) private var dismiss
+    @State private var actualMinutes: Int
+
+    init(client: CaptureTodayClient, block: MobileCaptureTodayFocusBlock) {
+        self.client = client
+        self.block = block
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let start = formatter.date(from: block.startsAt) ?? ISO8601DateFormatter().date(from: block.startsAt)
+        let end = formatter.date(from: block.endsAt) ?? ISO8601DateFormatter().date(from: block.endsAt)
+        let planned = start.flatMap { start in end.map { max(1, Int($0.timeIntervalSince(start) / 60)) } } ?? 50
+        _actualMinutes = State(initialValue: min(1_440, block.actualMinutes ?? planned))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("What actually happened?") {
+                    Text(block.title).font(.headline)
+                    Stepper(value: $actualMinutes, in: 1...1_440, step: 5) {
+                        Text("\(actualMinutes) actual minute\(actualMinutes == 1 ? "" : "s")")
+                            .font(.body.weight(.semibold))
+                    }
+                    TextField("Actual minutes", value: $actualMinutes, format: .number)
+                        .keyboardType(.numberPad)
+                        .accessibilityIdentifier("CaptureTodayFocusActualMinutes")
+                    Text("The planned window is only a suggestion. Save the time you actually worked; Quipsly will not infer it or complete the linked task or goal.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
+                    Button {
+                        Task {
+                            if await client.setFocusStatus(block, status: "COMPLETED", actualMinutes: actualMinutes) {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        Label("Record completed work", systemImage: "checkmark.circle.fill")
+                    }
+                    .disabled(client.isMutating || actualMinutes < 1 || actualMinutes > 1_440)
+                    .accessibilityIdentifier("CaptureTodayFocusConfirmButton")
+                }
+            }
+            .navigationTitle("Complete focus")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
     }
 }
 
@@ -8295,7 +8427,7 @@ struct CaptureConsentConfirmationSheet: View {
                     }
                     .accessibilityIdentifier("CaptureConsentAudibleParticipantsToggle")
 
-                    Text("Signed-in participants must also save their own consent; this confirmation covers anyone nearby.")
+                    Text("Signed-in participants must also save their own consent; this confirmation covers everyone who may be captured, including people who are not signed into Quipsly.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

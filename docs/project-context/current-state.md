@@ -1,6 +1,30 @@
 # Current State
 
-Date: 2026-08-01
+Date: 2026-08-02
+
+## Evidence-backed weekly review checkpoint
+
+- Nest Work and Capture Today now use one deterministic domain projection for
+  goals, linked tasks, weekly commitments, Session contribution, blockers, and
+  next work. No model decides whether a week was good, and the projection has
+  no provider or target-status side effects.
+- Focus-block completion records explicit actual minutes separately from the
+  planned window. Missing historical or Build 25 time remains visibly unknown;
+  the compatibility path never turns a plan into claimed work.
+- A retained client recorded 37 minutes through rendered Calendar. Client Nest,
+  the signed-in Capture API, and the assigned coach all read the same canonical
+  week; independent PostgreSQL readback kept the task `OPEN` and goal `ACTIVE`.
+- The operation exposed and fixed an older Work privacy defect: generic room
+  participation no longer grants private booking-backed coaching work. The
+  unrelated producer denial now passes, while unbooked production-room
+  collaboration remains intact.
+- Full Nest verification passes 224 suites and 1,174 tests; TypeScript passes;
+  the Capture/App Store gate passes 1,007 checks; and the focused iPhone 17 Pro
+  simulator journey passes. Production migration/deployment, a new TestFlight
+  build, and physical-iPhone proof remain open.
+- Architecture, defect evidence, retained-operation boundaries, verification,
+  and release order are in
+  `docs/coordination/2026-08-02-evidence-backed-weekly-review-operation.md`.
 
 ## Cloud cost-control checkpoint
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { buildWeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
@@ -92,6 +93,7 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     sourceMutated: false,
     immutableSourceAnchors: true,
     completingFocusBlockMutatesTarget: false,
+    focusBlockActualTimeExplicitOnly: true,
     aiOutputRequiresHumanReview: true,
     transcriptReviewMutatesWork: false,
     transcriptReviewRequiresReleasedPlayback: true,
@@ -127,7 +129,14 @@ export async function GET(request: Request) {
     const writableProjectIds = new Set(visibleProjects
       .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
       .map((project) => project.id));
-    const [taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows] = await Promise.all([
+    const mondayDelta = (now.getUTCDay() + 6) % 7;
+    const weekStartsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayDelta, 12));
+    // WeeklyCommitment uses noon UTC as a stable date identity. Evidence and
+    // actual-time windows still begin at midnight so Monday-morning work is not
+    // silently omitted from the review.
+    const reviewWindowStartsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayDelta));
+    const reviewWindowEndsAt = new Date(reviewWindowStartsAt.getTime() + 7 * 86_400_000);
+    const [taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows, reviewTaskRows, reviewGoalRows] = await Promise.all([
       prisma.actionItem.findMany({
         where: { status: "OPEN", OR: taskAccessWhere(userId) },
         orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
@@ -155,10 +164,10 @@ export async function GET(request: Request) {
         select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } }, room: { select: { id: true, title: true } }, progressReceipts: { orderBy: { occurredAt: "desc" }, take: 1, select: { progressPercent: true, note: true, occurredAt: true } } },
       }),
       prisma.workPlanBlock.findMany({
-        where: { ownerUserId: userId, startsAt: { gte: new Date(now.getTime() - 12 * 3_600_000), lte: new Date(now.getTime() + 7 * 86_400_000) }, status: { in: ["PLANNED", "COMPLETED", "SKIPPED"] } },
+        where: { ownerUserId: userId, startsAt: { gte: new Date(Math.min(reviewWindowStartsAt.getTime(), now.getTime() - 12 * 3_600_000)), lte: new Date(Math.max(reviewWindowEndsAt.getTime(), now.getTime() + 7 * 86_400_000)) }, status: { in: ["PLANNED", "COMPLETED", "SKIPPED"] } },
         orderBy: { startsAt: "asc" },
-        take: 30,
-        select: { id: true, startsAt: true, endsAt: true, timezone: true, status: true, completedAt: true, updatedAt: true, actionItem: { select: { id: true, title: true, status: true } }, goal: { select: { id: true, title: true, status: true } } },
+        take: 500,
+        select: { id: true, actionItemId: true, goalId: true, startsAt: true, endsAt: true, timezone: true, status: true, completedAt: true, actualMinutes: true, updatedAt: true, actionItem: { select: { id: true, title: true, status: true } }, goal: { select: { id: true, title: true, status: true } } },
       }),
       prisma.weeklyCommitment.findFirst({
         where: { clientUserId: userId, status: "ACTIVE", weekStartsAt: { lte: now } },
@@ -230,6 +239,29 @@ export async function GET(request: Request) {
         take: 500,
         select: { id: true, projectId: true, slug: true, label: true, isActive: true },
       }) : Promise.resolve([]),
+      prisma.actionItem.findMany({
+        where: {
+          assignedUserId: userId,
+          OR: [
+            { status: "OPEN" },
+            { completedAt: { gte: reviewWindowStartsAt, lt: reviewWindowEndsAt } },
+          ],
+        },
+        orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
+        take: 500,
+        select: { id: true, title: true, status: true, dueAt: true, completedAt: true, room: { select: { id: true, title: true } } },
+      }),
+      prisma.goal.findMany({
+        where: { ownerUserId: userId, status: { not: "ARCHIVED" } },
+        orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+        take: 200,
+        select: {
+          id: true, title: true, status: true, targetAt: true,
+          room: { select: { id: true, title: true } },
+          progressReceipts: { orderBy: { occurredAt: "desc" }, take: 20, select: { progressPercent: true, note: true, occurredAt: true } },
+          taskLinks: { take: 200, select: { relationship: true, actionItemId: true } },
+        },
+      }),
     ]);
     const todayWindowEnd = new Date(now.getTime() + 24 * 3_600_000);
     const plannedTaskIds = new Set(blockRows
@@ -318,11 +350,57 @@ export async function GET(request: Request) {
         sourceAnchor,
       };
     });
-    const focusBlocks = blockRows.flatMap((block: any) => {
+    const focusWindowStartsAt = new Date(now.getTime() - 12 * 60 * 60 * 1_000);
+    const focusBlocks = blockRows.filter((block: any) => block.endsAt >= focusWindowStartsAt).slice(0, 60).flatMap((block: any) => {
       const target = block.actionItem || block.goal;
       const targetType = block.actionItem ? "task" : block.goal ? "goal" : null;
       if (!target || !targetType) return [];
-      return [{ id: block.id, targetType, targetId: target.id, title: target.title, targetStatus: target.status, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString(), timezone: block.timezone, status: block.status, completedAt: block.completedAt?.toISOString() ?? null, updatedAt: block.updatedAt.toISOString() }];
+      return [{ id: block.id, targetType, targetId: target.id, title: target.title, targetStatus: target.status, startsAt: block.startsAt.toISOString(), endsAt: block.endsAt.toISOString(), timezone: block.timezone, status: block.status, completedAt: block.completedAt?.toISOString() ?? null, actualMinutes: block.actualMinutes ?? null, updatedAt: block.updatedAt.toISOString() }];
+    });
+    const currentWeeklyPlan = weeklyPlan && weeklyPlan.weekStartsAt.toISOString().slice(0, 10) === weekStartsAt.toISOString().slice(0, 10)
+      ? weeklyPlan
+      : null;
+    const weeklyReview = buildWeeklyReview({
+      subjectUserId: userId,
+      subjectLabel: session.user.name ?? actorEmail ?? null,
+      relationship: "self",
+      weekStartsAt: weekStartsAt.toISOString(),
+      generatedAt: now.toISOString(),
+      tasks: reviewTaskRows.map((task: any) => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        dueAt: task.dueAt?.toISOString() ?? null,
+        completedAt: task.completedAt?.toISOString() ?? null,
+        roomId: task.room?.id ?? null,
+        sessionTitle: task.room?.title ?? null,
+      })),
+      goals: reviewGoalRows.map((goal: any) => ({
+        id: goal.id,
+        title: goal.title,
+        status: goal.status,
+        targetAt: goal.targetAt?.toISOString() ?? null,
+        roomId: goal.room?.id ?? null,
+        sessionTitle: goal.room?.title ?? null,
+        progressReceipts: (goal.progressReceipts ?? []).map((receipt: any) => ({ ...receipt, occurredAt: receipt.occurredAt.toISOString() })),
+        taskLinks: (goal.taskLinks ?? []).map((link: any) => ({ taskId: link.actionItemId, relationship: link.relationship })),
+      })),
+      planBlocks: blockRows.map((block: any) => ({
+        id: block.id,
+        taskId: block.actionItemId,
+        goalId: block.goalId,
+        startsAt: block.startsAt.toISOString(),
+        endsAt: block.endsAt.toISOString(),
+        status: block.status,
+        actualMinutes: block.actualMinutes ?? null,
+      })),
+      weeklyPlan: currentWeeklyPlan ? {
+        id: currentWeeklyPlan.id,
+        commitments: [currentWeeklyPlan.commitmentOne, currentWeeklyPlan.commitmentTwo, currentWeeklyPlan.commitmentThree].filter(Boolean),
+        supportNeeded: currentWeeklyPlan.supportNeeded,
+        progressNotes: currentWeeklyPlan.progressNotes,
+        clientReviewedAt: currentWeeklyPlan.clientReviewedAt?.toISOString() ?? null,
+      } : null,
     });
     const transcriptDeskResults = await Promise.allSettled(transcriptReviewRooms.map((room: any) =>
       readTranscriptCorrectionDesk({
@@ -367,6 +445,7 @@ export async function GET(request: Request) {
       tasks,
       goals,
       focusBlocks,
+      weeklyReview,
       transcriptReviews,
       sourceAnnotations: annotationRows.map((annotation: any) => ({
         id: annotation.id,
@@ -389,7 +468,7 @@ export async function GET(request: Request) {
         tagLabels: annotation.tagLabels,
         updatedAt: annotation.updatedAt.toISOString(),
       })),
-      weeklyPlan: weeklyPlan ? { ...weeklyPlan, weekStartsAt: weeklyPlan.weekStartsAt.toISOString(), commitments: [weeklyPlan.commitmentOne, weeklyPlan.commitmentTwo, weeklyPlan.commitmentThree].filter(Boolean), clientReviewedAt: weeklyPlan.clientReviewedAt?.toISOString() ?? null, updatedAt: weeklyPlan.updatedAt.toISOString(), commitmentOne: undefined, commitmentTwo: undefined, commitmentThree: undefined } : null,
+      weeklyPlan: currentWeeklyPlan ? { ...currentWeeklyPlan, weekStartsAt: currentWeeklyPlan.weekStartsAt.toISOString(), commitments: [currentWeeklyPlan.commitmentOne, currentWeeklyPlan.commitmentTwo, currentWeeklyPlan.commitmentThree].filter(Boolean), clientReviewedAt: currentWeeklyPlan.clientReviewedAt?.toISOString() ?? null, updatedAt: currentWeeklyPlan.updatedAt.toISOString(), commitmentOne: undefined, commitmentTwo: undefined, commitmentThree: undefined } : null,
       taskReminderIntents: reminderRows.slice(0, 500).map((reminder: any) => ({
         id: reminder.id,
         actionItemId: reminder.actionItemId,
@@ -923,20 +1002,30 @@ export async function POST(request: Request) {
     }
     if (action === "focus-status") {
       const nextStatus = text(input.nextStatus, 20).toUpperCase();
-      if (!["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"].includes(nextStatus)) return NextResponse.json({ ok: false, error: "Choose a valid focus-block status." }, { status: 400 });
+      const actualMinutes = Number(input.actualMinutes);
+      const validActualMinutes = Number.isInteger(actualMinutes) && actualMinutes >= 1 && actualMinutes <= 1_440;
+      const actualMinutesWasProvided = Object.prototype.hasOwnProperty.call(input, "actualMinutes");
+      if (!["PLANNED", "COMPLETED", "SKIPPED", "CANCELED"].includes(nextStatus)
+          || (nextStatus === "COMPLETED" && actualMinutesWasProvided && !validActualMinutes)) {
+        return NextResponse.json({ ok: false, error: "Choose a valid focus-block status and record actual minutes for completed work." }, { status: 400 });
+      }
+      // Build 25 predates explicit actual-time capture. Preserve that installed
+      // client's ability to finish a block, but never infer actual time from the
+      // plan. Current clients always send an explicit value.
+      const recordedActualMinutes = nextStatus === "COMPLETED" && validActualMinutes ? actualMinutes : null;
       const result = await prisma.$transaction(async (tx: any) => {
-        const current = await tx.workPlanBlock.findFirst({ where: { id, ownerUserId: userId }, select: { status: true, sourceJson: true, updatedAt: true } });
+        const current = await tx.workPlanBlock.findFirst({ where: { id, ownerUserId: userId }, select: { status: true, actualMinutes: true, sourceJson: true, updatedAt: true } });
         if (!current) return { kind: "not-found" as const };
         if (current.updatedAt.getTime() !== expected.getTime()) return { kind: "conflict" as const };
         const source = record(current.sourceJson);
-        const receipt = { id: receiptId, kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", previousStatus: current.status, nextStatus, changedAt: now.toISOString(), changedByUserId: userId, externalCalendarMutated: false, targetStatusMutated: false };
-        const updated = await tx.workPlanBlock.updateMany({ where: { id, ownerUserId: userId, updatedAt: expected }, data: { status: nextStatus, completedAt: nextStatus === "COMPLETED" ? now : null, sourceJson: { ...source, planReceipts: [...receipts(source, "planReceipts"), receipt] } } });
+        const receipt = { id: receiptId, kind: "quipsly-work-plan-block-status-v1", surface: "ios-capture-today", previousStatus: current.status, nextStatus, previousActualMinutes: current.actualMinutes, actualMinutes: recordedActualMinutes, actualTimeState: nextStatus !== "COMPLETED" ? "not-applicable" : recordedActualMinutes === null ? "not-recorded-legacy-client" : "recorded", changedAt: now.toISOString(), changedByUserId: userId, externalCalendarMutated: false, targetStatusMutated: false };
+        const updated = await tx.workPlanBlock.updateMany({ where: { id, ownerUserId: userId, updatedAt: expected }, data: { status: nextStatus, completedAt: nextStatus === "COMPLETED" ? now : null, actualMinutes: recordedActualMinutes, sourceJson: { ...source, planReceipts: [...receipts(source, "planReceipts"), receipt] } } });
         if (updated.count !== 1) return { kind: "conflict" as const };
-        return { kind: "saved" as const, record: await tx.workPlanBlock.findUnique({ where: { id }, select: { status: true, updatedAt: true } }) };
+        return { kind: "saved" as const, record: await tx.workPlanBlock.findUnique({ where: { id }, select: { status: true, actualMinutes: true, updatedAt: true } }) };
       });
       if (result.kind === "not-found") return NextResponse.json({ ok: false, error: "Only the focus-block owner can change this plan." }, { status: 404 });
       if (result.kind === "conflict" || !result.record) return NextResponse.json({ ok: false, error: "This focus block changed elsewhere. Refresh Today before deciding again.", code: "CONFLICT" }, { status: 409 });
-      return NextResponse.json({ ok: true, action, id, status: result.record.status, updatedAt: result.record.updatedAt.toISOString(), receiptId, boundaries: responseBoundaries() });
+      return NextResponse.json({ ok: true, action, id, status: result.record.status, actualMinutes: result.record.actualMinutes, updatedAt: result.record.updatedAt.toISOString(), receiptId, boundaries: responseBoundaries() });
     }
     if (action === "source-annotation-draft") {
       const actorEmail = text(session.user.primaryEmail || session.user.email, 320).toLowerCase();
