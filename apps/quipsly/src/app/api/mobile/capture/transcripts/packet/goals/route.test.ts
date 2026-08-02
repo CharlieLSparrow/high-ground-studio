@@ -1,5 +1,7 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
+
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
@@ -53,6 +55,7 @@ function harness() {
     updatedAt: new Date("2026-07-18T20:00:00.000Z"),
     sourceJson: {
       source: "transcript-packet-builder",
+      packetTemplateVersion: "quipsly-session-packet-v4",
       roomId,
       transcriptJobId,
       recordingAssetId,
@@ -106,7 +109,7 @@ function harness() {
     $queryRaw: jest.fn().mockResolvedValue([{ id: summaryNoteId }]),
   };
   prisma.$transaction = jest.fn((callback: any) => callback(prisma));
-  return { prisma, summary, goalCreate, goalTagLinkCreateMany };
+  return { prisma, summary, goalCreate, goalTagLinkCreateMany, segments };
 }
 
 describe("packet goal review route", () => {
@@ -314,5 +317,78 @@ describe("packet goal review route", () => {
     expect(changedIntent.status).toBe(409);
     expect(await changedIntent.json()).toMatchObject({ ok: false, errorCode: "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT" });
     expect(state.goalCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a complete multi-segment goal and persists every constituent evidence hash", async () => {
+    const state = harness();
+    const firstText = "My goal is to preserve the original recording and";
+    const secondText = "wait for explicit release.";
+    const sourceText = `${firstText} ${secondText}`;
+    state.segments[0]!.endSeconds = 13;
+    state.segments[0]!.text = firstText;
+    state.segments.push({ id: "segment-2", segmentIndex: 1, speakerLabel: "Homer", startSeconds: 13, endSeconds: 15, text: secondText, corrections: [], verifications: [] });
+    const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(state.segments);
+    const packetSource = state.summary.sourceJson as any;
+    packetSource.transcriptSnapshot = snapshot;
+    packetSource.packetBrief.sections[0].items = [{
+      segmentId: "segment-1",
+      segmentIds: ["segment-1", "segment-2"],
+      sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+      text: sourceText,
+    }];
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      roomId,
+      projectId: "project-1",
+      transcriptJobId,
+      gate: { allowed: true },
+      playback: { sourceId: "source-1", recordingAssetId },
+      segments: state.segments.map((segment) => ({
+        id: segment.id,
+        startSeconds: segment.startSeconds,
+        endSeconds: segment.endSeconds,
+        providerText: segment.text,
+        providerTextSha256: createHash("sha256").update(segment.text).digest("hex"),
+        providerSpeakerLabel: segment.speakerLabel,
+        text: segment.text,
+        speakerLabel: segment.speakerLabel,
+        acceptedCorrection: null,
+      })),
+    } as any);
+
+    const response = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "ACCEPT",
+      title: "Preserve the recording until release",
+      description: sourceText,
+      tagIds: [],
+    }));
+    expect(response.status).toBe(200);
+    const createdSource = state.goalCreate.mock.calls[0]?.[0].data.sourceJson;
+    expect(createdSource).toMatchObject({
+      segmentId: "segment-1",
+      segmentIds: ["segment-1", "segment-2"],
+      startSeconds: 10,
+      endSeconds: 15,
+      effectiveTextSnapshot: sourceText,
+      sourceSpan: {
+        segmentIds: ["segment-1", "segment-2"],
+        segments: [
+          expect.objectContaining({ segmentId: "segment-1", providerTextSha256: createHash("sha256").update(firstText).digest("hex") }),
+          expect.objectContaining({ segmentId: "segment-2", providerTextSha256: createHash("sha256").update(secondText).digest("hex") }),
+        ],
+      },
+    });
+    expect((state.summary.sourceJson.goalCandidateReviewReceipts as any[])[0]).toMatchObject({
+      segmentIds: ["segment-1", "segment-2"],
+      sourceSpan: { segmentIds: ["segment-1", "segment-2"] },
+    });
   });
 });

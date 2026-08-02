@@ -691,7 +691,7 @@ function checkTranscriptPacketContractSources() {
       && packetBuilderText.includes("reviewRequired: true")
       && packetBuilderText.includes("reusedExistingPacket")
       && packetBuilderText.includes("buildTranscriptPacketReviewLanes")
-      && packetBuilderText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v3"')
+      && packetBuilderText.includes('SESSION_PACKET_TEMPLATE_VERSION = "quipsly-session-packet-v4"')
       && packetBuilderText.includes('TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA = "quipsly-transcript-packet-snapshot-v1"')
       && packetBuilderText.includes("projectTranscriptSegmentsForPacket")
       && packetBuilderText.includes("packetSnapshotMatches")
@@ -1102,7 +1102,7 @@ function checkTranscriptCorrectionContractSources() {
       && taskDomainText.includes('TRANSCRIPT_DERIVED_GOAL_SCHEMA = "quipsly-transcript-derived-goal-v1"')
       && taskDomainText.includes("readTranscriptDerivedGoalSource")
       && goalRouteText.includes("readTranscriptCorrectionDesk({ prisma: tx, roomId: request.roomId, actor })")
-      && goalRouteText.includes("segment.providerTextSha256 !== request.expectedProviderTextSha256")
+      && goalRouteText.includes("sourceAnchor.providerTextSha256 !== request.expectedProviderTextSha256")
       && goalRouteText.includes("ownerUserId: actor.id")
       && goalRouteText.includes('status: "ACTIVE"')
       && goalRouteText.includes("taskCreated: false")
@@ -1752,6 +1752,7 @@ function checkUnifiedNestOperatingShellSources() {
 
 function checkSessionCalendarCancellationContractSources() {
   const providerText = sourceText("apps/quipsly/src/lib/server/google-calendar-session-projection.ts");
+  const operationText = sourceText("apps/quipsly/src/lib/server/google-calendar-projection-operation.ts");
   const routeText = sourceText("apps/quipsly/src/app/api/calendar/sessions/[roomId]/projection/route.ts");
   const connectionRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/route.ts");
   const managerText = sourceText("apps/quipsly/src/app/(app)/schedule/google-calendar-connection-manager.tsx");
@@ -1766,14 +1767,15 @@ function checkSessionCalendarCancellationContractSources() {
       && routeText.includes('body?.confirmCancellation !== true')
       && routeText.includes('action: "write"')
       && routeText.includes("sessionMutationAccessWhere")
-      && routeText.includes('operation: "CANCEL_EVENT"')
-      && routeText.includes("idempotentReplay: true")
-      && routeText.includes("post-provider-verification-failed")
+      && routeText.includes("cancelGoogleCalendarProjectionOperation")
+      && operationText.includes('operation: "CANCEL_EVENT"')
+      && operationText.includes("idempotentReplay: true")
+      && operationText.includes("post-provider-verification-failed")
       && connectionRouteText.includes('action: "write"')
       && connectionRouteText.includes("You need edit access to select a team calendar")
       && managerText.includes("Confirm removal from Google")
       && managerText.includes("Record verified absence")
-      && managerText.includes('session.status === "CANCELED"')
+      && managerText.includes('source.status === "CANCELED"')
       && managerText.includes('body?.externalSideEffects === "unknown"')
       && schedulePageText.includes('status: { not: "FAILED" }')
       && dogfoodText.includes("teamCalendarSelectionStatus")

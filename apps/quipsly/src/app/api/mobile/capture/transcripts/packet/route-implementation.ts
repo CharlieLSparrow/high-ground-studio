@@ -13,11 +13,14 @@ import {
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
   packetSnapshotMatches,
+  packetTemplateMatches,
   projectTranscriptSegmentsForPacket,
+  resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   transcriptPacketSnapshot,
 } from "@/lib/server/coaching-packets";
+import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
@@ -81,7 +84,6 @@ export function buildPacketGoalCandidates(input: {
   const goalsSection = asArray(brief.sections).filter(isObject).find((section) => section.id === "goals");
   if (!goalsSection) return [];
   const projectedSegments = projectTranscriptSegmentsForPacket(asArray(input.latestTranscriptJob.segments));
-  const segments = new Map(projectedSegments.map((segment) => [segment.id, segment]));
   const committedByRequest = new Map(input.goals.flatMap((goal) => {
     const source = sourceJson(goal.sourceJson);
     const requestId = text(source.clientRequestId);
@@ -90,9 +92,11 @@ export function buildPacketGoalCandidates(input: {
   const reviewReceipts = asArray(sourceJson(input.summary.sourceJson).goalCandidateReviewReceipts).filter(isObject);
   return asArray(goalsSection.items).filter(isObject).flatMap((item) => {
     const segmentId = text(item.segmentId);
-    const segment = segments.get(segmentId);
-    const transcriptText = text(segment?.text);
-    if (!segment || !segmentId || !transcriptText) return [];
+    const spanSegments = resolvePacketEvidenceSpan(item, projectedSegments);
+    const anchor = spanSegments ? buildTranscriptSourceAnchorFields(spanSegments) : null;
+    const segment = spanSegments?.[0];
+    const transcriptText = text(anchor?.effectiveTextSnapshot);
+    if (!segment || !anchor || !segmentId || !transcriptText) return [];
     const clientRequestId = `packet-goal-${input.packetBuildId}-${segmentId}`;
     const committedGoal = committedByRequest.get(clientRequestId) ?? null;
     const startSeconds = typeof segment.startSeconds === "number" ? segment.startSeconds : Number.NaN;
@@ -118,11 +122,14 @@ export function buildPacketGoalCandidates(input: {
       recordingAssetId: input.latestTranscriptJob.assetId,
       packetBuildId: input.packetBuildId,
       segmentId,
+      segmentIds: anchor.segmentIds,
       speakerLabel: text(segment.speakerLabel) || null,
-      startSeconds,
-      endSeconds,
+      startSeconds: anchor.startSeconds,
+      endSeconds: anchor.endSeconds,
       sourceText: transcriptText,
-      providerTextSha256: segment.providerTextSha256,
+      sourceTextSha256: text(item.sourceTextSha256),
+      providerTextSha256: anchor.providerTextSha256,
+      sourceSpan: anchor.sourceSpan,
       acceptedReviewId: segment.acceptedReviewId,
       acceptedCorrectionId: segment.acceptedCorrectionId,
       transcriptReviewStatus: segment.reviewStatus,
@@ -153,7 +160,6 @@ export function buildPacketNoteCandidates(input: {
   const lanes = asArray(summarySource.reviewLanes).filter(isObject);
   if (!lanes.length) return [];
   const projectedSegments = projectTranscriptSegmentsForPacket(asArray(input.latestTranscriptJob.segments));
-  const segments = new Map(projectedSegments.map((segment) => [segment.id, segment]));
   const committedByCandidate = new Map(input.notes.flatMap((note) => {
     const source = sourceJson(note.sourceJson);
     const candidateId = text(source.packetNoteCandidateId);
@@ -173,13 +179,15 @@ export function buildPacketNoteCandidates(input: {
     if (!laneId || laneStatus === "EMPTY") continue;
     for (const item of asArray(lane.items).filter(isObject)) {
       const segmentId = text(item.segmentId);
-      const segment = segments.get(segmentId);
-      if (!segment || !segmentId) continue;
+      const spanSegments = resolvePacketEvidenceSpan(item, projectedSegments);
+      const anchor = spanSegments ? buildTranscriptSourceAnchorFields(spanSegments) : null;
+      const segment = spanSegments?.[0];
+      if (!segment || !anchor || !segmentId) continue;
       const id = transcriptPacketNoteCandidateId(input.packetBuildId, laneId, segmentId);
       if (seen.has(id)) continue;
       seen.add(id);
       const committed = committedByCandidate.get(id) ?? null;
-      const sourceText = text(segment.text);
+      const sourceText = text(anchor.effectiveTextSnapshot);
       if (!sourceText) continue;
       candidates.push({
         id,
@@ -193,11 +201,14 @@ export function buildPacketNoteCandidates(input: {
         laneLabel,
         laneStatus,
         segmentId,
+        segmentIds: anchor.segmentIds,
         speakerLabel: text(segment.speakerLabel) || null,
-        startSeconds: segment.startSeconds,
-        endSeconds: segment.endSeconds,
+        startSeconds: anchor.startSeconds,
+        endSeconds: anchor.endSeconds,
         sourceText,
-        providerTextSha256: segment.providerTextSha256,
+        sourceTextSha256: text(item.sourceTextSha256),
+        providerTextSha256: anchor.providerTextSha256,
+        sourceSpan: anchor.sourceSpan,
         acceptedReviewId: segment.acceptedReviewId,
         acceptedCorrectionId: segment.acceptedCorrectionId,
         transcriptReviewStatus: segment.reviewStatus,
@@ -605,7 +616,8 @@ export async function GET(request: Request) {
     ? transcriptPacketSnapshot(latestTranscriptJob.segments)
     : null;
   const packetStale = Boolean(summary && latestTranscriptJob
-    && !packetSnapshotMatches(summary.sourceJson, latestTranscriptJob.segments));
+    && (!packetTemplateMatches(summary.sourceJson)
+      || !packetSnapshotMatches(summary.sourceJson, latestTranscriptJob.segments)));
   const allPacketActionItems = transcriptProcessingAllowed
     ? actionItems.filter((item: any) => {
         const source = sourceJson(item.sourceJson);
@@ -1065,7 +1077,7 @@ export async function PATCH(request: Request) {
       if (!transcriptGate.allowed) {
         throw new PacketReviewBoundaryError(409, transcriptGate.errorCode, transcriptGate.error);
       }
-      if (!packetSnapshotMatches(source, packetTranscriptJob.segments)) {
+      if (!packetTemplateMatches(source) || !packetSnapshotMatches(source, packetTranscriptJob.segments)) {
         throw new PacketReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing this lane.");
       }
       const reviewedAt = new Date().toISOString();

@@ -211,6 +211,10 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
     let roomId: String
     let packetBuildId: String
     let segmentId: String
+    var segmentIds: [String]? = nil
+    var sourceText: String? = nil
+    var sourceTextSha256: String? = nil
+    var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
     let speakerLabel: String?
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
@@ -246,10 +250,13 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
     let recordingAssetId: String
     let packetBuildId: String
     let segmentId: String
+    var segmentIds: [String]? = nil
     let speakerLabel: String?
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let sourceText: String
+    var sourceTextSha256: String? = nil
+    var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
     let providerTextSha256: String
     let suggestedTitle: String
     let suggestedDescription: String
@@ -292,10 +299,13 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     let laneLabel: String
     let laneStatus: String
     let segmentId: String
+    var segmentIds: [String]? = nil
     let speakerLabel: String?
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
     let sourceText: String
+    var sourceTextSha256: String? = nil
+    var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
     let providerTextSha256: String
     let acceptedReviewId: String?
     let acceptedCorrectionId: String?
@@ -1787,6 +1797,11 @@ private struct CapturePacketNoteCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if (candidate.segmentIds?.count ?? 1) > 1 {
+                Label("Complete thought across \(candidate.segmentIds?.count ?? 1) immutable transcript segments", systemImage: "link")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             Button(action: onOpenSource) {
                 Label("Review exact source · \(candidate.startSeconds.captureTranscriptTimestamp)–\(candidate.endSeconds.captureTranscriptTimestamp)", systemImage: "play.circle")
             }
@@ -1958,6 +1973,11 @@ private struct CapturePacketTaskCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if (candidate.segmentIds?.count ?? 1) > 1 {
+                Label("Complete thought across \(candidate.segmentIds?.count ?? 1) immutable transcript segments", systemImage: "link")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             Button("Review exact transcript source", action: onOpenSource)
                 .buttonStyle(.bordered)
                 .frame(minHeight: 44)
@@ -2193,6 +2213,11 @@ private struct CapturePacketGoalCandidateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if (candidate.segmentIds?.count ?? 1) > 1 {
+                Label("Complete thought across \(candidate.segmentIds?.count ?? 1) immutable transcript segments", systemImage: "link")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             Button("Review exact transcript source", action: onOpenSource)
                 .buttonStyle(.bordered)
                 .frame(minHeight: 44)
@@ -2279,7 +2304,7 @@ private struct CapturePacketGoalCandidateCard: View {
                             .buttonStyle(.bordered)
                             .accessibilityIdentifier("CapturePacketGoalCancelCreateButton")
                     }
-                    Text("The exact transcript segment and protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, delivery, and publication remain separate decisions.")
+                    Text("Every transcript segment in this evidence span and the protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, delivery, and publication remain separate decisions.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

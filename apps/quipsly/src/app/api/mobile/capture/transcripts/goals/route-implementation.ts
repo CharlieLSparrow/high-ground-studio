@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
+import {
+  buildTranscriptSourceAnchorFields,
+  resolveTranscriptSpanSegments,
+} from "@/lib/server/transcript-source-span";
 
 // Kept outside route.ts so transaction helpers remain directly testable.
 export const dynamic = "force-dynamic";
@@ -97,8 +101,10 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
   goal: {
     roomId: string;
     segmentId: string;
+    segmentIds?: string[];
     clientRequestId: string;
     expectedProviderTextSha256: string;
+    expectedSourceTextSha256?: string;
     title: string;
     description: string | null;
     targetAt: Date | null;
@@ -112,10 +118,20 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
   if (!desk.gate.allowed || !desk.playback) {
     throw new TranscriptCorrectionError(desk.gate.error || "Released recording-backed transcript evidence is required.", 409, "TRANSCRIPT_GOAL_EVIDENCE_HELD");
   }
-  const segment = desk.segments.find((candidate: any) => candidate.id === request.segmentId);
-  if (!segment) throw new TranscriptCorrectionError("The transcript segment changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
-  if (segment.providerTextSha256 !== request.expectedProviderTextSha256) {
+  const evidenceSegments = resolveTranscriptSpanSegments({
+    segmentIds: request.segmentIds,
+    primarySegmentId: request.segmentId,
+    segments: desk.segments,
+  });
+  const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
+  if (!sourceAnchor) throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
+  if (sourceAnchor.providerTextSha256 !== request.expectedProviderTextSha256) {
     throw new TranscriptCorrectionError("Provider transcript evidence changed. Refresh before creating the goal.", 409, "STALE_PROVIDER_EVIDENCE");
+  }
+  const expectedSourceTextSha256 = text(request.expectedSourceTextSha256, 64).toLowerCase();
+  if (expectedSourceTextSha256
+      && createHash("sha256").update(sourceAnchor.effectiveTextSnapshot, "utf8").digest("hex") !== expectedSourceTextSha256) {
+    throw new TranscriptCorrectionError("The complete transcript thought changed. Refresh before creating the goal.", 409, "STALE_TRANSCRIPT_SPAN_EVIDENCE");
   }
 
   const requestedIntent = transcriptGoalMaterializationIntent({
@@ -130,10 +146,21 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
   });
   if (replay) {
     const source = record(replay.sourceJson);
+    const legacySingleSegmentEvidenceAbsent = sourceAnchor.segmentIds.length === 1
+      && !source.segmentId
+      && !source.providerTextSha256
+      && !Array.isArray(source.segmentIds);
+    const sourceEvidenceMatches = legacySingleSegmentEvidenceAbsent || (
+      source.segmentId === request.segmentId
+      && source.providerTextSha256 === request.expectedProviderTextSha256
+      && JSON.stringify(Array.isArray(source.segmentIds) ? source.segmentIds : [source.segmentId])
+        === JSON.stringify(sourceAnchor.segmentIds)
+    );
     if (source.schema !== TRANSCRIPT_DERIVED_GOAL_SCHEMA
         || source.clientRequestId !== request.clientRequestId
         || source.createdByUserId !== actor.id
-        || replay.roomId !== request.roomId) {
+        || replay.roomId !== request.roomId
+        || !sourceEvidenceMatches) {
       throw new TranscriptCorrectionError("That goal request identity is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
     }
     const existingTagIds = Array.isArray(replay.tagLinks)
@@ -193,15 +220,7 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         createdAt,
         roomId: request.roomId,
         transcriptJobId: desk.transcriptJobId,
-        segmentId: request.segmentId,
-        startSeconds: segment.startSeconds,
-        endSeconds: segment.endSeconds,
-        providerText: segment.providerText,
-        providerTextSha256: segment.providerTextSha256,
-        providerSpeakerLabel: segment.providerSpeakerLabel,
-        effectiveTextSnapshot: segment.text,
-        effectiveSpeakerLabelSnapshot: segment.speakerLabel,
-        acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+        ...sourceAnchor,
         recordingAssetId: desk.playback.recordingAssetId,
         playbackSourceId: desk.playback.sourceId,
         materializationIntent: requestedIntent,

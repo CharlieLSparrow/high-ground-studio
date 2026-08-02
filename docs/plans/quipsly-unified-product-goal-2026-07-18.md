@@ -6648,3 +6648,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   local evidence, not a genuine coaching workflow, physical-iPhone capture, or
   human transcript acceptance. Full evidence is in
   `docs/coordination/2026-08-02-coaching-held-release-transcript-operation.md`.
+
+### Versioned transcript evidence-span checkpoint — 2026-08-02
+
+- Repaired a retained coaching-packet defect found through real local product
+  use: a provider segment boundary produced a goal candidate ending in `and`.
+  Packet v4 deterministically joins bounded same-speaker segments into complete
+  thought spans while preserving each immutable provider segment.
+- Added a versioned multi-segment source receipt through the shared domain,
+  packet builder, action/goal/note materialization boundaries, Nest, and the
+  native iPhone model. Canonical acceptance revalidates every ordered segment,
+  provider hash, overlay, full-text digest, and time range under the existing
+  transcript-job lock.
+- Operated **Build current packet** in the signed-in retained coaching Session.
+  Append-only database readback proved the v3 packet remains intact and the new
+  v4 candidate spans 00:06–00:17, all three stable segment IDs, and the complete
+  sentence. The rendered UI discloses the three-segment provenance.
+- The same private URL denied an unauthenticated browser. The build left zero
+  packet-created canonical notes, tasks, and goals. Because 0/5 segments are
+  playback-reviewed, no candidate was accepted and no human transcript truth
+  is claimed.
+- Focused 92/92, direct goal compatibility 11/11, full Nest 1,261/1,261
+  enabled tests, shared-domain/Nest TypeScript, native simulator compilation,
+  optimized Nest production build, Capture Nest evidence 10/10, mobile Capture
+  source contract, and the 245/245 repository contract gate pass.
+  Full evidence is in
+  `docs/coordination/2026-08-02-transcript-evidence-spans.md`.

@@ -199,7 +199,7 @@ async function operatePacket(origin, idToken, roomId, purpose) {
     { roomId, status: after.body?.packet?.status || null },
   );
   assert(
-    source.packetPurpose === purpose && source.packetTemplateVersion === "quipsly-session-packet-v3",
+    source.packetPurpose === purpose && source.packetTemplateVersion === "quipsly-session-packet-v4",
     `${purpose} packet did not preserve its purpose and v3 template stamp.`,
     { roomId, packetPurpose: source.packetPurpose || null, packetTemplateVersion: source.packetTemplateVersion || null },
   );

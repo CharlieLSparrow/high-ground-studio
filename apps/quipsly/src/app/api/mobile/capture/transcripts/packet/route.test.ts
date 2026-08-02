@@ -116,6 +116,54 @@ describe("packet goal candidates", () => {
     expect(buildPacketGoalCandidates({ summary: { sourceJson: { packetBrief: { ...summary.sourceJson.packetBrief, candidateOnly: false } } }, latestTranscriptJob, goals: [], packetBuildId })).toEqual([]);
     expect(buildPacketGoalCandidates({ summary, latestTranscriptJob: { ...latestTranscriptJob, status: "RUNNING" }, goals: [], packetBuildId })).toEqual([]);
   });
+
+  it("projects a complete multi-segment goal with every immutable segment in its source span", () => {
+    const sourceText = "My goal is to preserve the recording and wait for explicit release.";
+    const spanJob = {
+      ...latestTranscriptJob,
+      segments: [
+        { id: "segment-1", speakerLabel: "Homer", startSeconds: 12.4, endSeconds: 15, text: "My goal is to preserve the recording and" },
+        { id: "segment-2", speakerLabel: "Homer", startSeconds: 15, endSeconds: 17.8, text: "wait for explicit release." },
+      ],
+    };
+    const spanSummary = {
+      sourceJson: {
+        packetBrief: {
+          kind: "quipsly-transcript-packet-brief-v1",
+          candidateOnly: true,
+          humanApprovalRequired: true,
+          sections: [{
+            id: "goals",
+            items: [{
+              segmentId: "segment-1",
+              segmentIds: ["segment-1", "segment-2"],
+              sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+              text: sourceText,
+            }],
+          }],
+        },
+      },
+    };
+
+    expect(buildPacketGoalCandidates({ summary: spanSummary, latestTranscriptJob: spanJob, goals: [], packetBuildId })[0]).toMatchObject({
+      segmentId: "segment-1",
+      segmentIds: ["segment-1", "segment-2"],
+      startSeconds: 12.4,
+      endSeconds: 17.8,
+      sourceText,
+      sourceSpan: {
+        primarySegmentId: "segment-1",
+        segmentIds: ["segment-1", "segment-2"],
+        segments: [
+          expect.objectContaining({ segmentId: "segment-1" }),
+          expect.objectContaining({ segmentId: "segment-2" }),
+        ],
+      },
+    });
+    const tampered = structuredClone(spanSummary);
+    tampered.sourceJson.packetBrief.sections[0]!.items[0]!.sourceTextSha256 = "0".repeat(64);
+    expect(buildPacketGoalCandidates({ summary: tampered, latestTranscriptJob: spanJob, goals: [], packetBuildId })).toEqual([]);
+  });
 });
 
 describe("packet note candidates", () => {
@@ -208,5 +256,40 @@ describe("packet note candidates", () => {
       packetBuildId,
       actorUserId: "user-1",
     })).toEqual([]);
+  });
+
+  it("projects one complete multi-segment note candidate instead of a truncated first segment", () => {
+    const sourceText = "I realized the checksum matters and we should verify it before release.";
+    const spanJob = {
+      ...latestTranscriptJob,
+      segments: [
+        { id: "segment-1", speakerLabel: "Homer", startSeconds: 12.4, endSeconds: 15, text: "I realized the checksum matters and" },
+        { id: "segment-2", speakerLabel: "Homer", startSeconds: 15, endSeconds: 17.8, text: "we should verify it before release." },
+      ],
+    };
+    const spanSummary = {
+      id: "summary-1",
+      sourceJson: {
+        reviewLanes: [{
+          id: "coaching-insights",
+          label: "Insights and decisions",
+          status: "READY_FOR_HUMAN_REVIEW",
+          items: [{
+            segmentId: "segment-1",
+            segmentIds: ["segment-1", "segment-2"],
+            sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+            text: sourceText,
+          }],
+        }],
+      },
+    };
+    expect(buildPacketNoteCandidates({ summary: spanSummary, latestTranscriptJob: spanJob, notes: [], packetBuildId, actorUserId: "user-1" })[0]).toMatchObject({
+      segmentIds: ["segment-1", "segment-2"],
+      startSeconds: 12.4,
+      endSeconds: 17.8,
+      sourceText,
+      suggestedBody: sourceText,
+      sourceSpan: { segmentIds: ["segment-1", "segment-2"] },
+    });
   });
 });

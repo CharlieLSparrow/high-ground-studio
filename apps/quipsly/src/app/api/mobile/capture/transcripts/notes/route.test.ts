@@ -202,22 +202,20 @@ describe("explicit transcript-derived Session note", () => {
   });
 
   it("materializes a current packet lane item into one private canonical note", async () => {
-    const providerText = "Welcome, everybody.";
+    const providerText = "The important insight is to preserve the recording and";
+    const continuationText = "wait for explicit release.";
+    const sourceText = `${providerText} ${continuationText}`;
     const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
-    const segments = [{
-      id: "segment-1",
-      speakerLabel: "Speaker",
-      startSeconds: 3.66,
-      endSeconds: 4.84,
-      text: providerText,
-      corrections: [],
-      verifications: [],
-    }];
+    const segments = [
+      { id: "segment-1", speakerLabel: "Speaker", startSeconds: 3.66, endSeconds: 4.2, text: providerText, corrections: [], verifications: [] },
+      { id: "segment-2", speakerLabel: "Speaker", startSeconds: 4.2, endSeconds: 4.84, text: continuationText, corrections: [], verifications: [] },
+    ];
     const summary = {
       id: "summary-1",
       kind: "SUMMARY",
       sourceJson: {
         source: "transcript-packet-builder",
+        packetTemplateVersion: "quipsly-session-packet-v4",
         roomId: "room-1",
         transcriptJobId: "job-1",
         recordingAssetId: "asset-1",
@@ -227,7 +225,12 @@ describe("explicit transcript-derived Session note", () => {
           id: "coaching-insights",
           label: "Insights and decisions",
           status: "READY_FOR_HUMAN_REVIEW",
-          items: [{ segmentId: "segment-1", text: providerText }],
+          items: [{
+            segmentId: "segment-1",
+            segmentIds: ["segment-1", "segment-2"],
+            sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+            text: sourceText,
+          }],
         }],
       },
       createdAt: new Date("2026-08-02T02:00:00.000Z"),
@@ -252,7 +255,10 @@ describe("explicit transcript-derived Session note", () => {
     } as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
       ...desk,
-      segments: [{ ...desk.segments[0], providerTextSha256, acceptedCorrection: null }],
+      segments: [
+        { ...desk.segments[0], endSeconds: 4.2, text: providerText, providerText, providerTextSha256, acceptedCorrection: null },
+        { ...desk.segments[0], id: "segment-2", startSeconds: 4.2, endSeconds: 4.84, text: continuationText, providerText: continuationText, providerTextSha256: createHash("sha256").update(continuationText).digest("hex"), acceptedCorrection: null },
+      ],
     } as any);
 
     const response = await POST(request({
@@ -273,7 +279,13 @@ describe("explicit transcript-derived Session note", () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       idempotentReplay: false,
-      note: { visibility: "AUTHOR_PRIVATE", sourceAnchor: { segmentId: "segment-1" } },
+      note: { visibility: "AUTHOR_PRIVATE", sourceAnchor: {
+        segmentId: "segment-1",
+        startSeconds: 3.66,
+        endSeconds: 4.84,
+        effectiveTextSnapshot: sourceText,
+        sourceSpan: { segmentIds: ["segment-1", "segment-2"] },
+      } },
       boundaries: { packetCandidateReviewed: true, packetSnapshotRechecked: true, noteCreated: true, externalDelivery: false },
     });
     expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(tx, "transcript-job-packet-source:job-1");
@@ -286,6 +298,15 @@ describe("explicit transcript-derived Session note", () => {
           packetLaneId: "coaching-insights",
           packetLaneLabel: "Insights and decisions",
           materializedFromPacket: true,
+          segmentIds: ["segment-1", "segment-2"],
+          effectiveTextSnapshot: sourceText,
+          sourceSpan: expect.objectContaining({
+            segmentIds: ["segment-1", "segment-2"],
+            segments: [
+              expect.objectContaining({ segmentId: "segment-1", providerTextSha256 }),
+              expect.objectContaining({ segmentId: "segment-2", providerTextSha256: createHash("sha256").update(continuationText).digest("hex") }),
+            ],
+          }),
         }),
         revisions: { create: expect.objectContaining({ operation: "created-from-transcript-packet" }) },
       }),
@@ -302,7 +323,7 @@ describe("explicit transcript-derived Session note", () => {
       id: "summary-1",
       kind: "SUMMARY",
       sourceJson: {
-        source: "transcript-packet-builder", roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", packetBuildId: "build-1",
+        source: "transcript-packet-builder", packetTemplateVersion: "quipsly-session-packet-v4", roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1", packetBuildId: "build-1",
         transcriptSnapshot: transcriptPacketSnapshot(oldSegments),
         reviewLanes: [{ id: "coaching-insights", label: "Insights", status: "READY_FOR_HUMAN_REVIEW", items: [{ segmentId: "segment-1" }] }],
       },

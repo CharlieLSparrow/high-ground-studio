@@ -1278,6 +1278,29 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
     }
 }
 
+struct MobileCaptureTranscriptSourceSpanSegment: Codable, Hashable {
+    let segmentId: String
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+    let providerTextSha256: String
+    let providerSpeakerLabel: String?
+    let effectiveTextSnapshot: String
+    let effectiveSpeakerLabelSnapshot: String?
+    let acceptedReviewId: String?
+    let acceptedCorrectionId: String?
+    let reviewStatus: String
+}
+
+struct MobileCaptureTranscriptSourceSpan: Codable, Hashable {
+    let schema: String
+    let primarySegmentId: String
+    let segmentIds: [String]
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+    let effectiveTextSnapshot: String
+    let segments: [MobileCaptureTranscriptSourceSpanSegment]
+}
+
 struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable, Identifiable {
     let schema: String
     let roomId: String
@@ -1292,6 +1315,7 @@ struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable, Identifiable
     let acceptedCorrectionId: String?
     let recordingAssetId: String
     let playbackSourceId: String
+    var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
 
     var id: String { "\(roomId)|\(transcriptJobId)|\(segmentId)" }
 }

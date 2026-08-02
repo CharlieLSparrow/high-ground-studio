@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   packetSnapshotMatches,
+  packetTemplateMatches,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
 } from "@/lib/server/coaching-packets";
@@ -257,7 +258,7 @@ export async function POST(request: Request) {
       }
       const gate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: transcriptJob.asset });
       if (!gate.allowed) throw new GoalReviewBoundaryError(409, gate.errorCode, gate.error);
-      if (!packetSnapshotMatches(lockedSource, transcriptJob.segments)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, transcriptJob.segments)) {
         throw new GoalReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing the goal candidate.");
       }
       const transcriptSnapshotSha256 = text(object(lockedSource.transcriptSnapshot).sha256);
@@ -336,8 +337,10 @@ export async function POST(request: Request) {
           goal: {
             roomId,
             segmentId: candidate.segmentId,
+            segmentIds: candidate.segmentIds,
             clientRequestId: candidate.clientRequestId,
             expectedProviderTextSha256: candidate.providerTextSha256,
+            expectedSourceTextSha256: candidate.sourceTextSha256,
             title: after.title,
             description: after.description || null,
             targetAt,
@@ -362,6 +365,9 @@ export async function POST(request: Request) {
         roomId,
         transcriptSnapshotSha256,
         segmentId: candidate.segmentId,
+        segmentIds: candidate.segmentIds,
+        sourceTextSha256: candidate.sourceTextSha256,
+        sourceSpan: candidate.sourceSpan,
         providerTextSha256: candidate.providerTextSha256,
         acceptedReviewId: candidate.acceptedReviewId,
         acceptedCorrectionId: candidate.acceptedCorrectionId,

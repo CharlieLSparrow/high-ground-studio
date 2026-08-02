@@ -1,5 +1,7 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
+
 import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
@@ -24,7 +26,7 @@ const SUMMARY_NOTE_ID = "summary-1";
 const PACKET_BUILD_ID = "packet-build-1";
 const ACTION_CANDIDATE_ID = `quipsly-transcript-action-candidate-v1:${TRANSCRIPT_JOB_ID}:segment-1`;
 
-function actionCandidate() {
+function actionCandidate(overrides: Record<string, unknown> = {}) {
   return {
     id: ACTION_CANDIDATE_ID,
     kind: "quipsly-transcript-action-candidate-v1",
@@ -41,6 +43,7 @@ function actionCandidate() {
     endSeconds: 18,
     humanApprovalRequired: true,
     committedActionItemId: null,
+    ...overrides,
   };
 }
 
@@ -66,6 +69,7 @@ function createPrismaHarness() {
     updatedAt: new Date("2026-07-18T12:00:00.000Z"),
     sourceJson: {
       source: "transcript-packet-builder",
+      packetTemplateVersion: "quipsly-session-packet-v4",
       transcriptJobId: TRANSCRIPT_JOB_ID,
       recordingAssetId: RECORDING_ASSET_ID,
       roomId: ROOM_ID,
@@ -148,7 +152,7 @@ function createPrismaHarness() {
     return execution;
   });
 
-  return { prisma, summary, actionItems };
+  return { prisma, summary, actionItems, segments };
 }
 
 function reviewRequest(
@@ -370,6 +374,56 @@ describe("action candidate review route", () => {
         tagIds: ["tag-episode", "tag-proof"],
       },
       assignmentClaimed: true,
+    });
+  });
+
+  it("materializes a complete thought with every constituent segment hash in the source receipt", async () => {
+    const sourceText = "I will preserve the original recording and wait for explicit release.";
+    harness.segments[0]!.endSeconds = 15;
+    harness.segments[0]!.text = "I will preserve the original recording and";
+    harness.segments.push({
+      id: "segment-2",
+      segmentIndex: 1,
+      speakerLabel: "Charlie",
+      startSeconds: 15,
+      endSeconds: 18,
+      text: "wait for explicit release.",
+      corrections: [],
+      verifications: [],
+    });
+    const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
+    const source = harness.summary.sourceJson as any;
+    source.transcriptSnapshot = snapshot;
+    source.actionCandidates = [actionCandidate({
+      segmentIds: ["segment-1", "segment-2"],
+      sourceText,
+      sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+      endSeconds: 18,
+    })];
+
+    const response = await POST(reviewRequest("ACCEPT"));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.actionItem.source).toMatchObject({
+      segmentId: "segment-1",
+      segmentIds: ["segment-1", "segment-2"],
+      startSeconds: 12,
+      endSeconds: 18,
+      effectiveTextSnapshot: sourceText,
+      sourceSpan: {
+        schema: "quipsly-transcript-source-span-v1",
+        primarySegmentId: "segment-1",
+        segmentIds: ["segment-1", "segment-2"],
+        segments: [
+          expect.objectContaining({ segmentId: "segment-1", providerTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+          expect.objectContaining({ segmentId: "segment-2", providerTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+        ],
+      },
+    });
+    expect((harness.summary.sourceJson as any).actionCandidateReviewReceipts[0]).toMatchObject({
+      segmentIds: ["segment-1", "segment-2"],
+      sourceTextSha256: createHash("sha256").update(sourceText).digest("hex"),
+      sourceSpan: { segmentIds: ["segment-1", "segment-2"] },
     });
   });
 

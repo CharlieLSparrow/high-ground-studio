@@ -11,12 +11,15 @@ import { TRANSCRIPT_DERIVED_TASK_SCHEMA } from "@high-ground/quipsly-domain/tran
 import { getPrismaClient } from "@/lib/prisma";
 import {
   packetSnapshotMatches,
+  packetTemplateMatches,
   packetActionCandidatesFromSource,
   projectTranscriptSegmentsForPacket,
+  resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   type TranscriptActionCandidate,
 } from "@/lib/server/coaching-packets";
+import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -500,7 +503,7 @@ export async function POST(request: Request) {
         recordingAssetId,
         packetBuildId,
       });
-      if (!packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments)) {
         throw new ReviewBoundaryError(
           409,
           "TRANSCRIPT_REVIEW_CHANGED",
@@ -518,8 +521,16 @@ export async function POST(request: Request) {
         );
       }
       validateCandidateEvidence({ candidate, roomId, transcriptJobId, recordingAssetId, packetBuildId });
-      const projectedSegment = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments)
-        .find((segment) => segment.id === candidate.segmentId);
+      const projectedSegments = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments);
+      const evidenceSegments = resolvePacketEvidenceSpan(candidate, projectedSegments);
+      const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
+      if (!sourceAnchor) {
+        throw new ReviewBoundaryError(
+          409,
+          "STALE_ACTION_CANDIDATE_EVIDENCE",
+          "The action candidate's complete transcript evidence no longer matches this packet. Build the current packet before reviewing it.",
+        );
+      }
       const sourcePlaybackId = playbackSourceId(lockedTranscriptJob.asset);
 
       const requestedIntent = materializationIntent({ assignToMe, dueAt, tagIds });
@@ -609,7 +620,7 @@ export async function POST(request: Request) {
       let acceptedTags: Array<{ id: string; label: string; slug: string }> = [];
 
       if (decision === "ACCEPT") {
-        if (!projectedSegment || !sourcePlaybackId) {
+        if (!sourceAnchor || !sourcePlaybackId) {
           throw new ReviewBoundaryError(
             409,
             "ACTION_CANDIDATE_PLAYBACK_EVIDENCE_REQUIRED",
@@ -693,15 +704,7 @@ export async function POST(request: Request) {
               packetSummaryNoteId: summaryNoteId,
               transcriptSnapshotSha256,
               roomId,
-              segmentId: candidate.segmentId,
-              startSeconds: projectedSegment.startSeconds,
-              endSeconds: projectedSegment.endSeconds,
-              providerText: projectedSegment.providerText,
-              providerTextSha256: projectedSegment.providerTextSha256,
-              providerSpeakerLabel: projectedSegment.providerSpeakerLabel,
-              effectiveTextSnapshot: projectedSegment.text,
-              effectiveSpeakerLabelSnapshot: projectedSegment.speakerLabel,
-              acceptedCorrectionId: projectedSegment.acceptedCorrectionId,
+              ...sourceAnchor,
               playbackSourceId: sourcePlaybackId,
               acceptedAt: reviewedAt,
               acceptedByUserId: userId,
@@ -744,6 +747,10 @@ export async function POST(request: Request) {
         summaryNoteId,
         roomId,
         transcriptSnapshotSha256,
+        segmentId: candidate.segmentId,
+        segmentIds: sourceAnchor?.segmentIds ?? [candidate.segmentId],
+        sourceTextSha256: candidate.sourceTextSha256 ?? null,
+        sourceSpan: sourceAnchor?.sourceSpan ?? null,
         reviewedAt,
         reviewedByUserId: userId,
         reviewNote,

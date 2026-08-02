@@ -18,6 +18,9 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import {
   packetSnapshotMatches,
+  packetTemplateMatches,
+  projectTranscriptSegmentsForPacket,
+  resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
 } from "@/lib/server/coaching-packets";
@@ -27,6 +30,10 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
+import {
+  buildTranscriptSourceAnchorFields,
+  resolveTranscriptSpanSegments,
+} from "@/lib/server/transcript-source-span";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,6 +93,7 @@ function sourceMatches(sourceJson: unknown, input: {
   actorUserId: string;
   roomId: string;
   segmentId: string;
+  segmentIds?: string[];
   clientRequestId: string;
   expectedProviderTextSha256: string;
   title: string;
@@ -115,6 +123,8 @@ function sourceMatches(sourceJson: unknown, input: {
     && source.createdByUserId === input.actorUserId
     && source.roomId === input.roomId
     && source.segmentId === input.segmentId
+    && JSON.stringify(Array.isArray(source.segmentIds) ? source.segmentIds : [source.segmentId])
+      === JSON.stringify(input.segmentIds ?? [input.segmentId])
     && source.clientRequestId === input.clientRequestId
     && source.providerTextSha256 === input.expectedProviderTextSha256
     && source.initialTitle === input.title
@@ -242,6 +252,8 @@ export async function POST(request: Request) {
   try {
     const result = await prisma.$transaction(async (tx: any) => {
       let packetLaneLabel: string | null = null;
+      let packetEvidenceSegmentIds: string[] | null = null;
+      let packetSourceTextSha256 = "";
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, session.user),
         select: {
@@ -313,17 +325,22 @@ export async function POST(request: Request) {
         if (!lockedGate.allowed) {
           throw new TranscriptCorrectionError(lockedGate.error || "Transcript evidence is held.", 409, lockedGate.errorCode || "TRANSCRIPT_NOTE_EVIDENCE_HELD");
         }
-        if (!packetSnapshotMatches(packetSource, lockedTranscriptJob.segments)) {
+        if (!packetTemplateMatches(packetSource) || !packetSnapshotMatches(packetSource, lockedTranscriptJob.segments)) {
           throw new TranscriptCorrectionError("Transcript review changed after this packet was built. Build the current packet before saving a note.", 409, "TRANSCRIPT_REVIEW_CHANGED");
         }
         const lane = array(packetSource.reviewLanes).map(record).find((candidate) => candidate.id === packetContext.packetLaneId);
         const laneStatus = text(lane?.status, 80);
         const item = array(lane?.items).map(record).find((candidate) => candidate.segmentId === segmentId);
+        const packetEvidence = item
+          ? resolvePacketEvidenceSpan(item, projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments))
+          : null;
         const expectedCandidateId = transcriptPacketNoteCandidateId(packetContext.packetBuildId, packetContext.packetLaneId, segmentId);
-        if (!lane || !item || packetContext.packetNoteCandidateId !== expectedCandidateId
+        if (!lane || !item || !packetEvidence || packetContext.packetNoteCandidateId !== expectedCandidateId
             || laneStatus === "EMPTY" || laneStatus === "REJECTED_BY_HUMAN") {
           throw new TranscriptCorrectionError("This packet note candidate is unavailable or its lane is closed. Refresh before saving it.", 409, "PACKET_NOTE_CANDIDATE_UNAVAILABLE");
         }
+        packetEvidenceSegmentIds = packetEvidence.map((segment) => segment.id);
+        packetSourceTextSha256 = text(item.sourceTextSha256, 64).toLowerCase();
         packetLaneLabel = text(lane.label, 240) || "Session note";
       }
 
@@ -335,17 +352,26 @@ export async function POST(request: Request) {
           "TRANSCRIPT_NOTE_EVIDENCE_HELD",
         );
       }
-      const segment = desk.segments.find((candidate: any) => candidate.id === segmentId);
-      if (!segment) {
-        throw new TranscriptCorrectionError("The transcript segment changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
+      const evidenceSegments = resolveTranscriptSpanSegments({
+        segmentIds: packetEvidenceSegmentIds,
+        primarySegmentId: segmentId,
+        segments: desk.segments,
+      });
+      const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
+      if (!sourceAnchor) {
+        throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
       }
-      if (segment.providerTextSha256 !== expectedProviderTextSha256) {
+      if (sourceAnchor.providerTextSha256 !== expectedProviderTextSha256) {
         throw new TranscriptCorrectionError("Provider transcript evidence changed. Refresh before saving the note.", 409, "STALE_PROVIDER_EVIDENCE");
+      }
+      if (packetSourceTextSha256
+          && createHash("sha256").update(sourceAnchor.effectiveTextSnapshot, "utf8").digest("hex") !== packetSourceTextSha256) {
+        throw new TranscriptCorrectionError("The complete transcript thought changed. Refresh before saving the note.", 409, "STALE_TRANSCRIPT_SPAN_EVIDENCE");
       }
 
       const replay = await tx.coachingNote.findUnique({ where: { id }, select: NOTE_SELECT });
       if (replay) {
-        if (!sourceMatches(replay.sourceJson, replayInput)) {
+        if (!sourceMatches(replay.sourceJson, { ...replayInput, segmentIds: sourceAnchor.segmentIds })) {
           throw new TranscriptCorrectionError("That note request identity is already bound to different evidence or content.", 409, "IDEMPOTENCY_CONFLICT");
         }
         return { note: replay, idempotentReplay: true };
@@ -361,15 +387,7 @@ export async function POST(request: Request) {
         createdAt,
         roomId,
         transcriptJobId: desk.transcriptJobId,
-        segmentId,
-        startSeconds: segment.startSeconds,
-        endSeconds: segment.endSeconds,
-        providerText: segment.providerText,
-        providerTextSha256: segment.providerTextSha256,
-        providerSpeakerLabel: segment.providerSpeakerLabel,
-        effectiveTextSnapshot: segment.text,
-        effectiveSpeakerLabelSnapshot: segment.speakerLabel,
-        acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+        ...sourceAnchor,
         recordingAssetId: desk.playback.recordingAssetId,
         playbackSourceId: desk.playback.sourceId,
         initialTitle: title,

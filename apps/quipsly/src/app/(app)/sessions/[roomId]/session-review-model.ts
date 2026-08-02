@@ -14,6 +14,9 @@ export type SessionReviewCandidate = {
   roomId: string;
   packetBuildId: string;
   segmentId: string;
+  segmentIds?: string[];
+  sourceText?: string;
+  sourceTextSha256?: string;
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -30,10 +33,12 @@ export type SessionReviewGoalCandidate = {
   recordingAssetId: string;
   packetBuildId: string;
   segmentId: string;
+  segmentIds?: string[];
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
   sourceText: string;
+  sourceTextSha256?: string;
   providerTextSha256: string;
   suggestedTitle: string;
   suggestedDescription: string;
@@ -54,10 +59,12 @@ export type SessionReviewNoteCandidate = {
   laneLabel: string;
   laneStatus: string;
   segmentId: string;
+  segmentIds?: string[];
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
   sourceText: string;
+  sourceTextSha256?: string;
   providerTextSha256: string;
   acceptedReviewId: string | null;
   acceptedCorrectionId: string | null;

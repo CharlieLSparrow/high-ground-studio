@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import {
   buildCoachingPacketFromTranscriptJob,
+  buildTranscriptEvidenceSpans,
   buildTranscriptPacketBrief,
   isUnreviewedTranscriptActionItem,
   mergePacketActionCandidates,
@@ -98,7 +99,7 @@ describe("transcript coaching packet action review boundary", () => {
     expect(summaryWrite).toMatchObject({ visibility: "AUTHOR_PRIVATE" });
     expect(summaryWrite?.sourceJson).toMatchObject({
       packetPurpose: "COACHING",
-      packetTemplateVersion: "quipsly-session-packet-v3",
+      packetTemplateVersion: "quipsly-session-packet-v4",
     });
     expect(summaryWrite?.sourceJson.packetBrief).toMatchObject({
       kind: "quipsly-transcript-packet-brief-v1",
@@ -115,6 +116,30 @@ describe("transcript coaching packet action review boundary", () => {
       actionItemCount: 0,
       actionItemIds: [],
     }));
+  });
+
+  it("keeps one complete commitment across adjacent immutable provider segments", () => {
+    const raw = [
+      { id: "segment-1", speakerLabel: "Coach", startSeconds: 6, endSeconds: 11, text: "The test goal is to preserve the original recording, verify the exact checksum, and", corrections: [], verifications: [] },
+      { id: "segment-2", speakerLabel: "Coach", startSeconds: 11, endSeconds: 16, text: "hold all transcript work until every participant has consented and a human explicitly releases", corrections: [], verifications: [] },
+      { id: "segment-3", speakerLabel: "Coach", startSeconds: 16, endSeconds: 17, text: "it.", corrections: [], verifications: [] },
+      { id: "segment-4", speakerLabel: "Coach", startSeconds: 18, endSeconds: 20, text: "This is a separate sentence.", corrections: [], verifications: [] },
+    ];
+    const projected = projectTranscriptSegmentsForPacket(raw);
+    const spans = buildTranscriptEvidenceSpans(projected);
+
+    expect(projected.map((segment) => segment.id)).toEqual(["segment-1", "segment-2", "segment-3", "segment-4"]);
+    expect(spans).toHaveLength(2);
+    expect(spans[0]).toMatchObject({
+      id: "segment-1",
+      segmentIds: ["segment-1", "segment-2", "segment-3"],
+      startSeconds: 6,
+      endSeconds: 17,
+      text: "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.",
+      sourceTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(spans[0]?.evidenceSegments).toEqual(projected.slice(0, 3));
+    expect(spans[1]?.segmentIds).toEqual(["segment-4"]);
   });
 
   it("keeps coaching and podcast review lanes purpose-specific", () => {

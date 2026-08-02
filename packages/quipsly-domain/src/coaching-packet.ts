@@ -6,6 +6,11 @@
  * legacy quarantine, and the provider-processing release boundary identical.
  */
 
+import {
+  readTranscriptSourceSpan,
+  type TranscriptSourceSpanEvidence,
+} from "./transcript-derived-task";
+
 export const TRANSCRIPT_PACKET_SOURCE = "transcript-packet-builder" as const;
 export const LEGACY_WEB_TRANSCRIPT_PACKET_SOURCE = "web-transcript-packet-builder" as const;
 export const TRANSCRIPT_PACKET_SOURCES = [
@@ -67,6 +72,13 @@ export interface TranscriptActionCandidate {
   roomId: string;
   packetBuildId: string;
   segmentId: string;
+  /** Ordered immutable segment identities. `segmentId` remains the primary deep-link anchor. */
+  segmentIds?: string[];
+  /** Complete effective transcript text represented by the candidate span. */
+  sourceText?: string;
+  /** SHA-256 of `sourceText`, used to reject mutated packet projections. */
+  sourceTextSha256?: string;
+  sourceSpan?: TranscriptSourceSpanEvidence | null;
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -76,6 +88,8 @@ export interface TranscriptActionCandidate {
 
 export type TranscriptPacketBriefSegment = {
   id: string;
+  segmentIds?: string[];
+  sourceTextSha256?: string;
   speakerLabel?: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -101,6 +115,10 @@ function briefSegment(segment: TranscriptPacketBriefSegment) {
   const text = briefText(segment.text);
   return {
     segmentId: segment.id,
+    segmentIds: Array.isArray(segment.segmentIds) && segment.segmentIds.length
+      ? [...segment.segmentIds]
+      : [segment.id],
+    sourceTextSha256: briefText(segment.sourceTextSha256) || null,
     speakerLabel: briefText(segment.speakerLabel) || "Unknown speaker",
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
@@ -136,7 +154,10 @@ export function buildTranscriptPacketBrief(
     humanApprovalRequired: true as const,
     sourceTruth: "Every brief item points to an immutable transcript segment; recording media remains source truth.",
     overview: {
-      segmentCount: segments.length,
+      segmentCount: segments.reduce((count, segment) => count + (
+        Array.isArray(segment.segmentIds) && segment.segmentIds.length ? segment.segmentIds.length : 1
+      ), 0),
+      thoughtSpanCount: segments.length,
       speakerCount: new Set(segments.map((segment) => briefText(segment.speakerLabel)).filter(Boolean)).size,
       startSeconds: typeof segments[0]?.startSeconds === "number" ? segments[0].startSeconds : null,
       endSeconds: typeof segments.at(-1)?.endSeconds === "number" ? segments.at(-1)!.endSeconds : null,
@@ -164,6 +185,10 @@ export function createTranscriptActionCandidate(input: {
   roomId: string;
   packetBuildId: string;
   segmentId: string;
+  segmentIds: string[];
+  sourceText: string;
+  sourceTextSha256: string;
+  sourceSpan?: TranscriptSourceSpanEvidence | null;
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -253,6 +278,19 @@ export function isTranscriptActionCandidate(
     && nonEmptyText(candidate.roomId)
     && nonEmptyText(candidate.packetBuildId)
     && nonEmptyText(candidate.segmentId)
+    && (
+      candidate.segmentIds === undefined
+      || (Array.isArray(candidate.segmentIds)
+        && candidate.segmentIds.length > 0
+        && candidate.segmentIds.length <= 12
+        && candidate.segmentIds.every(nonEmptyText)
+        && candidate.segmentIds[0] === candidate.segmentId
+        && new Set(candidate.segmentIds).size === candidate.segmentIds.length)
+    )
+    && (candidate.sourceText === undefined || nonEmptyText(candidate.sourceText))
+    && (candidate.sourceTextSha256 === undefined
+      || (typeof candidate.sourceTextSha256 === "string" && /^[a-f0-9]{64}$/.test(candidate.sourceTextSha256)))
+    && (candidate.sourceSpan === undefined || candidate.sourceSpan === null || readTranscriptSourceSpan(candidate.sourceSpan) !== null)
     && (candidate.speakerLabel === null || typeof candidate.speakerLabel === "string")
     && typeof candidate.startSeconds === "number"
     && Number.isFinite(candidate.startSeconds)
