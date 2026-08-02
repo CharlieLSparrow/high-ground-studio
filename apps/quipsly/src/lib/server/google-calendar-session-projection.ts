@@ -19,18 +19,42 @@ export type SessionCalendarSnapshot = {
   url: string;
   status: "CONFIRMED" | "CANCELLED";
   providerVisibility: "default" | "private";
+  providerTransparency: "opaque" | "transparent";
   attendeesIncluded: false;
   privateSessionContentIncluded: false;
 };
 
+export type ProductionMilestoneCalendarSnapshot = {
+  schema: "quipsly-production-milestone-calendar-snapshot-v1";
+  sourceType: "StudioEpisodeMilestone";
+  sourceId: string;
+  title: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  url: string;
+  status: "CONFIRMED" | "CANCELLED";
+  providerVisibility: "default" | "private";
+  providerTransparency: "opaque" | "transparent";
+  attendeesIncluded: false;
+  privateSessionContentIncluded: false;
+};
+
+export type GoogleCalendarProjectionSnapshot =
+  | SessionCalendarSnapshot
+  | ProductionMilestoneCalendarSnapshot;
+
 export type SessionCalendarProjectionPreview = {
-  schema: "quipsly-session-calendar-projection-preview-v1";
+  schema:
+    | "quipsly-session-calendar-projection-preview-v1"
+    | "quipsly-production-milestone-calendar-projection-preview-v1";
   action: "CREATE" | "UPDATE" | "NOOP" | "CANCEL" | "BLOCKED";
   sourceRevision: string;
   deterministicProviderEventId: string;
   uid: string;
   sendUpdates: "none";
-  snapshot: SessionCalendarSnapshot;
+  snapshot: GoogleCalendarProjectionSnapshot;
   existing: null | {
     projectionId: string;
     providerEventId: string | null;
@@ -52,8 +76,14 @@ export class SessionCalendarProjectionError extends Error {
   }
 }
 
-export function deterministicGoogleEventId(roomId: string) {
-  return `q${createHash("sha256").update(roomId).digest("hex")}`;
+export function deterministicGoogleEventId(
+  sourceId: string,
+  sourceType: GoogleCalendarProjectionSnapshot["sourceType"] = "CallRoom",
+) {
+  const identity = sourceType === "CallRoom"
+    ? sourceId
+    : `${sourceType}\0${sourceId}`;
+  return `q${createHash("sha256").update(identity).digest("hex")}`;
 }
 
 export function buildSessionCalendarSnapshot(input: {
@@ -90,13 +120,14 @@ export function buildSessionCalendarSnapshot(input: {
     url: input.url,
     status: input.roomStatus === "CANCELED" ? "CANCELLED" as const : "CONFIRMED" as const,
     providerVisibility: input.providerVisibility,
+    providerTransparency: "opaque" as const,
     attendeesIncluded: false as const,
     privateSessionContentIncluded: false as const,
   };
 }
 
 export function buildSessionCalendarProjectionPreview(input: {
-  snapshot: SessionCalendarSnapshot;
+  snapshot: GoogleCalendarProjectionSnapshot;
   existing?: {
     id: string;
     providerEventId: string | null;
@@ -127,11 +158,19 @@ export function buildSessionCalendarProjectionPreview(input: {
   else if (existing.sourceRevision === sourceRevision && existing.status === "SYNCED") action = "NOOP";
   else action = "UPDATE";
   return {
-    schema: "quipsly-session-calendar-projection-preview-v1",
+    schema: input.snapshot.sourceType === "CallRoom"
+      ? "quipsly-session-calendar-projection-preview-v1"
+      : "quipsly-production-milestone-calendar-projection-preview-v1",
     action,
     sourceRevision,
-    deterministicProviderEventId: deterministicGoogleEventId(input.snapshot.sourceId),
-    uid: calendarProjectionUid("call-room", input.snapshot.sourceId),
+    deterministicProviderEventId: deterministicGoogleEventId(
+      input.snapshot.sourceId,
+      input.snapshot.sourceType,
+    ),
+    uid: calendarProjectionUid(
+      input.snapshot.sourceType === "CallRoom" ? "call-room" : "production-milestone",
+      input.snapshot.sourceId,
+    ),
     sendUpdates: "none",
     snapshot: input.snapshot,
     existing,
@@ -147,6 +186,51 @@ export function buildSessionCalendarProjectionPreview(input: {
   };
 }
 
+export function buildProductionMilestoneCalendarSnapshot(input: {
+  milestoneId: string;
+  title: string;
+  episodeTitle: string;
+  kind: string;
+  milestoneStatus: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  timezone: string;
+  url: string;
+  providerVisibility: "default" | "private";
+}) {
+  const endsAt = input.endsAt ?? new Date(input.startsAt.getTime() + 30 * 60_000);
+  if (endsAt <= input.startsAt) {
+    throw new SessionCalendarProjectionError(
+      "The production milestone end must be after its start before it can reach a calendar.",
+      "invalid-milestone-time",
+    );
+  }
+  const title = input.title.trim() || "Quipsly production milestone";
+  return {
+    schema: "quipsly-production-milestone-calendar-snapshot-v1" as const,
+    sourceType: "StudioEpisodeMilestone" as const,
+    sourceId: input.milestoneId,
+    title,
+    description: `Open Quipsly for the ${input.episodeTitle.trim() || "episode"} runway, ownership, dependencies, and production context. Manuscript text, private notes, recordings, transcripts, tasks, goals, and participant identities are not copied to this event. Milestone type: ${input.kind}.`,
+    startsAt: input.startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    timezone: input.timezone,
+    url: input.url,
+    status: input.milestoneStatus === "CANCELED" ? "CANCELLED" as const : "CONFIRMED" as const,
+    providerVisibility: input.providerVisibility,
+    providerTransparency: input.endsAt ? "opaque" as const : "transparent" as const,
+    attendeesIncluded: false as const,
+    privateSessionContentIncluded: false as const,
+  };
+}
+
+export function buildProductionMilestoneCalendarProjectionPreview(input: {
+  snapshot: ProductionMilestoneCalendarSnapshot;
+  existing?: Parameters<typeof buildSessionCalendarProjectionPreview>[0]["existing"];
+}) {
+  return buildSessionCalendarProjectionPreview(input);
+}
+
 function eventResource(preview: SessionCalendarProjectionPreview) {
   return {
     id: preview.deterministicProviderEventId,
@@ -156,6 +240,7 @@ function eventResource(preview: SessionCalendarProjectionPreview) {
     end: { dateTime: preview.snapshot.endsAt, timeZone: preview.snapshot.timezone },
     status: "confirmed",
     visibility: preview.snapshot.providerVisibility,
+    transparency: preview.snapshot.providerTransparency,
     extendedProperties: {
       private: {
         quipslySourceType: preview.snapshot.sourceType,
@@ -280,6 +365,8 @@ export async function writeSessionGoogleCalendarProjection(input: {
   };
 }
 
+export const writeGoogleCalendarProjection = writeSessionGoogleCalendarProjection;
+
 export async function cancelSessionGoogleCalendarProjection(input: {
   preview: SessionCalendarProjectionPreview;
   accessToken: string;
@@ -383,3 +470,5 @@ export async function cancelSessionGoogleCalendarProjection(input: {
     providerAlreadyAbsent: false,
   };
 }
+
+export const cancelGoogleCalendarProjection = cancelSessionGoogleCalendarProjection;

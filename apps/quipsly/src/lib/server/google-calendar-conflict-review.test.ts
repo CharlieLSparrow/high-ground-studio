@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 import {
   canPrepareQuipslyCalendarUpdate,
@@ -10,6 +11,9 @@ import {
 
 jest.mock("@/lib/server/prisma-advisory-lock", () => ({
   acquirePrismaAdvisoryTransactionLock: jest.fn(),
+}));
+jest.mock("@/lib/server/studio-project-access", () => ({
+  resolveStudioProjectAccess: jest.fn(),
 }));
 
 const actor = {
@@ -23,6 +27,7 @@ function projection(overrides: Record<string, unknown> = {}) {
   return {
     id: "projection-1",
     collectionId: "collection-1",
+    sourceType: "CallRoom",
     sourceId: "room-1",
     sourceRevision: "revision-1",
     providerEventId: "event-1",
@@ -83,7 +88,16 @@ function database(input: {
 }
 
 describe("Google Calendar conflict review", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      role: "EDITOR",
+      source: "grant",
+      projectId: "project-1",
+      projectSlug: "high-ground-odyssey",
+    });
+  });
 
   it("binds the review version to provider and Quipsly conflict truth", () => {
     const first = version();
@@ -234,5 +248,41 @@ describe("Google Calendar conflict review", () => {
     })).rejects.toMatchObject({ code: "calendar-conflict-write-forbidden", status: 403 });
     expect(fixture.transaction.calendarProjection.update).not.toHaveBeenCalled();
     expect(fixture.transaction.calendarSyncReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it("resolves a milestone conflict only with current episode project edit authority", async () => {
+    const current = projection({
+      sourceType: "StudioEpisodeMilestone",
+      sourceId: "milestone-1",
+    });
+    const fixture = database({ current });
+    Object.assign(fixture.transaction, {
+      studioEpisodeMilestone: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "milestone-1",
+          status: "PLANNED",
+          startsAt: new Date("2026-08-12T18:00:00.000Z"),
+          episodeProduction: {
+            project: { id: "project-1", slug: "high-ground-odyssey" },
+          },
+        }),
+      },
+    });
+
+    const result = await resolveGoogleCalendarProjectionConflict({
+      prisma: fixture.prisma,
+      actor,
+      projectionId: "projection-1",
+      expectedConflictVersion: version(current),
+      intent: "STOP_PROJECTING",
+    });
+
+    expect(result).toMatchObject({ status: "REVOKED", externalMutated: false });
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectSlug: "high-ground-odyssey",
+      email: "editor@example.com",
+      action: "write",
+    }));
+    expect(fixture.transaction.callRoom.findFirst).not.toHaveBeenCalled();
   });
 });

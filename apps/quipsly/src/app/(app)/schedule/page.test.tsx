@@ -14,6 +14,7 @@ jest.mock("@/lib/server/calendar-overview", () => ({ loadCalendarOverviewForActo
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 jest.mock("./schedule-planner", () => ({ SchedulePlanner: () => <div>Personal planning surface</div> }));
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
 
 describe("Schedule page truth states", () => {
   beforeEach(() => {
@@ -104,6 +105,7 @@ describe("Schedule page truth states", () => {
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
       studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
     render(await SchedulePage());
     expect(screen.getByRole("status", { name: "Calendar unavailable" })).toHaveTextContent("database connection is unavailable");
@@ -141,6 +143,7 @@ describe("Schedule page truth states", () => {
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
       studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());
@@ -212,6 +215,7 @@ describe("Schedule page truth states", () => {
       calendarFeed: { findMany: jest.fn().mockResolvedValue([]) },
       calendarProjection: { findMany: jest.fn().mockResolvedValue([]) },
       studioEpisodeMilestone: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
     } as any);
 
     render(await SchedulePage());
@@ -264,8 +268,15 @@ describe("Schedule page truth states", () => {
         episodeProduction: {
           title: "The Swear Jar",
           slug: "the-swear-jar",
+          projectId: "project-1",
           project: { slug: "high-ground-odyssey" },
         },
+      }]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([{
+        id: "episode-1",
+        title: "The Swear Jar",
+        projectId: "project-1",
+        project: { name: "High Ground Odyssey" },
       }]) },
     } as any);
 

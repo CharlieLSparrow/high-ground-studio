@@ -3,11 +3,13 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { resolveGoogleCalendarProjectionConflict } from "@/lib/server/google-calendar-conflict-review";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
 jest.mock("@/lib/server/google-calendar-conflict-review", () => ({
   ...jest.requireActual("@/lib/server/google-calendar-conflict-review"),
   resolveGoogleCalendarProjectionConflict: jest.fn(),
@@ -31,7 +33,16 @@ function post(body: Record<string, unknown>) {
 }
 
 describe("Google Calendar conflict review route", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      role: "EDITOR",
+      source: "grant",
+      projectId: "project-1",
+      projectSlug: "high-ground-odyssey",
+    });
+  });
 
   it("rejects conflict reads before database access when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null);
@@ -106,6 +117,75 @@ describe("Google Calendar conflict review route", () => {
     const response = await POST(post({ projectionId: "projection-1", intent: "DELETE_GOOGLE" }));
     expect(response.status).toBe(400);
     expect(resolveGoogleCalendarProjectionConflict).not.toHaveBeenCalled();
+  });
+
+  it("returns an authorized production milestone conflict without provider identity", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(actor as never);
+    const database = {
+      calendarProjection: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "projection-milestone-1",
+          sourceType: "StudioEpisodeMilestone",
+          sourceId: "milestone-1",
+          sourceRevision: "revision-1",
+          providerEventId: "provider-event-must-not-escape",
+          providerEtag: '"etag-must-not-escape"',
+          status: "CONFLICT",
+          conflictState: "EXTERNAL_CHANGED",
+          metadataJson: { reconciliation: { reason: "provider-version-changed" } },
+          updatedAt: new Date("2026-08-01T05:00:00.000Z"),
+          collection: {
+            id: "collection-1",
+            displayName: "HGO Production",
+            purpose: "PODCAST_PRODUCTION",
+            nestId: "project-1",
+          },
+          receipts: [{
+            providerStatus: "provider-version-changed",
+            occurredAt: new Date("2026-08-01T05:00:00.000Z"),
+          }],
+        }]),
+      },
+      studioEpisodeMilestone: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "milestone-1",
+          title: "Rough cut ready",
+          kind: "ROUGH_CUT",
+          status: "PLANNED",
+          startsAt: new Date("2026-08-12T18:00:00.000Z"),
+          endsAt: null,
+          timezone: "America/Denver",
+          episodeProduction: {
+            title: "The Swear Jar",
+            slug: "the-swear-jar",
+            project: { id: "project-1", slug: "high-ground-odyssey" },
+          },
+        }]),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(database as never);
+
+    const response = await GET(new Request("https://nest.quipsly.com/api/calendar/connections/google/conflicts"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.conflicts[0]).toMatchObject({
+      projectionId: "projection-milestone-1",
+      allowedIntents: ["PREPARE_QUIPSLY_UPDATE", "STOP_PROJECTING"],
+      source: {
+        type: "PRODUCTION_MILESTONE",
+        id: "milestone-1",
+        title: "Rough cut ready",
+      },
+      milestone: {
+        episodeTitle: "The Swear Jar",
+        projectSlug: "high-ground-odyssey",
+      },
+      session: null,
+      providerContentImported: false,
+    });
+    expect(resolveStudioProjectAccess).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(payload)).not.toMatch(/provider-event-must-not-escape|etag-must-not-escape/);
   });
 
   it("records an explicit local-only conflict decision", async () => {

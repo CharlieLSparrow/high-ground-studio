@@ -38,7 +38,15 @@ export type ScheduleMilestone = {
   dependencyTitle: string | null;
   episodeTitle: string;
   episodeSlug: string;
+  projectId: string;
   projectSlug: string;
+};
+
+export type ScheduleEpisodeChoice = {
+  id: string;
+  title: string;
+  projectId: string;
+  projectName: string;
 };
 
 export type ScheduleTask = {
@@ -100,6 +108,7 @@ export type ScheduleSnapshot =
         createdAt: string;
         lastGeneratedAt: string | null;
       }>;
+      calendarEpisodes: ScheduleEpisodeChoice[];
       sessions: ScheduleSession[];
       milestones: ScheduleMilestone[];
       tasks: ScheduleTask[];

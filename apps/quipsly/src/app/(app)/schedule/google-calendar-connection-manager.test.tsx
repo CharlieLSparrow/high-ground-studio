@@ -81,7 +81,7 @@ describe("Google Calendar conflict review UX", () => {
       .mockResolvedValueOnce(jsonResponse({ ok: true, conflicts: [] }));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    render(<GoogleCalendarConnectionManager projects={[]} sessions={[]} />);
+    render(<GoogleCalendarConnectionManager projects={[]} sessions={[]} milestones={[]} />);
 
     expect(await screen.findByRole("heading", { name: "Google Calendar changes need a decision" })).toBeInTheDocument();
     expect(screen.getByText(/did not import event content or change either calendar/i)).toBeInTheDocument();
@@ -89,10 +89,10 @@ describe("Google Calendar conflict review UX", () => {
     fireEvent.click(screen.getByRole("button", { name: "Prepare Quipsly preview" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Google is unchanged\. Preview the current Quipsly Session below/i)).toBeInTheDocument();
+      expect(screen.getByText(/Google is unchanged\. Preview the current Quipsly source below/i)).toBeInTheDocument();
     });
     expect(screen.queryByRole("heading", { name: "Google Calendar changes need a decision" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Scheduled Session")).toHaveValue("older-session-1");
+    expect(screen.getByLabelText("Quipsly source")).toHaveValue("SESSION:older-session-1");
     expect(screen.getByRole("option", { name: /QA Retained · Older episode recording/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Verified calendar selection")).toHaveValue("collection-1");
 
@@ -104,5 +104,58 @@ describe("Google Calendar conflict review UX", () => {
       expectedConflictVersion: "opaque-conflict-version",
       intent: "PREPARE_QUIPSLY_UPDATE",
     });
+  });
+
+  it("previews a production milestone through its project-bound Google selection", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(connectionState))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, conflicts: [] }))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        preview: {
+          action: "CREATE",
+          sourceRevision: "milestone-revision-1",
+          snapshot: {
+            sourceType: "StudioEpisodeMilestone",
+            title: "Rough cut ready",
+            description: "Open Quipsly for the episode production context.",
+            startsAt: "2026-08-12T18:00:00.000Z",
+            endsAt: "2026-08-12T18:30:00.000Z",
+            timezone: "America/Denver",
+            status: "CONFIRMED",
+            providerVisibility: "default",
+          },
+          warning: "Confirming changes one owned Google calendar with notifications disabled and no attendees.",
+        },
+      }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<GoogleCalendarConnectionManager
+      projects={[{ id: "project-1", name: "High Ground Odyssey" }]}
+      sessions={[]}
+      milestones={[{
+        id: "milestone-1",
+        title: "Rough cut ready",
+        projectId: "project-1",
+        startsAt: "2026-08-12T18:00:00.000Z",
+        endsAt: null,
+        timezone: "America/Denver",
+        status: "PLANNED",
+        episodeTitle: "The Swear Jar",
+      }]}
+    />);
+
+    expect(await screen.findByLabelText("Quipsly source")).toHaveValue("PRODUCTION_MILESTONE:milestone-1");
+    expect(screen.getByRole("option", { name: /Milestone · The Swear Jar · Rough cut ready/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Verified calendar selection")).toHaveValue("collection-1");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Preview Google event" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Preview Google event" }));
+
+    expect(await screen.findByRole("heading", { name: "Rough cut ready" })).toBeInTheDocument();
+    expect(screen.getByText(/Notifications off · No attendees/i)).toBeInTheDocument();
+    expect(fetchMock.mock.calls[2][0]).toBe(
+      "/api/calendar/milestones/milestone-1/projection?collectionId=collection-1",
+    );
+    expect(fetchMock.mock.calls[2][1]).toMatchObject({ cache: "no-store" });
   });
 });

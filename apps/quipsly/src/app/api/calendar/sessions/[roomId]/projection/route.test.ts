@@ -2,7 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { decryptGoogleRefreshToken, getGoogleCalendarOAuthConfig, refreshGoogleCalendarAccess } from "@/lib/server/google-calendar-oauth";
-import { cancelSessionGoogleCalendarProjection, writeSessionGoogleCalendarProjection } from "@/lib/server/google-calendar-session-projection";
+import { cancelGoogleCalendarProjection, writeGoogleCalendarProjection } from "@/lib/server/google-calendar-session-projection";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { DELETE, GET, POST } from "./route";
@@ -17,8 +17,8 @@ jest.mock("@/lib/server/google-calendar-oauth", () => ({
 }));
 jest.mock("@/lib/server/google-calendar-session-projection", () => ({
   ...jest.requireActual("@/lib/server/google-calendar-session-projection"),
-  cancelSessionGoogleCalendarProjection: jest.fn(),
-  writeSessionGoogleCalendarProjection: jest.fn(),
+  cancelGoogleCalendarProjection: jest.fn(),
+  writeGoogleCalendarProjection: jest.fn(),
 }));
 
 const actor = {
@@ -163,7 +163,7 @@ describe("Session calendar projection route", () => {
       }),
     ]));
     expect(refreshGoogleCalendarAccess).not.toHaveBeenCalled();
-    expect(writeSessionGoogleCalendarProjection).not.toHaveBeenCalled();
+    expect(writeGoogleCalendarProjection).not.toHaveBeenCalled();
   });
 
   it("persists the exact provider version and append-only effect receipt after explicit confirmation", async () => {
@@ -177,7 +177,7 @@ describe("Session calendar projection route", () => {
     jest.mocked(getGoogleCalendarOAuthConfig).mockReturnValue({ encryptionKey: Buffer.alloc(32) } as never);
     jest.mocked(decryptGoogleRefreshToken).mockReturnValue("refresh-token");
     jest.mocked(refreshGoogleCalendarAccess).mockResolvedValue("access-token");
-    jest.mocked(writeSessionGoogleCalendarProjection).mockResolvedValue({
+    jest.mocked(writeGoogleCalendarProjection).mockResolvedValue({
       outcome: "SYNCED",
       externalMutated: true,
       providerEventId: "provider-event-1",
@@ -203,7 +203,7 @@ describe("Session calendar projection route", () => {
     const payload = await response.json();
     expect(response.status).toBe(200);
     expect(payload.result).toMatchObject({ projectionId: "projection-1", receiptId: "receipt-1", externalMutated: true });
-    expect(writeSessionGoogleCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
+    expect(writeGoogleCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
       accessToken: "access-token",
       calendarId: "provider-calendar-id",
       preview: expect.objectContaining({ sourceRevision: preview.sourceRevision, action: "CREATE" }),
@@ -256,7 +256,7 @@ describe("Session calendar projection route", () => {
       $transaction: jest.fn(async (operation) => operation(transaction)),
     });
     jest.mocked(getPrismaClient).mockReturnValue(database as never);
-    jest.mocked(cancelSessionGoogleCalendarProjection).mockResolvedValue({
+    jest.mocked(cancelGoogleCalendarProjection).mockResolvedValue({
       outcome: "ALREADY_ABSENT",
       externalMutated: false,
       providerEventId: null,
@@ -358,7 +358,7 @@ describe("Session calendar projection route", () => {
         idempotentReplay: true,
       },
     });
-    expect(cancelSessionGoogleCalendarProjection).not.toHaveBeenCalled();
+    expect(cancelGoogleCalendarProjection).not.toHaveBeenCalled();
     expect(refreshGoogleCalendarAccess).not.toHaveBeenCalled();
     expect((database as any).$transaction).not.toHaveBeenCalled();
   });
@@ -387,7 +387,7 @@ describe("Session calendar projection route", () => {
     jest.mocked(getGoogleCalendarOAuthConfig).mockReturnValue({ encryptionKey: Buffer.alloc(32) } as never);
     jest.mocked(decryptGoogleRefreshToken).mockReturnValue("refresh-token");
     jest.mocked(refreshGoogleCalendarAccess).mockResolvedValue("access-token");
-    jest.mocked(cancelSessionGoogleCalendarProjection).mockResolvedValue({
+    jest.mocked(cancelGoogleCalendarProjection).mockResolvedValue({
       outcome: "CANCELED",
       externalMutated: true,
       providerEventId: "provider-event-1",
@@ -415,7 +415,7 @@ describe("Session calendar projection route", () => {
       { params: Promise.resolve({ roomId: "room-1" }) },
     );
     expect(response.status).toBe(200);
-    expect(cancelSessionGoogleCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
+    expect(cancelGoogleCalendarProjection).toHaveBeenCalledWith(expect.objectContaining({
       accessToken: "access-token",
       calendarId: "provider-calendar-id",
       preview: expect.objectContaining({ action: "CANCEL" }),
@@ -449,7 +449,7 @@ describe("Session calendar projection route", () => {
       status: "SYNCED",
     };
     const transaction = {
-      calendarProjection: { update: jest.fn().mockResolvedValue({ id: "projection-1" }) },
+      calendarProjection: { upsert: jest.fn().mockResolvedValue({ id: "projection-1" }) },
       calendarSyncReceipt: { create: jest.fn().mockResolvedValue({ id: "receipt-conflict" }) },
     };
     const database = prisma({
@@ -466,7 +466,7 @@ describe("Session calendar projection route", () => {
     jest.mocked(getGoogleCalendarOAuthConfig).mockReturnValue({ encryptionKey: Buffer.alloc(32) } as never);
     jest.mocked(decryptGoogleRefreshToken).mockReturnValue("refresh-token");
     jest.mocked(refreshGoogleCalendarAccess).mockResolvedValue("access-token");
-    jest.mocked(cancelSessionGoogleCalendarProjection).mockResolvedValue({
+    jest.mocked(cancelGoogleCalendarProjection).mockResolvedValue({
       outcome: "CANCELED",
       externalMutated: true,
       providerEventId: "provider-event-1",
@@ -500,9 +500,19 @@ describe("Session calendar projection route", () => {
       receiptId: "receipt-conflict",
       externalSideEffects: true,
     });
-    expect(transaction.calendarProjection.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "projection-1" },
-      data: expect.objectContaining({ status: "CONFLICT", conflictState: "QUIPSLY_CHANGED", providerEtag: null }),
+    expect(transaction.calendarProjection.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        collectionId_sourceType_sourceId: {
+          collectionId: "collection-1",
+          sourceType: "CallRoom",
+          sourceId: "room-1",
+        },
+      },
+      update: expect.objectContaining({
+        status: "CONFLICT",
+        conflictState: "QUIPSLY_CHANGED",
+        providerEtag: null,
+      }),
     }));
     expect(transaction.calendarSyncReceipt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

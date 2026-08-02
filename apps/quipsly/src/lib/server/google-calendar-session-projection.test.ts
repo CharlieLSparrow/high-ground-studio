@@ -1,6 +1,10 @@
 /** @jest-environment node */
 
+import { createHash } from "node:crypto";
+
 import {
+  buildProductionMilestoneCalendarProjectionPreview,
+  buildProductionMilestoneCalendarSnapshot,
   buildSessionCalendarProjectionPreview,
   buildSessionCalendarSnapshot,
   cancelSessionGoogleCalendarProjection,
@@ -223,5 +227,58 @@ describe("Session Google Calendar projection", () => {
       providerStatus: "not-projected",
     });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("Production milestone Google Calendar projection", () => {
+  it("keeps point milestones visible without reserving a participant's time", async () => {
+    const milestone = buildProductionMilestoneCalendarSnapshot({
+      milestoneId: "milestone-1",
+      title: "Rough cut ready for review",
+      episodeTitle: "The Swear Jar",
+      kind: "ROUGH_CUT",
+      milestoneStatus: "PLANNED",
+      startsAt: new Date("2026-08-10T18:00:00.000Z"),
+      endsAt: null,
+      timezone: "America/Denver",
+      url: "https://nest.quipsly.com/nests/hgo/episodes/the-swear-jar",
+      providerVisibility: "default",
+    });
+    const preview = buildProductionMilestoneCalendarProjectionPreview({ snapshot: milestone });
+    const fetchImpl = jest.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: preview.deterministicProviderEventId,
+      etag: '"milestone-etag"',
+      status: "confirmed",
+    }), { status: 200 }));
+
+    await writeSessionGoogleCalendarProjection({
+      preview,
+      accessToken: "access",
+      calendarId: "production-calendar",
+      fetchImpl,
+    });
+
+    expect(milestone).toMatchObject({
+      sourceType: "StudioEpisodeMilestone",
+      providerTransparency: "transparent",
+      attendeesIncluded: false,
+      privateSessionContentIncluded: false,
+    });
+    expect(milestone.endsAt).toBe("2026-08-10T18:30:00.000Z");
+    expect(milestone.description).toContain("The Swear Jar");
+    expect(milestone.description).not.toContain("producer@example.test");
+    expect(preview.deterministicProviderEventId).not.toBe(deterministicGoogleEventId("milestone-1"));
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({
+      transparency: "transparent",
+      extendedProperties: {
+        private: { quipslySourceType: "StudioEpisodeMilestone" },
+      },
+    });
+  });
+
+  it("keeps legacy Session provider identities stable while namespacing new source types", () => {
+    expect(deterministicGoogleEventId("room-1")).toBe(`q${createHash("sha256").update("room-1").digest("hex")}`);
+    expect(deterministicGoogleEventId("room-1", "StudioEpisodeMilestone"))
+      .not.toBe(deterministicGoogleEventId("room-1"));
   });
 });

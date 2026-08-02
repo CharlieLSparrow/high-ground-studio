@@ -15,6 +15,28 @@ type SessionChoice = {
   scheduledEnd: string | null;
   scheduledTimezone?: string | null;
 };
+type MilestoneChoice = {
+  id: string;
+  title: string;
+  projectId: string;
+  status: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string;
+  episodeTitle: string;
+};
+type ProjectionSource = {
+  type: "SESSION" | "PRODUCTION_MILESTONE";
+  id: string;
+  title: string;
+  purpose: "COACHING" | "PODCAST_PRODUCTION";
+  projectId: string | null;
+  status: string;
+  startsAt: string;
+  endsAt: string | null;
+  timezone: string | null;
+  href: string;
+};
 type CalendarChoice = {
   id: string;
   summary: string;
@@ -64,7 +86,8 @@ type ProjectionPreview = {
 type CalendarConflict = {
   projectionId: string;
   collection: { id: string; displayName: string; purpose: Purpose };
-  session: {
+  source: ProjectionSource;
+  session?: {
     id: string;
     title: string;
     purpose: string;
@@ -73,7 +96,7 @@ type CalendarConflict = {
     scheduledStart: string | null;
     scheduledEnd: string | null;
     timezone: string | null;
-  };
+  } | null;
   reason: string;
   observedAt: string;
   conflictVersion: string;
@@ -99,7 +122,36 @@ function laneLabel(purpose: Purpose) {
   return "My commitments";
 }
 
-export function GoogleCalendarConnectionManager({ projects, sessions }: { projects: Project[]; sessions: SessionChoice[] }) {
+function normalizeConflictSource(conflict: CalendarConflict): CalendarConflict {
+  if (conflict.source) return conflict;
+  const session = conflict.session;
+  if (!session?.scheduledStart) return conflict;
+  return {
+    ...conflict,
+    source: {
+      type: "SESSION",
+      id: session.id,
+      title: session.title,
+      purpose: session.purpose === "COACHING" ? "COACHING" : "PODCAST_PRODUCTION",
+      projectId: session.projectId,
+      status: session.status,
+      startsAt: session.scheduledStart,
+      endsAt: session.scheduledEnd,
+      timezone: session.timezone,
+      href: `/sessions/${encodeURIComponent(session.id)}`,
+    },
+  };
+}
+
+export function GoogleCalendarConnectionManager({
+  projects,
+  sessions,
+  milestones,
+}: {
+  projects: Project[];
+  sessions: SessionChoice[];
+  milestones: MilestoneChoice[];
+}) {
   const [state, setState] = useState<State>({ connection: null, calendars: [], selections: [] });
   const [calendarId, setCalendarId] = useState("");
   const [purpose, setPurpose] = useState<Purpose>("PODCAST_PRODUCTION");
@@ -107,11 +159,16 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
-  const [projectionSessionId, setProjectionSessionId] = useState(sessions[0]?.id ?? "");
+  const initialSourceKey = sessions[0]
+    ? `SESSION:${sessions[0].id}`
+    : milestones[0]
+      ? `PRODUCTION_MILESTONE:${milestones[0].id}`
+      : "";
+  const [projectionSourceKey, setProjectionSourceKey] = useState(initialSourceKey);
   const [projectionCollectionId, setProjectionCollectionId] = useState("");
   const [projectionPreview, setProjectionPreview] = useState<ProjectionPreview | null>(null);
   const [conflicts, setConflicts] = useState<CalendarConflict[]>([]);
-  const [preparedConflictSession, setPreparedConflictSession] = useState<SessionChoice | null>(null);
+  const [preparedConflictSource, setPreparedConflictSource] = useState<ProjectionSource | null>(null);
 
   async function refresh() {
     setBusy(true);
@@ -127,7 +184,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
         if (!conflictResponse.ok || !conflictBody?.ok) {
           throw new Error(conflictBody?.error || "Could not load Google Calendar conflicts.");
         }
-        nextConflicts = conflictBody.conflicts;
+        nextConflicts = (conflictBody.conflicts as CalendarConflict[]).map(normalizeConflictSource);
       }
       setState({ connection: next.connection, calendars: next.calendars, selections: next.selections });
       setConflicts(nextConflicts);
@@ -147,30 +204,47 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
   }, []);
 
   const selectedCalendar = state.calendars.find((calendar) => calendar.id === calendarId);
-  const sessionChoices = [...sessions];
-  if (preparedConflictSession && !sessionChoices.some((session) => session.id === preparedConflictSession.id)) {
-    sessionChoices.push(preparedConflictSession);
+  const sourceChoices: ProjectionSource[] = [
+    ...sessions.map((session): ProjectionSource => ({
+      type: "SESSION",
+      id: session.id,
+      title: session.title,
+      purpose: session.purpose === "COACHING" ? "COACHING" : "PODCAST_PRODUCTION",
+      projectId: session.projectId,
+      status: session.status,
+      startsAt: session.scheduledStart,
+      endsAt: session.scheduledEnd,
+      timezone: session.scheduledTimezone || null,
+      href: `/sessions/${encodeURIComponent(session.id)}`,
+    })),
+    ...milestones.map((milestone): ProjectionSource => ({
+      type: "PRODUCTION_MILESTONE",
+      id: milestone.id,
+      title: `${milestone.episodeTitle} · ${milestone.title}`,
+      purpose: "PODCAST_PRODUCTION",
+      projectId: milestone.projectId,
+      status: milestone.status,
+      startsAt: milestone.startsAt,
+      endsAt: milestone.endsAt,
+      timezone: milestone.timezone,
+      href: "",
+    })),
+  ];
+  if (preparedConflictSource && !sourceChoices.some((source) => source.type === preparedConflictSource.type && source.id === preparedConflictSource.id)) {
+    sourceChoices.push(preparedConflictSource);
   }
   for (const conflict of conflicts) {
-    if (!conflict.session.scheduledStart || sessionChoices.some((session) => session.id === conflict.session.id)) continue;
-    sessionChoices.push({
-      id: conflict.session.id,
-      title: conflict.session.title,
-      purpose: conflict.session.purpose,
-      projectId: conflict.session.projectId,
-      status: conflict.session.status,
-      scheduledStart: conflict.session.scheduledStart,
-      scheduledEnd: conflict.session.scheduledEnd,
-      scheduledTimezone: conflict.session.timezone,
-    });
+    const key = `${conflict.source.type}:${conflict.source.id}`;
+    if (!conflict.source.startsAt || sourceChoices.some((source) => `${source.type}:${source.id}` === key)) continue;
+    sourceChoices.push(conflict.source);
   }
-  const projectionSession = sessionChoices.find((session) => session.id === projectionSessionId) || null;
+  const projectionSource = sourceChoices.find((source) => `${source.type}:${source.id}` === projectionSourceKey) || null;
   const eligibleProjectionCollections = state.selections.filter((selection) => {
-    if (!projectionSession) return false;
-    if (projectionSession.purpose === "PODCAST") {
-      return selection.purpose === "PODCAST_PRODUCTION" && selection.nestId === projectionSession.projectId;
+    if (!projectionSource) return false;
+    if (projectionSource.purpose === "PODCAST_PRODUCTION") {
+      return selection.purpose === "PODCAST_PRODUCTION" && selection.nestId === projectionSource.projectId;
     }
-    return projectionSession.purpose === "COACHING" && selection.purpose === "COACHING";
+    return selection.purpose === "COACHING";
   });
 
   useEffect(() => {
@@ -180,7 +254,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
         ? current
         : eligibleProjectionCollections[0]?.id || "",
     );
-  }, [projectionSessionId, state.selections]);
+  }, [projectionSourceKey, state.selections]);
   async function saveSelection() {
     setBusy(true);
     setMessage("");
@@ -253,7 +327,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
   ) {
     if (
       intent === "STOP_PROJECTING"
-      && !window.confirm("Stop linking this Session to the selected Google calendar? Quipsly will leave the Google event unchanged and retain an audit receipt.")
+      && !window.confirm("Stop linking this Quipsly source to the selected Google calendar? Quipsly will leave the Google event unchanged and retain an audit receipt.")
     ) return;
     setBusy(true);
     setMessage("");
@@ -270,23 +344,14 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not record the conflict decision.");
       if (intent === "PREPARE_QUIPSLY_UPDATE") {
-        if (!conflict.session.scheduledStart) {
-          throw new Error("This Session no longer has a scheduled start, so Quipsly cannot prepare a calendar preview.");
+        if (!conflict.source.startsAt) {
+          throw new Error("This Quipsly source no longer has a scheduled start, so Quipsly cannot prepare a calendar preview.");
         }
-        setPreparedConflictSession({
-          id: conflict.session.id,
-          title: conflict.session.title,
-          purpose: conflict.session.purpose,
-          projectId: conflict.session.projectId,
-          status: conflict.session.status,
-          scheduledStart: conflict.session.scheduledStart,
-          scheduledEnd: conflict.session.scheduledEnd,
-          scheduledTimezone: conflict.session.timezone,
-        });
-        setProjectionSessionId(conflict.session.id);
+        setPreparedConflictSource(conflict.source);
+        setProjectionSourceKey(`${conflict.source.type}:${conflict.source.id}`);
         setProjectionCollectionId(conflict.collection.id);
         setProjectionPreview(null);
-        setMessage("Conflict reviewed. Google is unchanged. Preview the current Quipsly Session below before deciding whether to update Google.");
+        setMessage("Conflict reviewed. Google is unchanged. Preview the current Quipsly source below before deciding whether to update Google.");
       } else {
         setMessage("Projection stopped. Google was not changed; Quipsly retained the provider version and a local review receipt for audit.");
       }
@@ -303,7 +368,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       return "Google has a newer event version. Quipsly did not import its title, description, or attendees.";
     }
     if (["provider-event-cancelled", "provider-event-missing"].includes(reason)) {
-      return "The projected Google event is absent or canceled. The Quipsly Session remains intact.";
+      return "The projected Google event is absent or canceled. The canonical Quipsly source remains intact.";
     }
     if (reason === "provider-event-restored") {
       return "Google has an active event after Quipsly recorded cancellation. Neither side was overwritten.";
@@ -314,20 +379,26 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
     return "Google or Quipsly changed after the last verified projection. Review is required before another provider write.";
   }
 
-  async function previewSessionProjection() {
-    if (!projectionSessionId || !projectionCollectionId) return;
+  function projectionEndpoint(source: ProjectionSource) {
+    return source.type === "SESSION"
+      ? `/api/calendar/sessions/${encodeURIComponent(source.id)}/projection`
+      : `/api/calendar/milestones/${encodeURIComponent(source.id)}/projection`;
+  }
+
+  async function previewProjection() {
+    if (!projectionSource || !projectionCollectionId) return;
     setBusy(true);
     setMessage("");
     setProjectionPreview(null);
     try {
       const response = await fetch(
-        `/api/calendar/sessions/${encodeURIComponent(projectionSessionId)}/projection?collectionId=${encodeURIComponent(projectionCollectionId)}`,
+        `${projectionEndpoint(projectionSource)}?collectionId=${encodeURIComponent(projectionCollectionId)}`,
         { cache: "no-store" },
       );
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.error || "Could not preview the Google event.");
       setProjectionPreview(body.preview);
-      setMessage("Preview loaded from the current Quipsly Session revision. Google has not been changed.");
+      setMessage("Preview loaded from the current canonical Quipsly revision. Google has not been changed.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not preview the Google event.");
     } finally {
@@ -335,12 +406,12 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
     }
   }
 
-  async function confirmSessionProjection() {
-    if (!projectionPreview || !projectionSessionId || !projectionCollectionId) return;
+  async function confirmProjection() {
+    if (!projectionPreview || !projectionSource || !projectionCollectionId) return;
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/calendar/sessions/${encodeURIComponent(projectionSessionId)}/projection`, {
+      const response = await fetch(projectionEndpoint(projectionSource), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -358,7 +429,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       setMessage(
         body.result.externalMutated
           ? "Google Calendar updated. Quipsly saved the exact projection and effect receipt."
-          : "Google already had this exact Session revision. Quipsly saved a no-change receipt.",
+          : "Google already had this exact Quipsly revision. Quipsly saved a no-change receipt.",
       );
       setProjectionPreview(null);
     } catch (error) {
@@ -368,13 +439,13 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
     }
   }
 
-  async function confirmSessionCancellation() {
-    if (!projectionPreview || !projectionSessionId || !projectionCollectionId) return;
-    if (!window.confirm("Remove this Quipsly Session from the selected Google calendar? The Session and its Quipsly history stay intact. No attendees or notifications will be sent.")) return;
+  async function confirmCancellation() {
+    if (!projectionPreview || !projectionSource || !projectionCollectionId) return;
+    if (!window.confirm("Remove this Quipsly event from the selected Google calendar? Its canonical source and history stay intact. No attendees or notifications will be sent.")) return;
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch(`/api/calendar/sessions/${encodeURIComponent(projectionSessionId)}/projection`, {
+      const response = await fetch(projectionEndpoint(projectionSource), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -392,7 +463,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       }
       setMessage(
         body.result.externalMutated
-          ? "Google Calendar event removed with notifications off. Quipsly retained the Session and saved the cancellation receipt."
+          ? "Google Calendar event removed with notifications off. Quipsly retained the canonical source and saved the cancellation receipt."
           : "Google had no remaining event to remove. Quipsly saved the verified absence without another provider effect.",
       );
       setProjectionPreview(null);
@@ -500,16 +571,16 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{conflict.collection.displayName}</p>
-                    <h4 className="mt-1 font-black text-[#493914]">{conflict.session.title}</h4>
-                    {conflict.session.scheduledStart && (
-                      <p className="mt-1 text-xs font-semibold text-[#6f5a24]">{new Date(conflict.session.scheduledStart).toLocaleString()} · {conflict.session.timezone || "Session timezone"}</p>
+                    <h4 className="mt-1 font-black text-[#493914]">{conflict.source.title}</h4>
+                    {conflict.source.startsAt && (
+                      <p className="mt-1 text-xs font-semibold text-[#6f5a24]">{new Date(conflict.source.startsAt).toLocaleString()} · {conflict.source.timezone || "Quipsly timezone"}</p>
                     )}
                   </div>
-                  <a href={`/sessions/${encodeURIComponent(conflict.session.id)}`} className="inline-flex min-h-11 items-center rounded-full border border-amber-200 px-3 py-2 text-[11px] font-black text-[#6f5a24]">Open Session</a>
+                  <a href={conflict.source.href} className="inline-flex min-h-11 items-center rounded-full border border-amber-200 px-3 py-2 text-[11px] font-black text-[#6f5a24]">Open Quipsly source</a>
                 </div>
                 <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-relaxed text-[#6f5a24]">{conflictExplanation(conflict.reason)}</p>
                 {conflict.allowedIntents.length === 0 ? (
-                  <p className="mt-3 text-xs font-bold text-amber-900">You can inspect this conflict, but current Session edit access is required to resolve it.</p>
+                  <p className="mt-3 text-xs font-bold text-amber-900">You can inspect this conflict, but current source edit access is required to resolve it.</p>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {conflict.allowedIntents.includes("PREPARE_QUIPSLY_UPDATE") && (
@@ -533,16 +604,16 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
       {state.connection && (
         <div className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-800">Preview before provider write</p>
-          <h3 className="mt-1 font-serif text-2xl font-black text-[#263f34]">Send one scheduled Session to its chosen calendar</h3>
+          <h3 className="mt-1 font-serif text-2xl font-black text-[#263f34]">Send one canonical Session or production milestone</h3>
           <p className="mt-2 text-xs font-semibold leading-relaxed text-[#5d746a]">
             Quipsly shows the exact public event first. Confirm never adds attendees and forces Google notifications off. A Google-side edit becomes a conflict instead of being overwritten.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <label className="text-[10px] font-black uppercase tracking-wide text-[#4e685d]">Scheduled Session
-              <select value={projectionSessionId} onChange={(event) => setProjectionSessionId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-[#263f34]">
-                {sessionChoices.length === 0 && <option value="">No upcoming Sessions</option>}
-                {sessionChoices.map((session) => (
-                  <option key={session.id} value={session.id}>{session.status === "CANCELED" ? "Canceled · " : ""}{session.title} · {new Date(session.scheduledStart).toLocaleString()}</option>
+            <label className="text-[10px] font-black uppercase tracking-wide text-[#4e685d]">Quipsly source
+              <select value={projectionSourceKey} onChange={(event) => setProjectionSourceKey(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold normal-case tracking-normal text-[#263f34]">
+                {sourceChoices.length === 0 && <option value="">No scheduled Sessions or milestones</option>}
+                {sourceChoices.map((source) => (
+                  <option key={`${source.type}:${source.id}`} value={`${source.type}:${source.id}`}>{source.status === "CANCELED" ? "Canceled · " : ""}{source.type === "PRODUCTION_MILESTONE" ? "Milestone · " : "Session · "}{source.title} · {new Date(source.startsAt).toLocaleString()}</option>
                 ))}
               </select>
             </label>
@@ -555,7 +626,7 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
               </select>
             </label>
           </div>
-          <button type="button" onClick={previewSessionProjection} disabled={busy || !projectionSessionId || !projectionCollectionId} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-xs font-black text-[#263f34] disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={previewProjection} disabled={busy || !projectionSource || !projectionCollectionId} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300 bg-white px-5 py-2.5 text-xs font-black text-[#263f34] disabled:cursor-not-allowed disabled:opacity-50">
             <RefreshCcw size={14} aria-hidden="true" />Preview Google event
           </button>
           {projectionPreview && (
@@ -573,12 +644,12 @@ export function GoogleCalendarConnectionManager({ projects, sessions }: { projec
               <p className="mt-3 text-xs font-semibold leading-relaxed text-[#5d746a]">{projectionPreview.snapshot.description}</p>
               <p className="mt-3 rounded-xl bg-white p-3 text-xs font-bold leading-relaxed text-[#4e685d]">{projectionPreview.warning}</p>
               {projectionPreview.snapshot.status === "CANCELLED" ? (
-                <button type="button" onClick={confirmSessionCancellation} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-700 px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" onClick={confirmCancellation} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-700 px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                   <CalendarX2 size={15} aria-hidden="true" />
                   {projectionPreview.action === "NOOP" ? "Record verified absence" : "Confirm removal from Google"}
                 </button>
               ) : (
-                <button type="button" onClick={confirmSessionProjection} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#263f34] px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="button" onClick={confirmProjection} disabled={busy || projectionPreview.action === "BLOCKED"} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#263f34] px-5 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                   <CalendarCheck2 size={15} aria-hidden="true" />
                   {projectionPreview.action === "NOOP" ? "Record verified no-change" : `Confirm ${projectionPreview.action.toLowerCase()} in Google`}
                 </button>

@@ -40,6 +40,7 @@ import {
 import { SchedulePlanner } from "./schedule-planner";
 import { CalendarSubscriptionManager } from "./calendar-subscription-manager";
 import { GoogleCalendarConnectionManager } from "./google-calendar-connection-manager";
+import { ProductionMilestoneLifecycle, ProductionMilestonePlanner } from "./production-milestone-planner";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +96,9 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
   try {
     const projects = signedInEmail ? await listProjectsVisibleToEmail(signedInEmail, prisma) : [];
     const projectIds = projects.map((project) => project.id);
+    const writableProjectIds = projects
+      .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+      .map((project) => project.id);
     const workspaceIds = [...new Set(projects.map((project) => project.workspaceId).filter(Boolean))];
     const userId = session.user.id;
     const roomAccess = accessibleRoomWhere(userId);
@@ -105,7 +109,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       select: { tag: { select: { id: true, label: true, isActive: true } } },
     };
 
-    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows, milestoneRows] = await Promise.all([
+    const [roomRows, taskRows, goalRows, planBlockRows, calendarOverview, calendarFeedRows, milestoneRows, episodeRows] = await Promise.all([
       prisma.callRoom.findMany({
             where: {
               ...roomAccess,
@@ -232,9 +236,21 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             select: {
               title: true,
               slug: true,
+              projectId: true,
               project: { select: { slug: true } },
             },
           },
+        },
+      }),
+      prisma.studioEpisodeProduction.findMany({
+        where: { projectId: { in: writableProjectIds } },
+        orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+        take: 200,
+        select: {
+          id: true,
+          title: true,
+          projectId: true,
+          project: { select: { name: true } },
         },
       }),
     ]);
@@ -413,6 +429,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
       dependencyTitle: milestone.dependsOn?.title || null,
       episodeTitle: milestone.episodeProduction.title,
       episodeSlug: milestone.episodeProduction.slug,
+      projectId: milestone.episodeProduction.projectId,
       projectSlug: milestone.episodeProduction.project.slug,
     }));
 
@@ -434,6 +451,12 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
         status: feed.status,
         createdAt: feed.createdAt.toISOString(),
         lastGeneratedAt: feed.lastGeneratedAt?.toISOString() ?? null,
+      })),
+      calendarEpisodes: episodeRows.map((episode: any) => ({
+        id: episode.id,
+        title: episode.title,
+        projectId: episode.projectId,
+        projectName: episode.project.name,
       })),
       sessions,
       milestones,
@@ -592,7 +615,20 @@ export default async function SchedulePage() {
 
           <CalendarSystemOverview overview={snapshot.calendarOverview} />
 
-          <GoogleCalendarConnectionManager projects={snapshot.calendarProjects.filter((project) => project.canWrite)} sessions={snapshot.sessions} />
+          <GoogleCalendarConnectionManager
+            projects={snapshot.calendarProjects.filter((project) => project.canWrite)}
+            sessions={snapshot.sessions}
+            milestones={snapshot.milestones.map((milestone) => ({
+              id: milestone.id,
+              title: milestone.title,
+              projectId: milestone.projectId,
+              status: milestone.status,
+              startsAt: milestone.startsAt,
+              endsAt: milestone.endsAt,
+              timezone: milestone.timezone,
+              episodeTitle: milestone.episodeTitle,
+            }))}
+          />
 
           <CalendarSubscriptionManager projects={snapshot.calendarProjects} initialFeeds={snapshot.calendarFeeds} />
 
@@ -607,8 +643,9 @@ export default async function SchedulePage() {
               </div>
               <p className="max-w-2xl text-xs font-semibold leading-5 text-[#80694a]">Team production dates are canonical Quipsly records. Point milestones stay transparent in calendar feeds; only explicit time windows reserve time.</p>
             </div>
+            <ProductionMilestonePlanner episodes={snapshot.calendarEpisodes} />
             {snapshot.milestones.length === 0 ? (
-              <EmptyCard>No production milestones are scheduled in your accessible episode Nests yet. Open an Episode Room to add dates the team has actually agreed to.</EmptyCard>
+              <EmptyCard>No production milestones are scheduled in your accessible episode Nests yet. Add the next date the team has actually agreed to above.</EmptyCard>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {snapshot.milestones.map((milestone) => (
@@ -625,6 +662,9 @@ export default async function SchedulePage() {
                     <p className="mt-3 text-xs font-bold text-[#80694a]">{milestone.episodeTitle}{milestone.assigneeLabel ? ` · ${milestone.assigneeLabel}` : " · unassigned"}</p>
                     {milestone.dependencyTitle ? <p className={`mt-2 text-xs font-bold ${milestone.blocked ? "text-amber-800" : "text-emerald-700"}`}>{milestone.blocked ? "Waiting on" : "Prerequisite complete"}: {milestone.dependencyTitle}</p> : null}
                     <Link href={`/nests/${encodeURIComponent(milestone.projectSlug)}/episodes/${encodeURIComponent(milestone.episodeSlug)}`} className="mt-4 inline-flex min-h-11 items-center gap-1 text-xs font-black text-[#76522c] hover:underline">Open episode runway <ChevronRight size={14} aria-hidden="true" /></Link>
+                    {snapshot.calendarProjects.find((project) => project.id === milestone.projectId)?.canWrite ? (
+                      <ProductionMilestoneLifecycle id={milestone.id} revision={milestone.revision} status={milestone.status} />
+                    ) : null}
                   </article>
                 ))}
               </div>

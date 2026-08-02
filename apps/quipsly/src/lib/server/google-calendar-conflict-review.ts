@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const GOOGLE_CALENDAR_CONFLICT_INTENTS = [
   "PREPARE_QUIPSLY_UPDATE",
@@ -110,7 +111,7 @@ export async function resolveGoogleCalendarProjectionConflict(input: {
     const projection = await transaction.calendarProjection.findFirst({
       where: {
         id: input.projectionId,
-        sourceType: "CallRoom",
+        sourceType: { in: ["CallRoom", "StudioEpisodeMilestone"] },
         collection: {
           status: "ACTIVE",
           connection: {
@@ -124,6 +125,7 @@ export async function resolveGoogleCalendarProjectionConflict(input: {
       select: {
         id: true,
         collectionId: true,
+        sourceType: true,
         sourceId: true,
         sourceRevision: true,
         providerEventId: true,
@@ -209,16 +211,54 @@ export async function resolveGoogleCalendarProjectionConflict(input: {
       );
     }
 
-    const room = await transaction.callRoom.findFirst({
-      where: sessionMutationAccessWhere(projection.sourceId, input.actor),
-      select: { id: true, projectId: true, status: true, scheduledStart: true },
-    });
-    if (
-      !room
-      || (collection.nestId && room.projectId !== collection.nestId)
-    ) {
+    let source: {
+      projectId: string | null;
+      status: string;
+      startsAt: Date | null;
+    } | null = null;
+    if (projection.sourceType === "CallRoom") {
+      const room = await transaction.callRoom.findFirst({
+        where: sessionMutationAccessWhere(projection.sourceId, input.actor),
+        select: { id: true, projectId: true, status: true, scheduledStart: true },
+      });
+      if (room) {
+        source = {
+          projectId: room.projectId,
+          status: room.status,
+          startsAt: room.scheduledStart,
+        };
+      }
+    } else {
+      const milestone = await transaction.studioEpisodeMilestone.findUnique({
+        where: { id: projection.sourceId },
+        select: {
+          status: true,
+          startsAt: true,
+          episodeProduction: {
+            select: { project: { select: { id: true, slug: true } } },
+          },
+        },
+      });
+      if (milestone) {
+        const project = milestone.episodeProduction.project;
+        const access = await resolveStudioProjectAccess({
+          projectSlug: project.slug,
+          email: input.actor.primaryEmail,
+          action: "write",
+          prisma: transaction,
+        });
+        if (access.allowed && access.projectId === project.id) {
+          source = {
+            projectId: project.id,
+            status: milestone.status,
+            startsAt: milestone.startsAt,
+          };
+        }
+      }
+    }
+    if (!source || (collection.nestId && source.projectId !== collection.nestId)) {
       throw new GoogleCalendarConflictReviewError(
-        "You need current Session edit access to resolve this calendar conflict.",
+        "You need current Quipsly source edit access to resolve this calendar conflict.",
         "calendar-conflict-write-forbidden",
         403,
       );
@@ -229,8 +269,8 @@ export async function resolveGoogleCalendarProjectionConflict(input: {
         reason,
         providerEventId: projection.providerEventId,
         providerEtag: projection.providerEtag,
-        roomStatus: room.status,
-        roomScheduledStart: room.scheduledStart,
+        roomStatus: source.status,
+        roomScheduledStart: source.startsAt,
       })
     ) {
       throw new GoogleCalendarConflictReviewError(

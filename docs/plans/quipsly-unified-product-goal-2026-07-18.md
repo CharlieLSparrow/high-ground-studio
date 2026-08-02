@@ -6495,6 +6495,40 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   editorial completion. Full evidence is in
   `docs/coordination/2026-08-02-episode-production-milestone-runway.md`.
 
+### Production calendar authoring and Google projection checkpoint — 2026-08-02
+
+- Closed the first operated-UX gap in the milestone runway: authorized users
+  can now create typed episode milestones and start, complete, or cancel them
+  directly in Calendar. Calendar delegates to Episode Room's canonical
+  milestone service; creation is idempotent, lifecycle is optimistic and
+  revisioned, and provider side effects remain false.
+- Extended the mature Google Calendar projection boundary to canonical episode
+  milestones without creating a second synchronization system. Milestones use
+  exact preview, deterministic source-scoped IDs, ETags, no-op replay,
+  receipts, explicit cancellation, and authorized conflict review.
+- Removed the older provider-effect implementation from the Session route.
+  Sessions and milestones now share one effect writer and post-provider
+  verification/conflict-receipt policy; their routes retain only domain
+  authorization and source projection.
+- Point milestones project as transparent so a deadline does not falsely block
+  time. A deliberately entered start/end window projects as opaque because it
+  represents a real reservation.
+- Operated the rendered Calendar as the retained QA coach: created and started
+  `QA Retained · Canonical Calendar writer` after consolidating on the Episode
+  Room service, independently read back revision 2 with namespaced canonical
+  `CREATE` and `UPDATE` receipts, and retained the earlier proof that fetched
+  exactly one transparent event from a private Episode Nest ICS feed before
+  revoking the capability.
+- Focused proof passes 10 suites / 64 tests, broader Calendar proof passes 19
+  suites / 106 tests, product contracts pass 245/245, the full Quipsly run
+  passes 239 suites / 1,254 tests, and strict TypeScript plus the optimized
+  160-page build pass. No Google provider write, cloud build/deploy, production
+  migration, TestFlight action, or device mutation occurred. Remaining
+  provider acceptance is a real owned QA calendar create/no-op/update/conflict/
+  cancel sequence, followed by a single batched zero-traffic release. Full
+  evidence is in
+  `docs/coordination/2026-08-02-production-calendar-authoring-projection.md`.
+
 ### Episode 8 source-backed room and real Shared Watch checkpoint — 2026-08-02
 
 - Operated the signed-in local product against the actual 114-block Episode 8

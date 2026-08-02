@@ -2,6 +2,32 @@
 
 Date: 2026-08-02
 
+## Production calendar authoring and Google projection checkpoint
+
+- Calendar now creates and operates canonical episode-production milestones
+  with idempotent creation, optimistic lifecycle revisions, append-only
+  receipts, exact timezone/window semantics, and project-scoped authorization.
+  Calendar delegates to the same milestone service as Episode Room rather than
+  owning a second writer.
+- Google projection now supports those milestones through the existing explicit
+  preview/write/cancel boundary, deterministic IDs, ETags, receipts, and
+  conflict review. Sessions and milestones now share one provider-effect
+  service, including post-provider verification receipts. Point milestones are
+  transparent; explicit reserved windows are opaque. Quipsly authoring never
+  implies a provider write.
+- A retained QA coach created and started a real labeled milestone through the
+  rendered Calendar after the canonical-service consolidation. PostgreSQL
+  retained revisions 1 and 2 using the shared Episode Room revision format; a
+  real private ICS subscription returned exactly one transparent event in the
+  earlier feed proof and was then revoked.
+- Focused proof passes 10 suites / 64 tests; broader Calendar proof passes 19
+  suites / 106 tests; product contracts pass 245/245; the full Quipsly run
+  passes 239 suites / 1,254 tests; strict TypeScript and the optimized 160-page
+  build pass. No Google provider write, Cloud Build, deployment, production
+  migration, TestFlight action, or device mutation occurred.
+- Architecture and operated evidence are in
+  `docs/coordination/2026-08-02-production-calendar-authoring-projection.md`.
+
 ## Imported-episode collaboration proxy GCS qualification
 
 - Exact committed source `59506e8bcc066006745f818fd3b26c5d53b08ab0`
