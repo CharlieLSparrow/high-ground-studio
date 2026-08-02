@@ -49,8 +49,8 @@
     "providerTarget": {
       "appId": "6780995957",
       "version": "1.0",
-      "build": "25",
-      "auditedAt": "2026-08-02T00:18:23.530Z"
+      "build": "26",
+      "auditedAt": "2026-08-02T14:13:05.276Z"
     },
     "contentRights": {
       "status": "configured-and-read-back",
@@ -162,7 +162,7 @@
     "blockers": [
       "Complete the account-level DSA trader determination and confirm iPhone-only compatibility in App Store Connect.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
-      "Install Build 25 from TestFlight on a physical iPhone, then prove audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
+      "Install Build 26 from TestFlight on a physical iPhone, then prove audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }

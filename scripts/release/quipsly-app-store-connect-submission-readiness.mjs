@@ -339,7 +339,7 @@ export function summarizeSubmissionReadiness({
   addBlocker(blockers, "dsa-trader-manual-verification", traderStatusBlockers.length > 0
     ? `Apple reports: ${traderStatusBlockers.join(", ")}.`
     : "EU DSA trader identity remains an account-level legal verification.", "manual");
-  addBlocker(blockers, "physical-build25-acceptance", "Install Build 25 from TestFlight on a physical iPhone and prove capture, recovery, upload, playback, alignment, and cross-device readback.", "manual");
+  addBlocker(blockers, `physical-build${options.build}-acceptance`, `Install Build ${options.build} from TestFlight on a physical iPhone and prove capture, recovery, upload, playback, alignment, and cross-device readback.`, "manual");
   addBlocker(blockers, "production-account-deletion-proof", "Prove account deletion against a disposable production account with independent readback.", "manual");
   if (metadata.compliance.compatibility.status !== "complete") {
     addBlocker(blockers, "device-compatibility-provider-cleanup", "Confirm iPhone-only availability and remove unintended Mac or Vision compatibility.", "manual");

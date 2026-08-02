@@ -5497,6 +5497,28 @@ was restored.
 - Exact identities and proof boundaries are in
   `docs/coordination/2026-08-01-episode-room-editor-navigation-release.md`.
 
+### 2026-08-02 Quipsly Capture Build 26 public TestFlight checkpoint
+
+- Exact source `283d522058bb036d3d81ae966ebc8939af92e55d` passed all
+  54 serialized iPhone and Share Extension journeys plus strict signed
+  archive/export inspection. Its 22,376,036-byte IPA has SHA-256
+  `ffc30e329e4f872bc384f8f4d02ed88ee098bf8921cd4e1a9f1d1131766264f3`.
+- The sealed-candidate lane reverified the receipt, result bundle, artifact
+  bytes, hash, signatures, profiles, entitlements, privacy manifest, and
+  packaged metadata without repeating qualification or rebuilding the IPA.
+- Apple processed provider build `0ef2cf7a-43d1-49bb-800f-c08239730b96` as
+  `VALID`. Independent API readback proves internal and external
+  `IN_BETA_TESTING`, beta review `APPROVED`, both exact group relationships,
+  and no non-exempt encryption.
+- Anonymous delivery readback returns HTTP 200 and the exact TestFlight handoff
+  at `https://testflight.apple.com/join/XwRRcYUm`. Build 26 replaces Build 25 as
+  the canonical public target; Build 25 remains rollback history.
+- The stored synthetic reviewer account passed production Firebase sign-in,
+  verified-email, native session, Home Nest, and ten visible reviewer-safe
+  capture Sessions. A physical TestFlight install and real-iPhone operation
+  remain separate red gates. Complete evidence is in
+  `docs/coordination/2026-08-02-capture-build26-public-release.md`.
+
 ### 2026-08-01 Quipsly Capture Build 25 public TestFlight checkpoint
 
 - Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`

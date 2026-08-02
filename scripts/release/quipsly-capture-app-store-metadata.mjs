@@ -310,7 +310,7 @@ export function validateAppStoreMetadata(
       || target.build !== QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber
       || !Number.isFinite(Date.parse(target.auditedAt))
     ) {
-      errors.push("compliance.providerTarget must bind provider readback to exact Quipsly Capture Build 25 with a valid audit timestamp.");
+      errors.push(`compliance.providerTarget must bind provider readback to exact Quipsly Capture Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber} with a valid audit timestamp.`);
     }
   }
   const contentRightsReadback = compliance.contentRights?.providerReadback;

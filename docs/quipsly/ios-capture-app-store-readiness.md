@@ -457,8 +457,8 @@ remain red until approved screenshots and every delivery-layer proof exist.
 
 ## Remaining blockers before App Store submission
 
-The canonical distribution target is now **Quipsly Capture 1.0 (25)**, provider
-build `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`. Apple reports it `VALID`, beta
+The canonical distribution target is now **Quipsly Capture 1.0 (26)**, provider
+build `0ef2cf7a-43d1-49bb-800f-c08239730b96`. Apple reports it `VALID`, beta
 review `APPROVED`, externally `IN_BETA_TESTING`, included in **Quipsly Capture
 Rehearsal**, and available through the open public TestFlight link. Build 6/8/9
 sections below are historical evidence, not current installation instructions.
@@ -468,7 +468,7 @@ The credentialed read-only submission audit is:
 ```bash
 pnpm quipsly:capture:app-store-submission-readiness -- \
   --api-key-path /absolute/private/app-store-connect-key.json \
-  --output /absolute/private/submission-readiness-build25.json
+  --output /absolute/private/submission-readiness-build26.json
 ```
 
 Exit `2` means the read succeeded but submission is still blocked. This first
@@ -480,8 +480,8 @@ separate proofs. The operator has no mutation or submit mode and never prints
 review contact details, demo credentials, screenshot upload capabilities, or
 API-key material.
 
-Live configuration and independent readback on 2026-08-01 prove the safe
-listing, App Review detail, exact Build 25 assignment, manual release type, and
+Live configuration and independent readback through 2026-08-02 prove the safe
+listing, App Review detail, exact Build 26 assignment, manual release type, and
 editable 1.0 record. The bounded operator configured and Apple read back:
 
 - `USES_THIRD_PARTY_CONTENT` content rights;
@@ -491,6 +491,12 @@ editable 1.0 record. The bounded operator configured and Apple read back:
 - a complete 175-territory App Availability inventory with only `USA` enabled,
   automatic future-territory enablement off, and no blocking status for the
   available territory.
+
+The latest provider receipt is
+`/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/submission-readiness-20260802T141950Z.json`.
+It reports the exact Build 26 ID assigned and all machine-verifiable checks
+passing except the five absent approved screenshots. The remaining legal and
+real-device gates below stay deliberately manual.
 
 Apple still reports zero screenshot sets for the `en-US` version and no App
 Store review submission. The source-backed configuration operator cannot
@@ -508,11 +514,11 @@ The remaining release gates are therefore:
    Quipsly and integrated third parties across every platform; the public API
    does not expose a trustworthy publication readback for this gate.
 3. Capture, visually approve, and upload all five planned largest-iPhone
-   screenshots from the exact Build 25 experience with synthetic/private-safe
+   screenshots from the exact Build 26 experience with synthetic/private-safe
    content. Draft simulator compositions remain layout evidence only.
 4. Confirm iPhone-only distribution and remove unintended Apple-silicon Mac or
    Vision compatibility.
-5. Install Build 25 from TestFlight on a physical iPhone and prove microphone
+5. Install Build 26 from TestFlight on a physical iPhone and prove microphone
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,
    assembled playback, timeline alignment, and same-ID Nest/Studio readback.

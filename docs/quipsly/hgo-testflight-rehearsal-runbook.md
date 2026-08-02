@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-01
+Last verified: 2026-08-02
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,12 +8,12 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (25)**
+- App: **Quipsly Capture 1.0 (26)**
 - Exact native source:
-  `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
-- Qualified upload-bound IPA: 21,447,970 bytes, SHA-256
-  `ffc296f70a5afbd78b834908eed1d29e4f8d3e750c0e87fa917792c48d082071`
-- App Store Connect build ID: `bacb25d1-1e0a-40aa-90a3-3e7cd195ee33`
+  `283d522058bb036d3d81ae966ebc8939af92e55d`
+- Qualified upload-bound IPA: 22,376,036 bytes, SHA-256
+  `ffc30e329e4f872bc384f8f4d02ed88ee098bf8921cd4e1a9f1d1131766264f3`
+- App Store Connect build ID: `0ef2cf7a-43d1-49bb-800f-c08239730b96`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -24,11 +24,11 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 25 passed two independent 47/47 serialized iPhone and Share Extension
-  runs, exact-source preflight, signed archive/export inspection, Apple
-  processing, external beta review, external-group readback, and an anonymous
-  HTTP 200 read of Apple's page naming **Quipsly Capture**. This does not claim
-  a physical install or recording.
+- Build 26 passed all 54 serialized iPhone and Share Extension journeys,
+  exact-source preflight, signed archive/export inspection, Apple processing,
+  external beta review, external-group readback, and an anonymous HTTP 200 read
+  of Apple's page naming **Quipsly Capture**. This does not claim a physical
+  install or recording.
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**

@@ -239,6 +239,34 @@ Implementation commit: `03a316e1`
 - Exact evidence and remaining physical-device boundary are in
   `docs/coordination/2026-08-01-episode-room-editor-navigation-release.md`.
 
+## Capture Build 26 public TestFlight checkpoint
+
+- Exact source `283d522058bb036d3d81ae966ebc8939af92e55d` passed all
+  54 serialized iPhone and Share Extension journeys plus signed archive/export
+  inspection. The 22,376,036-byte IPA has SHA-256
+  `ffc30e329e4f872bc384f8f4d02ed88ee098bf8921cd4e1a9f1d1131766264f3`.
+- A sealed-candidate upload lane reverified the receipt, UI evidence, bytes,
+  digest, signatures, profiles, entitlements, privacy manifest, and packaged
+  metadata without repeating tests or rebuilding the artifact.
+- Apple processed provider build `0ef2cf7a-43d1-49bb-800f-c08239730b96` as
+  `VALID`. Independent readback proves both internal and external
+  `IN_BETA_TESTING`, beta review `APPROVED`, membership in the internal and
+  public-link rehearsal groups, and no non-exempt encryption.
+- The open 100-person public page returns HTTP 200, names Quipsly Capture, and
+  exposes the exact Apple handoff at
+  `https://testflight.apple.com/join/XwRRcYUm`. Build 26 is the canonical
+  installation target; Build 25 remains rollback history.
+- The editable App Store 1.0 record now assigns the exact Build 26 provider
+  binary. Fresh API readback passes identity, listing, review contact, content
+  rights, age rating, IDFA, Free pricing, and USA-only availability without
+  submitting the version or mutating manual legal declarations.
+- The synthetic reviewer account passed production Firebase sign-in,
+  verified-email, native bearer, Home Nest, and capture-session checks. A
+  physical TestFlight installation and operated real-iPhone audio/video,
+  recovery, upload, playback, alignment, and cross-device readback remain open.
+  Evidence is in
+  `docs/coordination/2026-08-02-capture-build26-public-release.md`.
+
 ## Capture Build 25 public TestFlight checkpoint
 
 - Exact pushed source `4ef8ddbacbba7949b16607d8dae5454ff28e9082`
