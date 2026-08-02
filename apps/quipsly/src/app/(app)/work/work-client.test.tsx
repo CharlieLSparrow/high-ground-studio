@@ -418,6 +418,8 @@ describe("Work Queue interactions", () => {
     expect(screen.getByRole("link", { name: "Back to Work" })).toHaveAttribute("href", "/work");
     expect(screen.getByRole("combobox", { name: "Nest" })).toHaveValue("project-1");
     expect(screen.getByRole("searchbox", { name: "Find a tag or former name" })).toBeInTheDocument();
+    const manageTag = screen.getByRole("button", { name: "Manage Proof listen" });
+    expect(manageTag).toHaveTextContent(/^Manage$/);
   });
 
   it("opens the vocabulary manager on the project named by the project workspace link", () => {

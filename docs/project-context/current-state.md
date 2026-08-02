@@ -936,6 +936,23 @@ High Ground Studio is a monorepo with:
 
 ## Current Stabilization Decisions
 
+### 2026-08-01 production tag-taxonomy acceptance
+
+- The canonical project-scoped tag model has now been operated against
+  production through rendered Nest using the fixed retained `.test` account.
+- The same retained Build 25 Project, Task, document-kernel Note, Goal, and Tag
+  survived create-and-assign, rename with former-name lookup, merge preview,
+  exact rollback, and final re-merge with stable identities.
+- The canonical retained Tag still has exact Task/Note/Goal usage count three;
+  the test source remains an archived redirect, and both historical names
+  resolve to the canonical target.
+- Evidence and boundary details are recorded in
+  `docs/coordination/2026-08-01-production-tag-taxonomy.md`.
+- Phone-width evidence exposed a long-label control that wrapped into an
+  oversized pill. The local repair keeps visible `Manage` / `Close` text and
+  preserves the full accessible label. It is queued for the next batched Nest
+  release rather than triggering a one-change Cloud Build.
+
 - The earlier Stripe checkout attempt was rolled back to a non-broken state.
 - The episodes route currently uses a guarded loader in `apps/web/src/lib/source.ts`.
 - The Fumadocs source is only enabled when `ENABLE_EPISODES_FUMADOCS=1`.

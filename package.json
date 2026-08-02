@@ -77,6 +77,7 @@
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",
     "quipsly:retained:production-project-web-readback": "node scripts/quipsly-retained-production-project-web-readback.mjs",
     "quipsly:retained:production-follow-through": "node scripts/quipsly-retained-production-follow-through-operation.mjs",
+    "quipsly:retained:production-tag-taxonomy": "node scripts/quipsly-retained-production-tag-taxonomy-operation.mjs",
     "quipsly:retained:research-portability": "node scripts/quipsly-retained-research-portability-operation.mjs",
     "quipsly:retained:research-portability:test": "node --test scripts/quipsly-retained-research-portability-operation.test.mjs",
     "quipsly:retained:coaching-continuity": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-coaching-continuity-browser-smoke.mjs",

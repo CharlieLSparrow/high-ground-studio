@@ -444,7 +444,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
               <div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span>
-                <button type="button" aria-expanded={isExpanded} onClick={() => setExpandedTagId(isExpanded ? null : tag.id)} className="min-h-11 rounded-full border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-sky-900">{isExpanded ? "Close" : `Manage ${tag.label}`}</button>
+                <button type="button" aria-label={isExpanded ? `Close ${tag.label} controls` : `Manage ${tag.label}`} aria-expanded={isExpanded} onClick={() => setExpandedTagId(isExpanded ? null : tag.id)} className="min-h-11 shrink-0 rounded-full border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-sky-900">{isExpanded ? "Close" : "Manage"}</button>
               </div>
             </div>
             {isExpanded && <div className="mt-3 border-t border-sky-100 pt-3">
