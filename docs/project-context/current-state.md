@@ -96,6 +96,29 @@ Implementation commit: `03a316e1`
   Full evidence is in
   `docs/coordination/2026-08-01-account-deletion-worker-boundary.md`.
 
+## Account deletion local operation and isolated email checkpoint
+
+- Recovered the owned local Nest/PostgreSQL/Firebase lifecycle and reran the
+  real disposable-account integration. It passed 2/2 while proving actual
+  user/Home Nest/Task deletion, collaborator blocking, failed-provider resume,
+  receipt replay, deleted-token HTTP 401, and zero-residue cleanup.
+- Account deletion now uses dedicated
+  `QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY` and
+  `QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM` variables. It cannot silently inherit
+  generic site or coaching delivery credentials, validates the sender before
+  provider contact, and preserves the immutable Resend idempotency key.
+- The planned sender is `Quipsly <account@notify.quipsly.com>` with a
+  domain-restricted sending-only key. The subdomain isolates provider records
+  from root `quipsly.com` Google Workspace mail.
+- The complete Quipsly suite passes 225 suites / 1,182 runnable tests, the local
+  deletion operation passes 2/2, focused provider/route tests pass 13/13,
+  worker operators pass 7/7, and strict TypeScript passes.
+- Resend sign-in, DNS, secrets, image build, worker deploy, IAM, and production
+  deletion were intentionally not performed. The App Store gate remains red
+  until one disposable production account is independently proven deleted.
+  Full evidence is in
+  `docs/coordination/2026-08-02-account-deletion-local-operation-and-provider-contract.md`.
+
 ## Capture App Store submission-readiness checkpoint
 
 - The credentialed read-only auditor remains bound to exact Build 25 and cannot
@@ -524,6 +547,7 @@ Implementation commit: `03a316e1`
 ## What The Repo Is Right Now
 
 High Ground Studio is a monorepo with:
+
 - a primary Next.js app in `apps/web`
 - a Vite motion playground in `apps/motion-lab`
 - a shared motion engine package in `packages/motion-engine`
@@ -804,12 +828,12 @@ High Ground Studio is a monorepo with:
   - Prisma model: `HgoStagedProjectionArtifact`
   - API route: `/api/hgo/staged-artifacts`
   - team route: `/team/hgo-staged-artifacts`
-  The API is team-gated, saves only validated `hgo-staged-artifact-v1` review
-  packets, preserves embedded artifact JSON with `persisted: false` and
-  `published: false`, stores server persistence metadata outside the artifact,
-  and does not publish public pages. The team route exposes copy/download/open
-  handoff controls for saved artifact JSON and derived private episode-page
-  publish-candidate packets.
+    The API is team-gated, saves only validated `hgo-staged-artifact-v1` review
+    packets, preserves embedded artifact JSON with `persisted: false` and
+    `published: false`, stores server persistence metadata outside the artifact,
+    and does not publish public pages. The team route exposes copy/download/open
+    handoff controls for saved artifact JSON and derived private episode-page
+    publish-candidate packets.
 - HGO now has a private episode publish queue at `/team/hgo-publish-queue`.
   It derives `hgo-episode-publish-candidate-v1` packets from saved staged
   artifacts, groups them into ready/not-ready/archived review lanes, and keeps
@@ -1021,15 +1045,18 @@ High Ground Studio is a monorepo with:
 ## Build Reality
 
 Recently verified in local Codex sessions:
+
 - `pnpm --filter web build` passes.
 - `pnpm --filter web exec next build --webpack` passes in the current environment.
 - `pnpm --filter web exec tsc --noEmit` passed during the 2026-05-07 coaching current-state sync.
 - `pnpm --filter web exec next build --webpack` passed during the 2026-05-07 coaching current-state sync.
 
 Session evidence:
+
 - `docs/sessions/episodes-loader-guard-result.md`
 
 Interpretation:
+
 - both production build paths are currently green
 - the older Turbopack/PostCSS failure described in session notes is now historical stabilization context, not the current repo state
 

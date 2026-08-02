@@ -196,7 +196,7 @@ gcloud run deploy "${service}" \
   --image="${immutable_image}" \
   --service-account="${worker_service_account}" \
   --set-cloudsql-instances="${sql_instance}" \
-  --set-secrets="DATABASE_URL=${database_secret}:latest,RESEND_API_KEY=${resend_secret}:latest,HGO_EMAIL_FROM=${sender_secret}:latest,QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${shared_secret}:latest" \
+  --set-secrets="DATABASE_URL=${database_secret}:latest,QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY=${resend_secret}:latest,QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM=${sender_secret}:latest,QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET=${shared_secret}:latest" \
   --set-env-vars="QUIPSLY_ACCOUNT_DELETION_WORKER_MODE=true,QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED=true,QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=${bucket},FIREBASE_PROJECT_ID=${firebase_project_id},QUIPSLY_SOURCE_SHA=${source_sha},QUIPSLY_ACCOUNT_DELETION_WORKER_MIN_INSTANCES=0" \
   --concurrency=1 \
   --min=0 \

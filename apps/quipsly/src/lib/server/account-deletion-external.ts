@@ -3,6 +3,7 @@ import "server-only";
 import { Storage } from "@google-cloud/storage";
 
 import { adminAuth } from "@/lib/firebase/firebase-admin";
+import { accountDeletionEmailConfiguration } from "@/lib/server/account-deletion-email";
 import type { AccountDeletionStorageObject } from "@/lib/server/account-deletion-inventory";
 
 export type AccountDeletionExternalServices = {
@@ -53,9 +54,7 @@ export function accountDeletionStorageBucketAllowlist(
   }
   const invalid = buckets.find((bucket) => !GCS_BUCKET_PATTERN.test(bucket));
   if (invalid) {
-    throw new Error(
-      `Account deletion storage bucket is invalid: ${invalid}.`,
-    );
+    throw new Error(`Account deletion storage bucket is invalid: ${invalid}.`);
   }
   return buckets;
 }
@@ -135,11 +134,12 @@ async function sendCompletionConfirmation(input: {
   requestId: string;
   idempotencyKey: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  const from = process.env.HGO_EMAIL_FROM?.trim();
-  if (!apiKey || !from) {
+  const apiKey = process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY?.trim();
+  const from = process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM?.trim();
+  const configuration = accountDeletionEmailConfiguration();
+  if (!apiKey || !from || !configuration.fromValid) {
     throw new Error(
-      "Account deletion confirmation email is not configured. RESEND_API_KEY and HGO_EMAIL_FROM are required.",
+      "Account deletion confirmation email is not configured. QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY and a valid QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM are required.",
     );
   }
 

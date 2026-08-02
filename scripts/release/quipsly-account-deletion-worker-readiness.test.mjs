@@ -37,8 +37,8 @@ function fixture() {
                 { name: "FIREBASE_PROJECT_ID", value: options.firebaseProject },
                 ...[
                   ["DATABASE_URL", options.databaseSecret],
-                  ["RESEND_API_KEY", options.resendSecret],
-                  ["HGO_EMAIL_FROM", options.senderSecret],
+                  ["QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY", options.resendSecret],
+                  ["QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM", options.senderSecret],
                   ["QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET", options.sharedSecret],
                 ].map(([name, secret]) => ({
                   name,

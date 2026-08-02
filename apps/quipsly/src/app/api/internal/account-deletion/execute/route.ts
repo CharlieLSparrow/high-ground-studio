@@ -6,6 +6,7 @@ import {
   executeAccountDeletion,
   type AccountDeletionExecutionPlan,
 } from "@/lib/server/account-deletion-executor";
+import { accountDeletionEmailConfiguration } from "@/lib/server/account-deletion-email";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 900;
@@ -48,22 +49,24 @@ export async function GET(request: Request) {
     process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS?.split(",")
       .map((value) => value.trim())
       .filter(Boolean) ?? [];
+  const email = accountDeletionEmailConfiguration();
   const checks = {
-    workerMode:
-      process.env.QUIPSLY_ACCOUNT_DELETION_WORKER_MODE === "true",
+    workerMode: process.env.QUIPSLY_ACCOUNT_DELETION_WORKER_MODE === "true",
     executorEnabled:
       process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED === "true",
     databaseConfigured: Boolean(process.env.DATABASE_URL?.trim()),
     firebaseProjectConfigured: Boolean(process.env.FIREBASE_PROJECT_ID?.trim()),
     storageBucketAllowlistConfigured: bucketAllowlist.length > 0,
-    resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
-    senderConfigured: Boolean(process.env.HGO_EMAIL_FROM?.trim()),
+    resendConfigured: email.apiKeyConfigured,
+    senderConfigured: email.fromConfigured,
+    senderValid: email.fromValid,
   };
   return NextResponse.json({
     ok: Object.values(checks).every(Boolean),
     schema: "quipsly-account-deletion-worker-readiness-v1",
     checks,
     bucketAllowlist,
+    senderDomain: email.fromDomain,
     secretsPrinted: false,
   });
 }

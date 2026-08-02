@@ -9,9 +9,68 @@ jest.mock("@/lib/firebase/firebase-admin", () => ({
 
 import {
   accountDeletionStorageBucketAllowlist,
+  createAccountDeletionExternalServices,
   parseGcsObjectLocation,
   requireAllowedAccountDeletionStorageLocation,
 } from "./account-deletion-external";
+
+describe("account deletion confirmation delivery", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM;
+  });
+
+  it("uses the isolated provider credentials and forwards the immutable idempotency key", async () => {
+    process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY = "re_account_delete";
+    process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM =
+      "Quipsly <account@notify.quipsly.com>";
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    await createAccountDeletionExternalServices().sendCompletionConfirmation({
+      email: "deleted-user@example.test",
+      requestId: "request-1",
+      idempotencyKey: "account-deletion:request-1:completion-email",
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "https://api.resend.com/emails",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer re_account_delete",
+          "idempotency-key": "account-deletion:request-1:completion-email",
+        }),
+      }),
+    );
+    const request = jest.mocked(global.fetch).mock.calls[0][1];
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      from: "Quipsly <account@notify.quipsly.com>",
+      to: ["deleted-user@example.test"],
+    });
+  });
+
+  it("refuses generic or invalid sender configuration before contacting Resend", async () => {
+    process.env.RESEND_API_KEY = "generic";
+    process.env.HGO_EMAIL_FROM = "Generic <generic@example.test>";
+    global.fetch = jest.fn();
+
+    await expect(
+      createAccountDeletionExternalServices().sendCompletionConfirmation({
+        email: "deleted-user@example.test",
+        requestId: "request-1",
+        idempotencyKey: "account-deletion:request-1:completion-email",
+      }),
+    ).rejects.toThrow("QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY");
+    expect(global.fetch).not.toHaveBeenCalled();
+    delete process.env.RESEND_API_KEY;
+    delete process.env.HGO_EMAIL_FROM;
+  });
+});
 
 describe("account deletion GCS references", () => {
   it("parses canonical gs references without changing the object path", () => {
@@ -68,8 +127,9 @@ describe("account deletion GCS references", () => {
     expect(() => accountDeletionStorageBucketAllowlist("")).toThrow(
       "QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS",
     );
-    expect(() => accountDeletionStorageBucketAllowlist("UPPER CASE"))
-      .toThrow("storage bucket is invalid");
+    expect(() => accountDeletionStorageBucketAllowlist("UPPER CASE")).toThrow(
+      "storage bucket is invalid",
+    );
     expect(
       accountDeletionStorageBucketAllowlist(
         "quipsly-media, quipsly-private,quipsly-media",
@@ -85,10 +145,7 @@ describe("account deletion GCS references", () => {
       url: "gs://unrelated-bucket/users/person/original.wav",
     };
     expect(() =>
-      requireAllowedAccountDeletionStorageLocation(
-        reference,
-        "quipsly-media",
-      ),
+      requireAllowedAccountDeletionStorageLocation(reference, "quipsly-media"),
     ).toThrow("outside the approved bucket allowlist");
     expect(
       requireAllowedAccountDeletionStorageLocation(

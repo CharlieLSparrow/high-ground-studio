@@ -129,9 +129,11 @@ code failure.
 
 ## Remaining external setup
 
-1. Verify a Quipsly sender domain with Resend and provide one production API
-   key plus a verified `HGO_EMAIL_FROM` value. Do not use an unverified or
-   placeholder sender for deletion confirmations.
+1. Verify the dedicated `notify.quipsly.com` sending subdomain with Resend and
+   provide a domain-restricted sending-only key as
+   `QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY`, plus
+   `QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM='Quipsly <account@notify.quipsly.com>'`.
+   Do not change root-domain mail records or reuse the generic site email key.
 2. Build the exact committed image, review the read-only receipt, then run the
    explicit worker apply operator. It will create the random internal shared
    secret without printing it.

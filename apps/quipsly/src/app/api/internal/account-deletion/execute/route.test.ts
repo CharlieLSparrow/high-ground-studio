@@ -20,15 +20,21 @@ const plan = {
   scope: "automated-empty-or-private-account" as const,
 };
 
-function request(secret = sharedSecret, body: unknown = { requestId: "request-1", plan }) {
-  return new Request("https://worker.example.test/api/internal/account-deletion/execute", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-quipsly-account-deletion-worker-secret": secret,
+function request(
+  secret = sharedSecret,
+  body: unknown = { requestId: "request-1", plan },
+) {
+  return new Request(
+    "https://worker.example.test/api/internal/account-deletion/execute",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-quipsly-account-deletion-worker-secret": secret,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+  );
 }
 
 describe("internal account deletion worker", () => {
@@ -56,8 +62,9 @@ describe("internal account deletion worker", () => {
     process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS = "quipsly-media";
     process.env.DATABASE_URL = "postgresql://secret";
     process.env.FIREBASE_PROJECT_ID = "quipsly-reef";
-    process.env.RESEND_API_KEY = "resend-secret";
-    process.env.HGO_EMAIL_FROM = "Quipsly <support@example.test>";
+    process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY = "resend-secret";
+    process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM =
+      "Quipsly <account@notify.quipsly.com>";
     const response = await GET(request());
     const payload = await response.json();
     expect(response.status).toBe(200);
@@ -70,14 +77,16 @@ describe("internal account deletion worker", () => {
       storageBucketAllowlistConfigured: true,
       resendConfigured: true,
       senderConfigured: true,
+      senderValid: true,
     });
+    expect(payload.senderDomain).toBe("notify.quipsly.com");
     expect(JSON.stringify(payload)).not.toContain("resend-secret");
     delete process.env.QUIPSLY_ACCOUNT_DELETION_EXECUTOR_ENABLED;
     delete process.env.QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS;
     delete process.env.DATABASE_URL;
     delete process.env.FIREBASE_PROJECT_ID;
-    delete process.env.RESEND_API_KEY;
-    delete process.env.HGO_EMAIL_FROM;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY;
+    delete process.env.QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM;
   });
 
   it("binds the exact approved plan to the exact request", async () => {
@@ -91,6 +100,9 @@ describe("internal account deletion worker", () => {
     } as never);
     const response = await POST(request());
     expect(response.status).toBe(200);
-    expect(mockedExecute).toHaveBeenCalledWith({ requestId: "request-1", plan });
+    expect(mockedExecute).toHaveBeenCalledWith({
+      requestId: "request-1",
+      plan,
+    });
   });
 });

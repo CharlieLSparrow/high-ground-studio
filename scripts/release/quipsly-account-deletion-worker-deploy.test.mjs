@@ -30,6 +30,10 @@ test("worker deployment isolates destructive provider authority", () => {
   assert.match(source, /--max=1/);
   assert.match(source, /--no-allow-unauthenticated/);
   assert.match(source, /QUIPSLY_ACCOUNT_DELETION_GCS_BUCKETS=\$\{bucket\}/);
+  assert.match(source, /QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY=\$\{resend_secret\}/);
+  assert.match(source, /QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM=\$\{sender_secret\}/);
+  assert.doesNotMatch(source, /,RESEND_API_KEY=/);
+  assert.doesNotMatch(source, /,HGO_EMAIL_FROM=/);
   assert.match(source, /openssl rand -base64 48/);
   assert.match(source, /No account was deleted/);
 });

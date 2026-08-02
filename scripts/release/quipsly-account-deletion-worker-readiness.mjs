@@ -184,8 +184,8 @@ export function summarizeReadiness({
   const env = environmentMap(serviceDocument);
   const expectedSecrets = {
     DATABASE_URL: options.databaseSecret,
-    RESEND_API_KEY: options.resendSecret,
-    HGO_EMAIL_FROM: options.senderSecret,
+    QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY: options.resendSecret,
+    QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM: options.senderSecret,
     QUIPSLY_ACCOUNT_DELETION_WORKER_SHARED_SECRET: options.sharedSecret,
   };
   const secretBindingsCorrect = Object.entries(expectedSecrets).every(

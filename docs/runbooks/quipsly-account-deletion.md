@@ -121,9 +121,17 @@ are all still required.
 Runtime dependencies:
 
 ```bash
-RESEND_API_KEY=...
-HGO_EMAIL_FROM='Quipsly <support@quipsly.com>'
+QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY=...
+QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM='Quipsly <account@notify.quipsly.com>'
 ```
+
+Use a Resend sending-only key restricted to the verified
+`notify.quipsly.com` domain. Keep this key and sender separate from the generic
+site, coaching, marketing, and support email configuration. Verifying this
+subdomain requires only its Resend SPF and DKIM records; do not replace the
+root `quipsly.com` MX, SPF, or Google Workspace records. The worker exposes
+only the validated sender domain in its authorized readiness response and
+never returns either secret value.
 
 The dedicated worker identity also needs Firebase Authentication user
 update/delete permission and deletion permission for only the exact GCS

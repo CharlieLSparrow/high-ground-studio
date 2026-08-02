@@ -44,12 +44,12 @@ This mandate permits decisive redesign. It does not permit destructive productio
 
 Quipsly is the customer-facing product. Capture, Nest, and Studio are responsibilities, not competing products.
 
-| Responsibility | Surface | What it must be exceptional at |
-| --- | --- | --- |
-| Capture edge | iPhone | Start safely, preserve audio, see source truth, capture ideas, review urgent work, and continue offline |
-| Operating surface | Nest web | Sessions, sources, writing, research, goals, tasks, calendar, review, collaboration, and export |
-| Shared substrate | Document kernel and work graph | Stable identity, revisions, anchors, permissions, operations, projections, and provenance |
-| Deep production | QuipslyStudio | Multitrack truth, editorial decisions, timeline work, proof watching/listening, renders, and publication handoff |
+| Responsibility    | Surface                        | What it must be exceptional at                                                                                   |
+| ----------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Capture edge      | iPhone                         | Start safely, preserve audio, see source truth, capture ideas, review urgent work, and continue offline          |
+| Operating surface | Nest web                       | Sessions, sources, writing, research, goals, tasks, calendar, review, collaboration, and export                  |
+| Shared substrate  | Document kernel and work graph | Stable identity, revisions, anchors, permissions, operations, projections, and provenance                        |
+| Deep production   | QuipslyStudio                  | Multitrack truth, editorial decisions, timeline work, proof watching/listening, renders, and publication handoff |
 
 The iPhone must not become a miniature administrative website. Nest must not become another generic notes database. Studio must not become the database of record for coaching or planning. Each surface should expose the same objects through the interaction best suited to that device and job.
 
@@ -2786,7 +2786,7 @@ This is an active-goal checkpoint, not a completion claim.
 - The machine take auditor requires locked exact-route evidence for version-2
   WAVs, warns on legacy version-1 absence, and holds malformed or lost
   continuity. Focused QuipslyVideoCore verification passes 80/80, `git
-  diff --check` passes, and strict repository health reports healthy.
+diff --check` passes, and strict repository health reports healthy.
 - A real local-only direct-MV7i recording remained locked through normal Stop
   and finalized at 657.7 seconds as mono 48 kHz/24-bit PCM. Fresh
   94,712,896-byte readback and SHA-256
@@ -4672,6 +4672,7 @@ This is an active-goal checkpoint, not a completion claim.
   explicit two-person consent, front/rear capture, upload/relaunch recovery,
   current-pass Watch materialization, human sync approval, and Studio
   proof-listen/watch remain human-present gates for next week's rehearsal.
+
 ## 2026-07-30 shared tag vocabulary and Build 16 candidate
 
 Capture and Nest now use the same canonical project vocabulary beyond
@@ -5871,7 +5872,7 @@ was restored.
   restored response identity in `sourceJson`, versions changed snapshots, and
   reuses the exact same source, annotation, document, blocks, and use on retry.
 - The final retained operation selected `Never edit that receipt to make a
-  human or physical gate green.`, applied canonical tag `Episode sync`, saved
+human or physical gate green.`, applied canonical tag `Episode sync`, saved
   source annotation `901b6b59-c9ff-425d-a203-f000133dba10`, wrote private
   response block `cmsalwxj1003cicxl2scbrxen`, and restored it as private
   document `cmsalwywv003ficxlczh3qewg` under manifest
@@ -6291,6 +6292,31 @@ was restored.
   verified sender is configured and one disposable production account is
   independently proven deleted. Full evidence is in
   `docs/coordination/2026-08-01-account-deletion-worker-boundary.md`.
+
+### Account deletion local operation and provider isolation checkpoint — 2026-08-02
+
+- Recovered and verified the owned local Nest/PostgreSQL/Firebase lifecycle,
+  then operated the full disposable-account flow against real local state. The
+  proof actually deletes the user, Home Nest, and Tasks; blocks a collaborator;
+  resumes after a simulated provider failure; replays one receipt; denies the
+  deleted Firebase token; and cleans all disposable rows.
+- Removed the account-deletion worker's dependency on generic site email
+  variables. Its deployment, readiness, adapter, and tests now require the
+  dedicated `QUIPSLY_ACCOUNT_DELETION_RESEND_API_KEY` and
+  `QUIPSLY_ACCOUNT_DELETION_EMAIL_FROM` contract, validate the sender before
+  provider contact, and preserve the immutable Resend idempotency key.
+- The production sender architecture is a domain-restricted sending-only key
+  for `Quipsly <account@notify.quipsly.com>`. That subdomain keeps SPF/DKIM
+  changes separate from root `quipsly.com` and its Google Workspace future.
+- The complete Quipsly suite passes 225 suites / 1,182 runnable tests, the real
+  local flow passes 2/2, focused provider/route coverage passes 13/13, worker
+  operator coverage passes 7/7, and strict TypeScript passes.
+- No cloud build, deployment, IAM grant, DNS write, provider email, or
+  production mutation occurred. Resend sign-in is parked at the explicit
+  third-party authorization boundary. App Store readiness remains red until
+  the private worker and one independently verified disposable production
+  deletion are complete. Full evidence is in
+  `docs/coordination/2026-08-02-account-deletion-local-operation-and-provider-contract.md`.
 
 ### Transcript packet to canonical Session note checkpoint — 2026-08-02
 
