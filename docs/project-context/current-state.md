@@ -2,6 +2,34 @@
 
 Date: 2026-08-03
 
+## Playback-reviewed transcript speaker attribution checkpoint
+
+- Nest now identifies one provider diarization cluster as a real Session
+  participant from protected playback samples without pretending that every
+  word in those turns was reviewed. Segment-specific accepted corrections
+  remain authoritative above the session-wide mapping; provider segments,
+  words, timestamps, and media stay immutable.
+- The append-preserving attribution ledger binds complete provider-cluster
+  hashes, canonical participant identity plus audit snapshots, exact samples,
+  reviewer, recording, and request identity. Serializable packet/cluster
+  locks and an in-transaction release-gate recheck fail stale evidence,
+  withdrawn consent, changed requests, and racing assignments closed.
+- Packet projection independently verifies the complete attribution snapshot,
+  records its attribution ID, and makes every prior packet stale without
+  upgrading word-review status. Nest creates the mapping; Capture reads the
+  same effective speaker and displays the separate-review provenance.
+- The rendered retained Episode 4 fixture played protected audio, assigned
+  `Speaker` to `Charlie`, repeated idempotently, retained exactly one active
+  mapping, held the old packet, and preserved provider/correction/verification
+  rows. A separate outsider received 404 without protected markers.
+- Focused proof passes 41/41, the full Nest run passes 244 suites / 1,306 tests,
+  product contracts pass 257/257, Prisma/local migration and strict repository
+  health pass, the iOS Simulator build succeeds, and the optimized 163-page
+  Next build passes with the established 8 GB heap. No production migration,
+  deployment, TestFlight build, or external side effect occurred.
+- Architecture and operated evidence are in
+  `docs/coordination/2026-08-03-transcript-speaker-attribution.md`.
+
 ## Google Calendar live-change delivery checkpoint
 
 - Each verified Google calendar lane can now explicitly turn live alerts on or

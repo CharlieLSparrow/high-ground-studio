@@ -451,6 +451,7 @@ export async function POST(request: Request) {
         where: { id: transcriptJobId, roomId },
         include: {
           asset: true,
+          speakerAttributions: { where: { status: "active" }, orderBy: { updatedAt: "desc" } },
           segments: {
             orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
             include: {
@@ -507,7 +508,7 @@ export async function POST(request: Request) {
         recordingAssetId,
         packetBuildId,
       });
-      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions)) {
         throw new ReviewBoundaryError(
           409,
           "TRANSCRIPT_REVIEW_CHANGED",
@@ -525,7 +526,7 @@ export async function POST(request: Request) {
         );
       }
       validateCandidateEvidence({ candidate, roomId, transcriptJobId, recordingAssetId, packetBuildId });
-      const projectedSegments = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments);
+      const projectedSegments = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions);
       const evidenceSegments = resolvePacketEvidenceSpan(candidate, projectedSegments);
       if (!evidenceSegments) {
         throw new ReviewBoundaryError(

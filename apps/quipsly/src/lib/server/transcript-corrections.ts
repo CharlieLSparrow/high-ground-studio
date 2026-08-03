@@ -8,6 +8,7 @@ import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-r
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
+export const TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA = "quipsly-transcript-speaker-attribution-v1";
 
 export type TranscriptCorrectionActor = {
   id: string;
@@ -48,6 +49,94 @@ function nullableLabel(value: unknown) {
 
 function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function speakerProviderSnapshot(segments: any[], providerSpeakerLabel: string) {
+  const evidence = segments
+    .filter((segment) => nullableLabel(segment?.speakerLabel) === providerSpeakerLabel)
+    .map((segment) => ({
+      id: text(segment?.id),
+      startSeconds: Number(segment?.startSeconds),
+      endSeconds: Number(segment?.endSeconds),
+      textSha256: sha256(typeof segment?.text === "string" ? segment.text : ""),
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  return {
+    sha256: sha256(JSON.stringify({ providerSpeakerLabel, evidence })),
+    evidence,
+  };
+}
+
+function participantDisplayLabel(participant: any) {
+  return text(participant?.displayName)
+    || text(participant?.user?.name)
+    || text(participant?.email)
+    || text(participant?.user?.primaryEmail);
+}
+
+function publicSpeakerAttribution(attribution: any) {
+  return {
+    schema: TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
+    id: attribution.id as string,
+    providerSpeakerLabel: attribution.providerSpeakerLabel as string,
+    participantId: attribution.participantId as string | null,
+    participantUserId: attribution.participantUserIdSnapshot as string | null,
+    attributedLabel: attribution.participantDisplaySnapshot as string,
+    providerSnapshotSha256: attribution.providerSnapshotSha256 as string,
+    sampleSegmentIds: Array.isArray(attribution.sampleSegmentIdsJson)
+      ? attribution.sampleSegmentIdsJson.filter((value: unknown): value is string => typeof value === "string")
+      : [],
+    reviewedAt: attribution.reviewedAt instanceof Date
+      ? attribution.reviewedAt.toISOString()
+      : attribution.reviewedAt,
+  };
+}
+
+function currentSpeakerAttribution(job: any, providerSpeakerLabel: unknown) {
+  const label = nullableLabel(providerSpeakerLabel);
+  if (!label) return null;
+  const attribution = (Array.isArray(job?.speakerAttributions) ? job.speakerAttributions : [])
+    .find((candidate: any) => candidate.providerSpeakerLabel === label) ?? null;
+  if (!attribution?.participantId) return null;
+  return attribution.providerSnapshotSha256 === speakerProviderSnapshot(job.segments ?? [], label).sha256
+    ? attribution
+    : null;
+}
+
+function speakerGroups(job: any) {
+  const groups = new Map<string, any[]>();
+  for (const segment of Array.isArray(job?.segments) ? job.segments : []) {
+    const label = nullableLabel(segment?.speakerLabel);
+    if (!label) continue;
+    const existing = groups.get(label) ?? [];
+    existing.push(segment);
+    groups.set(label, existing);
+  }
+  return [...groups.entries()]
+    .map(([providerSpeakerLabel, segments]) => {
+      const attribution = currentSpeakerAttribution(job, providerSpeakerLabel);
+      const staleAttribution = !attribution && (job.speakerAttributions ?? []).some(
+        (candidate: any) => candidate.providerSpeakerLabel === providerSpeakerLabel,
+      );
+      return {
+        providerSpeakerLabel,
+        turnCount: segments.length,
+        providerSnapshotSha256: speakerProviderSnapshot(job.segments ?? [], providerSpeakerLabel).sha256,
+        attribution: attribution ? publicSpeakerAttribution(attribution) : null,
+        staleAttribution,
+        samples: segments
+          .slice()
+          .sort((left, right) => Number(left.startSeconds) - Number(right.startSeconds))
+          .slice(0, 3)
+          .map((segment) => ({
+            segmentId: text(segment.id),
+            startSeconds: Number(segment.startSeconds),
+            endSeconds: Number(segment.endSeconds),
+            text: text(segment.text),
+          })),
+      };
+    })
+    .sort((left, right) => left.providerSpeakerLabel.localeCompare(right.providerSpeakerLabel));
 }
 
 function accessibleRoomWhere(roomId: string, actor: TranscriptCorrectionActor) {
@@ -214,6 +303,17 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
       id: true,
       title: true,
       projectId: true,
+      participants: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          userId: true,
+          displayName: true,
+          email: true,
+          role: true,
+          user: { select: { name: true, primaryEmail: true } },
+        },
+      },
       transcriptJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -230,6 +330,20 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
           workerBuildId: true,
           resultJson: true,
           _count: { select: { words: true } },
+          speakerAttributions: {
+            where: { status: "active" },
+            orderBy: { updatedAt: "desc" },
+            select: {
+              id: true,
+              providerSpeakerLabel: true,
+              participantId: true,
+              participantUserIdSnapshot: true,
+              participantDisplaySnapshot: true,
+              providerSnapshotSha256: true,
+              sampleSegmentIdsJson: true,
+              reviewedAt: true,
+            },
+          },
           asset: {
             select: {
               id: true,
@@ -247,7 +361,6 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
           },
           segments: {
             orderBy: { startSeconds: "asc" },
-            take: 1000,
             select: {
               id: true,
               speakerLabel: true,
@@ -341,6 +454,8 @@ export async function readTranscriptCorrectionDesk(input: {
       gate: { allowed: false, error: "No recording-backed transcript is available." },
       recording: null,
       playback: null,
+      participants: [],
+      speakerGroups: [],
       segments: [],
       boundaries: transcriptCorrectionBoundaries(),
     };
@@ -358,6 +473,8 @@ export async function readTranscriptCorrectionDesk(input: {
       gate,
       recording: recordingForPlaybackPreparation(job.asset, false),
       playback: null,
+      participants: [],
+      speakerGroups: [],
       segments: [],
       boundaries: transcriptCorrectionBoundaries(),
     };
@@ -373,8 +490,17 @@ export async function readTranscriptCorrectionDesk(input: {
     gate,
     recording: recordingForPlaybackPreparation(job.asset, true),
     playback: playbackFromAsset(job.asset),
+    participants: (room.participants ?? []).map((participant: any) => ({
+      id: participant.id as string,
+      userId: participant.userId as string | null,
+      displayLabel: participantDisplayLabel(participant) || "Unnamed participant",
+      role: participant.role as string,
+      isCurrentActor: participant.userId === input.actor.id,
+    })),
+    speakerGroups: speakerGroups(job),
     segments: job.segments.map((segment: any) => {
       const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;
+      const attribution = currentSpeakerAttribution(job, segment.speakerLabel);
       const acceptedVerification = !accepted
         && segment.verifications[0]?.providerTextSha256 === sha256(segment.text)
         && (segment.verifications[0]?.providerSpeakerLabel ?? null) === (segment.speakerLabel ?? null)
@@ -383,8 +509,12 @@ export async function readTranscriptCorrectionDesk(input: {
       const proposals = visibleTranscriptProposals(segment.corrections);
       return {
         id: segment.id,
-        speakerLabel: accepted?.correctedSpeakerLabel ?? segment.speakerLabel ?? null,
+        speakerLabel: accepted?.correctedSpeakerLabel
+          ?? attribution?.participantDisplaySnapshot
+          ?? segment.speakerLabel
+          ?? null,
         providerSpeakerLabel: segment.speakerLabel ?? null,
+        speakerAttribution: attribution ? publicSpeakerAttribution(attribution) : null,
         startSeconds: segment.startSeconds,
         endSeconds: segment.endSeconds,
         text: accepted?.correctedText ?? segment.text,
@@ -421,6 +551,7 @@ export function transcriptCorrectionBoundaries() {
     aiOutputRequiresHumanReview: true,
     mediaTimeAnchorsPreserved: true,
     providerWordTimeAnchorsImmutable: true,
+    speakerIdentitySeparateFromWordReview: true,
     noTaskCreated: true,
     noExternalDelivery: true,
     noPublication: true,
@@ -551,6 +682,352 @@ async function loadMutationEvidence(prisma: any, input: {
     throw new TranscriptCorrectionError(gate.error || "Transcript correction is held by its release gate.", 409, "TRANSCRIPT_HELD");
   }
   return { room, job, segment, playback: playbackFromAsset(job.asset) };
+}
+
+async function loadSpeakerAttributionEvidence(prisma: any, input: {
+  roomId: string;
+  participantId: string;
+  actor: TranscriptCorrectionActor;
+}) {
+  const room = await prisma.callRoom.findFirst({
+    where: accessibleRoomWhere(input.roomId, input.actor),
+    select: {
+      id: true,
+      participants: {
+        where: { id: input.participantId },
+        take: 1,
+        select: {
+          id: true,
+          userId: true,
+          displayName: true,
+          email: true,
+          role: true,
+          user: { select: { name: true, primaryEmail: true } },
+        },
+      },
+      transcriptJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          asset: {
+            select: {
+              id: true,
+              roomId: true,
+              kind: true,
+              status: true,
+              fileName: true,
+              durationSeconds: true,
+              byteSize: true,
+              checksum: true,
+              storageBucket: true,
+              storageObjectPath: true,
+              localManifestJson: true,
+            },
+          },
+          segments: {
+            orderBy: { startSeconds: "asc" },
+            select: {
+              id: true,
+              speakerLabel: true,
+              startSeconds: true,
+              endSeconds: true,
+              text: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  const participant = room?.participants[0] ?? null;
+  const job = room?.transcriptJobs[0] ?? null;
+  if (!room || !participant) {
+    throw new TranscriptCorrectionError("Choose a current participant from this Session.", 404, "PARTICIPANT_NOT_FOUND");
+  }
+  if (!job?.asset) {
+    throw new TranscriptCorrectionError("The current recording-backed transcript was not found.", 404, "TRANSCRIPT_NOT_FOUND");
+  }
+  const gate = await transcriptProcessingGate(prisma, job.asset);
+  if (!gate.allowed) {
+    throw new TranscriptCorrectionError(gate.error || "Speaker attribution is held by its release gate.", 409, "TRANSCRIPT_HELD");
+  }
+  const playback = playbackFromAsset(job.asset);
+  if (!playback) {
+    throw new TranscriptCorrectionError(
+      "Prepare protected playback before identifying a diarized speaker.",
+      409,
+      "PLAYBACK_UNAVAILABLE",
+    );
+  }
+  return { room, participant, job, playback };
+}
+
+function speakerAttributionReplayMatches(attribution: any, input: {
+  roomId: string;
+  transcriptJobId: string;
+  providerSpeakerLabel: string;
+  participantId: string;
+  providerSnapshotSha256: string;
+  sampleEvidence: Array<Record<string, unknown>>;
+}) {
+  const persistedSamples = Array.isArray(attribution.sampleEvidenceJson)
+    ? attribution.sampleEvidenceJson
+    : [];
+  const samplesMatch = persistedSamples.length === input.sampleEvidence.length
+    && persistedSamples.every((sample: any, index: number) => {
+      const expected = input.sampleEvidence[index] ?? {};
+      return text(sample?.segmentId) === text(expected.segmentId)
+        && Number(sample?.startSeconds) === Number(expected.startSeconds)
+        && Number(sample?.endSeconds) === Number(expected.endSeconds)
+        && text(sample?.providerTextSha256) === text(expected.providerTextSha256)
+        && Number(sample?.playbackPositionSeconds) === Number(expected.playbackPositionSeconds);
+    });
+  return attribution.roomId === input.roomId
+    && attribution.transcriptJobId === input.transcriptJobId
+    && attribution.providerSpeakerLabel === input.providerSpeakerLabel
+    && attribution.participantId === input.participantId
+    && attribution.providerSnapshotSha256 === input.providerSnapshotSha256
+    && samplesMatch;
+}
+
+export async function attributeTranscriptSpeaker(input: {
+  prisma: any;
+  actor: TranscriptCorrectionActor;
+  roomId: string;
+  providerSpeakerLabel: string;
+  participantId: string;
+  clientRequestId: string;
+  expectedProviderSnapshotSha256: string;
+  samples: Array<{ segmentId: string; playbackPositionSeconds: number }>;
+  confirmedAgainstPlayback?: boolean;
+  reviewNote?: string | null;
+}) {
+  const roomId = text(input.roomId);
+  const providerSpeakerLabel = text(input.providerSpeakerLabel);
+  const participantId = text(input.participantId);
+  const clientRequestId = text(input.clientRequestId);
+  const expectedProviderSnapshotSha256 = text(input.expectedProviderSnapshotSha256);
+  if (
+    !roomId
+    || !providerSpeakerLabel
+    || providerSpeakerLabel.length > 160
+    || !participantId
+    || !clientRequestId
+    || clientRequestId.length > 160
+    || !/^[a-f0-9]{64}$/.test(expectedProviderSnapshotSha256)
+  ) {
+    throw new TranscriptCorrectionError(
+      "A room, diarized speaker, participant, bounded request id, and provider snapshot are required.",
+      400,
+      "INVALID_SPEAKER_ATTRIBUTION",
+    );
+  }
+  if (input.confirmedAgainstPlayback !== true) {
+    throw new TranscriptCorrectionError(
+      "Play at least one sample and confirm the diarized voice before assigning it.",
+      409,
+      "PLAYBACK_NOT_CONFIRMED",
+    );
+  }
+  const samples = Array.isArray(input.samples) ? input.samples : [];
+  if (samples.length < 1 || samples.length > 3) {
+    throw new TranscriptCorrectionError("Choose one to three playback samples from this speaker.", 400, "INVALID_SPEAKER_SAMPLES");
+  }
+  const evidence = await loadSpeakerAttributionEvidence(input.prisma, { roomId, participantId, actor: input.actor });
+  const providerSnapshot = speakerProviderSnapshot(evidence.job.segments, providerSpeakerLabel);
+  if (providerSnapshot.evidence.length === 0) {
+    throw new TranscriptCorrectionError("That diarized speaker is not present in the current transcript.", 404, "SPEAKER_GROUP_NOT_FOUND");
+  }
+  if (providerSnapshot.sha256 !== expectedProviderSnapshotSha256) {
+    throw new TranscriptCorrectionError("The diarized speaker evidence changed. Refresh before assigning it.", 409, "STALE_SPEAKER_EVIDENCE");
+  }
+  const seenSamples = new Set<string>();
+  const sampleEvidence = samples.map((sample) => {
+    const segmentId = text(sample?.segmentId);
+    if (!segmentId || seenSamples.has(segmentId)) {
+      throw new TranscriptCorrectionError("Speaker samples must be unique current segments.", 400, "INVALID_SPEAKER_SAMPLES");
+    }
+    seenSamples.add(segmentId);
+    const segment = evidence.job.segments.find(
+      (candidate: any) => candidate.id === segmentId && candidate.speakerLabel === providerSpeakerLabel,
+    );
+    if (!segment) {
+      throw new TranscriptCorrectionError("A playback sample no longer belongs to this diarized speaker.", 409, "STALE_SPEAKER_SAMPLE");
+    }
+    const positionSeconds = assertPlaybackConfirmation({
+      playback: evidence.playback,
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: sample.playbackPositionSeconds,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+    });
+    return {
+      segmentId,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+      providerTextSha256: sha256(segment.text),
+      playbackPositionSeconds: positionSeconds,
+    };
+  });
+  const participantLabel = participantDisplayLabel(evidence.participant);
+  if (!participantLabel || participantLabel.length > 160) {
+    throw new TranscriptCorrectionError("Give this participant a usable display name before assigning their voice.", 409, "PARTICIPANT_NAME_REQUIRED");
+  }
+  const participantEmail = text(evidence.participant.email)
+    || text(evidence.participant.user?.primaryEmail)
+    || null;
+  const replayInput = {
+    roomId,
+    transcriptJobId: evidence.job.id,
+    providerSpeakerLabel,
+    participantId,
+    providerSnapshotSha256: providerSnapshot.sha256,
+    sampleEvidence,
+  };
+  const replay = await input.prisma.transcriptSpeakerAttribution.findUnique({
+    where: {
+      reviewedByUserId_clientRequestId: {
+        reviewedByUserId: input.actor.id,
+        clientRequestId,
+      },
+    },
+  });
+  if (replay) {
+    if (!speakerAttributionReplayMatches(replay, replayInput)) {
+      throw new TranscriptCorrectionError("That request id is already bound to different speaker evidence.", 409, "IDEMPOTENCY_CONFLICT");
+    }
+    return {
+      ok: true,
+      idempotentReplay: true,
+      attribution: publicSpeakerAttribution(replay),
+      boundaries: transcriptCorrectionBoundaries(),
+    };
+  }
+
+  const reviewedAt = new Date();
+  try {
+    const saved = await input.prisma.$transaction(async (tx: any) => {
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${evidence.job.id}`);
+      await acquirePrismaAdvisoryTransactionLock(tx, `transcript-speaker-attribution:${evidence.job.id}:${providerSpeakerLabel}`);
+      const currentJob = await tx.transcriptJob.findFirst({
+        where: { id: evidence.job.id, roomId },
+        select: {
+          id: true,
+          asset: {
+            select: {
+              id: true,
+              roomId: true,
+              kind: true,
+              status: true,
+              fileName: true,
+              durationSeconds: true,
+              byteSize: true,
+              checksum: true,
+              storageBucket: true,
+              storageObjectPath: true,
+              localManifestJson: true,
+            },
+          },
+          segments: {
+            orderBy: { startSeconds: "asc" },
+            select: { id: true, speakerLabel: true, startSeconds: true, endSeconds: true, text: true },
+          },
+        },
+      });
+      if (!currentJob?.asset || speakerProviderSnapshot(currentJob.segments, providerSpeakerLabel).sha256 !== providerSnapshot.sha256) {
+        throw new TranscriptCorrectionError("The diarized speaker evidence changed during review. Refresh and listen again.", 409, "STALE_SPEAKER_EVIDENCE");
+      }
+      const currentGate = await transcriptProcessingGate(tx, currentJob.asset);
+      if (!currentGate.allowed) {
+        throw new TranscriptCorrectionError(
+          currentGate.error || "Speaker attribution became held by its release gate during review.",
+          409,
+          "TRANSCRIPT_HELD",
+        );
+      }
+      const currentParticipant = await tx.callParticipant.findFirst({
+        where: { id: participantId, roomId },
+        select: { id: true },
+      });
+      if (!currentParticipant) {
+        throw new TranscriptCorrectionError("The selected participant left this Session record. Refresh before assigning.", 409, "PARTICIPANT_NOT_FOUND");
+      }
+      const active = await tx.transcriptSpeakerAttribution.findFirst({
+        where: { transcriptJobId: evidence.job.id, providerSpeakerLabel, status: "active" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (active) {
+        await tx.transcriptSpeakerAttribution.update({
+          where: { id: active.id },
+          data: { status: "superseded", supersededAt: reviewedAt },
+        });
+      }
+      const attribution = await tx.transcriptSpeakerAttribution.create({
+        data: {
+          roomId,
+          transcriptJobId: evidence.job.id,
+          recordingAssetId: evidence.playback.recordingAssetId,
+          providerSpeakerLabel,
+          participantId,
+          participantUserIdSnapshot: evidence.participant.userId ?? null,
+          participantDisplaySnapshot: participantLabel,
+          participantEmailSnapshot: participantEmail,
+          reviewedByUserId: input.actor.id,
+          reviewerEmailSnapshot: text(input.actor.email) || null,
+          clientRequestId,
+          status: "active",
+          providerSnapshotSha256: providerSnapshot.sha256,
+          sampleSegmentIdsJson: sampleEvidence.map((sample) => sample.segmentId),
+          sampleEvidenceJson: sampleEvidence,
+          playbackSourceId: evidence.playback.sourceId,
+          reviewNote: text(input.reviewNote) || "Reviewer identified this provider diarization cluster from protected playback samples.",
+          reviewedAt,
+        },
+      });
+      return attribution;
+    }, { isolationLevel: "Serializable" });
+    return {
+      ok: true,
+      idempotentReplay: false,
+      attribution: publicSpeakerAttribution(saved),
+      boundaries: transcriptCorrectionBoundaries(),
+    };
+  } catch (error) {
+    const code = text(object(error).code);
+    if (code !== "P2002" && code !== "P2034") throw error;
+    const racedReplay = await input.prisma.transcriptSpeakerAttribution.findUnique({
+      where: {
+        reviewedByUserId_clientRequestId: {
+          reviewedByUserId: input.actor.id,
+          clientRequestId,
+        },
+      },
+    });
+    if (racedReplay) {
+      if (!speakerAttributionReplayMatches(racedReplay, replayInput)) {
+        throw new TranscriptCorrectionError("That request id won a race with different speaker evidence.", 409, "IDEMPOTENCY_CONFLICT");
+      }
+      return {
+        ok: true,
+        idempotentReplay: true,
+        attribution: publicSpeakerAttribution(racedReplay),
+        boundaries: transcriptCorrectionBoundaries(),
+      };
+    }
+    const winner = await input.prisma.transcriptSpeakerAttribution.findFirst({
+      where: { transcriptJobId: evidence.job.id, providerSpeakerLabel, status: "active" },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (winner?.participantId !== participantId || winner?.providerSnapshotSha256 !== providerSnapshot.sha256) {
+      throw new TranscriptCorrectionError("Another speaker assignment won the save race. Refresh before replacing it.", 409, "STALE_SPEAKER_ATTRIBUTION");
+    }
+    return {
+      ok: true,
+      idempotentReplay: true,
+      attribution: publicSpeakerAttribution(winner),
+      boundaries: transcriptCorrectionBoundaries(),
+    };
+  }
 }
 
 export async function confirmTranscriptSegmentAsIs(input: {

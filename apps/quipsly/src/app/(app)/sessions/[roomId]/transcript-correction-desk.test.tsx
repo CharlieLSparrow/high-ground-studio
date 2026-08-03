@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 
@@ -123,6 +123,57 @@ describe("TranscriptCorrectionDesk", () => {
       confirmedAgainstPlayback: true,
       playbackPositionSeconds: 3.66,
     });
+  });
+
+  it("identifies a diarized voice once without presenting its words as reviewed", async () => {
+    const providerSnapshotSha256 = "b".repeat(64);
+    const speakerDesk = {
+      ...desk(true),
+      participants: [{ id: "participant-1", userId: "user-2", displayLabel: "Scott Sparrow", role: "GUEST", isCurrentActor: false }],
+      speakerGroups: [{
+        providerSpeakerLabel: "Speaker",
+        turnCount: 7,
+        providerSnapshotSha256,
+        attribution: null,
+        staleAttribution: false,
+        samples: [{ segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, text: "Welcome, everybody." }],
+      }],
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => speakerDesk })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        ok: true,
+        attribution: {
+          id: "attribution-1",
+          providerSpeakerLabel: "Speaker",
+          participantId: "participant-1",
+          attributedLabel: "Scott Sparrow",
+        },
+      }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...speakerDesk, segments: [{ ...segment, speakerLabel: "Scott Sparrow", speakerAttribution: { id: "attribution-1", attributedLabel: "Scott Sparrow" } }] }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Identify a voice once");
+    expect(screen.getByText(/does not mark those words playback-reviewed/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^participant$/i), { target: { value: "participant-1" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /play speaker sample from 00:03/i }));
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /recognize this voice/i }));
+    fireEvent.click(screen.getByRole("button", { name: /apply voice identity/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      operation: "attribute-provider-speaker",
+      roomId: "room-1",
+      providerSpeakerLabel: "Speaker",
+      participantId: "participant-1",
+      expectedProviderSnapshotSha256: providerSnapshotSha256,
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 3.66 }],
+      confirmedAgainstPlayback: true,
+    });
+    expect(await screen.findByText(/speaker is now identified as scott sparrow.*word review remains unchanged/i)).toBeInTheDocument();
   });
 
   it("keeps correction controls disabled when no protected playback exists", async () => {

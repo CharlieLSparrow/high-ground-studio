@@ -248,6 +248,7 @@ export async function POST(request: Request) {
         where: { id: transcriptJobId, roomId },
         include: {
           asset: true,
+          speakerAttributions: { where: { status: "active" }, orderBy: { updatedAt: "desc" } },
           segments: {
             orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
             include: {
@@ -262,7 +263,7 @@ export async function POST(request: Request) {
       }
       const gate = await mobileCaptureTranscriptProcessingGate({ prisma: tx, recordingAsset: transcriptJob.asset });
       if (!gate.allowed) throw new GoalReviewBoundaryError(409, gate.errorCode, gate.error);
-      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, transcriptJob.segments)) {
+      if (!packetTemplateMatches(lockedSource) || !packetSnapshotMatches(lockedSource, transcriptJob.segments, transcriptJob.speakerAttributions)) {
         throw new GoalReviewBoundaryError(409, "TRANSCRIPT_REVIEW_CHANGED", "Transcript review changed after this packet was built. Build a new packet before reviewing the goal candidate.");
       }
       const transcriptSnapshotSha256 = text(object(lockedSource.transcriptSnapshot).sha256);
@@ -279,7 +280,7 @@ export async function POST(request: Request) {
       }
       const evidenceSegments = resolvePacketEvidenceSpan(
         candidate,
-        projectTranscriptSegmentsForPacket(transcriptJob.segments),
+        projectTranscriptSegmentsForPacket(transcriptJob.segments, transcriptJob.speakerAttributions),
       );
       if (!evidenceSegments) {
         throw new GoalReviewBoundaryError(

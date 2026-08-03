@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
+  attributeTranscriptSpeaker,
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
@@ -29,6 +30,18 @@ function nullableText(value: unknown) {
 
 function number(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function speakerSamples(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((sample) => {
+        const entry = object(sample);
+        return {
+          segmentId: text(entry.segmentId),
+          playbackPositionSeconds: number(entry.playbackPositionSeconds) ?? Number.NaN,
+        };
+      })
+    : [];
 }
 
 async function body(request: Request) {
@@ -101,6 +114,21 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor = actorFromSession(session);
   try {
+    if (operation === "attribute-provider-speaker") {
+      const result = await attributeTranscriptSpeaker({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        providerSpeakerLabel: text(input.providerSpeakerLabel),
+        participantId: text(input.participantId),
+        clientRequestId: text(input.clientRequestId),
+        expectedProviderSnapshotSha256: text(input.expectedProviderSnapshotSha256),
+        samples: speakerSamples(input.samples),
+        confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
+        reviewNote: nullableText(input.reviewNote),
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (operation === "confirm-segment-as-is") {
       const result = await confirmTranscriptSegmentAsIs({
         prisma,

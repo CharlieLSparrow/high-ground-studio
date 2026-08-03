@@ -1057,6 +1057,7 @@ function checkTranscriptCorrectionContractSources() {
   const noteMaterializationRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/notes/route.ts");
   const taskDomainText = sourceText("packages/quipsly-domain/src/transcript-derived-task.ts");
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
+  const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
   const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
@@ -1093,6 +1094,8 @@ function checkTranscriptCorrectionContractSources() {
   const mobileCaptureSessionsText = sourceText("apps/quipsly/src/lib/server/mobile-capture-sessions.ts");
   const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
   const schemaText = sourceText("prisma/schema.prisma");
+  const speakerAttributionMigrationText = sourceText("prisma/migrations/20260803180000_add_transcript_speaker_attributions/migration.sql");
+  const speakerAttributionHardeningMigrationText = sourceText("prisma/migrations/20260803183000_harden_transcript_speaker_attributions/migration.sql");
   const sessionReviewPageText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/page.tsx");
   const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
   const recordingPromotionText = sourceText("apps/quipsly/src/lib/server/recording-media-promotion.ts");
@@ -1158,6 +1161,26 @@ function checkTranscriptCorrectionContractSources() {
       && serviceText.includes("noPublication: true"),
     "transcriptCorrectionImmutableEvidenceBoundary",
     "Canonical transcript corrections preserve provider segments and media time, quarantine AI output, require playback-position proof, and fail stale overlays closed.",
+  );
+  expect(
+    routeText.includes('operation === "attribute-provider-speaker"')
+      && serviceText.includes('TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA = "quipsly-transcript-speaker-attribution-v1"')
+      && serviceText.includes("speakerIdentitySeparateFromWordReview: true")
+      && serviceText.includes("transcript-speaker-attribution:")
+      && serviceText.includes("speakerProviderSnapshot(currentJob.segments, providerSpeakerLabel)")
+      && serviceText.includes("const currentGate = await transcriptProcessingGate(tx, currentJob.asset)")
+      && speakerAttributionMigrationText.includes('"TranscriptSpeakerAttr_one_active_job_label_key"')
+      && speakerAttributionMigrationText.includes('WHERE "status" = \'active\'')
+      && speakerAttributionHardeningMigrationText.includes('"TranscriptSpeakerAttr_supersession_check"')
+      && speakerAttributionHardeningMigrationText.includes('jsonb_array_length("sampleSegmentIdsJson") BETWEEN 1 AND 3')
+      && webText.includes("Identify a voice once")
+      && webText.includes("does not mark those words playback-reviewed")
+      && nativeText.includes("CaptureTranscriptSpeakerAttribution")
+      && nativeText.includes("Voice identified from Session samples")
+      && coachingPacketText.includes("acceptedSpeakerAttributionId")
+      && coachingPacketText.includes("speakerAttributions: unknown = []"),
+    "transcriptSpeakerAttributionSeparateReviewBoundary",
+    "A playback-reviewed provider-cluster identity is atomic, participant-bound, packet-invalidating, and visibly separate from word-level transcript review on Nest and iPhone.",
   );
   expect(
     nativeText.includes("CaptureTranscriptReviewView")
@@ -1708,7 +1731,7 @@ function checkTranscriptCorrectionContractSources() {
       && noteMaterializationRouteText.includes("packetCandidateReviewed")
       && noteMaterializationRouteText.includes("packetSnapshotRechecked")
       && noteMaterializationRouteText.includes("created-from-transcript-packet")
-      && sessionReviewModelText.includes("noteCandidateMaterializationRequest")
+      && sessionReviewModelText.includes("noteCandidateReviewRequest")
       && sessionReviewText.includes("Keep what matters, with its source")
       && sessionReviewText.includes("It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication")
       && nativeText.includes("CapturePacketNoteReviewSection")
@@ -1936,6 +1959,7 @@ function checkSessionCalendarCancellationContractSources() {
 function checkGoogleCalendarReconciliationContractSources() {
   const oauthText = sourceText("apps/quipsly/src/lib/server/google-calendar-oauth.ts");
   const reconciliationText = sourceText("apps/quipsly/src/lib/server/google-calendar-reconciliation.ts");
+  const reconciliationServiceText = sourceText("apps/quipsly/src/lib/server/google-calendar-reconciliation-service.ts");
   const routeText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/reconcile/route.ts");
   const conflictReviewText = sourceText("apps/quipsly/src/lib/server/google-calendar-conflict-review.ts");
   const conflictRouteText = sourceText("apps/quipsly/src/app/api/calendar/connections/google/conflicts/route.ts");
@@ -1954,7 +1978,7 @@ function checkGoogleCalendarReconciliationContractSources() {
       && reconciliationText.includes("(cursor?.syncTokenRef || null) !== input.priorCursorRef")
       && reconciliationText.includes("importedProviderContent: false")
       && reconciliationText.includes('status: { not: "REVOKED" }')
-      && routeText.includes('action: "write"')
+      && reconciliationServiceText.includes('action: "write"')
       && routeText.includes('code: "calendar-reconciliation-superseded"')
       && routeText.includes("externalSideEffects: false")
       && conflictReviewText.includes('"PREPARE_QUIPSLY_UPDATE"')

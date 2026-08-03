@@ -149,6 +149,7 @@ export type PacketTranscriptSegment = {
   reviewStatus: "provider" | "human-reviewed";
   acceptedReviewId: string | null;
   acceptedCorrectionId: string | null;
+  acceptedSpeakerAttributionId: string | null;
 };
 
 export type PacketTranscriptEvidenceSpan = PacketTranscriptSegment & {
@@ -157,13 +158,39 @@ export type PacketTranscriptEvidenceSpan = PacketTranscriptSegment & {
   evidenceSegments: PacketTranscriptSegment[];
 };
 
+function packetSpeakerProviderSnapshotSha256(segments: any[], providerSpeakerLabel: string) {
+  const evidence = segments
+    .filter((segment) => (cleanText(segment?.speakerLabel) || null) === providerSpeakerLabel)
+    .map((segment) => ({
+      id: cleanText(segment?.id),
+      startSeconds: Number(segment?.startSeconds),
+      endSeconds: Number(segment?.endSeconds),
+      textSha256: packetSha256(typeof segment?.text === "string" ? segment.text : ""),
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  return packetSha256(JSON.stringify({ providerSpeakerLabel, evidence }));
+}
+
 /**
  * Resolves immutable provider segments into the exact text packet builders may
  * read. Accepted corrections are overlays; a current confirmed-as-is receipt
  * advances review status without changing provider text.
  */
-export function projectTranscriptSegmentsForPacket(segments: unknown): PacketTranscriptSegment[] {
-  return (Array.isArray(segments) ? segments : []).map((segment) => {
+export function projectTranscriptSegmentsForPacket(segments: unknown, speakerAttributions: unknown = []): PacketTranscriptSegment[] {
+  const providerSegments = Array.isArray(segments) ? segments : [];
+  const activeSpeakerAttributions = new Map(
+    (Array.isArray(speakerAttributions) ? speakerAttributions : [])
+      .filter((attribution) => attribution?.status === "active"
+        && cleanText(attribution?.providerSpeakerLabel)
+        && cleanText(attribution?.participantId)
+        && cleanText(attribution?.participantDisplaySnapshot)
+        && cleanText(attribution?.providerSnapshotSha256) === packetSpeakerProviderSnapshotSha256(
+          providerSegments,
+          cleanText(attribution?.providerSpeakerLabel),
+        ))
+      .map((attribution) => [cleanText(attribution.providerSpeakerLabel), attribution]),
+  );
+  return providerSegments.map((segment) => {
     const providerText = typeof segment?.text === "string" ? segment.text : "";
     const providerSpeakerLabel = cleanText(segment?.speakerLabel) || null;
     const providerTextSha256 = packetSha256(providerText);
@@ -179,11 +206,13 @@ export function projectTranscriptSegmentsForPacket(segments: unknown): PacketTra
       .sort((left, right) => reviewTime(right?.createdAt) - reviewTime(left?.createdAt))[0] ?? null;
     const correctedText = cleanText(acceptedCorrection?.correctedText);
     const correctedSpeaker = cleanText(acceptedCorrection?.correctedSpeakerLabel);
+    const speakerAttribution = activeSpeakerAttributions.get(providerSpeakerLabel || "") ?? null;
+    const attributedSpeaker = cleanText(speakerAttribution?.participantDisplaySnapshot);
     const acceptedReviewId = cleanText(acceptedCorrection?.id) || cleanText(acceptedVerification?.id) || null;
 
     return {
       id: String(segment?.id ?? ""),
-      speakerLabel: correctedSpeaker || providerSpeakerLabel,
+      speakerLabel: correctedSpeaker || attributedSpeaker || providerSpeakerLabel,
       startSeconds: Number(segment?.startSeconds),
       endSeconds: Number(segment?.endSeconds),
       text: correctedText || cleanText(providerText),
@@ -194,6 +223,7 @@ export function projectTranscriptSegmentsForPacket(segments: unknown): PacketTra
       reviewStatus: acceptedReviewId ? "human-reviewed" : "provider",
       acceptedReviewId,
       acceptedCorrectionId: cleanText(acceptedCorrection?.id) || null,
+      acceptedSpeakerAttributionId: cleanText(speakerAttribution?.id) || null,
     };
   });
 }
@@ -283,8 +313,8 @@ export function packetTemplateMatches(sourceJson: unknown) {
   return source.packetTemplateVersion === SESSION_PACKET_TEMPLATE_VERSION;
 }
 
-export function transcriptPacketSnapshot(segments: unknown) {
-  const projected = projectTranscriptSegmentsForPacket(segments);
+export function transcriptPacketSnapshot(segments: unknown, speakerAttributions: unknown = []) {
+  const projected = projectTranscriptSegmentsForPacket(segments, speakerAttributions);
   const segmentReviews = projected.map((segment) => ({
     segmentId: segment.id,
     providerTextSha256: segment.providerTextSha256,
@@ -292,6 +322,7 @@ export function transcriptPacketSnapshot(segments: unknown) {
     resolvedSpeakerLabel: segment.speakerLabel,
     acceptedReviewId: segment.acceptedReviewId,
     acceptedCorrectionId: segment.acceptedCorrectionId,
+    acceptedSpeakerAttributionId: segment.acceptedSpeakerAttributionId,
     reviewStatus: segment.reviewStatus,
     startSeconds: segment.startSeconds,
     endSeconds: segment.endSeconds,
@@ -308,14 +339,14 @@ export function transcriptPacketSnapshot(segments: unknown) {
   };
 }
 
-export function packetSnapshotMatches(sourceJson: unknown, segments: unknown) {
+export function packetSnapshotMatches(sourceJson: unknown, segments: unknown, speakerAttributions: unknown = []) {
   const source = typeof sourceJson === "object" && sourceJson !== null && !Array.isArray(sourceJson)
     ? sourceJson as Record<string, unknown>
     : {};
   const snapshot = typeof source.transcriptSnapshot === "object" && source.transcriptSnapshot !== null && !Array.isArray(source.transcriptSnapshot)
     ? source.transcriptSnapshot as Record<string, unknown>
     : {};
-  const current = transcriptPacketSnapshot(segments);
+  const current = transcriptPacketSnapshot(segments, speakerAttributions);
   return snapshot.schema === TRANSCRIPT_PACKET_SNAPSHOT_SCHEMA
     && snapshot.sha256 === current.sha256;
 }
@@ -638,6 +669,10 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     include: {
       room: { include: { booking: true } },
       asset: true,
+      speakerAttributions: {
+        where: { status: "active" },
+        orderBy: { updatedAt: "desc" },
+      },
       segments: {
         orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
         include: {
@@ -681,7 +716,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     return { ok: false, status: 409, error: "Transcript has no segments to turn into a coaching packet." };
   }
 
-  const transcriptSnapshot = transcriptPacketSnapshot(job.segments);
+  const transcriptSnapshot = transcriptPacketSnapshot(job.segments, job.speakerAttributions);
   const packetSegments = transcriptSnapshot.projected;
   const { projected: _projected, ...transcriptSnapshotEvidence } = transcriptSnapshot;
 
@@ -697,7 +732,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     orderBy: { createdAt: "desc" },
   });
 
-  if (existing && !args.force && packetTemplateMatches(existing.sourceJson) && packetSnapshotMatches(existing.sourceJson, job.segments)) {
+  if (existing && !args.force && packetTemplateMatches(existing.sourceJson) && packetSnapshotMatches(existing.sourceJson, job.segments, job.speakerAttributions)) {
     const existingSource = typeof existing.sourceJson === "object" && existing.sourceJson !== null
       ? existing.sourceJson as Record<string, any>
       : {};

@@ -30,6 +30,17 @@ struct CaptureTranscriptSegmentVerification: Codable, Identifiable, Equatable {
     let reviewedAt: String
 }
 
+struct CaptureTranscriptSpeakerAttribution: Codable, Identifiable, Equatable {
+    let id: String
+    let providerSpeakerLabel: String
+    let participantId: String?
+    let participantUserId: String?
+    let attributedLabel: String
+    let providerSnapshotSha256: String
+    let sampleSegmentIds: [String]
+    let reviewedAt: String
+}
+
 struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
     let speakerLabel: String?
@@ -42,6 +53,7 @@ struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let confidence: Double?
     let acceptedCorrection: CaptureTranscriptCorrection?
     let acceptedVerification: CaptureTranscriptSegmentVerification?
+    let speakerAttribution: CaptureTranscriptSpeakerAttribution?
     let proposals: [CaptureTranscriptCorrection]
     let correctionHistory: [CaptureTranscriptCorrection]
 }
@@ -95,6 +107,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             confidence: 0.94,
             acceptedCorrection: nil,
             acceptedVerification: nil,
+            speakerAttribution: nil,
             proposals: [proposal],
             correctionHistory: [proposal]
         )
@@ -2978,6 +2991,21 @@ private struct CaptureTranscriptSegmentCard: View {
                 .padding(12)
                 .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityIdentifier("CaptureTranscriptVerifiedAsIs_\(segment.id)")
+            }
+
+            if segment.acceptedCorrection == nil,
+               let attribution = segment.speakerAttribution {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Voice identified from Session samples", systemImage: "person.wave.2.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.indigo)
+                    Text("Provider \(attribution.providerSpeakerLabel) is displayed as \(attribution.attributedLabel). This does not mark this turn's words playback-reviewed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.indigo.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("CaptureTranscriptSpeakerAttribution_\(segment.id)")
             }
 
             ForEach(segment.proposals) { proposal in

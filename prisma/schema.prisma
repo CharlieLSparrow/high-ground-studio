@@ -651,6 +651,7 @@ model User {
   transcriptCorrectionsReviewed TranscriptCorrection[]               @relation("TranscriptCorrectionReviewedBy")
   transcriptCorrectionRevisions TranscriptCorrectionRevision[]       @relation("TranscriptCorrectionRevisionActor")
   transcriptSegmentsVerified    TranscriptSegmentVerification[]      @relation("TranscriptSegmentVerificationReviewer")
+  transcriptSpeakerAttributions TranscriptSpeakerAttribution[]       @relation("TranscriptSpeakerAttributionReviewer")
   companySupportRequests        CompanySupportRequest[]
   storyDraftsCreated            StoryDraft[]                         @relation("StoryDraftCreatedBy")
   storyDraftsUpdated            StoryDraft[]                         @relation("StoryDraftUpdatedBy")
@@ -1601,23 +1602,24 @@ model CallRoom {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  booking                 CoachingBooking?                @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  createdByUser           User?                           @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  project                 StudioProject?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  participants            CallParticipant[]
-  recordingConsents       RecordingConsent[]
-  stateReceipts           CaptureRoomStateReceipt[]
-  recordingAssets         RecordingAsset[]
-  transcriptJobs          TranscriptJob[]
-  transcriptCorrections   TranscriptCorrection[]
-  transcriptVerifications TranscriptSegmentVerification[]
-  notes                   CoachingNote[]
-  outputs                 SessionOutput[]
-  deliveryEvents          DeliveryEvent[]
-  actionItems             ActionItem[]
-  goals                   Goal[]
-  calendarLinks           CalendarEventLink[]
-  tagLinks                CallRoomTagLink[]
+  booking                       CoachingBooking?                @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdByUser                 User?                           @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  project                       StudioProject?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  participants                  CallParticipant[]
+  recordingConsents             RecordingConsent[]
+  stateReceipts                 CaptureRoomStateReceipt[]
+  recordingAssets               RecordingAsset[]
+  transcriptJobs                TranscriptJob[]
+  transcriptCorrections         TranscriptCorrection[]
+  transcriptVerifications       TranscriptSegmentVerification[]
+  transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
+  notes                         CoachingNote[]
+  outputs                       SessionOutput[]
+  deliveryEvents                DeliveryEvent[]
+  actionItems                   ActionItem[]
+  goals                         Goal[]
+  calendarLinks                 CalendarEventLink[]
+  tagLinks                      CallRoomTagLink[]
 
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])
@@ -1758,10 +1760,11 @@ model CallParticipant {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  room              CallRoom           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user              User?              @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
-  recordingConsents RecordingConsent[]
-  recordingAssets   RecordingAsset[]
+  room                          CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user                          User?                          @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+  recordingConsents             RecordingConsent[]
+  recordingAssets               RecordingAsset[]
+  transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
 
   @@index([roomId, role])
   @@index([userId, createdAt])
@@ -1818,11 +1821,12 @@ model RecordingAsset {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
-  room                    CallRoom                        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  participant             CallParticipant?                @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  uploadChunks            UploadChunk[]
-  transcriptJobs          TranscriptJob[]
-  transcriptVerifications TranscriptSegmentVerification[]
+  room                          CallRoom                        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant                   CallParticipant?                @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  uploadChunks                  UploadChunk[]
+  transcriptJobs                TranscriptJob[]
+  transcriptVerifications       TranscriptSegmentVerification[]
+  transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
@@ -1873,11 +1877,12 @@ model TranscriptJob {
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
 
-  room          CallRoom?                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  asset         RecordingAsset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  segments      TranscriptSegment[]
-  words         TranscriptWord[]
-  verifications TranscriptSegmentVerification[]
+  room                CallRoom?                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  asset               RecordingAsset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  segments            TranscriptSegment[]
+  words               TranscriptWord[]
+  verifications       TranscriptSegmentVerification[]
+  speakerAttributions TranscriptSpeakerAttribution[]
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
@@ -2021,6 +2026,48 @@ model TranscriptSegmentVerification {
   @@index([roomId, createdAt], map: "TranscriptSegVerify_room_created_idx")
   @@index([transcriptJobId, segmentId, createdAt], map: "TranscriptSegVerify_job_segment_created_idx")
   @@index([recordingAssetId, createdAt], map: "TranscriptSegVerify_asset_created_idx")
+}
+
+// A playback-reviewed identity overlay for one provider diarization cluster.
+// This is intentionally separate from TranscriptCorrection: identifying a
+// speaker across turns does not claim that every provider word was reviewed.
+// Historical rows remain as superseded audit evidence while a partial unique
+// index in the migration permits only one active map per job/provider label.
+model TranscriptSpeakerAttribution {
+  id                         String    @id @default(cuid())
+  roomId                     String
+  transcriptJobId            String
+  recordingAssetId           String
+  providerSpeakerLabel       String
+  participantId              String?
+  participantUserIdSnapshot  String?
+  participantDisplaySnapshot String
+  participantEmailSnapshot   String?
+  reviewedByUserId           String
+  reviewerEmailSnapshot      String?
+  clientRequestId            String
+  status                     String    @default("active")
+  providerSnapshotSha256     String
+  sampleSegmentIdsJson       Json
+  sampleEvidenceJson         Json
+  playbackSourceId           String
+  reviewNote                 String?   @db.Text
+  reviewedAt                 DateTime
+  supersededAt               DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  room           CallRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transcriptJob  TranscriptJob    @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict)
+  recordingAsset RecordingAsset   @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
+  participant    CallParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  reviewedBy     User             @relation("TranscriptSpeakerAttributionReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([reviewedByUserId, clientRequestId], map: "TranscriptSpeakerAttr_reviewer_request_key")
+  @@index([roomId, createdAt], map: "TranscriptSpeakerAttr_room_created_idx")
+  @@index([transcriptJobId, providerSpeakerLabel, status, updatedAt], map: "TranscriptSpeakerAttr_job_label_status_idx")
+  @@index([participantId, createdAt], map: "TranscriptSpeakerAttr_participant_created_idx")
+  @@index([recordingAssetId, createdAt], map: "TranscriptSpeakerAttr_asset_created_idx")
 }
 
 model CoachingNote {

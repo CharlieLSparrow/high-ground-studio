@@ -7,11 +7,14 @@ jest.mock("./mobile-capture-processing-policy.js", () => ({
 
 import { createHash } from "node:crypto";
 
+import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import {
+  attributeTranscriptSpeaker,
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
   TRANSCRIPT_CORRECTION_SCHEMA,
+  TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
   TranscriptCorrectionError,
 } from "./transcript-corrections";
 
@@ -66,14 +69,38 @@ function segment(corrections: any[] = [], verifications: any[] = []) {
   };
 }
 
-function accessibleRoom(options: { promoted?: boolean; corrections?: any[]; verifications?: any[] } = {}) {
+function speakerSnapshotSha256(segments = [segment()]) {
+  const evidence = segments.map((entry) => ({
+    id: entry.id,
+    startSeconds: entry.startSeconds,
+    endSeconds: entry.endSeconds,
+    textSha256: sha256(entry.text),
+  }));
+  return sha256(JSON.stringify({ providerSpeakerLabel, evidence }));
+}
+
+function participant() {
+  return {
+    id: "participant-1",
+    userId: "speaker-user-1",
+    displayName: "Charlie",
+    email: "charlie@example.com",
+    role: "HOST",
+    user: { name: "Charles Sparrow", primaryEmail: "charlie@example.com" },
+  };
+}
+
+function accessibleRoom(options: { promoted?: boolean; corrections?: any[]; verifications?: any[]; speakerAttributions?: any[] } = {}) {
   return {
     id: "room-1",
     title: "Episode review",
+    projectId: "project-1",
+    participants: [participant()],
     transcriptJobs: [{
       id: "job-1",
       status: "COMPLETED",
       asset: recordingAsset(options.promoted !== false),
+      speakerAttributions: options.speakerAttributions ?? [],
       segments: [segment(options.corrections, options.verifications)],
     }],
   };
@@ -137,7 +164,84 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
   return { prisma, tx, revisionCreate };
 }
 
+function speakerMutationHarness(options: { active?: any | null; replay?: any | null } = {}) {
+  let created: any = null;
+  const currentSegments = [segment()];
+  const tx = {
+    $queryRaw: jest.fn(async () => [{ lock: null }]),
+    transcriptJob: {
+      findFirst: jest.fn(async () => ({ id: "job-1", asset: recordingAsset(), segments: currentSegments })),
+    },
+    callRoom: {
+      findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+    },
+    mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    callParticipant: {
+      findFirst: jest.fn(async () => ({ id: "participant-1" })),
+    },
+    transcriptSpeakerAttribution: {
+      findFirst: jest.fn(async () => options.active ?? null),
+      update: jest.fn(async ({ where, data }: any) => ({ ...options.active, id: where.id, ...data })),
+      create: jest.fn(async ({ data }: any) => {
+        created = { id: "attribution-1", ...data, createdAt: new Date(), updatedAt: new Date() };
+        return created;
+      }),
+    },
+  };
+  const prisma = {
+    callRoom: {
+      findFirst: jest.fn(async () => accessibleRoom()),
+      findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+    },
+    mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    transcriptSpeakerAttribution: {
+      findUnique: jest.fn(async () => options.replay ?? null),
+      findFirst: jest.fn(async () => created ?? options.active ?? null),
+    },
+    $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+  };
+  return { prisma, tx };
+}
+
 describe("transcript correction desk", () => {
+  it("applies one current speaker identity without claiming any turn's words were reviewed", async () => {
+    const attribution = {
+      id: "attribution-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      participantUserIdSnapshot: "speaker-user-1",
+      participantDisplaySnapshot: "Charlie",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      sampleSegmentIdsJson: ["segment-1"],
+      reviewedAt: new Date("2026-08-03T18:00:00.000Z"),
+    };
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ speakerAttributions: [attribution] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    expect(result.speakerGroups).toEqual([expect.objectContaining({
+      providerSpeakerLabel,
+      turnCount: 1,
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      attribution: expect.objectContaining({ schema: TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA, attributedLabel: "Charlie" }),
+    })]);
+    expect(result.segments[0]).toMatchObject({
+      speakerLabel: "Charlie",
+      providerSpeakerLabel,
+      acceptedCorrection: null,
+      acceptedVerification: null,
+      speakerAttribution: expect.objectContaining({ id: "attribution-1" }),
+      words: [expect.objectContaining({ speakerLabel: providerSpeakerLabel })],
+    });
+    expect(result.boundaries).toMatchObject({ speakerIdentitySeparateFromWordReview: true });
+  });
+
   it("resolves reviewed overlays without mutating provider words or media anchors", async () => {
     const accepted = correctionRecord({
       id: "accepted-1",
@@ -194,6 +298,205 @@ describe("transcript correction desk", () => {
       }],
     });
     expect(result.boundaries).toMatchObject({ providerSegmentsImmutable: true, mediaTimeAnchorsPreserved: true });
+  });
+
+  it("keeps a segment-specific reviewed correction above the session-wide speaker identity", async () => {
+    const accepted = correctionRecord({
+      id: "accepted-1",
+      segmentId: "segment-1",
+      origin: "human",
+      status: "accepted",
+      correctedText: providerText,
+      correctedSpeakerLabel: "Scott",
+      reason: "This turn was the other speaker.",
+    }, [{ revision: 1, operation: "created-and-accepted-after-playback", createdAt: new Date() }]);
+    const attribution = {
+      id: "attribution-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      participantUserIdSnapshot: "speaker-user-1",
+      participantDisplaySnapshot: "Charlie",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      sampleSegmentIdsJson: ["segment-1"],
+      reviewedAt: new Date(),
+    };
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ corrections: [accepted], speakerAttributions: [attribution] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+    expect(result.segments[0]).toMatchObject({
+      speakerLabel: "Scott",
+      providerSpeakerLabel,
+      acceptedCorrection: { id: "accepted-1" },
+      speakerAttribution: { id: "attribution-1", attributedLabel: "Charlie" },
+    });
+  });
+
+  it("assigns a provider speaker cluster from protected playback and supersedes the prior identity atomically", async () => {
+    const active = {
+      id: "attribution-old",
+      transcriptJobId: "job-1",
+      providerSpeakerLabel,
+      participantId: "participant-old",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      status: "active",
+    };
+    const { prisma, tx } = speakerMutationHarness({ active });
+    const result = await attributeTranscriptSpeaker({
+      prisma,
+      actor,
+      roomId: "room-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      clientRequestId: "speaker-review-1",
+      expectedProviderSnapshotSha256: speakerSnapshotSha256(),
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 13.5 }],
+      confirmedAgainstPlayback: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      attribution: {
+        schema: TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
+        providerSpeakerLabel,
+        participantId: "participant-1",
+        attributedLabel: "Charlie",
+      },
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.mobileCaptureFinalizationReceipt.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { recordingAssetId: "asset-1" },
+    }));
+    expect(tx.transcriptSpeakerAttribution.update).toHaveBeenCalledWith({
+      where: { id: "attribution-old" },
+      data: { status: "superseded", supersededAt: expect.any(Date) },
+    });
+    expect(tx.transcriptSpeakerAttribution.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      participantDisplaySnapshot: "Charlie",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      sampleSegmentIdsJson: ["segment-1"],
+      sampleEvidenceJson: [expect.objectContaining({
+        segmentId: "segment-1",
+        playbackPositionSeconds: 13.5,
+        providerTextSha256: sha256(providerText),
+      })],
+    }) });
+  });
+
+  it("reuses only an exact persisted request replay without entering another transaction", async () => {
+    const replay = {
+      id: "speaker-attribution-replay",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      participantUserIdSnapshot: "speaker-user-1",
+      participantDisplaySnapshot: "Charlie",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      sampleSegmentIdsJson: ["segment-1"],
+      sampleEvidenceJson: [{
+        endSeconds: 18,
+        segmentId: "segment-1",
+        playbackPositionSeconds: 13.5,
+        providerTextSha256: sha256(providerText),
+        startSeconds: 12,
+      }],
+      reviewedAt: new Date("2026-08-03T18:00:00.000Z"),
+    };
+    const { prisma } = speakerMutationHarness({ replay });
+    const result = await attributeTranscriptSpeaker({
+      prisma,
+      actor,
+      roomId: "room-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      clientRequestId: "speaker-review-exact-replay",
+      expectedProviderSnapshotSha256: speakerSnapshotSha256(),
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 13.5 }],
+      confirmedAgainstPlayback: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      attribution: { id: "speaker-attribution-replay", attributedLabel: "Charlie" },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects changed speaker intent under a persisted request id", async () => {
+    const { prisma } = speakerMutationHarness({ replay: {
+      id: "speaker-attribution-conflict",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      providerSpeakerLabel,
+      participantId: "different-participant",
+      providerSnapshotSha256: speakerSnapshotSha256(),
+      sampleEvidenceJson: [],
+    } });
+    await expect(attributeTranscriptSpeaker({
+      prisma,
+      actor,
+      roomId: "room-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      clientRequestId: "speaker-review-conflict",
+      expectedProviderSnapshotSha256: speakerSnapshotSha256(),
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 13.5 }],
+      confirmedAgainstPlayback: true,
+    })).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT", status: 409 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale speaker snapshot before entering the attribution transaction", async () => {
+    const { prisma } = speakerMutationHarness();
+    await expect(attributeTranscriptSpeaker({
+      prisma,
+      actor,
+      roomId: "room-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      clientRequestId: "speaker-review-stale",
+      expectedProviderSnapshotSha256: "f".repeat(64),
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 13.5 }],
+      confirmedAgainstPlayback: true,
+    })).rejects.toMatchObject({ code: "STALE_SPEAKER_EVIDENCE", status: 409 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the recording release gate changes after transaction locks are acquired", async () => {
+    const gate = mobileCaptureProcessingGateFromEvidence as jest.Mock;
+    gate
+      .mockImplementationOnce(() => ({ allowed: true }))
+      .mockImplementationOnce(() => ({ allowed: false, error: "Recording consent was withdrawn." }));
+    const { prisma, tx } = speakerMutationHarness();
+
+    await expect(attributeTranscriptSpeaker({
+      prisma,
+      actor,
+      roomId: "room-1",
+      providerSpeakerLabel,
+      participantId: "participant-1",
+      clientRequestId: "speaker-review-held-in-transaction",
+      expectedProviderSnapshotSha256: speakerSnapshotSha256(),
+      samples: [{ segmentId: "segment-1", playbackPositionSeconds: 13.5 }],
+      confirmedAgainstPlayback: true,
+    })).rejects.toMatchObject({ code: "TRANSCRIPT_HELD", status: 409 });
+
+    expect(tx.transcriptSpeakerAttribution.findFirst).not.toHaveBeenCalled();
+    expect(tx.transcriptSpeakerAttribution.create).not.toHaveBeenCalled();
   });
 
   it("surfaces a current playback-backed provider verification as reviewed without a correction", async () => {

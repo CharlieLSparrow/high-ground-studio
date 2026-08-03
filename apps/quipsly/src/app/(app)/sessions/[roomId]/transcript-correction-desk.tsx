@@ -35,6 +35,39 @@ type Verification = {
   reviewedAt: string;
 };
 
+type SpeakerAttribution = {
+  id: string;
+  providerSpeakerLabel: string;
+  participantId: string | null;
+  participantUserId: string | null;
+  attributedLabel: string;
+  providerSnapshotSha256: string;
+  sampleSegmentIds: string[];
+  reviewedAt: string;
+};
+
+type SpeakerGroup = {
+  providerSpeakerLabel: string;
+  turnCount: number;
+  providerSnapshotSha256: string;
+  attribution: SpeakerAttribution | null;
+  staleAttribution: boolean;
+  samples: Array<{
+    segmentId: string;
+    startSeconds: number;
+    endSeconds: number;
+    text: string;
+  }>;
+};
+
+type SessionParticipant = {
+  id: string;
+  userId: string | null;
+  displayLabel: string;
+  role: string;
+  isCurrentActor: boolean;
+};
+
 type Segment = {
   id: string;
   speakerLabel: string | null;
@@ -58,6 +91,7 @@ type Segment = {
   }>;
   acceptedCorrection: Correction | null;
   acceptedVerification: Verification | null;
+  speakerAttribution: SpeakerAttribution | null;
   proposals: Correction[];
   correctionHistory: Correction[];
 };
@@ -95,6 +129,8 @@ type Desk = {
     durationSeconds: number | null;
     label: string;
   };
+  participants: SessionParticipant[];
+  speakerGroups: SpeakerGroup[];
   segments: Segment[];
   boundaries: Record<string, boolean>;
 };
@@ -106,6 +142,121 @@ function requestId(segmentId: string) {
 
 function humanize(value: string) {
   return value.replaceAll("-", " ").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function SpeakerAttributionPanel({
+  roomId,
+  groups,
+  participants,
+  playbackReady,
+  currentPlaybackPosition,
+  busy,
+  onPlayAt,
+  onSaved,
+}: {
+  roomId: string;
+  groups: SpeakerGroup[];
+  participants: SessionParticipant[];
+  playbackReady: boolean;
+  currentPlaybackPosition: () => number | null;
+  busy: boolean;
+  onPlayAt: (seconds: number) => Promise<void>;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [selectedParticipants, setSelectedParticipants] = useState<Record<string, string>>({});
+  const [playedSamples, setPlayedSamples] = useState<Record<string, string>>({});
+  const [confirmedGroups, setConfirmedGroups] = useState<Record<string, boolean>>({});
+  const [requestIds, setRequestIds] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  async function playSample(group: SpeakerGroup, segmentId: string, startSeconds: number) {
+    setPlayedSamples((current) => ({ ...current, [group.providerSpeakerLabel]: segmentId }));
+    setConfirmedGroups((current) => ({ ...current, [group.providerSpeakerLabel]: false }));
+    await onPlayAt(startSeconds);
+  }
+
+  async function save(group: SpeakerGroup) {
+    const label = group.providerSpeakerLabel;
+    const participantId = selectedParticipants[label] || group.attribution?.participantId || "";
+    const segmentId = playedSamples[label] || "";
+    const playbackPositionSeconds = currentPlaybackPosition();
+    setErrors((current) => ({ ...current, [label]: "" }));
+    try {
+      const clientRequestId = requestIds[label] || requestId(`speaker-${label}`);
+      setRequestIds((current) => ({ ...current, [label]: clientRequestId }));
+      const response = await fetch("/api/mobile/capture/transcripts/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "attribute-provider-speaker",
+          roomId,
+          providerSpeakerLabel: label,
+          participantId,
+          clientRequestId,
+          expectedProviderSnapshotSha256: group.providerSnapshotSha256,
+          samples: [{ segmentId, playbackPositionSeconds }],
+          confirmedAgainstPlayback: confirmedGroups[label] === true,
+        }),
+      });
+      const body = await response.json() as { ok?: boolean; error?: string; attribution?: SpeakerAttribution };
+      if (!response.ok || !body.ok || !body.attribution) throw new Error(body.error || "The speaker assignment was not saved.");
+      setRequestIds((current) => ({ ...current, [label]: requestId(`speaker-${label}`) }));
+      setConfirmedGroups((current) => ({ ...current, [label]: false }));
+      await onSaved(`${label} is now identified as ${body.attribution.attributedLabel}. Word review remains unchanged.`);
+    } catch (error) {
+      setErrors((current) => ({
+        ...current,
+        [label]: error instanceof Error ? error.message : "The speaker assignment was not saved.",
+      }));
+    }
+  }
+
+  if (!groups.length) return null;
+  return (
+    <section aria-labelledby="speaker-attribution-heading" className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-800">Session-wide diarization</p>
+      <h3 id="speaker-attribution-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Identify a voice once</h3>
+      <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-indigo-950">Play a representative turn, choose the real Session participant, and Quipsly will label every turn in that provider cluster. This identifies the voice only—it does not mark those words playback-reviewed.</p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {groups.map((group) => {
+          const label = group.providerSpeakerLabel;
+          const selectedParticipant = selectedParticipants[label] || group.attribution?.participantId || "";
+          const playedSample = playedSamples[label] || "";
+          return (
+            <article key={label} className="rounded-xl border border-indigo-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-indigo-800">Provider {label} · {group.turnCount} turn{group.turnCount === 1 ? "" : "s"}</p>
+                  <p className="mt-1 text-sm font-black text-indigo-950">{group.attribution ? `Identified as ${group.attribution.attributedLabel}` : "Needs a human identity"}</p>
+                </div>
+                {group.attribution && <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.68rem] font-black uppercase tracking-wide text-emerald-900">voice reviewed</span>}
+              </div>
+              {group.staleAttribution && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-950">The provider cluster changed after its prior assignment. Listen again before reapplying an identity.</p>}
+              <label className="mt-4 block text-xs font-black uppercase tracking-wide text-indigo-950">Participant
+                <select value={selectedParticipant} onChange={(event) => setSelectedParticipants((current) => ({ ...current, [label]: event.target.value }))} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+                  <option value="">Choose a Session participant</option>
+                  {participants.map((participant) => <option key={participant.id} value={participant.id}>{participant.displayLabel} · {humanize(participant.role)}{participant.isCurrentActor ? " · you" : ""}</option>)}
+                </select>
+              </label>
+              <div className="mt-4 space-y-2" role="group" aria-label={`Playback samples for ${label}`}>
+                {group.samples.map((sample) => (
+                  <button key={sample.segmentId} type="button" onClick={() => void playSample(group, sample.segmentId, sample.startSeconds)} disabled={!playbackReady || busy} className={`block w-full rounded-lg border px-3 py-2 text-left text-xs font-bold leading-relaxed transition disabled:opacity-50 ${playedSample === sample.segmentId ? "border-indigo-600 bg-indigo-100 text-indigo-950" : "border-indigo-200 bg-indigo-50/40 text-indigo-900 hover:bg-indigo-50"}`} aria-label={`Play ${label} sample from ${timestampForSeconds(sample.startSeconds)}`}>
+                    <span className="mr-2 inline-flex items-center gap-1 font-black uppercase tracking-wide"><Play size={12} fill="currentColor" aria-hidden="true" />{timestampForSeconds(sample.startSeconds)}</span>{sample.text}
+                  </button>
+                ))}
+              </div>
+              <label className="mt-3 flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 text-sm font-bold leading-relaxed text-indigo-950">
+                <input type="checkbox" checked={confirmedGroups[label] === true} onChange={(event) => setConfirmedGroups((current) => ({ ...current, [label]: event.target.checked }))} disabled={!playedSample} className="mt-1 size-4 accent-indigo-800" />
+                <span>I played the selected sample and recognize this voice as the chosen participant.</span>
+              </label>
+              {errors[label] && <p role="alert" className="mt-3 flex items-start gap-2 text-sm font-bold text-rose-800"><CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{errors[label]}</p>}
+              <button type="button" onClick={() => void save(group)} disabled={busy || !playbackReady || !selectedParticipant || !playedSample || confirmedGroups[label] !== true} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"><ShieldCheck size={15} aria-hidden="true" />{group.attribution ? "Update voice identity" : "Apply voice identity"}</button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function ProposalReview({
@@ -463,6 +614,13 @@ function CorrectionEditor({
         </div>
       )}
 
+      {!segment.acceptedCorrection && segment.speakerAttribution && (
+        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4">
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-indigo-800"><ShieldCheck size={15} aria-hidden="true" />Voice identified from Session samples</p>
+          <p className="mt-2 text-sm font-semibold leading-relaxed text-indigo-950">Provider {segment.providerSpeakerLabel} is displayed as {segment.speakerAttribution.attributedLabel}. This speaker identity does not claim the words in this turn were playback-reviewed.</p>
+        </div>
+      )}
+
       {segment.proposals.map((proposal) => (
         <ProposalReview
           key={proposal.id}
@@ -755,6 +913,19 @@ export function TranscriptCorrectionDesk({
           </div>
         )}
       </div>
+
+      {desk.gate.allowed && (
+        <SpeakerAttributionPanel
+          roomId={roomId}
+          groups={desk.speakerGroups ?? []}
+          participants={desk.participants ?? []}
+          playbackReady={Boolean(desk.playback)}
+          currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
+          busy={busy}
+          onPlayAt={playFromTime}
+          onSaved={saved}
+        />
+      )}
 
       {desk.gate.allowed && (desk.segments.length ? (
         <ol className="space-y-4">

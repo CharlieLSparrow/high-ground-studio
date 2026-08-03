@@ -375,6 +375,7 @@ export async function POST(request: Request) {
           where: { id: packetContext.transcriptJobId, roomId, assetId: packetContext.recordingAssetId },
           include: {
             asset: true,
+            speakerAttributions: { where: { status: "active" }, orderBy: { updatedAt: "desc" } },
             segments: {
               orderBy: TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
               include: {
@@ -391,14 +392,14 @@ export async function POST(request: Request) {
         if (!lockedGate.allowed) {
           throw new TranscriptCorrectionError(lockedGate.error || "Transcript evidence is held.", 409, lockedGate.errorCode || "TRANSCRIPT_NOTE_EVIDENCE_HELD");
         }
-        if (!packetTemplateMatches(packetSource) || !packetSnapshotMatches(packetSource, lockedTranscriptJob.segments)) {
+        if (!packetTemplateMatches(packetSource) || !packetSnapshotMatches(packetSource, lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions)) {
           throw new TranscriptCorrectionError("Transcript review changed after this packet was built. Build the current packet before saving a note.", 409, "TRANSCRIPT_REVIEW_CHANGED");
         }
         const lane = array(packetSource.reviewLanes).map(record).find((candidate) => candidate.id === packetContext.packetLaneId);
         const laneStatus = text(lane?.status, 80);
         const item = array(lane?.items).map(record).find((candidate) => candidate.segmentId === segmentId);
         const packetEvidence = item
-          ? resolvePacketEvidenceSpan(item, projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments))
+          ? resolvePacketEvidenceSpan(item, projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments, lockedTranscriptJob.speakerAttributions))
           : null;
         const expectedCandidateId = transcriptPacketNoteCandidateId(packetContext.packetBuildId, packetContext.packetLaneId, segmentId);
         if (!lane || !item || !packetEvidence || packetContext.packetNoteCandidateId !== expectedCandidateId

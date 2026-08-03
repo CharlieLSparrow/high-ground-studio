@@ -228,6 +228,77 @@ describe("transcript coaching packet action review boundary", () => {
     });
   });
 
+  it("uses a reviewed speaker identity in packets without upgrading provider words to human-reviewed", () => {
+    const segments = [{
+      id: "segment-context",
+      speakerLabel: "Speaker 0",
+      startSeconds: 19,
+      endSeconds: 24,
+      text: "That gives the episode a much clearer shape.",
+      corrections: [],
+      verifications: [],
+    }];
+    const firstAttribution = [{
+      id: "speaker-attribution-1",
+      status: "active",
+      providerSpeakerLabel: "Speaker 0",
+      participantId: "participant-scott",
+      participantDisplaySnapshot: "Scott",
+      providerSnapshotSha256: createHash("sha256").update(JSON.stringify({
+        providerSpeakerLabel: "Speaker 0",
+        evidence: [{
+          id: "segment-context",
+          startSeconds: 19,
+          endSeconds: 24,
+          textSha256: createHash("sha256").update("That gives the episode a much clearer shape.").digest("hex"),
+        }],
+      })).digest("hex"),
+    }];
+    const projected = projectTranscriptSegmentsForPacket(segments, firstAttribution);
+    expect(projected[0]).toMatchObject({
+      speakerLabel: "Scott",
+      providerSpeakerLabel: "Speaker 0",
+      reviewStatus: "provider",
+      acceptedReviewId: null,
+      acceptedCorrectionId: null,
+      acceptedSpeakerAttributionId: "speaker-attribution-1",
+    });
+
+    const snapshot = transcriptPacketSnapshot(segments, firstAttribution);
+    const persisted = { transcriptSnapshot: { ...snapshot, projected: undefined } };
+    expect(packetSnapshotMatches(persisted, segments, firstAttribution)).toBe(true);
+    expect(packetSnapshotMatches(persisted, segments, [{
+      ...firstAttribution[0],
+      id: "speaker-attribution-2",
+      participantDisplaySnapshot: "Charlie",
+    }])).toBe(false);
+  });
+
+  it("ignores a speaker identity whose full provider cluster no longer matches its reviewed snapshot", () => {
+    const segments = [{
+      id: "segment-context",
+      speakerLabel: "Speaker 0",
+      startSeconds: 19,
+      endSeconds: 24,
+      text: "The provider added a later turn after the identity review.",
+      corrections: [],
+      verifications: [],
+    }];
+    const projected = projectTranscriptSegmentsForPacket(segments, [{
+      id: "speaker-attribution-stale",
+      status: "active",
+      providerSpeakerLabel: "Speaker 0",
+      participantId: "participant-scott",
+      participantDisplaySnapshot: "Scott",
+      providerSnapshotSha256: "f".repeat(64),
+    }]);
+    expect(projected[0]).toMatchObject({
+      speakerLabel: "Speaker 0",
+      acceptedSpeakerAttributionId: null,
+      reviewStatus: "provider",
+    });
+  });
+
   it("keeps decisions, goals, questions, commitments, and key moments in separate source-linked candidate lanes", () => {
     const segments = [
       { id: "decision", speakerLabel: "Coach", startSeconds: 1, endSeconds: 2, text: "We decided to record the pilot on Friday." },
