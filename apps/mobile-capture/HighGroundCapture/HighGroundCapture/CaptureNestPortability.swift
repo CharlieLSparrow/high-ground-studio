@@ -269,11 +269,30 @@ final class CaptureNestPortabilityClient: ObservableObject {
                 in: secureExportDirectory(),
                 preferredFilename: filename
             )
-            try data.write(to: destination, options: [.atomic, .completeFileProtection])
-            var resourceValues = URLResourceValues()
-            resourceValues.isExcludedFromBackup = true
-            var mutableDestination = destination
-            try mutableDestination.setResourceValues(resourceValues)
+            do {
+                try data.write(to: destination, options: [.atomic, .completeFileProtection])
+                var resourceValues = URLResourceValues()
+                resourceValues.isExcludedFromBackup = true
+                var mutableDestination = destination
+                try mutableDestination.setResourceValues(resourceValues)
+
+                let storedValues = try destination.resourceValues(
+                    forKeys: [.fileSizeKey, .isRegularFileKey, .isExcludedFromBackupKey]
+                )
+                let storedData = try Data(contentsOf: destination, options: [.mappedIfSafe])
+                guard storedValues.isRegularFile == true,
+                      storedValues.fileSize == data.count,
+                      storedValues.isExcludedFromBackup == true,
+                      storedData == data else {
+                    throw portabilityError(
+                        statusCode: 500,
+                        message: "The protected backup could not be read back exactly. The incomplete copy was removed."
+                    )
+                }
+            } catch {
+                try? FileManager.default.removeItem(at: destination)
+                throw error
+            }
 
             exportedFileURL = destination
             statusMessage = "Verified backup saved on this iPhone. Share it to Files or another location you control."
@@ -709,6 +728,7 @@ struct CaptureNestPortabilityView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .accessibilityIdentifier("CaptureNestExportFilename")
             }
         }
         .captureCard()

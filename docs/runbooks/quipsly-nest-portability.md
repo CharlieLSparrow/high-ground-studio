@@ -133,6 +133,36 @@ disposable owner, collaborator, source Nest, and destination Nest; exercises
 the real relational graph; independently reads it back; and deletes only those
 exact fixtures.
 
+### Authenticated iPhone and HTTP operation
+
+With the normal local stack healthy, operate the compiled app and canonical
+HTTP/database contract together:
+
+```bash
+pnpm quipsly:local:up
+pnpm quipsly:local:doctor
+pnpm quipsly:mobile:dogfood-nest-portability
+```
+
+The operator is loopback-only. It creates a new verified Firebase-emulator
+owner, Home Nest, disposable source/destination Nests, and a tagged note, task,
+goal, relationship, reminder snapshot, and focus block. It then:
+
+1. drives **Account → Backup & transfer** in the compiled iPhone app;
+2. creates two authenticated exports, each gated by exact protected-file byte
+   readback, and proves their exposed filenames differ;
+3. exports the same canonical graph over authenticated HTTP;
+4. validates, mutates destination vocabulary, and proves stale Apply returns
+   HTTP 409 before any note/task/goal write;
+5. revalidates, applies, independently reads the restored graph, and repeats
+   the package without duplicate records or active external effects; and
+6. deletes and independently proves absence of its exact Firebase and
+   PostgreSQL fixtures.
+
+The command prints the retained `.xcresult` path. It does not automate the
+system Files picker or Share Sheet, and therefore does not claim physical-file
+or physical-iPhone acceptance.
+
 ## Separately administered recovery rehearsal
 
 The daily local database is not a disaster-recovery target. Use the

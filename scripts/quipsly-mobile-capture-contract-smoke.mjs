@@ -221,6 +221,15 @@ function checkNestPortabilityContractSources() {
   const uiTestText = sourceText(
     "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
   );
+  const runtimeUITestText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift",
+  );
+  const runtimeUIScriptText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
+  );
+  const operatedDogfoodText = sourceText(
+    "scripts/quipsly-local-nest-portability-dogfood.mjs",
+  );
   const exportRouteText = sourceText(
     "apps/quipsly/src/app/api/nests/[slug]/portable-export/route.ts",
   );
@@ -262,9 +271,13 @@ function checkNestPortabilityContractSources() {
       && nativeText.includes("isExcludedFromBackup = true")
       && nativeText.includes("uniqueExportDestination")
       && nativeText.includes("fileManager.fileExists")
-      && nativeText.includes("JSONSerialization.jsonObject"),
+      && nativeText.includes("JSONSerialization.jsonObject")
+      && nativeText.includes("storedValues.fileSize == data.count")
+      && nativeText.includes("storedValues.isExcludedFromBackup == true")
+      && nativeText.includes("storedData == data")
+      && nativeText.includes("FileManager.default.removeItem(at: destination)"),
     "nativeNestPortabilityProtectedFileBoundary",
-    "Capture bounds imported and exported JSON, handles security-scoped files, protects app-owned copies, and never silently replaces an earlier backup.",
+    "Capture bounds imported and exported JSON, handles security-scoped files, proves protected app-owned bytes and backup exclusion by readback, removes only a failed new copy, and never silently replaces an earlier backup.",
   );
   expect(
     nativeText.includes("requiresExplicitApply == true")
@@ -297,6 +310,20 @@ function checkNestPortabilityContractSources() {
       && webPortabilityText.includes("JSON.stringify(result.plan) !== JSON.stringify(plan)"),
     "nativeNestPortabilityApplyReadback",
     "Capture binds apply to the exact reviewed plan before transaction writes, then requires manifest, safe-boundary, receipt-schema, and recomputed-integrity readback.",
+  );
+  expect(
+    nativeText.includes('accessibilityIdentifier("CaptureNestExportFilename")')
+      && runtimeUITestText.includes("testOwnerCreatesTwoVersionedNestBackupsFromAccount")
+      && runtimeUITestText.includes("CaptureNestExportFilename")
+      && runtimeUITestText.includes("label != %@")
+      && runtimeUIScriptText.includes("nest-portability)")
+      && runtimeUIScriptText.includes("testOwnerCreatesTwoVersionedNestBackupsFromAccount")
+      && operatedDogfoodText.includes("runAuthenticatedIPhoneExport")
+      && operatedDogfoodText.includes('headers.set("connection", "close")')
+      && operatedDogfoodText.includes('"Portable stale-plan apply",\n    409')
+      && operatedDogfoodText.includes("Disposable Firebase emulator identity still signs in."),
+    "nativeNestPortabilityOperatedAcceptanceLane",
+    "A disposable authenticated lane operates two distinct iPhone backups, stale-plan refusal, revalidation, restore/replay, and exact Firebase/PostgreSQL cleanup without retrying ambiguous writes.",
   );
 }
 

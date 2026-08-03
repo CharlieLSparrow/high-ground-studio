@@ -4,7 +4,7 @@ Date: 2026-08-03
 
 Owner: Codex
 
-Status: implemented and Simulator-operated; authenticated data operation and physical-iPhone acceptance remain open
+Status: implemented and authenticated local operation passed; physical-iPhone and released-production acceptance remain open
 
 ## Outcome
 
@@ -55,6 +55,9 @@ The iPhone's owner-only list is useful UX, not the security boundary.
 - Imported Files URLs use iOS security-scoped access.
 - App-owned exports use complete file protection and are excluded from automatic
   device backup so the user controls where the portable copy goes.
+- Capture rereads the newly written regular file and requires exact bytes,
+  byte count, and backup-exclusion readback before exposing Share; only a failed
+  newly created copy is removed.
 - A repeated export receives a unique filename; no prior export is replaced.
 - Validation is read-only and apply is a distinct confirmed action.
 - Apply resends the exact in-memory bytes that validation inspected and supplies
@@ -78,29 +81,32 @@ The iPhone's owner-only list is useful UX, not the security boundary.
   fixture cleanup.
 - Focused Account journey and accessibility audit: 1/1 passed at
   `/private/tmp/quipsly-nest-portability-final.z7tfy7/result.xcresult`.
+- Authenticated operated acceptance: 1/1 compiled iPhone journey plus HTTP and
+  PostgreSQL readback passed at
+  `/private/tmp/quipsly-nest-portability-authenticated-17c0345eb54c.xcresult`.
+  One disposable verified owner created two distinct protected backup names;
+  the server refused a deliberately stale plan with zero writes, revalidated,
+  restored once, reused every canonical identity on replay, kept reminders
+  inert and focus plans canceled, preserved the source graph, and left zero
+  Firebase or database fixtures.
 
-The operated UI journey uses the app's privacy-safe preview dataset; it proves
-reachability, wording, explicit action separation, and accessibility, not a real
-server mutation.
+The earlier accessibility journey uses the app's privacy-safe preview dataset.
+The later operated journey uses a real disposable local identity and canonical
+records. Neither drives the system Files importer or Share Sheet.
 
 ## Next acceptance operation
 
-The service-level disposable PostgreSQL graph operation is complete. The next
-lane must prove the authenticated HTTP and physical-file boundaries with a
-disposable owner account:
+Local authenticated export, drift refusal, restore, replay, readback, and
+cleanup are complete. The next portability lane is intentionally physical and
+released-environment scoped:
 
-1. use local Nest HTTP to export a temporary Nest with a tagged note, task,
-   goal, relationship, and focus block;
-2. export it twice through Capture and prove both protected files remain
-   byte-readable and have distinct names;
-3. validate into a second temporary Nest, then deliberately alter destination
-   state and prove apply refuses the stale preview without restoring;
-4. revalidate, apply, and inspect every canonical record and inert-effect
-   boundary through the API;
-5. repeat the same bytes and prove stable identities plus zero additional
-   creates;
-6. clean up both temporary Nests and the disposable identity; and
-7. repeat Files import/export and Share Sheet inspection on a physical iPhone.
-
-Do not describe this lane as production-proven until local authenticated
-readback, physical iPhone handling, and the released Nest deployment all pass.
+1. install the candidate on the signed-in physical iPhone;
+2. export twice and inspect both system Share Sheet destinations without
+   exposing an unrelated local file;
+3. save one package in Files, import that exact security-scoped file, preview,
+   confirm, and reopen restored product records;
+4. interrupt or background the Files/Share flow and prove the prior package and
+   source Nest remain intact; and
+5. repeat the authorization and restore readback against the exact released
+   Nest source/image/database identity before describing disaster recovery as
+   production-proven.

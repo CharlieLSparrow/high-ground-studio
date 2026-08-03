@@ -952,6 +952,71 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testOwnerCreatesTwoVersionedNestBackupsFromAccount() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName, !projectName.isEmpty else {
+            throw XCTSkip("Nest portability requires the exact owned source Nest name.")
+        }
+
+        let app = try launchSignedInCaptureApp(initialTab: "account")
+        let portabilityLink = app.descendants(matching: .any)[
+            "CaptureAccountNestPortability"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(portabilityLink, in: app, timeout: 20, swipeAttempts: 12),
+            "The signed-in Account should make backup and transfer reachable."
+        )
+        portabilityLink.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureNestPortabilityView"].waitForExistence(timeout: 12)
+        )
+
+        let projectPicker = app.buttons["CaptureNestPortabilityProjectPicker"].firstMatch
+        XCTAssertTrue(projectPicker.waitForExistence(timeout: 12))
+        projectPicker.tap()
+        let projectChoice = app.buttons[projectName].firstMatch
+        XCTAssertTrue(
+            projectChoice.waitForExistence(timeout: 6),
+            "Only owned Nests should appear in the portability destination picker."
+        )
+        projectChoice.tap()
+
+        let export = app.buttons["CaptureNestExportButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(export, in: app, timeout: 15, swipeAttempts: 8)
+        )
+        XCTAssertTrue(export.isEnabled)
+        export.tap()
+
+        let share = app.buttons["CaptureNestShareBackup"].firstMatch
+        XCTAssertTrue(
+            share.waitForExistence(timeout: 30),
+            "Authenticated Nest export should create one shareable protected package."
+        )
+        let filename = app.staticTexts["CaptureNestExportFilename"].firstMatch
+        XCTAssertTrue(filename.waitForExistence(timeout: 5))
+        let firstFilename = filename.label
+        XCTAssertTrue(firstFilename.hasSuffix(".json"))
+
+        export.tap()
+        let secondFilename = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label != %@", firstFilename),
+            object: filename
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [secondFilename], timeout: 30),
+            .completed,
+            "A repeated export must retain the first backup and expose a distinct filename."
+        )
+        XCTAssertTrue(filename.label.hasSuffix(".json"))
+        XCTAssertNotEqual(filename.label, firstFilename)
+        XCTAssertTrue(share.isHittable)
+        attachRecordingIdentity(
+            "\(projectName):\(firstFilename):\(filename.label)",
+            name: "Two versioned owner Nest backups"
+        )
+    }
+
     func testIPhoneCreatesRetainedProjectAndOrganizesCanonicalWork() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let projectName = credentials.projectName,

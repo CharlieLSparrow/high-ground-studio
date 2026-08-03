@@ -73,8 +73,11 @@ assignments, credentials, provider resources, or active calendar effects.
 An export is bounded to 30 MiB, parsed as JSON before it is accepted, written
 atomically into file-protected Application Support, and excluded from device
 backup because the user must deliberately place the portable copy in Files or
-another destination they control. A repeated export receives a unique filename
-and never silently replaces an earlier app-owned package.
+another destination they control. Before a Share control appears, Capture
+rereads the new regular file and proves its exact bytes, size, and backup-
+exclusion flag; a failed new copy is removed and never presented as verified.
+A repeated export receives a unique filename and never silently replaces an
+earlier app-owned package.
 
 Import reads one security-scoped JSON file into memory and preserves the exact
 bytes between validation and apply. Validation is read-only and must return an
@@ -90,6 +93,17 @@ overwriting records. An ambiguous or stale attempt must be validated again.
 Reminder and recurrence snapshots remain deferred and focus-plan blocks restore
 canceled; no notification, calendar, provider, or other external effect is
 created.
+
+The local acceptance operator is deliberately cross-surface rather than a
+mocked UI fixture. It creates a verified disposable Firebase owner and two real
+loopback PostgreSQL Nests, drives the compiled iPhone Account surface through
+two authenticated exports, then uses the same identity and package contract to
+prove destination-drift refusal, revalidation, exact apply, deterministic
+replay, inert reminders/focus plans, an unchanged source graph, and zero
+Firebase/database residue. It forces fresh loopback HTTP connections across
+the long Xcode boundary instead of retrying an ambiguously completed mutation.
+That operation does not substitute for the physical Files importer or Share
+Sheet, a released Nest deployment, or a physical-iPhone recovery rehearsal.
 
 ## System boundaries
 
