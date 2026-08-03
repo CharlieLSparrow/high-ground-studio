@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-07-31
+Last updated: 2026-08-03
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -29,6 +29,19 @@ docs/coordination/quipsly-episode-4-editing-hardening-log.md
 ```
 
 ## Current Snapshot
+
+### Active Quipsly product lane
+
+- Worktree: `/Users/wall-e/Dev/high-ground-studio-product`
+- Branch: `codex/quipsly-product-20260724`
+- Current slice: released client coaching follow-up projection across Nest
+  Today and Capture Today, with explicit exact-hash acknowledgement in the
+  canonical Session.
+- Evidence:
+  `docs/coordination/2026-08-03-client-follow-up-today-attention.md`
+- Boundary: local post-Build-27 source; no deploy, TestFlight, cloud, billing,
+  production database, or provider mutation. Coordinate before touching the
+  follow-up release/readiness/projection files or native Today handoff.
 
 ### Quipsly SaaS Transition (Build Our Own) Sprint
 

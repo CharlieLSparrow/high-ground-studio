@@ -1,8 +1,14 @@
 import "server-only";
 
 import {
+  readTranscriptDerivedGoalSource,
+  readTranscriptDerivedTaskSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
+
+import {
   CLIENT_FOLLOW_UP_MANIFEST_SCHEMA,
   CLIENT_FOLLOW_UP_SCHEMA,
+  clientFollowUpRecordSha256Matches,
   clientFollowUpSha256,
 } from "./session-client-follow-up";
 import { sessionActorAccessWhere, type SessionAccessActor } from "./session-access";
@@ -12,6 +18,10 @@ import {
 } from "@/app/(app)/sessions/[roomId]/session-continuity-model";
 
 type FollowThroughClient = any;
+
+function sourceAnchorForRoom<T extends { roomId: string }>(anchor: T | null, roomId: string): T | null {
+  return anchor?.roomId === roomId ? anchor : null;
+}
 
 export type FollowThroughRoomIdentity = {
   id: string;
@@ -113,7 +123,14 @@ function validatedReleasedOutput(output: any, room: FollowThroughRoomIdentity) {
       status: text(row.status, 80),
       dueAt: text(row.dueAt, 80) || null,
     };
-    if (!id || !source || source.contentSha256 !== clientFollowUpSha256(released)) return [];
+    if (
+      !id
+      || !source
+      || !clientFollowUpRecordSha256Matches(
+        { ...released, sourceAnchor: row.sourceAnchor ?? null },
+        text(source.contentSha256, 64),
+      )
+    ) return [];
     return [{ id, ...released, contentSha256: source.contentSha256 as string }];
   });
   const goals = bodyGoals.flatMap((row) => {
@@ -125,7 +142,14 @@ function validatedReleasedOutput(output: any, room: FollowThroughRoomIdentity) {
       status: text(row.status, 80),
       targetAt: text(row.targetAt, 80) || null,
     };
-    if (!id || !source || source.contentSha256 !== clientFollowUpSha256(released)) return [];
+    if (
+      !id
+      || !source
+      || !clientFollowUpRecordSha256Matches(
+        { ...released, sourceAnchor: row.sourceAnchor ?? null },
+        text(source.contentSha256, 64),
+      )
+    ) return [];
     return [{ id, ...released, contentSha256: source.contentSha256 as string }];
   });
   if (tasks.length !== bodyTasks.length || goals.length !== bodyGoals.length) return null;
@@ -255,6 +279,7 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
       targetAt: true,
       achievedAt: true,
       updatedAt: true,
+      sourceJson: true,
       progressReceipts: {
         orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
         take: 1,
@@ -298,6 +323,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         detail: current.detail,
         status: String(current.status),
         dueAt: iso(current.dueAt),
+        sourceAnchor: sourceAnchorForRoom(
+          readTranscriptDerivedTaskSource(current.sourceJson),
+          selection.candidate.id,
+        ),
       };
       return {
         id: current.id,
@@ -308,7 +337,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         completedAt: iso(current.completedAt),
         updatedAt: iso(current.updatedAt),
         availability: "CURRENT" as const,
-        changedSinceRelease: clientFollowUpSha256(currentContent) !== released.contentSha256,
+        changedSinceRelease: !clientFollowUpRecordSha256Matches(
+          currentContent,
+          released.contentSha256,
+        ),
         releasedStatus: released.status,
         releasedContentSha256: released.contentSha256,
       };
@@ -335,6 +367,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         description: current.description,
         status: String(current.status),
         targetAt: iso(current.targetAt),
+        sourceAnchor: sourceAnchorForRoom(
+          readTranscriptDerivedGoalSource(current.sourceJson),
+          selection.candidate.id,
+        ),
       };
       const progress = current.progressReceipts?.[0] || null;
       const progressedSinceRelease = Boolean(
@@ -350,7 +386,10 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         achievedAt: iso(current.achievedAt),
         updatedAt: iso(current.updatedAt),
         availability: "CURRENT" as const,
-        changedSinceRelease: clientFollowUpSha256(currentContent) !== released.contentSha256,
+        changedSinceRelease: !clientFollowUpRecordSha256Matches(
+          currentContent,
+          released.contentSha256,
+        ),
         progressedSinceRelease,
         releasedStatus: released.status,
         releasedContentSha256: released.contentSha256,

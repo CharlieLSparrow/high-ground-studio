@@ -66,9 +66,12 @@ function uniqueIds(value: unknown, max = 100) {
 
 export function stableClientFollowUpJson(value: unknown): string {
   if (Array.isArray(value))
-    return `[${value.map(stableClientFollowUpJson).join(",")}]`;
+    return `[${value.map((item) => item === undefined
+      ? "null"
+      : stableClientFollowUpJson(item)).join(",")}]`;
   if (value && typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, nested]) => nested !== undefined)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(
         ([key, nested]) =>
@@ -79,10 +82,58 @@ export function stableClientFollowUpJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function legacyStableClientFollowUpJson(value: unknown): string {
+  if (Array.isArray(value))
+    return `[${value.map(legacyStableClientFollowUpJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([key, nested]) =>
+          `${JSON.stringify(key)}:${legacyStableClientFollowUpJson(nested)}`,
+      )
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 export function clientFollowUpSha256(value: unknown) {
   return createHash("sha256")
     .update(stableClientFollowUpJson(value))
     .digest("hex");
+}
+
+function legacyClientFollowUpSha256(value: unknown) {
+  return createHash("sha256")
+    .update(legacyStableClientFollowUpJson(value))
+    .digest("hex");
+}
+
+export function clientFollowUpRecordSha256Matches(
+  snapshot: Record<string, unknown>,
+  expectedSha256: string,
+) {
+  const expected = clean(expectedSha256, 64).toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) return false;
+  if (clientFollowUpSha256(snapshot) === expected) return true;
+
+  // Releases created before the canonicalizer dropped undefined object fields
+  // can contain a record digest that observed an optional sourceSpan as the
+  // literal token `undefined`. Persisted JSON correctly omitted that field.
+  // Accept the historical digest for readback while every new write uses the
+  // JSON-compatible canonical form above.
+  if (legacyClientFollowUpSha256(snapshot) === expected) return true;
+  const sourceAnchor = object(snapshot.sourceAnchor);
+  if (
+    Object.keys(sourceAnchor).length > 0
+    && !("sourceSpan" in sourceAnchor)
+  ) {
+    return legacyClientFollowUpSha256({
+      ...snapshot,
+      sourceAnchor: { ...sourceAnchor, sourceSpan: undefined },
+    }) === expected;
+  }
+  return false;
 }
 
 function outputId(
@@ -521,38 +572,38 @@ function bodyRecordLabel(
   return clean(record?.title, 500) || (kind === "notes" ? "Session note" : kind === "goals" ? "Goal" : "Task");
 }
 
-function recordContentSha256(
+function recordContentSnapshot(
   kind: "notes" | "goals" | "tasks",
   record: any,
   roomId: string,
 ) {
   if (kind === "notes") {
     const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedNoteSource(record.sourceJson), roomId);
-    return clientFollowUpSha256({
+    return {
       title: record.title,
       body: record.body,
       kind: record.kind,
       sourceAnchor,
-    });
+    };
   }
   if (kind === "goals") {
     const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedGoalSource(record.sourceJson), roomId);
-    return clientFollowUpSha256({
+    return {
       title: record.title,
       description: record.description,
       status: record.status,
       targetAt: record.targetAt?.toISOString() ?? null,
       sourceAnchor,
-    });
+    };
   }
   const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedTaskSource(record.sourceJson), roomId);
-  return clientFollowUpSha256({
+  return {
     title: record.title,
     detail: record.detail,
     status: record.status,
     dueAt: record.dueAt?.toISOString() ?? null,
     sourceAnchor,
-  });
+  };
 }
 
 export function clientFollowUpDraftReadiness(input: {
@@ -618,7 +669,10 @@ export function clientFollowUpDraftReadiness(input: {
         changes.push({ kind: spec.kind, id, label, reason: "NO_LONGER_ELIGIBLE" });
         continue;
       }
-      if (recordContentSha256(spec.bodyKey, record, output.roomId) !== expectedSha256) {
+      if (!clientFollowUpRecordSha256Matches(
+        recordContentSnapshot(spec.bodyKey, record, output.roomId),
+        expectedSha256,
+      )) {
         changes.push({ kind: spec.kind, id, label, reason: "CONTENT_CHANGED" });
       }
     }

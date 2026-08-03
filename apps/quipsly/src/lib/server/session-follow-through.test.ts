@@ -16,6 +16,7 @@ function fixture() {
     detail: "Write down what changed.",
     status: "OPEN",
     dueAt: "2026-08-03T18:00:00.000Z",
+    sourceAnchor: null,
   };
   const releasedGoal = {
     id: "goal-1",
@@ -23,6 +24,7 @@ function fixture() {
     description: "Prefer repeatable evidence.",
     status: "ACTIVE",
     targetAt: "2026-08-14T18:00:00.000Z",
+    sourceAnchor: null,
   };
   const body = {
     schema: CLIENT_FOLLOW_UP_SCHEMA,
@@ -52,6 +54,7 @@ function fixture() {
           detail: releasedTask.detail,
           status: releasedTask.status,
           dueAt: releasedTask.dueAt,
+          sourceAnchor: releasedTask.sourceAnchor,
         }),
       }],
       goals: [{
@@ -62,6 +65,7 @@ function fixture() {
           description: releasedGoal.description,
           status: releasedGoal.status,
           targetAt: releasedGoal.targetAt,
+          sourceAnchor: releasedGoal.sourceAnchor,
         }),
       }],
     },

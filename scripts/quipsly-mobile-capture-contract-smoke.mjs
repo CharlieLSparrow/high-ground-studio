@@ -1077,7 +1077,9 @@ function checkTranscriptCorrectionContractSources() {
   const sessionNotesWorkspaceText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-notes-workspace.tsx");
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
   const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
+  const clientFollowUpAttentionText = sourceText("apps/quipsly/src/lib/server/client-follow-up-attention.ts");
   const clientFollowUpWebText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-client-follow-up-card.tsx");
+  const todayPageText = sourceText("apps/quipsly/src/app/(app)/today/today-page.tsx");
   const sessionFollowThroughServiceText = sourceText("apps/quipsly/src/lib/server/session-follow-through.ts");
   const sessionContinuityServiceText = sourceText("apps/quipsly/src/lib/server/session-continuity.ts");
   const sessionContinuityCardText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-continuity-card.tsx");
@@ -1851,6 +1853,22 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("testCoachFollowUpHoldsReleaseForUnsavedEditorChanges"),
     "clientFollowUpReleaseSourceReadiness",
     "Nest rechecks the immutable follow-up manifest against current eligible canonical records inside the release transaction, while web and iPhone hold release and direct the coach to save a current private revision when a selected source changes.",
+  );
+  expect(
+    clientFollowUpAttentionText.includes("projectClientFollowUpAttention")
+      && clientFollowUpAttentionText.includes("recipientUserId")
+      && clientFollowUpAttentionText.includes("clientFollowUpSha256(body)")
+      && clientFollowUpAttentionText.includes('event.kind === "OPENED_IN_APP"')
+      && clientFollowUpAttentionText.includes("matchingRecordSnapshot")
+      && todayPageText.includes("today-client-follow-up-attention")
+      && todayPageText.includes("Open follow-up")
+      && todayRouteText.includes("clientFollowUpAttention")
+      && bridgeText.includes("MobileCaptureClientFollowUpAttention")
+      && shellText.includes("CaptureTodayClientFollowUpOpen_")
+      && shellText.includes("onOpenClientFollowUp")
+      && captureUITestText.includes("testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt"),
+    "clientFollowUpTodayAttention",
+    "A newly released unopened coaching follow-up projects to the exact recipient's Today surface on Nest and iPhone, then opens the exact Session while acknowledgment remains explicit and separate.",
   );
   expect(
     sessionFollowThroughServiceText.includes("progressedSinceRelease")

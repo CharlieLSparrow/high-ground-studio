@@ -386,6 +386,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smok
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'client-follow-up)', "runtime UI smoke can select the retained client follow-up delivery proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'today-client-follow-up)', "runtime UI smoke can select the preview Today-to-exact-Session follow-up proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime UI smoke can select the assigned-coach draft, revision, and release proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'coaching-follow-through-work)', "runtime UI smoke can select the exact next-Session follow-through to Work proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
@@ -474,6 +475,8 @@ requireIncludes(capturePhoneShellText, "Preview shows the production review work
 assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
 requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
 requireIncludes(capturePhoneShellText, "MobileCoachClientFollowUpCard(", "the production phone recorder reaches the assigned-coach follow-up editor");
+requireIncludes(capturePhoneShellText, "CaptureTodayClientFollowUpOpen_", "Today exposes one exact new coaching follow-up handoff");
+requireIncludes(capturePhoneShellText, "onOpenClientFollowUp", "Today opens the exact Session rather than acknowledging a follow-up in place");
 requireIncludes(mobileText, "CaptureClientFollowUpAcknowledge_", "the native follow-up card exposes an explicit acknowledgement control");
 requireIncludes(mobileText, "CaptureCoachFollowUpSave", "the native coach editor exposes an explicit private revision save");
 requireIncludes(mobileText, "CaptureCoachFollowUpKeyboardDone", "the native coach editor exposes a reachable keyboard dismissal action across its long form");
@@ -488,6 +491,7 @@ requireIncludes(mobileText, ".disabled(previewOnly || !releaseReady || !releaseC
 requireIncludes(bridgeText, "let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?", "native follow-up rows decode their immutable transcript anchors");
 requireIncludes(captureExperienceModelText, "capturePreviewClientFollowUpWorkspace", "deterministic Capture preview operates the real coach follow-up source-return card");
 requireIncludes(deterministicUITestsText, "testCoachFollowUpPreservesExactSourceWithoutReleasingPreview", "operated iPhone coverage verifies source return without preview mutation");
+requireIncludes(deterministicUITestsText, "testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt", "operated iPhone coverage verifies the recipient Today-to-Session follow-up handoff");
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
 requireIncludes(bridgeText, '"action": action', "the native bridge uses canonical create-or-revise follow-up actions");

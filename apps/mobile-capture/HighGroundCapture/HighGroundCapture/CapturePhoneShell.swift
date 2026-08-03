@@ -274,7 +274,15 @@ private struct CaptureTodayView: View {
                 TodayFollowThroughCard(
                     client: model.todayClient,
                     inboxClient: model.sourceInboxClient,
-                    previewOnly: model.usesPreviewData
+                    previewOnly: model.usesPreviewData,
+                    onOpenClientFollowUp: { roomID in
+                        guard let session = model.sessions.first(where: { $0.id == roomID }) else {
+                            model.message = "Refresh Sessions to open this exact coaching follow-up. The released snapshot remains unchanged."
+                            return
+                        }
+                        model.select(session)
+                        visibleTab = .record
+                    }
                 )
 
                 if model.uploadManager.recoverableUploadCount > 0 {
@@ -1986,6 +1994,7 @@ struct TodayFollowThroughCard: View {
     @ObservedObject var client: CaptureTodayClient
     @ObservedObject var inboxClient: CaptureSourceInboxClient
     let previewOnly: Bool
+    let onOpenClientFollowUp: (String) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var recurrenceToEnd: MobileCaptureTodayRecurrence?
@@ -2059,6 +2068,50 @@ struct TodayFollowThroughCard: View {
                 if client.isLoading { ProgressView().controlSize(.small) }
             }
             .accessibilityIdentifier("CaptureTodayFollowThroughCard")
+
+            if let followUp = client.clientFollowUpAttention {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("New coaching follow-up", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.green)
+                    Text(followUp.title)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("From \(followUp.coachLabel) · \(followUp.sessionTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text("Revision \(followUp.revision)")
+                        Text("·")
+                        Text("\(followUp.selectedCount) reviewed record\(followUp.selectedCount == 1 ? "" : "s")")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    if let released = captureTaskDate(followUp.releasedAt) {
+                        Text("Released \(released.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        onOpenClientFollowUp(followUp.roomId)
+                    } label: {
+                        Label("Open follow-up", systemImage: "arrow.right.circle.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .accessibilityIdentifier("CaptureTodayClientFollowUpOpen_\(followUp.outputId)")
+                    .accessibilityHint("Opens the exact Session follow-up. Reading and acknowledgment remain separate, and no task or goal is completed.")
+                    Text("Today only points to the released snapshot. Confirm it inside the Session after reading; opening this card never completes a commitment.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTodayClientFollowUp_\(followUp.outputId)")
+            }
 
             if let focus = nextFocus {
                 VStack(alignment: .leading, spacing: 8) {

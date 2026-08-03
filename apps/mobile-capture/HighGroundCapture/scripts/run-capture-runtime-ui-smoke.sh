@@ -86,6 +86,11 @@ case "$TEST_MODE" in
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
+  today-client-follow-up)
+    TEST_CLASS="CaptureExperienceUITests"
+    TEST_CASE="testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt"
+    REQUIRES_PASSWORD_CREDENTIALS=false
+    ;;
   session-create-surface)
     TEST_CASE="testIPhoneCreatesRetainedSessionAndReadsRecordingTruth"
     if [[ "$TEST_SESSION_TITLE" != "QA Retained · "* ]]; then
@@ -332,7 +337,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, today-client-follow-up, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac

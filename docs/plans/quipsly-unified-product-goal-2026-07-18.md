@@ -7100,3 +7100,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   `docs/deploy/quipsly-cloud-cost-control.md`. The full product goal remains
   active; this infrastructure correction does not substitute for physical
   Capture, genuine session, production privacy, or provider-delivery gates.
+
+### Client follow-up Today attention checkpoint — 2026-08-03
+
+- A newly released coaching follow-up now projects to its exact recipient on
+  Nest Today and Capture Today. It opens the canonical Session by stable room
+  ID while acknowledgement remains a separate, exact-content action.
+- The projection fails closed across recipient, booking client, coach, room,
+  schema, complete body hash, selected-record manifest hashes, and confirmed
+  open-receipt identity. Opened, stale, malformed, or cross-user rows do not
+  become attention.
+- Real retained-product operation proved release, recipient-only Today
+  readback, exact Session navigation, explicit acknowledgement, and removal
+  from Today without task, goal, calendar, release, or content mutation.
+- That operation exposed and corrected the stable-JSON handling of optional
+  undefined source-span fields. New hashes are JSON-compatible; narrow legacy
+  digest compatibility preserves already-released records, and follow-through
+  now compares transcript source anchors too.
+- A compiled iPhone 17 Pro simulator journey passed 1/1. Focused tests pass
+  49/49, PostgreSQL 1/1, mobile contracts 97/97, App Store/static 1,021/1,021,
+  strict TypeScript, Swift parse, local doctor, and patch hygiene.
+- Full evidence is in
+  `docs/coordination/2026-08-03-client-follow-up-today-attention.md`. This
+  remains local post-Build-27 source. Physical iPhone, production privacy,
+  genuine coaching use, TestFlight, and authorized delivery remain open. No
+  cloud, deployment, production database, Apple, billing, or provider change
+  occurred.

@@ -1618,6 +1618,8 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let writingDraftPrivate: Bool?
     let writingDraftSourceMutated: Bool?
     let writingDraftExternalSideEffects: Bool?
+    let clientFollowUpAttentionReadOnly: Bool?
+    let clientFollowUpAcknowledgementExplicit: Bool?
 }
 
 struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
@@ -1628,11 +1630,28 @@ struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
     let isActive: Bool
 }
 
+struct MobileCaptureClientFollowUpAttention: Codable, Identifiable, Hashable {
+    let schema: String
+    let outputId: String
+    let roomId: String
+    let sessionTitle: String
+    let title: String
+    let revision: Int
+    let contentSha256: String
+    let releasedAt: String
+    let coachLabel: String
+    let selectedCount: Int
+    let href: String
+
+    var id: String { outputId }
+}
+
 struct MobileCaptureTodayResponse: Codable, Hashable {
     let ok: Bool
     let error: String?
     let briefKind: String?
     let generatedAt: String?
+    let clientFollowUpAttention: MobileCaptureClientFollowUpAttention?
     let tasks: [MobileCaptureTodayTask]?
     let goals: [MobileCaptureTodayGoal]?
     let focusBlocks: [MobileCaptureTodayFocusBlock]?
@@ -3636,6 +3655,9 @@ final class CaptureTodayClient: ObservableObject {
 
     var tasks: [MobileCaptureTodayTask] { brief?.tasks ?? [] }
     var goals: [MobileCaptureTodayGoal] { brief?.goals ?? [] }
+    var clientFollowUpAttention: MobileCaptureClientFollowUpAttention? {
+        brief?.clientFollowUpAttention
+    }
     var focusBlocks: [MobileCaptureTodayFocusBlock] { brief?.focusBlocks ?? [] }
     var focusDecisions: [PendingFocusBlockDecision] { focusDecisionOutbox.entries }
     var focusPlans: [PendingFocusBlockPlan] { focusPlanOutbox.entries }
@@ -3759,6 +3781,19 @@ final class CaptureTodayClient: ObservableObject {
             error: nil,
             briefKind: "quipsly-mobile-today-v1-preview",
             generatedAt: ISO8601DateFormatter().string(from: now),
+            clientFollowUpAttention: MobileCaptureClientFollowUpAttention(
+                schema: "quipsly-client-follow-up-attention-v1",
+                outputId: "preview-client-follow-up",
+                roomId: "preview-coaching-ready",
+                sessionTitle: "Leadership coaching session",
+                title: "Your next useful step",
+                revision: 1,
+                contentSha256: String(repeating: "f", count: 64),
+                releasedAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(-900)),
+                coachLabel: "Homer",
+                selectedCount: 1,
+                href: "/sessions/preview-coaching-ready?mode=outputs#client-follow-up"
+            ),
             tasks: [MobileCaptureTodayTask(
                 id: "preview-task",
                 title: "Proof-listen the coaching recap",
@@ -3857,7 +3892,7 @@ final class CaptureTodayClient: ObservableObject {
                 MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
                 MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
             ],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, focusBlockPlanningAvailable: true, planningFocusBlockMutatesTarget: false, planningFocusBlockCreatesAppointment: false, planningFocusBlockSchedulesReminder: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false)
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, focusBlockPlanningAvailable: true, planningFocusBlockMutatesTarget: false, planningFocusBlockCreatesAppointment: false, planningFocusBlockSchedulesReminder: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false, clientFollowUpAttentionReadOnly: true, clientFollowUpAcknowledgementExplicit: true)
         )
         isUsingProtectedCache = false
         if !CaptureLaunchConfiguration.usesFocusOutboxUITest

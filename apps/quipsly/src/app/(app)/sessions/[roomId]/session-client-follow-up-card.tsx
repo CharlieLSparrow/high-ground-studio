@@ -617,6 +617,7 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
 
   return (
     <section
+      id="client-follow-up"
       className="rounded-2xl border border-emerald-200 bg-emerald-50/35 p-5 md:p-6"
       aria-labelledby="client-follow-up-heading"
     >

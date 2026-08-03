@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 
 import { buildAccountDeletionInventory } from "./account-deletion-inventory";
+import { loadClientFollowUpAttention } from "./client-follow-up-attention";
 import {
   acknowledgeClientFollowUp,
   ClientFollowUpError,
@@ -527,6 +528,20 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
         ],
       },
     });
+    await expect(
+      loadClientFollowUpAttention(prisma as never, clientUserId),
+    ).resolves.toMatchObject({
+      outputId: draft.output.id,
+      roomId,
+      title: concurrentWinner.title,
+      revision: 5,
+      contentSha256: released.output.contentSha256,
+      selectedCount: 3,
+      href: `/sessions/${encodeURIComponent(roomId)}?mode=outputs#client-follow-up`,
+    });
+    await expect(
+      loadClientFollowUpAttention(prisma as never, outsiderUserId),
+    ).resolves.toBeNull();
 
     await prisma.coachingNote.update({
       where: { id: clientSafeNoteId },
@@ -590,6 +605,9 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       },
     });
     expect(acknowledgedReplay.idempotentReplay).toBe(true);
+    await expect(
+      loadClientFollowUpAttention(prisma as never, clientUserId),
+    ).resolves.toBeNull();
 
     const deletionInventory = await buildAccountDeletionInventory({
       userId: clientUserId,

@@ -251,7 +251,15 @@ private struct ProtectedOfflineLibraryShell: View {
                     TodayFollowThroughCard(
                         client: captureModel.todayClient,
                         inboxClient: captureModel.sourceInboxClient,
-                        previewOnly: false
+                        previewOnly: false,
+                        onOpenClientFollowUp: { roomID in
+                            guard let session = captureModel.sessions.first(where: { $0.id == roomID }) else {
+                                captureModel.message = "Refresh Sessions to open this exact coaching follow-up. The released snapshot remains unchanged."
+                                return
+                            }
+                            captureModel.select(session)
+                            captureModel.message = "Exact Session selected. Open Capture to review and explicitly confirm the follow-up."
+                        }
                     )
                 }
 

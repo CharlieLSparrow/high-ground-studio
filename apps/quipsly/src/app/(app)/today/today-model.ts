@@ -1,5 +1,7 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 
+import type { ClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
+
 export type TodaySession = {
   id: string;
   title: string | null;
@@ -94,6 +96,7 @@ function isReviewedTranscriptTask(task: TodayTask) {
 
 export function buildTodayView(input: {
   now?: Date | string;
+  clientFollowUpAttention?: ClientFollowUpAttention | null;
   sessions: TodaySession[];
   tasks: TodayTask[];
   goals: TodayGoal[];
@@ -192,6 +195,7 @@ export function buildTodayView(input: {
     .map((goal) => ({ ...goal, targetAt: iso(goal.targetAt), updatedAt: iso(goal.updatedAt)! }));
 
   return {
+    clientFollowUpAttention: input.clientFollowUpAttention ?? null,
     nextSession: nextSession ? {
       ...nextSession,
       title: nextSession.title?.trim() || "Capture session",

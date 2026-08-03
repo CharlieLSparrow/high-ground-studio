@@ -981,6 +981,36 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Task · Private reminder projection proof"].exists)
     }
 
+    func testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt() {
+        let attention = app.descendants(matching: .any)[
+            "CaptureTodayClientFollowUp_preview-client-follow-up"
+        ].firstMatch
+        reveal(attention)
+        XCTAssertTrue(attention.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["New coaching follow-up"].exists)
+        XCTAssertTrue(app.staticTexts["Your next useful step"].exists)
+        XCTAssertTrue(app.staticTexts["From Homer · Leadership coaching session"].exists)
+
+        let open = app.buttons[
+            "CaptureTodayClientFollowUpOpen_preview-client-follow-up"
+        ].firstMatch
+        reveal(open)
+        XCTAssertTrue(open.isHittable)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Today new coaching follow-up"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        open.tap()
+
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
+        reveal(followUp)
+        XCTAssertTrue(
+            followUp.waitForExistence(timeout: 5),
+            "Today should open the exact Session output surface without acknowledging or mutating the released snapshot."
+        )
+    }
+
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))

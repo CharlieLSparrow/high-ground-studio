@@ -6,6 +6,19 @@ describe("Nest Today model", () => {
   it("keeps Today deliberate, bounded, and free of unreviewed transcript candidates", () => {
     const result = buildTodayView({
       now,
+      clientFollowUpAttention: {
+        schema: "quipsly-client-follow-up-attention-v1",
+        outputId: "follow-up-1",
+        roomId: "coaching-room",
+        sessionTitle: "Leadership coaching",
+        title: "Your next useful step",
+        revision: 2,
+        contentSha256: "a".repeat(64),
+        releasedAt: "2026-07-19T14:30:00.000Z",
+        coachLabel: "Homer",
+        selectedCount: 2,
+        href: "/sessions/coaching-room?mode=outputs#client-follow-up",
+      },
       sessions: [
         { id: "later", title: "Later", purpose: "COACHING", scheduledStart: "2026-07-20T18:00:00.000Z" },
         { id: "next", title: "Episode 5", purpose: "PODCAST", scheduledStart: "2026-07-19T16:00:00.000Z", scheduledTimezone: "America/Denver" },
@@ -21,6 +34,11 @@ describe("Nest Today model", () => {
     });
 
     expect(result.nextSession?.id).toBe("next");
+    expect(result.clientFollowUpAttention).toMatchObject({
+      outputId: "follow-up-1",
+      roomId: "coaching-room",
+      href: "/sessions/coaching-room?mode=outputs#client-follow-up",
+    });
     expect(result.nextSession?.scheduledTimezone).toBe("America/Denver");
     expect(result.planBlocks.map((block) => block.targetId)).toEqual(["planned"]);
     expect(result.tasks.map((task) => task.id)).toEqual(["due"]);
@@ -42,6 +60,7 @@ describe("Nest Today model", () => {
       ],
     });
     expect(result.planBlocks.map((block) => block.id)).toEqual(["tokyo", "denver"]);
+    expect(result.clientFollowUpAttention).toBeNull();
   });
 
   it("surfaces an active reminder without inventing a due date", () => {

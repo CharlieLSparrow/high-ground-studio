@@ -6,6 +6,7 @@ import { buildWeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
+import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
@@ -119,6 +120,8 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     writingDraftPrivate: true,
     writingDraftSourceMutated: false,
     writingDraftExternalSideEffects: false,
+    clientFollowUpAttentionReadOnly: true,
+    clientFollowUpAcknowledgementExplicit: true,
   };
 }
 
@@ -142,7 +145,8 @@ export async function GET(request: Request) {
     // silently omitted from the review.
     const reviewWindowStartsAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - mondayDelta));
     const reviewWindowEndsAt = new Date(reviewWindowStartsAt.getTime() + 7 * 86_400_000);
-    const [taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows, reviewTaskRows, reviewGoalRows] = await Promise.all([
+    const [clientFollowUpAttention, taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows, reviewTaskRows, reviewGoalRows] = await Promise.all([
+      loadClientFollowUpAttention(prisma, userId),
       prisma.actionItem.findMany({
         where: { status: "OPEN", OR: taskAccessWhere(userId) },
         orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
@@ -456,6 +460,7 @@ export async function GET(request: Request) {
       ok: true,
       briefKind: "quipsly-mobile-today-v1",
       generatedAt: now.toISOString(),
+      clientFollowUpAttention,
       tasks,
       goals,
       focusBlocks,

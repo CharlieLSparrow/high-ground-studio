@@ -1657,3 +1657,21 @@ checks, blockers, and next handoff.
 - Delivery boundary: Build 14 and production `studio-00445-rij` remain
   untouched. `804e42e2` is committed source for a later coordinated preview
   and Capture build, not deployed, distributed, or physically proven.
+
+### 2026-08-03 - Released coaching follow-up reaches the exact client's Today
+
+- Nest and Capture now project the latest valid unopened coaching follow-up
+  only to its exact recipient, then open the canonical Session by stable ID.
+  Acknowledgement stays explicit and bound to the released content hash.
+- A real retained local coach/client operation proved release, rendered Today,
+  exact Session navigation, acknowledgement, and removal from Today without
+  task, goal, calendar, release, content, or provider side effects.
+- The operation caught and fixed non-JSON canonicalization of optional
+  undefined source-span fields while retaining narrowly scoped compatibility
+  for existing released hashes.
+- Verification: focused Nest 49/49, PostgreSQL 1/1, strict TypeScript, Swift
+  parse, mobile contract 97/97, App Store/static 1,021/1,021, local doctor, and
+  compiled iPhone simulator 1/1 all pass. Evidence and remaining gates are in
+  `docs/coordination/2026-08-03-client-follow-up-today-attention.md`.
+- Delivery boundary: local post-Build-27 source only. No cloud, production,
+  Apple, billing, external delivery, or provider mutation occurred.

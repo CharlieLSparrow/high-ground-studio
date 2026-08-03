@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, CircleAlert, Inbox, ListChecks, Radio, Target } from "lucide-react";
+import { CalendarClock, CheckCircle2, CircleAlert, ClipboardCheck, Inbox, ListChecks, Radio, Target } from "lucide-react";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
 
 import { StudioAccessShell } from "../studio-access-shell";
@@ -61,7 +62,8 @@ export async function loadToday(userId: string, actorEmail: string) {
   const access = roomAccess(userId);
   const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
   const visibleProjectIds = new Set(visibleProjects.map((project) => project.id));
-  const [sessions, tasks, goals, planBlocks] = await Promise.all([
+  const [clientFollowUpAttention, sessions, tasks, goals, planBlocks] = await Promise.all([
+    loadClientFollowUpAttention(prisma, userId),
     prisma.callRoom.findMany({
       where: {
         ...access,
@@ -167,6 +169,7 @@ export async function loadToday(userId: string, actorEmail: string) {
 
   return buildTodayView({
     now,
+    clientFollowUpAttention,
     sessions: sessions.map((item: any) => ({
       ...item,
       scheduledTimezone: mobileSessionScheduledTimezone(
@@ -243,6 +246,25 @@ export default async function TodayPage() {
             <Link href="/work" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2.5 text-xs font-black uppercase tracking-wide text-[#5b472f]">Open all Work</Link>
           </nav>
         </header>
+
+        {today.clientFollowUpAttention ? (
+          <section aria-labelledby="today-follow-up" className="rounded-3xl border border-emerald-300 bg-emerald-50/70 p-5 shadow-sm md:p-6" data-testid="today-client-follow-up-attention">
+            <div className="flex items-start gap-3">
+              <ClipboardCheck className="mt-1 text-emerald-800" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">New from {today.clientFollowUpAttention.coachLabel}</p>
+                <h2 id="today-follow-up" className="mt-1 font-serif text-3xl font-black">Coaching follow-up</h2>
+              </div>
+            </div>
+            <article className="mt-4 rounded-2xl border border-emerald-200 bg-white p-5">
+              <p className="text-xs font-black uppercase tracking-wide text-emerald-800">{today.clientFollowUpAttention.sessionTitle} · revision {today.clientFollowUpAttention.revision}</p>
+              <h3 className="mt-2 text-xl font-black">{today.clientFollowUpAttention.title}</h3>
+              <p className="mt-2 text-sm font-semibold text-[#765f40]">Released {formatDateTime(today.clientFollowUpAttention.releasedAt)} · {today.clientFollowUpAttention.selectedCount} reviewed record{today.clientFollowUpAttention.selectedCount === 1 ? "" : "s"}</p>
+              <Link href={today.clientFollowUpAttention.href} className="mt-4 inline-flex min-h-11 items-center rounded-full bg-emerald-900 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open follow-up</Link>
+              <p className="mt-3 text-xs font-semibold leading-5 text-emerald-950">Opening the Session does not complete a task or goal. Confirm the exact snapshot there after you have read it.</p>
+            </article>
+          </section>
+        ) : null}
 
         <section aria-labelledby="today-session" className="rounded-3xl border border-sky-200 bg-sky-50/55 p-5 shadow-sm md:p-6">
           <div className="flex items-start gap-3"><Radio className="mt-1 text-sky-700" aria-hidden="true" /><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Up next</p><h2 id="today-session" className="mt-1 font-serif text-3xl font-black">Session</h2></div></div>

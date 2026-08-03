@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/source-annotations";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
+import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
@@ -17,6 +18,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 jest.mock("@/lib/server/goal-receipt-projection", () => ({ loadLatestGoalReceiptProjection: jest.fn() }));
+jest.mock("@/lib/server/client-follow-up-attention", () => ({ loadClientFollowUpAttention: jest.fn() }));
 jest.mock("@/lib/server/source-annotations", () => ({
   createWritingDraftFromSourceAnnotation: jest.fn(),
   setSourceAnnotationStatus: jest.fn(),
@@ -38,6 +40,7 @@ describe("mobile Capture Today contract", () => {
     jest.clearAllMocks();
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
     jest.mocked(loadLatestGoalReceiptProjection).mockResolvedValue(new Map());
+    jest.mocked(loadClientFollowUpAttention).mockResolvedValue(null);
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
       allowed: false,
       role: null,
@@ -75,6 +78,19 @@ describe("mobile Capture Today contract", () => {
 
   it("returns canonical actor work while quarantining transcript candidates", async () => {
     signedIn();
+    jest.mocked(loadClientFollowUpAttention).mockResolvedValue({
+      schema: "quipsly-client-follow-up-attention-v1",
+      outputId: "follow-up-1",
+      roomId: "room-2",
+      sessionTitle: "Coaching review",
+      title: "Your coaching follow-up",
+      revision: 2,
+      contentSha256: "f".repeat(64),
+      releasedAt: expected.toISOString(),
+      coachLabel: "Homer",
+      selectedCount: 2,
+      href: "/sessions/room-2?mode=outputs#client-follow-up",
+    });
     jest.mocked(loadLatestGoalReceiptProjection).mockResolvedValue(new Map([["goal-1", {
       progress: { id: "numeric-progress-1", goalId: "goal-1", kind: "MANUAL_CHECK_IN", progressPercent: 35, note: "One proof pass complete.", occurredAt: expected, evidenceJson: null },
       transcriptEvidence: { id: "merge-progress-1", goalId: "goal-1", kind: "TRANSCRIPT_CANDIDATE_MERGED", progressPercent: null, note: "Reviewed transcript evidence.", occurredAt: persisted, evidenceJson: { schema: "quipsly-transcript-goal-evidence-merge-v1", receiptId: "review-receipt-1", goalCandidateId: "packet-goal-build-1-segment-1", mergedAt: "2026-07-18T18:00:00.000Z", candidateSource: { schema: "quipsly-transcript-derived-goal-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: null, recordingAssetId: "asset-1", playbackSourceId: "source-1" } } },
@@ -172,7 +188,8 @@ describe("mobile Capture Today contract", () => {
     expect(payload.focusBlocks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "block-1", targetId: "task-1" })]));
     expect(payload.goals[0]).toMatchObject({ id: "goal-1", roomId: "room-1", sessionTitle: "Episode review", canEditTags: true, tagIds: ["tag-2"], tagLabels: ["Episode"], progressPercent: 35, progressNote: "One proof pass complete.", sourceAnchor: { schema: "quipsly-transcript-derived-goal-v1", segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" }, lastMergedTranscriptEvidence: { receiptId: "review-receipt-1", goalCandidateId: "packet-goal-build-1-segment-1", sourceAnchor: { roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1" } } });
     expect(payload.goals[1]).toMatchObject({ id: "goal-mismatch", roomId: "room-1", sourceAnchor: null });
-    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: "/create?project=high-ground&document=document-existing&block=response-block-existing", tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: null, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false, canStartWriting: false, writingDraftHref: null }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false } });
+    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", clientFollowUpAttention: { outputId: "follow-up-1", roomId: "room-2", href: "/sessions/room-2?mode=outputs#client-follow-up" }, transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: "/create?project=high-ground&document=document-existing&block=response-block-existing", tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: null, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false, canStartWriting: false, writingDraftHref: null }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false, clientFollowUpAttentionReadOnly: true, clientFollowUpAcknowledgementExplicit: true } });
+    expect(loadClientFollowUpAttention).toHaveBeenCalledWith(expect.anything(), "user-1");
   });
 
   it("creates one private citation-backed writing draft from an exact protected phone decision", async () => {
