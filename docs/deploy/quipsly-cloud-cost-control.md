@@ -122,6 +122,22 @@ destructive.
 - [Artifact Registry cleanup overview](https://cloud.google.com/artifact-registry/docs/repositories/cleanup-policy-overview)
 - [Configure Artifact Registry cleanup policies](https://cloud.google.com/artifact-registry/docs/repositories/cleanup-policy)
 
+## Cloud Build source uploads
+
+`gcloud builds submit` uploads a reconstructable source archive to the
+dedicated `high-ground-odyssey_cloudbuild` bucket before each build. These are
+not release images, build logs, product media, or database backups. The bucket
+uses a prefix-bounded lifecycle that expires only `source/` objects after seven
+days. The checked-in operator audits the bucket first and requires an exact
+activation phrase; it never directly deletes an object:
+
+```bash
+pnpm quipsly:cloud:build-source-retention
+```
+
+Keeping seven days supports recent build diagnosis while Git plus immutable
+release images remain the durable source and binary evidence.
+
 ## Cloud Run, SQL, and Gemini
 
 - Keep Cloud Run request-based and `minScale=0` unless measured latency makes a
@@ -217,6 +233,29 @@ runway. Those entry points now route through the single committed-source Nest
 preview pipeline. HGO web and the GitHub Studio workflow also read back the
 exact source tag before deciding to build. Registry errors fail closed instead
 of being treated as a missing image.
+
+## Follow-up readback — 2026-08-03
+
+The live 30-day audit found 113 builds consuming 47,398 seconds. Eighty-three
+used `E2_HIGHCPU_32`, accounting for an estimated $36.14 of $38.14 in priced
+build compute. None were trigger-driven. Audit logs attribute the local
+`gcloud builds submit` calls to the signed-in operator account rather than an
+automatic GitHub or Cloud Build trigger. August 1-2 alone contained 12 builds
+and 87.5 build-minutes.
+
+The three-day Artifact Registry policy is active and currently identifies 341
+retention candidates (107.89 GB by per-image accounting). Cleanup remains
+asynchronous; the repository readback was 477 versions and 103.30 GB shortly
+after activation. All four Cloud Run services still have zero minimum
+instances. Cloud SQL remains the smallest shared-core production tier and was
+not changed.
+
+The dedicated Cloud Build upload bucket contained 449 objects, all under the
+reconstructable `source/` prefix, totaling 36.45 GB. A checked-in, exact-prefix
+seven-day lifecycle was audited and activated. At activation, 393 archives
+totaling 31.67 GB were old enough for asynchronous expiry. No direct object
+deletion occurred, and no logs, images, media, database data, or backups are in
+that lifecycle boundary.
 
 Artifact Registry initially received this conservative policy in **dry-run**
 mode. After provider-log review, explicit approval, and a retention-aware proof
