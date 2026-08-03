@@ -149,13 +149,22 @@ function packetWithAction(candidateValue = actionCandidate): SessionReviewPacket
   };
 }
 
-function packetWithNote(candidateValue = noteCandidate): SessionReviewPacket {
+function packetWithNote(candidateValue = noteCandidate, withMergeTarget = false): SessionReviewPacket {
   const value = packet();
   return {
     ...value,
     packet: {
       ...value.packet!,
       noteCandidates: [candidateValue],
+      noteMergeTargets: withMergeTarget ? [{
+        id: "existing-note-1",
+        title: "Episode direction",
+        body: "Keep the strongest editorial decisions together.",
+        kind: "SESSION_NOTE",
+        visibility: "AUTHOR_PRIVATE",
+        updatedAt: "2026-08-03T14:00:00.000Z",
+        revisionCount: 2,
+      }] : [],
       goalCandidates: [],
     },
   };
@@ -691,6 +700,40 @@ describe("Session review goal candidates", () => {
     });
     expect(await screen.findByRole("status")).toHaveTextContent("No canonical note");
     expect(screen.getByText("Edited For Review")).toBeInTheDocument();
+  });
+
+  it("reviews the complete combined note before merging into one recoverable revision", async () => {
+    const mergedCandidate: SessionReviewNoteCandidate = {
+      ...noteCandidate,
+      reviewStatus: "MERGED_INTO_NOTE",
+      committedNoteId: "existing-note-1",
+      lastHumanReview: { receiptId: "merge-receipt-1", decision: "MERGE", reviewedAt: "2026-08-03T14:01:00.000Z", reviewedByUserId: "user-1" },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithNote(noteCandidate, true)))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, decision: "MERGE", note: { id: "existing-note-1", visibility: "AUTHOR_PRIVATE" }, idempotentReplay: false }))
+      .mockResolvedValueOnce(jsonResponse(packetWithNote(mergedCandidate, true)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    await user.click(await screen.findByRole("button", { name: "Merge into note" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Merge into note" }), "existing-note-1");
+    expect(screen.getByRole("textbox", { name: /^Note$/i })).toHaveValue("Keep the strongest editorial decisions together.\n\nI realized the weekly review makes follow-through visible.");
+    await user.click(screen.getByRole("button", { name: "Merge as new revision" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      decision: "MERGE",
+      mergeTargetNoteId: "existing-note-1",
+      mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
+      mergedTitle: "Episode direction",
+      mergedBody: "Keep the strongest editorial decisions together.\n\nI realized the weekly review makes follow-through visible.",
+      mergedKind: "SESSION_NOTE",
+      mergedVisibility: "AUTHOR_PRIVATE",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(/new recoverable revision/i);
+    expect(screen.getByText(/Merged into one revisioned Session note/i)).toBeInTheDocument();
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {

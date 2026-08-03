@@ -3,7 +3,7 @@ import {
   isTranscriptPacketSource,
   isUnreviewedTranscriptActionItemSource,
 } from "@high-ground/quipsly-domain/coaching-packet";
-import { readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
@@ -932,6 +932,7 @@ export function mapMobileCaptureSessionsForUser(input: {
           createdAt: note.createdAt?.toISOString?.() ?? null,
           updatedAt: note.updatedAt?.toISOString?.() ?? null,
           sourceAnchor: sourceAnchor?.roomId === room.id ? sourceAnchor : null,
+          lastMergedSource: readLastTranscriptMergedNoteSource(note.sourceJson),
         };
       });
     const latestRecordingPromotion = mediaProcessingGate.allowed ? recordingPromotion(latestRecordingAsset) : {};

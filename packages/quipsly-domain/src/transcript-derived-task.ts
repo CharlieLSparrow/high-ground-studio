@@ -56,6 +56,13 @@ export type TranscriptDerivedNoteSourceAnchor = Omit<TranscriptDerivedTaskSource
   schema: typeof TRANSCRIPT_DERIVED_NOTE_SCHEMA;
 };
 
+export type TranscriptMergedNoteSource = {
+  receiptId: string;
+  packetNoteCandidateId: string;
+  mergedAt: string;
+  sourceAnchor: TranscriptDerivedNoteSourceAnchor;
+};
+
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -269,4 +276,20 @@ export function readTranscriptDerivedNoteSource(value: unknown): TranscriptDeriv
     playbackSourceId,
     sourceSpan: span.sourceSpan,
   };
+}
+
+/**
+ * Reads the latest candidate source appended to an existing canonical note.
+ * The note's original source remains untouched; complete prior merge evidence
+ * lives in immutable CoachingNoteRevision snapshots.
+ */
+export function readLastTranscriptMergedNoteSource(value: unknown): TranscriptMergedNoteSource | null {
+  const receipt = record(record(value).lastTranscriptCandidateMerge);
+  if (receipt.kind !== "quipsly-note-candidate-review-receipt-v1" || receipt.decision !== "MERGE") return null;
+  const receiptId = text(receipt.id, 200);
+  const packetNoteCandidateId = text(receipt.packetNoteCandidateId, 700);
+  const mergedAt = text(receipt.reviewedAt, 80);
+  const sourceAnchor = readTranscriptDerivedNoteSource(receipt.candidateSource);
+  if (!receiptId || !packetNoteCandidateId || !mergedAt || !sourceAnchor) return null;
+  return { receiptId, packetNoteCandidateId, mergedAt, sourceAnchor };
 }

@@ -6870,6 +6870,41 @@ private struct CaptureSessionNotesCard: View {
                             .padding(9)
                             .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
+                        if let merged = note.lastMergedSource,
+                           merged.sourceAnchor.roomId == session.callRoomId {
+                            let source = merged.sourceAnchor
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label("Latest merged transcript source", systemImage: "arrow.triangle.merge")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.purple)
+                                Text("\(source.effectiveSpeakerLabelSnapshot?.nonempty.map { "\($0): " } ?? "")\(source.effectiveTextSnapshot)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                NavigationLink {
+                                    CaptureTranscriptReviewView(
+                                        roomID: source.roomId,
+                                        sessionTitle: session.displayTitle,
+                                        recording: matchingRecording(source),
+                                        previewOnly: model.usesPreviewData,
+                                        focusSegmentID: source.segmentId,
+                                        canUseProjectTeamNotes: session.canUseProjectTeamNotes == true
+                                    )
+                                } label: {
+                                    Label(
+                                        "Return to merged source · \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)",
+                                        systemImage: "play.fill"
+                                    )
+                                    .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .accessibilityIdentifier("CaptureSessionNoteMergedSourceLink_\(note.id)")
+                                .accessibilityHint("Opens the exact transcript segment merged into this note without starting playback.")
+                            }
+                            .padding(9)
+                            .background(Color.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
                         if let protectedEdit {
                             Label(
                                 protectedEdit.disposition == .held

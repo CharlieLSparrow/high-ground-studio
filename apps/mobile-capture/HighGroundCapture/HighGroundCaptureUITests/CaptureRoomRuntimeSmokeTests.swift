@@ -1991,6 +1991,205 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "Reviewed packet canonical goal readback")
     }
 
+    func testReviewedTranscriptPacketMergesIntoExactExistingNoteAndReturnsToSource() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false,
+              credentials.transcriptSegmentIDs.count == 3,
+              let expectedNoteSourceText = credentials.expectedPacketNoteSourceText,
+              !expectedNoteSourceText.isEmpty,
+              let expectedNoteLaneID = credentials.expectedPacketNoteLaneID,
+              !expectedNoteLaneID.isEmpty,
+              let noteID = credentials.noteID, !noteID.isEmpty,
+              let sourceTitle = credentials.noteEditSourceTitle, !sourceTitle.isEmpty,
+              let mergedTitle = credentials.noteEditUpdatedTitle, !mergedTitle.isEmpty,
+              let sourceBody = credentials.noteEditSourceBody, !sourceBody.isEmpty,
+              let mergedBody = credentials.noteEditUpdatedBody, !mergedBody.isEmpty,
+              sourceTitle != mergedTitle,
+              sourceBody != mergedBody,
+              let expectedAssetID = credentials.recordingFixtureAssetID,
+              !expectedAssetID.isEmpty else {
+            throw XCTSkip("Reviewed packet merge requires exact Session, three-segment source, existing note, merged note, and recording-asset identities.")
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
+        XCTAssertTrue(
+            fixtureReceipt.waitForExistence(timeout: 20),
+            "The compiled app must install the checksum-verified retained source before merge review."
+        )
+        XCTAssertTrue(String(describing: fixtureReceipt.value ?? "").contains(expectedAssetID))
+
+        selectRequestedSession(in: app, credentials: credentials)
+        let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reviewLink, in: app, timeout: 30, swipeAttempts: 8))
+        reviewLink.tap()
+        let review = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 30))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].waitForExistence(timeout: 3),
+            "The exact retained local source must make playback review available for an operated merge."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch
+                .waitForExistence(timeout: 30)
+        )
+
+        for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12),
+                "The complete merge source segment \(segmentID) must expose retained-source playback."
+            )
+            XCTAssertTrue(play.isEnabled)
+            play.tap()
+
+            let confirm = app.buttons["CaptureTranscriptConfirmAsIsButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            let playbackReachedSegmentEnd = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "enabled == true"),
+                object: confirm
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [playbackReachedSegmentEnd], timeout: 15),
+                .completed,
+                "Playback must reach the exact segment end before merge evidence can be confirmed."
+            )
+            confirm.tap()
+            let progress = app.staticTexts["CaptureTranscriptReviewProgressCount"].firstMatch
+            let receiptReadBack = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label BEGINSWITH %@", "\(reviewIndex + 1) of "),
+                object: progress
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [receiptReadBack], timeout: 30),
+                .completed,
+                "Nest must read back each playback-verification receipt before merge."
+            )
+        }
+
+        let buildCurrentPacket = app.buttons["CaptureTranscriptBuildCurrentPacketButton"].firstMatch
+        for _ in 0..<16 where !buildCurrentPacket.exists {
+            review.swipeDown()
+        }
+        XCTAssertTrue(buildCurrentPacket.waitForExistence(timeout: 10))
+        XCTAssertTrue(buildCurrentPacket.isEnabled)
+        buildCurrentPacket.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketStaleBoundary"].firstMatch
+                .waitForNonExistence(timeout: 30),
+            "The merge must use a packet snapshot built after complete source review."
+        )
+
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let jumpToNotes = app.buttons["CaptureTranscriptJumpToNotes"].firstMatch
+        XCTAssertTrue(jumpToNotes.waitForExistence(timeout: 10))
+        jumpToNotes.tap()
+
+        let sourcePrefix = "CapturePacketNoteSourceText_"
+        let exactNoteSource = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@ AND identifier BEGINSWITH %@",
+                expectedNoteSourceText,
+                "\(sourcePrefix)\(expectedNoteLaneID)-"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(exactNoteSource, in: app, timeout: 20, swipeAttempts: 12),
+            "The rebuilt packet must expose the exact complete-thought candidate selected for merge."
+        )
+        let candidateKey = String(exactNoteSource.identifier.dropFirst(sourcePrefix.count))
+        XCTAssertFalse(candidateKey.isEmpty)
+
+        let merge = app.buttons["CapturePacketNoteMergeButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(merge, in: app, timeout: 12, swipeAttempts: 8))
+        XCTAssertTrue(merge.isEnabled)
+        merge.tap()
+
+        let targetPicker = app.descendants(matching: .any)["CapturePacketNoteMergeTargetPicker"].firstMatch
+        XCTAssertTrue(targetPicker.waitForExistence(timeout: 8))
+        targetPicker.tap()
+        let targetChoice = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", sourceTitle, "revision 1")
+        ).firstMatch
+        XCTAssertTrue(
+            targetChoice.waitForExistence(timeout: 6),
+            "The deliberate merge picker must expose the exact existing note and its revision count."
+        )
+        targetChoice.tap()
+
+        let titleField = app.textFields["CapturePacketNoteTitleField"].firstMatch
+        let bodyField = app.textFields["CapturePacketNoteBodyField"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 8))
+        XCTAssertTrue(bodyField.waitForExistence(timeout: 8))
+        XCTAssertEqual(titleField.value as? String, sourceTitle)
+        let proposedCombinedBody = bodyField.value as? String ?? ""
+        XCTAssertTrue(proposedCombinedBody.contains(sourceBody))
+        XCTAssertGreaterThan(
+            proposedCombinedBody.count,
+            sourceBody.count,
+            "Selecting a merge target should present the complete combined note for human review."
+        )
+
+        replaceText(in: titleField, with: mergedTitle, app: app)
+        replaceText(in: bodyField, with: mergedBody, app: app)
+        let keyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
+        if keyboardDone.waitForExistence(timeout: 3) {
+            keyboardDone.tap()
+        }
+        let boundary = app.staticTexts["CapturePacketNoteBoundary"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(boundary, in: app, timeout: 8, swipeAttempts: 5))
+        XCTAssertTrue(boundary.label.contains("Updates exactly one existing note"))
+        XCTAssertTrue(boundary.label.contains("creates no task, goal, reminder, calendar event, message"))
+
+        let saveMerge = app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(saveMerge, in: app, timeout: 8, swipeAttempts: 5))
+        XCTAssertTrue(saveMerge.isEnabled)
+        saveMerge.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketNoteSaved_\(candidateKey)"].firstMatch
+                .waitForExistence(timeout: 30),
+            "Nest must acknowledge the merge as one canonical Session-note revision."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Merged into one revisioned Session note"].firstMatch.exists,
+            "The terminal candidate state must distinguish merge from new-note creation."
+        )
+        attachRuntimeScreenshot(app, name: "Reviewed transcript candidate merged into exact note")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(notesCard, in: app, timeout: 30, swipeAttempts: 12))
+        notesCard.tap()
+        let canonicalNote = app.descendants(matching: .any)["CaptureSessionNoteCanonical_\(noteID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(canonicalNote, in: app, timeout: 15, swipeAttempts: 10),
+            "A fresh app launch must read back the same canonical note identity."
+        )
+        XCTAssertTrue(app.staticTexts[mergedTitle].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", mergedBody)).firstMatch.exists
+        )
+        let mergedSource = app.descendants(matching: .any)["CaptureSessionNoteMergedSourceLink_\(noteID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(mergedSource, in: app, timeout: 12, swipeAttempts: 10),
+            "The revised note must expose a deliberate return to the latest merged transcript evidence."
+        )
+        mergedSource.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_\(credentials.transcriptSegmentIDs[0])"]
+                .firstMatch.waitForExistence(timeout: 20),
+            "Returning from the merged note must focus the exact first segment of the complete source span."
+        )
+        XCTAssertTrue(app.staticTexts["Opened from linked work"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Merged note returned to exact transcript source")
+    }
+
     @MainActor
     func testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict() async throws {
         let credentials = try runtimeSmokeCredentials()

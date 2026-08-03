@@ -345,6 +345,12 @@ struct MobileCaptureActionPacket: Codable, Hashable {
 }
 
 struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
+    struct LastMergedSource: Codable, Hashable {
+        let receiptId: String
+        let packetNoteCandidateId: String
+        let mergedAt: String
+        let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor
+    }
     let id: String
     let title: String?
     let body: String
@@ -359,6 +365,7 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     let createdAt: String?
     let updatedAt: String?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
+    var lastMergedSource: LastMergedSource? = nil
 
     var purposeLabel: String {
         switch kind.uppercased() {

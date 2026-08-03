@@ -9,7 +9,7 @@ import {
 import { TRANSCRIPT_DERIVED_NOTE_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { isEditableSessionNoteKind, isSessionNoteVisibility } from "@/lib/session-note-contract";
+import { EDITABLE_SESSION_NOTE_KINDS, isEditableSessionNoteKind, isSessionNoteVisibility } from "@/lib/session-note-contract";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import {
   buildCoachingPacketFromTranscriptJob,
@@ -78,6 +78,7 @@ export function goalReviewStatus(decision: unknown): TranscriptGoalReviewStatus 
 
 export function noteReviewStatus(decision: unknown): TranscriptNoteReviewStatus {
   if (decision === "ACCEPT") return "ACCEPTED_AS_NOTE";
+  if (decision === "MERGE") return "MERGED_INTO_NOTE";
   if (decision === "EDIT") return "EDITED_FOR_REVIEW";
   if (decision === "REJECT") return "REJECTED_BY_HUMAN";
   if (decision === "DEFER") return "DEFERRED_BY_HUMAN";
@@ -297,9 +298,11 @@ export function buildPacketNoteCandidates(input: {
         suggestedBody: text(reviewedDraft.body).slice(0, 20_000) || sourceText,
         suggestedKind: isEditableSessionNoteKind(reviewedDraft.kind) ? reviewedDraft.kind : "SESSION_NOTE",
         suggestedVisibility: isSessionNoteVisibility(reviewedDraft.visibility) ? reviewedDraft.visibility : "AUTHOR_PRIVATE",
-        reviewStatus: committed ? "ACCEPTED_AS_NOTE" : noteReviewStatus(latestReceipt?.decision),
-        humanApprovalRequired: !committed,
-        committedNoteId: committed?.id ?? null,
+        reviewStatus: committed
+          ? "ACCEPTED_AS_NOTE"
+          : noteReviewStatus(latestReceipt?.decision),
+        humanApprovalRequired: !committed && text(latestReceipt?.decision) !== "MERGE",
+        committedNoteId: committed?.id ?? (text(latestReceipt?.decision) === "MERGE" ? text(latestReceipt?.noteId) || null : null),
         lastHumanReview: latestReceipt ? {
           receiptId: text(latestReceipt.id),
           decision: text(latestReceipt.decision),
@@ -636,6 +639,8 @@ export async function GET(request: Request) {
         authorUserId: true,
         createdAt: true,
         updatedAt: true,
+        visibility: true,
+        _count: { select: { revisions: true } },
       },
     }),
     prisma.actionItem.findMany({
@@ -770,6 +775,17 @@ export async function GET(request: Request) {
         actorUserId: actor.id,
       })
     : [];
+  const noteMergeTargets = notes
+    .filter((note: any) => note.authorUserId === actor.id && EDITABLE_SESSION_NOTE_KINDS.includes(note.kind))
+    .map((note: any) => ({
+      id: note.id,
+      title: note.title,
+      body: note.body,
+      kind: String(note.kind),
+      visibility: String(note.visibility),
+      updatedAt: note.updatedAt?.toISOString?.() ?? null,
+      revisionCount: note._count?.revisions ?? 0,
+    }));
 
   return NextResponse.json({
     ok: true,
@@ -855,6 +871,7 @@ export async function GET(request: Request) {
         createdAt: note.createdAt?.toISOString?.() ?? null,
       })),
       noteCandidates,
+      noteMergeTargets,
       actionCandidates,
       goalCandidates,
       goalCandidateReview: {

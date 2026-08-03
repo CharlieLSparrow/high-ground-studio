@@ -6937,3 +6937,34 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   iPhone, production Nest, and separate real-account acceptance remain open.
   Full evidence is in
   `docs/coordination/2026-08-03-operated-offline-transcript-review.md`.
+
+### Transcript candidate merge checkpoint — 2026-08-03
+
+- Added one shared Nest/Capture decision for merging a playback-reviewed packet
+  note candidate into an explicitly selected existing Session note. The target
+  keeps its canonical identity; the reviewer sees and can edit the complete
+  combined title, body, purpose, and audience before confirming.
+- The serializable mutation rechecks Session/project authority, current packet
+  and completed transcript evidence, release/consent gates, every source-span
+  playback receipt, target Session/actor/editable-kind ownership, and the exact
+  optimistic timestamp. One immutable `merged-transcript-candidate` revision
+  retains the complete previous and next note plus the exact transcript source.
+- Exact replay returns the prior canonical note and receipt without another
+  update or revision. Changed target, content, audience, or version fails
+  closed. The operation creates no new note, goal, task, calendar link, output,
+  delivery, message, Studio edit, or publication.
+- A retained compiled iPhone operation listened through three source segments,
+  rebuilt the packet, chose the exact revision-one note, merged it, terminated
+  and relaunched Capture, read back the same note identity/content, and returned
+  from the merged note to the exact first transcript segment. PostgreSQL proved
+  two revisions, one editable note, zero follow-through/external side effects,
+  and nonduplicating exact replay.
+- Final verification passes 3 focused Nest suites / 51 tests, the full Nest run
+  at 244 suites / 1,309 tests, 258/258 repository Quipsly contracts, both strict
+  TypeScript projects, the Capture contract, the retained operator contract,
+  and 1,009/1,009 App Store static checks. Full evidence is in
+  `docs/coordination/2026-08-03-transcript-candidate-note-merge.md`.
+- This remains local simulator evidence. Physical-iPhone, production Nest,
+  genuine coaching/HGO workflows, TestFlight, provider delivery, and the other
+  unified-goal acceptance gates remain open. No cloud build, deploy, production
+  database write, provider mutation, or App Store action occurred.

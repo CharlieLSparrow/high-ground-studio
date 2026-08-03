@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CircleAlert, LockKeyhole } from "lucide-react";
 import { notFound, unstable_rethrow } from "next/navigation";
-import { readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readLastTranscriptMergedNoteSource, readTranscriptDerivedNoteSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -312,6 +312,7 @@ export default async function SessionReviewPage({
         updatedAt: row.updatedAt.toISOString(),
         tags: quickEntryTags(row),
         sourceAnchor: parsedSourceAnchor?.roomId === room.id ? parsedSourceAnchor : null,
+        lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
       };
     });
     const sessionQuickEntries = [

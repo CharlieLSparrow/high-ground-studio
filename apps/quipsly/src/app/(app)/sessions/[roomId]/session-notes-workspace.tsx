@@ -323,6 +323,15 @@ export function SessionNotesWorkspace({
                   </Link>
                 </div>
               ) : null}
+              {note.lastMergedSource ? (
+                <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Latest merged transcript source</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-violet-950">{note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${note.lastMergedSource.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{note.lastMergedSource.sourceAnchor.effectiveTextSnapshot}</p>
+                  <Link href={`/sessions/${encodeURIComponent(roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(note.lastMergedSource.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-3 py-2 text-xs font-black text-violet-900 hover:underline">
+                    <Play size={14} aria-hidden="true" />Return to merged source at {timestampForSeconds(note.lastMergedSource.sourceAnchor.startSeconds)}–{timestampForSeconds(note.lastMergedSource.sourceAnchor.endSeconds)}
+                  </Link>
+                </div>
+              ) : null}
               <TagSearchChips tags={note.tags} label={`${note.title || "Session note"} tags`} />
               <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/45 p-3 text-xs font-semibold leading-5 text-orange-950">
                 <p className="font-black">{audienceHelp(note.visibility)}</p>

@@ -146,6 +146,22 @@ describe("session review model", () => {
       packetLaneId: "coaching-insights",
     });
     expect(noteCandidateReviewRequest({ packet, candidate: { ...noteCandidate, committedNoteId: "note-1" }, decision: "ACCEPT", title: "Done", body: "Already saved", kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" })).toBeNull();
+    expect(noteCandidateReviewRequest({
+      packet,
+      candidate: noteCandidate,
+      decision: "MERGE",
+      mergeTargetNoteId: "existing-note-1",
+      mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
+      mergedTitle: "Episode direction",
+      mergedBody: "Existing note plus reviewed evidence.",
+      mergedKind: "SESSION_NOTE",
+      mergedVisibility: "AUTHOR_PRIVATE",
+    })).toMatchObject({
+      decision: "MERGE",
+      mergeTargetNoteId: "existing-note-1",
+      mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
+      mergedBody: "Existing note plus reviewed evidence.",
+    });
   });
 
   it("permits refinement but refuses canonical creation from provider-only transcript text", () => {
@@ -207,6 +223,17 @@ describe("session review model", () => {
       body: "A safer draft pending playback review.",
     })).toMatchObject({ decision: "EDIT", body: "A safer draft pending playback review." });
     expect(noteCandidateReviewRequest({ packet, candidate: providerNote, decision: "DEFER" })).toMatchObject({ decision: "DEFER" });
+    expect(noteCandidateReviewRequest({
+      packet,
+      candidate: providerNote,
+      decision: "MERGE",
+      mergeTargetNoteId: "existing-note-1",
+      mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
+      mergedTitle: "Still held",
+      mergedBody: "Provider-only evidence cannot be merged.",
+      mergedKind: "SESSION_NOTE",
+      mergedVisibility: "AUTHOR_PRIVATE",
+    })).toBeNull();
   });
 
   it("refuses every packet decision after transcript review makes the packet stale", () => {

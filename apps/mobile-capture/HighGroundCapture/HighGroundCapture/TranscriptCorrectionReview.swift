@@ -271,6 +271,7 @@ private struct CaptureTranscriptNoteMutationResponse: Codable {
         let packetSnapshotRechecked: Bool
         let humanReviewedSourceRequired: Bool
         let noteCreated: Bool
+        let noteRevised: Bool?
         let taskCreated: Bool
         let goalCreated: Bool
         let calendarMutated: Bool
@@ -286,6 +287,28 @@ private struct CaptureTranscriptNoteMutationResponse: Codable {
     let receipt: ReviewReceipt?
     let note: NoteRecord?
     let boundaries: Boundaries?
+}
+
+struct CapturePacketNoteMergeTarget: Codable, Identifiable, Equatable {
+    let id: String
+    let title: String?
+    let body: String
+    let kind: String
+    let visibility: String
+    let updatedAt: String
+    let revisionCount: Int
+
+    static func preview() -> Self {
+        .init(
+            id: "preview-existing-note",
+            title: "Episode direction",
+            body: "Keep the source-backed decisions together.",
+            kind: MobileSessionNoteKind.sessionNote.rawValue,
+            visibility: MobileSessionNoteVisibility.authorPrivate.rawValue,
+            updatedAt: "2026-08-03T12:00:00.000Z",
+            revisionCount: 2
+        )
+    }
 }
 
 private struct CapturePacketActionMutationResponse: Codable {
@@ -516,6 +539,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
         let transcriptReview: TranscriptReview?
         let summary: Summary?
         let noteCandidates: [CapturePacketNoteCandidate]?
+        let noteMergeTargets: [CapturePacketNoteMergeTarget]?
         let actionCandidates: [CapturePacketActionCandidate]?
         let goalCandidates: [CapturePacketGoalCandidate]?
         let taskMaterialization: TaskMaterialization?
@@ -535,6 +559,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var packetGoalCandidates: [CapturePacketGoalCandidate] = []
     @Published private(set) var packetNoteCandidates: [CapturePacketNoteCandidate] = []
+    @Published private(set) var packetNoteMergeTargets: [CapturePacketNoteMergeTarget] = []
     @Published private(set) var packetActionCandidates: [CapturePacketActionCandidate] = []
     @Published private(set) var packetTaskTags: [CapturePacketTaskTag] = []
     @Published private(set) var packetTaskProjectName: String?
@@ -615,6 +640,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             publishOutboxCounts()
             packetGoalCandidates = [.preview(roomID: roomID)]
             packetNoteCandidates = [.preview(roomID: roomID)]
+            packetNoteMergeTargets = [.preview()]
             packetActionCandidates = [.preview(roomID: roomID)]
             packetTaskTags = [
                 .init(id: "preview-follow-through", label: "Follow-through", slug: "follow-through", selectedForSession: true),
@@ -639,6 +665,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         guard AuthManager.shared.networkActionsAllowed else {
             packetGoalCandidates = []
             packetNoteCandidates = []
+            packetNoteMergeTargets = []
             packetActionCandidates = []
             packetTaskTags = []
             packetTaskProjectName = nil
@@ -689,6 +716,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         } catch {
             packetGoalCandidates = []
             packetNoteCandidates = []
+            packetNoteMergeTargets = []
             packetActionCandidates = []
             packetTaskTags = []
             packetTaskProjectName = nil
@@ -1026,6 +1054,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         body noteBody: String? = nil,
         kind: MobileSessionNoteKind? = nil,
         visibility: MobileSessionNoteVisibility? = nil,
+        mergeTarget: CapturePacketNoteMergeTarget? = nil,
+        mergedTitle: String? = nil,
+        mergedBody: String? = nil,
+        mergedKind: MobileSessionNoteKind? = nil,
+        mergedVisibility: MobileSessionNoteVisibility? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -1043,8 +1076,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         defer { isMutating = false }
         do {
             let normalizedDecision = decision.uppercased()
-            guard ["ACCEPT", "EDIT", "DEFER", "REJECT"].contains(normalizedDecision) else {
-                throw captureTranscriptClientError("Choose whether to save, edit, defer, or reject this note candidate.")
+            guard ["ACCEPT", "EDIT", "MERGE", "DEFER", "REJECT"].contains(normalizedDecision) else {
+                throw captureTranscriptClientError("Choose whether to save, edit, merge, defer, or reject this note candidate.")
             }
             var requestBody: [String: Any] = [
                 "roomId": candidate.roomId,
@@ -1064,6 +1097,22 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             if let noteBody { requestBody["body"] = noteBody.trimmingCharacters(in: .whitespacesAndNewlines) }
             if let kind { requestBody["kind"] = kind.rawValue }
             if let visibility { requestBody["visibility"] = visibility.rawValue }
+            if normalizedDecision == "MERGE" {
+                guard let mergeTarget,
+                      let mergedTitle,
+                      let mergedBody,
+                      !mergedBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let mergedKind,
+                      let mergedVisibility else {
+                    throw captureTranscriptClientError("Choose an existing note and review the complete merged note before saving.")
+                }
+                requestBody["mergeTargetNoteId"] = mergeTarget.id
+                requestBody["mergeExpectedUpdatedAt"] = mergeTarget.updatedAt
+                requestBody["mergedTitle"] = mergedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                requestBody["mergedBody"] = mergedBody.trimmingCharacters(in: .whitespacesAndNewlines)
+                requestBody["mergedKind"] = mergedKind.rawValue
+                requestBody["mergedVisibility"] = mergedVisibility.rawValue
+            }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1072,6 +1121,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             let payload = try JSONDecoder().decode(CaptureTranscriptNoteMutationResponse.self, from: data)
             let expectedStatus = switch normalizedDecision {
             case "ACCEPT": "ACCEPTED_AS_NOTE"
+            case "MERGE": "MERGED_INTO_NOTE"
             case "EDIT": "EDITED_FOR_REVIEW"
             case "REJECT": "REJECTED_BY_HUMAN"
             default: "DEFERRED_BY_HUMAN"
@@ -1095,13 +1145,22 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                   !boundaries.publication else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "Nest returned incomplete note-review evidence.")
             }
-            if normalizedDecision == "ACCEPT" {
+            if normalizedDecision == "ACCEPT" || normalizedDecision == "MERGE" {
                 guard let note = payload.note, receipt.noteId == note.id else {
-                    throw captureTranscriptClientError("Nest acknowledged acceptance without one matching canonical note.")
+                    throw captureTranscriptClientError("Nest acknowledged canonical note work without one matching note.")
                 }
-                message = payload.idempotentReplay == true
-                    ? "That exact packet note choice was already accepted."
-                    : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
+                if normalizedDecision == "MERGE" {
+                    guard !boundaries.noteCreated, boundaries.noteRevised == (payload.idempotentReplay == true ? false : true) else {
+                        throw captureTranscriptClientError("Nest returned incomplete revision evidence for this merge.")
+                    }
+                    message = payload.idempotentReplay == true
+                        ? "That exact candidate merge was already applied; no revision was duplicated."
+                        : "Candidate merged into one existing Session note as a recoverable revision. Nothing was sent."
+                } else {
+                    message = payload.idempotentReplay == true
+                        ? "That exact packet note choice was already accepted."
+                        : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
+                }
             } else {
                 guard payload.note == nil, receipt.noteId == nil, !boundaries.noteCreated else {
                     throw captureTranscriptClientError("Nest created a note for a non-canonical review decision. The response was rejected.")
@@ -1256,6 +1315,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
             packetGoalCandidates = []
             packetNoteCandidates = []
+            packetNoteMergeTargets = []
             packetActionCandidates = []
             packetTaskTags = []
             packetTaskProjectName = nil
@@ -1278,6 +1338,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
             packetNoteCandidates = payload.packet?.noteCandidates ?? []
+            packetNoteMergeTargets = payload.packet?.noteMergeTargets ?? []
             packetActionCandidates = payload.packet?.actionCandidates ?? []
             packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
@@ -1299,6 +1360,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         } catch {
             packetGoalCandidates = []
             packetNoteCandidates = []
+            packetNoteMergeTargets = []
             packetActionCandidates = []
             packetTaskTags = []
             packetTaskProjectName = nil
@@ -2607,6 +2669,7 @@ struct CaptureTranscriptReviewView: View {
             ForEach(candidates) { candidate in
                 CapturePacketNoteCandidateCard(
                     candidate: candidate,
+                    mergeTargets: client.packetNoteMergeTargets,
                     canUseProjectTeamNotes: canUseProjectTeamNotes,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
@@ -2674,6 +2737,7 @@ struct CapturePacketNoteReviewPreviewView: View {
                     .accessibilityIdentifier("CapturePacketNotePreviewBoundary")
                 CapturePacketNoteCandidateCard(
                     candidate: .preview(roomID: "room-preview-coaching-ready"),
+                    mergeTargets: [.preview()],
                     canUseProjectTeamNotes: false,
                     previewOnly: true,
                     decisionsLocked: false,
@@ -2695,6 +2759,7 @@ private struct CapturePacketNoteCandidateCard: View {
     private enum ReviewMode {
         case accept
         case edit
+        case merge
     }
 
     private enum FocusedField: Hashable {
@@ -2703,6 +2768,7 @@ private struct CapturePacketNoteCandidateCard: View {
     }
 
     let candidate: CapturePacketNoteCandidate
+    let mergeTargets: [CapturePacketNoteMergeTarget]
     let canUseProjectTeamNotes: Bool
     let previewOnly: Bool
     let decisionsLocked: Bool
@@ -2715,10 +2781,12 @@ private struct CapturePacketNoteCandidateCard: View {
     @State private var noteBody: String
     @State private var kind: MobileSessionNoteKind
     @State private var visibility: MobileSessionNoteVisibility
+    @State private var mergeTargetID = ""
     @FocusState private var focusedField: FocusedField?
 
     init(
         candidate: CapturePacketNoteCandidate,
+        mergeTargets: [CapturePacketNoteMergeTarget],
         canUseProjectTeamNotes: Bool,
         previewOnly: Bool,
         decisionsLocked: Bool,
@@ -2726,6 +2794,7 @@ private struct CapturePacketNoteCandidateCard: View {
         onOpenSource: @escaping () -> Void
     ) {
         self.candidate = candidate
+        self.mergeTargets = mergeTargets
         self.canUseProjectTeamNotes = canUseProjectTeamNotes
         self.previewOnly = previewOnly
         self.decisionsLocked = decisionsLocked
@@ -2738,7 +2807,9 @@ private struct CapturePacketNoteCandidateCard: View {
     }
 
     private var accepted: Bool {
-        candidate.committedNoteId?.isEmpty == false || candidate.reviewStatus == "ACCEPTED_AS_NOTE"
+        candidate.committedNoteId?.isEmpty == false
+            || candidate.reviewStatus == "ACCEPTED_AS_NOTE"
+            || candidate.reviewStatus == "MERGED_INTO_NOTE"
     }
     private var laneRejected: Bool { candidate.laneStatus == "REJECTED_BY_HUMAN" }
     private var sourceFullyReviewed: Bool {
@@ -2757,10 +2828,26 @@ private struct CapturePacketNoteCandidateCard: View {
         case "DEFERRED_BY_HUMAN": "DEFERRED"
         case "REJECTED_BY_HUMAN": "REJECTED"
         case "ACCEPTED_AS_NOTE": "SAVED"
+        case "MERGED_INTO_NOTE": "MERGED"
         default: candidate.laneStatus.replacingOccurrences(of: "_", with: " ")
         }
     }
     private var isEditingDraft: Bool { reviewMode == .edit }
+    private var selectedMergeTarget: CapturePacketNoteMergeTarget? {
+        mergeTargets.first { $0.id == mergeTargetID }
+    }
+
+    private func chooseMergeTarget(_ id: String) {
+        mergeTargetID = id
+        guard let target = mergeTargets.first(where: { $0.id == id }) else { return }
+        title = target.title?.trimmingCharacters(in: .whitespacesAndNewlines).nonemptyTranscriptValue ?? candidate.suggestedTitle
+        noteBody = [
+            target.body.trimmingCharacters(in: .whitespacesAndNewlines),
+            candidate.suggestedBody.trimmingCharacters(in: .whitespacesAndNewlines),
+        ].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        kind = MobileSessionNoteKind(rawValue: target.kind) ?? .sessionNote
+        visibility = MobileSessionNoteVisibility(rawValue: target.visibility) ?? .authorPrivate
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2813,18 +2900,41 @@ private struct CapturePacketNoteCandidateCard: View {
             }
 
             if accepted {
-                Label("Saved as one canonical Session note", systemImage: "checkmark.circle.fill")
+                Label(
+                    candidate.reviewStatus == "MERGED_INTO_NOTE"
+                        ? "Merged into one revisioned Session note"
+                        : "Saved as one canonical Session note",
+                    systemImage: "checkmark.circle.fill"
+                )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.accessibilityKey)")
             } else if reviewMode != nil {
                 Divider()
                 Label(
-                    isEditingDraft ? "Refine candidate for later review" : "Save one source-linked Session note",
-                    systemImage: isEditingDraft ? "pencil.line" : "note.text.badge.plus"
+                    isEditingDraft ? "Refine candidate for later review" : reviewMode == .merge ? "Merge into one existing Session note" : "Save one source-linked Session note",
+                    systemImage: isEditingDraft ? "pencil.line" : reviewMode == .merge ? "arrow.triangle.merge" : "note.text.badge.plus"
                 )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
+                if reviewMode == .merge {
+                    Picker("Existing note", selection: Binding(
+                        get: { mergeTargetID },
+                        set: { chooseMergeTarget($0) }
+                    )) {
+                        Text("Choose a note…").tag("")
+                        ForEach(mergeTargets) { target in
+                            Text("\(target.title?.nonemptyTranscriptValue ?? String(target.body.prefix(56))) · revision \(target.revisionCount)")
+                                .tag(target.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("CapturePacketNoteMergeTargetPicker")
+                    Text("The existing note's prior content remains recoverable as a revision. Review the complete combined note below before saving.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 TextField("Note title (optional)", text: $title, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder)
@@ -2854,15 +2964,20 @@ private struct CapturePacketNoteCandidateCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteAudienceBoundary")
                 HStack {
-                    Button(isEditingDraft ? "Save edited draft" : "Save source-linked note") {
+                    Button(isEditingDraft ? "Save edited draft" : reviewMode == .merge ? "Merge as new revision" : "Save source-linked note") {
                         Task {
                             if await client.reviewPacketNote(
                                 candidate: candidate,
-                                decision: isEditingDraft ? "EDIT" : "ACCEPT",
+                                decision: isEditingDraft ? "EDIT" : reviewMode == .merge ? "MERGE" : "ACCEPT",
                                 title: title,
                                 body: noteBody,
                                 kind: kind,
                                 visibility: visibility,
+                                mergeTarget: reviewMode == .merge ? selectedMergeTarget : nil,
+                                mergedTitle: reviewMode == .merge ? title : nil,
+                                mergedBody: reviewMode == .merge ? noteBody : nil,
+                                mergedKind: reviewMode == .merge ? kind : nil,
+                                mergedVisibility: reviewMode == .merge ? visibility : nil,
                                 previewOnly: previewOnly
                             ) {
                                 reviewMode = nil
@@ -2877,6 +2992,7 @@ private struct CapturePacketNoteCandidateCard: View {
                             || client.isMutating
                             || previewOnly
                             || decisionsLocked
+                            || (reviewMode == .merge && selectedMergeTarget == nil)
                             || (!isEditingDraft && !sourceFullyReviewed)
                     )
                     .accessibilityIdentifier("CapturePacketCreateNoteButton_\(candidate.accessibilityKey)")
@@ -2887,7 +3003,9 @@ private struct CapturePacketNoteCandidateCard: View {
                 }
                 Text(isEditingDraft
                     ? "Preserves one reviewed draft and audit receipt. It creates no canonical note, task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication."
-                    : "Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.")
+                    : reviewMode == .merge
+                        ? "Updates exactly one existing note and retains its prior revision plus this transcript source. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication."
+                        : "Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2914,6 +3032,11 @@ private struct CapturePacketNoteCandidateCard: View {
                     )
 
                     HStack {
+                        Button("Merge into note") { reviewMode = .merge }
+                            .buttonStyle(.bordered)
+                            .frame(minHeight: 44)
+                            .disabled(client.isMutating || decisionsLocked || laneRejected || !sourceFullyReviewed || mergeTargets.isEmpty)
+                            .accessibilityIdentifier("CapturePacketNoteMergeButton_\(candidate.accessibilityKey)")
                         Button("Edit candidate") { beginReview(.edit) }
                             .buttonStyle(.bordered)
                             .frame(minHeight: 44)
@@ -2938,7 +3061,9 @@ private struct CapturePacketNoteCandidateCard: View {
                             .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
                             .accessibilityIdentifier("CapturePacketNoteRejectButton_\(candidate.accessibilityKey)")
                     }
-                    Text("Edit, defer, and reject preserve review history without creating a canonical note. Only the separate playback-gated save can create one.")
+                    Text(mergeTargets.isEmpty
+                        ? "Create an actor-owned Session note first to enable merge. Edit, defer, and reject preserve review history without creating canonical work."
+                        : "Merge revises exactly one selected note after source review. Edit, defer, and reject preserve review history without creating canonical work.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

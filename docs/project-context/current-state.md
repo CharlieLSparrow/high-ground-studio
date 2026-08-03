@@ -2,6 +2,40 @@
 
 Date: 2026-08-03
 
+## Transcript candidate merge checkpoint
+
+- Nest and Quipsly Capture can now merge one playback-reviewed transcript note
+  candidate into one explicitly selected, actor-owned editable Session note.
+  The reviewer sees the existing and proposed complete wording, purpose, and
+  audience before confirming; the selected note keeps its canonical identity.
+- The server rechecks Session/project authority, current packet and transcript
+  evidence, release/consent gates, complete source-span playback review, target
+  ownership, and optimistic `updatedAt` inside one transaction. The update
+  appends one immutable `merged-transcript-candidate` revision containing the
+  complete previous and next note snapshots and exact transcript provenance.
+- Exact retries return the prior receipt without duplicating the update or
+  revision. A different note, content, audience, or stale target version fails
+  closed. The operation never creates a task, goal, calendar link, message,
+  output, delivery, Studio edit, or publication.
+- A retained compiled iPhone 17 Pro simulator operation selected a real
+  revision-one fixture note, listened through and confirmed three source
+  segments, merged the reviewed candidate, terminated and relaunched Capture,
+  read back the same note identity and content, and returned through the note's
+  source action to the exact first transcript segment.
+- Independent packet/PostgreSQL readback retained two revisions, one editable
+  note, zero goals/tasks/calendar links/outputs/deliveries, and an exact replay
+  with no duplicate mutation. The create-only receipt and Xcode result bundle
+  are retained under `/private/tmp`.
+- Focused Nest proof passes 3 suites / 51 tests; full Nest proof passes 244
+  suites / 1,309 tests; repository Quipsly contracts pass 258/258; both strict
+  TypeScript projects pass; the Capture contract passes; and the App Store
+  static gate passes 1,009/1,009.
+- This is local simulator evidence, not physical-iPhone or production proof.
+  No Cloud Build, deployment, production database write, TestFlight/App Store
+  action, provider mutation, delivery, or publication occurred. Architecture
+  and operated evidence are in
+  `docs/coordination/2026-08-03-transcript-candidate-note-merge.md`.
+
 ## Native coaching note candidate review checkpoint
 
 - Quipsly Capture now gives every transcript-derived coaching-note candidate

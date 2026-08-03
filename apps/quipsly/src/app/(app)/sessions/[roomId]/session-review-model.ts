@@ -76,7 +76,7 @@ export type SessionReviewNoteCandidate = {
   suggestedBody: string;
   suggestedKind: EditableSessionNoteKind;
   suggestedVisibility: SessionNoteVisibility;
-  reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_NOTE";
+  reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_NOTE" | "MERGED_INTO_NOTE";
   humanApprovalRequired: boolean;
   committedNoteId: string | null;
   lastHumanReview?: {
@@ -85,6 +85,16 @@ export type SessionReviewNoteCandidate = {
     reviewedAt: string;
     reviewedByUserId: string;
   } | null;
+};
+
+export type SessionReviewNoteMergeTarget = {
+  id: string;
+  title: string | null;
+  body: string;
+  kind: EditableSessionNoteKind;
+  visibility: SessionNoteVisibility;
+  updatedAt: string;
+  revisionCount: number;
 };
 
 export type SessionReviewLaneStatus =
@@ -128,6 +138,7 @@ export type SessionReviewPacket = {
     summary: { id: string; title: string | null; body: string; source?: Record<string, unknown>; createdAt: string | null } | null;
     highlights: Array<{ id: string; title: string | null; body: string; createdAt: string | null }>;
     noteCandidates?: SessionReviewNoteCandidate[];
+    noteMergeTargets?: SessionReviewNoteMergeTarget[];
     actionCandidates: SessionReviewCandidate[];
     goalCandidates?: SessionReviewGoalCandidate[];
     reviewLanes?: SessionReviewLane[];
@@ -161,13 +172,22 @@ export function noteCandidateReviewRequest(input: {
   kind?: EditableSessionNoteKind;
   visibility?: SessionNoteVisibility;
   note?: string;
+  mergeTargetNoteId?: string;
+  mergeExpectedUpdatedAt?: string;
+  mergedTitle?: string;
+  mergedBody?: string;
+  mergedKind?: EditableSessionNoteKind;
+  mergedVisibility?: SessionNoteVisibility;
 }) {
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
   const summaryNoteId = input.packet.packet?.summary?.id;
   if (!packetBuildId || !summaryNoteId || summaryNoteId !== input.candidate.summaryNoteId
       || input.packet.packet?.transcriptReview?.packetStale
-      || input.candidate.committedNoteId || input.candidate.reviewStatus === "ACCEPTED_AS_NOTE") return null;
-  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+      || input.candidate.committedNoteId
+      || input.candidate.reviewStatus === "ACCEPTED_AS_NOTE"
+      || input.candidate.reviewStatus === "MERGED_INTO_NOTE") return null;
+  if ((input.decision === "ACCEPT" || input.decision === "MERGE")
+      && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   if (input.decision === "ACCEPT"
       && (input.body === undefined || input.kind === undefined || input.visibility === undefined)) return null;
   if (input.decision === "EDIT"
@@ -175,6 +195,14 @@ export function noteCandidateReviewRequest(input: {
       && input.kind === undefined && input.visibility === undefined) return null;
   if ((input.decision === "ACCEPT" || input.decision === "EDIT")
       && input.body !== undefined && !input.body.trim()) return null;
+  if (input.decision === "MERGE" && (
+    !input.mergeTargetNoteId?.trim()
+    || !input.mergeExpectedUpdatedAt?.trim()
+    || input.mergedTitle === undefined
+    || !input.mergedBody?.trim()
+    || input.mergedKind === undefined
+    || input.mergedVisibility === undefined
+  )) return null;
   return {
     roomId: input.candidate.roomId,
     segmentId: input.candidate.segmentId,
@@ -186,6 +214,14 @@ export function noteCandidateReviewRequest(input: {
     ...(input.kind !== undefined ? { kind: input.kind } : {}),
     ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    ...(input.decision === "MERGE" ? {
+      mergeTargetNoteId: input.mergeTargetNoteId!.trim(),
+      mergeExpectedUpdatedAt: input.mergeExpectedUpdatedAt,
+      mergedTitle: input.mergedTitle!.trim(),
+      mergedBody: input.mergedBody!.trim(),
+      mergedKind: input.mergedKind,
+      mergedVisibility: input.mergedVisibility,
+    } : {}),
     surface: "nest-session-packet-review",
     transcriptJobId: input.candidate.transcriptJobId,
     recordingAssetId: input.candidate.recordingAssetId,

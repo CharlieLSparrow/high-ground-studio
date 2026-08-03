@@ -53,6 +53,7 @@ const files = {
   captureCalendarEventEditor: path.join(sourceRoot, "CaptureCalendarEventEditor.swift"),
   captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
+  transcriptReviewDecisionOutbox: path.join(sourceRoot, "TranscriptReviewDecisionOutbox.swift"),
   onDeviceTranscriptManager: path.join(sourceRoot, "OnDeviceTranscriptManager.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
@@ -187,6 +188,7 @@ const capturePhoneShellText = read(files.capturePhoneShell);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
+const transcriptReviewDecisionOutboxText = read(files.transcriptReviewDecisionOutbox);
 const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
@@ -1591,8 +1593,8 @@ requireIncludes(
   "transcript evidence return has a non-animated reduced-motion path",
 );
 requireIncludes(
-  transcriptReviewText,
-  '"operation": "confirm-segment-as-is"',
+  transcriptReviewDecisionOutboxText,
+  'case confirmSegmentAsIs = "confirm-segment-as-is"',
   "native transcript review records an explicit confirmed-as-is operation",
 );
 requireIncludes(

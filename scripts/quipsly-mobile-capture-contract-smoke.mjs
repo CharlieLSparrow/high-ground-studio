@@ -1246,22 +1246,26 @@ function checkTranscriptCorrectionContractSources() {
     "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
   );
   expect(
-    noteMaterializationRouteText.includes('decision !== "ACCEPT" && latestPacketReviewReceipt')
+    noteMaterializationRouteText.includes('["EDIT", "DEFER", "REJECT"].includes(decision || "")')
       && noteMaterializationRouteText.includes("idempotentReplay: true")
+      && noteMaterializationRouteText.includes('operation: "merged-transcript-candidate"')
+      && noteMaterializationRouteText.includes("lastTranscriptCandidateMerge")
       && nativeText.includes("func reviewPacketNote(")
       && nativeText.includes('"EDITED_FOR_REVIEW"')
       && nativeText.includes("CapturePacketNoteEditButton")
       && nativeText.includes("CapturePacketNoteDeferButton")
       && nativeText.includes("CapturePacketNoteRejectButton")
+      && nativeText.includes("CapturePacketNoteMergeButton")
+      && nativeText.includes("CapturePacketNoteMergeTargetPicker")
       && nativeText.includes("CapturePacketNoteCarriedDraft_")
       && nativeText.includes("CapturePacketNoteSourceText_")
       && nativeText.includes("source span and provider evidence still match exactly")
-      && nativeText.includes("Only the separate playback-gated save can create one.")
+      && nativeText.includes("Merge revises exactly one selected note after source review")
       && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave")
       && captureUITestText.includes("CapturePacketNoteDecisionBoundary")
       && runtimeUITestText.includes("expectedPacketNoteLaneID"),
-    "nativePacketNoteFourWayReview",
-    "Capture matches Nest's explicit accept, edit, defer, and reject packet-note review while preserving the playback gate, no-side-effect boundary, and exact retry receipt.",
+    "nativePacketNoteFiveWayReview",
+    "Capture matches Nest's explicit accept, edit, merge, defer, and reject packet-note review while preserving playback gates, recoverable note revisions, source return, no-side-effect boundaries, and exact retry receipts.",
   );
   expect(
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")
@@ -1783,12 +1787,14 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("CapturePacketNoteRejectButton_")
       && noteMaterializationRouteText.includes("exactReplay")
       && noteMaterializationRouteText.includes("candidateDraftAfter")
+      && noteMaterializationRouteText.includes('decision === "MERGE"')
+      && noteMaterializationRouteText.includes("previousContentRetainedInRevision")
       && packetRouteText.includes("carriedForwardDraft")
       && packetRouteText.includes("exactSourceMatch: true")
       && shellText.includes("CapturePacketNoteReviewPreviewLink")
       && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave"),
     "packetNoteCandidateExplicitMaterializationBoundary",
-    "Packet note candidates remain source-linked projections through exact-replay-safe edit, defer, and reject receipts; exact-source drafts survive a packet rebuild, while only a separately reviewed title, body, purpose, and audience can create one canonical CoachingNote against the rechecked snapshot.",
+    "Packet note candidates remain source-linked projections through exact-replay-safe edit, merge, defer, and reject receipts; exact-source drafts survive a packet rebuild, while deliberate acceptance creates one note and deliberate merge appends one recoverable revision to a selected existing note against the rechecked snapshot.",
   );
   expect(
     clientFollowUpServiceText.includes("readTranscriptDerivedNoteSource")

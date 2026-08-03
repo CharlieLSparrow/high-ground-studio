@@ -359,6 +359,152 @@ describe("explicit transcript-derived Session note", () => {
     expect(tx.coachingNote.update).toHaveBeenCalledTimes(1);
   });
 
+  it("merges a reviewed packet candidate into one existing note as an idempotent recoverable revision", async () => {
+    const providerText = "Keep the editorial decision and its exact source together.";
+    const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");
+    const segments = [{
+      id: "segment-1",
+      speakerLabel: "Speaker",
+      startSeconds: 3.66,
+      endSeconds: 4.84,
+      text: providerText,
+      corrections: [],
+      verifications: reviewedAsIs(providerText, "Speaker", "verification-merge"),
+    }];
+    const packetRequestId = "packet-note-build-merge-coaching-insights-segment-1";
+    const targetUpdatedAt = new Date("2026-08-03T14:00:00.000Z");
+    const summary = {
+      id: "summary-merge",
+      kind: "SUMMARY",
+      sourceJson: {
+        source: "transcript-packet-builder",
+        packetTemplateVersion: "quipsly-session-packet-v4",
+        roomId: "room-1",
+        transcriptJobId: "job-1",
+        recordingAssetId: "asset-1",
+        packetBuildId: "build-merge",
+        transcriptSnapshot: transcriptPacketSnapshot(segments),
+        reviewLanes: [{
+          id: "coaching-insights",
+          label: "Insights and decisions",
+          status: "READY_FOR_HUMAN_REVIEW",
+          items: [{ segmentId: "segment-1", sourceTextSha256: createHash("sha256").update(providerText).digest("hex"), text: providerText }],
+        }],
+      },
+      createdAt: new Date("2026-08-03T13:00:00.000Z"),
+      updatedAt: new Date("2026-08-03T13:00:00.000Z"),
+    };
+    const target = note({
+      id: "existing-note-1",
+      title: "Episode direction",
+      body: "Keep the strongest editorial decisions together.",
+      visibility: "AUTHOR_PRIVATE",
+      sourceJson: { origin: "nest-session-notes" },
+      updatedAt: targetUpdatedAt,
+      _count: { revisions: 2 },
+    });
+    let savedSource: any = null;
+    const savedTarget = () => note({
+      ...target,
+      title: "Episode direction",
+      body: "Keep the strongest editorial decisions together.\n\nKeep the editorial decision and its exact source together.",
+      sourceJson: savedSource,
+      updatedAt: new Date("2026-08-03T14:01:00.000Z"),
+      _count: { revisions: 3 },
+    });
+    const tx = {
+      $queryRaw: jest.fn(),
+      callRoom: { findFirst: jest.fn().mockResolvedValue({ id: "room-1", bookingId: null, project: { accessGrants: [] } }) },
+      coachingNote: {
+        findMany: jest.fn().mockResolvedValue([summary]),
+        findUnique: jest.fn().mockImplementation(async (args: any) => args.where.id === "existing-note-1" && savedSource ? savedTarget() : null),
+        findFirst: jest.fn().mockResolvedValue(target),
+        create: jest.fn(),
+        updateMany: jest.fn().mockImplementation(async (args: any) => { savedSource = args.data.sourceJson; return { count: 1 }; }),
+        update: jest.fn().mockImplementation(async (args: any) => {
+          if (args.where.id === "summary-merge") summary.sourceJson = args.data.sourceJson;
+          return summary;
+        }),
+      },
+      coachingNoteRevision: {
+        findFirst: jest.fn().mockResolvedValue({ revision: 2 }),
+        findUnique: jest.fn().mockResolvedValue({ noteId: "existing-note-1", operation: "merged-transcript-candidate" }),
+        create: jest.fn(),
+      },
+      transcriptJob: { findFirst: jest.fn().mockResolvedValue({ id: "job-1", roomId: "room-1", assetId: "asset-1", status: "COMPLETED", asset: { id: "asset-1" }, segments }) },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)), coachingNote: { findUnique: jest.fn() } } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      ...desk,
+      segments: [{
+        ...desk.segments[0],
+        text: providerText,
+        providerText,
+        providerTextSha256,
+        acceptedCorrection: null,
+        acceptedVerification: { id: "verification-merge" },
+        reviewStatus: "human-reviewed",
+      }],
+    } as any);
+    const mergeRequest = {
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      decision: "MERGE",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-merge",
+      packetBuildId: "build-merge",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+      mergeTargetNoteId: "existing-note-1",
+      mergeExpectedUpdatedAt: targetUpdatedAt.toISOString(),
+      mergedTitle: "Episode direction",
+      mergedBody: "Keep the strongest editorial decisions together.\n\nKeep the editorial decision and its exact source together.",
+      mergedKind: "SESSION_NOTE",
+      mergedVisibility: "AUTHOR_PRIVATE",
+    };
+
+    const response = await POST(request(mergeRequest));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      decision: "MERGE",
+      reviewStatus: "MERGED_INTO_NOTE",
+      idempotentReplay: false,
+      note: {
+        id: "existing-note-1",
+        revisionCount: 3,
+        lastMergedSource: { sourceAnchor: { segmentId: "segment-1", effectiveTextSnapshot: providerText } },
+      },
+      receipt: { decision: "MERGE", noteId: "existing-note-1", mergeTargetBefore: { body: target.body } },
+      boundaries: { noteCreated: false, noteRevised: true, taskCreated: false, goalCreated: false, calendarMutated: false, messageSent: false },
+    });
+    expect(tx.coachingNote.create).not.toHaveBeenCalled();
+    expect(tx.coachingNote.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "existing-note-1",
+        roomId: "room-1",
+        authorUserId: "user-1",
+        kind: { in: ["SESSION_NOTE", "DECISION", "PRODUCTION"] },
+      }),
+    }));
+    expect(tx.coachingNote.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "existing-note-1", updatedAt: targetUpdatedAt }),
+      data: expect.objectContaining({ sourceJson: expect.objectContaining({
+        origin: "nest-session-notes",
+        lastTranscriptCandidateMerge: expect.objectContaining({ decision: "MERGE", candidateSource: expect.objectContaining({ schema: "quipsly-transcript-derived-note-v1" }) }),
+      }) }),
+    }));
+    expect(tx.coachingNoteRevision.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ revision: 3, operation: "merged-transcript-candidate" }) }));
+
+    tx.coachingNote.findMany.mockResolvedValue([{ ...summary }]);
+    const replay = await POST(request(mergeRequest));
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ ok: true, decision: "MERGE", idempotentReplay: true, note: { id: "existing-note-1" }, boundaries: { noteCreated: false, noteRevised: false } });
+    expect(tx.coachingNote.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.coachingNoteRevision.create).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a packet note non-canonical until its source span is playback-reviewed", async () => {
     const providerText = "Keep this insight as a private note.";
     const providerTextSha256 = createHash("sha256").update(providerText).digest("hex");

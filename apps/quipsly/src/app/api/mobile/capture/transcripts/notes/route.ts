@@ -7,6 +7,7 @@ import {
   type TranscriptNoteReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
 import {
+  readLastTranscriptMergedNoteSource,
   readTranscriptDerivedNoteSource,
   TRANSCRIPT_DERIVED_NOTE_SCHEMA,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
@@ -72,7 +73,7 @@ function noteIdentity(userId: string, clientRequestId: string) {
   return `transcript-note-${createHash("sha256").update(`${userId}|${clientRequestId}`).digest("hex").slice(0, 24)}`;
 }
 
-function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate = false) {
+function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate = false, noteRevised = false) {
   return {
     explicitHumanAction: true,
     canonicalIdentity: true,
@@ -84,6 +85,7 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
     packetSnapshotRechecked: packetCandidate,
     humanReviewedSourceRequired: packetCandidate,
     noteCreated,
+    noteRevised,
     providerTranscriptMutated: false,
     correctionOverlayMutated: false,
     recordingMutated: false,
@@ -98,6 +100,7 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
 
 function noteReviewStatus(decision: TranscriptNoteReviewDecision) {
   if (decision === "ACCEPT") return "ACCEPTED_AS_NOTE";
+  if (decision === "MERGE") return "MERGED_INTO_NOTE";
   if (decision === "EDIT") return "EDITED_FOR_REVIEW";
   if (decision === "REJECT") return "REJECTED_BY_HUMAN";
   return "DEFERRED_BY_HUMAN";
@@ -185,6 +188,7 @@ function serializedNote(row: any, actorUserId: string) {
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
     tags: (row.tagLinks || []).map((link: any) => link.tag),
     sourceAnchor: readTranscriptDerivedNoteSource(row.sourceJson),
+    lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
     href: `/sessions/${encodeURIComponent(row.roomId)}?mode=notes`,
   };
 }
@@ -208,6 +212,13 @@ export async function POST(request: Request) {
   const kind = isEditableSessionNoteKind(input.kind) ? input.kind : null;
   const visibility = isSessionNoteVisibility(input.visibility) ? input.visibility : null;
   const reviewNote = text(input.note, 2_000, true) || null;
+  const mergeTargetNoteId = text(input.mergeTargetNoteId, 200);
+  const mergeExpectedUpdatedAtText = text(input.mergeExpectedUpdatedAt, 80);
+  const mergeExpectedUpdatedAt = mergeExpectedUpdatedAtText ? new Date(mergeExpectedUpdatedAtText) : null;
+  const mergedTitle = text(input.mergedTitle, 500);
+  const mergedBody = text(input.mergedBody, 20_000, true);
+  const mergedKind = isEditableSessionNoteKind(input.mergedKind) ? input.mergedKind : null;
+  const mergedVisibility = isSessionNoteVisibility(input.mergedVisibility) ? input.mergedVisibility : null;
   const packetFieldNames = [
     "transcriptJobId",
     "recordingAssetId",
@@ -249,7 +260,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: false,
       code: "PACKET_NOTE_DECISION_REQUIRED",
-      error: "Choose ACCEPT, EDIT, REJECT, or DEFER.",
+      error: "Choose ACCEPT, EDIT, MERGE, REJECT, or DEFER.",
       allowedDecisions: TRANSCRIPT_NOTE_REVIEW_DECISIONS,
     }, { status: 400 });
   }
@@ -282,6 +293,21 @@ export async function POST(request: Request) {
     if ((hasOwn(input, "body") && !noteBody) || (hasOwn(input, "kind") && !kind) || (hasOwn(input, "visibility") && !visibility)) {
       return NextResponse.json({ ok: false, code: "PACKET_NOTE_EDIT_INVALID", error: "Edited note text, purpose, and audience must be valid." }, { status: 400 });
     }
+  }
+  if (packetContext && decision === "MERGE" && (
+    !mergeTargetNoteId
+    || !mergeExpectedUpdatedAt
+    || !Number.isFinite(mergeExpectedUpdatedAt.getTime())
+    || !hasOwn(input, "mergedTitle")
+    || !mergedBody
+    || !mergedKind
+    || !mergedVisibility
+  )) {
+    return NextResponse.json({
+      ok: false,
+      code: "PACKET_NOTE_MERGE_TARGET_REQUIRED",
+      error: "Choose a current editable Session note and review its complete merged wording, purpose, and audience.",
+    }, { status: 400 });
   }
 
   const prisma = getPrismaClient() as any;
@@ -319,7 +345,7 @@ export async function POST(request: Request) {
         visibility: SessionNoteVisibility;
       } | null = null;
       let packetReviewReceipts: Record<string, unknown>[] = [];
-      let packetAcceptedReceipt: Record<string, unknown> | null = null;
+      let packetCanonicalReceipt: Record<string, unknown> | null = null;
       let latestPacketReviewReceipt: Record<string, unknown> | null = null;
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, session.user),
@@ -344,7 +370,9 @@ export async function POST(request: Request) {
         currentRoom.project?.accessGrants?.[0]?.role,
         actor.isStaff,
       );
-      if ((visibility === "PROJECT_TEAM" || kind === "PRODUCTION") && !canUseProjectTeam) {
+      const requestedCanonicalKind = decision === "MERGE" ? mergedKind : kind;
+      const requestedCanonicalVisibility = decision === "MERGE" ? mergedVisibility : visibility;
+      if ((requestedCanonicalVisibility === "PROJECT_TEAM" || requestedCanonicalKind === "PRODUCTION") && !canUseProjectTeam) {
         throw new TranscriptCorrectionError("Only a Nest owner or editor can create production-team notes.", 403, "PROJECT_ROLE_REQUIRED");
       }
 
@@ -427,7 +455,7 @@ export async function POST(request: Request) {
           && isTranscriptNoteReviewDecision(receipt.decision)
         ));
         latestPacketReviewReceipt = actorReceipts.at(-1) ?? null;
-        packetAcceptedReceipt = actorReceipts.find((receipt) => receipt.decision === "ACCEPT") ?? null;
+        packetCanonicalReceipt = actorReceipts.find((receipt) => receipt.decision === "ACCEPT" || receipt.decision === "MERGE") ?? null;
         const reviewedDraft = record(latestPacketReviewReceipt?.candidateDraftAfter);
         packetCandidateDraftBefore = {
           title: text(reviewedDraft.title, 500) || packetLaneLabel,
@@ -472,7 +500,7 @@ export async function POST(request: Request) {
         visibility: hasOwn(input, "visibility") && visibility ? visibility : packetCandidateDraftBefore.visibility,
       } : null;
 
-      if (packetContext && decision !== "ACCEPT" && latestPacketReviewReceipt && packetDraftAfter) {
+      if (packetContext && ["EDIT", "DEFER", "REJECT"].includes(decision || "") && latestPacketReviewReceipt && packetDraftAfter) {
         const latestDraft = record(latestPacketReviewReceipt.candidateDraftAfter);
         const exactReplay = latestPacketReviewReceipt.decision === decision
           && latestPacketReviewReceipt.clientRequestId === clientRequestId
@@ -486,26 +514,44 @@ export async function POST(request: Request) {
         }
       }
 
-      if (packetContext && packetAcceptedReceipt) {
-        if (decision !== "ACCEPT") {
-          throw new TranscriptCorrectionError("This candidate already became a canonical note and cannot be edited, rejected, or deferred as a draft.", 409, "PACKET_NOTE_CANDIDATE_ALREADY_ACCEPTED");
+      if (packetContext && packetCanonicalReceipt) {
+        if (decision !== packetCanonicalReceipt.decision) {
+          throw new TranscriptCorrectionError("This candidate already became canonical through a different review decision.", 409, "PACKET_NOTE_CANDIDATE_ALREADY_ACCEPTED");
         }
-        const acceptedDraft = record(packetAcceptedReceipt.candidateDraftAfter);
+        const canonicalNoteId = text(packetCanonicalReceipt.noteId, 200);
+        const canonicalNote = canonicalNoteId
+          ? await tx.coachingNote.findUnique({ where: { id: canonicalNoteId }, select: NOTE_SELECT })
+          : null;
+        if (decision === "MERGE") {
+          const mergedAfter = record(packetCanonicalReceipt.mergeTargetAfter);
+          if (!canonicalNote
+              || canonicalNote.authorUserId !== actor.id
+              || canonicalNote.roomId !== roomId
+              || canonicalNoteId !== mergeTargetNoteId
+              || text(packetCanonicalReceipt.mergeExpectedUpdatedAt, 80) !== mergeExpectedUpdatedAtText
+              || text(mergedAfter.title, 500) !== mergedTitle
+              || text(mergedAfter.body, 20_000, true) !== mergedBody
+              || mergedAfter.kind !== mergedKind
+              || mergedAfter.visibility !== mergedVisibility) {
+            throw new TranscriptCorrectionError("This candidate was already merged into a different note or with different reviewed content.", 409, "PACKET_NOTE_CANDIDATE_IDEMPOTENCY_CONFLICT");
+          }
+          const revisionId = text(packetCanonicalReceipt.noteRevisionId, 200);
+          const revision = revisionId ? await tx.coachingNoteRevision.findUnique({ where: { id: revisionId }, select: { noteId: true, operation: true } }) : null;
+          if (!revision || revision.noteId !== canonicalNote.id || revision.operation !== "merged-transcript-candidate") {
+            throw new TranscriptCorrectionError("The merge receipt no longer matches one canonical note revision.", 409, "PACKET_NOTE_CANDIDATE_RECEIPT_MISMATCH");
+          }
+          return { note: canonicalNote, receipt: packetCanonicalReceipt, decision, idempotentReplay: true, noteRevised: false };
+        }
+        const acceptedDraft = record(packetCanonicalReceipt.candidateDraftAfter);
+        const acceptedSource = record(canonicalNote?.sourceJson);
         if (!packetDraftAfter
             || text(acceptedDraft.title, 500) !== packetDraftAfter.title
             || text(acceptedDraft.body, 20_000, true) !== packetDraftAfter.body
             || acceptedDraft.kind !== packetDraftAfter.kind
-            || acceptedDraft.visibility !== packetDraftAfter.visibility) {
-          throw new TranscriptCorrectionError("This note candidate was already accepted with different wording, purpose, or audience. Open the canonical note to edit it.", 409, "PACKET_NOTE_CANDIDATE_IDEMPOTENCY_CONFLICT");
-        }
-        const acceptedNoteId = text(packetAcceptedReceipt.noteId, 200);
-        const acceptedNote = acceptedNoteId
-          ? await tx.coachingNote.findUnique({ where: { id: acceptedNoteId }, select: NOTE_SELECT })
-          : null;
-        const acceptedSource = record(acceptedNote?.sourceJson);
-        if (!acceptedNote
-            || acceptedNote.authorUserId !== actor.id
-            || acceptedSource.reviewReceiptId !== packetAcceptedReceipt.id
+            || acceptedDraft.visibility !== packetDraftAfter.visibility
+            || !canonicalNote
+            || canonicalNote.authorUserId !== actor.id
+            || acceptedSource.reviewReceiptId !== packetCanonicalReceipt.id
             || !sourceMatches(acceptedSource, {
               actorUserId: actor.id,
               roomId,
@@ -521,7 +567,7 @@ export async function POST(request: Request) {
             })) {
           throw new TranscriptCorrectionError("The accepted review receipt no longer matches one canonical note.", 409, "PACKET_NOTE_CANDIDATE_RECEIPT_MISMATCH");
         }
-        return { note: acceptedNote, receipt: packetAcceptedReceipt, decision, idempotentReplay: true };
+        return { note: canonicalNote, receipt: packetCanonicalReceipt, decision, idempotentReplay: true, noteRevised: false };
       }
 
       const replay = await tx.coachingNote.findUnique({ where: { id }, select: NOTE_SELECT });
@@ -535,7 +581,7 @@ export async function POST(request: Request) {
         return { note: replay, receipt: null, decision, idempotentReplay: true };
       }
 
-      if (packetContext && decision === "ACCEPT") {
+      if (packetContext && (decision === "ACCEPT" || decision === "MERGE")) {
         const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
         if (unreviewedSegmentIds.length) {
           throw new TranscriptCorrectionError(
@@ -546,7 +592,7 @@ export async function POST(request: Request) {
         }
       }
 
-      if (packetContext && decision !== "ACCEPT") {
+      if (packetContext && ["EDIT", "DEFER", "REJECT"].includes(decision || "")) {
         if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter) {
           throw new TranscriptCorrectionError("The packet note review state is unavailable. Refresh before deciding.", 409, "STALE_PACKET_NOTE_CANDIDATE");
         }
@@ -594,6 +640,163 @@ export async function POST(request: Request) {
           },
         });
         return { note: null, receipt, decision, idempotentReplay: false };
+      }
+
+      if (packetContext && decision === "MERGE") {
+        if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter || !mergeExpectedUpdatedAt || !mergedKind || !mergedVisibility) {
+          throw new TranscriptCorrectionError("The packet note merge state is unavailable. Refresh before merging.", 409, "STALE_PACKET_NOTE_CANDIDATE");
+        }
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "CoachingNote"
+          WHERE "id" = ${mergeTargetNoteId}
+            AND "roomId" = ${roomId}
+            AND "authorUserId" = ${actor.id}
+          FOR UPDATE
+        `;
+        const mergeTarget = await tx.coachingNote.findFirst({
+          where: {
+            id: mergeTargetNoteId,
+            roomId,
+            authorUserId: actor.id,
+            kind: { in: ["SESSION_NOTE", "DECISION", "PRODUCTION"] },
+          },
+          select: NOTE_SELECT,
+        });
+        if (!mergeTarget) {
+          throw new TranscriptCorrectionError("Choose an actor-owned editable note from this Session.", 404, "PACKET_NOTE_MERGE_TARGET_UNAVAILABLE");
+        }
+        if (mergeTarget.updatedAt.getTime() !== mergeExpectedUpdatedAt.getTime()) {
+          throw new TranscriptCorrectionError("That note changed elsewhere. Review its current wording before merging this candidate.", 409, "PACKET_NOTE_MERGE_TARGET_CHANGED");
+        }
+
+        const reviewedAt = new Date().toISOString();
+        const receiptId = randomUUID();
+        const noteRevisionId = randomUUID();
+        const latestRevision = await tx.coachingNoteRevision.findFirst({
+          where: { noteId: mergeTarget.id },
+          orderBy: { revision: "desc" },
+          select: { revision: true },
+        });
+        const nextRevision = (latestRevision?.revision ?? 0) + 1;
+        const candidateSource = {
+          schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
+          roomId,
+          transcriptJobId: desk.transcriptJobId,
+          ...sourceAnchor,
+          recordingAssetId: desk.playback.recordingAssetId,
+          playbackSourceId: desk.playback.sourceId,
+        };
+        const mergeReceipt = {
+          id: receiptId,
+          kind: NOTE_REVIEW_RECEIPT_KIND,
+          decision: "MERGE",
+          packetNoteCandidateId: packetContext.packetNoteCandidateId,
+          clientRequestId,
+          transcriptJobId: packetContext.transcriptJobId,
+          recordingAssetId: packetContext.recordingAssetId,
+          packetBuildId: packetContext.packetBuildId,
+          summaryNoteId: packetContext.summaryNoteId,
+          packetLaneId: packetContext.packetLaneId,
+          roomId,
+          segmentId,
+          segmentIds: sourceAnchor.segmentIds,
+          sourceTextSha256: packetSourceTextSha256 || null,
+          transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
+          providerTextSha256: sourceAnchor.providerTextSha256,
+          sourceSpan: sourceAnchor.sourceSpan,
+          reviewedAt,
+          reviewedByUserId: actor.id,
+          reviewNote,
+          candidateDraftBefore: packetCandidateDraftBefore,
+          candidateDraftAfter: packetDraftAfter,
+          noteId: mergeTarget.id,
+          noteRevisionId,
+          mergeExpectedUpdatedAt: mergeExpectedUpdatedAtText,
+          mergeTargetBefore: {
+            title: mergeTarget.title,
+            body: mergeTarget.body,
+            kind: String(mergeTarget.kind),
+            visibility: String(mergeTarget.visibility),
+          },
+          mergeTargetAfter: {
+            title: mergedTitle,
+            body: mergedBody,
+            kind: mergedKind,
+            visibility: mergedVisibility,
+          },
+          candidateSource,
+          previousContentRetainedInRevision: true,
+          externalSideEffects: false,
+          taskCreated: false,
+          goalCreated: false,
+          calendarMutated: false,
+          messageSent: false,
+          deliveryClaimed: false,
+          publicationClaimed: false,
+        };
+        const updated = await tx.coachingNote.updateMany({
+          where: {
+            id: mergeTarget.id,
+            roomId,
+            authorUserId: actor.id,
+            updatedAt: mergeExpectedUpdatedAt,
+          },
+          data: {
+            title: mergedTitle || null,
+            body: mergedBody,
+            kind: mergedKind,
+            visibility: mergedVisibility,
+            sourceJson: {
+              ...record(mergeTarget.sourceJson),
+              lastTranscriptCandidateMerge: mergeReceipt,
+            },
+          },
+        });
+        if (updated.count !== 1) {
+          throw new TranscriptCorrectionError("That note changed elsewhere. Review its current wording before merging this candidate.", 409, "PACKET_NOTE_MERGE_TARGET_CHANGED");
+        }
+        await tx.coachingNoteRevision.create({
+          data: {
+            id: noteRevisionId,
+            noteId: mergeTarget.id,
+            revision: nextRevision,
+            operation: "merged-transcript-candidate",
+            actorUserId: actor.id,
+            snapshotJson: {
+              receipt: mergeReceipt,
+              previous: {
+                title: mergeTarget.title,
+                body: mergeTarget.body,
+                kind: String(mergeTarget.kind),
+                visibility: String(mergeTarget.visibility),
+                sourceJson: mergeTarget.sourceJson,
+              },
+              next: {
+                title: mergedTitle || null,
+                body: mergedBody,
+                kind: mergedKind,
+                visibility: mergedVisibility,
+              },
+              externalSideEffects: false,
+            },
+          },
+        });
+        await tx.coachingNote.update({
+          where: { id: packetContext.summaryNoteId },
+          data: {
+            sourceJson: {
+              ...packetSummarySource,
+              noteCandidateReviewReceipts: [...packetReviewReceipts, mergeReceipt],
+              lastNoteCandidateReview: mergeReceipt,
+            },
+          },
+        });
+        const saved = await tx.coachingNote.findUnique({ where: { id: mergeTarget.id }, select: NOTE_SELECT });
+        if (!saved) {
+          throw new TranscriptCorrectionError("The merged note could not be read back.", 409, "PACKET_NOTE_MERGE_READBACK_FAILED");
+        }
+        return { note: saved, receipt: mergeReceipt, decision, idempotentReplay: false, noteRevised: true };
       }
 
       const createdAt = new Date().toISOString();
@@ -708,7 +911,11 @@ export async function POST(request: Request) {
       reviewStatus: result.decision ? noteReviewStatus(result.decision) : null,
       receipt: result.receipt,
       note: result.note ? serializedNote(result.note, actor.id) : null,
-      boundaries: transcriptDerivedNoteBoundaries(Boolean(result.note) && !result.idempotentReplay, Boolean(packetContext)),
+      boundaries: transcriptDerivedNoteBoundaries(
+        Boolean(result.note) && result.decision !== "MERGE" && !result.idempotentReplay,
+        Boolean(packetContext),
+        "noteRevised" in result && result.noteRevised === true,
+      ),
     });
   } catch (error) {
     if (error instanceof TranscriptCorrectionError) {
