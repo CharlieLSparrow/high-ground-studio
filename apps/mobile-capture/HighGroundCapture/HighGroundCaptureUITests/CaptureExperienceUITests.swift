@@ -1182,7 +1182,7 @@ final class CaptureExperienceUITests: XCTestCase {
             button.isHittable,
             "A scheduled next Session should offer Apple's explicit one-event editor."
         )
-        XCTAssertTrue(button.label.contains("Add to Apple Calendar"))
+        XCTAssertEqual(button.label, "Add to Calendar")
         button.tap()
 
         XCTAssertTrue(
@@ -2351,6 +2351,11 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Alex Morgan"].exists)
         XCTAssertTrue(app.staticTexts["alex@example.com"].exists)
         XCTAssertFalse(app.staticTexts["preview@quipsly.local"].exists)
+        XCTAssertTrue(app.staticTexts["Local originals, 1"].exists)
+        XCTAssertTrue(app.staticTexts["Source media, 18.4 MB"].exists)
+        XCTAssertTrue(app.switches["Upload using cellular"].exists)
+        XCTAssertTrue(app.switches["Upload on metered networks"].exists)
+        XCTAssertTrue(app.switches["Upload in Low Data Mode"].exists)
         for _ in 0..<5 { app.swipeDown() }
         Thread.sleep(forTimeInterval: 2.0)
         keepScreenshot("05-account.png")

@@ -6787,3 +6787,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   physical-iPhone persistence/recovery, TestFlight, or real cross-device
   visibility. Full contract detail is in
   `docs/coordination/2026-08-02-native-focus-planning.md`.
+
+### App Store provider truth and draft visual QA checkpoint — 2026-08-02
+
+- Read-only App Store Connect audit confirms version 1.0 / Build 26 is assigned
+  and editable with review detail, content rights, all 24 age-rating answers,
+  IDFA declaration, free USA price, and USA availability in place. Apple has
+  zero of the five planned 6.9-inch screenshots.
+- The remaining provider gates are now exact: App Privacy publication, account-
+  level DSA trader verification, physical Build 26 acceptance, disposable
+  production account-deletion proof, and app-level Apple Silicon Mac and Apple
+  Vision Pro opt-out/readback. The audit made no external mutation.
+- Exact committed source `58c57250` generated five private-data-safe 1320 x
+  2868 drafts from a detached iPhone 17 Pro Max / iOS 26.3.1 lane. Human visual
+  review found and fixed a truncated Calendar action, ambiguous upload-policy
+  switches, and Account/Library disagreement over the synthetic local source.
+- The one-event Apple Calendar journey and complete screenshot journey pass
+  2/2 at
+  `/tmp/quipsly-capture-app-store-ux-fix-rerun-20260803T035737Z-50848.xcresult`.
+  Draft images remain explicitly ineligible for upload until recaptured from
+  the next exact signed candidate or its TestFlight installation and approved.
+- Build 26 remains the distributed baseline and does not contain the newest
+  focus-planning or screenshot UX changes. No new build was produced; the next
+  TestFlight candidate should batch a substantial product increment rather
+  than spend a release on metadata alone. Full evidence is in
+  `docs/coordination/2026-08-02-app-store-submission-readiness.md`.

@@ -8118,10 +8118,10 @@ private struct CaptureAccountView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Upload policy", systemImage: "antenna.radiowaves.left.and.right")
                         .font(.headline)
-                    Toggle("Use cellular data", isOn: $allowsCellular)
-                    Toggle("Use expensive networks", isOn: $allowsExpensive)
+                    Toggle("Upload using cellular", isOn: $allowsCellular)
+                    Toggle("Upload on metered networks", isOn: $allowsExpensive)
                         .disabled(!allowsCellular)
-                    Toggle("Use Low Data Mode", isOn: $allowsConstrained)
+                    Toggle("Upload in Low Data Mode", isOn: $allowsConstrained)
                     Text("These choices apply to new background upload tasks. Local recording never waits for the network.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -8331,11 +8331,19 @@ private struct CaptureAccountView: View {
     }
 
     private var totalLocalBytes: Int64 {
-        library.recordings.reduce(0) { $0 + $1.byteCount }
+        if CaptureLaunchConfiguration.usesAppStorePresentation,
+           library.recordings.isEmpty {
+            return 18_400_000
+        }
+        return library.recordings.reduce(0) { $0 + $1.byteCount }
     }
 
     private var localOriginalCount: Int {
-        library.recordings.filter { $0.status != .deletedLocally && $0.status != .missingFile }.count
+        if CaptureLaunchConfiguration.usesAppStorePresentation,
+           library.recordings.isEmpty {
+            return 1
+        }
+        return library.recordings.filter { $0.status != .deletedLocally && $0.status != .missingFile }.count
     }
 
     private var localDeletionReceiptCount: Int {
@@ -8437,7 +8445,7 @@ private struct NextCaptureCard: View {
 
             if let onAddToCalendar {
                 Button(action: onAddToCalendar) {
-                    Label("Add to Apple Calendar…", systemImage: "calendar.badge.plus")
+                    Label("Add to Calendar", systemImage: "calendar.badge.plus")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
