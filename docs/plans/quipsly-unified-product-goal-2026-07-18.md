@@ -6850,3 +6850,37 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   Apple evidence, full HGO/coaching passes, and separate-account authorization
   remain required. Full contract and evidence are in
   `docs/coordination/2026-08-02-transcript-evaluation-v2.md`.
+
+### Quipsly Capture Build 27 sealed-candidate checkpoint — 2026-08-03
+
+- Prepared deliberate Build 27 source rather than attempting to reuse Apple's
+  existing Build 26 identity. The first exact-source candidate correctly
+  stopped before signing after 53/54 journeys exposed a packet-note UX defect:
+  no-write purpose/audience inspection was coupled to the complete playback-
+  review gate already enforced by the canonical Save action.
+- Separated those decisions. A person can now inspect and prepare note details
+  before source review completes, while visible copy and the disabled final
+  action still require every immutable segment to be played through and
+  confirmed before one canonical note can be saved.
+- Focused compiled-app proof passes 1/1. Replacement exact source
+  `56f3e85d8934bb5a50f929f019e1bd6e08a0a46a` then passed all 54 serialized
+  Capture, Google-first login, account, and Share Extension journeys with zero
+  failures or skips.
+- The detached-source release lane produced and independently reverified a
+  signed App Store archive plus a 22,555,819-byte IPA with SHA-256
+  `ae6a9cd654c2a8ed8b3f263c71a71bdba0056aa51dff98696ca7f6f33d3a4a84`.
+  App/extension identifiers, strict nested signatures, App Store profiles,
+  distribution-safe entitlements, iPhone-only metadata, privacy manifests,
+  permission strings, background modes, encryption declaration, and matching
+  `1.0 (27)` identities all pass.
+- The mode-0600 receipt records isolated source, UI evidence, exact bytes/hash,
+  `candidateQualified=true`, `uploadAttempted=false`, and
+  `physicalTestFlightInstallReadbackPerformed=false`. No Apple provider action,
+  tester assignment, cloud build, deploy, or external write occurred.
+- Current USB/CoreDevice readback still does not enumerate an iPhone, so this
+  is sealed-candidate proof rather than physical acceptance. The next boundary
+  is a deliberate sealed upload, Apple processing/identity readback, tester
+  assignment, and real iPhone capture/interruption/upload/playback/timeline/
+  cross-device proof before App Store claims or final screenshot approval.
+  Full evidence is in
+  `docs/coordination/2026-08-03-capture-build27-candidate.md`.

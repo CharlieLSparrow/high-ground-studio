@@ -76,6 +76,27 @@ another build merely to clear provider metadata; the next TestFlight build
 should batch a genuinely useful product increment and then recapture final
 screenshots from that exact source.
 
+## Build 27 no-upload follow-up — 2026-08-03
+
+The deliberately batched candidate now exists. Exact source
+`56f3e85d8934bb5a50f929f019e1bd6e08a0a46a` qualified Quipsly Capture 1.0
+(27) with 54/54 serialized UI journeys, a signed archive, exported IPA, strict
+app/extension signature and profile inspection, iPhone-only packaged metadata,
+and an independently matching 22,555,819-byte IPA SHA-256. The owner-only
+receipt records `candidateQualified=true` and `uploadAttempted=false`.
+
+The first Build 27 source correctly failed before signing because packet-note
+purpose/audience review was incorrectly gated on completed playback review.
+The replacement source permits no-write inspection while leaving the final
+canonical Save action locked until the complete evidence span is confirmed.
+
+This qualifies a sealed candidate; it does not change the provider state
+described above. Build 26 remains the distributed baseline until an explicit
+sealed-candidate upload and independent App Store Connect readback. Final
+screenshots must come from the exact distributed Build 27 binary or its signed
+candidate after physical approval. Full evidence is in
+`docs/coordination/2026-08-03-capture-build27-candidate.md`.
+
 ## Current platform references
 
 - Apple defines the hard scroll-edge style as a nearly opaque boundary between

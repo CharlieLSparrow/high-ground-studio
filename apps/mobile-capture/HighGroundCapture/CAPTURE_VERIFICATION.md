@@ -2,7 +2,7 @@
 
 Candidate date: 2026-07-18
 
-Latest addendum: 2026-08-02
+Latest addendum: 2026-08-03
 
 Scope: iPhone capture app, mobile-capture Nest APIs, durable media upload, and release-readiness surfaces
 
@@ -86,6 +86,7 @@ The final local run records exact results after all hardening changes settled. S
 | Canonical Task focus planning | disposable real Firebase identity, current local Nest, loopback PostgreSQL, and focused iPhone 17 Pro / iOS 26.3.1 Simulator journey | PASS — one deterministic 50-minute `WorkPlanBlock`, same identity after app termination/relaunch, unchanged Task revision/status/deadline, no reminder/appointment/provider/external-calendar mutation, exact Task and block cleanup read back as zero, generated Firebase identity absent; `/tmp/quipsly-capture-runtime-ui-focus-plan-20260803T034306Z-43329.xcresult` |
 | App Store provider readiness | read-only Team Admin API audit of version 1.0 / Build 26 | PARTIAL — build, review detail, content rights, 24/24 age answers, IDFA, free price, and USA availability pass; Apple reports 0/5 screenshots, while App Privacy publication, DSA, physical acceptance, production deletion, and Mac/Vision opt-out remain manual gates |
 | App Store draft visual QA | exact committed source `58c57250`, detached iPhone 17 Pro Max / iOS 26.3.1 screenshot run, human inspection, and focused UI reruns | PASS — five private-data-safe 1320 x 2868 drafts exposed and repaired a truncated Calendar action, ambiguous upload-policy labels, contradictory local-source count, and text refraction beneath the iOS 26 tab bar; Calendar plus screenshot journeys passed 2/2, and the final clean-compositing screenshot journey passed 1/1 at `/tmp/quipsly-capture-hard-edge-rerun-20260803T040837Z-55130.xcresult`; drafts remain upload-ineligible |
+| Build 27 sealed candidate | exact committed source `56f3e85d8934bb5a50f929f019e1bd6e08a0a46a`, detached-source candidate lane, independent result/receipt/hash/artifact readback | PASS — 54/54 serialized iPhone and Share Extension journeys, source verification, signed archive, App Store export, strict app/extension signatures, App Store profiles, distribution-safe entitlements, iPhone-only packaged metadata, privacy/permission/background-mode inspection, and independent IPA byte/SHA-256 verification; mode-0600 receipt records `candidateQualified=true`, `uploadAttempted=false`, and `physicalTestFlightInstallReadbackPerformed=false` |
 | Debug Simulator | generic iOS Simulator `xcodebuild` | PASS — arm64 and x86_64 |
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, Release configuration, signing disabled | PASS — retired facade editor/export sources are absent and the current production graph emits no build warning |
