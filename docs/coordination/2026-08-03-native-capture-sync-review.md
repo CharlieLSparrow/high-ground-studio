@@ -2,6 +2,8 @@
 
 Date: 2026-08-03
 
+Feature commit: `8ed2643a`
+
 ## Product outcome
 
 Quipsly Studio can now review two immutable sources from one Capture group on
