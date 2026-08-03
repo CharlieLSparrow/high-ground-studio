@@ -753,7 +753,25 @@ struct MobileCoachClientFollowUpCard: View {
 
     private var workspaceVersion: String {
         let output = workspace?.output
-        return [session.id, output?.id ?? "none", String(output?.revision ?? 0), output?.status ?? "none"].joined(separator: "|")
+        let readiness = workspace?.readiness
+        let changes = readiness?.changes.map(\.stableID).joined(separator: ",") ?? "none"
+        return [session.id, output?.id ?? "none", String(output?.revision ?? 0), output?.status ?? "none", readiness?.status ?? "unchecked", changes].joined(separator: "|")
+    }
+
+    private var releaseReady: Bool {
+        guard let output = workspace?.output, output.status == "DRAFT",
+              let readiness = workspace?.readiness else { return false }
+        return readiness.releaseAllowed && readiness.checkedRevision == output.revision
+    }
+
+    private func readinessDetail(_ change: MobileCaptureClientFollowUpReadinessChange) -> String {
+        switch change.reason {
+        case "CONTENT_CHANGED": return "changed after this draft was saved"
+        case "NO_LONGER_ELIGIBLE": return "is no longer eligible for this client follow-up"
+        case "SELECTION_MISMATCH": return "does not match the frozen source selection"
+        case "SNAPSHOT_INVALID": return "failed its immutable snapshot check"
+        default: return "failed its source-manifest check"
+        }
     }
 
     private func selectionBinding(_ keyPath: WritableKeyPath<MobileCaptureClientFollowUpDraft, Set<String>>, id: String) -> Binding<Bool> {
@@ -897,11 +915,46 @@ struct MobileCoachClientFollowUpCard: View {
 
                     if let output = workspace.output, output.status == "DRAFT" {
                         VStack(alignment: .leading, spacing: 8) {
+                            if releaseReady {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Label("Current sources verified", systemImage: "checkmark.shield.fill")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.green)
+                                    Text("All \(workspace.readiness?.selectedCount ?? 0) selected canonical records still match private revision \(output.revision). Release remains a separate confirmation.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .accessibilityIdentifier("CaptureCoachFollowUpReleaseReady")
+                            } else {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Label("Release held — review current sources", systemImage: "exclamationmark.shield.fill")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.red)
+                                    if let changes = workspace.readiness?.changes, !changes.isEmpty {
+                                        ForEach(changes, id: \.stableID) { change in
+                                            Text("\(change.kind.capitalized) · \(change.label) \(readinessDetail(change)).")
+                                                .font(.caption2.bold())
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                    } else {
+                                        Text("Quipsly could not verify this draft against current canonical records.")
+                                            .font(.caption2.bold())
+                                    }
+                                    Text("Review the current selections, then save private draft changes. Nothing has been released.")
+                                        .font(.caption2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .foregroundStyle(.red)
+                                .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeld")
+                            }
+
                             Toggle(
                                 "I reviewed revision \(output.revision) for \(output.recipientLabel). Release this exact snapshot inside Quipsly only.",
                                 isOn: $releaseConfirmed
                             )
                             .font(.caption.bold())
+                            .disabled(!releaseReady)
                             .accessibilityIdentifier("CaptureCoachFollowUpReleaseConfirmation")
 
                             Button {
@@ -920,7 +973,7 @@ struct MobileCoachClientFollowUpCard: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
-                            .disabled(previewOnly || !releaseConfirmed || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
+                            .disabled(previewOnly || !releaseReady || !releaseConfirmed || isSaving || isReleasing || !AuthManager.shared.networkActionsAllowed)
                             .accessibilityIdentifier("CaptureCoachFollowUpRelease")
                         }
                         .padding(10)

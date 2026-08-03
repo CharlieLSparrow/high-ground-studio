@@ -1835,6 +1835,21 @@ function checkTranscriptCorrectionContractSources() {
     "Selected client-safe notes and client-owned work preserve bounded same-Session transcript anchors in the immutable follow-up revision, expose exact-source return on Nest and iPhone, and keep preview save/release side effects disabled.",
   );
   expect(
+    clientFollowUpServiceText.includes("clientFollowUpDraftReadiness")
+      && clientFollowUpServiceText.includes("FOLLOW_UP_SOURCE_CHANGED")
+      && clientFollowUpServiceText.includes("loadEligibleRecords(tx, freshBoundary.room)")
+      && clientFollowUpWebText.includes("Release held — review current sources")
+      && clientFollowUpWebText.includes("Current sources verified")
+      && bridgeText.includes("MobileCaptureClientFollowUpReadiness")
+      && bridgeText.includes("workspace.readiness?.releaseAllowed == true")
+      && mobileComponentsText.includes("CaptureCoachFollowUpReleaseReady")
+      && mobileComponentsText.includes("CaptureCoachFollowUpReleaseHeld")
+      && mobileComponentsText.includes("!releaseReady || !releaseConfirmed")
+      && captureUITestText.includes("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged"),
+    "clientFollowUpReleaseSourceReadiness",
+    "Nest rechecks the immutable follow-up manifest against current eligible canonical records inside the release transaction, while web and iPhone hold release and direct the coach to save a current private revision when a selected source changes.",
+  );
+  expect(
     sessionFollowThroughServiceText.includes("progressedSinceRelease")
       && sessionFollowThroughServiceText.includes("progress.occurredAt.getTime() > selection.output.releasedAt.getTime()")
       && sessionContinuityCardText.includes("New check-in since release")

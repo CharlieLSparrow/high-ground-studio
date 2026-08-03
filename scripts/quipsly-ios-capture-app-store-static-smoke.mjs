@@ -482,7 +482,8 @@ requireIncludes(mobileText, "CaptureCoachFollowUpRelease", "the native coach edi
 requireIncludes(mobileText, "CaptureClientFollowUpSource_", "released follow-up records return to their exact permitted transcript source");
 requireIncludes(mobileText, "Exact source ·", "the native follow-up snapshot makes its immutable source range visible");
 requireIncludes(mobileText, ".disabled(previewOnly || isSaving", "deterministic preview cannot save a private follow-up revision");
-requireIncludes(mobileText, ".disabled(previewOnly || !releaseConfirmed", "deterministic preview cannot release a follow-up");
+requireIncludes(mobileText, "CaptureCoachFollowUpReleaseHeld", "the native coach editor makes changed-source release holds explicit");
+requireIncludes(mobileText, ".disabled(previewOnly || !releaseReady || !releaseConfirmed", "preview and changed-source drafts cannot release a follow-up");
 requireIncludes(bridgeText, "let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?", "native follow-up rows decode their immutable transcript anchors");
 requireIncludes(captureExperienceModelText, "capturePreviewClientFollowUpWorkspace", "deterministic Capture preview operates the real coach follow-up source-return card");
 requireIncludes(deterministicUITestsText, "testCoachFollowUpPreservesExactSourceWithoutReleasingPreview", "operated iPhone coverage verifies source return without preview mutation");

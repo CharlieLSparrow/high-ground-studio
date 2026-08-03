@@ -443,12 +443,72 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       code: "FOLLOW_UP_UNAVAILABLE",
     } satisfies Partial<ClientFollowUpError>);
 
+    await prisma.actionItem.update({
+      where: { id: taskId },
+      data: { detail: "Use the newly agreed protected rehearsal format." },
+    });
+    await expect(
+      readClientFollowUp(prisma as never, { roomId, actor: coach }),
+    ).resolves.toMatchObject({
+      readiness: {
+        status: "SOURCE_CHANGED",
+        releaseAllowed: false,
+        checkedRevision: 3,
+        changedCount: 1,
+        changes: [{
+          kind: "TASK",
+          id: taskId,
+          label: "Run one protected rehearsal",
+          reason: "CONTENT_CHANGED",
+        }],
+      },
+    });
+    await expect(
+      releaseClientFollowUp(prisma as never, {
+        roomId,
+        outputId: draft.output.id,
+        actor: coach,
+        expectedRevision: 3,
+        clientRequestId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "FOLLOW_UP_SOURCE_CHANGED",
+      details: {
+        readiness: { releaseAllowed: false, changedCount: 1 },
+      },
+    } satisfies Partial<ClientFollowUpError>);
+    const currentDraft = await updateClientFollowUpDraft(prisma as never, {
+      roomId,
+      outputId: draft.output.id,
+      actor: coach,
+      expectedRevision: 3,
+      draft: {
+        ...revisedDraftInput,
+        clientRequestId: randomUUID(),
+        title: concurrentWinner.title,
+      },
+    });
+    expect(currentDraft).toMatchObject({
+      output: { status: "DRAFT", revision: 4 },
+    });
+    await expect(
+      readClientFollowUp(prisma as never, { roomId, actor: coach }),
+    ).resolves.toMatchObject({
+      readiness: {
+        status: "READY",
+        releaseAllowed: true,
+        checkedRevision: 4,
+        changedCount: 0,
+      },
+    });
+
     const releaseRequestId = randomUUID();
     const released = await releaseClientFollowUp(prisma as never, {
       roomId,
       outputId: draft.output.id,
       actor: coach,
-      expectedRevision: 3,
+      expectedRevision: 4,
       clientRequestId: releaseRequestId,
     });
     expect(released).toMatchObject({
@@ -456,7 +516,7 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       output: {
         id: draft.output.id,
         status: "RELEASED",
-        revision: 4,
+        revision: 5,
         contentSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
         deliveryEvents: [
           {
@@ -551,13 +611,13 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       roomId,
       outputId: draft.output.id,
       actor: coach,
-      expectedRevision: 4,
+      expectedRevision: 5,
       clientRequestId: randomUUID(),
     });
     expect(revoked).toMatchObject({
       output: {
         status: "REVOKED",
-        revision: 5,
+        revision: 6,
         deliveryEvents: [
           { kind: "RELEASED_IN_APP" },
           { kind: "OPENED_IN_APP" },
@@ -575,6 +635,6 @@ runLocalDatabaseSmoke("client follow-up local database smoke", () => {
       prisma.sessionOutputRevision.count({
         where: { outputId: draft.output.id },
       }),
-    ).resolves.toBe(5);
+    ).resolves.toBe(6);
   });
 });

@@ -177,6 +177,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesStaleFollowUpPreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-follow-up-source-changed-preview"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var previewTab: CaptureRootTab? {
         #if DEBUG
         let prefix = "--capture-ui-preview-tab="
@@ -2858,6 +2869,7 @@ extension MobileCaptureSession {
     }
 
     private static var capturePreviewClientFollowUpWorkspace: MobileCaptureClientFollowUpWorkspace {
+        let sourceChanged = CaptureLaunchConfiguration.usesStaleFollowUpPreview
         let anchor = MobileCaptureTodayTranscriptSourceAnchor(
             schema: "quipsly-transcript-derived-note-v1",
             roomId: "room-preview-coaching-ready",
@@ -2906,7 +2918,22 @@ extension MobileCaptureSession {
                 client: MobileCaptureClientFollowUpParty(id: "preview-client", label: "Homer")
             ),
             eligible: MobileCaptureClientFollowUpEligible(notes: [note], goals: [], tasks: []),
-            output: output
+            output: output,
+            readiness: MobileCaptureClientFollowUpReadiness(
+                status: sourceChanged ? "SOURCE_CHANGED" : "READY",
+                releaseAllowed: !sourceChanged,
+                checkedRevision: 1,
+                selectedCount: 1,
+                changedCount: sourceChanged ? 1 : 0,
+                changes: sourceChanged ? [
+                    MobileCaptureClientFollowUpReadinessChange(
+                        kind: "NOTE",
+                        id: note.id,
+                        label: note.title ?? "Session note",
+                        reason: "CONTENT_CHANGED"
+                    ),
+                ] : []
+            )
         )
     }
 }

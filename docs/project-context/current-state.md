@@ -2,6 +2,32 @@
 
 Date: 2026-08-03
 
+## Client follow-up source-readiness checkpoint
+
+- A private coaching follow-up can no longer be released after one of its
+  selected notes, goals, or tasks changes or becomes ineligible. Nest derives
+  readiness from the immutable draft manifest and current canonical records;
+  release repeats that check inside its serializable transaction.
+- Nest and Capture show `Current sources verified` or a source-specific
+  `Release held — review current sources` state. A hold disables both recipient
+  confirmation and release until the coach saves a new immutable private
+  revision.
+- Signed-in rendered Nest operation saved revision 2 with four selected
+  records, changed one disposable canonical task, read back the exact held
+  reason and disabled controls, then saved revision 3 and restored readiness
+  without releasing anything. The local receipt is retained on the external QA
+  volume.
+- Focused Nest proof passes 3 suites / 14 tests; the disposable-PostgreSQL
+  operation passes 1/1; strict TypeScript and the mobile source contract pass;
+  all 1,016 iOS App Store static checks pass; and the compiled iPhone 17 Pro /
+  iOS 26.3.1 simulator held-release operation passes 1/1 with a permanent
+  screenshot attachment.
+- This is local/simulator proof only. No Cloud Build, deployment, production
+  write, provider mutation, physical-iPhone/TestFlight action, external
+  message, calendar change, delivery, or publication occurred. Architecture
+  and evidence are in
+  `docs/coordination/2026-08-03-client-follow-up-source-readiness.md`.
+
 ## Session review finish-line checkpoint
 
 - Nest and Quipsly Capture now share truthful review completion semantics:

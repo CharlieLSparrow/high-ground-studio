@@ -58,7 +58,12 @@ async function actor(request: Request) {
 function handled(error: unknown) {
   if (error instanceof ClientFollowUpError) {
     return privateJson(
-      { ok: false, code: error.code, error: error.message },
+      {
+        ok: false,
+        code: error.code,
+        error: error.message,
+        ...(error.details ?? {}),
+      },
       error.status,
     );
   }

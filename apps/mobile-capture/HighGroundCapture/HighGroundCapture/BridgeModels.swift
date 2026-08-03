@@ -548,11 +548,30 @@ struct MobileCaptureClientFollowUpEligible: Codable, Hashable {
     let tasks: [MobileCaptureClientFollowUpTask]
 }
 
+struct MobileCaptureClientFollowUpReadinessChange: Codable, Identifiable, Hashable {
+    let kind: String
+    let id: String
+    let label: String
+    let reason: String
+
+    var stableID: String { "\(kind)|\(id)|\(reason)" }
+}
+
+struct MobileCaptureClientFollowUpReadiness: Codable, Hashable {
+    let status: String
+    let releaseAllowed: Bool
+    let checkedRevision: Int
+    let selectedCount: Int
+    let changedCount: Int
+    let changes: [MobileCaptureClientFollowUpReadinessChange]
+}
+
 struct MobileCaptureClientFollowUpWorkspace: Codable, Hashable {
     let role: String
     let room: MobileCaptureClientFollowUpRoom
     let eligible: MobileCaptureClientFollowUpEligible?
     let output: MobileCaptureClientFollowUp?
+    let readiness: MobileCaptureClientFollowUpReadiness?
 
     var isCoach: Bool { role == "COACH" }
 }
@@ -1258,6 +1277,7 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
     let room: Room?
     let eligible: MobileCaptureClientFollowUpEligible?
     let output: Output?
+    let readiness: MobileCaptureClientFollowUpReadiness?
 
     private var mappedOutput: MobileCaptureClientFollowUp? {
         guard let output else { return nil }
@@ -1291,7 +1311,8 @@ private struct MobileCaptureClientFollowUpReadResponse: Decodable {
                 client: MobileCaptureClientFollowUpParty(id: room.client.id, label: room.client.label)
             ),
             eligible: eligible,
-            output: mappedOutput
+            output: mappedOutput,
+            readiness: readiness
         )
     }
 
@@ -7422,6 +7443,12 @@ final class CaptureSessionClient: ObservableObject {
               output.status == "DRAFT" else {
             status = "Private draft required"
             errorMessage = "Save and inspect one current private draft before releasing it."
+            return false
+        }
+        guard workspace.readiness?.releaseAllowed == true,
+              workspace.readiness?.checkedRevision == output.revision else {
+            status = "Release held"
+            errorMessage = "One or more selected notes, goals, or tasks changed after this private draft was saved. Review and save a current private revision before release."
             return false
         }
         guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),

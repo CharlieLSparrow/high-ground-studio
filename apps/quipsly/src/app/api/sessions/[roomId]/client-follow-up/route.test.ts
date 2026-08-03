@@ -258,6 +258,49 @@ describe("Session client follow-up route", () => {
     );
   });
 
+  it("returns structured source readiness when the release transaction holds a stale draft", async () => {
+    const readiness = {
+      status: "SOURCE_CHANGED",
+      releaseAllowed: false,
+      checkedRevision: 3,
+      selectedCount: 1,
+      changedCount: 1,
+      changes: [{
+        kind: "TASK",
+        id: "task-1",
+        label: "Run one protected rehearsal",
+        reason: "CONTENT_CHANGED",
+      }],
+    };
+    mockedRelease.mockRejectedValue(
+      new ClientFollowUpError(
+        409,
+        "FOLLOW_UP_SOURCE_CHANGED",
+        "Review and save a current private revision before release.",
+        { readiness },
+      ),
+    );
+
+    const response = await POST(
+      request("POST", {
+        action: "RELEASE",
+        clientRequestId: REQUEST_ID,
+        outputId: "follow-up-1",
+        expectedRevision: 3,
+      }),
+      context(),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({
+      ok: false,
+      code: "FOLLOW_UP_SOURCE_CHANGED",
+      error: "Review and save a current private revision before release.",
+      readiness,
+    });
+  });
+
   it("fails closed with a concealed domain error and no cacheable body", async () => {
     mockedRead.mockRejectedValue(
       new ClientFollowUpError(

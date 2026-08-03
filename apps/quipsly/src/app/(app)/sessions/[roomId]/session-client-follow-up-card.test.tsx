@@ -137,6 +137,15 @@ const releasedOutput = {
   ],
 };
 
+const readyReadiness = {
+  status: "READY",
+  releaseAllowed: true,
+  checkedRevision: 1,
+  selectedCount: 3,
+  changedCount: 0,
+  changes: [],
+};
+
 describe("SessionClientFollowUpCard", () => {
   const originalFetch = global.fetch;
 
@@ -155,6 +164,7 @@ describe("SessionClientFollowUpCard", () => {
     };
     const draftState = {
       ...coachState,
+      readiness: readyReadiness,
       output: {
         ...releasedOutput,
         status: "DRAFT",
@@ -314,9 +324,14 @@ describe("SessionClientFollowUpCard", () => {
       role: "COACH",
       room,
       eligible,
+      readiness: readyReadiness,
       output: draftOutput,
     };
-    const revisedState = { ...initialState, output: revisedOutput };
+    const revisedState = {
+      ...initialState,
+      readiness: { ...readyReadiness, checkedRevision: 2 },
+      output: revisedOutput,
+    };
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(response(initialState))
@@ -365,5 +380,47 @@ describe("SessionClientFollowUpCard", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/Editing private revision 2/i)).toBeInTheDocument();
+  });
+
+  it("holds release when a selected canonical record changed and directs the coach to save a current revision", async () => {
+    const draftOutput = {
+      ...releasedOutput,
+      status: "DRAFT",
+      revision: 4,
+      releasedAt: null,
+    };
+    const state = {
+      ok: true,
+      role: "COACH",
+      room,
+      eligible: {
+        ...eligible,
+        tasks: [{ ...eligible.tasks[0], detail: "Use the newly agreed rehearsal format." }],
+      },
+      output: draftOutput,
+      readiness: {
+        status: "SOURCE_CHANGED",
+        releaseAllowed: false,
+        checkedRevision: 4,
+        selectedCount: 3,
+        changedCount: 1,
+        changes: [{
+          kind: "TASK",
+          id: "task-client",
+          label: "Run one protected rehearsal",
+          reason: "CONTENT_CHANGED",
+        }],
+      },
+    };
+    global.fetch = jest.fn().mockResolvedValue(response(state)) as typeof fetch;
+
+    render(<SessionClientFollowUpCard roomId="room-1" />);
+
+    expect(await screen.findByText("Release held — review current sources")).toBeInTheDocument();
+    expect(screen.getByText(/Task · Run one protected rehearsal/).closest("li")).toHaveTextContent(/changed after this draft was saved/i);
+    expect(screen.getByText(/Review the current selections.*save private draft changes/i)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /I reviewed this exact snapshot/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Release to client in Quipsly" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
   });
 });

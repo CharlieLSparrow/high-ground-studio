@@ -118,6 +118,7 @@ type FollowUpOutput = {
 
 type FollowUpResponse = {
   ok: boolean;
+  code?: string;
   error?: string;
   role?: "COACH" | "CLIENT";
   room?: {
@@ -133,6 +134,24 @@ type FollowUpResponse = {
     goals: EligibleGoal[];
   } | null;
   output?: FollowUpOutput | null;
+  readiness?: {
+    status: "READY" | "SOURCE_CHANGED";
+    releaseAllowed: boolean;
+    checkedRevision: number;
+    selectedCount: number;
+    changedCount: number;
+    changes: Array<{
+      kind: "FOLLOW_UP" | "NOTE" | "GOAL" | "TASK";
+      id: string;
+      label: string;
+      reason:
+        | "SNAPSHOT_INVALID"
+        | "MANIFEST_INVALID"
+        | "SELECTION_MISMATCH"
+        | "NO_LONGER_ELIGIBLE"
+        | "CONTENT_CHANGED";
+    }>;
+  } | null;
 };
 
 function selectedState(values: string[]) {
@@ -165,6 +184,14 @@ function formatMediaTime(value: number) {
   return hours > 0
     ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
     : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function readinessChangeLabel(reason: NonNullable<FollowUpResponse["readiness"]>["changes"][number]["reason"]) {
+  if (reason === "CONTENT_CHANGED") return "changed after this draft was saved";
+  if (reason === "NO_LONGER_ELIGIBLE") return "is no longer eligible for this client follow-up";
+  if (reason === "SELECTION_MISMATCH") return "does not match the frozen source selection";
+  if (reason === "SNAPSHOT_INVALID") return "failed its immutable snapshot check";
+  return "failed its source-manifest check";
 }
 
 function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnchor | null | undefined; recordLabel: string }) {
@@ -432,6 +459,9 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
   }, [load]);
 
   const selectedCount = noteIds.size + taskIds.size + goalIds.size;
+  const releaseReady = snapshot?.output?.status === "DRAFT"
+    && snapshot.readiness?.releaseAllowed === true
+    && snapshot.readiness.checkedRevision === snapshot.output.revision;
   const opened = useMemo(
     () =>
       snapshot?.output?.deliveryEvents.some(
@@ -493,10 +523,12 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
       const payload = (await response.json()) as FollowUpResponse & {
         idempotentReplay?: boolean;
       };
-      if (!response.ok || !payload.ok)
+      if (!response.ok || !payload.ok) {
+        if (payload.code === "FOLLOW_UP_SOURCE_CHANGED") await load();
         throw new Error(
           payload.error || "The client follow-up operation was not confirmed.",
         );
+      }
       setNotice(
         action === "CREATE_DRAFT" || action === "UPDATE_DRAFT"
           ? action === "CREATE_DRAFT"
@@ -864,10 +896,27 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
             )}
             {snapshot.output?.status === "DRAFT" ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                {releaseReady ? (
+                  <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" data-testid="client-follow-up-release-ready">
+                    <p className="text-xs font-black">Current sources verified</p>
+                    <p className="mt-1 text-xs font-semibold leading-5">All {snapshot.readiness?.selectedCount ?? 0} selected canonical records still match private revision {snapshot.output.revision}. Release remains a separate confirmation.</p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950" role="alert" data-testid="client-follow-up-release-held">
+                    <p className="text-xs font-black">Release held — review current sources</p>
+                    {snapshot.readiness?.changes.length ? (
+                      <ul className="mt-2 space-y-1 text-xs font-semibold leading-5">
+                        {snapshot.readiness.changes.map((change, index) => <li key={`${change.kind}:${change.id}:${change.reason}:${index}`}><span className="font-black">{change.kind === "FOLLOW_UP" ? "Follow-up" : change.kind.charAt(0) + change.kind.slice(1).toLowerCase()} · {change.label}</span> {readinessChangeLabel(change.reason)}.</li>)}
+                      </ul>
+                    ) : <p className="mt-1 text-xs font-semibold leading-5">Quipsly could not verify this draft against current canonical records. Save a current private revision before release.</p>}
+                    <p className="mt-2 text-xs font-bold leading-5">Review the current selections on the left, then save private draft changes. Nothing has been released.</p>
+                  </div>
+                )}
                 <label className="flex cursor-pointer items-start gap-3 text-xs font-bold leading-5 text-amber-950">
                   <input
                     type="checkbox"
                     checked={releaseConfirmed}
+                    disabled={!releaseReady}
                     onChange={(event) =>
                       setReleaseConfirmed(event.target.checked)
                     }
@@ -879,7 +928,7 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
                 </label>
                 <button
                   type="button"
-                  disabled={!releaseConfirmed || busy !== null}
+                  disabled={!releaseReady || !releaseConfirmed || busy !== null}
                   onClick={() => void mutate("RELEASE")}
                   className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"
                 >

@@ -7,6 +7,9 @@ final class CaptureExperienceUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
+            app.launchArguments.append("--capture-follow-up-source-changed-preview")
+        }
         let launchesWatchPreview: Bool
         if name.contains(
             "testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip"
@@ -1423,6 +1426,48 @@ final class CaptureExperienceUITests: XCTestCase {
         revealBelow(release, in: recorderScroll)
         XCTAssertTrue(release.waitForExistence(timeout: 5))
         XCTAssertFalse(release.isEnabled, "Preview must not release a coaching follow-up.")
+    }
+
+    func testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged() throws {
+        app.buttons["CaptureOpenNextSessionButton"].tap()
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+
+        let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
+        reveal(followUp)
+        XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+
+        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
+        let held = app.descendants(matching: .any)["CaptureCoachFollowUpReleaseHeld"].firstMatch
+        revealBelow(held, in: recorderScroll)
+        XCTAssertTrue(held.waitForExistence(timeout: 5))
+        XCTAssertTrue(held.label.contains("Release held — review current sources"))
+        let sourceChanges = app.staticTexts
+            .matching(identifier: "CaptureCoachFollowUpReleaseHeld")
+            .matching(
+                NSPredicate(
+                    format: "label CONTAINS %@",
+                    "Opening question changed after this draft was saved"
+                )
+            )
+        XCTAssertEqual(sourceChanges.count, 1)
+        let sourceChange = sourceChanges.element(boundBy: 0)
+        XCTAssertTrue(
+            sourceChange.label.contains("Opening question changed after this draft was saved")
+        )
+        let sourceReadinessScreenshot = XCTAttachment(screenshot: app.screenshot())
+        sourceReadinessScreenshot.name = "Coach follow-up changed-source release hold"
+        sourceReadinessScreenshot.lifetime = .keepAlways
+        add(sourceReadinessScreenshot)
+
+        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
+        revealBelow(confirmation, in: recorderScroll)
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmation.isEnabled)
+
+        let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
+        revealBelow(release, in: recorderScroll)
+        XCTAssertTrue(release.waitForExistence(timeout: 5))
+        XCTAssertFalse(release.isEnabled)
     }
 
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {

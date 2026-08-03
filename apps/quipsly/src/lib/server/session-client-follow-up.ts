@@ -35,6 +35,7 @@ export class ClientFollowUpError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -44,6 +45,10 @@ function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function persistedJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function clean(value: unknown, max: number) {
@@ -396,7 +401,7 @@ function buildDraftContent(input: {
     );
   }
 
-  const body = {
+  const body = persistedJson({
     schema: CLIENT_FOLLOW_UP_SCHEMA,
     title: input.title,
     intro: input.intro || null,
@@ -429,7 +434,7 @@ function buildDraftContent(input: {
       sourceAnchor: taskSourceAnchor(task),
     })),
     nextSessionFocus: input.nextSessionFocus || null,
-  };
+  });
   const sourceManifest = {
     schema: CLIENT_FOLLOW_UP_MANIFEST_SCHEMA,
     roomId: input.room.id,
@@ -478,12 +483,156 @@ function buildDraftContent(input: {
       projectTeamNotesIncluded: false,
       unreviewedCandidatesIncluded: false,
       sourceAnchorsRestrictedToSession: true,
+      snapshotHashCanonical: true,
       externalMessageSent: false,
       providerCalendarMutated: false,
       publicationPerformed: false,
     },
   };
   return { body, sourceManifest, contentSha256: clientFollowUpSha256(body) };
+}
+
+type ClientFollowUpReadinessChange = {
+  kind: "FOLLOW_UP" | "NOTE" | "GOAL" | "TASK";
+  id: string;
+  label: string;
+  reason:
+    | "SNAPSHOT_INVALID"
+    | "MANIFEST_INVALID"
+    | "SELECTION_MISMATCH"
+    | "NO_LONGER_ELIGIBLE"
+    | "CONTENT_CHANGED";
+};
+
+function manifestItems(value: unknown) {
+  return Array.isArray(value) ? value.map(object) : [];
+}
+
+function bodyItems(value: unknown) {
+  return Array.isArray(value) ? value.map(object) : [];
+}
+
+function bodyRecordLabel(
+  body: Record<string, unknown>,
+  kind: "notes" | "goals" | "tasks",
+  id: string,
+) {
+  const record = bodyItems(body[kind]).find((item) => clean(item.id, 240) === id);
+  return clean(record?.title, 500) || (kind === "notes" ? "Session note" : kind === "goals" ? "Goal" : "Task");
+}
+
+function recordContentSha256(
+  kind: "notes" | "goals" | "tasks",
+  record: any,
+  roomId: string,
+) {
+  if (kind === "notes") {
+    const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedNoteSource(record.sourceJson), roomId);
+    return clientFollowUpSha256({
+      title: record.title,
+      body: record.body,
+      kind: record.kind,
+      sourceAnchor,
+    });
+  }
+  if (kind === "goals") {
+    const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedGoalSource(record.sourceJson), roomId);
+    return clientFollowUpSha256({
+      title: record.title,
+      description: record.description,
+      status: record.status,
+      targetAt: record.targetAt?.toISOString() ?? null,
+      sourceAnchor,
+    });
+  }
+  const sourceAnchor = sourceAnchorForRoom(readTranscriptDerivedTaskSource(record.sourceJson), roomId);
+  return clientFollowUpSha256({
+    title: record.title,
+    detail: record.detail,
+    status: record.status,
+    dueAt: record.dueAt?.toISOString() ?? null,
+    sourceAnchor,
+  });
+}
+
+export function clientFollowUpDraftReadiness(input: {
+  output: any;
+  records: Awaited<ReturnType<typeof loadEligibleRecords>>;
+}) {
+  const output = input.output;
+  if (!output || output.status !== "DRAFT") return null;
+  const changes: ClientFollowUpReadinessChange[] = [];
+  const body = object(output.bodyJson);
+  const manifest = object(output.sourceManifestJson);
+  const manifestRecords = object(manifest.records);
+  const addFollowUpChange = (
+    reason: ClientFollowUpReadinessChange["reason"],
+    label: string,
+  ) => {
+    changes.push({ kind: "FOLLOW_UP", id: output.id, label, reason });
+  };
+
+  const manifestBoundaries = object(manifest.boundaries);
+  if (
+    manifestBoundaries.snapshotHashCanonical === true &&
+    clientFollowUpSha256(output.bodyJson) !== output.contentSha256
+  ) {
+    addFollowUpChange("SNAPSHOT_INVALID", "Follow-up snapshot");
+  }
+  if (
+    body.schema !== CLIENT_FOLLOW_UP_SCHEMA ||
+    manifest.schema !== CLIENT_FOLLOW_UP_MANIFEST_SCHEMA ||
+    manifest.roomId !== output.roomId ||
+    manifest.recipientUserId !== output.recipientUserId
+  ) {
+    addFollowUpChange("MANIFEST_INVALID", "Source manifest");
+  }
+
+  const kinds = [
+    { bodyKey: "notes", manifestKey: "notes", kind: "NOTE" },
+    { bodyKey: "goals", manifestKey: "goals", kind: "GOAL" },
+    { bodyKey: "tasks", manifestKey: "tasks", kind: "TASK" },
+  ] as const;
+  for (const spec of kinds) {
+    const current = new Map(input.records[spec.bodyKey].map((item: any) => [item.id, item]));
+    const bodyIds = bodyItems(body[spec.bodyKey]).map((item) => clean(item.id, 240)).filter(Boolean);
+    const entries = manifestItems(manifestRecords[spec.manifestKey]);
+    const manifestIds = entries.map((item) => clean(item.id, 240)).filter(Boolean);
+    if (
+      new Set(bodyIds).size !== bodyIds.length ||
+      new Set(manifestIds).size !== manifestIds.length ||
+      [...bodyIds].sort().join("|") !== [...manifestIds].sort().join("|")
+    ) {
+      addFollowUpChange("SELECTION_MISMATCH", `${spec.kind.toLowerCase()} selection`);
+    }
+    for (const entry of entries) {
+      const id = clean(entry.id, 240);
+      const label = bodyRecordLabel(body, spec.bodyKey, id);
+      const expectedSha256 = clean(entry.contentSha256, 64).toLowerCase();
+      if (!id || !/^[a-f0-9]{64}$/.test(expectedSha256)) {
+        changes.push({ kind: spec.kind, id: id || output.id, label, reason: "MANIFEST_INVALID" });
+        continue;
+      }
+      const record = current.get(id);
+      if (!record) {
+        changes.push({ kind: spec.kind, id, label, reason: "NO_LONGER_ELIGIBLE" });
+        continue;
+      }
+      if (recordContentSha256(spec.bodyKey, record, output.roomId) !== expectedSha256) {
+        changes.push({ kind: spec.kind, id, label, reason: "CONTENT_CHANGED" });
+      }
+    }
+  }
+
+  return {
+    status: changes.length ? ("SOURCE_CHANGED" as const) : ("READY" as const),
+    releaseAllowed: changes.length === 0,
+    checkedRevision: output.revision,
+    selectedCount:
+      bodyItems(body.notes).length + bodyItems(body.goals).length + bodyItems(body.tasks).length,
+    changedCount: changes.length,
+    changes,
+  };
 }
 
 export async function readClientFollowUp(
@@ -511,6 +660,9 @@ export async function readClientFollowUp(
     orderBy: [{ releasedAt: "desc" }, { updatedAt: "desc" }],
     select: OUTPUT_SELECT,
   });
+  const readiness = boundary.isCoach && records && output?.status === "DRAFT"
+    ? clientFollowUpDraftReadiness({ output, records })
+    : null;
   return {
     role: boundary.isCoach ? ("COACH" as const) : ("CLIENT" as const),
     room: {
@@ -536,6 +688,7 @@ export async function readClientFollowUp(
     },
     eligible: records ? eligibleSummary(records, boundary.room.id) : null,
     output: serializeOutput(output),
+    readiness,
     boundaries: {
       draftsVisibleToClient: false,
       privateNotesEligible: false,
@@ -962,16 +1115,62 @@ async function transitionOutput(
   const nextRevision = current.revision + 1;
   const updated = await client.$transaction(
     async (tx: any) => {
-      const changed = await tx.sessionOutput.updateMany({
+      const freshBoundary = await loadBoundary(tx, input.roomId, input.actor);
+      if (!freshBoundary.isCoach) {
+        throw new ClientFollowUpError(
+          403,
+          "COACH_REQUIRED",
+          "Only the assigned coach can change client follow-up visibility.",
+        );
+      }
+      const freshCurrent = await tx.sessionOutput.findFirst({
         where: {
           id: current.id,
+          roomId: freshBoundary.room.id,
+          createdByUserId: input.actor.id,
+          recipientUserId: freshBoundary.room.booking.clientUserId,
+          kind: "CLIENT_FOLLOW_UP",
           status: expectedStatus,
           revision: current.revision,
+        },
+        select: OUTPUT_SELECT,
+      });
+      if (!freshCurrent) {
+        throw new ClientFollowUpError(
+          409,
+          "STALE_FOLLOW_UP",
+          "The client follow-up changed before this visibility decision.",
+        );
+      }
+      if (input.action === "RELEASE") {
+        const records = await loadEligibleRecords(tx, freshBoundary.room);
+        const readiness = clientFollowUpDraftReadiness({
+          output: freshCurrent,
+          records,
+        });
+        if (!readiness?.releaseAllowed) {
+          throw new ClientFollowUpError(
+            409,
+            "FOLLOW_UP_SOURCE_CHANGED",
+            "One or more selected notes, goals, or tasks changed after this private draft was saved. Review and save a current private revision before release.",
+            { readiness },
+          );
+        }
+      }
+      const changed = await tx.sessionOutput.updateMany({
+        where: {
+          id: freshCurrent.id,
+          roomId: freshBoundary.room.id,
+          createdByUserId: input.actor.id,
+          recipientUserId: freshBoundary.room.booking.clientUserId,
+          kind: "CLIENT_FOLLOW_UP",
+          status: expectedStatus,
+          revision: freshCurrent.revision,
         },
         data: {
           status: nextStatus,
           revision: nextRevision,
-          releasedAt: input.action === "RELEASE" ? now : current.releasedAt,
+          releasedAt: input.action === "RELEASE" ? now : freshCurrent.releasedAt,
           revokedAt: input.action === "REVOKE" ? now : null,
         },
       });
@@ -985,18 +1184,18 @@ async function transitionOutput(
       await tx.sessionOutputRevision.create({
         data: {
           id: randomUUID(),
-          outputId: current.id,
+          outputId: freshCurrent.id,
           revision: nextRevision,
           operation: input.action === "RELEASE" ? "RELEASED_IN_APP" : "REVOKED",
           actorUserId: input.actor.id,
           snapshotJson: {
-            ...outputSnapshot(current),
+            ...outputSnapshot(freshCurrent),
             status: nextStatus,
             revision: nextRevision,
             releasedAt:
               input.action === "RELEASE"
                 ? now.toISOString()
-                : (current.releasedAt?.toISOString() ?? null),
+                : (freshCurrent.releasedAt?.toISOString() ?? null),
             revokedAt: input.action === "REVOKE" ? now.toISOString() : null,
           },
         },
@@ -1004,14 +1203,14 @@ async function transitionOutput(
       await tx.deliveryEvent.create({
         data: {
           id: randomUUID(),
-          outputId: current.id,
-          roomId: current.roomId,
+          outputId: freshCurrent.id,
+          roomId: freshCurrent.roomId,
           actorUserId: input.actor.id,
-          recipientUserId: current.recipientUserId,
+          recipientUserId: freshCurrent.recipientUserId,
           kind: eventKind,
           destination: "quipsly-session",
           status: "CONFIRMED",
-          contentSha256: current.contentSha256,
+          contentSha256: freshCurrent.contentSha256,
           clientRequestId: input.clientRequestId,
           occurredAt: now,
           metadataJson: {
@@ -1023,7 +1222,7 @@ async function transitionOutput(
         },
       });
       return tx.sessionOutput.findUnique({
-        where: { id: current.id },
+        where: { id: freshCurrent.id },
         select: OUTPUT_SELECT,
       });
     },

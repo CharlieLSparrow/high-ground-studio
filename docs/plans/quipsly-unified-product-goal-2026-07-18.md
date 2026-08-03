@@ -757,6 +757,31 @@ Before this goal can be marked complete, preserve screenshots or interaction rec
 
 The work is not done if the tests pass but the real episode, session, or document still needs manual reconstruction elsewhere.
 
+## 2026-08-03 Client follow-up source-readiness checkpoint
+
+This is an active-goal checkpoint, not a completion claim.
+
+- Private client follow-up revisions now bind deterministic hashes of every
+  selected canonical note, goal, and task. Nest derives `READY` or
+  `SOURCE_CHANGED` from the immutable manifest and current eligible records;
+  release repeats the complete check inside its serializable transaction.
+- Nest and Quipsly Capture expose the same source-specific readiness language.
+  A stale, malformed, mismatched, or no-longer-eligible source disables both
+  recipient confirmation and release until the coach saves a new immutable
+  private revision. Nothing refreshes or releases silently.
+- Signed-in rendered Nest operation saved a four-record revision, changed one
+  disposable canonical task, read back the exact held reason and disabled
+  controls, then saved a current revision and restored readiness without
+  releasing. The receipt remains on the external QA volume.
+- Focused web and database proof, strict TypeScript, mobile and App Store
+  contracts, and the compiled iPhone 17 Pro simulator held-release operation
+  pass. The native result retains a screenshot of the actual source-specific
+  hold.
+- Physical-iPhone operation, network-loss/retry, production deployment,
+  separate-account client readback, and a genuine coaching delivery remain
+  outstanding. No cloud build, deploy, production write, provider mutation,
+  external message, calendar change, or publication occurred.
+
 ## 2026-08-03 Session review finish-line checkpoint
 
 This is an active-goal checkpoint, not a completion claim.
