@@ -6,7 +6,8 @@ project_id="${GOOGLE_CLOUD_PROJECT:-high-ground-odyssey}"
 bucket_name="${CLOUD_BUILD_SOURCE_BUCKET:-high-ground-odyssey_cloudbuild}"
 bucket="gs://${bucket_name}"
 policy_file="${repo_root}/scripts/release/high-ground-odyssey-cloud-build-source-lifecycle.json"
-activate=0
+activate_lifecycle=0
+disable_soft_delete=0
 
 if [[ "${1:-}" == "--" ]]; then
   shift
@@ -14,7 +15,7 @@ fi
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/release/quipsly-cloud-build-source-retention.sh [--activate-after-audit]
+Usage: bash scripts/release/quipsly-cloud-build-source-retention.sh [--activate-after-audit|--disable-soft-delete-after-audit]
 
 Without a flag, audits the dedicated Cloud Build upload bucket and prints the
 bounded seven-day lifecycle plan without changing Google Cloud.
@@ -22,15 +23,20 @@ bounded seven-day lifecycle plan without changing Google Cloud.
 Activation additionally requires:
   CONFIRM_CLOUD_BUILD_SOURCE_EXPIRY=high-ground-odyssey-cloudbuild-source-7d
 
+Disabling the bucket's redundant soft-delete window additionally requires:
+  CONFIRM_CLOUD_BUILD_SOURCE_SOFT_DELETE=disable-high-ground-odyssey-cloudbuild-soft-delete
+
 The policy expires only reconstructable objects under source/ after seven days.
 It does not touch build logs, Artifact Registry images, application media,
-database backups, or any other bucket.
+database backups, or any other bucket. Clearing soft delete affects only future
+deletions and does not purge objects that are already soft-deleted.
 EOF
 }
 
 case "${1:-}" in
   "") ;;
-  --activate-after-audit) activate=1 ;;
+  --activate-after-audit) activate_lifecycle=1 ;;
+  --disable-soft-delete-after-audit) disable_soft_delete=1 ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -70,6 +76,16 @@ if [[ "${resolved_bucket}" != "${bucket_name}" ]]; then
   exit 1
 fi
 
+soft_delete_seconds="$(
+  gcloud storage buckets describe "${bucket}" \
+    --format='value(soft_delete_policy.retentionDurationSeconds)'
+)"
+if [[ -n "${soft_delete_seconds}" && "${soft_delete_seconds}" != "0" ]]; then
+  echo "Soft delete: enabled for ${soft_delete_seconds} seconds after lifecycle deletion"
+else
+  echo "Soft delete: disabled"
+fi
+
 inventory="$(mktemp)"
 trap 'rm -f "${inventory}"' EXIT
 gcloud storage ls --long --recursive "${bucket}/**" > "${inventory}"
@@ -106,19 +122,20 @@ console.log(`Currently older than seven days: ${eligibleCount} archives / ${(eli
 NODE
 
 echo "Policy: expire only ${bucket}/source/ objects after seven days"
-if [[ "${activate}" != "1" ]]; then
-  echo "No lifecycle change performed."
+if [[ "${activate_lifecycle}" != "1" && "${disable_soft_delete}" != "1" ]]; then
+  echo "No bucket change performed."
   exit 0
 fi
 
-if [[ "${CONFIRM_CLOUD_BUILD_SOURCE_EXPIRY:-}" != "high-ground-odyssey-cloudbuild-source-7d" ]]; then
-  echo "Refusing activation without CONFIRM_CLOUD_BUILD_SOURCE_EXPIRY=high-ground-odyssey-cloudbuild-source-7d." >&2
-  exit 2
-fi
+if [[ "${activate_lifecycle}" == "1" ]]; then
+  if [[ "${CONFIRM_CLOUD_BUILD_SOURCE_EXPIRY:-}" != "high-ground-odyssey-cloudbuild-source-7d" ]]; then
+    echo "Refusing activation without CONFIRM_CLOUD_BUILD_SOURCE_EXPIRY=high-ground-odyssey-cloudbuild-source-7d." >&2
+    exit 2
+  fi
 
-gcloud storage buckets update "${bucket}" --lifecycle-file="${policy_file}"
-readback="$(gcloud storage buckets describe "${bucket}" --format='json(lifecycle_config)')"
-node - "${readback}" <<'NODE'
+  gcloud storage buckets update "${bucket}" --lifecycle-file="${policy_file}"
+  readback="$(gcloud storage buckets describe "${bucket}" --format='json(lifecycle_config)')"
+  node - "${readback}" <<'NODE'
 const state = JSON.parse(process.argv[2]);
 const rules = state?.lifecycle_config?.rule;
 const rule = Array.isArray(rules) ? rules[0] : null;
@@ -132,3 +149,24 @@ if (
 }
 console.log("PASS Live Cloud Build source lifecycle matches the checked-in policy.");
 NODE
+fi
+
+if [[ "${disable_soft_delete}" == "1" ]]; then
+  if [[ "${CONFIRM_CLOUD_BUILD_SOURCE_SOFT_DELETE:-}" != "disable-high-ground-odyssey-cloudbuild-soft-delete" ]]; then
+    echo "Refusing change without CONFIRM_CLOUD_BUILD_SOURCE_SOFT_DELETE=disable-high-ground-odyssey-cloudbuild-soft-delete." >&2
+    exit 2
+  fi
+
+  gcloud storage buckets update "${bucket}" --clear-soft-delete
+  soft_delete_readback="$(
+    gcloud storage buckets describe "${bucket}" --format='json(soft_delete_policy)'
+  )"
+  node - "${soft_delete_readback}" <<'NODE'
+const state = JSON.parse(process.argv[2]);
+const seconds = Number(state?.soft_delete_policy?.retentionDurationSeconds ?? 0);
+if (!Number.isFinite(seconds) || seconds !== 0) {
+  throw new Error("Live Cloud Build source bucket still has a soft-delete retention window.");
+}
+console.log("PASS Cloud Build source soft delete is disabled; already-soft-deleted objects remain untouched.");
+NODE
+fi

@@ -138,6 +138,22 @@ pnpm quipsly:cloud:build-source-retention
 Keeping seven days supports recent build diagnosis while Git plus immutable
 release images remain the durable source and binary evidence.
 
+The upload bucket is intentionally different from a backup or media bucket.
+Its contents are temporary, reconstructable Git source archives, so its normal
+seven-day lifecycle must not be followed by a second seven-day soft-delete
+window. Audit and disable only that bucket's redundant recovery window with:
+
+```bash
+CONFIRM_CLOUD_BUILD_SOURCE_SOFT_DELETE=disable-high-ground-odyssey-cloudbuild-soft-delete \
+  bash scripts/release/quipsly-cloud-build-source-retention.sh \
+  --disable-soft-delete-after-audit
+```
+
+The operator proves that every live object is under `source/`, does not directly
+delete an object, and verifies the live bucket readback. Clearing soft delete
+does not purge objects already in the soft-deleted state. Never copy this policy
+to database, media, release-evidence, or user-content buckets.
+
 ## Cloud Run, SQL, and Gemini
 
 - Keep Cloud Run request-based and `minScale=0` unless measured latency makes a
@@ -328,3 +344,48 @@ not changed.
 
 The read-only post-change audit receipt is
 `/private/tmp/quipsly-cloud-cost-audit-20260803-tightened.json`.
+
+## Temporary source and database follow-up — 2026-08-03
+
+The dedicated Cloud Build upload bucket still contained 449 `source/` archives
+totaling 36.45 GB. Its exact-prefix seven-day lifecycle had just been activated,
+making 393 archives / 31.67 GB eligible for asynchronous expiry, but the bucket
+also retained Google's default seven-day soft-delete window. That second window
+would continue charging for short-lived source archives after lifecycle
+deletion even though Git and immutable release images are the recovery sources.
+
+The checked-in operator now audits the soft-delete state and requires a separate
+exact confirmation before clearing it. Live activation changed only
+`gs://high-ground-odyssey_cloudbuild` from 604,800 seconds to zero and preserved
+the existing `source/`, age-seven lifecycle. It did not directly delete any
+object, and objects already soft-deleted retain their existing recovery period.
+Google explicitly warns that temporary-data buckets can incur significantly
+higher storage cost from [soft
+delete](https://cloud.google.com/storage/docs/soft-delete) while confirming that
+already-soft-deleted objects are not affected by clearing the policy.
+
+Cloud SQL was also measured rather than guessed. `studio-postgres` remains the
+single zonal PostgreSQL 16 `db-f1-micro` with 10 GB HDD and seven backups. Across
+the prior 30 days, its daily maximum CPU was approximately 8.5%–51.7%, reported
+memory utilization was continuously 100%, and database bytes used were only
+about 97–122 MB. There is no smaller Cloud SQL tier; stopping it would stop
+production Nest, while reducing backup retention would save negligible storage
+at the cost of recovery. No SQL setting changed. A future database cost change
+must be a measured migration to a different durable architecture, not a
+production shutdown disguised as optimization.
+
+Artifact Registry readback was 477 versions and approximately 98.5 GB while the
+three-day/delete plus keep-ten policy was less than one day old. Per-image
+accounting attributes the bulk to cache packages, but double-counts shared
+layers. Google documents that [Artifact Registry cleanup is periodic and changes
+take effect in approximately one
+day](https://cloud.google.com/artifact-registry/docs/repositories/cleanup-policy-overview),
+so tightening the keep set again before the first policy converges would
+sacrifice rollback evidence without establishing incremental savings. The next
+readback gate is after `2026-08-04T16:03:25Z`.
+
+The post-change read-only receipt is
+`/private/tmp/quipsly-cloud-cost-audit-20260803-soft-delete.json`. It confirms
+113 builds / $38.14 estimated priced compute in the 30-day historical window,
+477 registry versions, all four Cloud Run services at zero minimum instances,
+and no mutation by the audit itself.

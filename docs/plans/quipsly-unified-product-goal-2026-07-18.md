@@ -7021,3 +7021,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   genuine coaching use, production separate-account proof, and authorized
   delivery remain open. No cloud build, deploy, production database write,
   provider mutation, or App Store action occurred.
+
+### Cloud temporary-source retention correction — 2026-08-03
+
+- Measured the remaining recurring-cost boundaries instead of attributing the
+  whole bill to deployments. Cloud SQL is the live smallest-tier production
+  database; 30-day telemetry shows approximately 97–122 MB of data, daily CPU
+  maxima from 8.5% to 51.7%, and continuously saturated reported memory. It was
+  not stopped, downsized, or made less recoverable.
+- Confirmed that Artifact Registry's 477 versions / approximately 98.5 GB are
+  dominated by cache-image accounting while the active three-day/delete,
+  keep-ten policy is still inside Google's approximately one-day application
+  window. No image, package, repository, live digest, or rollback identity was
+  directly deleted.
+- Closed an independent temporary-storage leak: the dedicated Cloud Build
+  source bucket's seven-day lifecycle was followed by the default seven-day
+  soft-delete charge. The strengthened checked-in operator proves all 449 live
+  objects belong to the reconstructable `source/` prefix and requires a second
+  exact confirmation before clearing only that bucket's soft-delete window.
+- Live readback now shows the lifecycle unchanged and soft-delete retention at
+  zero. The already-eligible 393 archives / 31.67 GB remain under Google's
+  asynchronous lifecycle engine, already-soft-deleted objects remain
+  untouched, production Nest returns HTTP 200 from Capture readiness, every
+  Cloud Run service retains minimum scale zero, and no Cloud Build ran.
+- Exact implementation, provider references, commands, and the Artifact
+  Registry recheck timestamp are in
+  `docs/deploy/quipsly-cloud-cost-control.md`. The full product goal remains
+  active; this infrastructure correction does not substitute for physical
+  Capture, genuine session, production privacy, or provider-delivery gates.
