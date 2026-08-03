@@ -5338,6 +5338,7 @@ private struct CaptureRecorderView: View {
     @Binding var visibleTab: CaptureRootTab
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
+    @StateObject private var library = LocalRecordingLibrary.shared
     @State private var showsSessionPicker = false
     @State private var showsRoomDetails = false
     @State private var showsSessionContext = false
@@ -5821,6 +5822,18 @@ private struct CaptureRecorderView: View {
             CaptureQuickEntrySheet(kind: kind, session: model.selectedSession, model: model)
                 .presentationDetents([.large])
         }
+        .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
+            CaptureTranscriptReviewView(
+                roomID: destination.roomID,
+                sessionTitle: destination.sessionTitle,
+                recording: matchingRecording(
+                    roomID: destination.roomID,
+                    recordingAssetID: destination.source.recordingAssetId
+                ),
+                previewOnly: model.usesPreviewData,
+                focusSegmentID: destination.source.segmentId
+            )
+        }
         .interactiveDismissDisabled(captureIsActive)
         .onChange(of: recordingMode) { oldMode, newMode in
             guard oldMode != newMode else { return }
@@ -5856,6 +5869,16 @@ private struct CaptureRecorderView: View {
             guard !videoCapture.state.isActive,
                   videoCapture.state != .paused else { return }
             Task { await videoCapture.shutdownPreview() }
+        }
+    }
+
+    private func matchingRecording(roomID: String, recordingAssetID: String?) -> LocalRecording? {
+        guard let expectedAssetID = recordingAssetID?.nonempty else { return nil }
+        return library.recordings.first {
+            $0.callRoomId == roomID
+                && $0.recordingAssetId == expectedAssetID
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
         }
     }
 
@@ -6151,6 +6174,47 @@ private struct MobilePriorSessionContinuityCard: View {
             } label: {
                 Text("Review carried-forward brief")
                     .font(.subheadline.weight(.semibold))
+            }
+
+            if let taskEvidence = prior.brief.taskEvidence, !taskEvidence.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Reviewed transcript evidence", systemImage: "waveform.and.magnifyingglass")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.blue)
+
+                    ForEach(taskEvidence) { item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(item.taskTitle)
+                                .font(.caption.bold())
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(item.evidence.sourceAnchor.effectiveTextSnapshot)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                            NavigationLink(value: CaptureTranscriptSourceDestination(
+                                roomID: item.evidence.sourceAnchor.roomId,
+                                sessionTitle: prior.sourceRoom.title,
+                                source: item.evidence.sourceAnchor
+                            )) {
+                                Label(
+                                    "Return to \(item.evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(item.evidence.sourceAnchor.endSeconds.captureDurationLabel)",
+                                    systemImage: "play.circle"
+                                )
+                                .font(.caption.weight(.bold))
+                                .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
+                            .accessibilityIdentifier("CapturePriorContinuityTaskEvidence_\(item.taskId)")
+                            .accessibilityHint("Opens the exact reviewed transcript and retained recording evidence without changing the task or starting playback.")
+                            Text("Append-only evidence · task identity and state remain canonical")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(10)
+                        .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
             }
 
             Button("Open source Session", action: onOpenSource)

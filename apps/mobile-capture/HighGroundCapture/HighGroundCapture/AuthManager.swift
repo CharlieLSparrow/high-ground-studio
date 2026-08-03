@@ -301,13 +301,20 @@ final class AuthManager: ObservableObject {
               credentialsPath == "/tmp/quipsly-capture-runtime-ui-smoke-credentials.json",
               let data = try? Data(contentsOf: URL(fileURLWithPath: credentialsPath)),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawEmail = payload["email"] as? String else { return }
+              let rawEmail = payload["email"] as? String,
+              let rawRunID = payload["runtimeSmokeRunID"] as? String else { return }
 
         let actor = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !actor.isEmpty, actor.count <= 320 else { return }
+        let runID = rawRunID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let validRunIDCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
+        guard !actor.isEmpty,
+              actor.count <= 320,
+              (16...128).contains(runID.count),
+              runID.unicodeScalars.allSatisfy(validRunIDCharacters.contains) else { return }
 
         let markerAccount = "runtimeSmokeAuthenticatedActor"
-        guard getKeychainItem(account: markerAccount) != actor else { return }
+        let runBinding = "\(actor)|\(runID)"
+        guard getKeychainItem(account: markerAccount) != runBinding else { return }
 
         for account in [
             "accessToken",
@@ -320,7 +327,7 @@ final class AuthManager: ObservableObject {
         ] {
             deleteKeychainItemForUITest(account: account)
         }
-        saveKeychainItemForUITest(account: markerAccount, value: actor)
+        saveKeychainItemForUITest(account: markerAccount, value: runBinding)
         #endif
     }
 

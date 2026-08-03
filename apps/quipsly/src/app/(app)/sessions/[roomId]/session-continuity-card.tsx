@@ -9,6 +9,7 @@ import {
   FileText,
   ListTodo,
   LoaderCircle,
+  Play,
   Target,
   TriangleAlert,
 } from "lucide-react";
@@ -32,6 +33,12 @@ function shortHash(value: string) {
 function dateTime(value: string) {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : "Time needs review";
+}
+
+function formatMediaTime(value: number) {
+  const seconds = Math.max(0, Math.floor(value));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function statusTone(value: string) {
@@ -152,6 +159,24 @@ export function PriorSessionContinuityCard({
       <p className="mt-4 whitespace-pre-wrap rounded-xl border border-violet-100 bg-white p-4 text-sm font-semibold leading-6 text-[#5f4d37]">
         {prior.brief.body}
       </p>
+      {(prior.brief.taskEvidence ?? []).length ? (
+        <section className="mt-4 rounded-xl border border-sky-200 bg-white p-4" aria-labelledby="prior-continuity-evidence-heading">
+          <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript evidence</p>
+          <h3 id="prior-continuity-evidence-heading" className="mt-1 font-black text-[#3d3122]">Return to what was actually said</h3>
+          <ul className="mt-3 space-y-3">
+            {(prior.brief.taskEvidence ?? []).map(({ taskId, taskTitle, evidence }) => (
+              <li key={`${taskId}-${evidence.receiptId}`} className="rounded-lg border border-sky-100 bg-sky-50/45 p-3">
+                <p className="text-xs font-black text-[#3d3122]">{taskTitle}</p>
+                <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{evidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${evidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{evidence.sourceAnchor.effectiveTextSnapshot}</p>
+                <Link href={`/sessions/${encodeURIComponent(evidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(evidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
+                  <Play size={14} aria-hidden="true" />Return to {formatMediaTime(evidence.sourceAnchor.startSeconds)}–{formatMediaTime(evidence.sourceAnchor.endSeconds)}
+                </Link>
+                <p className="mt-2 text-[10px] font-bold leading-4 text-sky-800">Append-only reviewed evidence · task identity and state remain canonical</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-900">
         Same Nest and purpose · private to this actor · current Session unchanged · no AI or external side effects
       </p>
@@ -321,11 +346,21 @@ export function SessionContinuityCard({
           {snapshot.tasks.length ? (
             <ul className="mt-3 space-y-3">
               {snapshot.tasks.map((task) => (
-                <li key={task.id}>
-                  <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="block rounded-lg border border-violet-100 p-3 hover:border-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+                <li key={task.id} className="rounded-lg border border-violet-100 p-3">
+                  <Link href={`/work?task=${encodeURIComponent(task.id)}`} className="block rounded-md hover:bg-violet-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
                     <span className="flex flex-wrap items-start justify-between gap-2"><span className="text-xs font-black text-[#3d3122]">{task.title}</span><span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${statusTone(task.status)}`}>{humanize(task.status)}</span></span>
                     {task.detailExcerpt ? <span className="mt-1 line-clamp-2 block text-xs font-semibold leading-5 text-[#765f40]">{task.detailExcerpt}</span> : null}
                   </Link>
+                  {task.lastMergedTranscriptEvidence ? (
+                    <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Latest reviewed evidence added</p>
+                      <p className="mt-1 line-clamp-3 text-xs font-semibold leading-5 text-sky-950">{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveTextSnapshot}</p>
+                      <Link href={`/sessions/${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.roomId)}?mode=transcript#transcript-segment-${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">
+                        <Play size={14} aria-hidden="true" />Return to {formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.startSeconds)}–{formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.endSeconds)}
+                      </Link>
+                      <p className="mt-2 text-[10px] font-bold leading-4 text-sky-800">Evidence was appended without changing task definition, owner, state, dates, tags, goals, reminder, or recurrence.</p>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

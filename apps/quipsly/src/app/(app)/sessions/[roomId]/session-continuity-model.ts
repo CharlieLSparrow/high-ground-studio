@@ -1,3 +1,5 @@
+import type { TranscriptMergedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+
 export const SESSION_CONTINUITY_SCHEMA = "quipsly-session-continuity-brief-v1" as const;
 export const SESSION_FOLLOW_THROUGH_SCHEMA = "quipsly-session-follow-through-v1" as const;
 
@@ -28,6 +30,13 @@ export type SessionContinuityTask = {
   tagIds: string[];
   goalIds: string[];
   planBlockIds: string[];
+  lastMergedTranscriptEvidence?: TranscriptMergedTaskSource | null;
+};
+
+export type SavedSessionContinuityTaskEvidence = {
+  taskId: string;
+  taskTitle: string;
+  evidence: TranscriptMergedTaskSource;
 };
 
 export type SessionContinuityGoal = {
@@ -100,6 +109,7 @@ export type SavedSessionContinuityBrief = {
   body: string;
   snapshotSha256: string;
   createdAt: string;
+  taskEvidence?: SavedSessionContinuityTaskEvidence[];
 };
 
 export type PriorSessionContinuity = {

@@ -44,6 +44,15 @@ const captureApp = readFileSync(
   ),
   "utf8",
 );
+const captureRuntimeRunner = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 const quipslyPackageJson = readFileSync(
   fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
   "utf8",
@@ -273,7 +282,7 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
   assert.doesNotMatch(generatedMobileDogfood, /echo .*firebase_api_key/);
 });
 
-test("generated Capture dogfood changes disposable actors without losing same-run relaunch state", () => {
+test("generated Capture dogfood resets each operated run without losing same-run relaunch state", () => {
   assert.match(
     captureApp,
     /AuthManager\.configureRuntimeSmokeAccountResetIfRequested\(\)/,
@@ -292,10 +301,15 @@ test("generated Capture dogfood changes disposable actors without losing same-ru
   );
   assert.match(
     captureAuthManager,
-    /getKeychainItem\(account: markerAccount\) != actor/,
+    /let runBinding = "\\\(actor\)\|\\\(runID\)"/,
   );
   assert.match(
     captureAuthManager,
-    /saveKeychainItemForUITest\(account: markerAccount, value: actor\)/,
+    /getKeychainItem\(account: markerAccount\) != runBinding/,
   );
+  assert.match(
+    captureAuthManager,
+    /saveKeychainItemForUITest\(account: markerAccount, value: runBinding\)/,
+  );
+  assert.match(captureRuntimeRunner, /"runtimeSmokeRunID": uuid\.uuid4\(\)\.hex/);
 });

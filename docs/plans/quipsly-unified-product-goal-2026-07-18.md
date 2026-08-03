@@ -6992,3 +6992,32 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - Exact post-change evidence is retained at
   `/private/tmp/quipsly-cloud-cost-audit-20260803-tightened.json` and in
   `docs/deploy/quipsly-cloud-cost-control.md`.
+
+### Coaching continuity with exact task evidence — 2026-08-03
+
+- Actor-private continuity now carries the latest valid append-only transcript
+  evidence for a canonical task into the next coaching Session. Nest and
+  Capture expose an exact source-return action while leaving task definition,
+  owner, state, dates, tags, goals, reminder, recurrence, and project identity
+  unchanged.
+- Every saved source envelope and evidence room is revalidated on read. Client
+  and collaborating-producer accounts can use the shared Session without
+  seeing the coach's private brief; a genuinely ungranted fourth account cannot
+  range-read protected audio even when it guesses the stable source ID.
+- The retained fixture now includes current explicit all-party recording and
+  transcription consent, immutable upload identity, normalized release
+  receipts, a project-bound Studio source, and a deterministic 80-second WAV.
+  The authorized browser received the exact 44-byte WAV range; the outsider
+  received no media bytes.
+- Two fresh compiled iPhone 17 Pro simulator journeys passed: coach continuity
+  to exact retained transcript/playback evidence and client Work readback of
+  the canonical task, goal, and 75% progress evidence. Result bundles are
+  preserved under `/private/tmp/quipsly-retained-native-coaching-continuity-*`.
+- Nest portable export/restore now retains the append-only task receipt once
+  and proves an idempotent replay creates zero duplicates. Full architecture,
+  UX, privacy, operated evidence, and open gates are in
+  `docs/coordination/2026-08-03-coaching-continuity-task-evidence.md`.
+- This remains local simulator evidence. Physical iPhone, production Nest,
+  genuine coaching use, production separate-account proof, and authorized
+  delivery remain open. No cloud build, deploy, production database write,
+  provider mutation, or App Store action occurred.

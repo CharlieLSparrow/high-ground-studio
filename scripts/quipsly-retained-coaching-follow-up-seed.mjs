@@ -6,7 +6,21 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT,
+  MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+} from "../apps/quipsly/src/lib/mobile-capture-consent-policy.js";
+import {
+  buildMobileCaptureConsentVersions,
+  mobileCaptureConsentVersion,
+} from "../apps/quipsly/src/lib/server/mobile-capture-consent-readiness.js";
 import { resolveRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import {
+  materializeRetainedCoachingContinuitySource,
+  RETAINED_COACHING_CONTINUITY_SOURCE,
+} from "./lib/retained-coaching-continuity-source.mjs";
 
 const requireFromQuipsly = createRequire(
   new URL("../apps/quipsly/package.json", import.meta.url),
@@ -35,6 +49,17 @@ const CLIENT_SAFE_NOTE_ID = "retained-follow-up-client-safe-note-20260731";
 const PRIVATE_NOTE_ID = "retained-follow-up-private-note-20260731";
 const SHARED_NOTE_ID = "retained-follow-up-shared-note-20260731";
 const TASK_ID = "retained-follow-up-client-task-20260731";
+const COACH_CONTINUITY_TASK_ID = "retained-coaching-continuity-task-20260803";
+const COACH_TASK_EVIDENCE_ID = "retained-coaching-continuity-task-evidence-20260803";
+const TRANSCRIPT_ASSET_ID = "retained-coaching-continuity-asset-20260803";
+const TRANSCRIPT_SOURCE_ID = "retained-coaching-continuity-source-20260803";
+const TRANSCRIPT_MEDIA_ASSET_ID = "retained-coaching-continuity-media-20260803";
+const TRANSCRIPT_JOB_ID = "retained-coaching-continuity-job-20260803";
+const TRANSCRIPT_SEGMENT_ID = "retained-coaching-continuity-segment-20260803";
+const TRANSCRIPT_UPLOAD_SESSION_ID = "8d8a53d8-46b4-45bf-830e-89d3482c9822";
+const TRANSCRIPT_CAPTURE_ID = "53eef936-835f-411a-94be-a2f68cb89b59";
+const TRANSCRIPT_STORAGE_BUCKET = "local-retained-fixture";
+const TRANSCRIPT_STORAGE_OBJECT = "coaching/retained-coaching-follow-up-20260731/continuity-source.wav";
 const CANDIDATE_TASK_ID = "retained-follow-up-candidate-task-20260731";
 const GOAL_ID = "retained-follow-up-client-goal-20260731";
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
@@ -128,6 +153,7 @@ async function main() {
     "FIREBASE_AUTH_EMULATOR_HOST",
   );
   const databaseURL = requireLocalDatabase(process.env.DATABASE_URL || "");
+  await materializeRetainedCoachingContinuitySource();
   const store = credentialStore();
   const credentials = [
     {
@@ -376,6 +402,72 @@ async function main() {
         create: { roomId: ROOM_ID, ...participant },
       });
     }
+    const recordingConsents = [];
+    for (const participant of participants) {
+      const consentedAt = new Date("2026-07-31T15:55:00.000Z");
+      const consent = await prisma.recordingConsent.upsert({
+        where: { id: `retained-coaching-consent-${participant.role.toLowerCase()}-20260803` },
+        update: {
+          roomId: ROOM_ID,
+          participantId: participant.id,
+          userId: participant.userId,
+          status: "GRANTED",
+          consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+          policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          canRecordAudio: true,
+          canRecordVideo: false,
+          canTranscribe: true,
+          consentedAt,
+          declinedAt: null,
+          revokedAt: null,
+          metadataJson: {
+            source: "quipsly-retained-coaching-follow-up-seed",
+            localOnly: true,
+            syntheticFixture: true,
+            consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+            consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+            recordingChoiceExplicit: true,
+            transcriptionChoiceExplicit: true,
+            allAudibleParticipantsNotifiedAndAgreed: true,
+            presentationEvidence: {
+              version: 1,
+              surface: "quipsly-capture-consent-v2",
+            },
+          },
+        },
+        create: {
+          id: `retained-coaching-consent-${participant.role.toLowerCase()}-20260803`,
+          roomId: ROOM_ID,
+          participantId: participant.id,
+          userId: participant.userId,
+          status: "GRANTED",
+          consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+          policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          canRecordAudio: true,
+          canRecordVideo: false,
+          canTranscribe: true,
+          consentedAt,
+          metadataJson: {
+            source: "quipsly-retained-coaching-follow-up-seed",
+            localOnly: true,
+            syntheticFixture: true,
+            consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+            consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+            recordingChoiceExplicit: true,
+            transcriptionChoiceExplicit: true,
+            allAudibleParticipantsNotifiedAndAgreed: true,
+            presentationEvidence: {
+              version: 1,
+              surface: "quipsly-capture-consent-v2",
+            },
+          },
+        },
+      });
+      recordingConsents.push(consent);
+    }
+    const retainedConsentVersion = mobileCaptureConsentVersion(
+      buildMobileCaptureConsentVersions({ participants, consents: recordingConsents }),
+    );
 
     await prisma.coachingBooking.upsert({
       where: { id: NEXT_BOOKING_ID },
@@ -513,6 +605,333 @@ async function main() {
         sourceJson: { source: "retained-coaching-follow-up-seed" },
       },
     });
+    const evidenceText = "I can name the smallest repeatable boundary before the next Session.";
+    const coachTaskEvidence = {
+      schema: "quipsly-transcript-task-evidence-merge-v1",
+      receiptId: COACH_TASK_EVIDENCE_ID,
+      actionCandidateId: "retained-coaching-continuity-action-candidate-20260803",
+      mergedAt: "2026-08-03T18:02:00.000Z",
+      candidateSource: {
+        schema: "quipsly-transcript-derived-task-v1",
+        roomId: ROOM_ID,
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        segmentId: TRANSCRIPT_SEGMENT_ID,
+        startSeconds: 63.2,
+        endSeconds: 71.8,
+        providerTextSha256: crypto.createHash("sha256").update(evidenceText, "utf8").digest("hex"),
+        providerSpeakerLabel: "Coach",
+        effectiveTextSnapshot: evidenceText,
+        effectiveSpeakerLabelSnapshot: "Coach",
+        acceptedCorrectionId: null,
+        recordingAssetId: TRANSCRIPT_ASSET_ID,
+        playbackSourceId: TRANSCRIPT_SOURCE_ID,
+      },
+    };
+    await prisma.studioVideoSource.upsert({
+      where: { id: TRANSCRIPT_SOURCE_ID },
+      update: {
+        providerSourceId: RETAINED_COACHING_CONTINUITY_SOURCE.path,
+        url: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+        title: "Retained coaching continuity source",
+      },
+      create: {
+        id: TRANSCRIPT_SOURCE_ID,
+        provider: "capture-recording",
+        providerSourceId: RETAINED_COACHING_CONTINUITY_SOURCE.path,
+        url: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+        title: "Retained coaching continuity source",
+      },
+    });
+    await prisma.studioMediaAsset.upsert({
+      where: { id: TRANSCRIPT_MEDIA_ASSET_ID },
+      update: {
+        filename: RETAINED_COACHING_CONTINUITY_SOURCE.fileName,
+        url: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+        mimeType: RETAINED_COACHING_CONTINUITY_SOURCE.contentType,
+        sizeBytes: BigInt(RETAINED_COACHING_CONTINUITY_SOURCE.byteSize),
+        duration: RETAINED_COACHING_CONTINUITY_SOURCE.durationSeconds,
+        isProxy: false,
+        cloudProvider: "local-retained-fixture",
+        isGlobal: false,
+      },
+      create: {
+        id: TRANSCRIPT_MEDIA_ASSET_ID,
+        filename: RETAINED_COACHING_CONTINUITY_SOURCE.fileName,
+        url: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+        mimeType: RETAINED_COACHING_CONTINUITY_SOURCE.contentType,
+        sizeBytes: BigInt(RETAINED_COACHING_CONTINUITY_SOURCE.byteSize),
+        duration: RETAINED_COACHING_CONTINUITY_SOURCE.durationSeconds,
+        isProxy: false,
+        cloudProvider: "local-retained-fixture",
+        isGlobal: false,
+      },
+    });
+    await prisma.studioAssetAttachment.upsert({
+      where: {
+        projectId_assetId: {
+          projectId: continuityProject.id,
+          assetId: TRANSCRIPT_MEDIA_ASSET_ID,
+        },
+      },
+      update: {
+        role: "coaching-session-audio",
+        source: "quipsly-retained-coaching-follow-up-seed",
+        createdByEmail: COACH_EMAIL,
+        metadataJson: {
+          callRoomId: ROOM_ID,
+          recordingAssetId: TRANSCRIPT_ASSET_ID,
+          sourceId: TRANSCRIPT_SOURCE_ID,
+          playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+          localOnly: true,
+          syntheticFixture: true,
+        },
+      },
+      create: {
+        projectId: continuityProject.id,
+        assetId: TRANSCRIPT_MEDIA_ASSET_ID,
+        role: "coaching-session-audio",
+        source: "quipsly-retained-coaching-follow-up-seed",
+        createdByEmail: COACH_EMAIL,
+        metadataJson: {
+          callRoomId: ROOM_ID,
+          recordingAssetId: TRANSCRIPT_ASSET_ID,
+          sourceId: TRANSCRIPT_SOURCE_ID,
+          playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+          localOnly: true,
+          syntheticFixture: true,
+        },
+      },
+    });
+    await prisma.recordingAsset.upsert({
+      where: { id: TRANSCRIPT_ASSET_ID },
+      update: {
+        roomId: ROOM_ID,
+        participantId: `${ROOM_ID}-coach`,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        fileName: RETAINED_COACHING_CONTINUITY_SOURCE.fileName,
+        contentType: RETAINED_COACHING_CONTINUITY_SOURCE.contentType,
+        byteSize: BigInt(RETAINED_COACHING_CONTINUITY_SOURCE.byteSize),
+        durationSeconds: RETAINED_COACHING_CONTINUITY_SOURCE.durationSeconds,
+        storageBucket: TRANSCRIPT_STORAGE_BUCKET,
+        storageObjectPath: TRANSCRIPT_STORAGE_OBJECT,
+        checksum: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+        recordedStartedAt: new Date("2026-07-31T16:00:00.000Z"),
+        recordedStoppedAt: new Date("2026-07-31T16:01:20.000Z"),
+        uploadedAt: new Date("2026-07-31T16:02:05.000Z"),
+        localManifestJson: {
+          source: "retained-coaching-follow-up-seed",
+          localOnly: true,
+          syntheticFixture: true,
+          processingDisposition: "RELEASED",
+          transcriptionDisposition: "RELEASED",
+          promotion: {
+            status: "promoted-to-studio-media",
+            mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
+            sourceId: TRANSCRIPT_SOURCE_ID,
+            playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+            mediaKind: "audio",
+            projectId: continuityProject.id,
+            nestSlug: continuityProject.slug,
+            localOnly: true,
+            syntheticFixture: true,
+          },
+        },
+        verifiedAt: new Date("2026-08-03T18:00:00.000Z"),
+      },
+      create: {
+        id: TRANSCRIPT_ASSET_ID,
+        roomId: ROOM_ID,
+        participantId: `${ROOM_ID}-coach`,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        fileName: RETAINED_COACHING_CONTINUITY_SOURCE.fileName,
+        contentType: RETAINED_COACHING_CONTINUITY_SOURCE.contentType,
+        byteSize: BigInt(RETAINED_COACHING_CONTINUITY_SOURCE.byteSize),
+        durationSeconds: RETAINED_COACHING_CONTINUITY_SOURCE.durationSeconds,
+        storageBucket: TRANSCRIPT_STORAGE_BUCKET,
+        storageObjectPath: TRANSCRIPT_STORAGE_OBJECT,
+        checksum: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+        recordedStartedAt: new Date("2026-07-31T16:00:00.000Z"),
+        recordedStoppedAt: new Date("2026-07-31T16:01:20.000Z"),
+        uploadedAt: new Date("2026-07-31T16:02:05.000Z"),
+        localManifestJson: {
+          source: "retained-coaching-follow-up-seed",
+          localOnly: true,
+          syntheticFixture: true,
+          processingDisposition: "RELEASED",
+          transcriptionDisposition: "RELEASED",
+          promotion: {
+            status: "promoted-to-studio-media",
+            mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
+            sourceId: TRANSCRIPT_SOURCE_ID,
+            playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+            mediaKind: "audio",
+            projectId: continuityProject.id,
+            nestSlug: continuityProject.slug,
+            localOnly: true,
+            syntheticFixture: true,
+          },
+        },
+        verifiedAt: new Date("2026-08-03T18:00:00.000Z"),
+      },
+    });
+    await prisma.mobileCaptureFinalizationReceipt.upsert({
+      where: { uploadSessionId: TRANSCRIPT_UPLOAD_SESSION_ID },
+      update: {
+        captureId: TRANSCRIPT_CAPTURE_ID,
+        roomId: ROOM_ID,
+        actorUserId: userByRole.coach.id,
+        consentVersion: retainedConsentVersion,
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        recordingAssetId: TRANSCRIPT_ASSET_ID,
+        sourceId: TRANSCRIPT_SOURCE_ID,
+        mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        releasedByUserId: userByRole.coach.id,
+        releaseReason: "Reviewed local-only retained fixture release.",
+        releasedAt: new Date("2026-07-31T16:02:10.000Z"),
+        transcriptReleasedByUserId: userByRole.coach.id,
+        transcriptReleaseReason: "Reviewed local-only retained fixture transcript release.",
+        transcriptReleasedAt: new Date("2026-07-31T16:02:10.000Z"),
+        metadataJson: {
+          source: "quipsly-retained-coaching-follow-up-seed",
+          localOnly: true,
+          syntheticFixture: true,
+          immutableUploadBinding: {
+            uploadSessionId: TRANSCRIPT_UPLOAD_SESSION_ID,
+            roomId: ROOM_ID,
+            sha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+            bucketName: TRANSCRIPT_STORAGE_BUCKET,
+            objectName: TRANSCRIPT_STORAGE_OBJECT,
+            sizeBytes: RETAINED_COACHING_CONTINUITY_SOURCE.byteSize,
+          },
+        },
+      },
+      create: {
+        uploadSessionId: TRANSCRIPT_UPLOAD_SESSION_ID,
+        captureId: TRANSCRIPT_CAPTURE_ID,
+        roomId: ROOM_ID,
+        actorUserId: userByRole.coach.id,
+        consentVersion: retainedConsentVersion,
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        recordingAssetId: TRANSCRIPT_ASSET_ID,
+        sourceId: TRANSCRIPT_SOURCE_ID,
+        mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        releasedByUserId: userByRole.coach.id,
+        releaseReason: "Reviewed local-only retained fixture release.",
+        releasedAt: new Date("2026-07-31T16:02:10.000Z"),
+        transcriptReleasedByUserId: userByRole.coach.id,
+        transcriptReleaseReason: "Reviewed local-only retained fixture transcript release.",
+        transcriptReleasedAt: new Date("2026-07-31T16:02:10.000Z"),
+        metadataJson: {
+          source: "quipsly-retained-coaching-follow-up-seed",
+          localOnly: true,
+          syntheticFixture: true,
+          immutableUploadBinding: {
+            uploadSessionId: TRANSCRIPT_UPLOAD_SESSION_ID,
+            roomId: ROOM_ID,
+            sha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+            bucketName: TRANSCRIPT_STORAGE_BUCKET,
+            objectName: TRANSCRIPT_STORAGE_OBJECT,
+            sizeBytes: RETAINED_COACHING_CONTINUITY_SOURCE.byteSize,
+          },
+        },
+      },
+    });
+    await prisma.transcriptJob.upsert({
+      where: { id: TRANSCRIPT_JOB_ID },
+      update: {
+        roomId: ROOM_ID,
+        assetId: TRANSCRIPT_ASSET_ID,
+        status: "COMPLETED",
+        provider: "retained-fixture",
+        requestedBy: userByRole.coach.id,
+        sourceGeneration: "retained-local-fixture-v1",
+        sourceSha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+        completedAt: new Date("2026-08-03T18:01:00.000Z"),
+        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+      },
+      create: {
+        id: TRANSCRIPT_JOB_ID,
+        roomId: ROOM_ID,
+        assetId: TRANSCRIPT_ASSET_ID,
+        status: "COMPLETED",
+        provider: "retained-fixture",
+        requestedBy: userByRole.coach.id,
+        sourceGeneration: "retained-local-fixture-v1",
+        sourceSha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+        completedAt: new Date("2026-08-03T18:01:00.000Z"),
+        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+      },
+    });
+    await prisma.transcriptSegment.upsert({
+      where: { id: TRANSCRIPT_SEGMENT_ID },
+      update: {
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        speakerLabel: "Coach",
+        startSeconds: 63.2,
+        endSeconds: 71.8,
+        text: evidenceText,
+        confidence: 1,
+        metadataJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+      },
+      create: {
+        id: TRANSCRIPT_SEGMENT_ID,
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        speakerLabel: "Coach",
+        startSeconds: 63.2,
+        endSeconds: 71.8,
+        text: evidenceText,
+        confidence: 1,
+        metadataJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+      },
+    });
+    await prisma.actionItem.upsert({
+      where: { id: COACH_CONTINUITY_TASK_ID },
+      update: {
+        roomId: ROOM_ID,
+        bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
+        assignedUserId: userByRole.coach.id,
+        title: "Name the smallest repeatable boundary",
+        detail: "Bring the client's own wording back into the next coaching conversation.",
+        sourceJson: { source: "retained-coaching-follow-up-seed" },
+      },
+      create: {
+        id: COACH_CONTINUITY_TASK_ID,
+        roomId: ROOM_ID,
+        bookingId: BOOKING_ID,
+        projectId: continuityProject.id,
+        assignedUserId: userByRole.coach.id,
+        title: "Name the smallest repeatable boundary",
+        detail: "Bring the client's own wording back into the next coaching conversation.",
+        sourceJson: { source: "retained-coaching-follow-up-seed" },
+      },
+    });
+    await prisma.actionItemEvidenceReceipt.upsert({
+      where: { id: COACH_TASK_EVIDENCE_ID },
+      update: {
+        actionItemId: COACH_CONTINUITY_TASK_ID,
+        actorUserId: userByRole.coach.id,
+        kind: "TRANSCRIPT_CANDIDATE_MERGED",
+        note: "Reviewed coaching commitment evidence.",
+        occurredAt: new Date("2026-08-03T18:02:00.000Z"),
+        evidenceJson: coachTaskEvidence,
+      },
+      create: {
+        id: COACH_TASK_EVIDENCE_ID,
+        actionItemId: COACH_CONTINUITY_TASK_ID,
+        actorUserId: userByRole.coach.id,
+        kind: "TRANSCRIPT_CANDIDATE_MERGED",
+        note: "Reviewed coaching commitment evidence.",
+        occurredAt: new Date("2026-08-03T18:02:00.000Z"),
+        evidenceJson: coachTaskEvidence,
+      },
+    });
     await prisma.actionItem.upsert({
       where: { id: CANDIDATE_TASK_ID },
       update: {
@@ -631,6 +1050,11 @@ async function main() {
             privateNoteID: PRIVATE_NOTE_ID,
             sharedNoteID: SHARED_NOTE_ID,
             taskID: TASK_ID,
+            coachContinuityTaskID: COACH_CONTINUITY_TASK_ID,
+            coachTaskEvidenceID: COACH_TASK_EVIDENCE_ID,
+            transcriptAssetID: TRANSCRIPT_ASSET_ID,
+            transcriptJobID: TRANSCRIPT_JOB_ID,
+            transcriptSegmentID: TRANSCRIPT_SEGMENT_ID,
             candidateTaskID: CANDIDATE_TASK_ID,
             goalID: GOAL_ID,
           },

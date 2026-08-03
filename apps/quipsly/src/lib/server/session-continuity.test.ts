@@ -23,6 +23,30 @@ function sha256(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function mergedTaskEvidence(roomId = "room-1") {
+  return {
+    schema: "quipsly-transcript-task-evidence-merge-v1",
+    receiptId: "task-evidence-receipt-1",
+    actionCandidateId: "packet-action-build-1-segment-1",
+    mergedAt: "2026-07-20T16:04:00.000Z",
+    candidateSource: {
+      schema: "quipsly-transcript-derived-task-v1",
+      roomId,
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      startSeconds: 63.2,
+      endSeconds: 71.8,
+      providerTextSha256: "a".repeat(64),
+      providerSpeakerLabel: "Speaker",
+      effectiveTextSnapshot: "I will run the protected rehearsal before we meet again.",
+      effectiveSpeakerLabelSnapshot: "Client",
+      acceptedCorrectionId: "correction-1",
+      recordingAssetId: "asset-1",
+      playbackSourceId: "source-1",
+    },
+  };
+}
+
 function roomFixture() {
   return {
     id: "room-1",
@@ -54,6 +78,7 @@ function roomFixture() {
         completedAt: null,
         sourceJson: { schema: "quipsly-mobile-capture-quick-entry-v1" },
         updatedAt: new Date("2026-07-20T16:01:00.000Z"),
+        evidenceReceipts: [{ evidenceJson: mergedTaskEvidence() }],
         tagLinks: [],
         goalLinks: [{ goalId: "goal-1" }],
         planBlocks: [{
@@ -77,6 +102,7 @@ function roomFixture() {
         completedAt: null,
         sourceJson: { source: "transcript-packet-builder", candidate: true },
         updatedAt: new Date("2026-07-20T16:02:00.000Z"),
+        evidenceReceipts: [],
         tagLinks: [],
         goalLinks: [],
         planBlocks: [],
@@ -114,8 +140,11 @@ function roomFixture() {
   };
 }
 
-function prismaHarness(options: { accessible?: boolean } = {}) {
+function prismaHarness(options: { accessible?: boolean; evidenceRoomId?: string } = {}) {
   const room = roomFixture();
+  if (options.evidenceRoomId) {
+    room.actionItems[0]!.evidenceReceipts = [{ evidenceJson: mergedTaskEvidence(options.evidenceRoomId) }];
+  }
   const notes = new Map(room.notes.map((note) => [note.id, note as Record<string, unknown>]));
   const tx = {
     callRoom: {
@@ -134,6 +163,7 @@ function prismaHarness(options: { accessible?: boolean } = {}) {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const created = {
           ...data,
+          sourceJson: JSON.parse(JSON.stringify(data.sourceJson)),
           createdAt: NOW,
           updatedAt: NOW,
           tagLinks: [],
@@ -179,6 +209,10 @@ describe("Session continuity", () => {
       unresolvedPastBlockCount: 1,
     });
     expect(first?.current.snapshot.tasks.map((task) => task.id)).toEqual(["task-1"]);
+    expect(first?.current.snapshot.tasks[0]?.lastMergedTranscriptEvidence).toMatchObject({
+      receiptId: "task-evidence-receipt-1",
+      sourceAnchor: { roomId: "room-1", segmentId: "segment-1" },
+    });
     expect(first?.current.snapshot.planBlocks.map((block) => block.id)).toEqual(["block-1"]);
     expect(first?.current.snapshot).toMatchObject({ externalSideEffects: false, aiGenerated: false });
     expect(tx.callRoom.findFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -200,9 +234,28 @@ describe("Session continuity", () => {
     expect(body).toContain("[task-1]");
     expect(body).toContain("[goal-1]");
     expect(body).toContain("[block-1]");
+    expect(body).toContain("Reviewed task evidence");
+    expect(body).toContain("receipt task-evidence-receipt-1 · segment segment-1");
     expect(body).toContain("planned time passed; completion or skip decision still missing");
     expect(body).toContain("not an AI summary");
     expect(body).toContain(`Snapshot SHA-256 ${state!.current.snapshotSha256}`);
+  });
+
+  it("fails closed when a task evidence receipt points to a Session the actor cannot access", async () => {
+    const { prisma, tx } = prismaHarness({ evidenceRoomId: "room-private-other" });
+    const state = await loadSessionContinuityState({
+      prisma: prisma as never,
+      actor: ACTOR,
+      roomId: "room-1",
+      now: NOW,
+    });
+
+    expect(state?.current.snapshot.tasks[0]?.lastMergedTranscriptEvidence).toBeNull();
+    expect(tx.callRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["room-private-other"] } }),
+      select: { id: true },
+    }));
+    expect(JSON.stringify(state)).not.toContain("I will run the protected rehearsal");
   });
 
   it("selects only the latest actor-private brief from an earlier accessible Session in the same Nest and purpose", async () => {
@@ -320,6 +373,10 @@ describe("Session continuity", () => {
     });
 
     expect(saved.idempotentReplay).toBe(false);
+    expect(saved.brief.taskEvidence).toEqual([expect.objectContaining({
+      taskId: "task-1",
+      evidence: expect.objectContaining({ receiptId: "task-evidence-receipt-1" }),
+    })]);
     expect(replay.idempotentReplay).toBe(true);
     expect(semanticReplay.idempotentReplay).toBe(true);
     expect(semanticReplay.brief.id).toBe(saved.brief.id);

@@ -1079,6 +1079,7 @@ function checkTranscriptCorrectionContractSources() {
   const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
   const clientFollowUpWebText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-client-follow-up-card.tsx");
   const sessionFollowThroughServiceText = sourceText("apps/quipsly/src/lib/server/session-follow-through.ts");
+  const sessionContinuityServiceText = sourceText("apps/quipsly/src/lib/server/session-continuity.ts");
   const sessionContinuityCardText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-continuity-card.tsx");
   const mobileComponentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
@@ -1834,6 +1835,19 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("New check-in since release"),
     "coachingGoalProgressSinceRelease",
     "A client goal check-in after the immutable release is counted and labelled as new progress across Nest and iPhone without pretending the goal definition or status changed.",
+  );
+  expect(
+    sessionContinuityServiceText.includes("readTranscriptMergedTaskSource")
+      && sessionContinuityServiceText.includes("keepAccessibleTaskEvidence")
+      && sessionContinuityServiceText.includes('kind: "TRANSCRIPT_CANDIDATE_MERGED"')
+      && sessionContinuityCardText.includes("Return to what was actually said")
+      && sessionContinuityCardText.includes("Append-only reviewed evidence")
+      && bridgeText.includes("MobileCapturePriorContinuityTaskEvidence")
+      && shellText.includes("CapturePriorContinuityTaskEvidence_")
+      && shellText.includes("CaptureTranscriptSourceDestination")
+      && runtimeUITestText.includes("CaptureTranscriptSegment_retained-coaching-continuity-segment-20260803"),
+    "coachingContinuityTaskEvidenceReturn",
+    "A private next-Session brief carries append-only reviewed task evidence only while its source Session remains accessible, and Nest plus the compiled iPhone return to the exact transcript segment without mutating or copying the task.",
   );
   expect(
     captureExperienceText.includes("struct CaptureWorkNavigationRequest")

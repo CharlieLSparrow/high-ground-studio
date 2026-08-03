@@ -614,6 +614,15 @@ struct MobileCapturePriorContinuityBrief: Codable, Hashable {
     let body: String
     let snapshotSha256: String
     let createdAt: String
+    var taskEvidence: [MobileCapturePriorContinuityTaskEvidence]? = nil
+}
+
+struct MobileCapturePriorContinuityTaskEvidence: Codable, Hashable, Identifiable {
+    let taskId: String
+    let taskTitle: String
+    let evidence: MobileCaptureTodayTaskTranscriptEvidence
+
+    var id: String { "\(taskId)-\(evidence.receiptId)" }
 }
 
 struct MobileCapturePriorContinuity: Codable, Hashable {

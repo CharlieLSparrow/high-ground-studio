@@ -5,6 +5,27 @@ import userEvent from "@testing-library/user-event";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionContinuityCard } from "./session-continuity-card";
 
+const mergedTaskEvidence = {
+  receiptId: "task-evidence-receipt-1",
+  actionCandidateId: "packet-action-build-1-segment-1",
+  mergedAt: "2026-07-20T16:04:00.000Z",
+  sourceAnchor: {
+    schema: "quipsly-transcript-derived-task-v1" as const,
+    roomId: "room-1",
+    transcriptJobId: "job-1",
+    segmentId: "segment-1",
+    startSeconds: 63.2,
+    endSeconds: 71.8,
+    providerTextSha256: "a".repeat(64),
+    providerSpeakerLabel: "Speaker",
+    effectiveTextSnapshot: "I will run the protected rehearsal before we meet again.",
+    effectiveSpeakerLabelSnapshot: "Client",
+    acceptedCorrectionId: "correction-1",
+    recordingAssetId: "asset-1",
+    playbackSourceId: "source-1",
+  },
+};
+
 function continuity(saved: SessionContinuityState["saved"] = []): SessionContinuityState {
   return {
     current: {
@@ -50,6 +71,7 @@ function continuity(saved: SessionContinuityState["saved"] = []): SessionContinu
           tagIds: [],
           goalIds: ["goal-1"],
           planBlockIds: ["block-1"],
+          lastMergedTranscriptEvidence: mergedTaskEvidence,
         }],
         goals: [{
           id: "goal-1",
@@ -104,6 +126,10 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByRole("heading", { name: "Next-session continuity" })).toBeInTheDocument();
     expect(screen.getByText(/passed without a completion, skip, or cancellation decision/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /rehearse follow-through/i })).toHaveAttribute("href", "/work?task=task-1");
+    expect(screen.getAllByRole("link", { name: "Return to 1:03–1:11" }).some((link) => (
+      link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
+    ))).toBe(true);
+    expect(screen.getByText(/evidence was appended without changing task definition/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /build a coaching habit/i })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: /bring forward/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
     expect(screen.getByRole("link", { name: "Open Calendar" })).toHaveAttribute("href", "/schedule");
@@ -158,6 +184,11 @@ describe("SessionContinuityCard", () => {
         body: "Carry the exact protected rehearsal forward.",
         snapshotSha256: "d".repeat(64),
         createdAt: "2026-07-18T18:00:00.000Z",
+        taskEvidence: [{
+          taskId: "task-1",
+          taskTitle: "Rehearse follow-through",
+          evidence: mergedTaskEvidence,
+        }],
       },
       relationship: "same-project-and-purpose",
       currentSessionMutated: false,
@@ -168,6 +199,10 @@ describe("SessionContinuityCard", () => {
 
     expect(screen.getByRole("heading", { name: "Previous coaching rehearsal" })).toBeInTheDocument();
     expect(screen.getByText("Carry the exact protected rehearsal forward.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Return to what was actually said" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Return to 1:03–1:11" }).some((link) => (
+      link.getAttribute("href") === "/sessions/room-1?mode=transcript#transcript-segment-segment-1"
+    ))).toBe(true);
     expect(screen.getByRole("link", { name: "Open source Session" })).toHaveAttribute("href", "/sessions/room-previous?mode=work");
     expect(screen.getByText(/current Session unchanged · no AI or external side effects/i)).toBeInTheDocument();
   });

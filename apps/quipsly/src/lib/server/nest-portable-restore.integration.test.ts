@@ -266,6 +266,37 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
           sourceJson: { source: "human" },
         },
       }),
+      prisma.actionItemEvidenceReceipt.create({
+        data: {
+          id: `portable-task-evidence-${nonce}`,
+          actionItemId: task.id,
+          actorUserId,
+          kind: "TRANSCRIPT_CANDIDATE_MERGED",
+          note: "Reviewed exact transcript evidence.",
+          occurredAt: new Date("2026-07-24T19:30:00.000Z"),
+          evidenceJson: {
+            schema: "quipsly-transcript-task-evidence-merge-v1",
+            receiptId: `portable-task-review-${nonce}`,
+            actionCandidateId: `portable-action-candidate-${nonce}`,
+            mergedAt: "2026-07-24T19:30:00.000Z",
+            candidateSource: {
+              schema: "quipsly-transcript-derived-task-v1",
+              roomId: `portable-source-room-${nonce}`,
+              transcriptJobId: `portable-transcript-job-${nonce}`,
+              segmentId: `portable-transcript-segment-${nonce}`,
+              startSeconds: 12.4,
+              endSeconds: 18.2,
+              providerTextSha256: "a".repeat(64),
+              providerSpeakerLabel: "Coach",
+              effectiveTextSnapshot: "Proof-listen this exact commitment.",
+              effectiveSpeakerLabelSnapshot: "Coach",
+              acceptedCorrectionId: null,
+              recordingAssetId: `portable-recording-${nonce}`,
+              playbackSourceId: `portable-source-${nonce}`,
+            },
+          },
+        },
+      }),
       prisma.goalProgressReceipt.create({
         data: {
           goalId: goal.id,
@@ -341,7 +372,17 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
         ]),
       })]));
     expect(exported).toMatchObject({
-      tasks: [{ id: sourceTaskId, reminderSnapshot: { status: "ACTIVE" } }],
+      tasks: [{
+        id: sourceTaskId,
+        reminderSnapshot: { status: "ACTIVE" },
+        evidenceReceipts: [{
+          kind: "TRANSCRIPT_CANDIDATE_MERGED",
+          note: "Reviewed exact transcript evidence.",
+          evidenceJson: expect.objectContaining({
+            schema: "quipsly-transcript-task-evidence-merge-v1",
+          }),
+        }],
+      }],
       goals: [{ id: sourceGoalId, progressReceipts: [{ progressPercent: 25 }] }],
       goalTaskLinks: [{ relationship: "CONTRIBUTES" }],
       planBlocks: [{ id: sourcePlanBlockId, status: "PLANNED" }],
@@ -387,6 +428,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       noteCreates: 2,
       documentTagLinkCreates: 1,
       taskCreates: 1,
+      taskEvidenceReceiptCreates: 1,
       goalCreates: 1,
       progressReceiptCreates: 1,
       goalTaskLinkCreates: 1,
@@ -472,6 +514,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       documentTagLinkCreates: 0,
       taskCreates: 0,
       taskReuses: 1,
+      taskEvidenceReceiptCreates: 0,
       goalCreates: 0,
       goalReuses: 1,
       progressReceiptCreates: 0,
@@ -491,10 +534,14 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       (portableNote) => portableNote.title === "Episode proof note",
     );
     if (!exportedEpisodeNote) throw new Error("portable episode note missing");
-    const [task, goal, planBlock, note, reminderCount, targetTags] = await Promise.all([
+    const [task, taskEvidence, goal, planBlock, note, reminderCount, targetTags] = await Promise.all([
       prisma.actionItem.findUnique({
         where: { id: restoredTaskId },
         include: { tagLinks: { include: { tag: true } } },
+      }),
+      prisma.actionItemEvidenceReceipt.findMany({
+        where: { actionItemId: restoredTaskId },
+        orderBy: { occurredAt: "asc" },
       }),
       prisma.goal.findUnique({
         where: { id: restoredGoalId },
@@ -528,6 +575,13 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
         externalSideEffects: false,
       },
     });
+    expect(taskEvidence).toEqual([expect.objectContaining({
+      kind: "TRANSCRIPT_CANDIDATE_MERGED",
+      note: "Reviewed exact transcript evidence.",
+      evidenceJson: expect.objectContaining({
+        schema: "quipsly-transcript-task-evidence-merge-v1",
+      }),
+    })]);
     expect(goal).toMatchObject({
       projectId: targetProjectId,
       ownerUserId: actorUserId,

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
+import { lstatSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
 import {
@@ -20,6 +22,9 @@ const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 const PRIOR_ROOM_ID = "retained-coaching-follow-up-20260731";
 const NEXT_ROOM_ID = "qa-retained-coaching-next-session-20260807";
+const COACH_CONTINUITY_TASK_ID = "retained-coaching-continuity-task-20260803";
+const TRANSCRIPT_SEGMENT_ID = "retained-coaching-continuity-segment-20260803";
+const PLAYBACK_SOURCE_ID = "retained-coaching-continuity-source-20260803";
 const PRIOR_ROOM_TITLE = "Retained coaching follow-up rehearsal";
 const NEXT_ROOM_TITLE = "QA Retained · Coaching continuity Session 2";
 const IDENTITIES = [
@@ -38,6 +43,11 @@ const IDENTITIES = [
     email: "quipsly-followup-outsider-retained-20260731@example.test",
     viewport: { width: 390, height: 844 },
   },
+  {
+    role: "privacy-outsider",
+    email: "quipsly-privacy-outsider-retained-20260802@example.test",
+    viewport: { width: 390, height: 844 },
+  },
 ];
 
 function assert(condition, message) {
@@ -51,6 +61,61 @@ function requireLocalDatabase(value) {
     "Retained continuity operation refuses non-local databases.",
   );
   return url.toString();
+}
+
+function retainedPassword(identity) {
+  const store = String(
+    process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE || "keychain",
+  ).trim().toLowerCase();
+  if (store === "keychain") {
+    return readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: identity.email });
+  }
+  assert(store === "temporary", "Credential store must be temporary or keychain.");
+  const configuredDirectory = String(
+    process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_DIRECTORY || "",
+  ).trim();
+  assert(configuredDirectory, "Temporary retained credential directory is required.");
+  const directory = path.resolve(configuredDirectory);
+  const directoryInfo = lstatSync(directory);
+  assert(
+    directoryInfo.isDirectory()
+      && !directoryInfo.isSymbolicLink()
+      && directoryInfo.uid === process.getuid?.()
+      && (directoryInfo.mode & 0o077) === 0,
+    "Temporary retained credential directory must be owner-only and cannot be a symlink.",
+  );
+  const credentialPath = path.join(directory, `${identity.role}.json`);
+  const credentialInfo = lstatSync(credentialPath);
+  assert(
+    credentialInfo.isFile()
+      && !credentialInfo.isSymbolicLink()
+      && credentialInfo.uid === process.getuid?.()
+      && (credentialInfo.mode & 0o077) === 0,
+    `Temporary ${identity.role} credential must be an owner-only regular file.`,
+  );
+  const credential = JSON.parse(readFileSync(credentialPath, "utf8"));
+  assert(credential.email === identity.email, `Temporary ${identity.role} credential belongs to a different identity.`);
+  assert(
+    typeof credential.password === "string" && credential.password.length >= 16,
+    `Temporary ${identity.role} password is invalid.`,
+  );
+  return credential.password;
+}
+
+async function inspectProtectedPlayback(page) {
+  return page.evaluate(async (sourceId) => {
+    const response = await fetch(`/api/ingest/media/${encodeURIComponent(sourceId)}`, {
+      credentials: "same-origin",
+      headers: { Range: "bytes=0-43" },
+    });
+    const bytes = response.ok ? Array.from(new Uint8Array(await response.arrayBuffer())) : [];
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+      contentRange: response.headers.get("content-range"),
+      bytes,
+    };
+  }, PLAYBACK_SOURCE_ID);
 }
 
 async function verifyCoach(page, baseURL, identity, password) {
@@ -86,12 +151,32 @@ async function verifyCoach(page, baseURL, identity, password) {
     await sourceLink.getAttribute("href") === `/sessions/${PRIOR_ROOM_ID}?mode=work`,
     "Coach continuity source link no longer targets the exact prior Session.",
   );
+  assert(surfaceText.includes("Name the smallest repeatable boundary"), "Coach continuity lost the canonical task carrying reviewed evidence.");
+  assert(surfaceText.includes("I can name the smallest repeatable boundary before the next Session."), "Coach continuity lost the reviewed transcript wording.");
+  assert(surfaceText.includes("Append-only reviewed evidence"), "Coach continuity lost the append-only task boundary.");
+  const evidenceLink = surface.getByRole("link", { name: "Return to 1:03–1:11", exact: true });
+  await evidenceLink.waitFor();
+  assert(
+    await evidenceLink.getAttribute("href") === `/sessions/${PRIOR_ROOM_ID}?mode=transcript#transcript-segment-${TRANSCRIPT_SEGMENT_ID}`,
+    "Coach continuity evidence link no longer targets the exact reviewed transcript segment.",
+  );
   await assertNoHorizontalOverflow(surface, identity.role);
+  await evidenceLink.click();
+  await page.locator(`#transcript-segment-${TRANSCRIPT_SEGMENT_ID}`).waitFor({ timeout: 20_000 });
+  await page.getByText("I can name the smallest repeatable boundary before the next Session.", { exact: true }).waitFor({ timeout: 20_000 });
+  const playback = await inspectProtectedPlayback(page);
+  assert(playback.status === 206, "Authorized coach could not range-read the exact protected playback source.");
+  assert(playback.contentType === "audio/wav", "Protected playback returned an unexpected media type.");
+  assert(playback.contentRange === "bytes 0-43/1280044", "Protected playback lost its exact immutable byte boundary.");
+  assert(String.fromCharCode(...playback.bytes.slice(0, 4)) === "RIFF", "Protected playback did not return the expected WAV header.");
+  assert(String.fromCharCode(...playback.bytes.slice(8, 12)) === "WAVE", "Protected playback did not return the expected WAV identity.");
   await clearRenderedSession(page, baseURL, identity.role);
   return {
     role: identity.role,
     priorBrief: "visible",
     exactSourceLink: true,
+    exactTaskEvidenceSource: true,
+    protectedPlaybackRange: "authorized",
     currentSessionMutated: false,
     viewport: `${identity.viewport.width}x${identity.viewport.height}`,
   };
@@ -117,16 +202,37 @@ async function verifyNonAuthor(page, baseURL, identity, password) {
   return {
     role: identity.role,
     priorBrief: "concealed",
+    protectedPlaybackRange: "not-probed",
+    currentSessionMutated: false,
+    viewport: `${identity.viewport.width}x${identity.viewport.height}`,
+  };
+}
+
+async function verifyPrivacyOutsider(page, baseURL, identity, password) {
+  await signInThroughRenderedLogin({
+    page,
+    baseURL,
+    identity,
+    password,
+    callbackPath: "/dashboard",
+  });
+  const playback = await inspectProtectedPlayback(page);
+  assert(
+    playback.status !== 200 && playback.status !== 206 && playback.bytes.length === 0,
+    "A separate-account outsider could read protected coaching audio by guessing its stable ID.",
+  );
+  await clearRenderedSession(page, baseURL, identity.role);
+  return {
+    role: identity.role,
+    priorBrief: "not-requested",
+    protectedPlaybackRange: "denied",
     currentSessionMutated: false,
     viewport: `${identity.viewport.width}x${identity.viewport.height}`,
   };
 }
 
 async function verifyIdentity(browser, baseURL, identity) {
-  const password = readRetainedQAPassword({
-    service: KEYCHAIN_SERVICE,
-    account: identity.email,
-  });
+  const password = retainedPassword(identity);
   assert(password, `${identity.role} has no retained Keychain password.`);
   const context = await browser.newContext({
     viewport: identity.viewport,
@@ -140,7 +246,9 @@ async function verifyIdentity(browser, baseURL, identity) {
   try {
     const result = identity.role === "coach"
       ? await verifyCoach(page, baseURL, identity, password)
-      : await verifyNonAuthor(page, baseURL, identity, password);
+      : identity.role === "privacy-outsider"
+        ? await verifyPrivacyOutsider(page, baseURL, identity, password)
+        : await verifyNonAuthor(page, baseURL, identity, password);
     assert(pageErrors.length === 0, `${identity.role} rendered continuity journey raised a browser exception.`);
     return { ...result, browserExceptions: 0, sessionClear: "passed" };
   } finally {
@@ -171,7 +279,7 @@ async function readCanonicalState(databaseURL) {
     assert(priorRoom.projectId && priorRoom.projectId === nextRoom.projectId, "Sequential Sessions lost their canonical Nest identity.");
     assert(priorRoom.purpose === nextRoom.purpose, "Sequential Sessions no longer share one Session purpose.");
 
-    const [priorNotes, nextNotes] = await Promise.all([
+    const [priorNotes, canonicalTask, nextNotes] = await Promise.all([
       prisma.coachingNote.findMany({
         where: {
           roomId: PRIOR_ROOM_ID,
@@ -181,6 +289,23 @@ async function readCanonicalState(databaseURL) {
         },
         orderBy: { createdAt: "desc" },
         select: { id: true, sourceJson: true },
+      }),
+      prisma.actionItem.findUniqueOrThrow({
+        where: { id: COACH_CONTINUITY_TASK_ID },
+        select: {
+          id: true,
+          title: true,
+          detail: true,
+          status: true,
+          assignedUserId: true,
+          roomId: true,
+          evidenceReceipts: {
+            where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" },
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 1,
+            select: { id: true, evidenceJson: true },
+          },
+        },
       }),
       prisma.coachingNote.findMany({
         where: { roomId: NEXT_ROOM_ID },
@@ -198,6 +323,17 @@ async function readCanonicalState(databaseURL) {
     assert(source.aiGenerated === false, "Continuity receipt incorrectly claims AI generation.");
     assert(source.externalSideEffects === false, "Continuity receipt incorrectly claims external effects.");
     assert(/^[a-f0-9]{64}$/.test(String(source.integrity?.snapshotSha256 || "")), "Continuity receipt lost its snapshot SHA-256.");
+    const snapshotTask = source.snapshot?.tasks?.find((task) => task.id === COACH_CONTINUITY_TASK_ID);
+    assert(snapshotTask?.lastMergedTranscriptEvidence?.sourceAnchor?.segmentId === TRANSCRIPT_SEGMENT_ID,
+      "Continuity snapshot lost the append-only task evidence receipt.");
+    assert(canonicalTask.title === "Name the smallest repeatable boundary"
+      && canonicalTask.detail === "Bring the client's own wording back into the next coaching conversation."
+      && canonicalTask.status === "OPEN"
+      && canonicalTask.assignedUserId === coach.id
+      && canonicalTask.roomId === PRIOR_ROOM_ID,
+    "Continuity operation mutated the canonical task definition or lifecycle.");
+    assert(canonicalTask.evidenceReceipts[0]?.evidenceJson?.candidateSource?.segmentId === TRANSCRIPT_SEGMENT_ID,
+      "Canonical task evidence receipt lost its exact source segment.");
     return {
       projectID: priorRoom.projectId,
       priorRoomID: priorRoom.id,
@@ -206,6 +342,8 @@ async function readCanonicalState(databaseURL) {
       copiedBriefCount: copiedBriefs.length,
       snapshotSha256: source.integrity.snapshotSha256,
       actorPrivate: true,
+      exactTaskEvidenceSource: true,
+      canonicalTaskMutated: false,
       aiGenerated: false,
       externalSideEffects: false,
     };
@@ -223,8 +361,14 @@ async function main() {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: true });
   try {
+    const credentialStore = String(
+      process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE || "keychain",
+    ).trim().toLowerCase();
+    const operatedIdentities = credentialStore === "temporary"
+      ? IDENTITIES
+      : IDENTITIES.filter((identity) => identity.role !== "privacy-outsider");
     const identities = [];
-    for (const identity of IDENTITIES) {
+    for (const identity of operatedIdentities) {
       identities.push(await verifyIdentity(browser, baseURL, identity));
     }
     const canonical = await readCanonicalState(databaseURL);
@@ -234,7 +378,10 @@ async function main() {
       retained: true,
       renderedProduct: true,
       baseURL,
-      credentialStore: "macOS Keychain",
+      credentialStore: credentialStore === "temporary"
+        ? "owner-only temporary directory"
+        : "macOS Keychain",
+      separateAccountPrivacyBoundary: credentialStore === "temporary" ? "probed" : "not-probed",
       screenshotsCaptured: false,
       secretsPrinted: false,
       externalSideEffects: false,

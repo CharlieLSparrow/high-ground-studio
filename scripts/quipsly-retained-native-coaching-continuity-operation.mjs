@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import {
+  materializeRetainedCoachingContinuitySource,
+  RETAINED_COACHING_CONTINUITY_SOURCE,
+} from "./lib/retained-coaching-continuity-source.mjs";
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const RUNNER = path.join(
@@ -17,6 +22,10 @@ const CLIENT_EMAIL = "quipsly-client-retained-20260731@example.test";
 const NEXT_ROOM_ID = "qa-retained-coaching-next-session-20260807";
 const NEXT_ROOM_TITLE = "QA Retained · Coaching continuity Session 2";
 const PRIOR_ROOM_ID = "retained-coaching-follow-up-20260731";
+const PRIOR_ROOM_TITLE = "Retained coaching follow-up rehearsal";
+const TRANSCRIPT_ASSET_ID = "retained-coaching-continuity-asset-20260803";
+const TRANSCRIPT_PARTICIPANT_ID = `${PRIOR_ROOM_ID}-coach`;
+const TRANSCRIPT_CONSENT_ID = "retained-coaching-consent-coach-20260803";
 const TASK_ID = "retained-follow-up-client-task-20260731";
 const GOAL_ID = "retained-follow-up-client-goal-20260731";
 
@@ -76,7 +85,20 @@ async function verifyAndWarmCanonicalSession({ baseURL, email, password }) {
       && sessionsBody.sessions.some((session) => session?.id === NEXT_ROOM_ID),
     "The exact retained next Session is missing from Nest's authoritative list.",
   );
-  return sessionsBody.sessions.length;
+  const sessionCheckResponse = await fetch(`${baseURL}/api/mac/session-check`, {
+    headers: { authorization: `Bearer ${signInBody.idToken}` },
+  });
+  const sessionCheckBody = await sessionCheckResponse.json().catch(() => null);
+  assert(
+    sessionCheckResponse.status === 200
+      && (sessionCheckBody?.ok === true || sessionCheckBody?.authenticated === true)
+      && typeof sessionCheckBody?.user?.id === "string",
+    "Nest did not return the exact account owner needed to partition the retained local source.",
+  );
+  return {
+    sessionCount: sessionsBody.sessions.length,
+    ownerAccountID: sessionCheckBody.user.id,
+  };
 }
 
 function parseArguments(args) {
@@ -113,7 +135,7 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     account: CLIENT_EMAIL,
   });
   assert(clientPassword, "The retained coaching client has no Keychain password.");
-  const authoritativeSessionCount = await verifyAndWarmCanonicalSession({
+  const coachSession = await verifyAndWarmCanonicalSession({
     baseURL,
     email: COACH_EMAIL,
     password,
@@ -123,6 +145,11 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     email: CLIENT_EMAIL,
     password: clientPassword,
   });
+  const retainedSource = await materializeRetainedCoachingContinuitySource();
+  assert(
+    retainedSource.sha256 === RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
+    "The retained local source changed while preparing the native operation.",
+  );
   const resultBundle = path.resolve(
     options.resultBundle
       || `/private/tmp/quipsly-retained-native-coaching-continuity-${Date.now()}-${process.pid}.xcresult`,
@@ -142,6 +169,15 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
       QUIPSLY_CAPTURE_UI_TEST_PASSWORD: password,
       QUIPSLY_CAPTURE_UI_TEST_SESSION_ID: NEXT_ROOM_ID,
       QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: NEXT_ROOM_TITLE,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_PATH: retainedSource.path,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID: randomUUID(),
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID: TRANSCRIPT_ASSET_ID,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ROOM_ID: PRIOR_ROOM_ID,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_PARTICIPANT_ID: TRANSCRIPT_PARTICIPANT_ID,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_CONSENT_ID: TRANSCRIPT_CONSENT_ID,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID: coachSession.ownerAccountID,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_SHA256: retainedSource.sha256,
+      QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_TITLE: PRIOR_ROOM_TITLE,
       QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH: resultBundle,
     },
     stdio: "inherit",
@@ -179,8 +215,9 @@ preserves the xcresult below /private/tmp. Credentials remain in macOS Keychain.
     actors: ["coach", "client"],
     nextRoomID: NEXT_ROOM_ID,
     priorRoomID: PRIOR_ROOM_ID,
-    authoritativeSessionCount,
+    authoritativeSessionCount: coachSession.sessionCount,
     authenticatedSessionPrewarm: true,
+    exactRetainedSourceInstalled: true,
     resultBundle,
     clientResultBundle,
     passedOperations: 2,

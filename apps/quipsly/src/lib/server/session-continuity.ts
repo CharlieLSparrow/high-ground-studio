@@ -4,11 +4,17 @@ import { createHash } from "node:crypto";
 
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import {
+  readTranscriptDerivedTaskSource,
+  readTranscriptMergedTaskSource,
+  type TranscriptMergedTaskSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import {
   SESSION_CONTINUITY_SCHEMA,
   type PriorSessionContinuity,
   type SavedSessionContinuityBrief,
+  type SavedSessionContinuityTaskEvidence,
   type SessionContinuityPlanBlock,
   type SessionContinuitySnapshot,
   type SessionContinuityState,
@@ -94,7 +100,11 @@ function sha256(value: string) {
 }
 
 function snapshotSha256(snapshot: SessionContinuitySnapshot) {
-  return sha256(stableJson(snapshot));
+  // Prisma JSON omits object properties whose value is undefined. Hash the
+  // exact JSON-serializable envelope so a valid optional sourceSpan cannot
+  // become a false integrity failure after persistence and readback.
+  const persistedShape = JSON.parse(JSON.stringify(snapshot)) as SessionContinuitySnapshot;
+  return sha256(stableJson(persistedShape));
 }
 
 function sortByUpdatedAt<T extends { id: string; updatedAt: string }>(items: T[]) {
@@ -143,12 +153,63 @@ function savedBrief(row: {
     || !/^[a-f0-9]{64}$/.test(bodyFingerprint)
     || sha256(row.body) !== bodyFingerprint
   ) return null;
+  const taskEvidence = taskEvidenceFromSavedSnapshot(source, fingerprint, expected);
   return {
     id: row.id,
     title: row.title || "Next-session continuity brief",
     body: row.body,
     snapshotSha256: fingerprint,
     createdAt: row.createdAt.toISOString(),
+    taskEvidence,
+  };
+}
+
+function taskEvidenceFromSavedSnapshot(
+  source: Record<string, unknown>,
+  expectedSnapshotSha256: string,
+  expected?: { actorUserId: string; roomId: string },
+): SavedSessionContinuityTaskEvidence[] {
+  const rawSnapshot = source.snapshot;
+  const snapshot = record(rawSnapshot);
+  if (
+    snapshot.schema !== SESSION_CONTINUITY_SCHEMA
+    || (expected && snapshot.actorUserId !== expected.actorUserId)
+    || record(snapshot.room).id !== (expected?.roomId ?? source.roomId)
+    || snapshot.externalSideEffects !== false
+    || snapshot.aiGenerated !== false
+    || snapshotSha256(rawSnapshot as SessionContinuitySnapshot) !== expectedSnapshotSha256
+    || !Array.isArray(snapshot.tasks)
+  ) return [];
+
+  return snapshot.tasks.slice(0, 50).flatMap((value): SavedSessionContinuityTaskEvidence[] => {
+    const task = record(value);
+    const taskId = text(task.id, 240);
+    const taskTitle = text(task.title, 500);
+    const evidence = readSavedTranscriptTaskEvidence(task.lastMergedTranscriptEvidence);
+    return taskId && taskTitle && evidence ? [{ taskId, taskTitle, evidence }] : [];
+  });
+}
+
+function readSavedTranscriptTaskEvidence(value: unknown): TranscriptMergedTaskSource | null {
+  const evidence = record(value);
+  const receiptId = text(evidence.receiptId, 200);
+  const actionCandidateId = text(evidence.actionCandidateId, 700);
+  const mergedAt = text(evidence.mergedAt, 80);
+  const sourceAnchor = readTranscriptDerivedTaskSource(evidence.sourceAnchor);
+  return receiptId && actionCandidateId && mergedAt && sourceAnchor
+    ? { receiptId, actionCandidateId, mergedAt, sourceAnchor }
+    : null;
+}
+
+function keepAccessibleTaskEvidence(
+  brief: SavedSessionContinuityBrief,
+  accessibleRoomIds: Set<string>,
+): SavedSessionContinuityBrief {
+  return {
+    ...brief,
+    taskEvidence: (brief.taskEvidence ?? []).filter((item) => (
+      accessibleRoomIds.has(item.evidence.sourceAnchor.roomId)
+    )),
   };
 }
 
@@ -229,24 +290,42 @@ export async function loadPriorSessionContinuityByRoomId(input: {
     },
   });
 
+  const parsedCandidates = candidates.flatMap((candidate) => {
+    const brief = candidate.notes
+      .map((note) => savedBrief(note, {
+        actorUserId: input.actor.id,
+        roomId: candidate.id,
+      }))
+      .find((item): item is SavedSessionContinuityBrief => Boolean(item));
+    return brief ? [{ candidate, brief }] : [];
+  });
+  const accessibleEvidenceRoomIds = new Set([
+    ...targets.map((room) => room.id),
+    ...candidates.map((room) => room.id),
+  ]);
+  const unresolvedEvidenceRoomIds = [...new Set(parsedCandidates.flatMap(({ brief }) => (
+    (brief.taskEvidence ?? []).map((item) => item.evidence.sourceAnchor.roomId)
+  )))].filter((roomId) => !accessibleEvidenceRoomIds.has(roomId));
+  if (unresolvedEvidenceRoomIds.length > 0) {
+    const accessibleEvidenceRooms = await input.prisma.callRoom.findMany({
+      where: {
+        id: { in: unresolvedEvidenceRoomIds },
+        ...sessionActorAccessWhere(input.actor),
+      },
+      select: { id: true },
+    });
+    accessibleEvidenceRooms.forEach((room) => accessibleEvidenceRoomIds.add(room.id));
+  }
+
   const result: Record<string, PriorSessionContinuity> = {};
   for (const target of targets) {
-    const prior = candidates
-      .filter((candidate) => (
+    const prior = parsedCandidates
+      .filter(({ candidate }) => (
         candidate.id !== target.id
         && candidate.projectId === target.projectId
         && String(candidate.purpose) === String(target.purpose)
         && isBefore(candidate, target)
       ))
-      .flatMap((candidate) => {
-        const brief = candidate.notes
-          .map((note) => savedBrief(note, {
-            actorUserId: input.actor.id,
-            roomId: candidate.id,
-          }))
-          .find((item): item is SavedSessionContinuityBrief => Boolean(item));
-        return brief ? [{ candidate, brief }] : [];
-      })
       .sort((left, right) => {
         const leftChronology = chronology(left.candidate);
         const rightChronology = chronology(right.candidate);
@@ -264,7 +343,7 @@ export async function loadPriorSessionContinuityByRoomId(input: {
         scheduledStart: prior.candidate.scheduledStart?.toISOString() ?? null,
         endedAt: prior.candidate.endedAt?.toISOString() ?? null,
       },
-      brief: prior.brief,
+      brief: keepAccessibleTaskEvidence(prior.brief, accessibleEvidenceRoomIds),
       relationship: "same-project-and-purpose",
       currentSessionMutated: false,
       externalSideEffects: false,
@@ -310,6 +389,12 @@ export function renderSessionContinuityBrief(
   savedAt: Date,
 ) {
   const summary = summaryForSnapshot(snapshot, savedAt);
+  const taskEvidenceLines = snapshot.tasks.flatMap((task) => {
+    const evidence = task.lastMergedTranscriptEvidence;
+    return evidence ? [
+      `- [${task.id}] receipt ${evidence.receiptId} · segment ${evidence.sourceAnchor.segmentId} · “${evidence.sourceAnchor.effectiveTextSnapshot}”`,
+    ] : [];
+  });
   const lines = [
     `Next-session continuity — ${snapshot.room.title}`,
     "",
@@ -329,8 +414,17 @@ export function renderSessionContinuityBrief(
     "",
     "Committed tasks",
     ...(snapshot.tasks.length
-      ? snapshot.tasks.map((task) => `- [${task.id}] ${task.status}: ${task.title}${task.detailExcerpt ? ` — ${task.detailExcerpt}` : ""}`)
+      ? snapshot.tasks.map((task) => {
+          const evidence = task.lastMergedTranscriptEvidence;
+          const evidenceLabel = evidence
+            ? ` · reviewed transcript evidence ${evidence.sourceAnchor.startSeconds.toFixed(2)}–${evidence.sourceAnchor.endSeconds.toFixed(2)}s in Session ${evidence.sourceAnchor.roomId}`
+            : "";
+          return `- [${task.id}] ${task.status}: ${task.title}${task.detailExcerpt ? ` — ${task.detailExcerpt}` : ""}${evidenceLabel}`;
+        })
       : ["- None recorded."]),
+    "",
+    "Reviewed task evidence",
+    ...(taskEvidenceLines.length ? taskEvidenceLines : ["- None recorded."]),
     "",
     "Goals",
     ...(snapshot.goals.length
@@ -409,6 +503,12 @@ export async function loadSessionContinuityState(input: {
           completedAt: true,
           sourceJson: true,
           updatedAt: true,
+          evidenceReceipts: {
+            where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" },
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 1,
+            select: { evidenceJson: true },
+          },
           tagLinks: {
             orderBy: { createdAt: "asc" },
             select: { tag: { select: { id: true, isActive: true } } },
@@ -485,6 +585,24 @@ export async function loadSessionContinuityState(input: {
     },
   });
   if (!room) return null;
+  const parsedTaskEvidence = new Map(room.actionItems.flatMap((task) => {
+    const evidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
+    return evidence ? [[task.id, evidence] as const] : [];
+  }));
+  const accessibleEvidenceRoomIds = new Set([room.id]);
+  const unresolvedEvidenceRoomIds = [...new Set([...parsedTaskEvidence.values()]
+    .map((evidence) => evidence.sourceAnchor.roomId))]
+    .filter((evidenceRoomId) => !accessibleEvidenceRoomIds.has(evidenceRoomId));
+  if (unresolvedEvidenceRoomIds.length > 0) {
+    const accessibleEvidenceRooms = await input.prisma.callRoom.findMany({
+      where: {
+        id: { in: unresolvedEvidenceRoomIds },
+        ...sessionActorAccessWhere(input.actor),
+      },
+      select: { id: true },
+    });
+    accessibleEvidenceRooms.forEach((evidenceRoom) => accessibleEvidenceRoomIds.add(evidenceRoom.id));
+  }
   // Interactive transactions use one driver connection. Keep these reads
   // sequential so the pg adapter never dispatches concurrent queries on that
   // connection (pg 9 will reject the legacy concurrent behavior).
@@ -578,6 +696,12 @@ export async function loadSessionContinuityState(input: {
           .sort(),
         goalIds: task.goalLinks.map((link) => link.goalId).sort(),
         planBlockIds: task.planBlocks.map((block) => block.id).sort(),
+        lastMergedTranscriptEvidence: (() => {
+          const evidence = parsedTaskEvidence.get(task.id) ?? null;
+          return evidence && accessibleEvidenceRoomIds.has(evidence.sourceAnchor.roomId)
+            ? evidence
+            : null;
+        })(),
       };
     });
 

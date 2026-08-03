@@ -28,6 +28,10 @@ test("retained native coaching continuity stays local, credential-safe, and comp
   assert.match(operator, /QUIPSLY_CAPTURE_UI_TEST_MODE: "coaching-follow-through-work"/);
   assert.match(operator, /QUIPSLY_CAPTURE_UI_TEST_TASK_ID: TASK_ID/);
   assert.match(operator, /QUIPSLY_CAPTURE_UI_TEST_GOAL_ID: GOAL_ID/);
+  assert.match(operator, /materializeRetainedCoachingContinuitySource/);
+  assert.match(operator, /QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID: TRANSCRIPT_ASSET_ID/);
+  assert.match(operator, /QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID: coachSession\.ownerAccountID/);
+  assert.match(operator, /exactRetainedSourceInstalled: true/);
   assert.match(operator, /passedOperations: 2/);
   assert.match(operator, /artifactPreserved: true/);
   assert.match(operator, /credentialsPrinted: false/);
@@ -37,10 +41,14 @@ test("retained native coaching continuity stays local, credential-safe, and comp
   assert.match(nativeTest, /testPriorCoachingContinuityProjectsIntoExactNextSession/);
   assert.match(nativeTest, /testClientOpensExactFollowThroughGoalInWork/);
   assert.match(nativeTest, /CapturePriorSessionContinuity/);
+  assert.match(nativeTest, /CapturePriorContinuityTaskEvidence_retained-coaching-continuity-task-20260803/);
+  assert.match(nativeTest, /CaptureTranscriptSegment_retained-coaching-continuity-segment-20260803/);
   assert.match(nativeTest, /CapturePriorSessionFollowThrough/);
   assert.match(nativeTest, /Latest check-in 75%/);
   assert.match(nativeTest, /Evidence: I used the smaller boundary/);
   assert.match(shell, /CapturePriorContinuityOpenSource/);
+  assert.match(shell, /CapturePriorContinuityTaskEvidence_/);
+  assert.match(shell, /Append-only evidence/);
   assert.match(shell, /CaptureFollowThroughOpenSource/);
   assert.match(shell, /CaptureFollowThroughOpenTask_/);
   assert.match(shell, /CaptureFollowThroughOpenGoal_/);

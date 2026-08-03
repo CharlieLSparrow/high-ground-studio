@@ -142,6 +142,37 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
           status: "PLANNED",
         },
       }),
+      prisma.actionItemEvidenceReceipt.create({
+        data: {
+          id: `continuity-task-evidence-${nonce}`,
+          actionItemId: taskId,
+          actorUserId,
+          kind: "TRANSCRIPT_CANDIDATE_MERGED",
+          note: "Reviewed commitment evidence.",
+          occurredAt: new Date("2026-07-20T16:04:00.000Z"),
+          evidenceJson: {
+            schema: "quipsly-transcript-task-evidence-merge-v1",
+            receiptId: `continuity-review-receipt-${nonce}`,
+            actionCandidateId: `packet-action-${nonce}`,
+            mergedAt: "2026-07-20T16:04:00.000Z",
+            candidateSource: {
+              schema: "quipsly-transcript-derived-task-v1",
+              roomId,
+              transcriptJobId: `transcript-job-${nonce}`,
+              segmentId: `transcript-segment-${nonce}`,
+              startSeconds: 63.2,
+              endSeconds: 71.8,
+              providerTextSha256: "a".repeat(64),
+              providerSpeakerLabel: "Speaker",
+              effectiveTextSnapshot: "I will run the protected rehearsal before we meet again.",
+              effectiveSpeakerLabelSnapshot: "Client",
+              acceptedCorrectionId: null,
+              recordingAssetId: `recording-asset-${nonce}`,
+              playbackSourceId: `playback-source-${nonce}`,
+            },
+          },
+        },
+      }),
     ]);
   });
 
@@ -191,13 +222,33 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
         snapshot: {
           externalSideEffects: false,
           aiGenerated: false,
-          tasks: [{ id: taskId }],
+          tasks: [{
+            id: taskId,
+            lastMergedTranscriptEvidence: {
+              receiptId: `continuity-review-receipt-${nonce}`,
+              sourceAnchor: { roomId, segmentId: `transcript-segment-${nonce}` },
+            },
+          }],
           goals: [{ id: goalId }],
         },
       },
     });
 
     const clientRequestId = randomUUID();
+    const taskBefore = await prisma.actionItem.findUniqueOrThrow({
+      where: { id: taskId },
+      select: {
+        roomId: true,
+        projectId: true,
+        assignedUserId: true,
+        title: true,
+        detail: true,
+        status: true,
+        dueAt: true,
+        sourceJson: true,
+        updatedAt: true,
+      },
+    });
     const input = {
       prisma,
       actor,
@@ -210,6 +261,13 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
     const replay = await saveSessionContinuityBrief(input);
 
     expect(first).toMatchObject({ idempotentReplay: false });
+    expect(first.brief.taskEvidence).toEqual([expect.objectContaining({
+      taskId,
+      evidence: expect.objectContaining({
+        receiptId: `continuity-review-receipt-${nonce}`,
+        sourceAnchor: expect.objectContaining({ roomId }),
+      }),
+    })]);
     expect(replay).toMatchObject({
       idempotentReplay: true,
       brief: { id: first.brief.id },
@@ -257,6 +315,13 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
       brief: {
         id: first.brief.id,
         snapshotSha256: state!.current.snapshotSha256,
+        taskEvidence: [{
+          taskId,
+          evidence: {
+            receiptId: `continuity-review-receipt-${nonce}`,
+            sourceAnchor: { roomId },
+          },
+        }],
       },
     });
     await expect(prisma.coachingNote.count({
@@ -265,6 +330,23 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
         kind: "FOLLOW_UP",
       },
     })).resolves.toBe(0);
+    await expect(prisma.actionItem.findUniqueOrThrow({
+      where: { id: taskId },
+      select: {
+        roomId: true,
+        projectId: true,
+        assignedUserId: true,
+        title: true,
+        detail: true,
+        status: true,
+        dueAt: true,
+        sourceJson: true,
+        updatedAt: true,
+      },
+    })).resolves.toEqual(taskBefore);
+    await expect(prisma.actionItemEvidenceReceipt.count({
+      where: { actionItemId: taskId },
+    })).resolves.toBe(1);
 
     await expect(loadSessionContinuityState({
       prisma: prisma as never,

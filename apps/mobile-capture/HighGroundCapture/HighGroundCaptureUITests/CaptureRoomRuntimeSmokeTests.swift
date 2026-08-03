@@ -4066,6 +4066,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(boundary.exists, "Capture should disclose the no-copy and no-mutation boundary.")
 
+        let taskEvidence = app.buttons[
+            "CapturePriorContinuityTaskEvidence_retained-coaching-continuity-task-20260803"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(taskEvidence, in: app, timeout: 12, swipeAttempts: 8),
+            "The next-Session projection should expose the append-only transcript evidence attached to the canonical task."
+        )
+        XCTAssertTrue(app.staticTexts["Name the smallest repeatable boundary"].firstMatch.exists)
+        XCTAssertTrue(
+            app.staticTexts[
+                "I can name the smallest repeatable boundary before the next Session."
+            ].firstMatch.exists
+        )
+        taskEvidence.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptExactSourceMatch"].firstMatch.waitForExistence(timeout: 20),
+            "Capture should resolve the carried-forward receipt as an exact transcript source, not a text-only citation."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "CaptureTranscriptSegment_retained-coaching-continuity-segment-20260803"
+            ].firstMatch.waitForExistence(timeout: 12),
+            "Capture should focus the exact retained transcript segment behind the task evidence."
+        )
+        let backToRecord = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(backToRecord.waitForExistence(timeout: 8))
+        backToRecord.tap()
+
         let openSource = app.buttons["CapturePriorContinuityOpenSource"].firstMatch
         XCTAssertTrue(openSource.waitForExistence(timeout: 8))
         XCTAssertTrue(openSource.isEnabled)
