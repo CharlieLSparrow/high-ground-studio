@@ -2358,6 +2358,7 @@ private enum CapturePacketCandidateReviewFilter: String, CaseIterable, Identifia
 
 struct CaptureTranscriptReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
 
     let roomID: String
     let sessionTitle: String
@@ -2868,12 +2869,13 @@ struct CaptureTranscriptReviewView: View {
         let listenCount = packetCandidateQueue.filter { $0.state == .listenFirst }.count
         let deferredCount = packetCandidateQueue.filter { $0.state == .deferred }.count
         let decidedCount = packetCandidateQueue.filter { $0.state == .decided }.count
+        let handledCount = deferredCount + decidedCount
         return VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 Label("Review queue", systemImage: "checklist.checked")
                     .font(.title3.weight(.bold))
                 Spacer(minLength: 8)
-                Text("\(decidedCount)/\(packetCandidateQueue.count)")
+                Text("\(handledCount)/\(packetCandidateQueue.count)")
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -2883,10 +2885,10 @@ struct CaptureTranscriptReviewView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ProgressView(value: Double(decidedCount), total: Double(max(packetCandidateQueue.count, 1)))
+            ProgressView(value: Double(handledCount), total: Double(max(packetCandidateQueue.count, 1)))
                 .tint(.green)
-                .accessibilityLabel("Candidate decisions saved")
-                .accessibilityValue("\(decidedCount) of \(packetCandidateQueue.count)")
+                .accessibilityLabel("Candidates handled")
+                .accessibilityValue("\(handledCount) of \(packetCandidateQueue.count)")
                 .accessibilityIdentifier("CapturePacketCandidateReviewProgress")
 
             Text("\(readyCount) ready · \(listenCount) listen first · \(deferredCount) deferred · \(decidedCount) decided")
@@ -2910,10 +2912,32 @@ struct CaptureTranscriptReviewView: View {
                 .tint(.purple)
                 .disabled(client.packetNeedsRebuild || client.isUsingProtectedCache)
                 .accessibilityIdentifier("CapturePacketCandidateContinueReview")
-            } else {
-                Label("No active decisions", systemImage: "checkmark.circle.fill")
+            } else if client.packetNeedsRebuild || client.isUsingProtectedCache {
+                Label("Review held", systemImage: "exclamationmark.shield.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.orange)
+            } else {
+                VStack(alignment: .leading, spacing: 9) {
+                    Label("Review queue handled", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                    Text(deferredCount > 0
+                        ? "Every candidate is decided or deliberately deferred. \(deferredCount) deferred \(deferredCount == 1 ? "candidate remains" : "candidates remain") noncanonical and outside client follow-up and Studio handoff until explicitly revisited."
+                        : "Every candidate has an explicit decision. Return to the Session when you are ready to prepare client follow-up or Studio handoff.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("Done reviewing", systemImage: "arrow.backward")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Returns to the previous screen. This creates and releases nothing.")
+                    .accessibilityIdentifier("CapturePacketCandidateReviewDone")
+                }
+                .accessibilityIdentifier("CapturePacketCandidateReviewFinish")
             }
 
             Picker("Show candidates", selection: $packetCandidateFilter) {

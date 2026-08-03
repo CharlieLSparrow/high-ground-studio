@@ -757,6 +757,24 @@ Before this goal can be marked complete, preserve screenshots or interaction rec
 
 The work is not done if the tests pass but the real episode, session, or document still needs manual reconstruction elsewhere.
 
+## 2026-08-03 Session review finish-line checkpoint
+
+This is an active-goal checkpoint, not a completion claim.
+
+- Nest and Quipsly Capture now use one explicit completion model: deferred and
+  decided proposals are handled; ready and listen-first proposals remain open.
+  Deferred proposals remain noncanonical and cannot silently enter client
+  follow-up or Studio handoff.
+- Nest distinguishes an empty packet from a handled queue and provides the
+  completed reviewer an explicit Outputs handoff. Capture mirrors the handled
+  progress and provides a safe return action.
+- Signed-in local dogfood built and deferred a real retained Session proposal,
+  proved the no-canonical-work receipt, finished at 1/1 handled, and continued
+  to the same Session's Outputs. Compiled simulator operation and automated
+  web/native contracts pass.
+- Physical-iPhone review, real TestFlight use, production deployment, and the
+  goal's full episode/coaching proof remain outstanding.
+
 ## 2026-07-22 reusable tagging checkpoint
 
 This is an active-goal checkpoint, not a completion claim.

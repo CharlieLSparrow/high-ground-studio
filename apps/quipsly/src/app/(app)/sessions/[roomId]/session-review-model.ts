@@ -214,6 +214,8 @@ export type SessionCandidateReviewProgress = {
   listenFirst: number;
   deferred: number;
   decided: number;
+  handled: number;
+  remaining: number;
 };
 
 function candidateReviewState(input: {
@@ -298,12 +300,24 @@ export function sessionCandidateReviewQueue(packet: SessionReviewPacket | null):
 export function sessionCandidateReviewProgress(items: SessionCandidateReviewQueueItem[]): SessionCandidateReviewProgress {
   return items.reduce<SessionCandidateReviewProgress>((progress, item) => {
     progress.total += 1;
-    if (item.state === "ready") progress.ready += 1;
-    if (item.state === "listen-first") progress.listenFirst += 1;
-    if (item.state === "deferred") progress.deferred += 1;
-    if (item.state === "decided") progress.decided += 1;
+    if (item.state === "ready") {
+      progress.ready += 1;
+      progress.remaining += 1;
+    }
+    if (item.state === "listen-first") {
+      progress.listenFirst += 1;
+      progress.remaining += 1;
+    }
+    if (item.state === "deferred") {
+      progress.deferred += 1;
+      progress.handled += 1;
+    }
+    if (item.state === "decided") {
+      progress.decided += 1;
+      progress.handled += 1;
+    }
     return progress;
-  }, { total: 0, ready: 0, listenFirst: 0, deferred: 0, decided: 0 });
+  }, { total: 0, ready: 0, listenFirst: 0, deferred: 0, decided: 0, handled: 0, remaining: 0 });
 }
 
 export function noteCandidateReviewRequest(input: {

@@ -602,7 +602,7 @@ describe("Session review goal candidates", () => {
     const section = queue.closest("section");
     expect(section).not.toBeNull();
     const review = within(section!);
-    expect(review.getByRole("progressbar", { name: "Candidate decisions saved" })).toHaveAttribute("aria-valuenow", "1");
+    expect(review.getByRole("progressbar", { name: "Candidates handled" })).toHaveAttribute("aria-valuenow", "2");
     expect(review.getByRole("button", { name: /To review.*2/i })).toHaveAttribute("aria-pressed", "true");
     expect(review.getAllByText("Note candidate")).toHaveLength(1);
     expect(review.getAllByText("Goal candidate")).toHaveLength(1);
@@ -616,6 +616,59 @@ describe("Session review goal candidates", () => {
     await user.click(review.getByRole("button", { name: /Decided.*1/i }));
     expect(review.getByText("Keep the decided goal")).toBeInTheDocument();
     expect(review.getByText("Decision saved")).toBeInTheDocument();
+  });
+
+  it("finishes a fully handled queue without treating deferred candidates as canonical output", async () => {
+    const handled = packet({
+      ...candidate,
+      reviewStatus: "ACCEPTED_AS_GOAL",
+      committedGoalId: "goal-1",
+    });
+    handled.packet = {
+      ...handled.packet!,
+      noteCandidates: [{
+        ...noteCandidate,
+        reviewStatus: "DEFERRED_BY_HUMAN",
+      }],
+      actionCandidates: [{
+        ...actionCandidate,
+        reviewStatus: "REJECTED_BY_HUMAN",
+      }],
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(handled)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const section = queue.closest("section");
+    expect(section).not.toBeNull();
+    const review = within(section!);
+    expect(review.getByText("Queue handled")).toBeInTheDocument();
+    expect(review.getByRole("progressbar", { name: "Candidates handled" })).toHaveAttribute("aria-valuenow", "3");
+    expect(review.getByText(/1 deferred candidate remains noncanonical and excluded from client follow-up and Studio handoff/)).toBeInTheDocument();
+    expect(review.getByRole("link", { name: "Continue to Outputs" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
+    expect(review.queryByRole("button", { name: "Continue review" })).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an empty packet from a handled review queue", async () => {
+    const empty = packet();
+    empty.packet = {
+      ...empty.packet!,
+      noteCandidates: [],
+      actionCandidates: [],
+      goalCandidates: [],
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(empty)) as typeof fetch;
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const section = queue.closest("section");
+    expect(section).not.toBeNull();
+    const review = within(section!);
+    expect(review.getByText("No candidates")).toBeInTheDocument();
+    expect(review.queryByText("Queue handled")).not.toBeInTheDocument();
+    expect(review.queryByRole("link", { name: "Continue to Outputs" })).not.toBeInTheDocument();
   });
 
   it("accepts only through the packet review ledger and preserves its success readback", async () => {

@@ -89,6 +89,8 @@ describe("session review model", () => {
       listenFirst: 1,
       deferred: 1,
       decided: 1,
+      handled: 2,
+      remaining: 2,
     });
   });
 

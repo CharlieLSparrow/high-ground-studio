@@ -1083,6 +1083,7 @@ function candidateStateTone(state: SessionCandidateReviewQueueItem["state"]) {
 }
 
 function SessionCandidateReviewQueue({
+  roomId,
   packet,
   reviewHeld,
   packetStale,
@@ -1093,6 +1094,7 @@ function SessionCandidateReviewQueue({
   onTaskDecision,
   onGoalDecision,
 }: {
+  roomId: string;
   packet: SessionReviewPacket;
   reviewHeld: boolean;
   packetStale: boolean;
@@ -1132,7 +1134,7 @@ function SessionCandidateReviewQueue({
   const visibleItems = filter === "open" && recentDecision && !filteredItems.some((item) => item.kind === recentDecision.kind && item.id === recentDecision.id)
     ? [recentDecision, ...filteredItems]
     : filteredItems;
-  const completionPercent = progress.total ? Math.round((progress.decided / progress.total) * 100) : 0;
+  const completionPercent = progress.total ? Math.round((progress.handled / progress.total) * 100) : 0;
   const queueStateKey = items.map((item) => `${item.kind}:${item.id}:${item.state}`).join("|");
 
   useEffect(() => {
@@ -1178,12 +1180,12 @@ function SessionCandidateReviewQueue({
         <h2 id="candidate-review-queue-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Turn this Session into trusted follow-through</h2>
         <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">Notes, goals, and tasks follow the conversation’s source timeline. Nothing becomes canonical work until you review that individual candidate and make its explicit decision.</p>
       </div>
-      {openItems.length ? <button type="button" onClick={continueReview} disabled={reviewHeld} className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">Continue review</button> : <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900">No active decisions</span>}
+      {openItems.length ? <button type="button" onClick={continueReview} disabled={reviewHeld} className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">Continue review</button> : items.length ? <span className="inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-emerald-900">Queue handled</span> : <span className="inline-flex min-h-11 items-center rounded-full border border-[#d8c7a7] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#765f40]">No candidates</span>}
     </div>
 
     {items.length ? <>
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Candidate review progress">
-        <div className="rounded-xl border border-[#eadfc9] bg-white p-3 sm:col-span-2 xl:col-span-1"><p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Progress</p><p className="mt-1 text-2xl font-black text-[#3d3122]">{progress.decided}/{progress.total}</p><div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eee4d2]" role="progressbar" aria-label="Candidate decisions saved" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.decided}><div className="h-full rounded-full bg-emerald-700" style={{ width: `${completionPercent}%` }} /></div></div>
+        <div className="rounded-xl border border-[#eadfc9] bg-white p-3 sm:col-span-2 xl:col-span-1"><p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Handled</p><p className="mt-1 text-2xl font-black text-[#3d3122]">{progress.handled}/{progress.total}</p><div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eee4d2]" role="progressbar" aria-label="Candidates handled" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.handled}><div className="h-full rounded-full bg-emerald-700" style={{ width: `${completionPercent}%` }} /></div></div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">Ready now</p><p className="mt-1 text-2xl font-black text-emerald-950">{progress.ready}</p></div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Listen first</p><p className="mt-1 text-2xl font-black text-amber-950">{progress.listenFirst}</p></div>
         <div className="rounded-xl border border-orange-200 bg-orange-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-orange-800">Deferred</p><p className="mt-1 text-2xl font-black text-orange-950">{progress.deferred}</p></div>
@@ -1193,6 +1195,14 @@ function SessionCandidateReviewQueue({
       <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Filter candidate review queue">
         {filters.map((option) => <button key={option.id} type="button" aria-pressed={filter === option.id} onClick={() => { setFilter(option.id); if (option.id !== "open") setRecentDecisionKey(null); }} className={`min-h-11 rounded-full border px-4 py-2 text-xs font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${filter === option.id ? "border-violet-700 bg-violet-800 text-white" : "border-[#d8c7a7] bg-white text-[#5b472f] hover:border-violet-300"}`}>{option.label} <span aria-hidden="true">·</span> {option.count}</button>)}
       </div>
+
+      {!reviewHeld && progress.remaining === 0 ? <div aria-labelledby="candidate-review-finish-heading" className="mt-5 flex flex-col gap-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
+        <div className="max-w-3xl">
+          <p id="candidate-review-finish-heading" className="font-black">Review queue handled</p>
+          <p className="mt-1 text-sm font-semibold leading-relaxed">Every candidate is either decided or deliberately deferred. {progress.deferred ? `${progress.deferred} deferred ${progress.deferred === 1 ? "candidate remains" : "candidates remain"} noncanonical and excluded from client follow-up and Studio handoff until someone explicitly revisits the decision.` : "Outputs will use only the canonical notes, goals, and tasks created through explicit decisions."}</p>
+        </div>
+        <Link href={sessionWorkspaceHref(roomId, "outputs")} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-emerald-900 px-5 py-2 text-xs font-black uppercase tracking-wide text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-950">Continue to Outputs</Link>
+      </div> : null}
 
       {reviewHeld ? <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Candidate decisions are held because transcript review changed after this packet was built. Build the current append-only packet first." : "Candidate decisions are held until the released transcript and recording evidence are valid. No note, task, or goal can be created here."}</div> : visibleItems.length ? <ol className="mt-6 space-y-5" aria-label={`${filters.find((option) => option.id === filter)?.label ?? "Candidate"} candidates`}>
         {visibleItems.map((item) => <li key={`${item.kind}:${item.id}`}>
@@ -1845,6 +1855,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         </section>
 
         <SessionCandidateReviewQueue
+          roomId={roomId}
           packet={packet}
           reviewHeld={reviewHeld}
           packetStale={packetStale}

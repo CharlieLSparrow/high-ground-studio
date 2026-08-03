@@ -2,6 +2,31 @@
 
 Date: 2026-08-03
 
+## Session review finish-line checkpoint
+
+- Nest and Quipsly Capture now share truthful review completion semantics:
+  deferred and decided proposals count as handled, while ready and listen-first
+  proposals remain open. Decided remains the narrower accepted/merged/rejected
+  count, and deferred proposals stay noncanonical.
+- Nest now distinguishes an empty packet (`No candidates`) from a handled queue,
+  explains that deferred proposals are excluded from client follow-up and Studio
+  handoff, and gives a completed reviewer an explicit route to Outputs.
+- Capture mirrors the handled count, accessibility label, noncanonical boundary,
+  and a `Done reviewing` return action without creating or releasing anything.
+- Actual signed-in local operation built a retained Session packet, deferred its
+  source-linked note proposal, read back the no-side-effect receipt, showed 1/1
+  handled, and continued to the same Session's Outputs. A 390 x 844 pass had no
+  horizontal overflow and no browser console errors.
+- Focused Nest proof passes 2 suites / 47 tests; strict TypeScript, the mobile
+  source contract, and all 1,015 App Store static checks pass. The compiled
+  iPhone 17 Pro / iOS 26.3.1 simulator transcript-review journey passes 1 test
+  with 0 failures.
+- The successful Xcode bundle is retained on the external QA volume. This is
+  local/simulator proof only; no deploy, production write, provider mutation,
+  physical-iPhone/TestFlight action, delivery, or publication occurred.
+  Architecture and evidence are in
+  `docs/coordination/2026-08-03-session-review-finish-line.md`.
+
 ## Unified Session candidate review queue checkpoint
 
 - Nest and Quipsly Capture now combine transcript-derived note, goal, and task
