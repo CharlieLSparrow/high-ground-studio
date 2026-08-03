@@ -73,6 +73,7 @@ const noteCandidate: SessionReviewNoteCandidate = {
   suggestedBody: "I realized the weekly review makes follow-through visible.",
   suggestedKind: "SESSION_NOTE",
   suggestedVisibility: "AUTHOR_PRIVATE",
+  reviewStatus: "READY_FOR_HUMAN_REVIEW",
   humanApprovalRequired: true,
   committedNoteId: null,
 };
@@ -655,9 +656,41 @@ describe("Session review goal candidates", () => {
       packetBuildId: "build-1",
       packetNoteCandidateId: "packet-note-build-1-coaching-insights-segment-1",
       packetLaneId: "coaching-insights",
+      decision: "ACCEPT",
     });
     expect(await screen.findByRole("status")).toHaveTextContent("client-safe visibility");
     expect(screen.getByRole("link", { name: "Open notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
+  });
+
+  it("keeps an edited packet-note candidate non-canonical and auditable", async () => {
+    const editedNote: SessionReviewNoteCandidate = {
+      ...noteCandidate,
+      suggestedTitle: "Weekly follow-through insight",
+      reviewStatus: "EDITED_FOR_REVIEW",
+      lastHumanReview: { receiptId: "receipt-1", decision: "EDIT", reviewedAt: "2026-08-03T12:00:00.000Z", reviewedByUserId: "user-1" },
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithNote()))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, decision: "EDIT", note: null }))
+      .mockResolvedValueOnce(jsonResponse(packetWithNote(editedNote)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    await user.click(await screen.findByRole("button", { name: "Edit candidate" }));
+    const title = screen.getByRole("textbox", { name: /Note title/i });
+    await user.clear(title);
+    await user.type(title, "Weekly follow-through insight");
+    await user.click(screen.getByRole("button", { name: "Save for review" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      decision: "EDIT",
+      title: "Weekly follow-through insight",
+      packetNoteCandidateId: noteCandidate.id,
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("No canonical note");
+    expect(screen.getByText("Edited For Review")).toBeInTheDocument();
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {

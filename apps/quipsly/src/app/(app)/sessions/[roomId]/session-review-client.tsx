@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
-import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
+import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
 
@@ -12,7 +12,7 @@ import {
   candidateReviewRequest,
   committedTasks,
   goalCandidateReviewRequest,
-  noteCandidateMaterializationRequest,
+  noteCandidateReviewRequest,
   packetLaneReviewRequest,
   timestampForSeconds,
   type SessionReviewCandidate,
@@ -811,24 +811,24 @@ function PacketNoteCandidateCard({
   candidate,
   busy,
   canUseProjectTeamNotes,
-  onCreate,
+  onDecision,
 }: {
   candidate: SessionReviewNoteCandidate;
   busy: boolean;
   canUseProjectTeamNotes: boolean;
-  onCreate: (candidate: SessionReviewNoteCandidate, draft: {
+  onDecision: (candidate: SessionReviewNoteCandidate, decision: TranscriptNoteReviewDecision, draft?: {
     title: string;
     body: string;
     kind: EditableSessionNoteKind;
     visibility: SessionNoteVisibility;
   }) => void;
 }) {
-  const [creating, setCreating] = useState(false);
+  const [reviewMode, setReviewMode] = useState<"ACCEPT" | "EDIT" | null>(null);
   const [title, setTitle] = useState(candidate.suggestedTitle);
   const [body, setBody] = useState(candidate.suggestedBody);
   const [kind, setKind] = useState<EditableSessionNoteKind>(candidate.suggestedKind);
   const [visibility, setVisibility] = useState<SessionNoteVisibility>(candidate.suggestedVisibility);
-  const accepted = Boolean(candidate.committedNoteId);
+  const accepted = Boolean(candidate.committedNoteId) || candidate.reviewStatus === "ACCEPTED_AS_NOTE";
   const laneRejected = candidate.laneStatus === "REJECTED_BY_HUMAN";
   const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
   const allowedKinds = EDITABLE_SESSION_NOTE_KINDS.filter((value) => value !== "PRODUCTION" || canUseProjectTeamNotes);
@@ -839,17 +839,17 @@ function PacketNoteCandidateCard({
     setBody(candidate.suggestedBody);
     setKind(canUseProjectTeamNotes || candidate.suggestedKind !== "PRODUCTION" ? candidate.suggestedKind : "SESSION_NOTE");
     setVisibility(canUseProjectTeamNotes || candidate.suggestedVisibility !== "PROJECT_TEAM" ? candidate.suggestedVisibility : "AUTHOR_PRIVATE");
-    setCreating(false);
-  }, [canUseProjectTeamNotes, candidate.id, candidate.suggestedBody, candidate.suggestedKind, candidate.suggestedTitle, candidate.suggestedVisibility]);
+    setReviewMode(null);
+  }, [canUseProjectTeamNotes, candidate.id, candidate.reviewStatus, candidate.suggestedBody, candidate.suggestedKind, candidate.suggestedTitle, candidate.suggestedVisibility]);
 
   return <article className="rounded-2xl border border-orange-200 bg-white p-5 shadow-sm">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-orange-800">{candidate.laneLabel} · {timestampForSeconds(candidate.startSeconds)}–{timestampForSeconds(candidate.endSeconds)}</p><h3 className="mt-1 text-lg font-black text-[#3d3122]">{candidate.speakerLabel || "Unlabelled speaker"}</h3></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(accepted ? "ACCEPTED" : candidate.laneStatus)}`}>{accepted ? "Saved" : humanize(candidate.laneStatus)}</span></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-orange-800">{candidate.laneLabel} · {timestampForSeconds(candidate.startSeconds)}–{timestampForSeconds(candidate.endSeconds)}</p><h3 className="mt-1 text-lg font-black text-[#3d3122]">{candidate.speakerLabel || "Unlabelled speaker"}</h3></div><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(accepted ? "ACCEPTED" : candidate.reviewStatus)}`}>{accepted ? "Saved" : humanize(candidate.reviewStatus)}</span></div>
     <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{candidate.sourceText}</p>
     <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
     <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline">Review exact transcript source</a>
     {!accepted && !sourceReviewed ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">Listen through and confirm every segment in this source span before saving a canonical note.</p> : null}
-    {accepted ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Saved as one canonical Session note. <Link href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`} className="underline">Open notes</Link></p> : creating ? <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
-      <div><p className="text-xs font-black uppercase tracking-wide text-orange-950">Save one source-linked Session note</p><p className="mt-1 text-xs font-semibold leading-5 text-orange-900">Review the wording, purpose, and audience. The source remains attached; nothing is sent or shared outside its selected in-app visibility.</p></div>
+    {accepted ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Saved as one canonical Session note. <Link href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`} className="underline">Open notes</Link></p> : reviewMode ? <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+      <div><p className="text-xs font-black uppercase tracking-wide text-orange-950">{reviewMode === "ACCEPT" ? "Save one source-linked Session note" : "Refine candidate for later review"}</p><p className="mt-1 text-xs font-semibold leading-5 text-orange-900">Review the wording, purpose, and audience. The source remains attached; {reviewMode === "ACCEPT" ? "nothing is sent or shared outside its selected in-app visibility." : "saving this draft creates no canonical note."}</p></div>
       <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note title <span className="normal-case tracking-normal text-orange-800">(optional)</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
       <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note<textarea value={body} onChange={(event) => setBody(event.target.value)} maxLength={20000} rows={4} className="mt-1 block w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -857,9 +857,9 @@ function PacketNoteCandidateCard({
         <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Audience<select value={visibility} onChange={(event) => setVisibility(event.target.value as SessionNoteVisibility)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]">{allowedVisibilities.map((value) => <option key={value} value={value}>{sessionNoteVisibilityLabel(value)}</option>)}</select></label>
       </div>
       <p className="rounded-lg border border-orange-200 bg-white p-3 text-xs font-bold leading-relaxed text-orange-950">{visibility === "AUTHOR_PRIVATE" ? "Only your account can read this note." : visibility === "SESSION_SHARED" ? "People who can access this Session can read it inside Quipsly." : visibility === "CLIENT_SAFE" ? "Eligible for a separately reviewed client follow-up; it is not sent automatically." : "Visible to Nest owners and editors; it is not public."}</p>
-      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sourceReviewed || !body.trim()} onClick={() => onCreate(candidate, { title, body, kind, visibility })} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Saving…" : "Save source-linked note"}</button><button type="button" disabled={busy} onClick={() => setCreating(false)} className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50">Cancel</button></div>
-      <p className="text-xs font-bold leading-relaxed text-orange-950">Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.</p>
-    </div> : <div className="mt-4"><button type="button" disabled={busy || laneRejected || !sourceReviewed} onClick={() => setCreating(true)} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; save note</button>{laneRejected ? <p className="mt-2 text-xs font-bold text-rose-800">This lane was rejected. Reopen the lane before turning its candidates into notes.</p> : null}</div>}
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !body.trim() || (reviewMode === "ACCEPT" && !sourceReviewed)} onClick={() => onDecision(candidate, reviewMode, { title, body, kind, visibility })} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Saving…" : reviewMode === "ACCEPT" ? "Save source-linked note" : "Save for review"}</button><button type="button" disabled={busy} onClick={() => setReviewMode(null)} className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50">Cancel</button></div>
+      <p className="text-xs font-bold leading-relaxed text-orange-950">{reviewMode === "ACCEPT" ? "Creates one revisioned canonical note." : "Preserves one reviewed draft and audit receipt; no note is created."} It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.</p>
+    </div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy || laneRejected || !sourceReviewed} onClick={() => setReviewMode("ACCEPT")} className="rounded-full bg-orange-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; save note</button><button type="button" disabled={busy} onClick={() => setReviewMode("EDIT")} className="rounded-full border border-orange-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-orange-950 disabled:opacity-50">Edit candidate</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-950 disabled:opacity-50">Defer</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900 disabled:opacity-50">Reject</button>{laneRejected ? <p className="w-full text-xs font-bold text-rose-800">This lane was rejected. Reopen the lane before turning its candidates into notes.</p> : null}</div>}
   </article>;
 }
 
@@ -1356,15 +1356,16 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
-  async function savePacketNote(candidate: SessionReviewNoteCandidate, draft: {
+  async function reviewPacketNote(candidate: SessionReviewNoteCandidate, decision: TranscriptNoteReviewDecision, draft?: {
     title: string;
     body: string;
     kind: EditableSessionNoteKind;
     visibility: SessionNoteVisibility;
   }) {
-    const request = noteCandidateMaterializationRequest({ candidate, ...draft });
+    if (!packet) return;
+    const request = noteCandidateReviewRequest({ packet, candidate, decision, ...draft });
     if (!request) {
-      setMessage("This packet note is already saved or has no reviewed note text. Refresh before trying again.");
+      setMessage("This packet note is already accepted, stale, or missing the review evidence required for that decision. Refresh before trying again.");
       return;
     }
     setBusyCandidateId(candidate.id);
@@ -1375,14 +1376,16 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         headers: { "content-type": "application/json" },
         body: JSON.stringify(request),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; note?: { id: string; visibility: string } };
-      if (!response.ok || !payload.ok || !payload.note?.id) throw new Error(payload.error || "The packet note was not saved.");
+      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; note?: { id: string; visibility: string } | null };
+      if (!response.ok || !payload.ok || (decision === "ACCEPT" && !payload.note?.id)) throw new Error(payload.error || "The packet note review was not saved.");
       await load();
-      setMessage(payload.idempotentReplay
-        ? "This exact packet note choice was already saved; nothing was duplicated."
-        : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note.visibility as SessionNoteVisibility).toLowerCase()} visibility. No message, delivery, calendar event, task, goal, or publication was created.`);
+      setMessage(decision === "ACCEPT"
+        ? payload.idempotentReplay
+          ? "This exact packet note choice was already saved; nothing was duplicated."
+          : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()} visibility. No message, delivery, calendar event, task, goal, or publication was created.`
+        : `${humanize(decision)} saved as note review state. No canonical note, task, goal, message, or calendar event was created.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The packet note was not saved.");
+      setMessage(error instanceof Error ? error.message : "The packet note review was not saved.");
     } finally {
       setBusyCandidateId(null);
     }
@@ -1553,7 +1556,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <section aria-labelledby="note-candidate-heading">
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-orange-50 p-2 text-orange-700"><NotebookPen aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Candidate notes · not canonical yet</p><h2 id="note-candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Keep what matters, with its source</h2></div></div>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Note review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can become a canonical note."}</div> : (packet.packet?.noteCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.noteCandidates ?? []).map((candidate) => <PacketNoteCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} canUseProjectTeamNotes={canUseProjectTeamNotes} onCreate={savePacketNote} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No source-linked note candidates are waiting in this packet.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Note review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can become a canonical note."}</div> : (packet.packet?.noteCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.noteCandidates ?? []).map((candidate) => <PacketNoteCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} canUseProjectTeamNotes={canUseProjectTeamNotes} onDecision={reviewPacketNote} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No source-linked note candidates are waiting in this packet.</div>}
         </section>
 
         <section aria-labelledby="candidate-heading">

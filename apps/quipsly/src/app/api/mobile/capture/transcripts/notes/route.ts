@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  isTranscriptNoteReviewDecision,
   transcriptPacketNoteCandidateId,
+  TRANSCRIPT_NOTE_REVIEW_DECISIONS,
   TRANSCRIPT_PACKET_SOURCE,
+  type TranscriptNoteReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
 import {
   readTranscriptDerivedNoteSource,
@@ -38,6 +41,8 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const NOTE_REVIEW_RECEIPT_KIND = "quipsly-note-candidate-review-receipt-v1";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -89,6 +94,13 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
     externalDelivery: false,
     publication: false,
   };
+}
+
+function noteReviewStatus(decision: TranscriptNoteReviewDecision) {
+  if (decision === "ACCEPT") return "ACCEPTED_AS_NOTE";
+  if (decision === "EDIT") return "EDITED_FOR_REVIEW";
+  if (decision === "REJECT") return "REJECTED_BY_HUMAN";
+  return "DEFERRED_BY_HUMAN";
 }
 
 function sourceMatches(sourceJson: unknown, input: {
@@ -195,6 +207,7 @@ export async function POST(request: Request) {
   const noteBody = text(input.body, 20_000, true);
   const kind = isEditableSessionNoteKind(input.kind) ? input.kind : null;
   const visibility = isSessionNoteVisibility(input.visibility) ? input.visibility : null;
+  const reviewNote = text(input.note, 2_000, true) || null;
   const packetFieldNames = [
     "transcriptJobId",
     "recordingAssetId",
@@ -214,10 +227,13 @@ export async function POST(request: Request) {
         packetLaneId: text(input.packetLaneId, 200),
       }
     : null;
-  if (!roomId || !segmentId || !clientRequestId || !/^[a-f0-9]{64}$/.test(expectedProviderTextSha256)
-      || !noteBody || !kind || !visibility) {
+  const suppliedDecision = text(input.decision, 20).toUpperCase();
+  const decision: TranscriptNoteReviewDecision | null = packetContext
+    ? (suppliedDecision && isTranscriptNoteReviewDecision(suppliedDecision) ? suppliedDecision : suppliedDecision ? null : "ACCEPT")
+    : null;
+  if (!roomId || !segmentId || !clientRequestId || !/^[a-f0-9]{64}$/.test(expectedProviderTextSha256)) {
     return NextResponse.json(
-      { ok: false, code: "INVALID_INPUT", error: "Room, exact transcript evidence, request identity, note text, purpose, and audience are required." },
+      { ok: false, code: "INVALID_INPUT", error: "Room, exact transcript evidence, and request identity are required." },
       { status: 400 },
     );
   }
@@ -228,6 +244,44 @@ export async function POST(request: Request) {
       { ok: false, code: "INVALID_PACKET_NOTE_CONTEXT", error: "The complete packet, lane, candidate, and transcript identity is required." },
       { status: 400 },
     );
+  }
+  if (packetContext && !decision) {
+    return NextResponse.json({
+      ok: false,
+      code: "PACKET_NOTE_DECISION_REQUIRED",
+      error: "Choose ACCEPT, EDIT, REJECT, or DEFER.",
+      allowedDecisions: TRANSCRIPT_NOTE_REVIEW_DECISIONS,
+    }, { status: 400 });
+  }
+  if (packetContext && typeof input.note === "string" && input.note.trim().length > 2_000) {
+    return NextResponse.json({ ok: false, code: "PACKET_NOTE_REVIEW_NOTE_TOO_LONG", error: "Review notes may be at most 2,000 characters." }, { status: 400 });
+  }
+  if (!packetContext && (!noteBody || !kind || !visibility)) {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_INPUT", error: "Note text, purpose, and audience are required." },
+      { status: 400 },
+    );
+  }
+  if (!packetContext && suppliedDecision) {
+    return NextResponse.json(
+      { ok: false, code: "PACKET_NOTE_CONTEXT_REQUIRED", error: "Candidate review decisions require the complete current packet context." },
+      { status: 400 },
+    );
+  }
+  if (packetContext && decision === "ACCEPT" && (!noteBody || !kind || !visibility)) {
+    return NextResponse.json(
+      { ok: false, code: "PACKET_NOTE_CONTENT_REQUIRED", error: "Reviewed note text, purpose, and audience are required before acceptance." },
+      { status: 400 },
+    );
+  }
+  if (packetContext && decision === "EDIT") {
+    const draftFields = ["title", "body", "kind", "visibility"];
+    if (!draftFields.some((field) => hasOwn(input, field))) {
+      return NextResponse.json({ ok: false, code: "PACKET_NOTE_EDIT_REQUIRED", error: "Edit the candidate wording, purpose, or audience." }, { status: 400 });
+    }
+    if ((hasOwn(input, "body") && !noteBody) || (hasOwn(input, "kind") && !kind) || (hasOwn(input, "visibility") && !visibility)) {
+      return NextResponse.json({ ok: false, code: "PACKET_NOTE_EDIT_INVALID", error: "Edited note text, purpose, and audience must be valid." }, { status: 400 });
+    }
   }
 
   const prisma = getPrismaClient() as any;
@@ -246,8 +300,8 @@ export async function POST(request: Request) {
     expectedProviderTextSha256,
     title,
     body: noteBody,
-    kind,
-    visibility,
+    kind: kind as EditableSessionNoteKind,
+    visibility: visibility as SessionNoteVisibility,
     packetContext,
   };
 
@@ -256,6 +310,16 @@ export async function POST(request: Request) {
       let packetLaneLabel: string | null = null;
       let packetEvidenceSegmentIds: string[] | null = null;
       let packetSourceTextSha256 = "";
+      let packetTranscriptSnapshotSha256 = "";
+      let packetSummarySource: Record<string, unknown> | null = null;
+      let packetCandidateDraftBefore: {
+        title: string;
+        body: string;
+        kind: EditableSessionNoteKind;
+        visibility: SessionNoteVisibility;
+      } | null = null;
+      let packetReviewReceipts: Record<string, unknown>[] = [];
+      let packetAcceptedReceipt: Record<string, unknown> | null = null;
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, session.user),
         select: {
@@ -344,6 +408,31 @@ export async function POST(request: Request) {
         packetEvidenceSegmentIds = packetEvidence.map((segment) => segment.id);
         packetSourceTextSha256 = text(item.sourceTextSha256, 64).toLowerCase();
         packetLaneLabel = text(lane.label, 240) || "Session note";
+        packetSummarySource = packetSource;
+        packetTranscriptSnapshotSha256 = text(record(packetSource.transcriptSnapshot).sha256, 64).toLowerCase();
+        packetReviewReceipts = array(packetSource.noteCandidateReviewReceipts).map(record);
+        const actorReceipts = packetReviewReceipts.filter((receipt) => (
+          receipt.kind === NOTE_REVIEW_RECEIPT_KIND
+          && receipt.packetNoteCandidateId === packetContext.packetNoteCandidateId
+          && receipt.reviewedByUserId === actor.id
+          && receipt.roomId === roomId
+          && receipt.transcriptJobId === packetContext.transcriptJobId
+          && receipt.recordingAssetId === packetContext.recordingAssetId
+          && receipt.packetBuildId === packetContext.packetBuildId
+          && receipt.summaryNoteId === packetContext.summaryNoteId
+          && receipt.packetLaneId === packetContext.packetLaneId
+          && receipt.transcriptSnapshotSha256 === packetTranscriptSnapshotSha256
+          && isTranscriptNoteReviewDecision(receipt.decision)
+        ));
+        const latestReceipt = actorReceipts.at(-1) ?? null;
+        packetAcceptedReceipt = actorReceipts.find((receipt) => receipt.decision === "ACCEPT") ?? null;
+        const reviewedDraft = record(latestReceipt?.candidateDraftAfter);
+        packetCandidateDraftBefore = {
+          title: text(reviewedDraft.title, 500) || packetLaneLabel,
+          body: text(reviewedDraft.body, 20_000, true) || text(packetEvidence.map((segment) => segment.text).join(" "), 20_000, true),
+          kind: isEditableSessionNoteKind(reviewedDraft.kind) ? reviewedDraft.kind : "SESSION_NOTE",
+          visibility: isSessionNoteVisibility(reviewedDraft.visibility) ? reviewedDraft.visibility : "AUTHOR_PRIVATE",
+        };
       }
 
       const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId, actor });
@@ -374,15 +463,63 @@ export async function POST(request: Request) {
         throw new TranscriptCorrectionError("The complete transcript thought changed. Refresh before saving the note.", 409, "STALE_TRANSCRIPT_SPAN_EVIDENCE");
       }
 
+      const packetDraftAfter = packetContext && packetCandidateDraftBefore ? {
+        title: hasOwn(input, "title") ? title : packetCandidateDraftBefore.title,
+        body: hasOwn(input, "body") ? noteBody : packetCandidateDraftBefore.body,
+        kind: hasOwn(input, "kind") && kind ? kind : packetCandidateDraftBefore.kind,
+        visibility: hasOwn(input, "visibility") && visibility ? visibility : packetCandidateDraftBefore.visibility,
+      } : null;
+
+      if (packetContext && packetAcceptedReceipt) {
+        if (decision !== "ACCEPT") {
+          throw new TranscriptCorrectionError("This candidate already became a canonical note and cannot be edited, rejected, or deferred as a draft.", 409, "PACKET_NOTE_CANDIDATE_ALREADY_ACCEPTED");
+        }
+        const acceptedDraft = record(packetAcceptedReceipt.candidateDraftAfter);
+        if (!packetDraftAfter
+            || text(acceptedDraft.title, 500) !== packetDraftAfter.title
+            || text(acceptedDraft.body, 20_000, true) !== packetDraftAfter.body
+            || acceptedDraft.kind !== packetDraftAfter.kind
+            || acceptedDraft.visibility !== packetDraftAfter.visibility) {
+          throw new TranscriptCorrectionError("This note candidate was already accepted with different wording, purpose, or audience. Open the canonical note to edit it.", 409, "PACKET_NOTE_CANDIDATE_IDEMPOTENCY_CONFLICT");
+        }
+        const acceptedNoteId = text(packetAcceptedReceipt.noteId, 200);
+        const acceptedNote = acceptedNoteId
+          ? await tx.coachingNote.findUnique({ where: { id: acceptedNoteId }, select: NOTE_SELECT })
+          : null;
+        const acceptedSource = record(acceptedNote?.sourceJson);
+        if (!acceptedNote
+            || acceptedNote.authorUserId !== actor.id
+            || acceptedSource.reviewReceiptId !== packetAcceptedReceipt.id
+            || !sourceMatches(acceptedSource, {
+              actorUserId: actor.id,
+              roomId,
+              segmentId,
+              segmentIds: sourceAnchor.segmentIds,
+              clientRequestId,
+              expectedProviderTextSha256,
+              title: packetDraftAfter.title,
+              body: packetDraftAfter.body,
+              kind: packetDraftAfter.kind,
+              visibility: packetDraftAfter.visibility,
+              packetContext,
+            })) {
+          throw new TranscriptCorrectionError("The accepted review receipt no longer matches one canonical note.", 409, "PACKET_NOTE_CANDIDATE_RECEIPT_MISMATCH");
+        }
+        return { note: acceptedNote, receipt: packetAcceptedReceipt, decision, idempotentReplay: true };
+      }
+
       const replay = await tx.coachingNote.findUnique({ where: { id }, select: NOTE_SELECT });
       if (replay) {
+        if (packetContext && decision !== "ACCEPT") {
+          throw new TranscriptCorrectionError("This candidate is already bound to a canonical note.", 409, "PACKET_NOTE_CANDIDATE_ALREADY_ACCEPTED");
+        }
         if (!sourceMatches(replay.sourceJson, { ...replayInput, segmentIds: sourceAnchor.segmentIds })) {
           throw new TranscriptCorrectionError("That note request identity is already bound to different evidence or content.", 409, "IDEMPOTENCY_CONFLICT");
         }
-        return { note: replay, idempotentReplay: true };
+        return { note: replay, receipt: null, decision, idempotentReplay: true };
       }
 
-      if (packetContext) {
+      if (packetContext && decision === "ACCEPT") {
         const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
         if (unreviewedSegmentIds.length) {
           throw new TranscriptCorrectionError(
@@ -393,7 +530,58 @@ export async function POST(request: Request) {
         }
       }
 
+      if (packetContext && decision !== "ACCEPT") {
+        if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter) {
+          throw new TranscriptCorrectionError("The packet note review state is unavailable. Refresh before deciding.", 409, "STALE_PACKET_NOTE_CANDIDATE");
+        }
+        const reviewedAt = new Date().toISOString();
+        const receipt = {
+          id: randomUUID(),
+          kind: NOTE_REVIEW_RECEIPT_KIND,
+          decision,
+          packetNoteCandidateId: packetContext.packetNoteCandidateId,
+          clientRequestId,
+          transcriptJobId: packetContext.transcriptJobId,
+          recordingAssetId: packetContext.recordingAssetId,
+          packetBuildId: packetContext.packetBuildId,
+          summaryNoteId: packetContext.summaryNoteId,
+          packetLaneId: packetContext.packetLaneId,
+          roomId,
+          segmentId,
+          segmentIds: sourceAnchor.segmentIds,
+          sourceTextSha256: packetSourceTextSha256 || null,
+          transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
+          providerTextSha256: sourceAnchor.providerTextSha256,
+          sourceSpan: sourceAnchor.sourceSpan,
+          reviewedAt,
+          reviewedByUserId: actor.id,
+          reviewNote,
+          candidateDraftBefore: packetCandidateDraftBefore,
+          candidateDraftAfter: packetDraftAfter,
+          noteId: null,
+          externalSideEffects: false,
+          taskCreated: false,
+          goalCreated: false,
+          calendarMutated: false,
+          messageSent: false,
+          deliveryClaimed: false,
+          publicationClaimed: false,
+        };
+        await tx.coachingNote.update({
+          where: { id: packetContext.summaryNoteId },
+          data: {
+            sourceJson: {
+              ...packetSummarySource,
+              noteCandidateReviewReceipts: [...packetReviewReceipts, receipt],
+              lastNoteCandidateReview: receipt,
+            },
+          },
+        });
+        return { note: null, receipt, decision, idempotentReplay: false };
+      }
+
       const createdAt = new Date().toISOString();
+      const reviewReceiptId = packetContext ? randomUUID() : null;
       const sourceJson = {
         schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
         surface: text(input.surface, 80) || "quipsly-transcript-review",
@@ -418,6 +606,7 @@ export async function POST(request: Request) {
           packetLaneLabel,
           packetCandidate: true,
           materializedFromPacket: true,
+          reviewReceiptId,
         } : {}),
         aiGenerated: false,
         boundaries: transcriptDerivedNoteBoundaries(true, Boolean(packetContext)),
@@ -445,14 +634,65 @@ export async function POST(request: Request) {
         },
         select: NOTE_SELECT,
       });
-      return { note, idempotentReplay: false };
+      let receipt: Record<string, unknown> | null = null;
+      if (packetContext) {
+        if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter || !reviewReceiptId) {
+          throw new TranscriptCorrectionError("The packet note review state is unavailable. Refresh before accepting.", 409, "STALE_PACKET_NOTE_CANDIDATE");
+        }
+        receipt = {
+          id: reviewReceiptId,
+          kind: NOTE_REVIEW_RECEIPT_KIND,
+          decision: "ACCEPT",
+          packetNoteCandidateId: packetContext.packetNoteCandidateId,
+          clientRequestId,
+          transcriptJobId: packetContext.transcriptJobId,
+          recordingAssetId: packetContext.recordingAssetId,
+          packetBuildId: packetContext.packetBuildId,
+          summaryNoteId: packetContext.summaryNoteId,
+          packetLaneId: packetContext.packetLaneId,
+          roomId,
+          segmentId,
+          segmentIds: sourceAnchor.segmentIds,
+          sourceTextSha256: packetSourceTextSha256 || null,
+          transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
+          providerTextSha256: sourceAnchor.providerTextSha256,
+          sourceSpan: sourceAnchor.sourceSpan,
+          reviewedAt: createdAt,
+          reviewedByUserId: actor.id,
+          reviewNote,
+          candidateDraftBefore: packetCandidateDraftBefore,
+          candidateDraftAfter: packetDraftAfter,
+          noteId: note.id,
+          externalSideEffects: false,
+          taskCreated: false,
+          goalCreated: false,
+          calendarMutated: false,
+          messageSent: false,
+          deliveryClaimed: false,
+          publicationClaimed: false,
+        };
+        await tx.coachingNote.update({
+          where: { id: packetContext.summaryNoteId },
+          data: {
+            sourceJson: {
+              ...packetSummarySource,
+              noteCandidateReviewReceipts: [...packetReviewReceipts, receipt],
+              lastNoteCandidateReview: receipt,
+            },
+          },
+        });
+      }
+      return { note, receipt, decision, idempotentReplay: false };
     }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({
       ok: true,
       idempotentReplay: result.idempotentReplay,
-      note: serializedNote(result.note, actor.id),
-      boundaries: transcriptDerivedNoteBoundaries(!result.idempotentReplay, Boolean(packetContext)),
+      decision: result.decision,
+      reviewStatus: result.decision ? noteReviewStatus(result.decision) : null,
+      receipt: result.receipt,
+      note: result.note ? serializedNote(result.note, actor.id) : null,
+      boundaries: transcriptDerivedNoteBoundaries(Boolean(result.note) && !result.idempotentReplay, Boolean(packetContext)),
     });
   } catch (error) {
     if (error instanceof TranscriptCorrectionError) {
@@ -460,7 +700,12 @@ export async function POST(request: Request) {
     }
     if (record(error).code === "P2002") {
       const raced = await prisma.coachingNote.findUnique({ where: { id }, select: NOTE_SELECT });
-      if (raced && sourceMatches(raced.sourceJson, replayInput)) {
+      const racedSource = record(raced?.sourceJson);
+      const racedSegmentIds = array(racedSource.segmentIds).filter((segmentId): segmentId is string => typeof segmentId === "string" && Boolean(segmentId));
+      if (raced && sourceMatches(raced.sourceJson, {
+        ...replayInput,
+        segmentIds: racedSegmentIds.length ? racedSegmentIds : undefined,
+      })) {
         return NextResponse.json({
           ok: true,
           idempotentReplay: true,

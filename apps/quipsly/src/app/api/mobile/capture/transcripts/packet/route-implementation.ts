@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import {
   isTranscriptGoalReviewDecision,
+  isTranscriptNoteReviewDecision,
   transcriptPacketNoteCandidateId,
   type TranscriptGoalReviewStatus,
+  type TranscriptNoteReviewStatus,
 } from "@high-ground/quipsly-domain/coaching-packet";
 import { TRANSCRIPT_DERIVED_NOTE_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { isEditableSessionNoteKind, isSessionNoteVisibility } from "@/lib/session-note-contract";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import {
   buildCoachingPacketFromTranscriptJob,
@@ -63,9 +66,18 @@ function asArray(value: unknown): unknown[] {
 }
 
 const GOAL_REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
+const NOTE_REVIEW_RECEIPT_KIND = "quipsly-note-candidate-review-receipt-v1";
 
 export function goalReviewStatus(decision: unknown): TranscriptGoalReviewStatus {
   if (decision === "ACCEPT") return "ACCEPTED_AS_GOAL";
+  if (decision === "EDIT") return "EDITED_FOR_REVIEW";
+  if (decision === "REJECT") return "REJECTED_BY_HUMAN";
+  if (decision === "DEFER") return "DEFERRED_BY_HUMAN";
+  return "READY_FOR_HUMAN_REVIEW";
+}
+
+export function noteReviewStatus(decision: unknown): TranscriptNoteReviewStatus {
+  if (decision === "ACCEPT") return "ACCEPTED_AS_NOTE";
   if (decision === "EDIT") return "EDITED_FOR_REVIEW";
   if (decision === "REJECT") return "REJECTED_BY_HUMAN";
   if (decision === "DEFER") return "DEFERRED_BY_HUMAN";
@@ -162,6 +174,8 @@ export function buildPacketNoteCandidates(input: {
   const lanes = asArray(summarySource.reviewLanes).filter(isObject);
   if (!lanes.length) return [];
   const projectedSegments = projectTranscriptSegmentsForPacket(asArray(input.latestTranscriptJob.segments));
+  const reviewReceipts = asArray(summarySource.noteCandidateReviewReceipts).filter(isObject);
+  const transcriptSnapshotSha256 = text(sourceJson(summarySource.transcriptSnapshot).sha256);
   const committedByCandidate = new Map(input.notes.flatMap((note) => {
     const source = sourceJson(note.sourceJson);
     const candidateId = text(source.packetNoteCandidateId);
@@ -189,6 +203,20 @@ export function buildPacketNoteCandidates(input: {
       if (seen.has(id)) continue;
       seen.add(id);
       const committed = committedByCandidate.get(id) ?? null;
+      const latestReceipt = reviewReceipts.filter((receipt) => (
+        receipt.kind === NOTE_REVIEW_RECEIPT_KIND
+        && text(receipt.packetNoteCandidateId) === id
+        && text(receipt.reviewedByUserId) === input.actorUserId
+        && text(receipt.roomId) === input.latestTranscriptJob.roomId
+        && text(receipt.transcriptJobId) === input.latestTranscriptJob.id
+        && text(receipt.recordingAssetId) === input.latestTranscriptJob.assetId
+        && text(receipt.packetBuildId) === input.packetBuildId
+        && text(receipt.summaryNoteId) === input.summary.id
+        && text(receipt.packetLaneId) === laneId
+        && text(receipt.transcriptSnapshotSha256) === transcriptSnapshotSha256
+        && isTranscriptNoteReviewDecision(text(receipt.decision))
+      )).at(-1) ?? null;
+      const reviewedDraft = sourceJson(latestReceipt?.candidateDraftAfter);
       const sourceText = text(anchor.effectiveTextSnapshot);
       if (!sourceText) continue;
       candidates.push({
@@ -216,12 +244,19 @@ export function buildPacketNoteCandidates(input: {
         transcriptReviewStatus: spanSegments.every((entry) => entry.reviewStatus === "human-reviewed")
           ? "human-reviewed"
           : "provider",
-        suggestedTitle: laneLabel,
-        suggestedBody: sourceText,
-        suggestedKind: "SESSION_NOTE",
-        suggestedVisibility: "AUTHOR_PRIVATE",
+        suggestedTitle: text(reviewedDraft.title).slice(0, 500) || laneLabel,
+        suggestedBody: text(reviewedDraft.body).slice(0, 20_000) || sourceText,
+        suggestedKind: isEditableSessionNoteKind(reviewedDraft.kind) ? reviewedDraft.kind : "SESSION_NOTE",
+        suggestedVisibility: isSessionNoteVisibility(reviewedDraft.visibility) ? reviewedDraft.visibility : "AUTHOR_PRIVATE",
+        reviewStatus: committed ? "ACCEPTED_AS_NOTE" : noteReviewStatus(latestReceipt?.decision),
         humanApprovalRequired: !committed,
         committedNoteId: committed?.id ?? null,
+        lastHumanReview: latestReceipt ? {
+          receiptId: text(latestReceipt.id),
+          decision: text(latestReceipt.decision),
+          reviewedAt: text(latestReceipt.reviewedAt),
+          reviewedByUserId: text(latestReceipt.reviewedByUserId),
+        } : null,
       });
       if (candidates.length >= 30) return candidates;
     }

@@ -61,6 +61,25 @@ export const TRANSCRIPT_GOAL_REVIEW_STATUSES = [
 export type TranscriptGoalReviewStatus =
   (typeof TRANSCRIPT_GOAL_REVIEW_STATUSES)[number];
 
+export const TRANSCRIPT_NOTE_REVIEW_DECISIONS = [
+  "ACCEPT",
+  "EDIT",
+  "REJECT",
+  "DEFER",
+] as const;
+export type TranscriptNoteReviewDecision =
+  (typeof TRANSCRIPT_NOTE_REVIEW_DECISIONS)[number];
+
+export const TRANSCRIPT_NOTE_REVIEW_STATUSES = [
+  "READY_FOR_HUMAN_REVIEW",
+  "EDITED_FOR_REVIEW",
+  "DEFERRED_BY_HUMAN",
+  "REJECTED_BY_HUMAN",
+  "ACCEPTED_AS_NOTE",
+] as const;
+export type TranscriptNoteReviewStatus =
+  (typeof TRANSCRIPT_NOTE_REVIEW_STATUSES)[number];
+
 export interface TranscriptActionCandidate {
   id: string;
   kind: typeof TRANSCRIPT_ACTION_CANDIDATE_KIND;
@@ -249,6 +268,18 @@ export function isTranscriptGoalReviewStatus(
   value: unknown,
 ): value is TranscriptGoalReviewStatus {
   return TRANSCRIPT_GOAL_REVIEW_STATUSES.some((status) => status === value);
+}
+
+export function isTranscriptNoteReviewDecision(
+  value: unknown,
+): value is TranscriptNoteReviewDecision {
+  return TRANSCRIPT_NOTE_REVIEW_DECISIONS.some((decision) => decision === value);
+}
+
+export function isTranscriptNoteReviewStatus(
+  value: unknown,
+): value is TranscriptNoteReviewStatus {
+  return TRANSCRIPT_NOTE_REVIEW_STATUSES.some((status) => status === value);
 }
 
 /** Stable identity shared by packet read models and deliberate note writes. */

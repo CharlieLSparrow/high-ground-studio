@@ -220,6 +220,52 @@ describe("packet note candidates", () => {
     });
   });
 
+  it("projects only the current actor's latest note-review receipt", () => {
+    const candidateId = "packet-note-packet-build-1-coaching-insights-segment-1";
+    const snapshotSha256 = "f".repeat(64);
+    const receipt = (actor: string, decision: string, title: string) => ({
+      id: `receipt-${actor}-${decision}`,
+      kind: "quipsly-note-candidate-review-receipt-v1",
+      decision,
+      packetNoteCandidateId: candidateId,
+      reviewedByUserId: actor,
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      packetBuildId,
+      summaryNoteId: "summary-1",
+      packetLaneId: "coaching-insights",
+      transcriptSnapshotSha256: snapshotSha256,
+      reviewedAt: "2026-08-03T12:00:00.000Z",
+      candidateDraftAfter: { title, body: `${title} body`, kind: "DECISION", visibility: "AUTHOR_PRIVATE" },
+    });
+    const summary = {
+      ...noteSummary,
+      sourceJson: {
+        ...noteSummary.sourceJson,
+        transcriptSnapshot: { sha256: snapshotSha256 },
+        noteCandidateReviewReceipts: [
+          receipt("user-2", "REJECT", "Other actor private rejection"),
+          receipt("user-1", "EDIT", "My reviewed insight"),
+        ],
+      },
+    };
+
+    expect(buildPacketNoteCandidates({ summary, latestTranscriptJob, notes: [], packetBuildId, actorUserId: "user-1" })[0]).toMatchObject({
+      suggestedTitle: "My reviewed insight",
+      suggestedBody: "My reviewed insight body",
+      suggestedKind: "DECISION",
+      suggestedVisibility: "AUTHOR_PRIVATE",
+      reviewStatus: "EDITED_FOR_REVIEW",
+      lastHumanReview: { receiptId: "receipt-user-1-EDIT", decision: "EDIT", reviewedByUserId: "user-1" },
+    });
+    expect(buildPacketNoteCandidates({ summary, latestTranscriptJob, notes: [], packetBuildId, actorUserId: "user-3" })[0]).toMatchObject({
+      suggestedTitle: "Insights and decisions",
+      reviewStatus: "READY_FOR_HUMAN_REVIEW",
+      lastHumanReview: null,
+    });
+  });
+
   it("uses the accepted correction while preserving the immutable provider hash", () => {
     const providerText = latestTranscriptJob.segments[0].text;
     const correctedJob = {

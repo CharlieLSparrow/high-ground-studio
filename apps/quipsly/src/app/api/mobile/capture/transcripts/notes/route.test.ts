@@ -254,6 +254,7 @@ describe("explicit transcript-derived Session note", () => {
         findMany: jest.fn().mockResolvedValue([summary]),
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockImplementation(async (args: any) => note({ sourceJson: args.data.sourceJson, visibility: "AUTHOR_PRIVATE" })),
+        update: jest.fn().mockResolvedValue(summary),
       },
       transcriptJob: {
         findFirst: jest.fn().mockResolvedValue({ id: "job-1", roomId: "room-1", assetId: "asset-1", status: "COMPLETED", asset: { id: "asset-1" }, segments }),
@@ -321,6 +322,41 @@ describe("explicit transcript-derived Session note", () => {
         revisions: { create: expect.objectContaining({ operation: "created-from-transcript-packet" }) },
       }),
     }));
+    expect(tx.coachingNote.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "summary-1" },
+      data: { sourceJson: expect.objectContaining({
+        noteCandidateReviewReceipts: [expect.objectContaining({
+          kind: "quipsly-note-candidate-review-receipt-v1",
+          decision: "ACCEPT",
+          reviewedByUserId: "user-1",
+          packetNoteCandidateId: packetRequestId,
+          noteId: "transcript-note-1",
+        })],
+      }) },
+    }));
+
+    const createdSource = tx.coachingNote.create.mock.calls[0][0].data.sourceJson;
+    const updatedSummarySource = tx.coachingNote.update.mock.calls[0][0].data.sourceJson;
+    tx.coachingNote.findMany.mockResolvedValue([{ ...summary, sourceJson: updatedSummarySource }]);
+    tx.coachingNote.findUnique.mockResolvedValue(note({ sourceJson: createdSource, visibility: "AUTHOR_PRIVATE" }));
+    const replayResponse = await POST(request({
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      decision: "ACCEPT",
+      title: "Insights and decisions",
+      body: "A reviewed note from this exact moment.",
+      visibility: "AUTHOR_PRIVATE",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+    }));
+    expect(replayResponse.status).toBe(200);
+    expect(await replayResponse.json()).toMatchObject({ ok: true, decision: "ACCEPT", idempotentReplay: true, note: { id: "transcript-note-1" } });
+    expect(tx.coachingNote.create).toHaveBeenCalledTimes(1);
+    expect(tx.coachingNote.update).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a packet note non-canonical until its source span is playback-reviewed", async () => {
@@ -360,7 +396,7 @@ describe("explicit transcript-derived Session note", () => {
     const tx = {
       $queryRaw: jest.fn(),
       callRoom: { findFirst: jest.fn().mockResolvedValue({ id: "room-1", bookingId: null, project: { accessGrants: [] } }) },
-      coachingNote: { findMany: jest.fn().mockResolvedValue([summary]), findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      coachingNote: { findMany: jest.fn().mockResolvedValue([summary]), findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn().mockResolvedValue(summary) },
       transcriptJob: { findFirst: jest.fn().mockResolvedValue({ id: "job-1", roomId: "room-1", assetId: "asset-1", status: "COMPLETED", asset: { id: "asset-1" }, segments }) },
     };
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)), coachingNote: { findUnique: jest.fn() } } as any);
@@ -393,6 +429,41 @@ describe("explicit transcript-derived Session note", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: "PACKET_NOTE_TRANSCRIPT_REVIEW_REQUIRED" });
+    expect(tx.coachingNote.create).not.toHaveBeenCalled();
+
+    const editResponse = await POST(request({
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      decision: "EDIT",
+      title: "A safer draft",
+      body: "Keep this as a draft until playback review is complete.",
+      visibility: "AUTHOR_PRIVATE",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-provider-only",
+      packetBuildId: "build-provider-only",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+    }));
+    expect(editResponse.status).toBe(200);
+    expect(await editResponse.json()).toMatchObject({
+      ok: true,
+      decision: "EDIT",
+      reviewStatus: "EDITED_FOR_REVIEW",
+      note: null,
+      receipt: {
+        decision: "EDIT",
+        reviewedByUserId: "user-1",
+        candidateDraftAfter: { title: "A safer draft", body: "Keep this as a draft until playback review is complete." },
+        noteId: null,
+      },
+      boundaries: { noteCreated: false, taskCreated: false, goalCreated: false, calendarMutated: false },
+    });
+    expect(tx.coachingNote.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { sourceJson: expect.objectContaining({
+        noteCandidateReviewReceipts: [expect.objectContaining({ decision: "EDIT", reviewedByUserId: "user-1" })],
+      }) },
+    }));
     expect(tx.coachingNote.create).not.toHaveBeenCalled();
   });
 

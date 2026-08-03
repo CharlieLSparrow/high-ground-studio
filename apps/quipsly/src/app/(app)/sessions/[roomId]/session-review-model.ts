@@ -2,6 +2,7 @@ import {
   isUnreviewedTranscriptActionItemSource,
   type TranscriptActionReviewDecision,
   type TranscriptGoalReviewDecision,
+  type TranscriptNoteReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
 import type { EditableSessionNoteKind, SessionNoteVisibility } from "@/lib/session-note-contract";
 
@@ -75,8 +76,15 @@ export type SessionReviewNoteCandidate = {
   suggestedBody: string;
   suggestedKind: EditableSessionNoteKind;
   suggestedVisibility: SessionNoteVisibility;
+  reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_NOTE";
   humanApprovalRequired: boolean;
   committedNoteId: string | null;
+  lastHumanReview?: {
+    receiptId: string;
+    decision: TranscriptNoteReviewDecision;
+    reviewedAt: string;
+    reviewedByUserId: string;
+  } | null;
 };
 
 export type SessionReviewLaneStatus =
@@ -144,29 +152,45 @@ export type SessionReviewPacket = {
   };
 };
 
-export function noteCandidateMaterializationRequest(input: {
+export function noteCandidateReviewRequest(input: {
+  packet: SessionReviewPacket;
   candidate: SessionReviewNoteCandidate;
-  title: string;
-  body: string;
-  kind: EditableSessionNoteKind;
-  visibility: SessionNoteVisibility;
+  decision: TranscriptNoteReviewDecision;
+  title?: string;
+  body?: string;
+  kind?: EditableSessionNoteKind;
+  visibility?: SessionNoteVisibility;
+  note?: string;
 }) {
-  const body = input.body.trim();
-  if (!body || input.candidate.committedNoteId || input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  const packetBuildId = input.packet.packet?.build?.packetBuildId;
+  const summaryNoteId = input.packet.packet?.summary?.id;
+  if (!packetBuildId || !summaryNoteId || summaryNoteId !== input.candidate.summaryNoteId
+      || input.packet.packet?.transcriptReview?.packetStale
+      || input.candidate.committedNoteId || input.candidate.reviewStatus === "ACCEPTED_AS_NOTE") return null;
+  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if (input.decision === "ACCEPT"
+      && (input.body === undefined || input.kind === undefined || input.visibility === undefined)) return null;
+  if (input.decision === "EDIT"
+      && input.title === undefined && input.body === undefined
+      && input.kind === undefined && input.visibility === undefined) return null;
+  if ((input.decision === "ACCEPT" || input.decision === "EDIT")
+      && input.body !== undefined && !input.body.trim()) return null;
   return {
     roomId: input.candidate.roomId,
     segmentId: input.candidate.segmentId,
     clientRequestId: input.candidate.clientRequestId,
     expectedProviderTextSha256: input.candidate.providerTextSha256,
-    title: input.title.trim(),
-    body,
-    kind: input.kind,
-    visibility: input.visibility,
+    decision: input.decision,
+    ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+    ...(input.body !== undefined ? { body: input.body.trim() } : {}),
+    ...(input.kind !== undefined ? { kind: input.kind } : {}),
+    ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     surface: "nest-session-packet-review",
     transcriptJobId: input.candidate.transcriptJobId,
     recordingAssetId: input.candidate.recordingAssetId,
-    summaryNoteId: input.candidate.summaryNoteId,
-    packetBuildId: input.candidate.packetBuildId,
+    summaryNoteId,
+    packetBuildId,
     packetNoteCandidateId: input.candidate.id,
     packetLaneId: input.candidate.laneId,
   };
