@@ -6884,3 +6884,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   cross-device proof before App Store claims or final screenshot approval.
   Full evidence is in
   `docs/coordination/2026-08-03-capture-build27-candidate.md`.
+
+### Protected offline transcript-review checkpoint — 2026-08-03
+
+- Capture now protects a playback-reviewed correction or explicit as-heard
+  confirmation before network use. The account-partitioned ledger binds a
+  stable request UUID to immutable provider/overlay expectations and the exact
+  retained-local playback position, so reconnect retries cannot duplicate,
+  silently rebase, or last-write-wins merge a human review decision.
+- Retryable failures remain queued; authorization, stale evidence, conflict,
+  malformed acknowledgement, and content mismatch are held visibly for human
+  review. A Nest response closes the phone entry only after exact correction or
+  verification readback and successful protected-ledger removal.
+- iPhone copy and controls distinguish queued from held work. Exact local
+  playback review can continue from a protected cached transcript, while packet,
+  task, goal, note, AI-proposal, remote-only, and preview authority remains
+  locked.
+- Commit `3d3c40c24797e8b6c1b29c8913c130e7bac15dd1` passes 13/13 server correction
+  tests, strict Nest TypeScript, the strengthened mobile/Nest boundary smoke,
+  release-source verification, focused operated proof 2/2, and the complete
+  deterministic Capture/login/Share suite 55/55 with zero failures or skips.
+- This is post-Build-27 source, deliberately not another release. No version,
+  archive, TestFlight, App Store, cloud, deploy, database, or provider write
+  occurred. Physical-iPhone offline/reconnect/conflict and real separate-account
+  proof remain required before the goal gate can close. Full evidence is in
+  `docs/coordination/2026-08-03-offline-transcript-review-outbox.md`.
