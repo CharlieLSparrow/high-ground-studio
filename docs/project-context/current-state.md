@@ -2,6 +2,30 @@
 
 Date: 2026-08-03
 
+## Unified Session candidate review queue checkpoint
+
+- Nest and Quipsly Capture now combine transcript-derived note, goal, and task
+  proposals into one source-chronological human review queue instead of three
+  distant category sections.
+- The queue has active, deferred, decided, and all views; explicit progress and
+  listen-first state; deterministic kind-qualified identity; next-candidate
+  navigation; and immediate Just decided readback after a server mutation.
+- Existing hardened per-candidate endpoints remain the only mutation owners.
+  The queue is a projection with no database migration, implicit work, batch
+  decision, calendar/message/delivery side effect, Studio edit, or publication.
+- The built-in iPhone review preview now shows the same mixed queue with all
+  mutations disabled. Operating the compiled app found and fixed an initial
+  preview exclusion rather than weakening the acceptance test.
+- Nest proof passes 2 suites / 45 tests plus strict TypeScript; the mobile
+  source contract and all 1,015 iOS App Store static checks pass; and the
+  compiled iPhone 17 Pro / iOS 26.3.1 simulator journey passes its queue,
+  candidate-editor, safety-lock, and accessibility operation.
+- The successful result is retained on the external QA volume. No Cloud Build,
+  deployment, production write, TestFlight/App Store action, provider or
+  calendar mutation, invitation, delivery, or publication occurred.
+  Architecture and evidence are in
+  `docs/coordination/2026-08-03-unified-session-candidate-review-queue.md`.
+
 ## Transcript candidate evidence on an existing goal checkpoint
 
 - Nest and Quipsly Capture can now append one playback-reviewed transcript

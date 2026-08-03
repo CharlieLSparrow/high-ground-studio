@@ -563,9 +563,59 @@ describe("Session review goal candidates", () => {
 
     expect(await screen.findByText("Transcript review changed after this packet was built.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build current packet" })).toBeInTheDocument();
-    expect(screen.getByText(/Task review is held because this packet predates/i)).toBeInTheDocument();
-    expect(screen.getByText(/Goal review is held because this packet predates/i)).toBeInTheDocument();
+    expect(screen.getByText(/Candidate decisions are held because transcript review changed/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve inside Quipsly" })).not.toBeInTheDocument();
+  });
+
+  it("reviews notes, goals, and tasks as one source-time queue with explicit unfinished and history filters", async () => {
+    const mixed = packet({ ...candidate, startSeconds: 20, endSeconds: 25 });
+    mixed.packet = {
+      ...mixed.packet!,
+      noteCandidates: [{ ...noteCandidate, startSeconds: 8, endSeconds: 12 }],
+      actionCandidates: [{
+        ...actionCandidate,
+        startSeconds: 30,
+        endSeconds: 35,
+        reviewStatus: "DEFERRED_BY_HUMAN",
+      }],
+      goalCandidates: [
+        { ...candidate, startSeconds: 20, endSeconds: 25 },
+        {
+          ...candidate,
+          id: "goal-decided",
+          clientRequestId: "goal-decided",
+          segmentId: "segment-decided",
+          startSeconds: 40,
+          endSeconds: 45,
+          suggestedTitle: "Keep the decided goal",
+          reviewStatus: "ACCEPTED_AS_GOAL",
+          committedGoalId: "goal-1",
+        },
+      ],
+    };
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(mixed)) as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    const queue = await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
+    const section = queue.closest("section");
+    expect(section).not.toBeNull();
+    const review = within(section!);
+    expect(review.getByRole("progressbar", { name: "Candidate decisions saved" })).toHaveAttribute("aria-valuenow", "1");
+    expect(review.getByRole("button", { name: /To review.*2/i })).toHaveAttribute("aria-pressed", "true");
+    expect(review.getAllByText("Note candidate")).toHaveLength(1);
+    expect(review.getAllByText("Goal candidate")).toHaveLength(1);
+    expect(review.queryByText("Send the revised episode outline")).not.toBeInTheDocument();
+    expect(review.queryByText("Keep the decided goal")).not.toBeInTheDocument();
+
+    await user.click(review.getByRole("button", { name: /Deferred.*1/i }));
+    expect(review.getByText("Send the revised episode outline")).toBeInTheDocument();
+    expect(review.getByText("Deferred intentionally")).toBeInTheDocument();
+
+    await user.click(review.getByRole("button", { name: /Decided.*1/i }));
+    expect(review.getByText("Keep the decided goal")).toBeInTheDocument();
+    expect(review.getByText("Decision saved")).toBeInTheDocument();
   });
 
   it("accepts only through the packet review ledger and preserves its success readback", async () => {
@@ -578,7 +628,7 @@ describe("Session review goal candidates", () => {
     const user = userEvent.setup();
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
-    expect(await screen.findByRole("heading", { name: "Choose what deserves to become a goal" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" })).toBeInTheDocument();
     expect(screen.getByText(/“Review & create goal” writes one new actor-owned ACTIVE Goal/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -913,7 +963,7 @@ describe("Session review goal candidates", () => {
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
-    await screen.findByRole("heading", { name: "Choose what deserves to become a goal" });
+    await screen.findByRole("heading", { name: "Turn this Session into trusted follow-through" });
     await user.click(screen.getByRole("button", { name: "Edit candidate" }));
     const title = screen.getByRole("textbox", { name: "Goal title" });
     await user.clear(title);

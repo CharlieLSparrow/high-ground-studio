@@ -1,4 +1,4 @@
-import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, noteCandidateReviewRequest, packetLaneReviewRequest, timestampForSeconds } from "./session-review-model";
+import { candidateReviewRequest, committedTasks, goalCandidateReviewRequest, noteCandidateReviewRequest, packetLaneReviewRequest, sessionCandidateReviewProgress, sessionCandidateReviewQueue, timestampForSeconds } from "./session-review-model";
 
 describe("session review model", () => {
   const packet: any = {
@@ -27,6 +27,69 @@ describe("session review model", () => {
 
   it("keeps quarantined candidates out of committed tasks", () => {
     expect(committedTasks(packet).map((item) => item.id)).toEqual(["accepted-row"]);
+  });
+
+  it("builds one chronological review queue without changing candidate boundaries", () => {
+    const queue = sessionCandidateReviewQueue({
+      ...packet,
+      packet: {
+        ...packet.packet,
+        noteCandidates: [{
+          id: "note-ready",
+          suggestedTitle: "Capture the decision",
+          laneLabel: "Decisions",
+          segmentId: "segment-early",
+          startSeconds: 8,
+          endSeconds: 12,
+          transcriptReviewStatus: "human-reviewed",
+          reviewStatus: "EDITED_FOR_REVIEW",
+          committedNoteId: null,
+        }],
+        goalCandidates: [{
+          id: "goal-listen",
+          suggestedTitle: "Strengthen the habit",
+          segmentId: "segment-middle",
+          startSeconds: 20,
+          endSeconds: 24,
+          transcriptReviewStatus: "provider",
+          reviewStatus: "READY_FOR_HUMAN_REVIEW",
+          committedGoalId: null,
+        }, {
+          id: "goal-done",
+          suggestedTitle: "Publish consistently",
+          segmentId: "segment-last",
+          startSeconds: 40,
+          endSeconds: 44,
+          transcriptReviewStatus: "human-reviewed",
+          reviewStatus: "MERGED_INTO_GOAL",
+          committedGoalId: "goal-1",
+        }],
+        actionCandidates: [{
+          id: "task-deferred",
+          title: "Send the outline",
+          segmentId: "segment-middle",
+          startSeconds: 20,
+          endSeconds: 24,
+          transcriptReviewStatus: "human-reviewed",
+          reviewStatus: "DEFERRED_BY_HUMAN",
+          committedActionItemId: null,
+        }],
+      },
+    } as any);
+
+    expect(queue.map(({ kind, id, state }) => ({ kind, id, state }))).toEqual([
+      { kind: "note", id: "note-ready", state: "ready" },
+      { kind: "goal", id: "goal-listen", state: "listen-first" },
+      { kind: "task", id: "task-deferred", state: "deferred" },
+      { kind: "goal", id: "goal-done", state: "decided" },
+    ]);
+    expect(sessionCandidateReviewProgress(queue)).toEqual({
+      total: 4,
+      ready: 1,
+      listenFirst: 1,
+      deferred: 1,
+      decided: 1,
+    });
   });
 
   it("binds every review decision to the packet evidence", () => {

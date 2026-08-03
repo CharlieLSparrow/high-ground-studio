@@ -1448,9 +1448,12 @@ final class CaptureExperienceUITests: XCTestCase {
             .sufficientElementDescription,
             .textClipped,
         ])
+        let packetQueueProgress = app.descendants(matching: .any)["CapturePacketCandidateReviewProgress"]
+        reveal(packetQueueProgress)
+        XCTAssertTrue(packetQueueProgress.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketCandidateReviewFilter"].exists)
         let packetTaskAccept = app.buttons["CapturePacketTaskAcceptButton"]
         reveal(packetTaskAccept)
-        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskReviewSection"].exists)
         XCTAssertTrue(app.buttons["CapturePacketTaskSource_preview-segment"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskSourceReviewRequired"].exists)
         XCTAssertFalse(packetTaskAccept.isEnabled, "Provider-only preview evidence must not open canonical task creation.")
@@ -1475,7 +1478,6 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let packetGoalAccept = app.buttons["CapturePacketGoalAcceptButton"]
         reveal(packetGoalAccept)
-        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalReviewSection"].exists)
         XCTAssertTrue(app.buttons["CapturePacketGoalSource_preview-segment"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].exists)
         XCTAssertFalse(packetGoalAccept.isEnabled, "Provider-only preview evidence must not open canonical goal creation.")

@@ -2275,6 +2275,87 @@ extension CaptureTranscriptPlaybackController: AVAudioPlayerDelegate {
     }
 }
 
+private enum CapturePacketCandidateReviewKind: Int {
+    case note = 0
+    case goal = 1
+    case task = 2
+
+    var label: String {
+        switch self {
+        case .note: "Note"
+        case .goal: "Goal"
+        case .task: "Task"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .note: .orange
+        case .goal: .purple
+        case .task: .blue
+        }
+    }
+}
+
+private enum CapturePacketCandidateReviewState: String {
+    case ready
+    case listenFirst
+    case deferred
+    case decided
+
+    var label: String {
+        switch self {
+        case .ready: "Ready"
+        case .listenFirst: "Listen first"
+        case .deferred: "Deferred"
+        case .decided: "Decided"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .ready: .green
+        case .listenFirst: .orange
+        case .deferred: .brown
+        case .decided: .blue
+        }
+    }
+}
+
+private enum CapturePacketCandidateReviewPayload {
+    case note(CapturePacketNoteCandidate)
+    case goal(CapturePacketGoalCandidate)
+    case task(CapturePacketActionCandidate)
+}
+
+private struct CapturePacketCandidateReviewItem: Identifiable {
+    let id: String
+    let kind: CapturePacketCandidateReviewKind
+    let state: CapturePacketCandidateReviewState
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+    let segmentID: String
+    let payload: CapturePacketCandidateReviewPayload
+}
+
+private enum CapturePacketCandidateReviewFilter: String, CaseIterable, Identifiable {
+    case open
+    case deferred
+    case decided
+    case all
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .open: "Review"
+        case .deferred: "Later"
+        case .decided: "Done"
+        case .all: "All"
+        }
+    }
+}
+
 struct CaptureTranscriptReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -2289,6 +2370,9 @@ struct CaptureTranscriptReviewView: View {
     @StateObject private var playback = CaptureTranscriptPlaybackController()
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var scrollTargetSegmentID: String?
+    @State private var packetCandidateFilter = CapturePacketCandidateReviewFilter.open
+    @State private var recentPacketDecisionID: String?
+    @State private var previousPacketCandidateStates: [String: CapturePacketCandidateReviewState] = [:]
     @AccessibilityFocusState private var accessibilityFocusedSegmentID: String?
 
     init(
@@ -2404,10 +2488,8 @@ struct CaptureTranscriptReviewView: View {
                         if client.packetSegmentCount > 0 {
                             packetTranscriptReviewBoundary
                         }
-                        if !previewOnly, !client.packetNoteCandidates.isEmpty {
-                            packetNoteReviewSection(
-                                candidates: client.packetNoteCandidates
-                            ) { segmentID in
+                        if packetCandidateCount > 0 {
+                            packetCandidateReviewQueue { segmentID in
                                 withAnimation(
                                     reduceMotion ? nil : .easeOut(duration: 0.3)
                                 ) {
@@ -2415,46 +2497,10 @@ struct CaptureTranscriptReviewView: View {
                                 }
                                 accessibilityFocusedSegmentID = segmentID
                             }
-                            .id("packet-note-review")
-                        }
-                        if !client.packetActionCandidates.isEmpty {
-                            packetTaskReviewSection { segmentID in
-                                withAnimation(
-                                    reduceMotion ? nil : .easeOut(duration: 0.3)
-                                ) {
-                                    scrollTargetSegmentID = segmentID
-                                }
-                                accessibilityFocusedSegmentID = segmentID
-                            }
-                            .id("packet-task-review")
-                        }
-                        if !client.packetGoalCandidates.isEmpty {
-                            packetGoalReviewSection { segmentID in
-                                withAnimation(
-                                    reduceMotion ? nil : .easeOut(duration: 0.3)
-                                ) {
-                                    scrollTargetSegmentID = segmentID
-                                }
-                                accessibilityFocusedSegmentID = segmentID
-                            }
-                            .id("packet-goal-review")
+                            .id("packet-candidate-review")
                         }
                         if focusSegmentID == nil {
                             transcriptSegments(desk)
-                        }
-                        if previewOnly {
-                            packetNoteReviewSection(
-                                candidates: [.preview(roomID: roomID)],
-                                onOpenSource: { segmentID in
-                                    withAnimation(
-                                        reduceMotion ? nil : .easeOut(duration: 0.3)
-                                    ) {
-                                        scrollTargetSegmentID = segmentID
-                                    }
-                                    accessibilityFocusedSegmentID = segmentID
-                                }
-                            )
-                            .id("packet-note-review")
                         }
                     } else if client.errorMessage == nil {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
@@ -2524,38 +2570,16 @@ struct CaptureTranscriptReviewView: View {
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToSpeakerIdentities")
                         }
-                        if previewOnly || !client.packetNoteCandidates.isEmpty {
+                        if previewOnly || packetCandidateCount > 0 {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = "packet-note-review"
-                                    scrollProxy.scrollTo("packet-note-review", anchor: .top)
+                                    scrollTargetSegmentID = "packet-candidate-review"
+                                    scrollProxy.scrollTo("packet-candidate-review", anchor: .top)
                                 }
                             } label: {
-                                Label("Notes", systemImage: "note.text")
+                                Label("Review queue", systemImage: "checklist.checked")
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToNotes")
-                        }
-                        if !client.packetActionCandidates.isEmpty {
-                            Button {
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = "packet-task-review"
-                                    scrollProxy.scrollTo("packet-task-review", anchor: .top)
-                                }
-                            } label: {
-                                Label("Tasks", systemImage: "checklist")
-                            }
-                            .accessibilityIdentifier("CaptureTranscriptJumpToTasks")
-                        }
-                        if !client.packetGoalCandidates.isEmpty {
-                            Button {
-                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                    scrollTargetSegmentID = "packet-goal-review"
-                                    scrollProxy.scrollTo("packet-goal-review", anchor: .top)
-                                }
-                            } label: {
-                                Label("Goals", systemImage: "target")
-                            }
-                            .accessibilityIdentifier("CaptureTranscriptJumpToGoals")
                         }
                         if let firstSegmentID = client.desk?.segments.first?.id {
                             Button {
@@ -2594,6 +2618,17 @@ struct CaptureTranscriptReviewView: View {
                     scrollTargetSegmentID = focusSegmentID
                 }
                 accessibilityFocusedSegmentID = focusSegmentID
+            }
+            .onChange(of: packetCandidateStateKey, initial: true) { _, _ in
+                let current = Dictionary(uniqueKeysWithValues: packetCandidateQueue.map { ($0.id, $0.state) })
+                if let newlyDecided = packetCandidateQueue.first(where: {
+                    $0.state == .decided
+                        && previousPacketCandidateStates[$0.id] != nil
+                        && previousPacketCandidateStates[$0.id] != .decided
+                }) {
+                    recentPacketDecisionID = newlyDecided.id
+                }
+                previousPacketCandidateStates = current
             }
             .onDisappear { playback.pause(resetPosition: true) }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
@@ -2722,30 +2757,251 @@ struct CaptureTranscriptReviewView: View {
         .accessibilityIdentifier(exactMatch ? "CaptureTranscriptExactSourceMatch" : "CaptureTranscriptReviewOnlyBoundary")
     }
 
-    private func packetGoalReviewSection(onOpenSource: @escaping (String) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Goals suggested by this session", systemImage: "target")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.purple)
-            Text("Each suggestion stays outside your goals until you create one or deliberately add its reviewed evidence to an existing goal. Editing, deferring, and rejecting create no work.")
+    private func packetCandidateState(
+        reviewStatus: String?,
+        transcriptReviewStatus: String?,
+        committedID: String?
+    ) -> CapturePacketCandidateReviewState {
+        let status = reviewStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
+        if committedID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || status.contains("ACCEPTED")
+            || status.contains("MERGED")
+            || status.contains("REJECTED") {
+            return .decided
+        }
+        if status.contains("DEFERRED") { return .deferred }
+        if transcriptReviewStatus != "human-reviewed" { return .listenFirst }
+        return .ready
+    }
+
+    private var packetCandidateQueue: [CapturePacketCandidateReviewItem] {
+        let notes = client.packetNoteCandidates.map { candidate in
+            CapturePacketCandidateReviewItem(
+                id: "note:\(candidate.id)",
+                kind: .note,
+                state: packetCandidateState(
+                    reviewStatus: candidate.reviewStatus,
+                    transcriptReviewStatus: candidate.transcriptReviewStatus,
+                    committedID: candidate.committedNoteId
+                ),
+                startSeconds: candidate.startSeconds,
+                endSeconds: candidate.endSeconds,
+                segmentID: candidate.segmentId,
+                payload: .note(candidate)
+            )
+        }
+        let goals = client.packetGoalCandidates.map { candidate in
+            CapturePacketCandidateReviewItem(
+                id: "goal:\(candidate.id)",
+                kind: .goal,
+                state: packetCandidateState(
+                    reviewStatus: candidate.reviewStatus,
+                    transcriptReviewStatus: candidate.transcriptReviewStatus,
+                    committedID: candidate.committedGoalId
+                ),
+                startSeconds: candidate.startSeconds,
+                endSeconds: candidate.endSeconds,
+                segmentID: candidate.segmentId,
+                payload: .goal(candidate)
+            )
+        }
+        let tasks = client.packetActionCandidates.map { candidate in
+            CapturePacketCandidateReviewItem(
+                id: "task:\(candidate.id)",
+                kind: .task,
+                state: packetCandidateState(
+                    reviewStatus: candidate.reviewStatus,
+                    transcriptReviewStatus: candidate.transcriptReviewStatus,
+                    committedID: candidate.committedActionItemId
+                ),
+                startSeconds: candidate.startSeconds,
+                endSeconds: candidate.endSeconds,
+                segmentID: candidate.segmentId,
+                payload: .task(candidate)
+            )
+        }
+        return (notes + goals + tasks).sorted { left, right in
+            if left.startSeconds != right.startSeconds { return left.startSeconds < right.startSeconds }
+            if left.endSeconds != right.endSeconds { return left.endSeconds < right.endSeconds }
+            if left.kind.rawValue != right.kind.rawValue { return left.kind.rawValue < right.kind.rawValue }
+            return left.id < right.id
+        }
+    }
+
+    private var packetCandidateStateKey: String {
+        packetCandidateQueue.map { "\($0.id):\($0.state.rawValue)" }.joined(separator: "|")
+    }
+
+    private var packetOpenCandidates: [CapturePacketCandidateReviewItem] {
+        packetCandidateQueue.filter { $0.state == .ready || $0.state == .listenFirst }
+    }
+
+    private var visiblePacketCandidates: [CapturePacketCandidateReviewItem] {
+        let filtered = packetCandidateQueue.filter { item in
+            switch packetCandidateFilter {
+            case .open: item.state == .ready || item.state == .listenFirst
+            case .deferred: item.state == .deferred
+            case .decided: item.state == .decided
+            case .all: true
+            }
+        }
+        guard packetCandidateFilter == .open,
+              let recentPacketDecisionID,
+              let recent = packetCandidateQueue.first(where: { $0.id == recentPacketDecisionID && $0.state == .decided }),
+              !filtered.contains(where: { $0.id == recent.id }) else {
+            return filtered
+        }
+        return [recent] + filtered
+    }
+
+    private func packetCandidateCount(for filter: CapturePacketCandidateReviewFilter) -> Int {
+        switch filter {
+        case .open: packetOpenCandidates.count
+        case .deferred: packetCandidateQueue.filter { $0.state == .deferred }.count
+        case .decided: packetCandidateQueue.filter { $0.state == .decided }.count
+        case .all: packetCandidateQueue.count
+        }
+    }
+
+    private func packetCandidateReviewQueue(onOpenSource: @escaping (String) -> Void) -> some View {
+        let readyCount = packetCandidateQueue.filter { $0.state == .ready }.count
+        let listenCount = packetCandidateQueue.filter { $0.state == .listenFirst }.count
+        let deferredCount = packetCandidateQueue.filter { $0.state == .deferred }.count
+        let decidedCount = packetCandidateQueue.filter { $0.state == .decided }.count
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Review queue", systemImage: "checklist.checked")
+                    .font(.title3.weight(.bold))
+                Spacer(minLength: 8)
+                Text("\(decidedCount)/\(packetCandidateQueue.count)")
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Notes, goals, and tasks follow the source timeline. Each stays a proposal until you make its own decision.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            ForEach(client.packetGoalCandidates) { candidate in
-                CapturePacketGoalCandidateCard(
-                    candidate: candidate,
-                    projectName: client.packetTaskProjectName,
-                    availableTags: client.packetTaskTags,
-                    mergeTargets: client.packetGoalMergeTargets,
-                    previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
-                    client: client,
-                    onOpenSource: { onOpenSource(candidate.segmentId) }
-                )
+
+            ProgressView(value: Double(decidedCount), total: Double(max(packetCandidateQueue.count, 1)))
+                .tint(.green)
+                .accessibilityLabel("Candidate decisions saved")
+                .accessibilityValue("\(decidedCount) of \(packetCandidateQueue.count)")
+                .accessibilityIdentifier("CapturePacketCandidateReviewProgress")
+
+            Text("\(readyCount) ready · \(listenCount) listen first · \(deferredCount) deferred · \(decidedCount) decided")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CapturePacketCandidateReviewCounts")
+
+            if let next = packetOpenCandidates.first {
+                Button {
+                    packetCandidateFilter = .open
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                        scrollTargetSegmentID = next.id
+                    }
+                    accessibilityFocusedSegmentID = next.id
+                } label: {
+                    Label("Continue review", systemImage: "arrow.down.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(client.packetNeedsRebuild || client.isUsingProtectedCache)
+                .accessibilityIdentifier("CapturePacketCandidateContinueReview")
+            } else {
+                Label("No active decisions", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
+
+            Picker("Show candidates", selection: $packetCandidateFilter) {
+                ForEach(CapturePacketCandidateReviewFilter.allCases) { filter in
+                    Text("\(filter.label) \(packetCandidateCount(for: filter))").tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("CapturePacketCandidateReviewFilter")
+
+            if visiblePacketCandidates.isEmpty {
+                Text(packetCandidateFilter == .open
+                    ? "No candidates need an active decision. Deferred and decided proposals remain available above."
+                    : "No candidates are in this view.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(visiblePacketCandidates) { item in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 7) {
+                            Label("\(item.kind.label) candidate", systemImage: item.kind == .note ? "note.text" : item.kind == .goal ? "target" : "checklist")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(item.kind.tint)
+                            Text(item.state.label)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(item.state.tint)
+                            Spacer(minLength: 4)
+                            Text("\(item.startSeconds.captureTranscriptTimestamp)–\(item.endSeconds.captureTranscriptTimestamp)")
+                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        if recentPacketDecisionID == item.id, packetCandidateFilter == .open {
+                            Label("Just decided", systemImage: "checkmark.circle.fill")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.green)
+                        }
+                        packetCandidateCard(item, onOpenSource: onOpenSource)
+                    }
+                    .id(item.id)
+                    .accessibilityFocused($accessibilityFocusedSegmentID, equals: item.id)
+                }
             }
         }
         .reviewCard()
-        .accessibilityIdentifier("CapturePacketGoalReviewSection")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePacketCandidateReviewQueue")
+    }
+
+    @ViewBuilder
+    private func packetCandidateCard(
+        _ item: CapturePacketCandidateReviewItem,
+        onOpenSource: @escaping (String) -> Void
+    ) -> some View {
+        switch item.payload {
+        case .note(let candidate):
+            CapturePacketNoteCandidateCard(
+                candidate: candidate,
+                mergeTargets: client.packetNoteMergeTargets,
+                canUseProjectTeamNotes: canUseProjectTeamNotes,
+                previewOnly: previewOnly,
+                decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
+                client: client,
+                onOpenSource: { onOpenSource(candidate.segmentId) }
+            )
+        case .goal(let candidate):
+            CapturePacketGoalCandidateCard(
+                candidate: candidate,
+                projectName: client.packetTaskProjectName,
+                availableTags: client.packetTaskTags,
+                mergeTargets: client.packetGoalMergeTargets,
+                previewOnly: previewOnly,
+                decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
+                client: client,
+                onOpenSource: { onOpenSource(candidate.segmentId) }
+            )
+        case .task(let candidate):
+            CapturePacketTaskCandidateCard(
+                candidate: candidate,
+                projectName: client.packetTaskProjectName,
+                availableTags: client.packetTaskTags,
+                mergeTargets: client.packetTaskMergeTargets,
+                previewOnly: previewOnly,
+                decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
+                client: client,
+                onOpenSource: { onOpenSource(candidate.segmentId) }
+            )
+        }
     }
 
     private var packetCandidateCount: Int {
@@ -2809,60 +3065,6 @@ struct CaptureTranscriptReviewView: View {
         .accessibilityIdentifier(client.packetNeedsRebuild
             ? "CaptureTranscriptPacketStaleBoundary"
             : "CaptureTranscriptPacketReviewProgress")
-    }
-
-    private func packetNoteReviewSection(
-        candidates: [CapturePacketNoteCandidate],
-        onOpenSource: @escaping (String) -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Notes suggested by this session", systemImage: "note.text.badge.plus")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.orange)
-            Text("Each candidate keeps an exact transcript moment. Review its wording, purpose, and audience before it becomes a canonical Session note; nothing is sent automatically.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(candidates) { candidate in
-                CapturePacketNoteCandidateCard(
-                    candidate: candidate,
-                    mergeTargets: client.packetNoteMergeTargets,
-                    canUseProjectTeamNotes: canUseProjectTeamNotes,
-                    previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
-                    client: client,
-                    onOpenSource: { onOpenSource(candidate.segmentId) }
-                )
-            }
-        }
-        .reviewCard()
-        .accessibilityIdentifier("CapturePacketNoteReviewSection")
-    }
-
-    private func packetTaskReviewSection(onOpenSource: @escaping (String) -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Tasks suggested by this session", systemImage: "checklist")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.blue)
-            Text("Suggestions are not open work. Review owner, due date, and project tags before creating one canonical task; edit, defer, and reject stay in packet history.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(client.packetActionCandidates) { candidate in
-                CapturePacketTaskCandidateCard(
-                    candidate: candidate,
-                    projectName: client.packetTaskProjectName,
-                    availableTags: client.packetTaskTags,
-                    mergeTargets: client.packetTaskMergeTargets,
-                    previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
-                    client: client,
-                    onOpenSource: { onOpenSource(candidate.segmentId) }
-                )
-            }
-        }
-        .reviewCard()
-        .accessibilityIdentifier("CapturePacketTaskReviewSection")
     }
 
     private func reviewNotice(title: String, detail: String, tint: Color, icon: String) -> some View {

@@ -189,6 +189,123 @@ export type SessionReviewPacket = {
   };
 };
 
+export type SessionCandidateReviewKind = "note" | "task" | "goal";
+export type SessionCandidateReviewState = "ready" | "listen-first" | "deferred" | "decided";
+
+type SessionCandidateReviewQueueBase = {
+  id: string;
+  anchorId: string;
+  kind: SessionCandidateReviewKind;
+  state: SessionCandidateReviewState;
+  title: string;
+  segmentId: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type SessionCandidateReviewQueueItem =
+  | (SessionCandidateReviewQueueBase & { kind: "note"; candidate: SessionReviewNoteCandidate })
+  | (SessionCandidateReviewQueueBase & { kind: "task"; candidate: SessionReviewCandidate })
+  | (SessionCandidateReviewQueueBase & { kind: "goal"; candidate: SessionReviewGoalCandidate });
+
+export type SessionCandidateReviewProgress = {
+  total: number;
+  ready: number;
+  listenFirst: number;
+  deferred: number;
+  decided: number;
+};
+
+function candidateReviewState(input: {
+  reviewStatus: string;
+  transcriptReviewStatus?: "provider" | "human-reviewed";
+  committedId?: string | null;
+}): SessionCandidateReviewState {
+  const status = input.reviewStatus.trim().toUpperCase();
+  if (input.committedId || status.includes("ACCEPTED") || status.includes("MERGED") || status.includes("REJECTED")) {
+    return "decided";
+  }
+  if (status.includes("DEFERRED")) return "deferred";
+  if (input.transcriptReviewStatus !== "human-reviewed") return "listen-first";
+  return "ready";
+}
+
+function queueAnchorId(kind: SessionCandidateReviewKind, id: string) {
+  return `candidate-review-${kind}-${encodeURIComponent(id)}`;
+}
+
+/**
+ * Projects every packet candidate into one source-time review queue without
+ * changing any candidate or commit boundary. Notes come first when multiple
+ * proposal kinds point at the same transcript moment, followed by goals and
+ * then concrete tasks.
+ */
+export function sessionCandidateReviewQueue(packet: SessionReviewPacket | null): SessionCandidateReviewQueueItem[] {
+  const noteItems: SessionCandidateReviewQueueItem[] = (packet?.packet?.noteCandidates ?? []).map((candidate) => ({
+    id: candidate.id,
+    anchorId: queueAnchorId("note", candidate.id),
+    kind: "note",
+    state: candidateReviewState({
+      reviewStatus: candidate.reviewStatus,
+      transcriptReviewStatus: candidate.transcriptReviewStatus,
+      committedId: candidate.committedNoteId,
+    }),
+    title: candidate.suggestedTitle || candidate.laneLabel,
+    segmentId: candidate.segmentId,
+    startSeconds: candidate.startSeconds,
+    endSeconds: candidate.endSeconds,
+    candidate,
+  }));
+  const taskItems: SessionCandidateReviewQueueItem[] = (packet?.packet?.actionCandidates ?? []).map((candidate) => ({
+    id: candidate.id,
+    anchorId: queueAnchorId("task", candidate.id),
+    kind: "task",
+    state: candidateReviewState({
+      reviewStatus: candidate.reviewStatus,
+      transcriptReviewStatus: candidate.transcriptReviewStatus,
+      committedId: candidate.committedActionItemId,
+    }),
+    title: candidate.title,
+    segmentId: candidate.segmentId,
+    startSeconds: candidate.startSeconds,
+    endSeconds: candidate.endSeconds,
+    candidate,
+  }));
+  const goalItems: SessionCandidateReviewQueueItem[] = (packet?.packet?.goalCandidates ?? []).map((candidate) => ({
+    id: candidate.id,
+    anchorId: queueAnchorId("goal", candidate.id),
+    kind: "goal",
+    state: candidateReviewState({
+      reviewStatus: candidate.reviewStatus,
+      transcriptReviewStatus: candidate.transcriptReviewStatus,
+      committedId: candidate.committedGoalId,
+    }),
+    title: candidate.suggestedTitle,
+    segmentId: candidate.segmentId,
+    startSeconds: candidate.startSeconds,
+    endSeconds: candidate.endSeconds,
+    candidate,
+  }));
+  const kindOrder: Record<SessionCandidateReviewKind, number> = { note: 0, goal: 1, task: 2 };
+  return [...noteItems, ...taskItems, ...goalItems].sort((left, right) => (
+    left.startSeconds - right.startSeconds
+      || left.endSeconds - right.endSeconds
+      || kindOrder[left.kind] - kindOrder[right.kind]
+      || left.id.localeCompare(right.id)
+  ));
+}
+
+export function sessionCandidateReviewProgress(items: SessionCandidateReviewQueueItem[]): SessionCandidateReviewProgress {
+  return items.reduce<SessionCandidateReviewProgress>((progress, item) => {
+    progress.total += 1;
+    if (item.state === "ready") progress.ready += 1;
+    if (item.state === "listen-first") progress.listenFirst += 1;
+    if (item.state === "deferred") progress.deferred += 1;
+    if (item.state === "decided") progress.decided += 1;
+    return progress;
+  }, { total: 0, ready: 0, listenFirst: 0, deferred: 0, decided: 0 });
+}
+
 export function noteCandidateReviewRequest(input: {
   packet: SessionReviewPacket;
   candidate: SessionReviewNoteCandidate;
