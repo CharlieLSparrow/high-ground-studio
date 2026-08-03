@@ -39,6 +39,7 @@ const verifiedPlan = {
   sourceMutations: 0,
   externalSideEffects: 0,
 };
+const verifiedPlanSha256 = "b".repeat(64);
 
 function jsonFile(value: unknown) {
   const file = new File([JSON.stringify(value)], "portable-nest.json", { type: "application/json" });
@@ -68,8 +69,8 @@ describe("Nest portability owner controls", () => {
   it("requires a read-only preview before apply and confirms the safety boundaries", async () => {
     const user = userEvent.setup();
     jest.mocked(global.fetch)
-      .mockResolvedValueOnce(jsonResponse({ ok: true, plan: verifiedPlan }))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, plan: verifiedPlan }));
+      .mockResolvedValueOnce(jsonResponse({ ok: true, plan: verifiedPlan, planSha256: verifiedPlanSha256 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, plan: verifiedPlan, planSha256: verifiedPlanSha256 }));
     render(<NestPortabilityClient projectSlug="target-nest" projectName="Target Nest" />);
 
     expect(screen.queryByRole("button", { name: "Apply verified restore" })).not.toBeInTheDocument();
@@ -93,7 +94,12 @@ describe("Nest portability owner controls", () => {
     expect(global.fetch).toHaveBeenNthCalledWith(
       2,
       "/api/nests/target-nest/portable-restore?mode=apply",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "x-quipsly-restore-plan-sha256": verifiedPlanSha256,
+        }),
+      }),
     );
     expect(refresh).toHaveBeenCalled();
   });
@@ -103,6 +109,7 @@ describe("Nest portability owner controls", () => {
     jest.mocked(global.fetch).mockResolvedValueOnce(jsonResponse({
       ok: true,
       plan: { ...verifiedPlan, externalSideEffects: 1 },
+      planSha256: verifiedPlanSha256,
     }));
     render(<NestPortabilityClient projectSlug="target-nest" projectName="Target Nest" />);
 
@@ -112,5 +119,25 @@ describe("Nest portability owner controls", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Apply verified restore" })).toBeDisabled());
     expect(screen.getByText("0 overwrites · 0 source mutations · 1 external effects")).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires a fresh preview after destination drift", async () => {
+    const user = userEvent.setup();
+    jest.mocked(global.fetch)
+      .mockResolvedValueOnce(jsonResponse({ ok: true, plan: verifiedPlan, planSha256: verifiedPlanSha256 }))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: false,
+        error: "This destination changed after validation. Nothing was restored; validate again.",
+      }, false));
+    render(<NestPortabilityClient projectSlug="target-nest" projectName="Target Nest" />);
+
+    await user.upload(screen.getByLabelText("Choose a Quipsly Nest JSON file"), jsonFile({ schemaVersion: "test" }));
+    await user.click(screen.getByRole("button", { name: "Validate restore plan" }));
+    await user.click(await screen.findByRole("button", { name: "Apply verified restore" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("destination changed after validation");
+    expect(screen.queryByRole("button", { name: "Apply verified restore" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Validate restore plan" })).toBeEnabled();
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

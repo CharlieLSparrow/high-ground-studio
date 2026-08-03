@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 
 import { validateNestBundle } from "@/lib/nest-portability";
 import { getPrismaClient } from "@/lib/prisma";
-import { applyNestRestore, buildNestRestorePlan } from "@/lib/server/nest-portable-restore";
+import {
+  applyNestRestore,
+  buildNestRestorePlan,
+  nestRestorePlanSha256,
+  NestRestorePlanChangedError,
+} from "@/lib/server/nest-portable-restore";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -76,14 +81,23 @@ export async function POST(
         destinationNestSlug: projectSlug,
         sourceNest: validation.bundle.sourceNest,
         plan,
+        planSha256: nestRestorePlanSha256(plan),
         requiresExplicitApply: true,
       }, { headers: { "cache-control": "private, no-store" } });
+    }
+    const expectedPlanSha256 = request.headers.get("x-quipsly-restore-plan-sha256")?.trim().toLowerCase() || "";
+    if (!/^[a-f0-9]{64}$/.test(expectedPlanSha256)) {
+      return NextResponse.json({
+        ok: false,
+        error: "Validate this package and review its current restore plan before applying it.",
+      }, { status: 428, headers: { "cache-control": "private, no-store" } });
     }
     const result = await applyNestRestore(prisma, {
       projectId: access.projectId,
       actorUserId: session.user.id,
       actorEmail,
       bundle: validation.bundle,
+      expectedPlanSha256,
     });
     return NextResponse.json({
       ok: true,
@@ -93,6 +107,12 @@ export async function POST(
       ...result,
     }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
+    if (error instanceof NestRestorePlanChangedError) {
+      return NextResponse.json({
+        ok: false,
+        error: "This destination changed after validation. Nothing was restored; validate again to review the current plan.",
+      }, { status: 409, headers: { "cache-control": "private, no-store" } });
+    }
     console.error("[nest-portable-restore] failed", error);
     return NextResponse.json({
       ok: false,

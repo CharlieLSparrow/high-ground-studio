@@ -2,7 +2,12 @@
 
 import { createPortableNestBundle, NEST_EXPORT_SCHEMA_VERSION, type PortableNestBundlePayload } from "@/lib/nest-portability";
 import { getPrismaClient } from "@/lib/prisma";
-import { applyNestRestore, buildNestRestorePlan } from "@/lib/server/nest-portable-restore";
+import {
+  applyNestRestore,
+  buildNestRestorePlan,
+  nestRestorePlanSha256,
+  NestRestorePlanChangedError,
+} from "@/lib/server/nest-portable-restore";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -12,6 +17,8 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/nest-portable-restore", () => ({
   applyNestRestore: jest.fn(),
   buildNestRestorePlan: jest.fn(),
+  nestRestorePlanSha256: jest.fn(),
+  NestRestorePlanChangedError: class NestRestorePlanChangedError extends Error {},
 }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
@@ -51,6 +58,7 @@ describe("portable Nest restore route", () => {
       user: { id: "user-1", primaryEmail: "owner@example.com" },
     } as never);
     jest.mocked(getPrismaClient).mockReturnValue({ kind: "prisma" } as never);
+    jest.mocked(nestRestorePlanSha256).mockReturnValue("b".repeat(64));
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
       allowed: true,
       role: "OWNER",
@@ -96,6 +104,7 @@ describe("portable Nest restore route", () => {
       ok: true,
       mode: "validate",
       requiresExplicitApply: true,
+      planSha256: "b".repeat(64),
       plan: { noteCreates: 1, overwrites: 0 },
     });
     expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({ action: "manage" }));
@@ -106,12 +115,16 @@ describe("portable Nest restore route", () => {
   it("applies only when mode is explicit and keeps side effects false", async () => {
     jest.mocked(applyNestRestore).mockResolvedValue({
       plan: { noteCreates: 1, overwrites: 0 },
+      planSha256: "b".repeat(64),
       boundaries: { overwroteExisting: false, externalSideEffects: false },
     } as never);
     const response = await POST(
       new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-quipsly-restore-plan-sha256": "b".repeat(64),
+        },
         body: JSON.stringify(emptyBundle()),
       }),
       { params: Promise.resolve({ slug: "target" }) },
@@ -123,6 +136,41 @@ describe("portable Nest restore route", () => {
       mode: "apply",
       boundaries: { overwroteExisting: false, externalSideEffects: false },
     });
-    expect(applyNestRestore).toHaveBeenCalled();
+    expect(applyNestRestore).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      expectedPlanSha256: "b".repeat(64),
+    }));
+  });
+
+  it("requires a reviewed plan token before apply", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(emptyBundle()),
+      }),
+      { params: Promise.resolve({ slug: "target" }) },
+    );
+    expect(response.status).toBe(428);
+    expect(applyNestRestore).not.toHaveBeenCalled();
+  });
+
+  it("reports destination drift before apply as a fresh-review requirement", async () => {
+    jest.mocked(applyNestRestore).mockRejectedValue(new NestRestorePlanChangedError());
+    const response = await POST(
+      new Request("http://localhost/api/nests/target/portable-restore?mode=apply", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-quipsly-restore-plan-sha256": "b".repeat(64),
+        },
+        body: JSON.stringify(emptyBundle()),
+      }),
+      { params: Promise.resolve({ slug: "target" }) },
+    );
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: expect.stringContaining("validate again"),
+    });
   });
 });

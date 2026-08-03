@@ -211,6 +211,95 @@ function checkUploadContractSources() {
   );
 }
 
+function checkNestPortabilityContractSources() {
+  const nativeText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureNestPortability.swift",
+  );
+  const accountText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift",
+  );
+  const uiTestText = sourceText(
+    "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
+  );
+  const exportRouteText = sourceText(
+    "apps/quipsly/src/app/api/nests/[slug]/portable-export/route.ts",
+  );
+  const restoreRouteText = sourceText(
+    "apps/quipsly/src/app/api/nests/[slug]/portable-restore/route.ts",
+  );
+  const restoreServerText = sourceText(
+    "apps/quipsly/src/lib/server/nest-portable-restore.ts",
+  );
+  const webPortabilityText = sourceText(
+    "apps/quipsly/src/app/(app)/nests/[slug]/portable/NestPortabilityClient.tsx",
+  );
+  const applyRestoreText = restoreServerText.slice(
+    restoreServerText.indexOf("export async function applyNestRestore"),
+  );
+
+  expect(
+    accountText.includes("CaptureAccountNestPortability")
+      && accountText.includes("CaptureNestPortabilityView")
+      && uiTestText.includes("testAccountMakesOwnerNestBackupAndPreviewFirstRestoreReachable")
+      && uiTestText.includes("CaptureNestPortabilityView"),
+    "nativeNestPortabilityReachable",
+    "Capture Account makes owner-controlled Nest backup and preview-first restore reachable and operates that route in UI coverage.",
+  );
+  expect(
+    nativeText.includes("/api/mobile/capture/work")
+      && nativeText.includes("$0.role.uppercased() == \"OWNER\"")
+      && nativeText.includes("/api/nests/")
+      && nativeText.includes("portable-export")
+      && exportRouteText.includes('action: "manage"')
+      && restoreRouteText.includes('action: "manage"'),
+    "nativeNestPortabilityOwnerBoundary",
+    "The phone lists owned Nests while export and restore independently reauthorize manage access at Nest.",
+  );
+  expect(
+    nativeText.includes("captureNestPortableBundleLimit = 30 * 1024 * 1024")
+      && nativeText.includes("startAccessingSecurityScopedResource")
+      && nativeText.includes(".completeFileProtection")
+      && nativeText.includes("isExcludedFromBackup = true")
+      && nativeText.includes("uniqueExportDestination")
+      && nativeText.includes("fileManager.fileExists")
+      && nativeText.includes("JSONSerialization.jsonObject"),
+    "nativeNestPortabilityProtectedFileBoundary",
+    "Capture bounds imported and exported JSON, handles security-scoped files, protects app-owned copies, and never silently replaces an earlier backup.",
+  );
+  expect(
+    nativeText.includes("requiresExplicitApply == true")
+      && nativeText.includes('payload.mode == "validate"')
+      && nativeText.includes("payload.planSha256")
+      && nativeText.includes("plan.isSafeToApply")
+      && nativeText.includes("overwrites == 0")
+      && nativeText.includes("sourceMutations == 0")
+      && nativeText.includes("externalSideEffects == 0")
+      && nativeText.includes("showsApplyConfirmation = true"),
+    "nativeNestPortabilityPreviewBeforeApply",
+    "Restore stays read-only through exact plan validation and requires a separate user confirmation before apply.",
+  );
+  expect(
+    nativeText.includes("payload.manifestSha256 == verifiedPlan.manifestSha256")
+      && nativeText.includes("appliedPlan == verifiedPlan")
+      && nativeText.includes('forHTTPHeaderField: "x-quipsly-restore-plan-sha256"')
+      && nativeText.includes("payload.boundaries?.provesSafeApply == true")
+      && nativeText.includes('receipt.schema == "quipsly-nest-restore-receipt-v1"')
+      && nativeText.includes("receipt.integrityRecomputed")
+      && restoreRouteText.includes('get("mode") === "apply" ? "apply" : "validate"')
+      && restoreRouteText.includes('if (mode === "validate")')
+      && restoreRouteText.includes("expectedPlanSha256")
+      && restoreRouteText.includes("NestRestorePlanChangedError")
+      && applyRestoreText.includes("planSha256 !== input.expectedPlanSha256")
+      && applyRestoreText.indexOf("planSha256 !== input.expectedPlanSha256")
+        < applyRestoreText.indexOf("const tagResolutions")
+      && webPortabilityText.includes('"x-quipsly-restore-plan-sha256": planSha256')
+      && webPortabilityText.includes("result.planSha256 !== planSha256")
+      && webPortabilityText.includes("JSON.stringify(result.plan) !== JSON.stringify(plan)"),
+    "nativeNestPortabilityApplyReadback",
+    "Capture binds apply to the exact reviewed plan before transaction writes, then requires manifest, safe-boundary, receipt-schema, and recomputed-integrity readback.",
+  );
+}
+
 function checkMeetingSpineContractSources() {
   const roomJoinText = sourceText("apps/quipsly/src/app/api/mobile/capture/rooms/join/route.ts");
   const roomJoinDiagnosticsText = sourceText("apps/quipsly/src/app/api/mobile/capture/rooms/join/diagnostics/route.ts");
@@ -2157,6 +2246,7 @@ async function checkProtectedIngestRoutes() {
 
 async function main() {
   checkUploadContractSources();
+  checkNestPortabilityContractSources();
   checkMeetingSpineContractSources();
   checkTranscriptPacketContractSources();
   checkReviewDigestContractSources();

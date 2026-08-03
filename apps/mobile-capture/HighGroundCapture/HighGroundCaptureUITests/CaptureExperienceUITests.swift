@@ -2296,6 +2296,70 @@ final class CaptureExperienceUITests: XCTestCase {
         }
     }
 
+    func testAccountMakesOwnerNestBackupAndPreviewFirstRestoreReachable() throws {
+        app.tabBars.buttons["Account"].tap()
+
+        let portabilityLink = app.descendants(matching: .any)[
+            "CaptureAccountNestPortability"
+        ]
+        reveal(portabilityLink)
+        XCTAssertTrue(
+            portabilityLink.waitForExistence(timeout: 5),
+            "Account should make whole-Nest portability directly reachable on iPhone."
+        )
+        XCTAssertTrue(portabilityLink.isHittable)
+        portabilityLink.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["CaptureNestPortabilityView"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "CaptureNestPortabilityBoundary"
+            ].exists
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureNestPortabilityProjectPicker"].exists,
+            "An owner with more than one Nest should be able to choose the exact backup or restore destination."
+        )
+        XCTAssertTrue(app.staticTexts["Alex's Nest"].exists)
+
+        let export = app.buttons["CaptureNestExportButton"]
+        reveal(export)
+        XCTAssertTrue(export.exists)
+        XCTAssertFalse(
+            export.isEnabled,
+            "Deterministic preview must show the production backup workflow without exporting private data."
+        )
+
+        let choose = app.buttons["CaptureNestChooseRestorePackage"]
+        reveal(choose)
+        XCTAssertTrue(choose.isHittable)
+        let validate = app.buttons["CaptureNestValidateRestore"]
+        XCTAssertTrue(validate.exists)
+        XCTAssertFalse(
+            validate.isEnabled,
+            "Apply must remain unreachable before a real JSON package is loaded and validated."
+        )
+
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(
+                    format: "label CONTAINS %@",
+                    "recordings and media bytes"
+                )
+            ).firstMatch.exists,
+            "The phone must disclose that source media, credentials, collaborators, notifications, and provider effects are outside the portable package."
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     private func revealBelow(_ element: XCUIElement, in scrollSurface: XCUIElement) {
         let visibleBottom = app.frame.maxY - 96
         for _ in 0..<16 {

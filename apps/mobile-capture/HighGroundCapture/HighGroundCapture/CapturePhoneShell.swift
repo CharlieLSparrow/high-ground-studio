@@ -8131,6 +8131,37 @@ private struct CaptureAccountView: View {
                 accountHeader
                 accountControlCard
 
+                NavigationLink {
+                    CaptureNestPortabilityView(
+                        usesPreviewData: model.usesPreviewData
+                    )
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive.badge.checkmark")
+                            .font(.title3)
+                            .foregroundStyle(CapturePalette.accent)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Backup & transfer")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text("Export or preview a no-overwrite restore for a Nest you own.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .captureCard()
+                .accessibilityHint("Opens owner-controlled Nest backup and preview-first restore.")
+                .accessibilityIdentifier("CaptureAccountNestPortability")
+
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Upload policy", systemImage: "antenna.radiowaves.left.and.right")
                         .font(.headline)
@@ -11086,7 +11117,7 @@ private struct CaptureRecordButtonStyle: ButtonStyle {
     }
 }
 
-private struct CaptureCanvas: View {
+struct CaptureCanvas: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {

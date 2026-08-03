@@ -1,7 +1,7 @@
 # Quipsly Capture iPhone Architecture
 
 Status: implementation baseline
-Last reviewed: 2026-07-30
+Last reviewed: 2026-08-03
 Minimum OS: iOS 17
 Primary product: local-first, consent-aware audio and production-source capture for coaching, podcasts, research interviews, and creator video
 
@@ -58,6 +58,38 @@ destination project and links the same vocabulary to the canonical note, task,
 or goal. Offline retries reuse the UUID and must either read back the identical
 record or fail closed as an identity conflict; they never send, schedule,
 publish, or create a provider calendar event.
+
+### Owner-controlled Nest portability
+
+Account exposes **Backup & transfer** for Nests the signed-in person owns. The
+phone discovers candidate destinations from the actor-scoped Work response and
+shows only `OWNER` rows, while both export and restore independently recheck
+`manage` authorization on Nest. The JSON package contains the Nest identity,
+canonical tag vocabulary and aliases, note documents/blocks/tagged spans, and
+the owner's tasks, goals, progress receipts, goal-task links, and focus-plan
+blocks. It intentionally contains no media bytes, Sessions, collaborator
+assignments, credentials, provider resources, or active calendar effects.
+
+An export is bounded to 30 MiB, parsed as JSON before it is accepted, written
+atomically into file-protected Application Support, and excluded from device
+backup because the user must deliberately place the portable copy in Files or
+another destination they control. A repeated export receives a unique filename
+and never silently replaces an earlier app-owned package.
+
+Import reads one security-scoped JSON file into memory and preserves the exact
+bytes between validation and apply. Validation is read-only and must return an
+explicit no-overwrite plan plus a digest of that complete plan. The person
+reviews the counts and confirms apply separately. Capture sends the digest as a
+precondition; inside the serializable restore transaction, Nest recomputes the
+current plan and refuses a mismatch before any restore write. Capture then
+accepts completion only when the applied plan exactly equals the reviewed plan,
+the manifest and plan digests match, every safety boundary is false/true as
+expected, and Nest returns a recomputed-integrity receipt. Restore uses
+deterministic destination identities so retry reuses copies instead of
+overwriting records. An ambiguous or stale attempt must be validated again.
+Reminder and recurrence snapshots remain deferred and focus-plan blocks restore
+canceled; no notification, calendar, provider, or other external effect is
+created.
 
 ## System boundaries
 

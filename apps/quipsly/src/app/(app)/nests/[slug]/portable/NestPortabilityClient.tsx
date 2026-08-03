@@ -54,6 +54,7 @@ export function NestPortabilityClient({
   const [fileName, setFileName] = useState("");
   const [bundle, setBundle] = useState<unknown>(null);
   const [plan, setPlan] = useState<RestorePlan | null>(null);
+  const [planSha256, setPlanSha256] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [applied, setApplied] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -62,6 +63,7 @@ export function NestPortabilityClient({
     setFileName(file?.name ?? "");
     setBundle(null);
     setPlan(null);
+    setPlanSha256("");
     setNotice(null);
     setApplied(false);
     if (!file) return;
@@ -83,13 +85,21 @@ export function NestPortabilityClient({
 
   function send(mode: "validate" | "apply") {
     if (!bundle) return;
+    if (mode === "apply" && !/^[a-f0-9]{64}$/.test(planSha256)) {
+      setPlan(null);
+      setNotice({ tone: "error", message: "Validate this package again before applying it." });
+      return;
+    }
     startTransition(async () => {
       try {
         const response = await fetch(
           `/api/nests/${encodeURIComponent(projectSlug)}/portable-restore?mode=${mode}`,
           {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              ...(mode === "apply" ? { "x-quipsly-restore-plan-sha256": planSha256 } : {}),
+            },
             body: JSON.stringify(bundle),
           },
         );
@@ -97,16 +107,31 @@ export function NestPortabilityClient({
           ok?: boolean;
           error?: string;
           plan?: RestorePlan;
+          planSha256?: string;
         };
         if (!response.ok || !result.ok) {
+          if (mode === "apply") {
+            setPlan(null);
+            setPlanSha256("");
+            setApplied(false);
+          }
           setNotice({
             tone: "error",
-            message: result.error || "Quipsly could not verify this Nest package.",
+            message: mode === "apply"
+              ? `${result.error || "Nest did not confirm the restore."} Validate again before retrying.`
+              : result.error || "Quipsly could not verify this Nest package.",
           });
           return;
         }
         if (mode === "validate") {
-          setPlan(result.plan ?? null);
+          if (!result.plan || !/^[a-f0-9]{64}$/.test(result.planSha256 || "")) {
+            setPlan(null);
+            setPlanSha256("");
+            setNotice({ tone: "error", message: "Nest did not return a complete reviewed-plan receipt." });
+            return;
+          }
+          setPlan(result.plan);
+          setPlanSha256(result.planSha256 || "");
           setApplied(false);
           setNotice({
             tone: "success",
@@ -114,7 +139,18 @@ export function NestPortabilityClient({
           });
           return;
         }
-        setPlan(result.plan ?? plan);
+        if (
+          result.planSha256 !== planSha256
+          || !result.plan
+          || JSON.stringify(result.plan) !== JSON.stringify(plan)
+        ) {
+          setPlan(null);
+          setPlanSha256("");
+          setApplied(false);
+          setNotice({ tone: "error", message: "The applied receipt did not match the reviewed plan. Validate again before retrying." });
+          return;
+        }
+        setPlan(result.plan);
         setApplied(true);
         setNotice({
           tone: "success",
@@ -122,9 +158,12 @@ export function NestPortabilityClient({
         });
         router.refresh();
       } catch {
+        setPlan(null);
+        setPlanSha256("");
+        setApplied(false);
         setNotice({
           tone: "error",
-          message: "Nest did not confirm the restore. Retry uses the same identities and never overwrites an existing record.",
+          message: "Nest did not confirm the restore. Validate again before retrying; stable identities prevent overwrites.",
         });
       }
     });

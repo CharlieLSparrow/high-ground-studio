@@ -42,6 +42,13 @@ export type NestRestorePlan = {
   externalSideEffects: 0;
 };
 
+export class NestRestorePlanChangedError extends Error {
+  constructor() {
+    super("The destination changed after this restore plan was reviewed.");
+    this.name = "NestRestorePlanChangedError";
+  }
+}
+
 type TagResolution = {
   originalId: string;
   existingId: string | null;
@@ -53,6 +60,10 @@ type TagResolution = {
 
 function digest(value: unknown) {
   return documentSha256(stableDocumentJson(value));
+}
+
+export function nestRestorePlanSha256(plan: NestRestorePlan) {
+  return digest(plan);
 }
 
 function toPrismaJson(value: unknown): Prisma.InputJsonValue {
@@ -368,6 +379,7 @@ export async function applyNestRestore(
     actorUserId: string;
     actorEmail: string;
     bundle: ValidatedNestBundle;
+    expectedPlanSha256: string;
   },
 ) {
   return prisma.$transaction(async (tx) => {
@@ -378,6 +390,10 @@ export async function applyNestRestore(
       )
     `);
     const plan = await buildNestRestorePlan(tx, input);
+    const planSha256 = nestRestorePlanSha256(plan);
+    if (planSha256 !== input.expectedPlanSha256) {
+      throw new NestRestorePlanChangedError();
+    }
     const tagResolutions = await resolveTags(tx, input.projectId, input.bundle);
     const tagIds = new Map<string, string>();
     const newlyCreatedTagIds = new Set<string>();
@@ -835,6 +851,7 @@ export async function applyNestRestore(
 
     return {
       plan,
+      planSha256,
       restoredTagIds: Object.fromEntries(tagIds),
       restoredNoteDocumentIds: Object.fromEntries(documentIds),
       restoredNoteBlockIds: Object.fromEntries(blockIds),

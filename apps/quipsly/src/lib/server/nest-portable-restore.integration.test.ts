@@ -5,7 +5,12 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { validateNestBundle } from "@/lib/nest-portability";
 import { buildPortableNestExport } from "./nest-portable-export";
-import { applyNestRestore, buildNestRestorePlan } from "./nest-portable-restore";
+import {
+  applyNestRestore,
+  buildNestRestorePlan,
+  nestRestorePlanSha256,
+  NestRestorePlanChangedError,
+} from "./nest-portable-restore";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -398,6 +403,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       actorUserId,
       actorEmail,
       bundle: validation.bundle,
+      expectedPlanSha256: nestRestorePlanSha256(before),
     });
     restoredTaskIds.push(...Object.values(first.restoredTaskIds));
     restoredGoalIds.push(...Object.values(first.restoredGoalIds));
@@ -436,18 +442,26 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       where: { id: first.restoredTagIds[sourceTagId] },
       data: { label: "Destination owner edit" },
     });
+    await expect(applyNestRestore(prisma, {
+      projectId: targetProjectId,
+      actorUserId,
+      actorEmail,
+      bundle: validation.bundle,
+      expectedPlanSha256: nestRestorePlanSha256(before),
+    })).rejects.toBeInstanceOf(NestRestorePlanChangedError);
+    const current = await buildNestRestorePlan(prisma, {
+      projectId: targetProjectId,
+      actorUserId,
+      bundle: validation.bundle,
+    });
     const second = await applyNestRestore(prisma, {
       projectId: targetProjectId,
       actorUserId,
       actorEmail,
       bundle: validation.bundle,
+      expectedPlanSha256: nestRestorePlanSha256(current),
     });
-    const after = await buildNestRestorePlan(prisma, {
-      projectId: targetProjectId,
-      actorUserId,
-      bundle: validation.bundle,
-    });
-    expect(after).toMatchObject({
+    expect(current).toMatchObject({
       tagCreates: 0,
       tagReuses: 2,
       aliasCreates: 0,
