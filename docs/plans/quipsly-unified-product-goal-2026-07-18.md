@@ -6841,6 +6841,11 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   provider-window absence, legacy normalization, capability boundaries, XSS
   escaping, and report privacy. No media upload, provider call, private-corpus
   mutation, production-default change, deploy, or external mutation occurred.
+- The wider verification pass caught and repaired a stale legacy-web coaching
+  packet constructor. Web candidates and brief items now carry exact source
+  text hashes plus ordered segment IDs, explicitly declare absent word-level
+  span evidence, and remain provider-unreviewed. Its boundary suite passes 5/5,
+  and all 26 workspace projects with typecheck scripts pass.
 - Real consented corpus selection, provider runs, correction timing, physical
   Apple evidence, full HGO/coaching passes, and separate-account authorization
   remain required. Full contract and evidence are in

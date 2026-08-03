@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   TRANSCRIPT_ACTION_CANDIDATE_KIND,
@@ -27,6 +27,20 @@ const ACTION_PATTERNS = [
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function sourceTextSha256(value: unknown) {
+  return createHash("sha256").update(cleanText(value), "utf8").digest("hex");
+}
+
+function sourceLinkedSegment(segment: any) {
+  const segmentId = String(segment.id);
+  return {
+    ...segment,
+    id: segmentId,
+    segmentIds: [segmentId],
+    sourceTextSha256: sourceTextSha256(segment.text),
+  };
 }
 
 function formatTime(seconds: unknown) {
@@ -75,6 +89,7 @@ function actionCandidate(input: {
   packetBuildId: string;
 }): TranscriptActionCandidate {
   const segmentId = String(input.segment.id);
+  const sourceText = cleanText(input.segment.text);
   return createTranscriptActionCandidate({
     id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${input.transcriptJobId}:${segmentId}`,
     title: actionTitle(input.segment),
@@ -84,6 +99,14 @@ function actionCandidate(input: {
     roomId: input.roomId,
     packetBuildId: input.packetBuildId,
     segmentId,
+    segmentIds: Array.isArray(input.segment.segmentIds)
+      ? input.segment.segmentIds.map(String)
+      : [segmentId],
+    sourceText,
+    sourceTextSha256: cleanText(input.segment.sourceTextSha256)
+      || sourceTextSha256(sourceText),
+    sourceSpan: null,
+    transcriptReviewStatus: "provider",
     speakerLabel: cleanText(input.segment.speakerLabel) || null,
     startSeconds: Number(input.segment.startSeconds) || 0,
     endSeconds: Number(input.segment.endSeconds) || 0,
@@ -214,13 +237,14 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     };
   }
 
-  const highlights = [...job.segments]
+  const packetSegments = job.segments.map(sourceLinkedSegment);
+  const highlights = [...packetSegments]
     .map((segment: any) => ({ segment, score: scoreHighlight(segment) }))
     .sort((left, right) => right.score - left.score)
     .slice(0, 6)
     .map((entry) => entry.segment);
 
-  const actionSegments = job.segments
+  const actionSegments = packetSegments
     .filter((segment: any) => ACTION_PATTERNS.some((pattern) => pattern.test(cleanText(segment.text))))
     .slice(0, 10);
 
@@ -232,7 +256,7 @@ export async function buildCoachingPacketFromTranscriptJob(args: BuildCoachingPa
     roomId: job.roomId,
     packetBuildId,
   }));
-  const packetBrief = buildTranscriptPacketBrief(job.segments, highlights, actionSegments);
+  const packetBrief = buildTranscriptPacketBrief(packetSegments, highlights, actionSegments);
 
   const sourceJson = {
     source: TRANSCRIPT_PACKET_SOURCE,

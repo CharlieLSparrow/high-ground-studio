@@ -95,6 +95,16 @@ classification remain visible as audit receipts.
   the page has no horizontal overflow, the content stacks to one column, and
   wide provider tables scroll inside their bounded containers.
 
+Wider workspace verification then exposed a stale coaching boundary in the
+legacy web surface: it still called the shared action-candidate constructor
+without the current source span fields. The builder now fingerprints the exact
+normalized provider text, preserves the ordered segment IDs in both candidates
+and packet briefs, declares `sourceSpan: null` when it has no word-level proof,
+and keeps `transcriptReviewStatus: provider`. It therefore compiles without
+pretending that provider output was human-reviewed or materializable work. The
+web boundary suite passes 5/5 and all 26 workspace projects with typecheck
+scripts pass.
+
 The public example is deliberately incomplete, so its rendered status is
 `insufficient-evidence`. That proves the fail-closed path; it is not a provider
 benchmark.

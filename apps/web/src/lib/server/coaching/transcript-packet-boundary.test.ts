@@ -182,6 +182,11 @@ describe("web transcript and packet review boundary", () => {
         roomId: "room-1",
         packetBuildId: expect.any(String),
         segmentId: "segment-1",
+        segmentIds: ["segment-1"],
+        sourceText: "I will send the episode outline before next time.",
+        sourceTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        sourceSpan: null,
+        transcriptReviewStatus: "provider",
         humanApprovalRequired: true,
         committedActionItemId: null,
       })],
@@ -190,7 +195,15 @@ describe("web transcript and packet review boundary", () => {
         candidateOnly: true,
         humanApprovalRequired: true,
         sections: expect.arrayContaining([
-          expect.objectContaining({ id: "commitments", itemCount: 1 }),
+          expect.objectContaining({
+            id: "commitments",
+            itemCount: 1,
+            items: [expect.objectContaining({
+              segmentId: "segment-1",
+              segmentIds: ["segment-1"],
+              sourceTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+            })],
+          }),
         ]),
       }),
     }));
