@@ -6,7 +6,11 @@ import {
   isTranscriptGoalReviewDecision,
   type TranscriptGoalReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
-import { TRANSCRIPT_DERIVED_GOAL_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
+import {
+  TRANSCRIPT_DERIVED_GOAL_SCHEMA,
+  TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA,
+  readTranscriptMergedGoalSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -28,6 +32,7 @@ import {
   createTranscriptDerivedGoalInTransaction,
   normalizeTranscriptGoalTagIds,
   normalizeTranscriptGoalTargetAt,
+  resolveTranscriptGoalEvidenceInTransaction,
   sameTranscriptGoalMaterializationIntent,
   transcriptGoalMaterializationIntent,
   transcriptDerivedGoalBoundaries,
@@ -35,6 +40,7 @@ import {
 import { buildPacketGoalCandidates } from "../route-implementation";
 
 const REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
+const GOAL_EVIDENCE_MERGE_KIND = "TRANSCRIPT_CANDIDATE_MERGED";
 const MAX_GOAL_TITLE_LENGTH = 240;
 const MAX_GOAL_DESCRIPTION_LENGTH = 5_000;
 const MAX_REVIEW_NOTE_LENGTH = 2_000;
@@ -70,17 +76,46 @@ function decision(value: unknown): TranscriptGoalReviewDecision | null {
   return isTranscriptGoalReviewDecision(normalized) ? normalized : null;
 }
 
-function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean } = {}) {
+function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean; goalEvidenceAppended?: boolean } = {}) {
   return {
     explicitHumanDecision: true,
     humanReviewedSourceRequired: true,
     acceptCreatesOneActorOwnedGoal: true,
+    mergeAppendsOneActorOwnedGoalEvidenceReceipt: input.goalEvidenceAppended === true,
+    mergeChangesNoGoalDefinitionStatusTargetOrTags: true,
     editRejectDeferCreateNoGoal: true,
     canonicalSessionAccess: true,
     canonicalSessionMutationAccess: true,
     sessionAccessRechecked: true,
     ...transcriptDerivedGoalBoundaries(input),
   };
+}
+
+function iso(value: unknown) {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function mergeTargetSnapshot(goal: any) {
+  return {
+    id: text(goal?.id),
+    title: text(goal?.title),
+    description: typeof goal?.description === "string" ? goal.description : null,
+    status: text(goal?.status),
+    targetAt: iso(goal?.targetAt),
+    updatedAt: iso(goal?.updatedAt),
+    projectId: text(goal?.projectId) || null,
+    roomId: text(goal?.roomId) || null,
+  };
+}
+
+function exactMergeTargetRequest(receipt: Record<string, unknown>, targetGoalId: string, expectedUpdatedAt: string) {
+  const saved = object(receipt.mergeTargetBefore);
+  return text(receipt.goalId) === targetGoalId
+    && text(saved.id) === targetGoalId
+    && text(saved.updatedAt) === expectedUpdatedAt;
 }
 
 function acceptedReceiptIntentMatches(
@@ -136,6 +171,8 @@ export async function POST(request: Request) {
   const goalCandidateId = text(body.goalCandidateId);
   const reviewDecision = decision(body.decision);
   const reviewNote = text(body.note) || null;
+  const mergeTargetGoalId = text(body.mergeTargetGoalId);
+  const mergeExpectedUpdatedAt = text(body.mergeExpectedUpdatedAt);
   const targetAt = normalizeTranscriptGoalTargetAt(body.targetAt);
   const tagIds = normalizeTranscriptGoalTagIds(body.tagIds);
 
@@ -150,12 +187,33 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: false,
       errorCode: "GOAL_CANDIDATE_DECISION_REQUIRED",
-      error: "Choose ACCEPT, EDIT, REJECT, or DEFER.",
+      error: "Choose ACCEPT, EDIT, MERGE, REJECT, or DEFER.",
       allowedDecisions: TRANSCRIPT_GOAL_REVIEW_DECISIONS,
     }, { status: 400 });
   }
   if (reviewDecision === "EDIT" && !hasOwn(body, "title") && !hasOwn(body, "description")) {
     return NextResponse.json({ ok: false, errorCode: "GOAL_CANDIDATE_EDIT_REQUIRED", error: "Edit the candidate title or definition." }, { status: 400 });
+  }
+  if (reviewDecision === "MERGE" && (!mergeTargetGoalId || !mergeExpectedUpdatedAt || iso(mergeExpectedUpdatedAt) !== mergeExpectedUpdatedAt)) {
+    return NextResponse.json({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MERGE_TARGET_REQUIRED",
+      error: "Choose one current existing goal before adding this reviewed transcript evidence.",
+    }, { status: 400 });
+  }
+  if (reviewDecision !== "MERGE" && (hasOwn(body, "mergeTargetGoalId") || hasOwn(body, "mergeExpectedUpdatedAt"))) {
+    return NextResponse.json({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MERGE_OPTIONS_INVALID",
+      error: "Existing-goal target evidence applies only to MERGE.",
+    }, { status: 400 });
+  }
+  if (reviewDecision === "MERGE" && (hasOwn(body, "title") || hasOwn(body, "description") || hasOwn(body, "targetAt") || hasOwn(body, "tagIds"))) {
+    return NextResponse.json({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MERGE_MUTATION_INVALID",
+      error: "Merging evidence cannot change the selected goal's title, definition, target date, or tags.",
+    }, { status: 400 });
   }
   if (hasOwn(body, "title") && !text(body.title)) {
     return NextResponse.json({ ok: false, errorCode: "GOAL_CANDIDATE_TITLE_REQUIRED", error: "An edited goal title cannot be empty." }, { status: 400 });
@@ -195,7 +253,7 @@ export async function POST(request: Request) {
   };
   const room = await prisma.callRoom.findFirst({
     where: sessionMutationAccessWhere(roomId, actor),
-    select: { id: true },
+    select: { id: true, projectId: true },
   });
   if (!room) {
     return NextResponse.json({ ok: false, errorCode: "ROOM_ACCESS_DENIED", error: "You do not have access to this packet room." }, { status: 404 });
@@ -206,7 +264,7 @@ export async function POST(request: Request) {
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
       const authorizedRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, actor),
-        select: { id: true },
+        select: { id: true, projectId: true },
       });
       if (!authorizedRoom) {
         throw new GoalReviewBoundaryError(
@@ -268,7 +326,17 @@ export async function POST(request: Request) {
       }
       const transcriptSnapshotSha256 = text(object(lockedSource.transcriptSnapshot).sha256);
 
-      const actorGoals = await tx.goal.findMany({ where: { ownerUserId: actor.id, roomId } });
+      const actorGoals = await tx.goal.findMany({
+        where: {
+          ownerUserId: actor.id,
+          OR: [
+            { roomId },
+            ...(authorizedRoom.projectId ? [{ projectId: authorizedRoom.projectId }] : []),
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: 500,
+      });
       const candidates = buildPacketGoalCandidates({ summary: lockedSummary, latestTranscriptJob: transcriptJob, goals: actorGoals, packetBuildId });
       const candidate = candidates.find((item) => item.id === goalCandidateId);
       if (!candidate
@@ -303,45 +371,84 @@ export async function POST(request: Request) {
       });
 
       const receipts = objects(lockedSource.goalCandidateReviewReceipts);
-      const acceptedReceipt = receipts.find((receipt) => text(receipt.goalCandidateId) === goalCandidateId && text(receipt.decision) === "ACCEPT");
-      if (acceptedReceipt) {
-        if (reviewDecision !== "ACCEPT") {
-          throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate already became a Goal and cannot be edited, rejected, or deferred as an uncommitted draft.");
+      const terminalReceipt = receipts.filter((receipt) => (
+        text(receipt.goalCandidateId) === goalCandidateId
+        && (text(receipt.decision) === "ACCEPT" || text(receipt.decision) === "MERGE")
+      )).at(-1) ?? null;
+      if (terminalReceipt) {
+        const completedDecision = text(terminalReceipt.decision);
+        if (reviewDecision !== completedDecision) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_ALREADY_COMPLETED",
+            completedDecision === "MERGE"
+              ? "This candidate already added evidence to an existing Goal and cannot be reviewed again as an uncommitted draft."
+              : "This candidate already became a Goal and cannot be reviewed again as an uncommitted draft.",
+          );
         }
-        if (!acceptedReceiptIntentMatches(acceptedReceipt, requestedIntent)) {
+        if (completedDecision === "ACCEPT" && !acceptedReceiptIntentMatches(terminalReceipt, requestedIntent)) {
           throw new GoalReviewBoundaryError(
             409,
             "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT",
             "This candidate was already accepted with different wording, target date, or tags. Open the canonical goal to edit it.",
           );
         }
-        const acceptedGoal = await tx.goal.findUnique({
-          where: { id: text(acceptedReceipt.goalId) },
-          include: { tagLinks: { select: { tagId: true } } },
+        if (completedDecision === "MERGE" && !exactMergeTargetRequest(terminalReceipt, mergeTargetGoalId, mergeExpectedUpdatedAt)) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT",
+            "This candidate already added evidence to a different goal snapshot. Open that canonical goal instead.",
+          );
+        }
+        const completedGoal = await tx.goal.findUnique({
+          where: { id: text(terminalReceipt.goalId) },
+          include: { tagLinks: { select: { tagId: true, tag: { select: { id: true, label: true, slug: true } } } } },
         });
-        if (
-          acceptedReceipt.kind !== REVIEW_RECEIPT_KIND
-          || text(acceptedReceipt.transcriptJobId) !== transcriptJobId
-          || text(acceptedReceipt.recordingAssetId) !== recordingAssetId
-          || text(acceptedReceipt.packetBuildId) !== packetBuildId
-          || text(acceptedReceipt.summaryNoteId) !== summaryNoteId
-          || text(acceptedReceipt.roomId) !== roomId
-          || text(acceptedReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
-          || !goalMatches(acceptedGoal, {
+        const receiptMatchesPacket = terminalReceipt.kind === REVIEW_RECEIPT_KIND
+          && text(terminalReceipt.transcriptJobId) === transcriptJobId
+          && text(terminalReceipt.recordingAssetId) === recordingAssetId
+          && text(terminalReceipt.packetBuildId) === packetBuildId
+          && text(terminalReceipt.summaryNoteId) === summaryNoteId
+          && text(terminalReceipt.roomId) === roomId
+          && text(terminalReceipt.transcriptSnapshotSha256) === transcriptSnapshotSha256;
+        const acceptedGoalMatches = completedDecision !== "ACCEPT" || goalMatches(completedGoal, {
             actorId: actor.id,
             roomId,
             clientRequestId: candidate.clientRequestId,
             materializationIntent: requestedIntent,
-          })
-        ) {
-          throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_RECEIPT_MISMATCH", "The accepted candidate receipt no longer matches one canonical goal.");
+          });
+        let mergeReceiptMatches = completedDecision !== "MERGE";
+        if (completedDecision === "MERGE") {
+          const progressReceipt = await tx.goalProgressReceipt.findUnique({
+            where: { id: text(terminalReceipt.goalProgressReceiptId) },
+          });
+          const mergedSource = readTranscriptMergedGoalSource(progressReceipt?.evidenceJson);
+          mergeReceiptMatches = Boolean(
+            completedGoal?.ownerUserId === actor.id
+            && progressReceipt?.kind === GOAL_EVIDENCE_MERGE_KIND
+            && progressReceipt?.goalId === completedGoal?.id
+            && progressReceipt?.actorUserId === actor.id
+            && mergedSource?.receiptId === text(terminalReceipt.id)
+            && mergedSource?.goalCandidateId === goalCandidateId
+            && mergedSource?.sourceAnchor.roomId === roomId
+            && mergedSource?.sourceAnchor.transcriptJobId === transcriptJobId
+            && mergedSource?.sourceAnchor.recordingAssetId === recordingAssetId
+            && mergedSource?.sourceAnchor.segmentId === candidate.segmentId,
+          );
         }
-        return { candidate, receipt: acceptedReceipt, goal: acceptedGoal, idempotentReplay: true };
+        if (!receiptMatchesPacket || !acceptedGoalMatches || !mergeReceiptMatches) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_RECEIPT_MISMATCH",
+            "The completed candidate receipt no longer matches one canonical Goal and its exact evidence ledger.",
+          );
+        }
+        return { candidate, receipt: terminalReceipt, goal: completedGoal, idempotentReplay: true };
       }
       if (candidate.committedGoalId && reviewDecision !== "ACCEPT") {
         throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate is already bound to a canonical Goal.");
       }
-      if (reviewDecision === "ACCEPT") {
+      if (reviewDecision === "ACCEPT" || reviewDecision === "MERGE") {
         const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
         if (unreviewedSegmentIds.length) {
           throw new GoalReviewBoundaryError(
@@ -356,6 +463,9 @@ export async function POST(request: Request) {
       const receiptId = randomUUID();
       let goal: any = null;
       let goalReplay = false;
+      let goalProgressReceiptId: string | null = null;
+      let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
+      let candidateSource: Record<string, unknown> | null = null;
       if (reviewDecision === "ACCEPT") {
         const creation = await createTranscriptDerivedGoalInTransaction({
           tx,
@@ -376,6 +486,106 @@ export async function POST(request: Request) {
         });
         goal = creation.goal;
         goalReplay = creation.idempotentReplay;
+      } else if (reviewDecision === "MERGE") {
+        await tx.$queryRaw`SELECT "id" FROM "Goal" WHERE "id" = ${mergeTargetGoalId} FOR UPDATE`;
+        const mergeTarget = await tx.goal.findFirst({
+          where: {
+            id: mergeTargetGoalId,
+            ownerUserId: actor.id,
+            status: { in: ["ACTIVE", "PAUSED"] },
+            ...(authorizedRoom.projectId
+              ? { projectId: authorizedRoom.projectId }
+              : { roomId }),
+          },
+          include: {
+            tagLinks: {
+              select: {
+                tagId: true,
+                tag: { select: { id: true, label: true, slug: true } },
+              },
+            },
+          },
+        });
+        if (!mergeTarget) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_MERGE_TARGET_UNAVAILABLE",
+            "That goal is no longer an active actor-owned goal in this Nest. Refresh and choose another target.",
+          );
+        }
+        mergeTargetBefore = mergeTargetSnapshot(mergeTarget);
+        if (mergeTargetBefore.updatedAt !== mergeExpectedUpdatedAt) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_MERGE_TARGET_CHANGED",
+            "That goal changed after you selected it. Refresh and review its current definition before adding evidence.",
+          );
+        }
+        const resolvedEvidence = await resolveTranscriptGoalEvidenceInTransaction({
+          tx,
+          actor,
+          roomId,
+          segmentId: candidate.segmentId,
+          segmentIds: candidate.segmentIds,
+          expectedProviderTextSha256: candidate.providerTextSha256,
+          expectedSourceTextSha256: candidate.sourceTextSha256,
+        });
+        if (
+          resolvedEvidence.desk.transcriptJobId !== transcriptJobId
+          || resolvedEvidence.playback.recordingAssetId !== recordingAssetId
+          || (authorizedRoom.projectId && resolvedEvidence.desk.projectId !== authorizedRoom.projectId)
+        ) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_MERGE_EVIDENCE_CHANGED",
+            "The current released transcript evidence no longer matches this packet and Nest.",
+          );
+        }
+        candidateSource = {
+          schema: TRANSCRIPT_DERIVED_GOAL_SCHEMA,
+          roomId,
+          transcriptJobId,
+          ...resolvedEvidence.sourceAnchor,
+          recordingAssetId,
+          playbackSourceId: resolvedEvidence.playback.sourceId,
+        };
+        goalProgressReceiptId = randomUUID();
+        await tx.goalProgressReceipt.create({
+          data: {
+            id: goalProgressReceiptId,
+            goalId: mergeTarget.id,
+            actorUserId: actor.id,
+            kind: GOAL_EVIDENCE_MERGE_KIND,
+            progressPercent: null,
+            note: reviewNote || candidate.sourceText.slice(0, MAX_REVIEW_NOTE_LENGTH),
+            occurredAt: new Date(reviewedAt),
+            evidenceJson: {
+              schema: TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA,
+              receiptId,
+              goalCandidateId,
+              mergedAt: reviewedAt,
+              mergedByUserId: actor.id,
+              candidateSource,
+              packet: {
+                roomId,
+                transcriptJobId,
+                recordingAssetId,
+                summaryNoteId,
+                packetBuildId,
+                transcriptSnapshotSha256,
+              },
+              boundaries: {
+                explicitHumanDecision: true,
+                goalDefinitionMutated: false,
+                goalStatusMutated: false,
+                goalTargetMutated: false,
+                goalTagsMutated: false,
+                externalSideEffects: false,
+              },
+            },
+          },
+        });
+        goal = mergeTarget;
       }
 
       const receipt = {
@@ -403,13 +613,20 @@ export async function POST(request: Request) {
         reviewNote,
         candidateDraftBefore: before,
         candidateDraftAfter: after,
-        materializationIntent: requestedIntent,
+        materializationIntent: reviewDecision === "ACCEPT" ? requestedIntent : null,
         appliedTags: reviewDecision === "ACCEPT" && Array.isArray(object(goal?.sourceJson).appliedTags)
           ? object(goal?.sourceJson).appliedTags
           : [],
         goalId: goal?.id ?? null,
+        goalProgressReceiptId,
+        mergeTargetBefore,
+        candidateSource,
         externalSideEffects: false,
         taskCreated: false,
+        goalCreated: reviewDecision === "ACCEPT",
+        goalEvidenceAppended: reviewDecision === "MERGE",
+        goalDefinitionMutated: false,
+        goalStatusMutated: false,
         targetDateCreated: reviewDecision === "ACCEPT" && targetAt !== null,
         projectTagsApplied: reviewDecision === "ACCEPT" && tagIds.length > 0,
         reminderCreated: false,
@@ -437,15 +654,22 @@ export async function POST(request: Request) {
         status: result.goal.status,
         roomId: result.goal.roomId,
         targetAt: result.goal.targetAt instanceof Date ? result.goal.targetAt.toISOString() : result.goal.targetAt,
-        tags: Array.isArray(object(result.receipt).appliedTags) ? object(result.receipt).appliedTags : [],
+        tags: Array.isArray(object(result.receipt).appliedTags) && (object(result.receipt).appliedTags as unknown[]).length
+          ? object(result.receipt).appliedTags
+          : Array.isArray(result.goal.tagLinks)
+            ? result.goal.tagLinks.flatMap((link: any) => link?.tag ? [link.tag] : [])
+            : [],
       } : null,
       idempotentReplay: result.idempotentReplay,
       boundaries: boundaries({
         targetDateCreated: reviewDecision === "ACCEPT" && targetAt !== null,
         tagsApplied: reviewDecision === "ACCEPT" && tagIds.length > 0,
+        goalEvidenceAppended: reviewDecision === "MERGE",
       }),
       nextAction: reviewDecision === "ACCEPT"
         ? `The reviewed draft is now one actor-owned canonical Goal${targetAt ? " with an explicit target date" : ""}${tagIds.length ? " and reviewed project tags" : ""}. Tasks, focus blocks, reminders, calendar events, messages, and delivery remain separate explicit actions.`
+        : reviewDecision === "MERGE"
+          ? "The reviewed transcript evidence was appended to one selected existing Goal. Its title, definition, status, target date, tags, tasks, and project identity did not change; open Work to inspect the evidence and return to playback."
         : reviewDecision === "EDIT"
           ? "The packet goal draft was edited for further review; no Goal or task was created."
           : reviewDecision === "REJECT"

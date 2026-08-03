@@ -4,6 +4,7 @@ import { CircleAlert, RotateCcw } from "lucide-react";
 import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 import { StudioAccessShell } from "../studio-access-shell";
@@ -100,7 +101,6 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         parent: { select: { id: true, title: true } },
-        progressReceipts: { orderBy: { occurredAt: "desc" }, take: 1, select: { progressPercent: true, note: true, occurredAt: true } },
         taskLinks: { take: 100, select: { relationship: true, actionItem: { select: { id: true, title: true, status: true } } } },
         _count: { select: { children: true } },
       },
@@ -112,6 +112,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       select: { id: true, clientUserId: true, reviewedByUserId: true, weekStartsAt: true, commitmentOne: true, commitmentTwo: true, commitmentThree: true, supportNeeded: true, progressNotes: true, clientReviewedAt: true, coachNotes: true, status: true, reviewedAt: true, updatedAt: true, clientUser: { select: { name: true, primaryEmail: true } }, reviewedByUser: { select: { name: true, primaryEmail: true } } },
     }),
   ]);
+  const goalReceiptProjection = await loadLatestGoalReceiptProjection(prisma, canonicalGoalRows.map((goal: any) => goal.id));
   const reviewSubjectIds = [...new Set([
     userId,
     ...commitmentRows
@@ -149,6 +150,10 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
     goals: legacyGoalRows,
     canonicalGoals: canonicalGoalRows.map((goal: any) => ({
       ...goal,
+      progressReceipts: [
+        goalReceiptProjection.get(goal.id)?.transcriptEvidence,
+        goalReceiptProjection.get(goal.id)?.progress,
+      ].filter(Boolean),
       project: goal.project && visibleProjects.has(goal.project.id) ? goal.project : null,
       tagLinks: (goal.tagLinks || []).filter((link: any) => visibleProjects.has(link.tag.projectId)),
     })),

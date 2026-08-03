@@ -2,6 +2,34 @@
 
 Date: 2026-08-03
 
+## Transcript candidate evidence on an existing goal checkpoint
+
+- Nest and Quipsly Capture can now append one playback-reviewed transcript
+  goal candidate to one explicitly selected existing goal without creating a
+  duplicate goal or changing its definition, state, target, tags, tasks,
+  project, or numeric progress.
+- The canonical route rechecks Session/project authority, current packet and
+  transcript evidence, release/consent gates, complete source-span playback,
+  actor ownership, target status, and optimistic target version inside one
+  serializable transaction. Exact replay returns the existing receipt.
+- Transcript evidence is an immutable, provenance-bearing receipt shown
+  separately in Nest Work and Capture Today/Work, with a return action to the
+  exact source boundary. Numeric progress receipts are excluded from the
+  evidence count.
+- A retained compiled iPhone 17 Pro simulator operation preserved an existing
+  35% progress receipt, appended exactly one transcript-evidence receipt,
+  terminated and relaunched Capture, returned to the exact source, and retained
+  one goal with zero tasks, notes, calendar links, outputs, or deliveries.
+- Focused proof passes 9 suites / 141 tests; the full Nest run passes 245 suites
+  / 1,316 tests; repository Quipsly contracts pass 259/259; the mobile source
+  contract passes 126/126; both strict TypeScript projects pass; the generic
+  simulator build succeeds; and the App Store static gate passes 1,009/1,009.
+- This is local simulator evidence, not physical-iPhone or production proof.
+  No Cloud Build, deployment, production database write, TestFlight/App Store
+  action, provider mutation, invitation, delivery, or publication occurred.
+  Architecture and operated evidence are in
+  `docs/coordination/2026-08-03-transcript-candidate-goal-evidence-merge.md`.
+
 ## Transcript candidate merge checkpoint
 
 - Nest and Quipsly Capture can now merge one playback-reviewed transcript note

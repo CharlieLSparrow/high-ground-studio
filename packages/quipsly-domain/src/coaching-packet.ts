@@ -45,6 +45,7 @@ export type TranscriptActionReviewStatus =
 export const TRANSCRIPT_GOAL_REVIEW_DECISIONS = [
   "ACCEPT",
   "EDIT",
+  "MERGE",
   "REJECT",
   "DEFER",
 ] as const;
@@ -57,6 +58,7 @@ export const TRANSCRIPT_GOAL_REVIEW_STATUSES = [
   "DEFERRED_BY_HUMAN",
   "REJECTED_BY_HUMAN",
   "ACCEPTED_AS_GOAL",
+  "MERGED_INTO_GOAL",
 ] as const;
 export type TranscriptGoalReviewStatus =
   (typeof TRANSCRIPT_GOAL_REVIEW_STATUSES)[number];

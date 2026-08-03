@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 import { buildWeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
@@ -166,7 +167,7 @@ export async function GET(request: Request) {
         where: { ownerUserId: userId, status: "ACTIVE" },
         orderBy: [{ targetAt: "asc" }, { updatedAt: "desc" }],
         take: 20,
-        select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } }, room: { select: { id: true, title: true } }, progressReceipts: { orderBy: { occurredAt: "desc" }, take: 1, select: { progressPercent: true, note: true, occurredAt: true } } },
+        select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } }, room: { select: { id: true, title: true } } },
       }),
       prisma.workPlanBlock.findMany({
         where: { ownerUserId: userId, startsAt: { gte: new Date(Math.min(reviewWindowStartsAt.getTime(), now.getTime() - 12 * 3_600_000)), lte: new Date(Math.max(reviewWindowEndsAt.getTime(), now.getTime() + 7 * 86_400_000)) }, status: { in: ["PLANNED", "COMPLETED", "SKIPPED"] } },
@@ -268,6 +269,7 @@ export async function GET(request: Request) {
         },
       }),
     ]);
+    const goalReceiptProjection = await loadLatestGoalReceiptProjection(prisma, goalRows.map((goal: any) => goal.id));
     const todayWindowEnd = new Date(now.getTime() + 24 * 3_600_000);
     const plannedTaskIds = new Set(blockRows
       .filter((block: any) => block.status === "PLANNED" && block.actionItem?.id && block.startsAt <= todayWindowEnd)
@@ -336,6 +338,9 @@ export async function GET(request: Request) {
     const goals = goalRows.map((goal: any) => {
       const parsedSourceAnchor = readTranscriptDerivedGoalSource(goal.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === goal.room?.id ? parsedSourceAnchor : null;
+      const receiptProjection = goalReceiptProjection.get(goal.id);
+      const progress = receiptProjection?.progress ?? null;
+      const lastMergedTranscriptEvidence = readTranscriptMergedGoalSource(receiptProjection?.transcriptEvidence?.evidenceJson);
       const projectVisible = goal.project && visibleProjectIds.includes(goal.project.id);
       return {
         id: goal.id,
@@ -343,8 +348,8 @@ export async function GET(request: Request) {
         description: goal.description,
         status: goal.status,
         targetAt: goal.targetAt?.toISOString() ?? null,
-        progressPercent: goal.progressReceipts[0]?.progressPercent ?? null,
-        progressNote: goal.progressReceipts[0]?.note ?? null,
+        progressPercent: progress?.progressPercent ?? null,
+        progressNote: progress?.note ?? null,
         updatedAt: goal.updatedAt.toISOString(),
         roomId: goal.room?.id ?? null,
         sessionTitle: goal.room?.title ?? null,
@@ -353,6 +358,7 @@ export async function GET(request: Request) {
         tagIds: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,
+        lastMergedTranscriptEvidence,
       };
     });
     const focusWindowStartsAt = new Date(now.getTime() - 12 * 60 * 60 * 1_000);

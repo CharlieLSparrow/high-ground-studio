@@ -245,10 +245,31 @@ private struct CaptureTranscriptGoalMutationResponse: Codable {
         let targetAt: String?
         let tags: [TagRecord]?
     }
+    struct ReviewReceipt: Codable {
+        let id: String
+        let decision: String
+        let goalCandidateId: String
+        let goalId: String?
+        let goalProgressReceiptId: String?
+    }
+    struct Boundaries: Codable {
+        let mergeAppendsOneActorOwnedGoalEvidenceReceipt: Bool?
+        let mergeChangesNoGoalDefinitionStatusTargetOrTags: Bool?
+        let taskCreated: Bool?
+        let targetDateCreated: Bool?
+        let projectTagsApplied: Bool?
+        let reminderCreated: Bool?
+        let calendarMutated: Bool?
+        let externalDelivery: Bool?
+        let publication: Bool?
+    }
     let ok: Bool
     let error: String?
+    let decision: String?
     let idempotentReplay: Bool?
+    let receipt: ReviewReceipt?
     let goal: GoalRecord?
+    let boundaries: Boundaries?
 }
 
 private struct CaptureTranscriptNoteMutationResponse: Codable {
@@ -422,6 +443,32 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
     }
 }
 
+struct CapturePacketGoalMergeTarget: Codable, Identifiable, Equatable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String
+    let targetAt: String?
+    let updatedAt: String
+    let projectId: String?
+    let roomId: String?
+    let evidenceCount: Int
+
+    static func preview() -> Self {
+        .init(
+            id: "preview-goal",
+            title: "Publish a thoughtful first episode",
+            description: "Review the real source and make the release decision deliberately.",
+            status: "ACTIVE",
+            targetAt: nil,
+            updatedAt: "2026-08-03T12:00:00.000Z",
+            projectId: "preview-high-ground",
+            roomId: "room-preview-coaching-ready",
+            evidenceCount: 1
+        )
+    }
+}
+
 struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     struct LastHumanReview: Codable, Equatable {
         let receiptId: String
@@ -542,6 +589,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
         let noteMergeTargets: [CapturePacketNoteMergeTarget]?
         let actionCandidates: [CapturePacketActionCandidate]?
         let goalCandidates: [CapturePacketGoalCandidate]?
+        let goalMergeTargets: [CapturePacketGoalMergeTarget]?
         let taskMaterialization: TaskMaterialization?
     }
     let ok: Bool
@@ -558,6 +606,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var message: String?
     @Published private(set) var errorMessage: String?
     @Published private(set) var packetGoalCandidates: [CapturePacketGoalCandidate] = []
+    @Published private(set) var packetGoalMergeTargets: [CapturePacketGoalMergeTarget] = []
     @Published private(set) var packetNoteCandidates: [CapturePacketNoteCandidate] = []
     @Published private(set) var packetNoteMergeTargets: [CapturePacketNoteMergeTarget] = []
     @Published private(set) var packetActionCandidates: [CapturePacketActionCandidate] = []
@@ -639,6 +688,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             publishOutboxCounts()
             packetGoalCandidates = [.preview(roomID: roomID)]
+            packetGoalMergeTargets = [.preview()]
             packetNoteCandidates = [.preview(roomID: roomID)]
             packetNoteMergeTargets = [.preview()]
             packetActionCandidates = [.preview(roomID: roomID)]
@@ -664,6 +714,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         publishOutboxCounts()
         guard AuthManager.shared.networkActionsAllowed else {
             packetGoalCandidates = []
+            packetGoalMergeTargets = []
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
@@ -715,6 +766,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
         } catch {
             packetGoalCandidates = []
+            packetGoalMergeTargets = []
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
@@ -1189,6 +1241,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         description: String?,
         targetAt: Date? = nil,
         tagIDs: [String]? = nil,
+        mergeTarget: CapturePacketGoalMergeTarget? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -1207,6 +1260,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         errorMessage = nil
         defer { isMutating = false }
         do {
+            let normalizedDecision = decision.uppercased()
             var body: [String: Any] = [
                 "callRoomId": candidate.roomId,
                 "transcriptJobId": candidate.transcriptJobId,
@@ -1214,13 +1268,20 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "summaryNoteId": context.summaryNoteId,
                 "packetBuildId": context.packetBuildId,
                 "goalCandidateId": candidate.id,
-                "decision": decision,
+                "decision": normalizedDecision,
             ]
-            if let title { body["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if let description { body["description"] = description.trimmingCharacters(in: .whitespacesAndNewlines) }
-            if decision == "ACCEPT" {
+            if normalizedDecision != "MERGE", let title { body["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if normalizedDecision != "MERGE", let description { body["description"] = description.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if normalizedDecision == "ACCEPT" {
                 body["targetAt"] = targetAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull()
                 body["tagIds"] = Array(Set(tagIDs ?? [])).sorted()
+            }
+            if normalizedDecision == "MERGE" {
+                guard let mergeTarget else {
+                    throw captureTranscriptClientError("Choose one current existing goal before adding evidence.")
+                }
+                body["mergeTargetGoalId"] = mergeTarget.id
+                body["mergeExpectedUpdatedAt"] = mergeTarget.updatedAt
             }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -1228,15 +1289,43 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(CaptureTranscriptGoalMutationResponse.self, from: data)
-            let requiresGoal = decision == "ACCEPT"
-            guard response.statusCode < 400, payload.ok, !requiresGoal || payload.goal != nil else {
+            let requiresGoal = normalizedDecision == "ACCEPT" || normalizedDecision == "MERGE"
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.decision == normalizedDecision,
+                  !requiresGoal || payload.goal != nil else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The goal review decision could not be saved.")
             }
-            message = decision == "ACCEPT"
+            if normalizedDecision == "MERGE" {
+                guard let target = mergeTarget,
+                      let goal = payload.goal,
+                      goal.id == target.id,
+                      let receipt = payload.receipt,
+                      receipt.decision == "MERGE",
+                      receipt.goalCandidateId == candidate.id,
+                      receipt.goalId == target.id,
+                      receipt.goalProgressReceiptId != nil,
+                      payload.boundaries?.mergeAppendsOneActorOwnedGoalEvidenceReceipt == true,
+                      payload.boundaries?.mergeChangesNoGoalDefinitionStatusTargetOrTags == true,
+                      payload.boundaries?.taskCreated != true,
+                      payload.boundaries?.targetDateCreated != true,
+                      payload.boundaries?.projectTagsApplied != true,
+                      payload.boundaries?.reminderCreated != true,
+                      payload.boundaries?.calendarMutated != true,
+                      payload.boundaries?.externalDelivery != true,
+                      payload.boundaries?.publication != true else {
+                    throw captureTranscriptClientError("Nest returned incomplete or unsafe evidence-merge proof.")
+                }
+                message = payload.idempotentReplay == true
+                    ? "That exact transcript evidence was already attached to this goal; nothing was duplicated."
+                    : "Reviewed transcript evidence was added to \(goal.title). Its definition, status, target, tags, tasks, and project did not change."
+            } else {
+                message = normalizedDecision == "ACCEPT"
                 ? (payload.idempotentReplay == true
                     ? "That exact packet goal choice was already accepted."
                     : "One source-linked goal was created\(payload.goal?.targetAt == nil ? "" : " with its target date")\((payload.goal?.tags?.isEmpty == false) ? " and project tags" : ""). No task, focus block, calendar event, message, or delivery was added.")
-                : "\(decision.capitalized) saved in packet history. No goal or task was created."
+                : "\(normalizedDecision.capitalized) saved in packet history. No goal or task was created."
+            }
             await loadPacketCandidates(roomID: candidate.roomId)
             return true
         } catch {
@@ -1314,6 +1403,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         guard AuthManager.shared.networkActionsAllowed,
               var components = URLComponents(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
             packetGoalCandidates = []
+            packetGoalMergeTargets = []
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
@@ -1337,6 +1427,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             let payload = try JSONDecoder().decode(CapturePacketGoalReviewEnvelope.self, from: data)
             guard payload.ok else { throw captureTranscriptError(data: data, fallback: payload.error ?? "Packet goal candidates could not load.") }
             packetGoalCandidates = payload.packet?.goalCandidates ?? []
+            packetGoalMergeTargets = payload.packet?.goalMergeTargets ?? []
             packetNoteCandidates = payload.packet?.noteCandidates ?? []
             packetNoteMergeTargets = payload.packet?.noteMergeTargets ?? []
             packetActionCandidates = payload.packet?.actionCandidates ?? []
@@ -1359,6 +1450,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetReviewError = nil
         } catch {
             packetGoalCandidates = []
+            packetGoalMergeTargets = []
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
@@ -2571,7 +2663,7 @@ struct CaptureTranscriptReviewView: View {
             Label("Goals suggested by this session", systemImage: "target")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(.purple)
-            Text("Each suggestion stays outside your goals until you accept it. Edit, defer, and reject are saved as review history without creating work.")
+            Text("Each suggestion stays outside your goals until you create one or deliberately add its reviewed evidence to an existing goal. Editing, deferring, and rejecting create no work.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2580,6 +2672,7 @@ struct CaptureTranscriptReviewView: View {
                     candidate: candidate,
                     projectName: client.packetTaskProjectName,
                     availableTags: client.packetTaskTags,
+                    mergeTargets: client.packetGoalMergeTargets,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
                     client: client,
@@ -3378,6 +3471,7 @@ private struct CapturePacketGoalCandidateCard: View {
     let candidate: CapturePacketGoalCandidate
     let projectName: String?
     let availableTags: [CapturePacketTaskTag]
+    let mergeTargets: [CapturePacketGoalMergeTarget]
     let previewOnly: Bool
     let decisionsLocked: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
@@ -3385,6 +3479,8 @@ private struct CapturePacketGoalCandidateCard: View {
 
     @State private var isEditing = false
     @State private var isCreating = false
+    @State private var isMerging = false
+    @State private var mergeTargetID = ""
     @State private var title: String
     @State private var description: String
     @State private var hasTargetDate = false
@@ -3395,6 +3491,7 @@ private struct CapturePacketGoalCandidateCard: View {
         candidate: CapturePacketGoalCandidate,
         projectName: String?,
         availableTags: [CapturePacketTaskTag],
+        mergeTargets: [CapturePacketGoalMergeTarget],
         previewOnly: Bool,
         decisionsLocked: Bool,
         client: CaptureTranscriptCorrectionClient,
@@ -3403,6 +3500,7 @@ private struct CapturePacketGoalCandidateCard: View {
         self.candidate = candidate
         self.projectName = projectName
         self.availableTags = availableTags
+        self.mergeTargets = mergeTargets
         self.previewOnly = previewOnly
         self.decisionsLocked = decisionsLocked
         self.client = client
@@ -3413,7 +3511,9 @@ private struct CapturePacketGoalCandidateCard: View {
     }
 
     private var accepted: Bool {
-        candidate.committedGoalId != nil || candidate.reviewStatus == "ACCEPTED_AS_GOAL"
+        candidate.committedGoalId != nil
+            || candidate.reviewStatus == "ACCEPTED_AS_GOAL"
+            || candidate.reviewStatus == "MERGED_INTO_GOAL"
     }
 
     private var sourceFullyReviewed: Bool {
@@ -3464,7 +3564,12 @@ private struct CapturePacketGoalCandidateCard: View {
             }
 
             if accepted {
-                Label("Accepted as one canonical goal", systemImage: "checkmark.shield.fill")
+                Label(
+                    candidate.reviewStatus == "MERGED_INTO_GOAL"
+                        ? "Added as reviewed evidence to one existing goal"
+                        : "Accepted as one canonical goal",
+                    systemImage: "checkmark.shield.fill"
+                )
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
@@ -3549,6 +3654,85 @@ private struct CapturePacketGoalCandidateCard: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            } else if isMerging {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Add evidence to one existing goal", systemImage: "target")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.blue)
+                    Text("Choose deliberately. Quipsly appends this reviewed transcript and playback pointer; it does not rewrite the selected goal.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Picker("Existing goal", selection: $mergeTargetID) {
+                        Text("Choose a goal…").tag("")
+                        ForEach(mergeTargets) { target in
+                            Text("\(target.title) · \(target.status.capitalized)")
+                                .tag(target.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("CapturePacketGoalMergeTargetPicker")
+                    if let target = mergeTargets.first(where: { $0.id == mergeTargetID }) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .top) {
+                                Text(target.title)
+                                    .font(.subheadline.weight(.bold))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer()
+                                Text(target.status.capitalized)
+                                    .font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.12), in: Capsule())
+                            }
+                            if let definition = target.description?.trimmingCharacters(in: .whitespacesAndNewlines), !definition.isEmpty {
+                                Text(definition)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                Text("No goal definition recorded.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text("\(target.evidenceCount) existing evidence \(target.evidenceCount == 1 ? "receipt" : "receipts")")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("CapturePacketGoalMergeTargetSummary_\(target.id)")
+                    }
+                    HStack {
+                        Button("Add reviewed evidence") {
+                            guard let target = mergeTargets.first(where: { $0.id == mergeTargetID }) else { return }
+                            Task {
+                                _ = await client.reviewPacketGoal(
+                                    candidate: candidate,
+                                    decision: "MERGE",
+                                    title: nil,
+                                    description: nil,
+                                    mergeTarget: target,
+                                    previewOnly: previewOnly
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(decisionsDisabled || !sourceFullyReviewed || mergeTargetID.isEmpty)
+                        .accessibilityIdentifier("CapturePacketGoalMergeButton")
+                        Button("Cancel") {
+                            isMerging = false
+                            mergeTargetID = ""
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CapturePacketGoalCancelMergeButton")
+                    }
+                    Text("The goal keeps its identity, title, definition, status, target date, tags, linked tasks, progress percentage, and project. No focus block, reminder, calendar event, message, delivery, Studio edit, or publication is created.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if isEditing {
                 TextField("Goal title", text: $title, axis: .vertical)
                     .lineLimit(2...4)
@@ -3590,6 +3774,17 @@ private struct CapturePacketGoalCandidateCard: View {
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketGoalEditButton")
                 }
+                Button("Add evidence to existing goal") { isMerging = true }
+                    .buttonStyle(.bordered)
+                    .tint(.blue)
+                    .disabled(decisionsLocked || client.isMutating || !sourceFullyReviewed || mergeTargets.isEmpty)
+                    .accessibilityIdentifier("CapturePacketGoalBeginMergeButton")
+                if mergeTargets.isEmpty {
+                    Text("Create an actor-owned active goal in this Nest first to add evidence without creating a duplicate.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack {
                     Button("Defer") {
                         Task { _ = await client.reviewPacketGoal(candidate: candidate, decision: "DEFER", title: nil, description: nil, previewOnly: previewOnly) }
@@ -3605,8 +3800,8 @@ private struct CapturePacketGoalCandidateCard: View {
                     .accessibilityIdentifier("CapturePacketGoalRejectButton")
                 }
             }
-            if !accepted && !isCreating {
-                Text("Only Review & create goal can write one actor-owned ACTIVE Goal after its wording, target date, and tags are inspected. Every other decision creates no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.")
+            if !accepted && !isCreating && !isMerging {
+                Text("Review & create goal writes one actor-owned ACTIVE Goal. Add evidence to existing goal appends one source receipt to a deliberately selected goal without changing its state. Edit, defer, and reject create no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3619,6 +3814,8 @@ private struct CapturePacketGoalCandidateCard: View {
             description = candidate.suggestedDescription
             isEditing = false
             isCreating = false
+            isMerging = false
+            mergeTargetID = ""
             hasTargetDate = false
             selectedTagIDs = Set(availableTags.filter(\.selectedForSession).map(\.id))
         }

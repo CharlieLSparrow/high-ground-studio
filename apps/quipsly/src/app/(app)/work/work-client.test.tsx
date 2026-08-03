@@ -224,6 +224,67 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
   });
 
+  it("shows appended transcript evidence separately from numeric goal progress and returns to playback", () => {
+    const goalSnapshot: WorkSnapshot = {
+      ...snapshot,
+      goals: [{
+        id: "goal-merge",
+        title: "Build the weekly review habit",
+        description: "Review one evidence-backed commitment every Friday.",
+        status: "ACTIVE",
+        targetAt: null,
+        achievedAt: null,
+        progressPercent: 40,
+        progressNote: "Two reviews completed.",
+        provenance: "Canonical goal",
+        updatedAt: "2026-08-03T14:00:00.000Z",
+        roomId: null,
+        sessionTitle: null,
+        sessionStart: null,
+        project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+        tags: [],
+        canManageTags: true,
+        parent: null,
+        childCount: 0,
+        linkedTasks: [],
+        sourceAnchor: null,
+        lastMergedTranscriptEvidence: {
+          receiptId: "review-receipt-1",
+          goalCandidateId: "packet-goal-build-1-segment-3",
+          mergedAt: "2026-08-03T15:00:00.000Z",
+          sourceAnchor: {
+            schema: "quipsly-transcript-derived-goal-v1",
+            roomId: "room-coaching",
+            transcriptJobId: "job-coaching",
+            segmentId: "segment-3",
+            startSeconds: 63.2,
+            endSeconds: 71.9,
+            providerTextSha256: "c".repeat(64),
+            providerSpeakerLabel: "Speaker",
+            effectiveTextSnapshot: "The Friday review is helping me follow through.",
+            effectiveSpeakerLabelSnapshot: "Scott",
+            acceptedCorrectionId: "correction-3",
+            recordingAssetId: "asset-coaching",
+            playbackSourceId: "source-coaching",
+          },
+        },
+      }],
+      counts: { ...snapshot.counts, activeGoals: 1 },
+    };
+
+    render(<WorkClient initialSnapshot={goalSnapshot} />);
+
+    expect(screen.getByText("Progress: 40%")).toBeInTheDocument();
+    expect(screen.getByText("Latest progress:").parentElement).toHaveTextContent("Two reviews completed.");
+    expect(screen.getByText("Latest reviewed evidence added to this goal")).toBeInTheDocument();
+    expect(screen.getByText("Scott: The Friday review is helping me follow through.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to 1:03–1:11" })).toHaveAttribute(
+      "href",
+      "/sessions/room-coaching#transcript-segment-segment-3",
+    );
+    expect(screen.getByText(/Evidence was appended without changing this goal’s definition/i)).toBeInTheDocument();
+  });
+
   it("distinguishes a restored goal copy from same-titled current work", () => {
     const title = "Prove one complete Capture-to-Nest episode loop";
     const baseGoal = {

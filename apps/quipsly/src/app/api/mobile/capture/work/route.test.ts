@@ -2,18 +2,23 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { GET } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
+jest.mock("@/lib/server/goal-receipt-projection", () => ({ loadLatestGoalReceiptProjection: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
 const updatedAt = new Date("2026-07-24T18:00:00.000Z");
 
 describe("mobile Capture Work contract", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(loadLatestGoalReceiptProjection).mockResolvedValue(new Map());
+  });
 
   it("fails before project or work reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as never);
@@ -52,6 +57,10 @@ describe("mobile Capture Work contract", () => {
       { id: "project-1", slug: "high-ground", name: "High Ground", role: "EDITOR", sourceLabel: "nest-kind:production", updatedAt },
       { id: "project-view", slug: "reference", name: "Reference", role: "VIEWER", sourceLabel: "nest-kind:research", updatedAt },
     ] as never);
+    jest.mocked(loadLatestGoalReceiptProjection).mockResolvedValue(new Map([["goal-1", {
+      progress: { id: "numeric-progress-1", goalId: "goal-1", kind: "MANUAL_CHECK_IN", progressPercent: 60, note: "First proof pass complete.", evidenceJson: null, occurredAt: updatedAt },
+      transcriptEvidence: { id: "merge-progress-1", goalId: "goal-1", kind: "TRANSCRIPT_CANDIDATE_MERGED", progressPercent: null, note: "Reviewed transcript evidence.", occurredAt: updatedAt, evidenceJson: { schema: "quipsly-transcript-goal-evidence-merge-v1", receiptId: "review-receipt-1", goalCandidateId: "packet-goal-build-1-segment-1", mergedAt: "2026-07-24T18:00:00.000Z", candidateSource: { schema: "quipsly-transcript-derived-goal-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: null, recordingAssetId: "asset-1", playbackSourceId: "source-1" } } },
+    }]]));
     const prisma = {
       actionItem: { findMany: jest.fn().mockResolvedValue([
         {
@@ -93,7 +102,39 @@ describe("mobile Capture Work contract", () => {
         sourceJson: {},
         project: { id: "project-1", name: "High Ground", slug: "high-ground" },
         room: null,
-        progressReceipts: [{ progressPercent: 60, note: "First proof pass complete." }],
+        progressReceipts: [{
+          id: "merge-progress-1",
+          kind: "TRANSCRIPT_CANDIDATE_MERGED",
+          progressPercent: null,
+          note: "Reviewed transcript evidence.",
+          evidenceJson: {
+            schema: "quipsly-transcript-goal-evidence-merge-v1",
+            receiptId: "review-receipt-1",
+            goalCandidateId: "packet-goal-build-1-segment-1",
+            mergedAt: "2026-07-24T18:00:00.000Z",
+            candidateSource: {
+              schema: "quipsly-transcript-derived-goal-v1",
+              roomId: "room-1",
+              transcriptJobId: "job-1",
+              segmentId: "segment-1",
+              startSeconds: 3.66,
+              endSeconds: 4.84,
+              providerTextSha256: "a".repeat(64),
+              providerSpeakerLabel: "Speaker",
+              effectiveTextSnapshot: "Welcome, everybody.",
+              effectiveSpeakerLabelSnapshot: "Charlie",
+              acceptedCorrectionId: null,
+              recordingAssetId: "asset-1",
+              playbackSourceId: "source-1",
+            },
+          },
+        }, {
+          id: "numeric-progress-1",
+          kind: "MANUAL_CHECK_IN",
+          progressPercent: 60,
+          note: "First proof pass complete.",
+          evidenceJson: null,
+        }],
         tagLinks: [{ tag: { id: "tag-1", label: "Episode 4" } }],
       }]) },
       studioDocument: { findMany: jest.fn().mockResolvedValue([{
@@ -178,7 +219,16 @@ describe("mobile Capture Work contract", () => {
       workspace: {
         project: { id: "project-1", role: "EDITOR", canWrite: true },
         tasks: [{ id: "task-1", isOverdue: true, tagIds: ["tag-1"] }],
-        goals: [{ id: "goal-1", progressPercent: 60, progressNote: "First proof pass complete." }],
+        goals: [{
+          id: "goal-1",
+          progressPercent: 60,
+          progressNote: "First proof pass complete.",
+          lastMergedTranscriptEvidence: {
+            receiptId: "review-receipt-1",
+            goalCandidateId: "packet-goal-build-1-segment-1",
+            sourceAnchor: { roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1" },
+          },
+        }],
         notes: [{
           id: "note-1",
           excerpt: "Begin with the surprising admission.",

@@ -88,7 +88,26 @@ describe("session review model", () => {
       targetAt: "2026-09-01T18:00:00.000Z",
       tagIds: ["tag-proof", "tag-session"],
     });
+    expect(goalCandidateReviewRequest({
+      packet,
+      candidate: goalCandidate,
+      decision: "MERGE",
+      mergeTargetGoalId: " goal-existing ",
+      mergeExpectedUpdatedAt: "2026-08-03T12:00:00.000Z",
+    })).toEqual({
+      callRoomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      goalCandidateId: "packet-goal-build-1-segment-1",
+      decision: "MERGE",
+      mergeTargetGoalId: "goal-existing",
+      mergeExpectedUpdatedAt: "2026-08-03T12:00:00.000Z",
+    });
+    expect(goalCandidateReviewRequest({ packet, candidate: goalCandidate, decision: "MERGE" })).toBeNull();
     expect(goalCandidateReviewRequest({ packet, candidate: { ...goalCandidate, committedGoalId: "goal-1", reviewStatus: "ACCEPTED_AS_GOAL" }, decision: "ACCEPT" })).toBeNull();
+    expect(goalCandidateReviewRequest({ packet, candidate: { ...goalCandidate, committedGoalId: "goal-1", reviewStatus: "MERGED_INTO_GOAL" }, decision: "MERGE", mergeTargetGoalId: "goal-1", mergeExpectedUpdatedAt: "2026-08-03T12:00:00.000Z" })).toBeNull();
   });
 
   it("binds packet lane review to the canonical room, transcript, and summary", () => {

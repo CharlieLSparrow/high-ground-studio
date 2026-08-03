@@ -390,9 +390,53 @@ private struct CaptureTodayView: View {
     }
 }
 
+private struct CaptureTranscriptSourceDestination: Hashable {
+    let roomID: String
+    let sessionTitle: String
+    let source: MobileCaptureTodayTranscriptSourceAnchor
+}
+
+private struct CaptureGoalMergedEvidenceCard: View {
+    let goalID: String
+    let sessionTitle: String
+    let evidence: MobileCaptureTodayGoalTranscriptEvidence
+    let accessibilityIdentifierPrefix: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Latest reviewed evidence")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.blue)
+            Text(evidence.sourceAnchor.effectiveTextSnapshot)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+            NavigationLink(value: CaptureTranscriptSourceDestination(
+                roomID: evidence.sourceAnchor.roomId,
+                sessionTitle: sessionTitle,
+                source: evidence.sourceAnchor
+            )) {
+                Label(
+                    "Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)",
+                    systemImage: "waveform.and.magnifyingglass"
+                )
+                .font(.caption.weight(.bold))
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(.blue)
+            .accessibilityIdentifier("\(accessibilityIdentifierPrefix)_\(goalID)")
+            .accessibilityHint("Opens the exact reviewed transcript and retained recording evidence appended to this goal.")
+        }
+        .padding(10)
+        .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 private struct CaptureWorkView: View {
     @ObservedObject var model: CaptureExperienceModel
     @ObservedObject private var client: CaptureWorkClient
+    @StateObject private var library = LocalRecordingLibrary.shared
     @State private var selectedProjectID: String?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -719,6 +763,18 @@ private struct CaptureWorkView: View {
         .onChange(of: client.selectedProjectID) { _, newValue in
             selectedProjectID = newValue
         }
+        .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
+            CaptureTranscriptReviewView(
+                roomID: destination.roomID,
+                sessionTitle: destination.sessionTitle,
+                recording: matchingRecording(
+                    roomID: destination.roomID,
+                    recordingAssetID: destination.source.recordingAssetId
+                ),
+                previewOnly: model.usesPreviewData,
+                focusSegmentID: destination.source.segmentId
+            )
+        }
         .task(id: model.workNavigationRequest?.id) {
             guard let request = model.workNavigationRequest else { return }
             selectedTagID = nil
@@ -753,6 +809,16 @@ private struct CaptureWorkView: View {
             }
         }
         .accessibilityIdentifier("CaptureWorkView")
+        }
+    }
+
+    private func matchingRecording(roomID: String, recordingAssetID: String?) -> LocalRecording? {
+        guard let expectedAssetID = recordingAssetID?.nonempty else { return nil }
+        return library.recordings.first {
+            $0.callRoomId == roomID
+                && $0.recordingAssetId == expectedAssetID
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
         }
     }
 
@@ -1293,6 +1359,14 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("CaptureWorkGoalTarget_\(goal.id)")
             }
+            if let evidence = goal.lastMergedTranscriptEvidence {
+                CaptureGoalMergedEvidenceCard(
+                    goalID: goal.id,
+                    sessionTitle: goal.sessionTitle ?? "Capture session",
+                    evidence: evidence,
+                    accessibilityIdentifierPrefix: "CaptureWorkGoalMergedSourceLink"
+                )
+            }
             workTagLabels(effectiveTagLabels(kind: .goal, entityID: goal.id, tagIDs: visibleTagIDs))
             workTagDecisionStatus(kind: .goal, entityID: goal.id)
             if goal.status == "ACTIVE" || goal.status == "PAUSED" {
@@ -1788,12 +1862,6 @@ private struct CaptureCalendarContinuityCard: View {
 }
 
 struct TodayFollowThroughCard: View {
-    private struct TranscriptSourceDestination: Hashable {
-        let roomID: String
-        let sessionTitle: String
-        let source: MobileCaptureTodayTranscriptSourceAnchor
-    }
-
     @ObservedObject var client: CaptureTodayClient
     @ObservedObject var inboxClient: CaptureSourceInboxClient
     let previewOnly: Bool
@@ -2222,7 +2290,7 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityHint("Preserves this overdue occurrence as skipped and continues the canonical series without sending or scheduling anything elsewhere.")
                             }
                             if let source = task.sourceAnchor, source.roomId == task.roomId {
-                                NavigationLink(value: TranscriptSourceDestination(
+                                NavigationLink(value: CaptureTranscriptSourceDestination(
                                     roomID: source.roomId,
                                     sessionTitle: task.sessionTitle ?? "Capture session",
                                     source: source
@@ -2414,7 +2482,7 @@ struct TodayFollowThroughCard: View {
                                 decisionsDisabled: decisionsDisabled
                             )
                             if let source = goal.sourceAnchor, source.roomId == goal.roomId {
-                                NavigationLink(value: TranscriptSourceDestination(
+                                NavigationLink(value: CaptureTranscriptSourceDestination(
                                     roomID: source.roomId,
                                     sessionTitle: goal.sessionTitle ?? "Capture session",
                                     source: source
@@ -2431,6 +2499,14 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityIdentifier("CaptureTodayGoalSourceLink_\(goal.id)")
                                 .accessibilityLabel("Goal source: Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)")
                                 .accessibilityHint("Opens the exact transcript segment and retained recording source behind this goal without starting playback.")
+                            }
+                            if let evidence = goal.lastMergedTranscriptEvidence {
+                                CaptureGoalMergedEvidenceCard(
+                                    goalID: goal.id,
+                                    sessionTitle: goal.sessionTitle ?? "Capture session",
+                                    evidence: evidence,
+                                    accessibilityIdentifierPrefix: "CaptureTodayGoalMergedSourceLink"
+                                )
                             }
                         }
                     }
@@ -2768,7 +2844,7 @@ struct TodayFollowThroughCard: View {
             CaptureFocusPlanningSheet(client: client, task: task, previewOnly: previewOnly)
                 .presentationDetents([.large])
         }
-        .navigationDestination(for: TranscriptSourceDestination.self) { destination in
+        .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
                 roomID: destination.roomID,
                 sessionTitle: destination.sessionTitle,

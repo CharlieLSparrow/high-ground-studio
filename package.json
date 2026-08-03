@@ -97,6 +97,8 @@
     "test:quipsly:retained:native-reviewed-packet": "node scripts/quipsly-retained-native-reviewed-packet-materialization-operation.test.mjs",
     "quipsly:retained:native-packet-note-merge": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-packet-note-merge-operation.mjs",
     "test:quipsly:retained:native-packet-note-merge": "node --test scripts/quipsly-retained-native-packet-note-merge-operation.test.mjs",
+    "quipsly:retained:native-packet-goal-evidence-merge": "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio QUIPSLY_RETAINED_PACKET_GOAL_EVIDENCE_MERGE_OPERATION=1 node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-packet-goal-evidence-merge-operation.mjs",
+    "test:quipsly:retained:native-packet-goal-evidence-merge": "node --test scripts/quipsly-retained-native-packet-goal-evidence-merge-operation.test.mjs",
     "quipsly:retained:native-offline-transcript-review": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-offline-transcript-review-operation.mjs",
     "quipsly:retained:transcript-speaker-attribution": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-transcript-speaker-attribution-operation.mjs",
     "test:quipsly:retained:transcript-speaker-attribution": "node --test scripts/quipsly-retained-transcript-speaker-attribution-operation.test.mjs",

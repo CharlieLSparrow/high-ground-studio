@@ -82,6 +82,7 @@ function harness() {
   };
   const goals: any[] = [];
   const goalTagLinks: Array<{ goalId: string; tagId: string }> = [];
+  const goalProgressReceipts: any[] = [];
   const goalCreate = jest.fn(async ({ data }: any) => {
     const goal = { ...data, createdAt: new Date("2026-07-18T21:00:00.000Z") };
     goals.push(goal);
@@ -108,18 +109,38 @@ function harness() {
     }) },
     goal: {
       findMany: jest.fn(async () => goals),
+      findFirst: jest.fn(async ({ where }: any) => goals.find((goal) => (
+        goal.id === where.id
+        && goal.ownerUserId === where.ownerUserId
+        && (!where.status?.in || where.status.in.includes(goal.status))
+        && (where.projectId === undefined || goal.projectId === where.projectId)
+        && (where.roomId === undefined || goal.roomId === where.roomId)
+      )) ?? null),
       findUnique: jest.fn(async ({ where }: any) => {
         const goal = goals.find((item) => item.id === where.id);
-        return goal ? { ...goal, tagLinks: goalTagLinks.filter((link) => link.goalId === goal.id) } : null;
+        return goal ? {
+          ...goal,
+          tagLinks: goalTagLinks.filter((link) => link.goalId === goal.id).map((link) => ({
+            ...link,
+            tag: { id: link.tagId, label: link.tagId, slug: link.tagId },
+          })),
+        } : null;
       }),
       create: goalCreate,
+    },
+    goalProgressReceipt: {
+      create: jest.fn(async ({ data }: any) => {
+        goalProgressReceipts.push(data);
+        return data;
+      }),
+      findUnique: jest.fn(async ({ where }: any) => goalProgressReceipts.find((receipt) => receipt.id === where.id) ?? null),
     },
     studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-coaching", label: "Coaching", slug: "coaching" }]) },
     goalTagLink: { createMany: goalTagLinkCreateMany },
     $queryRaw: jest.fn().mockResolvedValue([{ id: summaryNoteId }]),
   };
   prisma.$transaction = jest.fn((callback: any) => callback(prisma));
-  return { prisma, summary, goalCreate, goalTagLinkCreateMany, segments };
+  return { prisma, summary, goalCreate, goalTagLinkCreateMany, goalProgressReceipts, goals, segments };
 }
 
 describe("packet goal review route", () => {
@@ -354,6 +375,192 @@ describe("packet goal review route", () => {
     expect(changedIntent.status).toBe(409);
     expect(await changedIntent.json()).toMatchObject({ ok: false, errorCode: "GOAL_CANDIDATE_IDEMPOTENCY_CONFLICT" });
     expect(state.goalCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("appends exact transcript evidence to one selected existing Goal without changing the Goal", async () => {
+    const state = harness();
+    const targetUpdatedAt = new Date("2026-08-03T12:00:00.000Z");
+    const target = {
+      id: "goal-existing",
+      ownerUserId: "user-1",
+      roomId: null,
+      projectId: "project-1",
+      title: "Build a repeatable review practice",
+      description: "Keep the goal stable while evidence accumulates.",
+      status: "ACTIVE",
+      targetAt: new Date("2026-10-01T18:00:00.000Z"),
+      updatedAt: targetUpdatedAt,
+      sourceJson: { schema: "quipsly-manual-goal-v1" },
+    };
+    state.goals.push(target);
+    state.prisma.callRoom.findFirst.mockResolvedValue({ id: roomId, projectId: "project-1" });
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
+      roomId,
+      projectId: "project-1",
+      transcriptJobId,
+      gate: { allowed: true },
+      playback: { sourceId: "source-1", recordingAssetId },
+      segments: [{
+        id: "segment-1",
+        startSeconds: 10,
+        endSeconds: 15,
+        providerText: "My goal is to build a repeatable review habit.",
+        providerTextSha256: createHash("sha256").update("My goal is to build a repeatable review habit.").digest("hex"),
+        providerSpeakerLabel: "Homer",
+        text: "My goal is to build a repeatable review habit.",
+        speakerLabel: "Homer",
+        acceptedCorrection: null,
+      }],
+    } as any);
+
+    const mergeRequest = {
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "MERGE",
+      mergeTargetGoalId: target.id,
+      mergeExpectedUpdatedAt: targetUpdatedAt.toISOString(),
+    };
+    const before = structuredClone({
+      title: target.title,
+      description: target.description,
+      status: target.status,
+      targetAt: target.targetAt.toISOString(),
+      projectId: target.projectId,
+      roomId: target.roomId,
+      sourceJson: target.sourceJson,
+    });
+    const response = await POST(request(mergeRequest));
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      decision: "MERGE",
+      idempotentReplay: false,
+      goal: { id: target.id, title: target.title, status: "ACTIVE" },
+      receipt: {
+        decision: "MERGE",
+        goalCandidateId,
+        goalId: target.id,
+        goalEvidenceAppended: true,
+        goalDefinitionMutated: false,
+        goalStatusMutated: false,
+        mergeTargetBefore: { id: target.id, updatedAt: targetUpdatedAt.toISOString() },
+      },
+      boundaries: {
+        mergeAppendsOneActorOwnedGoalEvidenceReceipt: true,
+        mergeChangesNoGoalDefinitionStatusTargetOrTags: true,
+        taskCreated: false,
+        calendarMutated: false,
+      },
+    });
+    expect(state.goalCreate).not.toHaveBeenCalled();
+    expect(state.goalProgressReceipts).toHaveLength(1);
+    expect(state.goalProgressReceipts[0]).toMatchObject({
+      id: payload.receipt.goalProgressReceiptId,
+      goalId: target.id,
+      actorUserId: "user-1",
+      kind: "TRANSCRIPT_CANDIDATE_MERGED",
+      progressPercent: null,
+      evidenceJson: {
+        schema: "quipsly-transcript-goal-evidence-merge-v1",
+        receiptId: payload.receipt.id,
+        goalCandidateId,
+        candidateSource: {
+          schema: "quipsly-transcript-derived-goal-v1",
+          roomId,
+          transcriptJobId,
+          segmentId: "segment-1",
+          recordingAssetId,
+          playbackSourceId: "source-1",
+        },
+      },
+    });
+    expect({
+      title: target.title,
+      description: target.description,
+      status: target.status,
+      targetAt: target.targetAt.toISOString(),
+      projectId: target.projectId,
+      roomId: target.roomId,
+      sourceJson: target.sourceJson,
+    }).toEqual(before);
+
+    const replay = await POST(request(mergeRequest));
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      decision: "MERGE",
+      idempotentReplay: true,
+      goal: { id: target.id },
+      receipt: { goalProgressReceiptId: payload.receipt.goalProgressReceiptId },
+    });
+    expect(state.goalProgressReceipts).toHaveLength(1);
+  });
+
+  it("rejects stale or non-owned Goal merge targets without an evidence receipt", async () => {
+    const state = harness();
+    const target = {
+      id: "goal-existing",
+      ownerUserId: "another-user",
+      roomId: null,
+      projectId: "project-1",
+      title: "Someone else's goal",
+      description: null,
+      status: "ACTIVE",
+      targetAt: null,
+      updatedAt: new Date("2026-08-03T12:00:00.000Z"),
+      sourceJson: {},
+    };
+    state.goals.push(target);
+    state.prisma.callRoom.findFirst.mockResolvedValue({ id: roomId, projectId: "project-1" });
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+
+    const response = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "MERGE",
+      mergeTargetGoalId: target.id,
+      mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MERGE_TARGET_UNAVAILABLE",
+    });
+    expect(state.goalProgressReceipts).toEqual([]);
+    expect((state.summary.sourceJson.goalCandidateReviewReceipts as any[])).toEqual([]);
+
+    target.ownerUserId = "user-1";
+    const stale = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "MERGE",
+      mergeTargetGoalId: target.id,
+      mergeExpectedUpdatedAt: "2026-08-03T11:00:00.000Z",
+    }));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_MERGE_TARGET_CHANGED",
+    });
+    expect(state.goalProgressReceipts).toEqual([]);
   });
 
   it("accepts a complete multi-segment goal and persists every constituent evidence hash", async () => {

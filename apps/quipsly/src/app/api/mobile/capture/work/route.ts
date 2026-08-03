@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
+import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { nestProjectGoalWhere, nestProjectTaskWhere } from "@/lib/server/nest-project-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -145,11 +146,6 @@ export async function GET(request: Request) {
         sourceJson: true,
         project: { select: { id: true, name: true, slug: true } },
         room: { select: { id: true, title: true } },
-        progressReceipts: {
-          orderBy: { occurredAt: "desc" },
-          take: 1,
-          select: { progressPercent: true, note: true },
-        },
         tagLinks: {
           where: { tag: { projectId: selectedProject.id } },
           orderBy: { createdAt: "asc" },
@@ -197,6 +193,7 @@ export async function GET(request: Request) {
       },
     }),
   ]);
+  const goalReceiptProjection = await loadLatestGoalReceiptProjection(prisma, goalRows.map((goal) => goal.id));
 
   const tasks = taskRows
     .filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson))
@@ -247,14 +244,17 @@ export async function GET(request: Request) {
   const goals = goalRows.map((goal) => {
     const parsedSource = readTranscriptDerivedGoalSource(goal.sourceJson);
     const sourceAnchor = parsedSource?.roomId === goal.room?.id ? parsedSource : null;
+    const receiptProjection = goalReceiptProjection.get(goal.id);
+    const progress = receiptProjection?.progress ?? null;
+    const lastMergedTranscriptEvidence = readTranscriptMergedGoalSource(receiptProjection?.transcriptEvidence?.evidenceJson);
     return {
       id: goal.id,
       title: goal.title,
       description: goal.description,
       status: goal.status,
       targetAt: goal.targetAt?.toISOString() ?? null,
-      progressPercent: goal.progressReceipts[0]?.progressPercent ?? null,
-      progressNote: goal.progressReceipts[0]?.note ?? null,
+      progressPercent: progress?.progressPercent ?? null,
+      progressNote: progress?.note ?? null,
       updatedAt: goal.updatedAt.toISOString(),
       roomId: goal.room?.id ?? null,
       sessionTitle: goal.room?.title ?? null,
@@ -263,6 +263,7 @@ export async function GET(request: Request) {
       tagIds: goal.tagLinks.map((link) => link.tag.id),
       tagLabels: goal.tagLinks.map((link) => link.tag.label),
       sourceAnchor,
+      lastMergedTranscriptEvidence,
     };
   });
 

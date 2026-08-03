@@ -66,10 +66,12 @@ function asArray(value: unknown): unknown[] {
 }
 
 const GOAL_REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
+const GOAL_EVIDENCE_MERGE_KIND = "TRANSCRIPT_CANDIDATE_MERGED";
 const NOTE_REVIEW_RECEIPT_KIND = "quipsly-note-candidate-review-receipt-v1";
 
 export function goalReviewStatus(decision: unknown): TranscriptGoalReviewStatus {
   if (decision === "ACCEPT") return "ACCEPTED_AS_GOAL";
+  if (decision === "MERGE") return "MERGED_INTO_GOAL";
   if (decision === "EDIT") return "EDITED_FOR_REVIEW";
   if (decision === "REJECT") return "REJECTED_BY_HUMAN";
   if (decision === "DEFER") return "DEFERRED_BY_HUMAN";
@@ -127,6 +129,10 @@ export function buildPacketGoalCandidates(input: {
       && text(receipt.packetBuildId) === input.packetBuildId
       && isTranscriptGoalReviewDecision(text(receipt.decision))
     )).at(-1) ?? null;
+    const mergedGoal = latestReceipt?.decision === "MERGE"
+      ? input.goals.find((goal) => text(goal?.id) === text(latestReceipt.goalId)) ?? null
+      : null;
+    const terminalGoal = committedGoal ?? mergedGoal;
     const reviewedDraft = sourceJson(latestReceipt?.candidateDraftAfter);
     const suggestedTitle = text(reviewedDraft.title).slice(0, 240) || text(item.text).slice(0, 240) || transcriptText.slice(0, 240);
     const suggestedDescription = text(reviewedDraft.description).slice(0, 5_000) || transcriptText.slice(0, 5_000);
@@ -153,9 +159,13 @@ export function buildPacketGoalCandidates(input: {
         : "provider",
       suggestedTitle,
       suggestedDescription,
-      reviewStatus: committedGoal ? "ACCEPTED_AS_GOAL" : goalReviewStatus(latestReceipt?.decision),
-      humanApprovalRequired: !committedGoal,
-      committedGoalId: committedGoal?.id ?? null,
+      reviewStatus: committedGoal
+        ? "ACCEPTED_AS_GOAL"
+        : mergedGoal
+          ? "MERGED_INTO_GOAL"
+          : goalReviewStatus(latestReceipt?.decision),
+      humanApprovalRequired: !terminalGoal,
+      committedGoalId: terminalGoal?.id ?? null,
       lastHumanReview: latestReceipt ? {
         receiptId: text(latestReceipt.id),
         decision: text(latestReceipt.decision),
@@ -754,10 +764,31 @@ export async function GET(request: Request) {
     : [];
   const goalRows = transcriptProcessingAllowed && summary
     ? await prisma.goal.findMany({
-        where: { ownerUserId: actor.id, roomId },
-        orderBy: { createdAt: "asc" },
-        take: 200,
-        select: { id: true, sourceJson: true },
+        where: {
+          ownerUserId: actor.id,
+          OR: [
+            { roomId },
+            ...(room?.projectId ? [{ projectId: room.projectId }] : []),
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: 500,
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          targetAt: true,
+          updatedAt: true,
+          projectId: true,
+          roomId: true,
+          sourceJson: true,
+          _count: {
+            select: {
+              progressReceipts: { where: { kind: GOAL_EVIDENCE_MERGE_KIND } },
+            },
+          },
+        },
       })
     : [];
   const goalCandidates = buildPacketGoalCandidates({
@@ -785,6 +816,22 @@ export async function GET(request: Request) {
       visibility: String(note.visibility),
       updatedAt: note.updatedAt?.toISOString?.() ?? null,
       revisionCount: note._count?.revisions ?? 0,
+    }));
+  const goalMergeTargets = goalRows
+    .filter((goal: any) => (
+      (goal.status === "ACTIVE" || goal.status === "PAUSED")
+      && (room?.projectId ? goal.projectId === room.projectId : goal.roomId === roomId)
+    ))
+    .map((goal: any) => ({
+      id: goal.id,
+      title: goal.title,
+      description: goal.description,
+      status: goal.status,
+      targetAt: goal.targetAt?.toISOString?.() ?? null,
+      updatedAt: goal.updatedAt?.toISOString?.() ?? null,
+      projectId: goal.projectId,
+      roomId: goal.roomId,
+      evidenceCount: goal._count?.progressReceipts ?? 0,
     }));
 
   return NextResponse.json({
@@ -874,10 +921,12 @@ export async function GET(request: Request) {
       noteMergeTargets,
       actionCandidates,
       goalCandidates,
+      goalMergeTargets,
       goalCandidateReview: {
-        endpoint: "/api/mobile/capture/transcripts/goals",
+        endpoint: "/api/mobile/capture/transcripts/packet/goals",
         method: "POST",
-        boundary: "Only an explicit create decision writes one actor-owned ACTIVE Goal. Ignoring a candidate creates nothing; no task, target date, focus block, reminder, calendar event, message, delivery, or publication is implied.",
+        allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
+        boundary: "ACCEPT creates one actor-owned ACTIVE Goal. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned goal in this Nest without changing its definition, status, target, tags, tasks, or project. Ignoring, editing, rejecting, or deferring creates no goal or external side effect.",
       },
       actionCandidateReview: {
         endpoint: "/api/mobile/capture/transcripts/packet/actions",

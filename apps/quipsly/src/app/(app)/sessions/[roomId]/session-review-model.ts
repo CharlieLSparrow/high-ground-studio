@@ -45,9 +45,21 @@ export type SessionReviewGoalCandidate = {
   providerTextSha256: string;
   suggestedTitle: string;
   suggestedDescription: string;
-  reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_GOAL";
+  reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_GOAL" | "MERGED_INTO_GOAL";
   humanApprovalRequired: boolean;
   committedGoalId: string | null;
+};
+
+export type SessionReviewGoalMergeTarget = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "ACTIVE" | "PAUSED";
+  targetAt: string | null;
+  updatedAt: string;
+  projectId: string | null;
+  roomId: string | null;
+  evidenceCount: number;
 };
 
 export type SessionReviewNoteCandidate = {
@@ -141,6 +153,7 @@ export type SessionReviewPacket = {
     noteMergeTargets?: SessionReviewNoteMergeTarget[];
     actionCandidates: SessionReviewCandidate[];
     goalCandidates?: SessionReviewGoalCandidate[];
+    goalMergeTargets?: SessionReviewGoalMergeTarget[];
     reviewLanes?: SessionReviewLane[];
     actionItems: Array<{ id: string; title: string; detail: string | null; status: string; dueAt: string | null; source: Record<string, unknown> }>;
     transcriptReview?: {
@@ -246,11 +259,14 @@ export function goalCandidateReviewRequest(input: {
   targetAt?: string | null;
   tagIds?: string[];
   note?: string;
+  mergeTargetGoalId?: string;
+  mergeExpectedUpdatedAt?: string;
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
-  if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id || input.candidate.committedGoalId || input.candidate.reviewStatus === "ACCEPTED_AS_GOAL") return null;
-  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id || input.candidate.committedGoalId || input.candidate.reviewStatus === "ACCEPTED_AS_GOAL" || input.candidate.reviewStatus === "MERGED_INTO_GOAL") return null;
+  if ((input.decision === "ACCEPT" || input.decision === "MERGE") && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if (input.decision === "MERGE" && (!input.mergeTargetGoalId?.trim() || !input.mergeExpectedUpdatedAt?.trim())) return null;
   if (input.packet.packet?.transcriptReview?.packetStale) return null;
   return {
     callRoomId: input.candidate.roomId,
@@ -266,6 +282,10 @@ export function goalCandidateReviewRequest(input: {
     ...(input.decision === "ACCEPT" && input.tagIds !== undefined
       ? { tagIds: [...new Set(input.tagIds.map((tagId) => tagId.trim()).filter(Boolean))].sort() }
       : {}),
+    ...(input.decision === "MERGE" ? {
+      mergeTargetGoalId: input.mergeTargetGoalId!.trim(),
+      mergeExpectedUpdatedAt: input.mergeExpectedUpdatedAt,
+    } : {}),
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
   };
 }

@@ -2,6 +2,7 @@ export const TRANSCRIPT_DERIVED_TASK_SCHEMA = "quipsly-transcript-derived-task-v
 export const TRANSCRIPT_DERIVED_GOAL_SCHEMA = "quipsly-transcript-derived-goal-v1" as const;
 export const TRANSCRIPT_DERIVED_NOTE_SCHEMA = "quipsly-transcript-derived-note-v1" as const;
 export const TRANSCRIPT_SOURCE_SPAN_SCHEMA = "quipsly-transcript-source-span-v1" as const;
+export const TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA = "quipsly-transcript-goal-evidence-merge-v1" as const;
 
 export type TranscriptSourceSpanSegmentEvidence = {
   segmentId: string;
@@ -61,6 +62,13 @@ export type TranscriptMergedNoteSource = {
   packetNoteCandidateId: string;
   mergedAt: string;
   sourceAnchor: TranscriptDerivedNoteSourceAnchor;
+};
+
+export type TranscriptMergedGoalSource = {
+  receiptId: string;
+  goalCandidateId: string;
+  mergedAt: string;
+  sourceAnchor: TranscriptDerivedGoalSourceAnchor;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -292,4 +300,20 @@ export function readLastTranscriptMergedNoteSource(value: unknown): TranscriptMe
   const sourceAnchor = readTranscriptDerivedNoteSource(receipt.candidateSource);
   if (!receiptId || !packetNoteCandidateId || !mergedAt || !sourceAnchor) return null;
   return { receiptId, packetNoteCandidateId, mergedAt, sourceAnchor };
+}
+
+/**
+ * Parses one append-only transcript-evidence receipt on an existing Goal.
+ * The Goal definition and lifecycle remain canonical mutable state; this
+ * evidence is an immutable reviewed observation that can return to playback.
+ */
+export function readTranscriptMergedGoalSource(value: unknown): TranscriptMergedGoalSource | null {
+  const evidence = record(value);
+  if (evidence.schema !== TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA) return null;
+  const receiptId = text(evidence.receiptId, 200);
+  const goalCandidateId = text(evidence.goalCandidateId, 700);
+  const mergedAt = text(evidence.mergedAt, 80);
+  const sourceAnchor = readTranscriptDerivedGoalSource(evidence.candidateSource);
+  if (!receiptId || !goalCandidateId || !mergedAt || !sourceAnchor) return null;
+  return { receiptId, goalCandidateId, mergedAt, sourceAnchor };
 }

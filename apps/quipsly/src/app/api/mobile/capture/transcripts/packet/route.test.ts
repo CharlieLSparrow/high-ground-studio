@@ -56,6 +56,38 @@ describe("packet goal candidates", () => {
     });
   });
 
+  it("projects an exact MERGE receipt as terminal evidence on the selected existing goal", () => {
+    const mergedSummary = {
+      sourceJson: {
+        ...summary.sourceJson,
+        goalCandidateReviewReceipts: [{
+          id: "receipt-merge-1",
+          kind: "quipsly-goal-candidate-review-receipt-v1",
+          decision: "MERGE",
+          goalCandidateId: "packet-goal-packet-build-1-segment-1",
+          roomId: "room-1",
+          transcriptJobId: "job-1",
+          recordingAssetId: "asset-1",
+          packetBuildId,
+          goalId: "goal-existing",
+          reviewedAt: "2026-08-03T12:00:00.000Z",
+          reviewedByUserId: "user-1",
+          candidateDraftAfter: {
+            title: "Build a repeatable coaching review habit.",
+            description: "My goal is to build a repeatable coaching review habit.",
+          },
+        }],
+      },
+    };
+    const goals = [{ id: "goal-existing", sourceJson: { schema: "quipsly-manual-goal-v1" } }];
+    expect(buildPacketGoalCandidates({ summary: mergedSummary, latestTranscriptJob, goals, packetBuildId })[0]).toMatchObject({
+      reviewStatus: "MERGED_INTO_GOAL",
+      humanApprovalRequired: false,
+      committedGoalId: "goal-existing",
+      lastHumanReview: { receiptId: "receipt-merge-1", decision: "MERGE" },
+    });
+  });
+
   it("uses the accepted correction for the candidate while retaining the provider hash", () => {
     const providerText = latestTranscriptJob.segments[0].text;
     const correctedJob = {

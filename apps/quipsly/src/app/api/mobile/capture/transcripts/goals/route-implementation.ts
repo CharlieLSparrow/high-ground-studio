@@ -95,6 +95,62 @@ export function transcriptDerivedGoalBoundaries(input: { targetDateCreated?: boo
   };
 }
 
+export async function resolveTranscriptGoalEvidenceInTransaction(input: {
+  tx: any;
+  actor: { id: string; email?: string | null; isStaff: boolean };
+  roomId: string;
+  segmentId: string;
+  segmentIds?: string[];
+  expectedProviderTextSha256: string;
+  expectedSourceTextSha256?: string;
+}) {
+  const desk = await readTranscriptCorrectionDesk({
+    prisma: input.tx,
+    roomId: input.roomId,
+    actor: input.actor,
+  });
+  const playback = desk.playback;
+  if (!desk.gate.allowed || !playback) {
+    throw new TranscriptCorrectionError(
+      desk.gate.error || "Released recording-backed transcript evidence is required.",
+      409,
+      "TRANSCRIPT_GOAL_EVIDENCE_HELD",
+    );
+  }
+  const evidenceSegments = resolveTranscriptSpanSegments({
+    segmentIds: input.segmentIds,
+    primarySegmentId: input.segmentId,
+    segments: desk.segments,
+  });
+  const sourceAnchor = evidenceSegments
+    ? buildTranscriptSourceAnchorFields(evidenceSegments)
+    : null;
+  if (!sourceAnchor) {
+    throw new TranscriptCorrectionError(
+      "The transcript evidence span changed or is unavailable.",
+      409,
+      "STALE_TRANSCRIPT_SEGMENT",
+    );
+  }
+  if (sourceAnchor.providerTextSha256 !== input.expectedProviderTextSha256) {
+    throw new TranscriptCorrectionError(
+      "Provider transcript evidence changed. Refresh before creating or merging the goal evidence.",
+      409,
+      "STALE_PROVIDER_EVIDENCE",
+    );
+  }
+  const expectedSourceTextSha256 = text(input.expectedSourceTextSha256, 64).toLowerCase();
+  if (expectedSourceTextSha256
+      && createHash("sha256").update(sourceAnchor.effectiveTextSnapshot, "utf8").digest("hex") !== expectedSourceTextSha256) {
+    throw new TranscriptCorrectionError(
+      "The complete transcript thought changed. Refresh before creating or merging the goal evidence.",
+      409,
+      "STALE_TRANSCRIPT_SPAN_EVIDENCE",
+    );
+  }
+  return { desk, playback, sourceAnchor };
+}
+
 export async function createTranscriptDerivedGoalInTransaction(input: {
   tx: any;
   actor: { id: string; email?: string | null; isStaff: boolean };
@@ -114,25 +170,15 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
 }) {
   const { tx, actor, goal: request } = input;
   const id = goalIdentity(actor.id, request.clientRequestId);
-  const desk = await readTranscriptCorrectionDesk({ prisma: tx, roomId: request.roomId, actor });
-  if (!desk.gate.allowed || !desk.playback) {
-    throw new TranscriptCorrectionError(desk.gate.error || "Released recording-backed transcript evidence is required.", 409, "TRANSCRIPT_GOAL_EVIDENCE_HELD");
-  }
-  const evidenceSegments = resolveTranscriptSpanSegments({
+  const { desk, playback, sourceAnchor } = await resolveTranscriptGoalEvidenceInTransaction({
+    tx,
+    actor,
+    roomId: request.roomId,
+    segmentId: request.segmentId,
     segmentIds: request.segmentIds,
-    primarySegmentId: request.segmentId,
-    segments: desk.segments,
+    expectedProviderTextSha256: request.expectedProviderTextSha256,
+    expectedSourceTextSha256: request.expectedSourceTextSha256,
   });
-  const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
-  if (!sourceAnchor) throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
-  if (sourceAnchor.providerTextSha256 !== request.expectedProviderTextSha256) {
-    throw new TranscriptCorrectionError("Provider transcript evidence changed. Refresh before creating the goal.", 409, "STALE_PROVIDER_EVIDENCE");
-  }
-  const expectedSourceTextSha256 = text(request.expectedSourceTextSha256, 64).toLowerCase();
-  if (expectedSourceTextSha256
-      && createHash("sha256").update(sourceAnchor.effectiveTextSnapshot, "utf8").digest("hex") !== expectedSourceTextSha256) {
-    throw new TranscriptCorrectionError("The complete transcript thought changed. Refresh before creating the goal.", 409, "STALE_TRANSCRIPT_SPAN_EVIDENCE");
-  }
 
   const requestedIntent = transcriptGoalMaterializationIntent({
     title: request.title,
@@ -221,8 +267,8 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         roomId: request.roomId,
         transcriptJobId: desk.transcriptJobId,
         ...sourceAnchor,
-        recordingAssetId: desk.playback.recordingAssetId,
-        playbackSourceId: desk.playback.sourceId,
+        recordingAssetId: playback.recordingAssetId,
+        playbackSourceId: playback.sourceId,
         materializationIntent: requestedIntent,
         appliedTags: acceptedTags,
         boundaries: transcriptDerivedGoalBoundaries({

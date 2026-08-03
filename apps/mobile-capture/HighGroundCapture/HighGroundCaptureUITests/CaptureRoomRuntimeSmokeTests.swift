@@ -2190,6 +2190,135 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRuntimeScreenshot(app, name: "Merged note returned to exact transcript source")
     }
 
+    func testReviewedTranscriptPacketAddsEvidenceToExactExistingGoalAndReturnsToSource() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false,
+              credentials.transcriptSegmentIDs.count == 3,
+              let expectedCandidateTitle = credentials.expectedPacketGoalTitle,
+              !expectedCandidateTitle.isEmpty,
+              let goalID = credentials.goalID, !goalID.isEmpty,
+              let goalTitle = credentials.goalEditSourceTitle, !goalTitle.isEmpty,
+              let expectedAssetID = credentials.recordingFixtureAssetID,
+              !expectedAssetID.isEmpty else {
+            throw XCTSkip("Reviewed goal-evidence merge requires exact Session, three-segment source, existing goal, and recording-asset identities.")
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
+        XCTAssertTrue(fixtureReceipt.waitForExistence(timeout: 20))
+        XCTAssertTrue(String(describing: fixtureReceipt.value ?? "").contains(expectedAssetID))
+
+        selectRequestedSession(in: app, credentials: credentials)
+        let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reviewLink, in: app, timeout: 30, swipeAttempts: 8))
+        reviewLink.tap()
+        let review = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch
+                .waitForExistence(timeout: 30)
+        )
+
+        for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12))
+            XCTAssertTrue(play.isEnabled)
+            play.tap()
+            let confirm = app.buttons["CaptureTranscriptConfirmAsIsButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            let playbackReachedSegmentEnd = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "enabled == true"),
+                object: confirm
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [playbackReachedSegmentEnd], timeout: 15), .completed)
+            confirm.tap()
+            let progress = app.staticTexts["CaptureTranscriptReviewProgressCount"].firstMatch
+            let receiptReadBack = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label BEGINSWITH %@", "\(reviewIndex + 1) of "),
+                object: progress
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [receiptReadBack], timeout: 30), .completed)
+        }
+
+        let buildCurrentPacket = app.buttons["CaptureTranscriptBuildCurrentPacketButton"].firstMatch
+        for _ in 0..<16 where !buildCurrentPacket.exists { review.swipeDown() }
+        XCTAssertTrue(buildCurrentPacket.waitForExistence(timeout: 10))
+        XCTAssertTrue(buildCurrentPacket.isEnabled)
+        buildCurrentPacket.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketStaleBoundary"].firstMatch
+                .waitForNonExistence(timeout: 30)
+        )
+
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let jumpToGoals = app.buttons["CaptureTranscriptJumpToGoals"].firstMatch
+        XCTAssertTrue(jumpToGoals.waitForExistence(timeout: 10))
+        jumpToGoals.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", expectedCandidateTitle)).firstMatch,
+                in: app,
+                timeout: 20,
+                swipeAttempts: 10
+            )
+        )
+
+        let beginMerge = app.buttons["CapturePacketGoalBeginMergeButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(beginMerge, in: app, timeout: 12, swipeAttempts: 8))
+        XCTAssertTrue(beginMerge.isEnabled)
+        beginMerge.tap()
+        let picker = app.descendants(matching: .any)["CapturePacketGoalMergeTargetPicker"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        picker.tap()
+        let targetChoice = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", goalTitle)
+        ).firstMatch
+        XCTAssertTrue(targetChoice.waitForExistence(timeout: 8))
+        targetChoice.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketGoalMergeTargetSummary_\(goalID)"].firstMatch
+                .waitForExistence(timeout: 8)
+        )
+        let merge = app.buttons["CapturePacketGoalMergeButton"].firstMatch
+        XCTAssertTrue(merge.isEnabled)
+        merge.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalAccepted_")
+            ).firstMatch.waitForExistence(timeout: 30)
+        )
+        XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing goal"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing goal")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "today")
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", goalTitle)).firstMatch,
+                in: app,
+                timeout: 30,
+                swipeAttempts: 14
+            )
+        )
+        let mergedSource = app.descendants(matching: .any)["CaptureTodayGoalMergedSourceLink_\(goalID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(mergedSource, in: app, timeout: 15, swipeAttempts: 12),
+            "Today must expose the latest appended evidence separately from the goal's numeric progress."
+        )
+        mergedSource.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_\(credentials.transcriptSegmentIDs[0])"]
+                .firstMatch.waitForExistence(timeout: 20)
+        )
+        XCTAssertTrue(app.staticTexts["Opened from linked work"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Goal evidence returned to exact transcript source")
+    }
+
     @MainActor
     func testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict() async throws {
         let credentials = try runtimeSmokeCredentials()

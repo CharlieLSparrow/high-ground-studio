@@ -170,6 +170,27 @@ function packetWithNote(candidateValue = noteCandidate, withMergeTarget = false)
   };
 }
 
+function packetWithGoalMergeTarget(candidateValue = candidate): SessionReviewPacket {
+  const value = packet(candidateValue);
+  return {
+    ...value,
+    packet: {
+      ...value.packet!,
+      goalMergeTargets: [{
+        id: "goal-existing",
+        title: "Build the weekly review habit",
+        description: "Use one evidence-backed review every Friday.",
+        status: "ACTIVE",
+        targetAt: "2026-09-01T18:00:00.000Z",
+        updatedAt: "2026-08-03T14:00:00.000Z",
+        projectId: "project-1",
+        roomId: null,
+        evidenceCount: 2,
+      }],
+    },
+  };
+}
+
 function jsonResponse(value: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => value } as Response;
 }
@@ -537,7 +558,7 @@ describe("Session review goal candidates", () => {
 
     render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     expect(await screen.findByRole("heading", { name: "Choose what deserves to become a goal" })).toBeInTheDocument();
-    expect(screen.getByText(/only “review & create goal” can write one actor-owned active goal/i)).toBeInTheDocument();
+    expect(screen.getByText(/“Review & create goal” writes one new actor-owned ACTIVE Goal/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("button", { name: "Review & create goal" }));
@@ -562,7 +583,74 @@ describe("Session review goal candidates", () => {
       tagIds: [],
     });
     expect(await screen.findByRole("status")).toHaveTextContent("One actor-owned canonical goal was created. No task, focus block, calendar event, message, or delivery was added.");
-    expect(screen.getByRole("link", { name: "Open goal" })).toHaveAttribute("href", "/work?goal=goal-1");
+    expect(screen.getByRole("link", { name: "Open goal and source evidence" })).toHaveAttribute("href", "/work?goal=goal-1");
+  });
+
+  it("adds reviewed transcript evidence to one explicitly selected goal without sending goal mutations", async () => {
+    const merged: SessionReviewGoalCandidate = {
+      ...candidate,
+      reviewStatus: "MERGED_INTO_GOAL",
+      humanApprovalRequired: false,
+      committedGoalId: "goal-existing",
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithGoalMergeTarget()))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        decision: "MERGE",
+        idempotentReplay: false,
+        goal: { id: "goal-existing", targetAt: "2026-09-01T18:00:00.000Z", tags: [] },
+        receipt: {
+          decision: "MERGE",
+          goalCandidateId: candidate.id,
+          goalId: "goal-existing",
+          goalProgressReceiptId: "progress-receipt-1",
+        },
+        boundaries: {
+          mergeAppendsOneActorOwnedGoalEvidenceReceipt: true,
+          mergeChangesNoGoalDefinitionStatusTargetOrTags: true,
+          taskCreated: false,
+          targetDateCreated: false,
+          projectTagsApplied: false,
+          reminderCreated: false,
+          calendarMutated: false,
+          externalDelivery: false,
+          publication: false,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse(packetWithGoalMergeTarget(merged)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    await user.click(await screen.findByRole("button", { name: "Add evidence to existing goal" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Add evidence to goal" }), "goal-existing");
+
+    expect(screen.getByText("Use one evidence-backed review every Friday.")).toBeInTheDocument();
+    expect(screen.getByText(/2 existing evidence receipts/i)).toBeInTheDocument();
+    expect(screen.getByText(/will not rewrite the selected goal/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add reviewed evidence" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const request = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(request).toEqual({
+      callRoomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      goalCandidateId: candidate.id,
+      decision: "MERGE",
+      mergeTargetGoalId: "goal-existing",
+      mergeExpectedUpdatedAt: "2026-08-03T14:00:00.000Z",
+    });
+    expect(request).not.toHaveProperty("title");
+    expect(request).not.toHaveProperty("description");
+    expect(request).not.toHaveProperty("targetAt");
+    expect(request).not.toHaveProperty("tagIds");
+    expect(await screen.findByRole("status")).toHaveTextContent("Its definition, status, target, tags, tasks, and project did not change");
+    expect(screen.getByText("Added as reviewed evidence to one existing goal.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open goal and source evidence" })).toHaveAttribute("href", "/work?goal=goal-existing");
   });
 
   it("loads late Session tags into the task review form and submits the explicit materialization choices", async () => {

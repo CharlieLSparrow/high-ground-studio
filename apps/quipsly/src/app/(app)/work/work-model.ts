@@ -1,5 +1,12 @@
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
-import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, type TranscriptDerivedGoalSourceAnchor, type TranscriptDerivedTaskSourceAnchor } from "@high-ground/quipsly-domain/transcript-derived-task";
+import {
+  readTranscriptDerivedGoalSource,
+  readTranscriptDerivedTaskSource,
+  readTranscriptMergedGoalSource,
+  type TranscriptDerivedGoalSourceAnchor,
+  type TranscriptDerivedTaskSourceAnchor,
+  type TranscriptMergedGoalSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
 import { buildWeeklyReview, type WeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 export const SESSION_CONTEXT_SOURCE = "quipsly-capture-session-context-v2";
@@ -110,7 +117,14 @@ export type RawCanonicalGoal = {
   project?: { id: string; name: string; slug: string } | null;
   tagLinks?: Array<{ tag: WorkTag }>;
   parent?: { id: string; title: string } | null;
-  progressReceipts?: Array<{ progressPercent?: number | null; note?: string | null; occurredAt: Date | string }>;
+  progressReceipts?: Array<{
+    id?: string;
+    kind?: string;
+    progressPercent?: number | null;
+    note?: string | null;
+    evidenceJson?: unknown;
+    occurredAt: Date | string;
+  }>;
   taskLinks?: Array<{ relationship: "CONTRIBUTES" | "BLOCKS" | "OUTCOME"; actionItem: { id: string; title: string; status: WorkTaskStatus } }>;
   _count?: { children: number };
 };
@@ -211,6 +225,7 @@ export type WorkGoal = {
   childCount: number;
   linkedTasks: Array<{ relationship: "CONTRIBUTES" | "BLOCKS" | "OUTCOME"; task: { id: string; title: string; status: WorkTaskStatus } }>;
   sourceAnchor: TranscriptDerivedGoalSourceAnchor | null;
+  lastMergedTranscriptEvidence?: TranscriptMergedGoalSource | null;
 };
 
 export type WorkCommitment = {
@@ -406,7 +421,10 @@ export function buildWorkSnapshot(input: {
   const canonicalGoals: WorkGoal[] = (input.canonicalGoals ?? [])
     .map((goal) => {
       const room = goal.room || goal.booking?.callRoom || null;
-      const progress = goal.progressReceipts?.[0] ?? null;
+      const progress = goal.progressReceipts?.find((receipt) => typeof receipt.progressPercent === "number") ?? null;
+      const lastMergedTranscriptEvidence = goal.progressReceipts
+        ?.map((receipt) => readTranscriptMergedGoalSource(receipt.evidenceJson))
+        .find((receipt): receipt is TranscriptMergedGoalSource => receipt !== null) ?? null;
       const source = safeRecord(goal.sourceJson);
       const parsedSourceAnchor = readTranscriptDerivedGoalSource(goal.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === room?.id ? parsedSourceAnchor : null;
@@ -433,6 +451,7 @@ export function buildWorkSnapshot(input: {
         childCount: goal._count?.children ?? 0,
         linkedTasks: (goal.taskLinks ?? []).map((link) => ({ relationship: link.relationship, task: link.actionItem })),
         sourceAnchor,
+        lastMergedTranscriptEvidence,
       };
     });
   const canonicalContextIds = new Set((input.canonicalGoals ?? []).map((goal) => clean(safeRecord(goal.sourceJson).contextEntryId)).filter(Boolean));
@@ -463,6 +482,7 @@ export function buildWorkSnapshot(input: {
         childCount: 0,
         linkedTasks: [],
         sourceAnchor: null,
+        lastMergedTranscriptEvidence: null,
       };
     })
     .filter((goal) => Boolean(goal.title));

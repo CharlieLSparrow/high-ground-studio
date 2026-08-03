@@ -17,6 +17,7 @@ import {
   timestampForSeconds,
   type SessionReviewCandidate,
   type SessionReviewGoalCandidate,
+  type SessionReviewGoalMergeTarget,
   type SessionReviewLane,
   type SessionReviewLaneStatus,
   type SessionReviewNoteCandidate,
@@ -742,15 +743,19 @@ function GoalCandidateCard({
   onDecision,
   projectTags,
   defaultTagIds,
+  mergeTargets,
 }: {
   candidate: SessionReviewGoalCandidate;
   busy: boolean;
-  onDecision: (candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string; targetAt?: string | null; tagIds?: string[] }) => void;
+  onDecision: (candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title?: string; description?: string; targetAt?: string | null; tagIds?: string[]; mergeTargetGoalId?: string; mergeExpectedUpdatedAt?: string }) => void;
   projectTags: SessionTaxonomy["catalog"];
   defaultTagIds: string[];
+  mergeTargets: SessionReviewGoalMergeTarget[];
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState("");
   const [title, setTitle] = useState(candidate.suggestedTitle);
   const [description, setDescription] = useState(candidate.suggestedDescription);
   const [hasTargetDate, setHasTargetDate] = useState(false);
@@ -761,14 +766,17 @@ function GoalCandidateCard({
   });
   const [tagIds, setTagIds] = useState(() => new Set(defaultTagIds));
   const defaultTagKey = defaultTagIds.join("\u0000");
-  const accepted = Boolean(candidate.committedGoalId) || candidate.reviewStatus === "ACCEPTED_AS_GOAL";
+  const accepted = Boolean(candidate.committedGoalId) || candidate.reviewStatus === "ACCEPTED_AS_GOAL" || candidate.reviewStatus === "MERGED_INTO_GOAL";
   const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
+  const selectedMergeTarget = mergeTargets.find((target) => target.id === mergeTargetId) ?? null;
 
   useEffect(() => {
     setTitle(candidate.suggestedTitle);
     setDescription(candidate.suggestedDescription);
     setEditing(false);
     setCreating(false);
+    setMerging(false);
+    setMergeTargetId("");
     setHasTargetDate(false);
     setTagIds(new Set(defaultTagIds));
   }, [candidate.reviewStatus, candidate.suggestedDescription, candidate.suggestedTitle, defaultTagKey]);
@@ -787,7 +795,7 @@ function GoalCandidateCard({
     <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
     <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline">Review exact transcript source</a>
     {!accepted && !sourceReviewed ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">Listen through and confirm every segment in this source span before creating a canonical goal.</p> : null}
-    {accepted && candidate.committedGoalId ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Accepted as one canonical goal. <Link href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`} className="underline">Open goal</Link></p> : creating ? <div className="mt-4 space-y-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+    {accepted && candidate.committedGoalId ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />{candidate.reviewStatus === "MERGED_INTO_GOAL" ? "Added as reviewed evidence to one existing goal." : "Accepted as one canonical goal."} <Link href={`/work?goal=${encodeURIComponent(candidate.committedGoalId)}`} className="underline">Open goal and source evidence</Link></p> : creating ? <div className="mt-4 space-y-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4">
       <div><p className="text-xs font-black uppercase tracking-wide text-violet-950">Create one canonical goal</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-900">Review every field. Only the title, definition, target date, and tags shown here become goal state.</p></div>
       <label className="block text-xs font-black uppercase tracking-wide text-violet-950">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block min-h-11 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
       <label className="block text-xs font-black uppercase tracking-wide text-violet-950">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
@@ -796,8 +804,14 @@ function GoalCandidateCard({
       {projectTags.length ? <fieldset><legend className="text-xs font-black uppercase tracking-wide text-violet-950">Project tags</legend><div className="mt-2 flex flex-wrap gap-2">{projectTags.map((tag) => <button key={tag.id} type="button" aria-pressed={tagIds.has(tag.id)} onClick={() => toggleTag(tag.id)} className={`min-h-11 rounded-full border px-3 py-2 text-xs font-black ${tagIds.has(tag.id) ? "border-violet-700 bg-violet-700 text-white" : "border-violet-300 bg-white text-violet-950"}`}>{tagIds.has(tag.id) ? "✓ " : ""}{tag.label}</button>)}</div></fieldset> : <p className="text-xs font-semibold text-violet-900">This Session has no active project tags yet. Its canonical project identity will still be preserved.</p>}
       <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sourceReviewed || !title.trim() || (hasTargetDate && !targetDate)} onClick={() => onDecision(candidate, "ACCEPT", { title, description, targetAt: hasTargetDate ? new Date(`${targetDate}T12:00:00`).toISOString() : null, tagIds: [...tagIds] })} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Creating…" : "Create goal"}</button><button type="button" disabled={busy} onClick={() => setCreating(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div>
       <p className="text-xs font-bold leading-relaxed text-violet-950">Every transcript segment in this evidence span and the protected playback source stay attached. Tasks, focus blocks, reminders, calendar placement, messages, delivery, and publication remain separate decisions.</p>
-    </div> : editing ? <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4"><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !title.trim()} onClick={() => onDecision(candidate, "EDIT", { title, description })} className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Save for review</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div></div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy || !sourceReviewed} onClick={() => setCreating(true)} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; create goal</button><button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button></div>}
-    {!accepted && !creating && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Review &amp; create goal” can write one actor-owned ACTIVE Goal after its wording, target date, and tags are inspected. Every other decision creates no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.</p>}
+    </div> : merging ? <div className="mt-4 space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+      <div><p className="text-xs font-black uppercase tracking-wide text-sky-950">Add this evidence to one existing goal</p><p className="mt-1 text-xs font-semibold leading-5 text-sky-900">Choose deliberately. Quipsly will append this reviewed transcript and playback pointer as evidence; it will not rewrite the selected goal.</p></div>
+      <label className="block text-xs font-black uppercase tracking-wide text-sky-950">Existing goal<select aria-label="Add evidence to goal" value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="">Choose a goal…</option>{mergeTargets.map((target) => <option key={target.id} value={target.id}>{target.title} · {humanize(target.status)} · {target.evidenceCount} evidence receipt{target.evidenceCount === 1 ? "" : "s"}</option>)}</select></label>
+      {selectedMergeTarget ? <div className="rounded-xl border border-sky-200 bg-white p-4"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-black text-[#3d3122]">{selectedMergeTarget.title}</p><span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black uppercase text-sky-900">{humanize(selectedMergeTarget.status)}</span></div>{selectedMergeTarget.description ? <p className="mt-2 whitespace-pre-wrap text-xs font-semibold leading-5 text-[#765f40]">{selectedMergeTarget.description}</p> : <p className="mt-2 text-xs font-semibold text-[#8a7354]">No goal definition recorded.</p>}<p className="mt-3 text-[10px] font-black uppercase tracking-wide text-sky-800">{selectedMergeTarget.targetAt ? `Target ${new Date(selectedMergeTarget.targetAt).toLocaleDateString()}` : "No target date"} · {selectedMergeTarget.evidenceCount} existing evidence receipt{selectedMergeTarget.evidenceCount === 1 ? "" : "s"}</p></div> : null}
+      <div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !sourceReviewed || !mergeTargetId} onClick={() => { const target = mergeTargets.find((entry) => entry.id === mergeTargetId); if (target) onDecision(candidate, "MERGE", { mergeTargetGoalId: target.id, mergeExpectedUpdatedAt: target.updatedAt }); }} className="rounded-full bg-sky-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Adding evidence…" : "Add reviewed evidence"}</button><button type="button" disabled={busy} onClick={() => { setMerging(false); setMergeTargetId(""); }} className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50">Cancel</button></div>
+      <p className="text-xs font-bold leading-relaxed text-sky-950">The goal keeps its current identity, title, definition, status, target date, tags, linked tasks, progress percentage, and project. No focus block, reminder, calendar event, message, delivery, Studio edit, or publication is created.</p>
+    </div> : editing ? <div className="mt-4 space-y-3 rounded-xl border border-violet-200 bg-violet-50/50 p-4"><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Goal title<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={240} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><label className="block text-xs font-black uppercase tracking-wide text-violet-900">Definition of progress <span className="normal-case tracking-normal text-violet-700">(optional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} rows={3} className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]" /></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || !title.trim()} onClick={() => onDecision(candidate, "EDIT", { title, description })} className="rounded-full bg-violet-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Save for review</button><button type="button" disabled={busy} onClick={() => setEditing(false)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Cancel</button></div></div> : <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busy || !sourceReviewed} onClick={() => setCreating(true)} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; create goal</button><button type="button" disabled={busy || !sourceReviewed || mergeTargets.length === 0} onClick={() => setMerging(true)} className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50">Add evidence to existing goal</button><button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button><button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button>{mergeTargets.length === 0 ? <p className="w-full text-xs font-bold text-[#8a7354]">Create an actor-owned active goal in this Nest first to add evidence without creating a duplicate.</p> : null}</div>}
+    {!accepted && !creating && !merging && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">“Review &amp; create goal” writes one new actor-owned ACTIVE Goal. “Add evidence to existing goal” appends one source receipt to an explicitly selected goal without changing its state. Edit, defer, and reject create no goal, task, date, focus block, reminder, calendar event, message, delivery, or publication.</p>}
   </article>;
 }
 
@@ -1423,7 +1437,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
-  async function reviewGoal(candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title: string; description: string; targetAt?: string | null; tagIds?: string[] }) {
+  async function reviewGoal(candidate: SessionReviewGoalCandidate, decision: TranscriptGoalReviewDecision, draft?: { title?: string; description?: string; targetAt?: string | null; tagIds?: string[]; mergeTargetGoalId?: string; mergeExpectedUpdatedAt?: string }) {
     if (!packet) return;
     const request = goalCandidateReviewRequest({ packet, candidate, decision, ...draft });
     if (!request) {
@@ -1434,13 +1448,52 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     setMessage(null);
     try {
       const response = await fetch("/api/mobile/capture/transcripts/packet/goals", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
-      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; goal?: { id: string; targetAt?: string | null; tags?: Array<{ id: string }> } };
-      if (!response.ok || !body.ok || (decision === "ACCEPT" && !body.goal?.id)) throw new Error(body.error || "The goal review decision was not saved.");
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        decision?: string;
+        idempotentReplay?: boolean;
+        goal?: { id: string; targetAt?: string | null; tags?: Array<{ id: string }> };
+        receipt?: { decision?: string; goalCandidateId?: string; goalId?: string | null; goalProgressReceiptId?: string | null };
+        boundaries?: {
+          mergeAppendsOneActorOwnedGoalEvidenceReceipt?: boolean;
+          mergeChangesNoGoalDefinitionStatusTargetOrTags?: boolean;
+          taskCreated?: boolean;
+          targetDateCreated?: boolean;
+          projectTagsApplied?: boolean;
+          reminderCreated?: boolean;
+          calendarMutated?: boolean;
+          externalDelivery?: boolean;
+          publication?: boolean;
+        };
+      };
+      if (!response.ok || !body.ok || ((decision === "ACCEPT" || decision === "MERGE") && !body.goal?.id)) throw new Error(body.error || "The goal review decision was not saved.");
+      if (decision === "MERGE" && (
+        body.decision !== "MERGE"
+        || body.goal?.id !== draft?.mergeTargetGoalId
+        || body.receipt?.decision !== "MERGE"
+        || body.receipt?.goalCandidateId !== candidate.id
+        || body.receipt?.goalId !== draft?.mergeTargetGoalId
+        || !body.receipt?.goalProgressReceiptId
+        || body.boundaries?.mergeAppendsOneActorOwnedGoalEvidenceReceipt !== true
+        || body.boundaries?.mergeChangesNoGoalDefinitionStatusTargetOrTags !== true
+        || body.boundaries?.taskCreated === true
+        || body.boundaries?.targetDateCreated === true
+        || body.boundaries?.projectTagsApplied === true
+        || body.boundaries?.reminderCreated === true
+        || body.boundaries?.calendarMutated === true
+        || body.boundaries?.externalDelivery === true
+        || body.boundaries?.publication === true
+      )) throw new Error("Nest returned incomplete or unsafe evidence-merge proof.");
       const successMessage = decision === "ACCEPT"
         ? body.idempotentReplay
           ? "This exact goal choice was already accepted; nothing was duplicated."
           : `One actor-owned canonical goal was created${body.goal?.targetAt ? " with its reviewed target date" : ""}${body.goal?.tags?.length ? " and project tags" : ""}. No task, focus block, calendar event, message, or delivery was added.`
-        : `${humanize(decision)} saved as goal review state. No goal or task was created.`;
+        : decision === "MERGE"
+          ? body.idempotentReplay
+            ? "This exact transcript evidence was already attached to that goal; no evidence receipt was duplicated."
+            : "Reviewed transcript evidence was added to the selected existing goal. Its definition, status, target, tags, tasks, and project did not change."
+          : `${humanize(decision)} saved as goal review state. No goal or task was created.`;
       await load();
       setMessage(successMessage);
     } catch (error) {
@@ -1598,7 +1651,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <section aria-labelledby="goal-candidate-heading">
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-violet-50 p-2 text-violet-700"><Target aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Candidate goals · not committed</p><h2 id="goal-candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Choose what deserves to become a goal</h2></div></div>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Goal review is held because this packet predates the current transcript review. Build the current packet first." : "Goal review is held until the released transcript and recording evidence are valid. Nothing can become a goal."}</div> : (packet.packet?.goalCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.goalCandidates ?? []).map((candidate) => <GoalCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={reviewGoal} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No goal-language segments are waiting in this packet. Quipsly will not invent a goal to fill the space.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Goal review is held because this packet predates the current transcript review. Build the current packet first." : "Goal review is held until the released transcript and recording evidence are valid. Nothing can become a goal."}</div> : (packet.packet?.goalCandidates ?? []).length ? <div className="grid gap-4 xl:grid-cols-2">{(packet.packet?.goalCandidates ?? []).map((candidate) => <GoalCandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={reviewGoal} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} mergeTargets={packet.packet?.goalMergeTargets ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No goal-language segments are waiting in this packet. Quipsly will not invent a goal to fill the space.</div>}
         </section>
 
         <section aria-labelledby="tasks-heading">
