@@ -320,6 +320,7 @@ export async function POST(request: Request) {
       } | null = null;
       let packetReviewReceipts: Record<string, unknown>[] = [];
       let packetAcceptedReceipt: Record<string, unknown> | null = null;
+      let latestPacketReviewReceipt: Record<string, unknown> | null = null;
       const currentRoom = await tx.callRoom.findFirst({
         where: sessionMutationAccessWhere(roomId, session.user),
         select: {
@@ -425,9 +426,9 @@ export async function POST(request: Request) {
           && receipt.transcriptSnapshotSha256 === packetTranscriptSnapshotSha256
           && isTranscriptNoteReviewDecision(receipt.decision)
         ));
-        const latestReceipt = actorReceipts.at(-1) ?? null;
+        latestPacketReviewReceipt = actorReceipts.at(-1) ?? null;
         packetAcceptedReceipt = actorReceipts.find((receipt) => receipt.decision === "ACCEPT") ?? null;
-        const reviewedDraft = record(latestReceipt?.candidateDraftAfter);
+        const reviewedDraft = record(latestPacketReviewReceipt?.candidateDraftAfter);
         packetCandidateDraftBefore = {
           title: text(reviewedDraft.title, 500) || packetLaneLabel,
           body: text(reviewedDraft.body, 20_000, true) || text(packetEvidence.map((segment) => segment.text).join(" "), 20_000, true),
@@ -470,6 +471,20 @@ export async function POST(request: Request) {
         kind: hasOwn(input, "kind") && kind ? kind : packetCandidateDraftBefore.kind,
         visibility: hasOwn(input, "visibility") && visibility ? visibility : packetCandidateDraftBefore.visibility,
       } : null;
+
+      if (packetContext && decision !== "ACCEPT" && latestPacketReviewReceipt && packetDraftAfter) {
+        const latestDraft = record(latestPacketReviewReceipt.candidateDraftAfter);
+        const exactReplay = latestPacketReviewReceipt.decision === decision
+          && latestPacketReviewReceipt.clientRequestId === clientRequestId
+          && text(latestPacketReviewReceipt.reviewNote, 2_000, true) === (reviewNote || "")
+          && text(latestDraft.title, 500) === packetDraftAfter.title
+          && text(latestDraft.body, 20_000, true) === packetDraftAfter.body
+          && latestDraft.kind === packetDraftAfter.kind
+          && latestDraft.visibility === packetDraftAfter.visibility;
+        if (exactReplay) {
+          return { note: null, receipt: latestPacketReviewReceipt, decision, idempotentReplay: true };
+        }
+      }
 
       if (packetContext && packetAcceptedReceipt) {
         if (decision !== "ACCEPT") {

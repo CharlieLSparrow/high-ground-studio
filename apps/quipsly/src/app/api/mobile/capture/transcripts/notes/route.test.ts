@@ -465,6 +465,33 @@ describe("explicit transcript-derived Session note", () => {
       }) },
     }));
     expect(tx.coachingNote.create).not.toHaveBeenCalled();
+
+    const updatedSource = tx.coachingNote.update.mock.calls[0][0].data.sourceJson;
+    tx.coachingNote.findMany.mockResolvedValue([{ ...summary, sourceJson: updatedSource }]);
+    const replayResponse = await POST(request({
+      clientRequestId: packetRequestId,
+      expectedProviderTextSha256: providerTextSha256,
+      decision: "EDIT",
+      title: "A safer draft",
+      body: "Keep this as a draft until playback review is complete.",
+      visibility: "AUTHOR_PRIVATE",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-provider-only",
+      packetBuildId: "build-provider-only",
+      packetNoteCandidateId: packetRequestId,
+      packetLaneId: "coaching-insights",
+    }));
+    expect(replayResponse.status).toBe(200);
+    expect(await replayResponse.json()).toMatchObject({
+      ok: true,
+      decision: "EDIT",
+      reviewStatus: "EDITED_FOR_REVIEW",
+      idempotentReplay: true,
+      note: null,
+      receipt: { decision: "EDIT", candidateDraftAfter: { title: "A safer draft" } },
+    });
+    expect(tx.coachingNote.update).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a packet note after transcript review changes", async () => {

@@ -2,6 +2,37 @@
 
 Date: 2026-08-03
 
+## Native coaching note candidate review checkpoint
+
+- Quipsly Capture now gives every transcript-derived coaching-note candidate
+  four deliberate decisions: accept, edit for later review, defer, or reject.
+  Only accept can create one canonical note, and it remains disabled until the
+  complete immutable source span has current playback-verification receipts.
+- Edit, defer, and reject append actor-scoped review evidence without creating
+  a note, task, goal, reminder, calendar event, message, delivery, Studio edit,
+  or publication. Exact retries return the prior receipt instead of appending
+  duplicate history.
+- An edited draft survives an append-only packet rebuild only when the ordered
+  segment IDs, provider hashes, and source text still match exactly. Capture
+  discloses that carry-forward and requires a fresh final review.
+- The compact iPhone editor now has stable bounded accessibility identities,
+  correct Transcript-surface scrolling, immediate keyboard dismissal, and a
+  dedicated keyboard Done control. Playback confirmation retains the verified
+  terminal position long enough to survive the button tap and API mutation.
+- A fresh retained Session was operated through the compiled iPhone 17 Pro
+  simulator against local Nest. It played and confirmed three source segments,
+  rebuilt the packet, saved and re-read an edited noncanonical draft, created
+  one canonical note in a separate accept step, created one canonical goal,
+  and read the goal from Today.
+- Live packet and PostgreSQL readback agree on 3 playback receipts, 1 canonical
+  note, 1 canonical goal, 0 tasks, and 0 calendar links. Focused route coverage
+  passes 22/22, product contracts pass 257/257, strict TypeScript passes, the
+  native build and both focused simulator journeys pass, and the mobile source
+  contract passes. No Cloud Build, deployment, TestFlight/App Store action,
+  production write, provider mutation, invitation, or delivery occurred.
+- Architecture and operated evidence are in
+  `docs/coordination/2026-08-03-coaching-note-candidate-review.md`.
+
 ## Playback-reviewed transcript speaker attribution checkpoint
 
 - Nest now identifies one provider diarization cluster as a real Session

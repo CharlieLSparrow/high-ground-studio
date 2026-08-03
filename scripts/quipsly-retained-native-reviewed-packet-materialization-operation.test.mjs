@@ -13,18 +13,22 @@ const [operation, runner, library, runtimeTests, capturePhoneShell] = await Prom
 
 assert.match(operation, /QUIPSLY_RETAINED_REVIEWED_PACKET_OPERATION === "1"/);
 assert.match(operation, /requires an explicit loopback PostgreSQL database/);
+assert.match(operation, /const attempts = method === "GET" \? 3 : 1/);
 assert.match(operation, /sourceSHA256 === sourceAsset\.checksum/);
 assert.match(operation, /transcriptSegmentVerification\.findMany/);
 assert.match(operation, /playbackPositionSeconds >= segment\.endSeconds - 0\.25/);
-assert.match(operation, /canonicalMaterialization: \{ notes: 0, tasks: 0, goals: 1, calendarLinks: 0 \}/);
+assert.match(operation, /nonCanonicalNoteDraftReviewed: true/);
+assert.match(operation, /canonicalMaterialization: \{ notes: 1, tasks: 0, goals: 1, calendarLinks: 0 \}/);
 assert.match(runner, /transcript-packet-materialization\)/);
 assert.match(runner, /quipsly-capture-runtime-playback-fixture-/);
 assert.match(library, /#if DEBUG[\s\S]*installRuntimeSmokePlaybackFixtureIfRequested/);
 assert.match(library, /ownerAccountID == AuthManager\.currentStoredOwnerID\(\)/);
 assert.match(library, /actualSHA256 == expectedSHA256/);
-assert.match(runtimeTests, /testReviewedTranscriptPacketMaterializesOneCanonicalGoal/);
+assert.match(runtimeTests, /testReviewedTranscriptPacketMaterializesCanonicalNoteAndGoal/);
 assert.match(runtimeTests, /CaptureTranscriptConfirmAsIsButton_/);
 assert.match(runtimeTests, /CaptureTranscriptBuildCurrentPacketButton/);
+assert.match(runtimeTests, /CapturePacketNoteEditButton_/);
+assert.match(runtimeTests, /CapturePacketNoteSaved_/);
 assert.match(runtimeTests, /CapturePacketGoalCreateButton/);
 assert.match(capturePhoneShell, /tab == \.today[\s\S]*todayClient\.load\(\)/,
   "entering Today must refresh cross-surface canonical work instead of showing the launch snapshot");

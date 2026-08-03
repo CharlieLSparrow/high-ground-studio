@@ -259,10 +259,33 @@ private struct CaptureTranscriptNoteMutationResponse: Codable {
         let kind: String
         let visibility: String
     }
+    struct ReviewReceipt: Codable {
+        let id: String
+        let decision: String
+        let packetNoteCandidateId: String
+        let reviewedByUserId: String
+        let noteId: String?
+    }
+    struct Boundaries: Codable {
+        let packetCandidateReviewed: Bool
+        let packetSnapshotRechecked: Bool
+        let humanReviewedSourceRequired: Bool
+        let noteCreated: Bool
+        let taskCreated: Bool
+        let goalCreated: Bool
+        let calendarMutated: Bool
+        let messageSent: Bool
+        let externalDelivery: Bool
+        let publication: Bool
+    }
     let ok: Bool
     let error: String?
     let idempotentReplay: Bool?
+    let decision: String?
+    let reviewStatus: String?
+    let receipt: ReviewReceipt?
     let note: NoteRecord?
+    let boundaries: Boundaries?
 }
 
 private struct CapturePacketActionMutationResponse: Codable {
@@ -377,6 +400,20 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
 }
 
 struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
+    struct LastHumanReview: Codable, Equatable {
+        let receiptId: String
+        let decision: String
+        let reviewedAt: String
+        let reviewedByUserId: String
+    }
+    struct CarriedForwardDraft: Codable, Equatable {
+        let receiptId: String
+        let decision: String
+        let reviewedAt: String
+        let reviewedByUserId: String
+        let packetBuildId: String
+        let exactSourceMatch: Bool
+    }
     let id: String
     let clientRequestId: String
     let roomId: String
@@ -403,8 +440,19 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     let suggestedBody: String
     let suggestedKind: String
     let suggestedVisibility: String
+    var reviewStatus: String? = nil
     let humanApprovalRequired: Bool
     let committedNoteId: String?
+    var lastHumanReview: LastHumanReview? = nil
+    var carriedForwardDraft: CarriedForwardDraft? = nil
+
+    var accessibilityKey: String {
+        let digest = SHA256.hash(data: Data(id.utf8))
+            .prefix(16)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "\(laneId.prefix(28))-\(digest)"
+    }
 
     static func preview(roomID: String) -> Self {
         .init(
@@ -431,8 +479,11 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
             suggestedBody: "My goal is to publish a thoughtful first episode, and I will review the final cut this week.",
             suggestedKind: MobileSessionNoteKind.sessionNote.rawValue,
             suggestedVisibility: MobileSessionNoteVisibility.authorPrivate.rawValue,
+            reviewStatus: "READY_FOR_HUMAN_REVIEW",
             humanApprovalRequired: true,
-            committedNoteId: nil
+            committedNoteId: nil,
+            lastHumanReview: nil,
+            carriedForwardDraft: nil
         )
     }
 }
@@ -968,12 +1019,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         }
     }
 
-    func createPacketNote(
+    func reviewPacketNote(
         candidate: CapturePacketNoteCandidate,
-        title: String,
-        body noteBody: String,
-        kind: MobileSessionNoteKind,
-        visibility: MobileSessionNoteVisibility,
+        decision: String,
+        title: String? = nil,
+        body noteBody: String? = nil,
+        kind: MobileSessionNoteKind? = nil,
+        visibility: MobileSessionNoteVisibility? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -990,18 +1042,16 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         errorMessage = nil
         defer { isMutating = false }
         do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            let normalizedDecision = decision.uppercased()
+            guard ["ACCEPT", "EDIT", "DEFER", "REJECT"].contains(normalizedDecision) else {
+                throw captureTranscriptClientError("Choose whether to save, edit, defer, or reject this note candidate.")
+            }
+            var requestBody: [String: Any] = [
                 "roomId": candidate.roomId,
                 "segmentId": candidate.segmentId,
                 "clientRequestId": candidate.clientRequestId,
                 "expectedProviderTextSha256": candidate.providerTextSha256,
-                "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
-                "body": noteBody.trimmingCharacters(in: .whitespacesAndNewlines),
-                "kind": kind.rawValue,
-                "visibility": visibility.rawValue,
+                "decision": normalizedDecision,
                 "surface": "ios-capture-session-packet-review",
                 "transcriptJobId": candidate.transcriptJobId,
                 "recordingAssetId": candidate.recordingAssetId,
@@ -1009,15 +1059,62 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 "packetBuildId": candidate.packetBuildId,
                 "packetNoteCandidateId": candidate.id,
                 "packetLaneId": candidate.laneId,
-            ])
+            ]
+            if let title { requestBody["title"] = title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if let noteBody { requestBody["body"] = noteBody.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if let kind { requestBody["kind"] = kind.rawValue }
+            if let visibility { requestBody["visibility"] = visibility.rawValue }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(CaptureTranscriptNoteMutationResponse.self, from: data)
-            guard response.statusCode < 400, payload.ok, let note = payload.note else {
-                throw captureTranscriptError(data: data, fallback: payload.error ?? "The packet note could not be saved.")
+            let expectedStatus = switch normalizedDecision {
+            case "ACCEPT": "ACCEPTED_AS_NOTE"
+            case "EDIT": "EDITED_FOR_REVIEW"
+            case "REJECT": "REJECTED_BY_HUMAN"
+            default: "DEFERRED_BY_HUMAN"
             }
-            message = payload.idempotentReplay == true
-                ? "That exact packet note was already saved."
-                : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.decision == normalizedDecision,
+                  payload.reviewStatus == expectedStatus,
+                  let receipt = payload.receipt,
+                  receipt.decision == normalizedDecision,
+                  receipt.packetNoteCandidateId == candidate.id,
+                  let boundaries = payload.boundaries,
+                  boundaries.packetCandidateReviewed,
+                  boundaries.packetSnapshotRechecked,
+                  boundaries.humanReviewedSourceRequired,
+                  !boundaries.taskCreated,
+                  !boundaries.goalCreated,
+                  !boundaries.calendarMutated,
+                  !boundaries.messageSent,
+                  !boundaries.externalDelivery,
+                  !boundaries.publication else {
+                throw captureTranscriptError(data: data, fallback: payload.error ?? "Nest returned incomplete note-review evidence.")
+            }
+            if normalizedDecision == "ACCEPT" {
+                guard let note = payload.note, receipt.noteId == note.id else {
+                    throw captureTranscriptClientError("Nest acknowledged acceptance without one matching canonical note.")
+                }
+                message = payload.idempotentReplay == true
+                    ? "That exact packet note choice was already accepted."
+                    : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
+            } else {
+                guard payload.note == nil, receipt.noteId == nil, !boundaries.noteCreated else {
+                    throw captureTranscriptClientError("Nest created a note for a non-canonical review decision. The response was rejected.")
+                }
+                let action = normalizedDecision == "EDIT"
+                    ? "Edited draft saved for review"
+                    : normalizedDecision == "DEFER"
+                        ? "Candidate deferred"
+                        : "Candidate rejected"
+                message = payload.idempotentReplay == true
+                    ? "That exact \(action.lowercased()) decision was already preserved."
+                    : "\(action) in packet history. No canonical note, task, goal, calendar event, message, or delivery was created."
+            }
             await loadPacketCandidates(roomID: candidate.roomId)
             return true
         } catch {
@@ -1651,6 +1748,14 @@ private func captureTranscriptError(data: Data, fallback: String) -> NSError {
     return NSError(domain: "CaptureTranscriptCorrection", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
 }
 
+private func captureTranscriptClientError(_ message: String) -> NSError {
+    NSError(
+        domain: "QuipslyCapture.TranscriptReview",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: message]
+    )
+}
+
 private func captureTranscriptJSONNullable(_ value: String?) -> Any {
     value ?? NSNull()
 }
@@ -1768,8 +1873,10 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     private var player: AVAudioPlayer?
     private var playbackClock: Task<Void, Never>?
     private var activeRecordingID: UUID?
+    private var activeAnchorID: String?
     private var activeSegmentEnd: TimeInterval?
     private var playedSegmentIDs = Set<String>()
+    @Published private var confirmedPositionsByAnchorID: [String: TimeInterval] = [:]
     private var pauseAt: TimeInterval?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
 
@@ -1839,7 +1946,12 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
                 throw NSError(domain: "CaptureTranscriptPlayback", code: 2, userInfo: [NSLocalizedDescriptionKey: "The retained recording could not begin playback."])
             }
             self.player = player
+            if let activeRecordingID, activeRecordingID != recording.id {
+                confirmedPositionsByAnchorID.removeAll()
+                playedSegmentIDs.removeAll()
+            }
             activeRecordingID = recording.id
+            activeAnchorID = anchorID
             activeSegmentEnd = endSeconds
             currentTime = player.currentTime
             pauseAt = min(player.duration, endSeconds + 2)
@@ -1859,17 +1971,19 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     func confirmedPosition(for segment: CaptureTranscriptSegment, recording: LocalRecording?) -> TimeInterval? {
         guard recording?.id == activeRecordingID,
               playedSegmentIDs.contains(segment.id),
-              currentTime >= max(segment.startSeconds, segment.endSeconds - 0.25),
-              currentTime <= segment.endSeconds + 3 else { return nil }
-        return currentTime
+              let position = confirmedPositionsByAnchorID[segment.id],
+              position >= max(segment.startSeconds, segment.endSeconds - 0.25),
+              position <= segment.endSeconds + 3 else { return nil }
+        return position
     }
 
     func confirmedPosition(for sample: CaptureTranscriptSpeakerSample, recording: LocalRecording?) -> TimeInterval? {
         guard recording?.id == activeRecordingID,
               playedSegmentIDs.contains(sample.segmentId),
-              currentTime >= max(sample.startSeconds, sample.endSeconds - 0.25),
-              currentTime <= sample.endSeconds + 3 else { return nil }
-        return currentTime
+              let position = confirmedPositionsByAnchorID[sample.segmentId],
+              position >= max(sample.startSeconds, sample.endSeconds - 0.25),
+              position <= sample.endSeconds + 3 else { return nil }
+        return position
     }
 
     func pause(resetPosition: Bool) {
@@ -1881,10 +1995,12 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         if resetPosition {
             player = nil
             activeRecordingID = nil
+            activeAnchorID = nil
             activeSegmentEnd = nil
             currentTime = 0
             pauseAt = nil
             playedSegmentIDs.removeAll()
+            confirmedPositionsByAnchorID.removeAll()
         }
     }
 
@@ -1895,12 +2011,24 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled, let self, let player = self.player else { return }
                 self.currentTime = player.currentTime
+                self.retainConfirmedPositionIfEligible(player.currentTime)
                 if let pauseAt = self.pauseAt, player.currentTime >= pauseAt {
                     self.pause(resetPosition: false)
                     return
                 }
             }
         }
+    }
+
+    private func retainConfirmedPositionIfEligible(_ position: TimeInterval) {
+        guard let activeAnchorID,
+              let activeSegmentEnd,
+              position >= max(0, activeSegmentEnd - 0.25),
+              position <= activeSegmentEnd + 3 else { return }
+        confirmedPositionsByAnchorID[activeAnchorID] = max(
+            confirmedPositionsByAnchorID[activeAnchorID] ?? 0,
+            position
+        )
     }
 }
 
@@ -1915,6 +2043,7 @@ extension CaptureTranscriptPlaybackController: AVAudioPlayerDelegate {
                 self.activeSegmentEnd ?? player.duration
             )
             self.currentTime = max(self.currentTime, terminalPosition)
+            self.retainConfirmedPositionIfEligible(terminalPosition)
             self.pause(resetPosition: false)
             if !flag { self.errorMessage = "Playback ended before iOS could finish the retained recording." }
         }
@@ -2119,6 +2248,7 @@ struct CaptureTranscriptReviewView: View {
                 .padding(.bottom, 72)
             }
             .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
+            .scrollDismissesKeyboard(.immediately)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Transcript review")
             .navigationBarTitleDisplayMode(.inline)
@@ -2562,6 +2692,16 @@ struct CapturePacketNoteReviewPreviewView: View {
 }
 
 private struct CapturePacketNoteCandidateCard: View {
+    private enum ReviewMode {
+        case accept
+        case edit
+    }
+
+    private enum FocusedField: Hashable {
+        case title
+        case body
+    }
+
     let candidate: CapturePacketNoteCandidate
     let canUseProjectTeamNotes: Bool
     let previewOnly: Bool
@@ -2569,11 +2709,13 @@ private struct CapturePacketNoteCandidateCard: View {
     @ObservedObject var client: CaptureTranscriptCorrectionClient
     let onOpenSource: () -> Void
 
-    @State private var isReviewing = false
+    @State private var reviewMode: ReviewMode?
+    @State private var isConfirmingReject = false
     @State private var title: String
     @State private var noteBody: String
     @State private var kind: MobileSessionNoteKind
     @State private var visibility: MobileSessionNoteVisibility
+    @FocusState private var focusedField: FocusedField?
 
     init(
         candidate: CapturePacketNoteCandidate,
@@ -2595,7 +2737,9 @@ private struct CapturePacketNoteCandidateCard: View {
         _visibility = State(initialValue: MobileSessionNoteVisibility(rawValue: candidate.suggestedVisibility) ?? .authorPrivate)
     }
 
-    private var accepted: Bool { candidate.committedNoteId?.isEmpty == false }
+    private var accepted: Bool {
+        candidate.committedNoteId?.isEmpty == false || candidate.reviewStatus == "ACCEPTED_AS_NOTE"
+    }
     private var laneRejected: Bool { candidate.laneStatus == "REJECTED_BY_HUMAN" }
     private var sourceFullyReviewed: Bool {
         candidate.transcriptReviewStatus == "human-reviewed"
@@ -2607,6 +2751,16 @@ private struct CapturePacketNoteCandidateCard: View {
     private var availableVisibilities: [MobileSessionNoteVisibility] {
         canUseProjectTeamNotes ? MobileSessionNoteVisibility.allCases : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
     }
+    private var reviewStatusLabel: String {
+        switch candidate.reviewStatus {
+        case "EDITED_FOR_REVIEW": "EDITED DRAFT"
+        case "DEFERRED_BY_HUMAN": "DEFERRED"
+        case "REJECTED_BY_HUMAN": "REJECTED"
+        case "ACCEPTED_AS_NOTE": "SAVED"
+        default: candidate.laneStatus.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+    private var isEditingDraft: Bool { reviewMode == .edit }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2619,15 +2773,16 @@ private struct CapturePacketNoteCandidateCard: View {
                         .font(.headline)
                 }
                 Spacer()
-                Text(accepted ? "SAVED" : candidate.laneStatus.replacingOccurrences(of: "_", with: " "))
+                Text(accepted ? "SAVED" : reviewStatusLabel)
                     .font(.caption2.weight(.black))
-                    .foregroundStyle(accepted ? .green : laneRejected ? .red : .orange)
+                    .foregroundStyle(accepted ? .green : candidate.reviewStatus == "REJECTED_BY_HUMAN" || laneRejected ? .red : .orange)
                     .multilineTextAlignment(.trailing)
             }
             Text(candidate.sourceText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CapturePacketNoteSourceText_\(candidate.accessibilityKey)")
             if (candidate.segmentIds?.count ?? 1) > 1 {
                 Label("Complete thought across \(candidate.segmentIds?.count ?? 1) immutable transcript segments", systemImage: "link")
                     .font(.caption2.weight(.semibold))
@@ -2638,7 +2793,7 @@ private struct CapturePacketNoteCandidateCard: View {
             }
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
-            .accessibilityIdentifier("CapturePacketNoteSourceButton_\(candidate.id)")
+            .accessibilityIdentifier("CapturePacketNoteSourceButton_\(candidate.accessibilityKey)")
             if !accepted && !sourceFullyReviewed {
                 Label("Listen through every source segment and confirm it before saving this candidate.", systemImage: "ear.badge.exclamationmark")
                     .font(.caption.weight(.semibold))
@@ -2646,24 +2801,42 @@ private struct CapturePacketNoteCandidateCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteSourceReviewRequired")
             }
+            if let carried = candidate.carriedForwardDraft, carried.exactSourceMatch {
+                Label(
+                    "Your prior draft was carried into this rebuilt packet because its source span and provider evidence still match exactly. Review it again before saving.",
+                    systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CapturePacketNoteCarriedDraft_\(candidate.accessibilityKey)")
+            }
 
             if accepted {
                 Label("Saved as one canonical Session note", systemImage: "checkmark.circle.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.green)
-                    .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.id)")
-            } else if isReviewing {
+                    .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.accessibilityKey)")
+            } else if reviewMode != nil {
                 Divider()
-                Label("Save one source-linked Session note", systemImage: "note.text.badge.plus")
+                Label(
+                    isEditingDraft ? "Refine candidate for later review" : "Save one source-linked Session note",
+                    systemImage: isEditingDraft ? "pencil.line" : "note.text.badge.plus"
+                )
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
                 TextField("Note title (optional)", text: $title, axis: .vertical)
                     .lineLimit(1...3)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedField, equals: .title)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .body }
                     .accessibilityIdentifier("CapturePacketNoteTitleField")
                 TextField("Note", text: $noteBody, axis: .vertical)
                     .lineLimit(3...7)
                     .textFieldStyle(.roundedBorder)
+                    .focused($focusedField, equals: .body)
+                    .submitLabel(.done)
                     .accessibilityIdentifier("CapturePacketNoteBodyField")
                 Picker("Purpose", selection: $kind) {
                     ForEach(availableKinds) { value in Text(value.title).tag(value) }
@@ -2681,62 +2854,96 @@ private struct CapturePacketNoteCandidateCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteAudienceBoundary")
                 HStack {
-                    Button("Save source-linked note") {
+                    Button(isEditingDraft ? "Save edited draft" : "Save source-linked note") {
                         Task {
-                            if await client.createPacketNote(
+                            if await client.reviewPacketNote(
                                 candidate: candidate,
+                                decision: isEditingDraft ? "EDIT" : "ACCEPT",
                                 title: title,
                                 body: noteBody,
                                 kind: kind,
                                 visibility: visibility,
                                 previewOnly: previewOnly
                             ) {
-                                isReviewing = false
+                                reviewMode = nil
                             }
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                     .frame(minHeight: 44)
-                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked || !sourceFullyReviewed)
-                    .accessibilityIdentifier("CapturePacketCreateNoteButton")
-                    Button("Cancel") { isReviewing = false }
+                    .disabled(
+                        noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || client.isMutating
+                            || previewOnly
+                            || decisionsLocked
+                            || (!isEditingDraft && !sourceFullyReviewed)
+                    )
+                    .accessibilityIdentifier("CapturePacketCreateNoteButton_\(candidate.accessibilityKey)")
+                    Button("Cancel") { reviewMode = nil }
                         .buttonStyle(.bordered)
                         .frame(minHeight: 44)
-                        .accessibilityIdentifier("CapturePacketCancelNoteButton")
+                        .accessibilityIdentifier("CapturePacketCancelNoteButton_\(candidate.accessibilityKey)")
                 }
-                Text("Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.")
+                Text(isEditingDraft
+                    ? "Preserves one reviewed draft and audit receipt. It creates no canonical note, task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication."
+                    : "Creates one revisioned canonical note. It creates no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("CapturePacketNoteBoundary")
             } else {
-                Button {
-                    title = candidate.suggestedTitle
-                    noteBody = candidate.suggestedBody
-                    kind = availableKinds.contains(where: { $0.rawValue == candidate.suggestedKind })
-                        ? MobileSessionNoteKind(rawValue: candidate.suggestedKind) ?? .sessionNote
-                        : .sessionNote
-                    visibility = availableVisibilities.contains(where: { $0.rawValue == candidate.suggestedVisibility })
-                        ? MobileSessionNoteVisibility(rawValue: candidate.suggestedVisibility) ?? .authorPrivate
-                        : .authorPrivate
-                    isReviewing = true
-                } label: {
-                    Label(
-                        sourceFullyReviewed ? "Review & save note" : "Review note details",
-                        systemImage: "note.text.badge.plus"
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        beginReview(.accept)
+                    } label: {
+                        Label(
+                            sourceFullyReviewed ? "Review & save note" : "Review note details",
+                            systemImage: "note.text.badge.plus"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .frame(minHeight: 44)
+                    .disabled(client.isMutating || decisionsLocked || laneRejected)
+                    .accessibilityIdentifier("CapturePacketReviewNoteButton_\(candidate.accessibilityKey)")
+                    .accessibilityHint(
+                        sourceFullyReviewed
+                            ? "Creates nothing until you inspect purpose and audience and press Save source-linked note."
+                            : "Inspect purpose and audience now. Saving remains unavailable until you listen through and confirm every source segment."
                     )
+
+                    HStack {
+                        Button("Edit candidate") { beginReview(.edit) }
+                            .buttonStyle(.bordered)
+                            .frame(minHeight: 44)
+                            .disabled(client.isMutating || decisionsLocked || laneRejected)
+                            .accessibilityIdentifier("CapturePacketNoteEditButton_\(candidate.accessibilityKey)")
+                        Button("Defer") {
+                            Task {
+                                _ = await client.reviewPacketNote(
+                                    candidate: candidate,
+                                    decision: "DEFER",
+                                    previewOnly: previewOnly
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(minHeight: 44)
+                        .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
+                        .accessibilityIdentifier("CapturePacketNoteDeferButton_\(candidate.accessibilityKey)")
+                        Button("Reject", role: .destructive) { isConfirmingReject = true }
+                            .buttonStyle(.bordered)
+                            .frame(minHeight: 44)
+                            .disabled(client.isMutating || previewOnly || decisionsLocked || laneRejected)
+                            .accessibilityIdentifier("CapturePacketNoteRejectButton_\(candidate.accessibilityKey)")
+                    }
+                    Text("Edit, defer, and reject preserve review history without creating a canonical note. Only the separate playback-gated save can create one.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CapturePacketNoteDecisionBoundary")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
-                .frame(minHeight: 44)
-                .disabled(client.isMutating || decisionsLocked || laneRejected)
-                .accessibilityIdentifier("CapturePacketReviewNoteButton")
-                .accessibilityHint(
-                    sourceFullyReviewed
-                        ? "Creates nothing until you inspect purpose and audience and press Save source-linked note."
-                        : "Inspect purpose and audience now. Saving remains unavailable until you listen through and confirm every source segment."
-                )
                 if laneRejected {
                     Text("This lane was rejected. Reopen it before saving one of its candidates.")
                         .font(.caption2.weight(.semibold))
@@ -2746,6 +2953,47 @@ private struct CapturePacketNoteCandidateCard: View {
         }
         .padding(12)
         .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .confirmationDialog(
+            "Reject this note candidate?",
+            isPresented: $isConfirmingReject,
+            titleVisibility: .visible
+        ) {
+            Button("Reject candidate", role: .destructive) {
+                Task {
+                    _ = await client.reviewPacketNote(
+                        candidate: candidate,
+                        decision: "REJECT",
+                        previewOnly: previewOnly
+                    )
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The source and candidate remain in packet history. No canonical note, task, calendar event, message, delivery, or publication is created.")
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                if focusedField != nil {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("CapturePacketNoteKeyboardDone")
+                }
+            }
+        }
+    }
+
+    private func beginReview(_ mode: ReviewMode) {
+        focusedField = nil
+        title = candidate.suggestedTitle
+        noteBody = candidate.suggestedBody
+        kind = availableKinds.contains(where: { $0.rawValue == candidate.suggestedKind })
+            ? MobileSessionNoteKind(rawValue: candidate.suggestedKind) ?? .sessionNote
+            : .sessionNote
+        visibility = availableVisibilities.contains(where: { $0.rawValue == candidate.suggestedVisibility })
+            ? MobileSessionNoteVisibility(rawValue: candidate.suggestedVisibility) ?? .authorPrivate
+            : .authorPrivate
+        reviewMode = mode
     }
 }
 

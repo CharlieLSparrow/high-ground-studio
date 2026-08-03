@@ -64,15 +64,29 @@ async function authenticate(password) {
 }
 
 async function requestJson(url, { idToken, method = "GET", body } = {}) {
-  const response = await fetch(url, {
-    method,
-    headers: {
-      authorization: `Bearer ${idToken}`,
-      "cache-control": "no-cache",
-      ...(body ? { "content-type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const attempts = method === "GET" ? 3 : 1;
+  let response;
+  let lastNetworkError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      response = await fetch(url, {
+        method,
+        headers: {
+          authorization: `Bearer ${idToken}`,
+          "cache-control": "no-cache",
+          ...(body ? { "content-type": "application/json" } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      break;
+    } catch (error) {
+      lastNetworkError = error;
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+      }
+    }
+  }
+  if (!response) throw lastNetworkError;
   const payload = await response.json().catch(() => null);
   assert(response.status === 200 && payload?.ok === true,
     `${method} ${new URL(url).pathname} failed with HTTP ${response.status}: ${payload?.error || "unknown error"}`);
@@ -93,6 +107,17 @@ function exactGoalCandidate(packetBody) {
   assert(goal && goal.segmentIds?.length === 3 && goal.sourceSpan?.segments?.length === 3,
     "The fresh deterministic packet lost the complete three-segment goal evidence span.");
   return goal;
+}
+
+function exactNoteCandidate(packetBody) {
+  const candidates = packetBody?.packet?.noteCandidates;
+  const note = Array.isArray(candidates)
+    ? candidates.find((candidate) => candidate?.sourceText === EXPECTED_SOURCE_TEXT
+      && candidate?.laneId === "client-follow-up")
+    : null;
+  assert(note && note.segmentIds?.length === 3 && note.sourceSpan?.segments?.length === 3,
+    "The fresh deterministic packet lost the complete three-segment note evidence span.");
+  return note;
 }
 
 export async function cloneRetainedFixture(prisma) {
@@ -299,8 +324,13 @@ async function main() {
     });
     const before = await readPacket(baseURL, idToken, fixture.roomID);
     const beforeGoal = exactGoalCandidate(before);
+    const beforeNote = exactNoteCandidate(before);
+    const editedNoteTitle = `Reviewed decision · ${fixture.roomID.slice(-13)}`;
+    const editedNoteBody = "Preserve the original recording, verify its exact checksum, and wait for complete participant consent plus explicit human release.";
     assert(beforeGoal.committedGoalId == null && beforeGoal.transcriptReviewStatus === "provider",
       "The fresh packet must begin provider-only with no canonical goal.");
+    assert(beforeNote.committedNoteId == null && beforeNote.transcriptReviewStatus === "provider",
+      "The fresh packet must begin provider-only with no canonical Session note.");
     assert(before.packet.transcriptReview.providerOnlySegmentCount === 5,
       "The fresh packet must begin with all five immutable transcript segments provider-only.");
 
@@ -317,6 +347,10 @@ async function main() {
         QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: fixture.roomTitle,
         QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS: fixture.goalSegmentIDs.join(","),
         QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE: beforeGoal.suggestedTitle,
+        QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_SOURCE_TEXT: EXPECTED_SOURCE_TEXT,
+        QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_LANE_ID: beforeNote.laneId,
+        QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_TITLE: editedNoteTitle,
+        QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_BODY: editedNoteBody,
         QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_PATH: fixture.sourcePath,
         QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID: randomUUID(),
         QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID: fixture.assetID,
@@ -334,8 +368,13 @@ async function main() {
 
     const after = await readPacket(baseURL, idToken, fixture.roomID);
     const afterGoal = exactGoalCandidate(after);
+    const afterNote = exactNoteCandidate(after);
     assert(afterGoal.transcriptReviewStatus === "human-reviewed" && afterGoal.committedGoalId,
       "The rebuilt packet must correlate its fully reviewed source span to one canonical goal.");
+    assert(afterNote.transcriptReviewStatus === "human-reviewed" && afterNote.committedNoteId
+      && afterNote.suggestedTitle === editedNoteTitle && afterNote.suggestedBody === editedNoteBody
+      && afterNote.reviewStatus === "ACCEPTED_AS_NOTE" && afterNote.lastHumanReview?.decision === "ACCEPT",
+    "The rebuilt packet must read back the edited exact-source draft as one accepted canonical Session note.");
     const [verifications, transcriptSegments, goals, actions, notes, calendarLinks] = await Promise.all([
       prisma.transcriptSegmentVerification.findMany({ where: { roomId: fixture.roomID } }),
       prisma.transcriptSegment.findMany({ where: { transcriptJobId: fixture.transcriptJobID } }),
@@ -357,7 +396,14 @@ async function main() {
     assert(actions.length === 0, "Goal creation must not create a task.");
     assert(calendarLinks.length === 0, "Goal creation must not create calendar placement.");
     const canonicalNotes = notes.filter((note) => asObject(note.sourceJson).schema === "quipsly-transcript-derived-note-v1");
-    assert(canonicalNotes.length === 0, "Goal creation must not materialize a packet note.");
+    assert(canonicalNotes.length === 1 && canonicalNotes[0].id === afterNote.committedNoteId
+      && canonicalNotes[0].title === editedNoteTitle && canonicalNotes[0].body === editedNoteBody,
+    "The operated note review must create exactly one canonical note with the reviewed draft.");
+    const canonicalNoteSource = asObject(canonicalNotes[0].sourceJson);
+    assert(canonicalNoteSource.packetNoteCandidateId === afterNote.id
+      && canonicalNoteSource.recordingAssetId === fixture.assetID
+      && JSON.stringify(canonicalNoteSource.segmentIds) === JSON.stringify(fixture.goalSegmentIDs),
+    "The canonical note must retain the current packet candidate and complete immutable source span.");
     await stat(resultBundle);
 
     console.log(JSON.stringify({
@@ -368,11 +414,13 @@ async function main() {
       exactSourcePlayback: true,
       humanReviewedSegments: 3,
       appendOnlyPacketRebuild: true,
-      canonicalMaterialization: { notes: 0, tasks: 0, goals: 1, calendarLinks: 0 },
+      nonCanonicalNoteDraftReviewed: true,
+      canonicalMaterialization: { notes: 1, tasks: 0, goals: 1, calendarLinks: 0 },
       roomID: fixture.roomID,
       recordingAssetID: fixture.assetID,
       transcriptJobID: fixture.transcriptJobID,
       canonicalGoalID: goals[0].id,
+      canonicalNoteID: canonicalNotes[0].id,
       sourceSHA256: fixture.sourceSHA256,
       resultBundle,
       credentialsPrinted: false,

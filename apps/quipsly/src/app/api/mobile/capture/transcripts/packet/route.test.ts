@@ -266,6 +266,98 @@ describe("packet note candidates", () => {
     });
   });
 
+  it("carries an exact-source non-canonical draft into a rebuilt packet without carrying its decision", () => {
+    const sourceText = latestTranscriptJob.segments[0].text;
+    const sourceTextSha256 = createHash("sha256").update(sourceText).digest("hex");
+    const providerTextSha256 = createHash("sha256").update(sourceText).digest("hex");
+    const historicalReceipt = {
+      id: "historical-edit-receipt",
+      kind: "quipsly-note-candidate-review-receipt-v1",
+      decision: "EDIT",
+      packetNoteCandidateId: "packet-note-packet-build-old-coaching-insights-segment-1",
+      reviewedByUserId: "user-1",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      packetBuildId: "packet-build-old",
+      summaryNoteId: "summary-old",
+      packetLaneId: "coaching-insights",
+      segmentId: "segment-1",
+      segmentIds: ["segment-1"],
+      sourceTextSha256,
+      providerTextSha256,
+      reviewedAt: "2026-08-03T12:00:00.000Z",
+      candidateDraftAfter: {
+        title: "A durable reviewed insight",
+        body: "Keep the exact-source draft through packet rebuild.",
+        kind: "DECISION",
+        visibility: "AUTHOR_PRIVATE",
+      },
+    };
+    const currentSummary = {
+      ...noteSummary,
+      id: "summary-current",
+      sourceJson: {
+        ...noteSummary.sourceJson,
+        roomId: "room-1",
+        transcriptJobId: "job-1",
+        recordingAssetId: "asset-1",
+        reviewLanes: [{
+          ...noteSummary.sourceJson.reviewLanes[0],
+          items: [{
+            ...noteSummary.sourceJson.reviewLanes[0].items[0],
+            sourceTextSha256,
+          }],
+        }],
+      },
+    };
+    const historicalSummary = {
+      id: "summary-old",
+      kind: "SUMMARY",
+      sourceJson: {
+        source: "transcript-packet-builder",
+        roomId: "room-1",
+        transcriptJobId: "job-1",
+        recordingAssetId: "asset-1",
+        noteCandidateReviewReceipts: [historicalReceipt],
+      },
+    };
+
+    expect(buildPacketNoteCandidates({
+      summary: currentSummary,
+      latestTranscriptJob,
+      notes: [historicalSummary],
+      packetBuildId: "packet-build-current",
+      actorUserId: "user-1",
+    })[0]).toMatchObject({
+      id: "packet-note-packet-build-current-coaching-insights-segment-1",
+      suggestedTitle: "A durable reviewed insight",
+      suggestedBody: "Keep the exact-source draft through packet rebuild.",
+      suggestedKind: "DECISION",
+      reviewStatus: "READY_FOR_HUMAN_REVIEW",
+      lastHumanReview: null,
+      carriedForwardDraft: {
+        receiptId: "historical-edit-receipt",
+        decision: "EDIT",
+        packetBuildId: "packet-build-old",
+        exactSourceMatch: true,
+      },
+    });
+
+    const changedEvidence = structuredClone(historicalSummary);
+    changedEvidence.sourceJson.noteCandidateReviewReceipts[0].providerTextSha256 = "0".repeat(64);
+    expect(buildPacketNoteCandidates({
+      summary: currentSummary,
+      latestTranscriptJob,
+      notes: [changedEvidence],
+      packetBuildId: "packet-build-current",
+      actorUserId: "user-1",
+    })[0]).toMatchObject({
+      suggestedTitle: "Insights and decisions",
+      carriedForwardDraft: null,
+    });
+  });
+
   it("uses the accepted correction while preserving the immutable provider hash", () => {
     const providerText = latestTranscriptJob.segments[0].text;
     const correctedJob = {

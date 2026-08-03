@@ -113,6 +113,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let transcriptPhoneCorrectionText: String?
         let transcriptConflictCorrectionText: String?
         let expectedPacketGoalTitle: String?
+        let expectedPacketNoteSourceText: String?
+        let expectedPacketNoteLaneID: String?
+        let packetNoteEditedTitle: String?
+        let packetNoteEditedBody: String?
         let recordingFixtureLocalID: String?
         let recordingFixtureAssetID: String?
     }
@@ -172,6 +176,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 transcriptPhoneCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT"],
                 transcriptConflictCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT"],
                 expectedPacketGoalTitle: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE"],
+                expectedPacketNoteSourceText: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_SOURCE_TEXT"],
+                expectedPacketNoteLaneID: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_LANE_ID"],
+                packetNoteEditedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_TITLE"],
+                packetNoteEditedBody: environment["QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_BODY"],
                 recordingFixtureLocalID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID"],
                 recordingFixtureAssetID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID"]
             )
@@ -243,6 +251,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             transcriptPhoneCorrectionText: payload["transcriptPhoneCorrectionText"] as? String,
             transcriptConflictCorrectionText: payload["transcriptConflictCorrectionText"] as? String,
             expectedPacketGoalTitle: payload["expectedPacketGoalTitle"] as? String,
+            expectedPacketNoteSourceText: payload["expectedPacketNoteSourceText"] as? String,
+            expectedPacketNoteLaneID: payload["expectedPacketNoteLaneID"] as? String,
+            packetNoteEditedTitle: payload["packetNoteEditedTitle"] as? String,
+            packetNoteEditedBody: payload["packetNoteEditedBody"] as? String,
             recordingFixtureLocalID: payload["recordingFixtureLocalID"] as? String,
             recordingFixtureAssetID: payload["recordingFixtureAssetID"] as? String
         )
@@ -656,13 +668,27 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         element.tap()
         element.typeKey("a", modifierFlags: .command)
         element.typeKey(.delete, modifierFlags: [])
+        // iOS can keep SwiftUI's old value after Command-A/Delete even though the
+        // selection event was accepted. Never type replacement text until the
+        // binding itself proves empty; fall back to deleting from the document end.
+        // Multiline SwiftUI fields can expose only a truncated chunk of their
+        // value to XCTest. Re-read and clear in bounded chunks until the live
+        // accessibility value is empty instead of assuming one length is exact.
+        for _ in 0..<8 {
+            guard let remaining = element.value as? String, !remaining.isEmpty else { break }
+            element.typeKey(.rightArrow, modifierFlags: .command)
+            element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: remaining.count))
+        }
+        XCTAssertEqual(element.value as? String, "", "The operated field must be empty before replacement text is entered.")
         // SwiftUI can replace the TextEditor accessibility node after clearing its
         // binding. Route the new text through the application so XCTest targets the
         // currently focused replacement instead of a stale element snapshot.
         app.typeText(value)
+        let packetNoteKeyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
         let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
         let keyboardDone = app.keyboards.buttons["Done"].firstMatch
-        if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
+        if packetNoteKeyboardDone.waitForExistence(timeout: 2) { packetNoteKeyboardDone.tap() }
+        else if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
         else if keyboardDone.exists { keyboardDone.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
     }
@@ -786,10 +812,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     }
 
     private func appSwipeUp(_ app: XCUIApplication) {
-        let namedRecorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
-        let surface = namedRecorderSurface.exists
-            ? namedRecorderSurface
-            : app.scrollViews.firstMatch
+        let transcriptReviewSurface = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        let recorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+        let surface = transcriptReviewSurface.exists && transcriptReviewSurface.isHittable
+            ? transcriptReviewSurface
+            : recorderSurface.exists && recorderSurface.isHittable
+                ? recorderSurface
+                : app.scrollViews.firstMatch
         if surface.exists { surface.swipeUp() }
         else { app.swipeUp() }
     }
@@ -1769,16 +1798,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // compares authoritative packet readback before and after this test.
     }
 
-    func testReviewedTranscriptPacketMaterializesOneCanonicalGoal() throws {
+    func testReviewedTranscriptPacketMaterializesCanonicalNoteAndGoal() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
               credentials.sessionTitle?.isEmpty == false,
               credentials.transcriptSegmentIDs.count == 3,
               let expectedGoalTitle = credentials.expectedPacketGoalTitle,
               !expectedGoalTitle.isEmpty,
+              let expectedNoteSourceText = credentials.expectedPacketNoteSourceText,
+              !expectedNoteSourceText.isEmpty,
+              let expectedNoteLaneID = credentials.expectedPacketNoteLaneID,
+              !expectedNoteLaneID.isEmpty,
+              let editedNoteTitle = credentials.packetNoteEditedTitle,
+              !editedNoteTitle.isEmpty,
+              let editedNoteBody = credentials.packetNoteEditedBody,
+              !editedNoteBody.isEmpty,
               let expectedAssetID = credentials.recordingFixtureAssetID,
               !expectedAssetID.isEmpty else {
-            throw XCTSkip("Reviewed packet materialization requires exact Session, three-segment source, goal title, and recording-asset identities.")
+            throw XCTSkip("Reviewed packet materialization requires exact Session, three-segment source, goal title, note draft, and recording-asset identities.")
         }
         let app = try launchSignedInCaptureApp(initialTab: "record")
         let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
@@ -1859,6 +1896,61 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
         let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
         XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let jumpToNotes = app.buttons["CaptureTranscriptJumpToNotes"].firstMatch
+        XCTAssertTrue(jumpToNotes.waitForExistence(timeout: 10))
+        jumpToNotes.tap()
+
+        let sourcePrefix = "CapturePacketNoteSourceText_"
+        let laneSourcePrefix = "\(sourcePrefix)\(expectedNoteLaneID)-"
+        let exactNoteSource = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@ AND identifier BEGINSWITH %@",
+                expectedNoteSourceText,
+                laneSourcePrefix
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(exactNoteSource, in: app, timeout: 20, swipeAttempts: 12),
+            "The rebuilt packet must retain the exact complete-thought source on the requested note lane."
+        )
+        let candidateKey = String(exactNoteSource.identifier.dropFirst(sourcePrefix.count))
+        XCTAssertFalse(candidateKey.isEmpty)
+
+        let editCandidate = app.buttons["CapturePacketNoteEditButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(editCandidate, in: app, timeout: 12, swipeAttempts: 6))
+        editCandidate.tap()
+        let noteTitle = app.textFields["CapturePacketNoteTitleField"].firstMatch
+        let noteBody = app.textFields["CapturePacketNoteBodyField"].firstMatch
+        XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
+        XCTAssertTrue(noteBody.waitForExistence(timeout: 8))
+        replaceText(in: noteTitle, with: editedNoteTitle, app: app)
+        replaceText(in: noteBody, with: editedNoteBody, app: app)
+        let saveDraft = app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(saveDraft.isEnabled)
+        saveDraft.tap()
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", "EDITED DRAFT")).firstMatch
+                .waitForExistence(timeout: 30),
+            "The non-canonical edit must read back from Nest before acceptance."
+        )
+        XCTAssertFalse(app.descendants(matching: .any)["CapturePacketNoteSaved_\(candidateKey)"].exists)
+
+        let reviewNote = app.buttons["CapturePacketReviewNoteButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reviewNote, in: app, timeout: 12, swipeAttempts: 6))
+        reviewNote.tap()
+        XCTAssertTrue(noteTitle.waitForExistence(timeout: 8))
+        XCTAssertEqual(noteTitle.value as? String, editedNoteTitle)
+        XCTAssertEqual(noteBody.value as? String, editedNoteBody)
+        let saveCanonicalNote = app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].firstMatch
+        XCTAssertTrue(saveCanonicalNote.isEnabled)
+        saveCanonicalNote.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketNoteSaved_\(candidateKey)"].firstMatch
+                .waitForExistence(timeout: 30),
+            "The separate playback-gated save must read back as one canonical Session note."
+        )
+
         jumpMenu.tap()
         let jumpToGoals = app.buttons["CaptureTranscriptJumpToGoals"].firstMatch
         XCTAssertTrue(jumpToGoals.waitForExistence(timeout: 10))

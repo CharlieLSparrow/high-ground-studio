@@ -1319,19 +1319,31 @@ final class CaptureExperienceUITests: XCTestCase {
 
         XCTAssertTrue(app.scrollViews["CapturePacketNoteReviewPreviewView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["CapturePacketNotePreviewBoundary"].exists)
-        XCTAssertTrue(app.buttons["CapturePacketNoteSourceButton_packet-note-preview-build-coaching-insights-preview-segment"].exists)
-        let packetNoteReview = app.buttons["CapturePacketReviewNoteButton"]
+        let sourcePrefix = "CapturePacketNoteSourceText_"
+        let source = app.staticTexts.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", sourcePrefix)
+        ).firstMatch
+        XCTAssertTrue(source.exists)
+        let candidateKey = String(source.identifier.dropFirst(sourcePrefix.count))
+        XCTAssertFalse(candidateKey.isEmpty)
+        XCTAssertTrue(app.buttons["CapturePacketNoteSourceButton_\(candidateKey)"].exists)
+        let packetNoteReview = app.buttons["CapturePacketReviewNoteButton_\(candidateKey)"]
         XCTAssertTrue(packetNoteReview.isEnabled, "Preview may inspect note purpose and audience while the final write stays disabled.")
-        packetNoteReview.tap()
+        let packetNoteEdit = app.buttons["CapturePacketNoteEditButton_\(candidateKey)"]
+        XCTAssertTrue(packetNoteEdit.isEnabled, "A provider-only candidate should still be editable without becoming canonical work.")
+        XCTAssertFalse(app.buttons["CapturePacketNoteDeferButton_\(candidateKey)"].isEnabled)
+        XCTAssertFalse(app.buttons["CapturePacketNoteRejectButton_\(candidateKey)"].isEnabled)
+        XCTAssertTrue(app.staticTexts["CapturePacketNoteDecisionBoundary"].label.contains("Only the separate playback-gated save can create one"))
+        packetNoteEdit.tap()
         XCTAssertTrue(app.textFields["CapturePacketNoteTitleField"].exists)
         XCTAssertTrue(app.textFields["CapturePacketNoteBodyField"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteKindPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteVisibilityPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketNoteAudienceBoundary"].exists)
-        XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton"].isEnabled)
+        XCTAssertFalse(app.buttons["CapturePacketCreateNoteButton_\(candidateKey)"].isEnabled)
         let packetNoteBoundary = app.staticTexts["CapturePacketNoteBoundary"]
         reveal(packetNoteBoundary)
-        XCTAssertTrue(packetNoteBoundary.label.contains("no task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication"))
+        XCTAssertTrue(packetNoteBoundary.label.contains("no canonical note, task, goal, reminder, calendar event, message, client delivery, Studio edit, or publication"))
         let packetNoteScreenshot = XCTAttachment(screenshot: app.screenshot())
         packetNoteScreenshot.name = "Transcript note materialization review"
         packetNoteScreenshot.lifetime = .keepAlways

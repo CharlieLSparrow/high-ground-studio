@@ -1246,6 +1246,24 @@ function checkTranscriptCorrectionContractSources() {
     "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
   );
   expect(
+    noteMaterializationRouteText.includes('decision !== "ACCEPT" && latestPacketReviewReceipt')
+      && noteMaterializationRouteText.includes("idempotentReplay: true")
+      && nativeText.includes("func reviewPacketNote(")
+      && nativeText.includes('"EDITED_FOR_REVIEW"')
+      && nativeText.includes("CapturePacketNoteEditButton")
+      && nativeText.includes("CapturePacketNoteDeferButton")
+      && nativeText.includes("CapturePacketNoteRejectButton")
+      && nativeText.includes("CapturePacketNoteCarriedDraft_")
+      && nativeText.includes("CapturePacketNoteSourceText_")
+      && nativeText.includes("source span and provider evidence still match exactly")
+      && nativeText.includes("Only the separate playback-gated save can create one.")
+      && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave")
+      && captureUITestText.includes("CapturePacketNoteDecisionBoundary")
+      && runtimeUITestText.includes("expectedPacketNoteLaneID"),
+    "nativePacketNoteFourWayReview",
+    "Capture matches Nest's explicit accept, edit, defer, and reject packet-note review while preserving the playback gate, no-side-effect boundary, and exact retry receipt.",
+  );
+  expect(
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")
       && taskDomainText.includes('TRANSCRIPT_DERIVED_TASK_SCHEMA = "quipsly-transcript-derived-task-v1"')
       && taskDomainText.includes("readTranscriptDerivedTaskSource")
@@ -1758,12 +1776,19 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("CapturePacketNoteReviewPreviewView")
       && nativeText.includes("CaptureTranscriptJumpMenu")
       && nativeText.includes("CaptureTranscriptJumpToNotes")
-      && nativeText.includes("createPacketNote")
+      && nativeText.includes("reviewPacketNote")
       && nativeText.includes('"packetNoteCandidateId": candidate.id')
+      && nativeText.includes("CapturePacketNoteEditButton_")
+      && nativeText.includes("CapturePacketNoteDeferButton_")
+      && nativeText.includes("CapturePacketNoteRejectButton_")
+      && noteMaterializationRouteText.includes("exactReplay")
+      && noteMaterializationRouteText.includes("candidateDraftAfter")
+      && packetRouteText.includes("carriedForwardDraft")
+      && packetRouteText.includes("exactSourceMatch: true")
       && shellText.includes("CapturePacketNoteReviewPreviewLink")
       && captureUITestText.includes("testPacketNoteReviewRequiresPurposeAudienceAndFinalHumanSave"),
     "packetNoteCandidateExplicitMaterializationBoundary",
-    "Packet note candidates remain source-linked projections until an actor reviews title, body, purpose, and audience and explicitly creates one canonical CoachingNote against the rechecked packet snapshot.",
+    "Packet note candidates remain source-linked projections through exact-replay-safe edit, defer, and reject receipts; exact-source drafts survive a packet rebuild, while only a separately reviewed title, body, purpose, and audience can create one canonical CoachingNote against the rechecked snapshot.",
   );
   expect(
     clientFollowUpServiceText.includes("readTranscriptDerivedNoteSource")

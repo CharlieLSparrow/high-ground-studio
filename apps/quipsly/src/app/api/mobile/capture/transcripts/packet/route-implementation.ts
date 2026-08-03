@@ -194,6 +194,41 @@ export function buildPacketNoteCandidates(input: {
   const seen = new Set<string>();
   const candidates: any[] = [];
 
+  const latestExactHistoricalDraft = (evidence: {
+    laneId: string;
+    segmentId: string;
+    segmentIds: string[];
+    sourceTextSha256: string;
+    providerTextSha256: string;
+  }) => input.notes.flatMap((note) => {
+    const source = sourceJson(note?.sourceJson);
+    if (source.source !== "transcript-packet-builder"
+        || text(source.transcriptJobId) !== input.latestTranscriptJob.id
+        || text(source.roomId) !== input.latestTranscriptJob.roomId
+        || text(source.recordingAssetId) !== input.latestTranscriptJob.assetId) return [];
+    return asArray(source.noteCandidateReviewReceipts).filter(isObject).flatMap((receipt) => {
+      const receiptSegments = asArray(receipt.segmentIds).map(text).filter(Boolean);
+      const exactSegments = receiptSegments.length === evidence.segmentIds.length
+        && receiptSegments.every((id, index) => id === evidence.segmentIds[index]);
+      const decision = text(receipt.decision);
+      return receipt.kind === NOTE_REVIEW_RECEIPT_KIND
+        && text(receipt.reviewedByUserId) === input.actorUserId
+        && text(receipt.roomId) === input.latestTranscriptJob.roomId
+        && text(receipt.transcriptJobId) === input.latestTranscriptJob.id
+        && text(receipt.recordingAssetId) === input.latestTranscriptJob.assetId
+        && text(receipt.packetLaneId) === evidence.laneId
+        && text(receipt.segmentId) === evidence.segmentId
+        && exactSegments
+        && evidence.sourceTextSha256
+        && text(receipt.sourceTextSha256) === evidence.sourceTextSha256
+        && text(receipt.providerTextSha256) === evidence.providerTextSha256
+        && ["EDIT", "DEFER", "REJECT"].includes(decision)
+        ? [{ receipt, timestamp: Date.parse(text(receipt.reviewedAt)) || 0 }]
+        : [];
+    });
+  }).sort((left, right) => left.timestamp - right.timestamp
+    || text(left.receipt.id).localeCompare(text(right.receipt.id))).at(-1)?.receipt ?? null;
+
   for (const lane of lanes) {
     const laneId = text(lane.id);
     const laneLabel = text(lane.label) || "Session note";
@@ -222,7 +257,15 @@ export function buildPacketNoteCandidates(input: {
         && text(receipt.transcriptSnapshotSha256) === transcriptSnapshotSha256
         && isTranscriptNoteReviewDecision(text(receipt.decision))
       )).at(-1) ?? null;
-      const reviewedDraft = sourceJson(latestReceipt?.candidateDraftAfter);
+      const sourceTextSha256 = text(item.sourceTextSha256);
+      const historicalDraftReceipt = latestReceipt ? null : latestExactHistoricalDraft({
+        laneId,
+        segmentId,
+        segmentIds: anchor.segmentIds,
+        sourceTextSha256,
+        providerTextSha256: anchor.providerTextSha256,
+      });
+      const reviewedDraft = sourceJson((latestReceipt ?? historicalDraftReceipt)?.candidateDraftAfter);
       const sourceText = text(anchor.effectiveTextSnapshot);
       if (!sourceText) continue;
       candidates.push({
@@ -242,7 +285,7 @@ export function buildPacketNoteCandidates(input: {
         startSeconds: anchor.startSeconds,
         endSeconds: anchor.endSeconds,
         sourceText,
-        sourceTextSha256: text(item.sourceTextSha256),
+        sourceTextSha256,
         providerTextSha256: anchor.providerTextSha256,
         sourceSpan: anchor.sourceSpan,
         acceptedReviewId: segment.acceptedReviewId,
@@ -262,6 +305,14 @@ export function buildPacketNoteCandidates(input: {
           decision: text(latestReceipt.decision),
           reviewedAt: text(latestReceipt.reviewedAt),
           reviewedByUserId: text(latestReceipt.reviewedByUserId),
+        } : null,
+        carriedForwardDraft: historicalDraftReceipt ? {
+          receiptId: text(historicalDraftReceipt.id),
+          decision: text(historicalDraftReceipt.decision),
+          reviewedAt: text(historicalDraftReceipt.reviewedAt),
+          reviewedByUserId: text(historicalDraftReceipt.reviewedByUserId),
+          packetBuildId: text(historicalDraftReceipt.packetBuildId),
+          exactSourceMatch: true,
         } : null,
       });
       if (candidates.length >= 30) return candidates;
