@@ -112,6 +112,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let transcriptSegmentIDs: [String]
         let transcriptPhoneCorrectionText: String?
         let transcriptConflictCorrectionText: String?
+        let expectedPacketTaskTitle: String?
         let expectedPacketGoalTitle: String?
         let expectedPacketNoteSourceText: String?
         let expectedPacketNoteLaneID: String?
@@ -175,6 +176,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                     .split(separator: ",").map(String.init),
                 transcriptPhoneCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT"],
                 transcriptConflictCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT"],
+                expectedPacketTaskTitle: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_TASK_TITLE"],
                 expectedPacketGoalTitle: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE"],
                 expectedPacketNoteSourceText: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_SOURCE_TEXT"],
                 expectedPacketNoteLaneID: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_LANE_ID"],
@@ -250,6 +252,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             transcriptSegmentIDs: payload["transcriptSegmentIDs"] as? [String] ?? [],
             transcriptPhoneCorrectionText: payload["transcriptPhoneCorrectionText"] as? String,
             transcriptConflictCorrectionText: payload["transcriptConflictCorrectionText"] as? String,
+            expectedPacketTaskTitle: payload["expectedPacketTaskTitle"] as? String,
             expectedPacketGoalTitle: payload["expectedPacketGoalTitle"] as? String,
             expectedPacketNoteSourceText: payload["expectedPacketNoteSourceText"] as? String,
             expectedPacketNoteLaneID: payload["expectedPacketNoteLaneID"] as? String,
@@ -2317,6 +2320,114 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["Opened from linked work"].firstMatch.exists)
         attachRuntimeScreenshot(app, name: "Goal evidence returned to exact transcript source")
+    }
+
+    func testReviewedTranscriptPacketAddsEvidenceToExactExistingTaskAndReturnsToSource() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false,
+              !credentials.transcriptSegmentIDs.isEmpty,
+              let expectedCandidateTitle = credentials.expectedPacketTaskTitle,
+              !expectedCandidateTitle.isEmpty,
+              let taskID = credentials.taskID, !taskID.isEmpty,
+              let taskTitle = credentials.taskEditSourceTitle, !taskTitle.isEmpty,
+              let expectedAssetID = credentials.recordingFixtureAssetID,
+              !expectedAssetID.isEmpty else {
+            throw XCTSkip("Reviewed task-evidence merge requires exact Session, source span, existing task, and recording-asset identities.")
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
+        XCTAssertTrue(fixtureReceipt.waitForExistence(timeout: 20))
+        XCTAssertTrue(String(describing: fixtureReceipt.value ?? "").contains(expectedAssetID))
+
+        selectRequestedSession(in: app, credentials: credentials)
+        let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reviewLink, in: app, timeout: 30, swipeAttempts: 8))
+        reviewLink.tap()
+        let review = app.scrollViews["CaptureTranscriptReviewView"].firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch.waitForExistence(timeout: 30))
+
+        for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12))
+            XCTAssertTrue(play.isEnabled)
+            play.tap()
+            let confirm = app.buttons["CaptureTranscriptConfirmAsIsButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            let playbackReachedSegmentEnd = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "enabled == true"),
+                object: confirm
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [playbackReachedSegmentEnd], timeout: 15), .completed)
+            confirm.tap()
+            let progress = app.staticTexts["CaptureTranscriptReviewProgressCount"].firstMatch
+            let receiptReadBack = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "label BEGINSWITH %@", "\(reviewIndex + 1) of "),
+                object: progress
+            )
+            XCTAssertEqual(XCTWaiter.wait(for: [receiptReadBack], timeout: 30), .completed)
+        }
+
+        let buildCurrentPacket = app.buttons["CaptureTranscriptBuildCurrentPacketButton"].firstMatch
+        for _ in 0..<16 where !buildCurrentPacket.exists { review.swipeDown() }
+        XCTAssertTrue(buildCurrentPacket.waitForExistence(timeout: 10))
+        XCTAssertTrue(buildCurrentPacket.isEnabled)
+        buildCurrentPacket.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPacketStaleBoundary"].firstMatch.waitForNonExistence(timeout: 30))
+
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let jumpToTasks = app.buttons["CaptureTranscriptJumpToTasks"].firstMatch
+        XCTAssertTrue(jumpToTasks.waitForExistence(timeout: 10))
+        jumpToTasks.tap()
+        XCTAssertTrue(waitForRuntimeElement(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", expectedCandidateTitle)).firstMatch,
+            in: app,
+            timeout: 20,
+            swipeAttempts: 10
+        ))
+
+        let beginMerge = app.buttons["CapturePacketTaskMergeModeButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(beginMerge, in: app, timeout: 12, swipeAttempts: 8))
+        XCTAssertTrue(beginMerge.isEnabled)
+        beginMerge.tap()
+        let picker = app.descendants(matching: .any)["CapturePacketTaskMergeTargetPicker"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        picker.tap()
+        let targetChoice = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", taskTitle)
+        ).firstMatch
+        XCTAssertTrue(targetChoice.waitForExistence(timeout: 8))
+        targetChoice.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskMergeTargetSummary_\(taskID)"].firstMatch.waitForExistence(timeout: 8))
+        let merge = app.buttons["CapturePacketTaskMergeButton"].firstMatch
+        XCTAssertTrue(merge.isEnabled)
+        merge.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskAccepted_")
+        ).firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing task"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing task")
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "today")
+        XCTAssertTrue(waitForRuntimeElement(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", taskTitle)).firstMatch,
+            in: app,
+            timeout: 30,
+            swipeAttempts: 14
+        ))
+        let mergedSource = app.descendants(matching: .any)["CaptureTodayTaskMergedEvidenceSource_\(taskID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(mergedSource, in: app, timeout: 15, swipeAttempts: 12))
+        mergedSource.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_\(credentials.transcriptSegmentIDs[0])"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Opened from linked work"].firstMatch.exists)
+        attachRuntimeScreenshot(app, name: "Task evidence returned to exact transcript source")
     }
 
     @MainActor

@@ -33,6 +33,7 @@ const ACTION_PATTERNS = [
   /\b(i|we|you|they)\s+(need|needs|should|will|can|could|must|have)\s+to\b/i,
   /\b(i'll|we'll|you'll|let's|follow up|send|schedule|prepare|finish|review|publish|record|write|draft|check)\b/i,
   /\b(next step|action item|homework|before next time|for next time)\b/i,
+  /\b(goal|commitment|objective)\s+is\s+to\b/i,
 ];
 
 export type { TranscriptActionCandidate } from "@high-ground/quipsly-domain/coaching-packet";

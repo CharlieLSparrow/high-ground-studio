@@ -2307,6 +2307,33 @@ struct TodayFollowThroughCard: View {
                                 .accessibilityLabel("Task source: Return to \(source.startSeconds.captureDurationLabel)–\(source.endSeconds.captureDurationLabel)")
                                 .accessibilityHint("Opens the exact transcript segment and retained recording source behind this task without starting playback.")
                             }
+                            if let evidence = task.lastMergedTranscriptEvidence {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Latest reviewed evidence added")
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(.blue)
+                                    Text(evidence.sourceAnchor.effectiveTextSnapshot)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(3)
+                                    NavigationLink(value: CaptureTranscriptSourceDestination(
+                                        roomID: evidence.sourceAnchor.roomId,
+                                        sessionTitle: task.sessionTitle ?? "Capture session",
+                                        source: evidence.sourceAnchor
+                                    )) {
+                                        Label("Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)", systemImage: "waveform.and.magnifyingglass")
+                                            .font(.caption.weight(.bold))
+                                            .frame(minHeight: 44)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceSource_\(task.id)")
+                                    Text("Task state, owner, schedule, recurrence, reminder, tags, goals, and project were not changed.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(10)
+                                .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                            }
                         }
                     }
                     if client.tasks.count > 3 {

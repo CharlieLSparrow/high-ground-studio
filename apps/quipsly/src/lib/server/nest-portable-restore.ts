@@ -28,6 +28,7 @@ export type NestRestorePlan = {
   documentTagLinkCreates: number;
   taskCreates: number;
   taskReuses: number;
+  taskEvidenceReceiptCreates: number;
   goalCreates: number;
   goalReuses: number;
   progressReceiptCreates: number;
@@ -111,6 +112,15 @@ function restoredTaskId(projectId: string, bundle: ValidatedNestBundle, task: Va
 
 function restoredGoalId(projectId: string, bundle: ValidatedNestBundle, goal: ValidatedNestBundle["goals"][number]) {
   return portableId("portable-goal", projectId, bundle, goal.id, goal);
+}
+
+function restoredTaskEvidenceId(
+  projectId: string,
+  bundle: ValidatedNestBundle,
+  taskId: string,
+  receipt: ValidatedNestBundle["tasks"][number]["evidenceReceipts"][number],
+) {
+  return portableId("portable-task-evidence", projectId, bundle, `${taskId}:${receipt.id}`, receipt);
 }
 
 function restoredProgressId(
@@ -277,9 +287,12 @@ export async function buildNestRestorePlan(
   const aliases = await aliasPlan(client, input.projectId, tagResolutions);
   const noteStableIds = input.bundle.notes.map((note) => restoredNoteStableId(input.projectId, input.bundle, note));
   const taskIds = input.bundle.tasks.map((task) => restoredTaskId(input.projectId, input.bundle, task));
+  const taskEvidenceIds = input.bundle.tasks.flatMap((task) => task.evidenceReceipts.map((receipt) => (
+    restoredTaskEvidenceId(input.projectId, input.bundle, task.id, receipt)
+  )));
   const goalIds = input.bundle.goals.map((goal) => restoredGoalId(input.projectId, input.bundle, goal));
   const planBlockIds = input.bundle.planBlocks.map((block) => restoredPlanBlockId(input.projectId, input.bundle, block));
-  const [existingNotes, existingTasks, existingGoals, existingProgress, existingGoalTaskLinks, existingPlanBlocks] = await Promise.all([
+  const [existingNotes, existingTasks, existingTaskEvidence, existingGoals, existingProgress, existingGoalTaskLinks, existingPlanBlocks] = await Promise.all([
     noteStableIds.length
       ? client.studioDocument.findMany({
           where: { projectId: input.projectId, stableId: { in: noteStableIds } },
@@ -289,6 +302,12 @@ export async function buildNestRestorePlan(
     taskIds.length
       ? client.actionItem.findMany({
           where: { projectId: input.projectId, assignedUserId: input.actorUserId, id: { in: taskIds } },
+          select: { id: true },
+        })
+      : Promise.resolve([]),
+    taskEvidenceIds.length
+      ? client.actionItemEvidenceReceipt.findMany({
+          where: { actorUserId: input.actorUserId, id: { in: taskEvidenceIds } },
           select: { id: true },
         })
       : Promise.resolve([]),
@@ -319,6 +338,7 @@ export async function buildNestRestorePlan(
   ]);
   const existingNoteIds = new Set(existingNotes.map((note) => note.stableId));
   const existingTaskIds = new Set(existingTasks.map((task) => task.id));
+  const existingTaskEvidenceIds = new Set(existingTaskEvidence.map((receipt) => receipt.id));
   const existingGoalIds = new Set(existingGoals.map((goal) => goal.id));
   const existingProgressIds = new Set(existingProgress.map((receipt) => receipt.id));
   const existingLinkIds = new Set(existingGoalTaskLinks.map((link) => `${link.goalId}:${link.actionItemId}`));
@@ -347,6 +367,12 @@ export async function buildNestRestorePlan(
       .reduce((count, note) => count + note.tagIds.length, 0),
     taskCreates: taskIds.filter((id) => !existingTaskIds.has(id)).length,
     taskReuses: taskIds.filter((id) => existingTaskIds.has(id)).length,
+    taskEvidenceReceiptCreates: input.bundle.tasks.reduce(
+      (count, task) => count + task.evidenceReceipts.filter((receipt) => (
+        !existingTaskEvidenceIds.has(restoredTaskEvidenceId(input.projectId, input.bundle, task.id, receipt))
+      )).length,
+      0,
+    ),
     goalCreates: goalIds.filter((id) => !existingGoalIds.has(id)).length,
     goalReuses: goalIds.filter((id) => existingGoalIds.has(id)).length,
     progressReceiptCreates: input.bundle.goals.reduce(
@@ -684,6 +710,33 @@ export async function applyNestRestore(
         }
       }
       taskIds.set(task.id, id);
+    }
+
+    for (const task of input.bundle.tasks) {
+      const actionItemId = taskIds.get(task.id);
+      if (!actionItemId) throw new Error(`Portable task mapping is missing for ${task.id}.`);
+      if (task.evidenceReceipts.length) {
+        await tx.actionItemEvidenceReceipt.createMany({
+          data: task.evidenceReceipts.map((receipt) => ({
+            id: restoredTaskEvidenceId(input.projectId, input.bundle, task.id, receipt),
+            actionItemId,
+            actorUserId: input.actorUserId,
+            kind: receipt.kind,
+            note: receipt.note,
+            evidenceJson: toPrismaJson({
+              ...receipt.evidenceJson,
+              portableRestore: {
+                schema: "quipsly-portable-task-evidence-restore-v1",
+                manifestSha256: input.bundle.manifestSha256,
+                originalReceiptId: receipt.id,
+                originalCreatedAt: receipt.createdAt,
+              },
+            }),
+            occurredAt: new Date(receipt.occurredAt),
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
 
     const goalIds = new Map<string, string>();

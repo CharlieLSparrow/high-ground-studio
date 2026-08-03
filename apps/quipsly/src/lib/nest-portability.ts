@@ -8,6 +8,7 @@ const MAX_NOTES = 5_000;
 const MAX_BLOCKS = 20_000;
 const MAX_SPANS = 100_000;
 const MAX_TASKS = 20_000;
+const MAX_TASK_EVIDENCE_RECEIPTS = 100_000;
 const MAX_GOALS = 10_000;
 const MAX_PROGRESS_RECEIPTS = 100_000;
 const MAX_LINKS = 100_000;
@@ -141,6 +142,14 @@ export type PortableNestTask = {
     status: string;
     series: Record<string, unknown>;
   };
+  evidenceReceipts: Array<{
+    id: string;
+    kind: string;
+    note: string | null;
+    evidenceJson: Record<string, unknown>;
+    occurredAt: string;
+    createdAt: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -233,6 +242,7 @@ export type PortableNestBundle = PortableNestBundlePayload & {
     blockCount: number;
     spanCount: number;
     taskCount: number;
+    taskEvidenceReceiptCount: number;
     goalCount: number;
     progressReceiptCount: number;
     goalTaskLinkCount: number;
@@ -307,6 +317,7 @@ export function createPortableNestBundle(payload: PortableNestBundlePayload): Po
         0,
       ),
       taskCount: payload.tasks.length,
+      taskEvidenceReceiptCount: payload.tasks.reduce((count, task) => count + task.evidenceReceipts.length, 0),
       goalCount: payload.goals.length,
       progressReceiptCount: payload.goals.reduce((count, goal) => count + goal.progressReceipts.length, 0),
       goalTaskLinkCount: payload.goalTaskLinks.length,
@@ -583,6 +594,8 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
 
   const tasks: PortableNestTask[] = [];
   const reminderIds = new Set<string>();
+  const taskEvidenceReceiptIds = new Set<string>();
+  let taskEvidenceReceiptCount = 0;
   for (const raw of input.tasks) {
     if (!isRecord(raw)) return { ok: false, error: "A task in the Nest bundle is invalid." };
     const id = stringValue(raw.id, 200);
@@ -644,6 +657,39 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
         series: jsonRecord(raw.recurrenceSnapshot.series),
       };
     }
+    const rawEvidenceReceipts = raw.evidenceReceipts === undefined ? [] : raw.evidenceReceipts;
+    if (!Array.isArray(rawEvidenceReceipts)) {
+      return { ok: false, error: "A task evidence ledger in the Nest bundle is invalid." };
+    }
+    const evidenceReceipts: PortableNestTask["evidenceReceipts"] = [];
+    for (const rawReceipt of rawEvidenceReceipts) {
+      if (!isRecord(rawReceipt)) return { ok: false, error: "A task evidence receipt is invalid." };
+      const receiptId = stringValue(rawReceipt.id, 200);
+      const kind = stringValue(rawReceipt.kind, 200);
+      const note = nullableString(rawReceipt.note, 20_000);
+      const occurredAt = dateString(rawReceipt.occurredAt);
+      const receiptCreatedAt = dateString(rawReceipt.createdAt);
+      if (!receiptId || !kind || note === undefined || !occurredAt || !receiptCreatedAt) {
+        return { ok: false, error: "A task evidence receipt is incomplete." };
+      }
+      if (taskEvidenceReceiptIds.has(receiptId)) {
+        return { ok: false, error: "The Nest bundle repeats a task evidence-receipt identity." };
+      }
+      taskEvidenceReceiptIds.add(receiptId);
+      evidenceReceipts.push({
+        id: receiptId,
+        kind,
+        note,
+        evidenceJson: jsonRecord(rawReceipt.evidenceJson),
+        occurredAt,
+        createdAt: receiptCreatedAt,
+      });
+      textBytes = addTextBytes(textBytes, note);
+    }
+    taskEvidenceReceiptCount += evidenceReceipts.length;
+    if (taskEvidenceReceiptCount > MAX_TASK_EVIDENCE_RECEIPTS) {
+      return { ok: false, error: "The Nest bundle contains too many task evidence receipts." };
+    }
     textBytes = addTextBytes(addTextBytes(textBytes, title), detail);
     tasks.push({
       id,
@@ -656,6 +702,7 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       tagIds: tagIdsForTask,
       reminderSnapshot,
       recurrenceSnapshot,
+      evidenceReceipts,
       createdAt,
       updatedAt,
     });
@@ -828,12 +875,17 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     blockCount,
     spanCount,
     taskCount: tasks.length,
+    taskEvidenceReceiptCount,
     goalCount: goals.length,
     progressReceiptCount,
     goalTaskLinkCount: goalTaskLinks.length,
     planBlockCount: planBlocks.length,
   };
-  if (Object.entries(counts).some(([key, value]) => Number(integrity?.[key]) !== value)) {
+  if (Object.entries(counts).some(([key, value]) => (
+    key === "taskEvidenceReceiptCount" && integrity?.[key] === undefined
+      ? value !== 0
+      : Number(integrity?.[key]) !== value
+  ))) {
     return { ok: false, error: "The Nest bundle counts do not match its integrity manifest." };
   }
 

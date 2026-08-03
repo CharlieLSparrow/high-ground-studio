@@ -778,6 +778,14 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
               </Link>
             </div>
           )}
+          {task.lastMergedTranscriptEvidence && (
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Latest reviewed evidence added to this task</p>
+              <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-sky-950">{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot ? `${task.lastMergedTranscriptEvidence.sourceAnchor.effectiveSpeakerLabelSnapshot}: ` : ""}{task.lastMergedTranscriptEvidence.sourceAnchor.effectiveTextSnapshot}</p>
+              <Link href={`/sessions/${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(task.lastMergedTranscriptEvidence.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline"><Play size={14} aria-hidden="true" />Return to {formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.startSeconds)}–{formatMediaTime(task.lastMergedTranscriptEvidence.sourceAnchor.endSeconds)}</Link>
+              <p className="mt-2 text-[10px] font-bold leading-4 text-sky-800">Evidence was appended without changing this task’s state, owner, schedule, recurrence, reminder, tags, goals, or project.</p>
+            </div>
+          )}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-[#806a4d]">

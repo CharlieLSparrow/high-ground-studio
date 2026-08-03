@@ -67,6 +67,7 @@ function asArray(value: unknown): unknown[] {
 
 const GOAL_REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
 const GOAL_EVIDENCE_MERGE_KIND = "TRANSCRIPT_CANDIDATE_MERGED";
+const TASK_EVIDENCE_MERGE_KIND = "TRANSCRIPT_CANDIDATE_MERGED";
 const NOTE_REVIEW_RECEIPT_KIND = "quipsly-note-candidate-review-receipt-v1";
 
 export function goalReviewStatus(decision: unknown): TranscriptGoalReviewStatus {
@@ -791,6 +792,36 @@ export async function GET(request: Request) {
         },
       })
     : [];
+  const taskMergeRows = transcriptProcessingAllowed && summary
+    ? await prisma.actionItem.findMany({
+        where: {
+          assignedUserId: actor.id,
+          status: "OPEN",
+          OR: [
+            { roomId },
+            ...(room?.projectId ? [{ projectId: room.projectId }] : []),
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: 500,
+        select: {
+          id: true,
+          title: true,
+          detail: true,
+          status: true,
+          dueAt: true,
+          updatedAt: true,
+          projectId: true,
+          roomId: true,
+          sourceJson: true,
+          _count: {
+            select: {
+              evidenceReceipts: { where: { kind: TASK_EVIDENCE_MERGE_KIND } },
+            },
+          },
+        },
+      })
+    : [];
   const goalCandidates = buildPacketGoalCandidates({
     summary,
     latestTranscriptJob,
@@ -832,6 +863,22 @@ export async function GET(request: Request) {
       projectId: goal.projectId,
       roomId: goal.roomId,
       evidenceCount: goal._count?.progressReceipts ?? 0,
+    }));
+  const taskMergeTargets = taskMergeRows
+    .filter((task: any) => (
+      !isUnreviewedTranscriptActionItem(task)
+      && (room?.projectId ? task.projectId === room.projectId : task.roomId === roomId)
+    ))
+    .map((task: any) => ({
+      id: task.id,
+      title: task.title,
+      detail: task.detail,
+      status: task.status,
+      dueAt: task.dueAt?.toISOString?.() ?? null,
+      updatedAt: task.updatedAt?.toISOString?.() ?? null,
+      projectId: task.projectId,
+      roomId: task.roomId,
+      evidenceCount: task._count?.evidenceReceipts ?? 0,
     }));
 
   return NextResponse.json({
@@ -920,6 +967,7 @@ export async function GET(request: Request) {
       noteCandidates,
       noteMergeTargets,
       actionCandidates,
+      taskMergeTargets,
       goalCandidates,
       goalMergeTargets,
       goalCandidateReview: {
@@ -931,7 +979,7 @@ export async function GET(request: Request) {
       actionCandidateReview: {
         endpoint: "/api/mobile/capture/transcripts/packet/actions",
         method: "POST",
-        allowedDecisions: ["ACCEPT", "EDIT", "REJECT", "DEFER"],
+        allowedDecisions: ["ACCEPT", "EDIT", "MERGE", "REJECT", "DEFER"],
         requiredEvidence: [
           "roomId",
           "transcriptJobId",
@@ -941,7 +989,7 @@ export async function GET(request: Request) {
           "actionCandidateId",
         ],
         boundary:
-          "Only ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
+          "ACCEPT can materialize one canonical Quipsly ActionItem after the reviewer inspects owner, due date, and active same-project tags. MERGE appends reviewed source evidence to one explicitly selected existing actor-owned task in this Nest without changing task state. EDIT, REJECT, and DEFER preserve packet review state without creating open work or external side effects.",
       },
       taskMaterialization: {
         project: room?.project ? { id: room.project.id, name: room.project.name } : null,

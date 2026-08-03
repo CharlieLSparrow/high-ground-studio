@@ -149,6 +149,27 @@ function packetWithAction(candidateValue = actionCandidate): SessionReviewPacket
   };
 }
 
+function packetWithActionMergeTarget(candidateValue = actionCandidate): SessionReviewPacket {
+  const value = packetWithAction(candidateValue);
+  return {
+    ...value,
+    packet: {
+      ...value.packet!,
+      taskMergeTargets: [{
+        id: "task-existing",
+        title: "Finish the episode package",
+        detail: "Keep the source receipts together.",
+        status: "OPEN",
+        dueAt: "2026-08-12T18:00:00.000Z",
+        updatedAt: "2026-08-03T15:00:00.000Z",
+        projectId: "project-1",
+        roomId: "room-1",
+        evidenceCount: 2,
+      }],
+    },
+  };
+}
+
 function packetWithNote(candidateValue = noteCandidate, withMergeTarget = false): SessionReviewPacket {
   const value = packet();
   return {
@@ -710,6 +731,65 @@ describe("Session review goal candidates", () => {
     });
     expect(await screen.findByRole("status")).toHaveTextContent("One unassigned Quipsly task was created and 1 project tag");
     expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
+  });
+
+  it("adds reviewed evidence to an explicit task without submitting mutable task fields", async () => {
+    const mergedAction: SessionReviewCandidate = {
+      ...actionCandidate,
+      reviewStatus: "MERGED_INTO_ACTION_ITEM",
+      humanApprovalRequired: false,
+      committedActionItemId: "task-existing",
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packetWithActionMergeTarget()))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        decision: "MERGE",
+        idempotentReplay: false,
+        actionItem: { id: "task-existing", assignedUserId: "user-1", dueAt: "2026-08-12T18:00:00.000Z", tagIds: [] },
+        receipt: {
+          decision: "MERGE",
+          actionCandidateId: actionCandidate.id,
+          actionItemId: "task-existing",
+          taskEvidenceReceiptId: "task-evidence-1",
+        },
+        boundaries: {
+          mergeAppendsOneActorOwnedTaskEvidenceReceipt: true,
+          mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject: true,
+          dueDateCreated: false,
+          projectTagsApplied: false,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse(packetWithActionMergeTarget(mergedAction)));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+
+    await user.click(await screen.findByRole("button", { name: "Add to existing task" }));
+    expect(screen.getAllByText("Finish the episode package")).toHaveLength(2);
+    expect(screen.getByText(/Title, detail, status, owner, due date, completion, reminder, recurrence, tags, goal links, and project remain unchanged/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add reviewed evidence" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const request = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(request).toEqual({
+      callRoomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      actionCandidateId: "action-candidate-1",
+      decision: "MERGE",
+      mergeTargetTaskId: "task-existing",
+      mergeExpectedUpdatedAt: "2026-08-03T15:00:00.000Z",
+    });
+    expect(request).not.toHaveProperty("title");
+    expect(request).not.toHaveProperty("detail");
+    expect(request).not.toHaveProperty("assignToMe");
+    expect(request).not.toHaveProperty("dueAt");
+    expect(request).not.toHaveProperty("tagIds");
+    expect(await screen.findByRole("status")).toHaveTextContent("Its identity, status, owner, dates, reminder, recurrence, tags, goals, and project did not change");
+    expect(screen.getByText("Reviewed evidence added to canonical Quipsly work.")).toBeInTheDocument();
   });
 
   it("reviews packet wording, purpose, and audience before saving a source-linked note", async () => {

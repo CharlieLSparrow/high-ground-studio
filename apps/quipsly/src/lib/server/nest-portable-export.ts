@@ -195,6 +195,19 @@ export async function buildPortableNestExport(
             },
           },
         },
+        evidenceReceipts: {
+          where: { actorUserId: input.actorUserId },
+          orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
+          take: 10_000,
+          select: {
+            id: true,
+            kind: true,
+            note: true,
+            evidenceJson: true,
+            occurredAt: true,
+            createdAt: true,
+          },
+        },
       },
     }),
     prisma.goal.findMany({
@@ -387,6 +400,14 @@ export async function buildPortableNestExport(
             series: JSON.parse(JSON.stringify(task.recurrenceOccurrence.series)) as Record<string, unknown>,
           }
         : null,
+      evidenceReceipts: task.evidenceReceipts.map((receipt) => ({
+        id: receipt.id,
+        kind: receipt.kind,
+        note: receipt.note,
+        evidenceJson: receipt.evidenceJson as Record<string, unknown>,
+        occurredAt: receipt.occurredAt.toISOString(),
+        createdAt: receipt.createdAt.toISOString(),
+      })),
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),
     })),

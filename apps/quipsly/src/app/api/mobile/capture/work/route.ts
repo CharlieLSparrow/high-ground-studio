@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource, readTranscriptMergedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
@@ -103,6 +103,7 @@ export async function GET(request: Request) {
         dueAt: true,
         updatedAt: true,
         sourceJson: true,
+        evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true } },
         project: { select: { id: true, name: true, slug: true } },
         room: { select: { id: true, title: true } },
         reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
@@ -200,6 +201,7 @@ export async function GET(request: Request) {
     .map((task) => {
       const parsedSource = readTranscriptDerivedTaskSource(task.sourceJson);
       const sourceAnchor = parsedSource?.roomId === task.room?.id ? parsedSource : null;
+      const lastMergedTranscriptEvidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
       return {
         id: task.id,
         title: task.title,
@@ -217,6 +219,7 @@ export async function GET(request: Request) {
         tagIds: task.tagLinks.map((link) => link.tag.id),
         tagLabels: task.tagLinks.map((link) => link.tag.label),
         sourceAnchor,
+        lastMergedTranscriptEvidence,
         todayReason: null,
         recurrence: task.recurrenceOccurrence ? {
           seriesId: task.recurrenceOccurrence.series.id,

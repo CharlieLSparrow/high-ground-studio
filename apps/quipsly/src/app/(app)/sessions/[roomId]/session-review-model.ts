@@ -62,6 +62,18 @@ export type SessionReviewGoalMergeTarget = {
   evidenceCount: number;
 };
 
+export type SessionReviewTaskMergeTarget = {
+  id: string;
+  title: string;
+  detail: string | null;
+  status: "OPEN";
+  dueAt: string | null;
+  updatedAt: string;
+  projectId: string | null;
+  roomId: string | null;
+  evidenceCount: number;
+};
+
 export type SessionReviewNoteCandidate = {
   id: string;
   clientRequestId: string;
@@ -152,6 +164,7 @@ export type SessionReviewPacket = {
     noteCandidates?: SessionReviewNoteCandidate[];
     noteMergeTargets?: SessionReviewNoteMergeTarget[];
     actionCandidates: SessionReviewCandidate[];
+    taskMergeTargets?: SessionReviewTaskMergeTarget[];
     goalCandidates?: SessionReviewGoalCandidate[];
     goalMergeTargets?: SessionReviewGoalMergeTarget[];
     reviewLanes?: SessionReviewLane[];
@@ -309,13 +322,16 @@ export function candidateReviewRequest(input: {
   assignToMe?: boolean;
   dueAt?: string | null;
   tagIds?: string[];
+  mergeTargetTaskId?: string;
+  mergeExpectedUpdatedAt?: string;
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
-  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if ((input.decision === "ACCEPT" || input.decision === "MERGE") && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   if (input.packet.packet?.transcriptReview?.packetStale) return null;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id) return null;
   const acceptsCanonicalWork = input.decision === "ACCEPT";
+  if (input.decision === "MERGE" && (!input.mergeTargetTaskId?.trim() || !input.mergeExpectedUpdatedAt?.trim())) return null;
 
   return {
     callRoomId: input.candidate.roomId,
@@ -331,6 +347,10 @@ export function candidateReviewRequest(input: {
     ...(acceptsCanonicalWork && input.assignToMe !== undefined ? { assignToMe: input.assignToMe } : {}),
     ...(acceptsCanonicalWork && input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
     ...(acceptsCanonicalWork && input.tagIds !== undefined ? { tagIds: [...new Set(input.tagIds.map((tagId) => tagId.trim()).filter(Boolean))].sort() } : {}),
+    ...(input.decision === "MERGE" ? {
+      mergeTargetTaskId: input.mergeTargetTaskId!.trim(),
+      mergeExpectedUpdatedAt: input.mergeExpectedUpdatedAt,
+    } : {}),
   };
 }
 

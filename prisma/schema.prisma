@@ -625,6 +625,7 @@ model User {
   documentTagsCreated           StudioDocumentTagLink[]              @relation("StudioDocumentTagCreatedBy")
   personalWritingDocuments      StudioDocument[]                     @relation("StudioDocumentPersonalOwner")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
+  taskEvidenceAuthored          ActionItemEvidenceReceipt[]          @relation("ActionItemEvidenceActor")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
   taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
   calendarConnections           CalendarConnection[]                 @relation("CalendarConnectionUser")
@@ -2205,14 +2206,15 @@ model ActionItem {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  room                 CallRoom?           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  booking              CoachingBooking?    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  note                 CoachingNote?       @relation(fields: [noteId], references: [id], onDelete: SetNull)
-  assignedUser         User?               @relation("ActionItemAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
-  project              StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  room                 CallRoom?                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  booking              CoachingBooking?            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  note                 CoachingNote?               @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  assignedUser         User?                       @relation("ActionItemAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  project              StudioProject?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
   goalLinks            GoalTaskLink[]
   planBlocks           WorkPlanBlock[]
   tagLinks             ActionItemTagLink[]
+  evidenceReceipts     ActionItemEvidenceReceipt[]
   recurrenceOccurrence TaskOccurrence?
   reminder             TaskReminder?
 
@@ -2221,6 +2223,26 @@ model ActionItem {
   @@index([assignedUserId, status])
   @@index([projectId, status, updatedAt])
   @@index([dueAt])
+}
+
+// Reviewed observations append here instead of mutating canonical task state.
+// A receipt can return to immutable source playback while the ActionItem keeps
+// its independent title, status, owner, dates, recurrence, reminder, and tags.
+model ActionItemEvidenceReceipt {
+  id           String   @id
+  actionItemId String
+  actorUserId  String?
+  kind         String
+  note         String?
+  evidenceJson Json     @default("{}")
+  occurredAt   DateTime
+  createdAt    DateTime @default(now())
+
+  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  actor      User?      @relation("ActionItemEvidenceActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actionItemId, occurredAt])
+  @@index([actorUserId, createdAt])
 }
 
 // A reminder is canonical user intent, not proof that any device displayed an

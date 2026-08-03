@@ -399,6 +399,13 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCaptureTodayTaskTranscriptEvidence: Codable, Hashable {
+    let receiptId: String
+    let actionCandidateId: String
+    let mergedAt: String
+    let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor
+}
+
 private struct MobileSessionNoteEditRequest: Encodable {
     let clientRequestId: String
     let title: String?
@@ -1383,6 +1390,7 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let tagIds: [String]?
     let tagLabels: [String]?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
+    let lastMergedTranscriptEvidence: MobileCaptureTodayTaskTranscriptEvidence?
     let todayReason: String?
     let recurrence: MobileCaptureTodayRecurrence?
     let reminder: MobileCaptureTodayReminderIntent?
@@ -3697,6 +3705,26 @@ final class CaptureTodayClient: ObservableObject {
                     recordingAssetId: "preview-recording-asset",
                     playbackSourceId: "preview-playback-source"
                 ),
+                lastMergedTranscriptEvidence: MobileCaptureTodayTaskTranscriptEvidence(
+                    receiptId: "preview-task-merge-receipt",
+                    actionCandidateId: "preview-task-candidate",
+                    mergedAt: ISO8601DateFormatter().string(from: now),
+                    sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
+                        schema: "quipsly-transcript-derived-task-v1",
+                        roomId: "room-preview-coaching-ready",
+                        transcriptJobId: "preview-job",
+                        segmentId: "preview-task-evidence-segment",
+                        startSeconds: 8.4,
+                        endSeconds: 12.2,
+                        providerTextSha256: String(repeating: "b", count: 64),
+                        providerSpeakerLabel: "Speaker",
+                        effectiveTextSnapshot: "The client confirmed the proof-listen action in their own words.",
+                        effectiveSpeakerLabelSnapshot: "Coach",
+                        acceptedCorrectionId: nil,
+                        recordingAssetId: "preview-recording-asset",
+                        playbackSourceId: "preview-playback-source"
+                    )
+                ),
                 todayReason: "Planned focus · reviewed transcript",
                 recurrence: MobileCaptureTodayRecurrence(
                     seriesId: "preview-series",
@@ -5575,6 +5603,7 @@ final class CaptureWorkClient: ObservableObject {
                         tagIds: ["preview-episode-4", "preview-proof-listen"],
                         tagLabels: ["Episode 4", "Proof listen"],
                         sourceAnchor: nil,
+                        lastMergedTranscriptEvidence: nil,
                         todayReason: nil,
                         recurrence: nil,
                         reminder: nil
@@ -5594,6 +5623,7 @@ final class CaptureWorkClient: ObservableObject {
                         tagIds: ["preview-episode-4"],
                         tagLabels: ["Episode 4"],
                         sourceAnchor: nil,
+                        lastMergedTranscriptEvidence: nil,
                         todayReason: nil,
                         recurrence: nil,
                         reminder: nil

@@ -18,6 +18,7 @@ import {
   type SessionReviewCandidate,
   type SessionReviewGoalCandidate,
   type SessionReviewGoalMergeTarget,
+  type SessionReviewTaskMergeTarget,
   type SessionReviewLane,
   type SessionReviewLaneStatus,
   type SessionReviewNoteCandidate,
@@ -905,32 +906,42 @@ function CandidateCard({
   onDecision,
   projectTags,
   defaultTagIds,
+  mergeTargets,
 }: {
   candidate: SessionReviewCandidate;
   busy: boolean;
-  onDecision: (candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[] }) => void;
+  onDecision: (candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title?: string; detail?: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[]; mergeTargetTaskId?: string; mergeExpectedUpdatedAt?: string }) => void;
   projectTags: SessionTaxonomy["catalog"];
   defaultTagIds: string[];
+  mergeTargets: SessionReviewTaskMergeTarget[];
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState(mergeTargets[0]?.id ?? "");
   const [title, setTitle] = useState(candidate.title);
   const [detail, setDetail] = useState(candidate.detail);
   const [assignToMe, setAssignToMe] = useState(true);
   const [dueLocal, setDueLocal] = useState("");
   const [tagIds, setTagIds] = useState(defaultTagIds);
   const defaultTagIdsKey = [...defaultTagIds].sort().join("\u0000");
-  const accepted = candidate.committedActionItemId || candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM";
+  const accepted = candidate.committedActionItemId || candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM" || candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM";
   const sourceReviewed = candidate.transcriptReviewStatus === "human-reviewed";
+  const mergeTarget = mergeTargets.find((target) => target.id === mergeTargetId) ?? null;
 
   useEffect(() => {
     setTitle(candidate.title);
     setDetail(candidate.detail);
     setEditing(false);
     setCreating(false);
+    setMerging(false);
     setAssignToMe(true);
     setDueLocal("");
   }, [candidate.detail, candidate.reviewStatus, candidate.title]);
+
+  useEffect(() => {
+    if (!mergeTargets.some((target) => target.id === mergeTargetId)) setMergeTargetId(mergeTargets[0]?.id ?? "");
+  }, [mergeTargetId, mergeTargets]);
 
   useEffect(() => {
     if (!creating) {
@@ -976,7 +987,22 @@ function CandidateCard({
       <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-black text-violet-900 hover:underline">Review exact transcript source</a>
       {!accepted && !sourceReviewed ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">Listen through and confirm every segment in this source span before creating a canonical task.</p> : null}
       {accepted ? (
-        <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />Committed as canonical Quipsly work.{candidate.committedActionItemId ? <Link href={`/work?task=${encodeURIComponent(candidate.committedActionItemId)}`} className="underline">Open task</Link> : null}</p>
+        <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />{candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM" ? "Reviewed evidence added to canonical Quipsly work." : "Committed as canonical Quipsly work."}{candidate.committedActionItemId ? <Link href={`/work?task=${encodeURIComponent(candidate.committedActionItemId)}`} className="underline">Open task</Link> : null}</p>
+      ) : merging ? (
+        <div className="mt-4 space-y-4 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+          <div><p className="text-xs font-black uppercase tracking-wide text-sky-950">Add evidence to an existing task</p><p className="mt-1 text-xs font-semibold leading-5 text-sky-900">Select the exact actor-owned task. This appends one source receipt; it does not edit task state.</p></div>
+          <label className="block text-xs font-black uppercase tracking-wide text-sky-950">Existing task
+            <select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]">
+              {mergeTargets.map((target) => <option key={target.id} value={target.id}>{target.title}</option>)}
+            </select>
+          </label>
+          {mergeTarget ? <div className="rounded-lg border border-sky-200 bg-white p-3 text-xs font-semibold leading-5 text-sky-950"><p className="font-black">{mergeTarget.title}</p><p>{mergeTarget.detail || "No task detail"}</p><p>{mergeTarget.dueAt ? `Due ${new Date(mergeTarget.dueAt).toLocaleString()}` : "No due date"} · {mergeTarget.evidenceCount} existing evidence receipt{mergeTarget.evidenceCount === 1 ? "" : "s"}</p></div> : null}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy || !sourceReviewed || !mergeTarget} onClick={() => mergeTarget && onDecision(candidate, "MERGE", { mergeTargetTaskId: mergeTarget.id, mergeExpectedUpdatedAt: mergeTarget.updatedAt })} className="rounded-full bg-sky-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Adding…" : "Add reviewed evidence"}</button>
+            <button type="button" disabled={busy} onClick={() => setMerging(false)} className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 disabled:opacity-50">Cancel</button>
+          </div>
+          <p className="text-xs font-bold leading-relaxed text-sky-950">Title, detail, status, owner, due date, completion, reminder, recurrence, tags, goal links, and project remain unchanged. The exact transcript span and playback source are retained.</p>
+        </div>
       ) : creating ? (
         <div className="mt-4 space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
           <div><p className="text-xs font-black uppercase tracking-wide text-emerald-950">Create one canonical task</p><p className="mt-1 text-xs font-semibold leading-5 text-emerald-900">Review every field. Nothing is assigned, dated, tagged, reminded, shared, or placed on a calendar unless it is shown here.</p></div>
@@ -1020,12 +1046,13 @@ function CandidateCard({
       ) : (
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" disabled={busy || !sourceReviewed} onClick={() => setCreating(true)} className="rounded-full bg-[#3e2f21] px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">Review &amp; create task</button>
+          <button type="button" disabled={busy || !sourceReviewed || mergeTargets.length === 0} onClick={() => setMerging(true)} className="rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:opacity-50">Add to existing task</button>
           <button type="button" disabled={busy} onClick={() => setEditing(true)} className="rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-900 disabled:opacity-50">Edit candidate</button>
           <button type="button" disabled={busy} onClick={() => onDecision(candidate, "DEFER")} className="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-50">Defer</button>
           <button type="button" disabled={busy} onClick={() => onDecision(candidate, "REJECT")} className="rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Reject</button>
         </div>
       )}
-      {!accepted && !creating && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">Only “Review &amp; create task” can write one canonical ActionItem after you inspect owner, due date, and tags. Edit, defer, and reject preserve review history without creating work, assigning anyone, sending follow-up, or publishing.</p>}
+      {!accepted && !creating && !merging && <p className="mt-3 text-xs font-bold leading-relaxed text-[#8a7354]">“Review &amp; create task” writes one canonical ActionItem after you inspect owner, due date, and tags. “Add to existing task” appends one source receipt without changing task state. Edit, defer, and reject preserve review history without creating work, assigning anyone, sending follow-up, or publishing.{mergeTargets.length ? "" : " Create an actor-owned task in this Nest to enable evidence merge."}</p>}
     </article>
   );
 }
@@ -1361,7 +1388,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     }
   }
 
-  async function review(candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title: string; detail: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[] }) {
+  async function review(candidate: SessionReviewCandidate, decision: TranscriptActionReviewDecision, draft?: { title?: string; detail?: string; assignToMe?: boolean; dueAt?: string | null; tagIds?: string[]; mergeTargetTaskId?: string; mergeExpectedUpdatedAt?: string }) {
     if (!packet) return;
     const request = candidateReviewRequest({ packet, candidate, decision, ...draft });
     if (!request) {
@@ -1376,13 +1403,37 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         headers: { "content-type": "application/json" },
         body: JSON.stringify(request),
       });
-      const body = await response.json() as { ok?: boolean; error?: string; actionItem?: { id: string; assignedUserId?: string | null; dueAt?: string | null; tagIds?: string[] } | null; idempotentReplay?: boolean };
-      if (!response.ok || !body.ok) throw new Error(body.error || "The review decision was not saved.");
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        decision?: string;
+        actionItem?: { id: string; assignedUserId?: string | null; dueAt?: string | null; tagIds?: string[] } | null;
+        receipt?: { decision?: string; actionCandidateId?: string; actionItemId?: string | null; taskEvidenceReceiptId?: string | null };
+        boundaries?: { mergeAppendsOneActorOwnedTaskEvidenceReceipt?: boolean; mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject?: boolean; dueDateCreated?: boolean; projectTagsApplied?: boolean };
+        idempotentReplay?: boolean;
+      };
+      if (!response.ok || !body.ok || ((decision === "ACCEPT" || decision === "MERGE") && !body.actionItem?.id)) throw new Error(body.error || "The review decision was not saved.");
+      if (decision === "MERGE" && (
+        body.decision !== "MERGE"
+        || body.actionItem?.id !== draft?.mergeTargetTaskId
+        || body.receipt?.decision !== "MERGE"
+        || body.receipt?.actionCandidateId !== candidate.id
+        || body.receipt?.actionItemId !== draft?.mergeTargetTaskId
+        || !body.receipt?.taskEvidenceReceiptId
+        || body.boundaries?.mergeAppendsOneActorOwnedTaskEvidenceReceipt !== true
+        || body.boundaries?.mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject !== true
+        || body.boundaries?.dueDateCreated === true
+        || body.boundaries?.projectTagsApplied === true
+      )) throw new Error("Nest returned incomplete or unsafe task evidence-merge proof.");
       const successMessage = decision === "ACCEPT"
         ? body.idempotentReplay
           ? "This exact candidate, owner, due-date, and tag choice was already accepted; nothing was duplicated."
           : `One ${body.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task was created${body.actionItem?.dueAt ? " with a due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} project tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.`
-        : `${humanize(decision)} saved as review state. No task was created.`;
+        : decision === "MERGE"
+          ? body.idempotentReplay
+            ? "This exact transcript evidence was already attached to that task; no receipt was duplicated."
+            : "Reviewed transcript evidence was added to the selected task. Its identity, status, owner, dates, reminder, recurrence, tags, goals, and project did not change."
+          : `${humanize(decision)} saved as review state. No task was created.`;
       await load();
       setMessage(successMessage);
     } catch (error) {
@@ -1646,7 +1697,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <section aria-labelledby="candidate-heading">
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-violet-50 p-2 text-violet-700"><ListTodo aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quarantined suggestions</p><h2 id="candidate-heading" className="font-serif text-3xl font-black text-[#3d3122]">Decide candidate by candidate</h2></div></div>
-          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Task review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can be accepted or turned into a task."}</div> : packet.packet?.actionCandidates.length ? <div className="grid gap-4 xl:grid-cols-2">{packet.packet.actionCandidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={review} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No transcript action candidates are waiting for human review.</div>}
+          {reviewHeld ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-900">{packetStale ? "Task review is held because this packet predates the current transcript review. Build the current packet first." : "Transcript review is held until the release evidence is valid. Nothing can be accepted or turned into a task."}</div> : packet.packet?.actionCandidates.length ? <div className="grid gap-4 xl:grid-cols-2">{packet.packet.actionCandidates.map((candidate) => <CandidateCard key={candidate.id} candidate={candidate} busy={busyCandidateId === candidate.id} onDecision={review} projectTags={sessionTaxonomy?.catalog ?? []} defaultTagIds={sessionTaxonomy?.tags.map((tag) => tag.id) ?? []} mergeTargets={packet.packet?.taskMergeTargets ?? []} />)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No transcript action candidates are waiting for human review.</div>}
         </section>
 
         <section aria-labelledby="goal-candidate-heading">

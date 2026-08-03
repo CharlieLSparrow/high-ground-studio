@@ -345,6 +345,23 @@ private struct CapturePacketActionMutationResponse: Codable {
     let error: String?
     let idempotentReplay: Bool?
     let actionItem: ActionRecord?
+    let decision: String?
+    let receipt: Receipt?
+    let boundaries: Boundaries?
+
+    struct Receipt: Codable {
+        let decision: String?
+        let actionCandidateId: String?
+        let actionItemId: String?
+        let taskEvidenceReceiptId: String?
+    }
+
+    struct Boundaries: Codable {
+        let mergeAppendsOneActorOwnedTaskEvidenceReceipt: Bool?
+        let mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject: Bool?
+        let dueDateCreated: Bool?
+        let projectTagsApplied: Bool?
+    }
 }
 
 struct CapturePacketTaskTag: Codable, Identifiable, Equatable {
@@ -469,6 +486,22 @@ struct CapturePacketGoalMergeTarget: Codable, Identifiable, Equatable {
     }
 }
 
+struct CapturePacketTaskMergeTarget: Codable, Identifiable, Equatable {
+    let id: String
+    let title: String
+    let detail: String?
+    let status: String
+    let dueAt: String?
+    let updatedAt: String
+    let projectId: String?
+    let roomId: String?
+    let evidenceCount: Int
+
+    static func preview() -> Self {
+        .init(id: "preview-task", title: "Review the final cut", detail: "Use the real source.", status: "OPEN", dueAt: nil, updatedAt: "2026-08-03T12:00:00.000Z", projectId: "preview-high-ground", roomId: "room-preview-coaching-ready", evidenceCount: 1)
+    }
+}
+
 struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     struct LastHumanReview: Codable, Equatable {
         let receiptId: String
@@ -588,6 +621,7 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
         let noteCandidates: [CapturePacketNoteCandidate]?
         let noteMergeTargets: [CapturePacketNoteMergeTarget]?
         let actionCandidates: [CapturePacketActionCandidate]?
+        let taskMergeTargets: [CapturePacketTaskMergeTarget]?
         let goalCandidates: [CapturePacketGoalCandidate]?
         let goalMergeTargets: [CapturePacketGoalMergeTarget]?
         let taskMaterialization: TaskMaterialization?
@@ -610,6 +644,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetNoteCandidates: [CapturePacketNoteCandidate] = []
     @Published private(set) var packetNoteMergeTargets: [CapturePacketNoteMergeTarget] = []
     @Published private(set) var packetActionCandidates: [CapturePacketActionCandidate] = []
+    @Published private(set) var packetTaskMergeTargets: [CapturePacketTaskMergeTarget] = []
     @Published private(set) var packetTaskTags: [CapturePacketTaskTag] = []
     @Published private(set) var packetTaskProjectName: String?
     @Published private(set) var packetReviewError: String?
@@ -692,6 +727,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = [.preview(roomID: roomID)]
             packetNoteMergeTargets = [.preview()]
             packetActionCandidates = [.preview(roomID: roomID)]
+            packetTaskMergeTargets = [.preview()]
             packetTaskTags = [
                 .init(id: "preview-follow-through", label: "Follow-through", slug: "follow-through", selectedForSession: true),
                 .init(id: "preview-coaching", label: "Coaching", slug: "coaching", selectedForSession: true),
@@ -718,6 +754,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
+            packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
@@ -770,6 +807,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
+            packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
@@ -1342,6 +1380,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         assignToMe: Bool? = nil,
         dueAt: Date? = nil,
         tagIDs: [String]? = nil,
+        mergeTarget: CapturePacketTaskMergeTarget? = nil,
         previewOnly: Bool
     ) async -> Bool {
         guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
@@ -1375,6 +1414,9 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 body["assignToMe"] = assignToMe ?? false
                 body["dueAt"] = dueAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull()
                 body["tagIds"] = Array(Set(tagIDs ?? [])).sorted()
+            } else if decision == "MERGE", let mergeTarget {
+                body["mergeTargetTaskId"] = mergeTarget.id
+                body["mergeExpectedUpdatedAt"] = mergeTarget.updatedAt
             }
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -1382,15 +1424,34 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(CapturePacketActionMutationResponse.self, from: data)
-            let requiresTask = decision == "ACCEPT"
+            let requiresTask = decision == "ACCEPT" || decision == "MERGE"
             guard response.statusCode < 400, payload.ok, !requiresTask || payload.actionItem != nil else {
                 throw captureTranscriptError(data: data, fallback: payload.error ?? "The task review decision could not be saved.")
             }
-            message = decision == "ACCEPT"
+            if decision == "MERGE" {
+                guard let mergeTarget,
+                      payload.decision == "MERGE",
+                      payload.actionItem?.id == mergeTarget.id,
+                      payload.receipt?.decision == "MERGE",
+                      payload.receipt?.actionCandidateId == candidate.id,
+                      payload.receipt?.actionItemId == mergeTarget.id,
+                      payload.receipt?.taskEvidenceReceiptId?.isEmpty == false,
+                      payload.boundaries?.mergeAppendsOneActorOwnedTaskEvidenceReceipt == true,
+                      payload.boundaries?.mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject == true,
+                      payload.boundaries?.dueDateCreated != true,
+                      payload.boundaries?.projectTagsApplied != true else {
+                    throw NSError(domain: "QuipslyCapture.PacketTaskReview", code: 1, userInfo: [NSLocalizedDescriptionKey: "Nest returned incomplete or unsafe task evidence-merge proof."])
+                }
+                message = payload.idempotentReplay == true
+                    ? "That exact transcript evidence was already attached to this task; nothing was duplicated."
+                    : "Reviewed transcript evidence was added to \(mergeTarget.title). Its identity, status, owner, dates, reminder, recurrence, tags, goals, and project did not change."
+            } else {
+                message = decision == "ACCEPT"
                 ? (payload.idempotentReplay == true
                     ? "That exact packet task choice was already accepted."
                     : "One \(payload.actionItem?.assignedUserId == nil ? "unassigned" : "actor-owned") source-linked task was created\(payload.actionItem?.dueAt == nil ? "" : " with a due date")\((payload.actionItem?.tagIds?.isEmpty == false) ? " and project tags" : ""). No reminder, calendar event, message, or delivery was added.")
                 : "\(decision.capitalized) saved in packet history. No task was created."
+            }
             await loadPacketCandidates(roomID: candidate.roomId)
             return true
         } catch {
@@ -1407,6 +1468,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
+            packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
@@ -1431,6 +1493,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = payload.packet?.noteCandidates ?? []
             packetNoteMergeTargets = payload.packet?.noteMergeTargets ?? []
             packetActionCandidates = payload.packet?.actionCandidates ?? []
+            packetTaskMergeTargets = payload.packet?.taskMergeTargets ?? []
             packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
             packetStatus = payload.packet?.status
@@ -1454,6 +1517,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetNoteCandidates = []
             packetNoteMergeTargets = []
             packetActionCandidates = []
+            packetTaskMergeTargets = []
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
@@ -2789,6 +2853,7 @@ struct CaptureTranscriptReviewView: View {
                     candidate: candidate,
                     projectName: client.packetTaskProjectName,
                     availableTags: client.packetTaskTags,
+                    mergeTargets: client.packetTaskMergeTargets,
                     previewOnly: previewOnly,
                     decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
                     client: client,
@@ -3219,6 +3284,7 @@ private struct CapturePacketTaskCandidateCard: View {
     let candidate: CapturePacketActionCandidate
     let projectName: String?
     let availableTags: [CapturePacketTaskTag]
+    let mergeTargets: [CapturePacketTaskMergeTarget]
     let previewOnly: Bool
     let decisionsLocked: Bool
     @ObservedObject var client: CaptureTranscriptCorrectionClient
@@ -3226,6 +3292,8 @@ private struct CapturePacketTaskCandidateCard: View {
 
     @State private var isEditing = false
     @State private var isCreating = false
+    @State private var isMerging = false
+    @State private var mergeTargetID = ""
     @State private var title: String
     @State private var detail: String
     @State private var assignToMe = true
@@ -3237,6 +3305,7 @@ private struct CapturePacketTaskCandidateCard: View {
         candidate: CapturePacketActionCandidate,
         projectName: String?,
         availableTags: [CapturePacketTaskTag],
+        mergeTargets: [CapturePacketTaskMergeTarget],
         previewOnly: Bool,
         decisionsLocked: Bool,
         client: CaptureTranscriptCorrectionClient,
@@ -3245,6 +3314,7 @@ private struct CapturePacketTaskCandidateCard: View {
         self.candidate = candidate
         self.projectName = projectName
         self.availableTags = availableTags
+        self.mergeTargets = mergeTargets
         self.previewOnly = previewOnly
         self.decisionsLocked = decisionsLocked
         self.client = client
@@ -3255,7 +3325,9 @@ private struct CapturePacketTaskCandidateCard: View {
     }
 
     private var accepted: Bool {
-        candidate.committedActionItemId != nil || candidate.reviewStatus == "ACCEPTED_AS_ACTION_ITEM"
+        candidate.committedActionItemId != nil
+            || candidate.reviewStatus == "ACCEPTED_AS_ACTION_ITEM"
+            || candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
     }
 
     private var sourceFullyReviewed: Bool {
@@ -3306,10 +3378,65 @@ private struct CapturePacketTaskCandidateCard: View {
             }
 
             if accepted {
-                Label("Accepted as canonical Quipsly work", systemImage: "checkmark.shield.fill")
+                Label(
+                    candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
+                        ? "Added as reviewed evidence to one existing task"
+                        : "Accepted as canonical Quipsly work",
+                    systemImage: "checkmark.shield.fill"
+                )
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
+            } else if isMerging {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Add evidence to one existing task", systemImage: "link.badge.plus")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.blue)
+                    Text("Choose deliberately. Quipsly appends this reviewed transcript and playback pointer; it does not rewrite the selected task.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Picker("Existing task", selection: $mergeTargetID) {
+                        Text("Choose a task…").tag("")
+                        ForEach(mergeTargets) { target in
+                            Text(target.title).tag(target.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("CapturePacketTaskMergeTargetPicker")
+                    if let target = mergeTargets.first(where: { $0.id == mergeTargetID }) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(target.title).font(.subheadline.weight(.bold))
+                            Text(target.detail?.isEmpty == false ? target.detail! : "No task detail recorded.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(target.dueAt == nil ? "No due date" : "Due date preserved") · \(target.evidenceCount) existing evidence \(target.evidenceCount == 1 ? "receipt" : "receipts")")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityIdentifier("CapturePacketTaskMergeTargetSummary_\(target.id)")
+                    }
+                    HStack {
+                        Button("Add reviewed evidence") {
+                            guard let target = mergeTargets.first(where: { $0.id == mergeTargetID }) else { return }
+                            Task {
+                                _ = await client.reviewPacketAction(candidate: candidate, decision: "MERGE", title: nil, detail: nil, mergeTarget: target, previewOnly: previewOnly)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(decisionsDisabled || !sourceFullyReviewed || mergeTargetID.isEmpty)
+                        .accessibilityIdentifier("CapturePacketTaskMergeButton")
+                        Button("Cancel") { isMerging = false }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("CapturePacketTaskCancelMergeButton")
+                    }
+                    Text("Task identity, title, detail, status, owner, dates, reminder, recurrence, tags, goal links, and project remain unchanged. The exact transcript source remains playable.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else if isCreating {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Create one canonical task", systemImage: "checklist.checked")
@@ -3425,6 +3552,13 @@ private struct CapturePacketTaskCandidateCard: View {
                         .disabled(decisionsLocked || client.isMutating)
                         .accessibilityIdentifier("CapturePacketTaskEditButton")
                 }
+                Button("Add to existing task") {
+                    mergeTargetID = mergeTargets.first?.id ?? ""
+                    isMerging = true
+                }
+                .buttonStyle(.bordered)
+                .disabled(decisionsDisabled || !sourceFullyReviewed || mergeTargets.isEmpty)
+                .accessibilityIdentifier("CapturePacketTaskMergeModeButton")
                 HStack {
                     Button("Defer") {
                         Task { _ = await client.reviewPacketAction(candidate: candidate, decision: "DEFER", title: nil, detail: nil, previewOnly: previewOnly) }
@@ -3440,8 +3574,8 @@ private struct CapturePacketTaskCandidateCard: View {
                     .accessibilityIdentifier("CapturePacketTaskRejectButton")
                 }
             }
-            if !accepted && !isCreating {
-                Text("Only Review & create task can write one canonical OPEN ActionItem after owner, due date, and tags are inspected. Every other decision creates no task, assignment, date, reminder, calendar event, message, delivery, or publication.")
+            if !accepted && !isCreating && !isMerging {
+                Text("Review & create task writes one canonical OPEN ActionItem after owner, due date, and tags are inspected. Add to existing task appends one reviewed source receipt without changing task state. Edit, defer, and reject create no task, assignment, date, reminder, calendar event, message, delivery, or publication.\(mergeTargets.isEmpty ? " Create an actor-owned task in this Nest to enable evidence merge." : "")")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3454,6 +3588,7 @@ private struct CapturePacketTaskCandidateCard: View {
             detail = candidate.detail
             isEditing = false
             isCreating = false
+            isMerging = false
             assignToMe = true
             hasDueDate = false
             selectedTagIDs = Set(availableTags.filter(\.selectedForSession).map(\.id))

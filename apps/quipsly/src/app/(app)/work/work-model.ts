@@ -3,9 +3,11 @@ import {
   readTranscriptDerivedGoalSource,
   readTranscriptDerivedTaskSource,
   readTranscriptMergedGoalSource,
+  readTranscriptMergedTaskSource,
   type TranscriptDerivedGoalSourceAnchor,
   type TranscriptDerivedTaskSourceAnchor,
   type TranscriptMergedGoalSource,
+  type TranscriptMergedTaskSource,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
 import { buildWeeklyReview, type WeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
@@ -88,6 +90,7 @@ export type RawWorkTask = {
       updatedAt: Date | string;
     };
   } | null;
+  evidenceReceipts?: Array<{ evidenceJson?: unknown; occurredAt?: Date | string }>;
 };
 
 export type RawWorkGoal = {
@@ -188,6 +191,7 @@ export type WorkTask = {
   canManageReminder?: boolean;
   bookingStart: string | null;
   sourceAnchor: TranscriptDerivedTaskSourceAnchor | null;
+  lastMergedTranscriptEvidence: TranscriptMergedTaskSource | null;
   recurrence?: {
     seriesId: string;
     occurrenceKey: string;
@@ -341,6 +345,7 @@ export function buildWorkSnapshot(input: {
       const room = task.room || task.booking?.callRoom || null;
       const parsedSourceAnchor = readTranscriptDerivedTaskSource(task.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === room?.id ? parsedSourceAnchor : null;
+      const lastMergedTranscriptEvidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
       const provenance = taskProvenance(task.sourceJson);
       const historicalLocked = Object.keys(safeRecord(safeRecord(task.sourceJson).supersessionReceipt)).length > 0;
       const dueAtMs = dueAt ? new Date(dueAt).getTime() : null;
@@ -404,6 +409,7 @@ export function buildWorkSnapshot(input: {
           && !recurrence,
         bookingStart: iso(task.booking?.scheduledStart),
         sourceAnchor,
+        lastMergedTranscriptEvidence,
         recurrence,
       };
     })

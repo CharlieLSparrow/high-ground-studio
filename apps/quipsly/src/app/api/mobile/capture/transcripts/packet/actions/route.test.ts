@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { resolveTranscriptEvidenceInTransaction } from "../../goals/route-implementation";
 
 import { POST } from "./route";
 
@@ -14,10 +15,14 @@ jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({
   mobileCaptureTranscriptProcessingGate: jest.fn(),
 }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("../../goals/route-implementation", () => ({
+  resolveTranscriptEvidenceInTransaction: jest.fn(),
+}));
 
 const mockedGetPrisma = jest.mocked(getPrismaClient);
 const mockedTranscriptGate = jest.mocked(mobileCaptureTranscriptProcessingGate);
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);
+const mockedResolveTranscriptEvidence = jest.mocked(resolveTranscriptEvidenceInTransaction);
 
 const ROOM_ID = "room-1";
 const TRANSCRIPT_JOB_ID = "transcript-1";
@@ -90,6 +95,27 @@ function createPrismaHarness() {
     } as Record<string, unknown>,
   };
   const actionItems: any[] = [];
+  const mergeTargets: any[] = [{
+    id: "existing-task-1",
+    roomId: ROOM_ID,
+    bookingId: "booking-1",
+    projectId: "project-1",
+    noteId: "original-note-1",
+    assignedUserId: "coach-1",
+    title: "Finish the episode package",
+    detail: "Keep the source receipts together.",
+    status: "OPEN",
+    dueAt: new Date("2026-08-12T18:00:00.000Z"),
+    completedAt: null,
+    sourceJson: { source: "manual-task" },
+    createdAt: new Date("2026-08-01T15:00:00.000Z"),
+    updatedAt: new Date("2026-08-03T15:00:00.000Z"),
+    tagLinks: [{ tagId: "tag-episode" }],
+    goalLinks: [{ goalId: "goal-1", relationship: "SUPPORTS" }],
+    reminder: { id: "reminder-1" },
+    recurrenceOccurrence: { id: "occurrence-1" },
+  }];
+  const evidenceReceipts: any[] = [];
   let actionSequence = 0;
   let transactionTail = Promise.resolve<unknown>(undefined);
 
@@ -135,7 +161,13 @@ function createPrismaHarness() {
       findMany: jest.fn(async ({ where }: any) => actionItems.filter((item) => (
         item.roomId === where.roomId && item.noteId === where.noteId
       ))),
-      findUnique: jest.fn(async ({ where }: any) => actionItems.find((item) => item.id === where.id) || null),
+      findUnique: jest.fn(async ({ where }: any) => [...actionItems, ...mergeTargets].find((item) => item.id === where.id) || null),
+      findFirst: jest.fn(async ({ where }: any) => mergeTargets.find((item) => (
+        item.id === where.id
+        && item.assignedUserId === where.assignedUserId
+        && item.status === where.status
+        && (where.projectId ? item.projectId === where.projectId : item.roomId === where.roomId)
+      )) || null),
       create: jest.fn(async ({ data }: any) => {
         actionSequence += 1;
         const item = {
@@ -154,6 +186,14 @@ function createPrismaHarness() {
     actionItemTagLink: {
       createMany: jest.fn(async ({ data }: any) => ({ count: data.length })),
     },
+    actionItemEvidenceReceipt: {
+      create: jest.fn(async ({ data }: any) => {
+        const receipt = { ...data, createdAt: new Date() };
+        evidenceReceipts.push(receipt);
+        return receipt;
+      }),
+      findUnique: jest.fn(async ({ where }: any) => evidenceReceipts.find((receipt) => receipt.id === where.id) || null),
+    },
     $queryRaw: jest.fn(async () => [{ id: SUMMARY_NOTE_ID }]),
   };
   prisma.$transaction = jest.fn((callback: (tx: any) => Promise<unknown>) => {
@@ -162,11 +202,11 @@ function createPrismaHarness() {
     return execution;
   });
 
-  return { prisma, summary, actionItems, segments };
+  return { prisma, summary, actionItems, mergeTargets, evidenceReceipts, segments };
 }
 
 function reviewRequest(
-  decision: "ACCEPT" | "EDIT" | "REJECT" | "DEFER",
+  decision: "ACCEPT" | "EDIT" | "MERGE" | "REJECT" | "DEFER",
   overrides: Record<string, unknown> = {},
 ) {
   return new Request("http://localhost/api/mobile/capture/transcripts/packet/actions", {
@@ -196,6 +236,21 @@ describe("action candidate review route", () => {
       user: { id: "coach-1", isStaff: false, email: "coach@example.com" },
     } as any);
     mockedTranscriptGate.mockResolvedValue({ allowed: true, receipt: null });
+    mockedResolveTranscriptEvidence.mockResolvedValue({
+      desk: { transcriptJobId: TRANSCRIPT_JOB_ID, projectId: "project-1" },
+      playback: { recordingAssetId: RECORDING_ASSET_ID, sourceId: "protected-source-1" },
+      sourceAnchor: {
+        segmentId: "segment-1",
+        segmentIds: ["segment-1"],
+        startSeconds: 12,
+        endSeconds: 18,
+        providerTextSha256: createHash("sha256").update("I will send the revised episode outline.").digest("hex"),
+        providerSpeakerLabel: "Charlie",
+        effectiveTextSnapshot: "I will send the revised episode outline.",
+        effectiveSpeakerLabelSnapshot: "Charlie",
+        acceptedCorrectionId: null,
+      },
+    } as any);
   });
 
   it("requires authentication before reading room or packet evidence", async () => {
@@ -469,6 +524,132 @@ describe("action candidate review route", () => {
     expect(changed.status).toBe(409);
     expect(payload.errorCode).toBe("ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT");
     expect(harness.prisma.actionItem.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("appends reviewed evidence exactly once while preserving every canonical task field", async () => {
+    const target = harness.mergeTargets[0]!;
+    const before = {
+      id: target.id,
+      title: target.title,
+      detail: target.detail,
+      status: target.status,
+      assignedUserId: target.assignedUserId,
+      dueAt: target.dueAt.toISOString(),
+      completedAt: target.completedAt,
+      updatedAt: target.updatedAt.toISOString(),
+      projectId: target.projectId,
+      roomId: target.roomId,
+      noteId: target.noteId,
+      tagLinks: structuredClone(target.tagLinks),
+      goalLinks: structuredClone(target.goalLinks),
+      reminder: structuredClone(target.reminder),
+      recurrenceOccurrence: structuredClone(target.recurrenceOccurrence),
+    };
+    const merge = {
+      mergeTargetTaskId: target.id,
+      mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
+      note: "Reviewed against protected playback.",
+    };
+
+    const firstResponse = await POST(reviewRequest("MERGE", merge));
+    const first = await firstResponse.json();
+    const replayResponse = await POST(reviewRequest("MERGE", merge));
+    const replay = await replayResponse.json();
+
+    expect(firstResponse.status).toBe(200);
+    expect(replayResponse.status).toBe(200);
+    expect(first).toMatchObject({
+      decision: "MERGE",
+      idempotentReplay: false,
+      actionItem: { id: target.id, assignedUserId: "coach-1", status: "OPEN" },
+      boundaries: {
+        mergeAppendsOneActorOwnedTaskEvidenceReceipt: true,
+        mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject: true,
+        noCalendarMutation: true,
+        noClientDelivery: true,
+        noPublicationClaim: true,
+      },
+    });
+    expect(replay).toMatchObject({ decision: "MERGE", idempotentReplay: true, actionItem: { id: target.id } });
+    expect(harness.prisma.actionItemEvidenceReceipt.create).toHaveBeenCalledTimes(1);
+    expect(harness.evidenceReceipts).toHaveLength(1);
+    expect(harness.evidenceReceipts[0]).toMatchObject({
+      actionItemId: target.id,
+      actorUserId: "coach-1",
+      kind: "TRANSCRIPT_CANDIDATE_MERGED",
+      note: "Reviewed against protected playback.",
+      evidenceJson: {
+        schema: "quipsly-transcript-task-evidence-merge-v1",
+        actionCandidateId: ACTION_CANDIDATE_ID,
+        candidateSource: {
+          schema: "quipsly-transcript-derived-task-v1",
+          roomId: ROOM_ID,
+          transcriptJobId: TRANSCRIPT_JOB_ID,
+          segmentId: "segment-1",
+          recordingAssetId: RECORDING_ASSET_ID,
+          playbackSourceId: "protected-source-1",
+        },
+        externalSideEffects: false,
+      },
+    });
+    expect({
+      id: target.id,
+      title: target.title,
+      detail: target.detail,
+      status: target.status,
+      assignedUserId: target.assignedUserId,
+      dueAt: target.dueAt.toISOString(),
+      completedAt: target.completedAt,
+      updatedAt: target.updatedAt.toISOString(),
+      projectId: target.projectId,
+      roomId: target.roomId,
+      noteId: target.noteId,
+      tagLinks: target.tagLinks,
+      goalLinks: target.goalLinks,
+      reminder: target.reminder,
+      recurrenceOccurrence: target.recurrenceOccurrence,
+    }).toEqual(before);
+    expect((harness.summary.sourceJson as any).actionCandidates[0]).toMatchObject({
+      reviewStatus: "MERGED_INTO_ACTION_ITEM",
+      committedActionItemId: target.id,
+      humanApprovalRequired: false,
+    });
+  });
+
+  it("rejects stale or non-actor-owned merge targets without writing evidence", async () => {
+    const target = harness.mergeTargets[0]!;
+    const staleResponse = await POST(reviewRequest("MERGE", {
+      mergeTargetTaskId: target.id,
+      mergeExpectedUpdatedAt: "2026-08-03T14:59:59.000Z",
+    }));
+    expect(staleResponse.status).toBe(409);
+    await expect(staleResponse.json()).resolves.toMatchObject({ errorCode: "ACTION_CANDIDATE_MERGE_TARGET_CHANGED" });
+
+    target.assignedUserId = "another-user";
+    const foreignResponse = await POST(reviewRequest("MERGE", {
+      mergeTargetTaskId: target.id,
+      mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
+    }));
+    expect(foreignResponse.status).toBe(409);
+    await expect(foreignResponse.json()).resolves.toMatchObject({ errorCode: "ACTION_CANDIDATE_MERGE_TARGET_UNAVAILABLE" });
+    expect(harness.prisma.actionItemEvidenceReceipt.create).not.toHaveBeenCalled();
+    expect(harness.prisma.coachingNote.update).not.toHaveBeenCalled();
+  });
+
+  it("requires reviewed playback evidence for MERGE just as it does for ACCEPT", async () => {
+    harness.segments[0]!.verifications = [];
+    const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
+    (harness.summary.sourceJson as any).transcriptSnapshot = snapshot;
+    const target = harness.mergeTargets[0]!;
+
+    const response = await POST(reviewRequest("MERGE", {
+      mergeTargetTaskId: target.id,
+      mergeExpectedUpdatedAt: target.updatedAt.toISOString(),
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ errorCode: "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED" });
+    expect(harness.prisma.actionItemEvidenceReceipt.create).not.toHaveBeenCalled();
   });
 
   it("rejects archived or cross-project tags before creating the task", async () => {

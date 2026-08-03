@@ -3,6 +3,7 @@ export const TRANSCRIPT_DERIVED_GOAL_SCHEMA = "quipsly-transcript-derived-goal-v
 export const TRANSCRIPT_DERIVED_NOTE_SCHEMA = "quipsly-transcript-derived-note-v1" as const;
 export const TRANSCRIPT_SOURCE_SPAN_SCHEMA = "quipsly-transcript-source-span-v1" as const;
 export const TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA = "quipsly-transcript-goal-evidence-merge-v1" as const;
+export const TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA = "quipsly-transcript-task-evidence-merge-v1" as const;
 
 export type TranscriptSourceSpanSegmentEvidence = {
   segmentId: string;
@@ -69,6 +70,13 @@ export type TranscriptMergedGoalSource = {
   goalCandidateId: string;
   mergedAt: string;
   sourceAnchor: TranscriptDerivedGoalSourceAnchor;
+};
+
+export type TranscriptMergedTaskSource = {
+  receiptId: string;
+  actionCandidateId: string;
+  mergedAt: string;
+  sourceAnchor: TranscriptDerivedTaskSourceAnchor;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -316,4 +324,16 @@ export function readTranscriptMergedGoalSource(value: unknown): TranscriptMerged
   const sourceAnchor = readTranscriptDerivedGoalSource(evidence.candidateSource);
   if (!receiptId || !goalCandidateId || !mergedAt || !sourceAnchor) return null;
   return { receiptId, goalCandidateId, mergedAt, sourceAnchor };
+}
+
+/** Parses one append-only reviewed transcript receipt on an existing task. */
+export function readTranscriptMergedTaskSource(value: unknown): TranscriptMergedTaskSource | null {
+  const evidence = record(value);
+  if (evidence.schema !== TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA) return null;
+  const receiptId = text(evidence.receiptId, 200);
+  const actionCandidateId = text(evidence.actionCandidateId, 700);
+  const mergedAt = text(evidence.mergedAt, 80);
+  const sourceAnchor = readTranscriptDerivedTaskSource(evidence.candidateSource);
+  if (!receiptId || !actionCandidateId || !mergedAt || !sourceAnchor) return null;
+  return { receiptId, actionCandidateId, mergedAt, sourceAnchor };
 }

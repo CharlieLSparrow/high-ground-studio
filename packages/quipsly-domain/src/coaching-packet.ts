@@ -26,6 +26,7 @@ export const TRANSCRIPT_ACTION_CANDIDATE_KIND =
 export const TRANSCRIPT_ACTION_REVIEW_DECISIONS = [
   "ACCEPT",
   "EDIT",
+  "MERGE",
   "REJECT",
   "DEFER",
 ] as const;
@@ -38,6 +39,7 @@ export const TRANSCRIPT_ACTION_REVIEW_STATUSES = [
   "DEFERRED_BY_HUMAN",
   "REJECTED_BY_HUMAN",
   "ACCEPTED_AS_ACTION_ITEM",
+  "MERGED_INTO_ACTION_ITEM",
 ] as const;
 export type TranscriptActionReviewStatus =
   (typeof TRANSCRIPT_ACTION_REVIEW_STATUSES)[number];

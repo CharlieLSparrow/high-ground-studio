@@ -95,7 +95,7 @@ export function transcriptDerivedGoalBoundaries(input: { targetDateCreated?: boo
   };
 }
 
-export async function resolveTranscriptGoalEvidenceInTransaction(input: {
+export async function resolveTranscriptEvidenceInTransaction(input: {
   tx: any;
   actor: { id: string; email?: string | null; isStaff: boolean };
   roomId: string;
@@ -103,6 +103,7 @@ export async function resolveTranscriptGoalEvidenceInTransaction(input: {
   segmentIds?: string[];
   expectedProviderTextSha256: string;
   expectedSourceTextSha256?: string;
+  evidenceKind?: "goal" | "task";
 }) {
   const desk = await readTranscriptCorrectionDesk({
     prisma: input.tx,
@@ -114,7 +115,7 @@ export async function resolveTranscriptGoalEvidenceInTransaction(input: {
     throw new TranscriptCorrectionError(
       desk.gate.error || "Released recording-backed transcript evidence is required.",
       409,
-      "TRANSCRIPT_GOAL_EVIDENCE_HELD",
+      input.evidenceKind === "task" ? "TRANSCRIPT_TASK_EVIDENCE_HELD" : "TRANSCRIPT_GOAL_EVIDENCE_HELD",
     );
   }
   const evidenceSegments = resolveTranscriptSpanSegments({
@@ -134,7 +135,7 @@ export async function resolveTranscriptGoalEvidenceInTransaction(input: {
   }
   if (sourceAnchor.providerTextSha256 !== input.expectedProviderTextSha256) {
     throw new TranscriptCorrectionError(
-      "Provider transcript evidence changed. Refresh before creating or merging the goal evidence.",
+      "Provider transcript evidence changed. Refresh before using this evidence.",
       409,
       "STALE_PROVIDER_EVIDENCE",
     );
@@ -143,13 +144,18 @@ export async function resolveTranscriptGoalEvidenceInTransaction(input: {
   if (expectedSourceTextSha256
       && createHash("sha256").update(sourceAnchor.effectiveTextSnapshot, "utf8").digest("hex") !== expectedSourceTextSha256) {
     throw new TranscriptCorrectionError(
-      "The complete transcript thought changed. Refresh before creating or merging the goal evidence.",
+      "The complete transcript thought changed. Refresh before using this evidence.",
       409,
       "STALE_TRANSCRIPT_SPAN_EVIDENCE",
     );
   }
   return { desk, playback, sourceAnchor };
 }
+
+// Compatibility alias for the existing goal routes. New evidence consumers
+// should use the entity-neutral name because this resolver only reads and
+// verifies released transcript/playback evidence; it does not mutate a Goal.
+export const resolveTranscriptGoalEvidenceInTransaction = resolveTranscriptEvidenceInTransaction;
 
 export async function createTranscriptDerivedGoalInTransaction(input: {
   tx: any;

@@ -70,6 +70,7 @@ describe("portable Nest export route", () => {
         blockCount: 0,
         spanCount: 0,
         taskCount: 0,
+        taskEvidenceReceiptCount: 0,
         goalCount: 0,
         progressReceiptCount: 0,
         goalTaskLinkCount: 0,

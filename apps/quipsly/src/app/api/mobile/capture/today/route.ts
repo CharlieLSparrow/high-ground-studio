@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readTranscriptMergedGoalSource, readTranscriptMergedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 import { buildWeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -149,6 +149,7 @@ export async function GET(request: Request) {
         take: 200,
         select: {
           id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true,
+          evidenceReceipts: { where: { kind: "TRANSCRIPT_CANDIDATE_MERGED" }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 1, select: { evidenceJson: true } },
           reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
           project: { select: { id: true, name: true, slug: true } },
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
@@ -277,6 +278,7 @@ export async function GET(request: Request) {
     const tasks = taskRows.filter((task: any) => !isUnreviewedTranscriptActionItem(task)).map((task: any) => {
       const parsedSourceAnchor = readTranscriptDerivedTaskSource(task.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === task.room?.id ? parsedSourceAnchor : null;
+      const lastMergedTranscriptEvidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
       const dueAtMs = task.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
       const updatedAtMs = task.updatedAt.getTime();
       const isPlanned = plannedTaskIds.has(task.id);
@@ -305,6 +307,7 @@ export async function GET(request: Request) {
         tagIds: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,
+        lastMergedTranscriptEvidence,
         recurrence: task.recurrenceOccurrence ? {
           seriesId: task.recurrenceOccurrence.series.id,
           occurrenceKey: task.recurrenceOccurrence.occurrenceKey,

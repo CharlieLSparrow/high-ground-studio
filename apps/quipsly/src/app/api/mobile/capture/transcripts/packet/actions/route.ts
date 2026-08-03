@@ -4,9 +4,14 @@ import { NextResponse } from "next/server";
 import {
   TRANSCRIPT_ACTION_REVIEW_DECISIONS,
   TRANSCRIPT_PACKET_SOURCE,
+  isUnreviewedTranscriptActionItemSource,
   isTranscriptActionReviewDecision,
 } from "@high-ground/quipsly-domain/coaching-packet";
-import { TRANSCRIPT_DERIVED_TASK_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
+import {
+  TRANSCRIPT_DERIVED_TASK_SCHEMA,
+  TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
+  readTranscriptMergedTaskSource,
+} from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -27,9 +32,11 @@ import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-captu
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { resolveTranscriptEvidenceInTransaction } from "../../goals/route-implementation";
 
 const REVIEW_RECEIPT_KIND = "quipsly-action-candidate-review-receipt-v1";
 const MATERIALIZED_ACTION_SOURCE = "transcript-action-candidate-acceptance";
+const TASK_EVIDENCE_MERGE_KIND = "TRANSCRIPT_CANDIDATE_MERGED";
 const MAX_ACTION_TITLE_LENGTH = 500;
 const MAX_ACTION_DETAIL_LENGTH = 5_000;
 const MAX_REVIEW_NOTE_LENGTH = 2_000;
@@ -132,9 +139,50 @@ async function readJson(request: Request) {
 
 function reviewStatus(decision: string): TranscriptActionCandidate["reviewStatus"] {
   if (decision === "ACCEPT") return "ACCEPTED_AS_ACTION_ITEM";
+  if (decision === "MERGE") return "MERGED_INTO_ACTION_ITEM";
   if (decision === "EDIT") return "EDITED_FOR_REVIEW";
   if (decision === "REJECT") return "REJECTED_BY_HUMAN";
   return "DEFERRED_BY_HUMAN";
+}
+
+function iso(value: unknown) {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function mergeTargetSnapshot(item: any) {
+  return {
+    id: text(item?.id),
+    title: text(item?.title),
+    detail: typeof item?.detail === "string" ? item.detail : null,
+    status: text(item?.status),
+    assignedUserId: text(item?.assignedUserId) || null,
+    dueAt: iso(item?.dueAt),
+    completedAt: iso(item?.completedAt),
+    updatedAt: iso(item?.updatedAt),
+    projectId: text(item?.projectId) || null,
+    roomId: text(item?.roomId) || null,
+    noteId: text(item?.noteId) || null,
+    tagIds: Array.isArray(item?.tagLinks)
+      ? item.tagLinks.map((link: any) => text(link?.tagId)).filter(Boolean).sort()
+      : [],
+    goalLinks: Array.isArray(item?.goalLinks)
+      ? item.goalLinks.map((link: any) => ({ goalId: text(link?.goalId), relationship: text(link?.relationship) }))
+          .filter((link: { goalId: string }) => link.goalId)
+          .sort((left: { goalId: string }, right: { goalId: string }) => left.goalId.localeCompare(right.goalId))
+      : [],
+    reminderId: text(item?.reminder?.id) || null,
+    recurrenceOccurrenceId: text(item?.recurrenceOccurrence?.id) || null,
+  };
+}
+
+function exactMergeTargetRequest(receipt: Record<string, unknown>, targetTaskId: string, expectedUpdatedAt: string) {
+  const saved = sourceJson(receipt.mergeTargetBefore);
+  return text(receipt.actionItemId) === targetTaskId
+    && text(saved.id) === targetTaskId
+    && text(saved.updatedAt) === expectedUpdatedAt;
 }
 
 function validateCandidateEvidence(input: {
@@ -200,7 +248,7 @@ function acceptedActionMatches(item: any, input: {
     && text(source.packetBuildId) === input.packetBuildId;
 }
 
-function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?: boolean; tagsApplied?: boolean } = {}) {
+function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?: boolean; tagsApplied?: boolean; taskEvidenceAppended?: boolean } = {}) {
   return {
     humanDecisionRequired: true,
     noExternalAssignment: true,
@@ -208,6 +256,8 @@ function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?:
     noCalendarMutation: true,
     noPublicationClaim: true,
     acceptCreatesOneCanonicalActionItem: true,
+    mergeAppendsOneActorOwnedTaskEvidenceReceipt: input.taskEvidenceAppended === true,
+    mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject: true,
     assignmentRequiresExplicitActorChoice: true,
     assignedToActor: input.assignedToActor === true,
     dueDateCreated: input.dueDateCreated === true,
@@ -239,6 +289,8 @@ export async function POST(request: Request) {
   const actionCandidateId = text(body.actionCandidateId);
   const decision = normalizedDecision(body.decision);
   const reviewNote = text(body.note) || null;
+  const mergeTargetTaskId = text(body.mergeTargetTaskId);
+  const mergeExpectedUpdatedAt = text(body.mergeExpectedUpdatedAt);
   const assignToMe = body.assignToMe === true;
   const dueAt = normalizedDueAt(body.dueAt);
   const tagIds = normalizedTagIds(body.tagIds);
@@ -258,9 +310,21 @@ export async function POST(request: Request) {
       {
         ok: false,
         errorCode: "ACTION_CANDIDATE_DECISION_REQUIRED",
-        error: "Choose ACCEPT, EDIT, REJECT, or DEFER.",
+        error: "Choose ACCEPT, EDIT, MERGE, REJECT, or DEFER.",
         allowedDecisions: TRANSCRIPT_ACTION_REVIEW_DECISIONS,
       },
+      { status: 400 },
+    );
+  }
+  if (decision === "MERGE" && (!mergeTargetTaskId || !iso(mergeExpectedUpdatedAt))) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_MERGE_TARGET_REQUIRED", error: "Choose one current actor-owned task before adding reviewed evidence." },
+      { status: 400 },
+    );
+  }
+  if (decision !== "MERGE" && (hasOwn(body, "mergeTargetTaskId") || hasOwn(body, "mergeExpectedUpdatedAt"))) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_MERGE_TARGET_INVALID", error: "A merge target applies only when adding evidence to an existing task." },
       { status: 400 },
     );
   }
@@ -285,6 +349,12 @@ export async function POST(request: Request) {
   if (decision !== "ACCEPT" && (hasOwn(body, "assignToMe") || hasOwn(body, "dueAt") || hasOwn(body, "tagIds"))) {
     return NextResponse.json(
       { ok: false, errorCode: "ACTION_CANDIDATE_MATERIALIZATION_OPTIONS_INVALID", error: "Owner, due date, and tags apply only when accepting a candidate as canonical work." },
+      { status: 400 },
+    );
+  }
+  if (decision === "MERGE" && (hasOwn(body, "title") || hasOwn(body, "detail"))) {
+    return NextResponse.json(
+      { ok: false, errorCode: "ACTION_CANDIDATE_MERGE_CONTENT_INVALID", error: "Adding evidence does not edit the selected task's title or detail." },
       { status: 400 },
     );
   }
@@ -541,26 +611,29 @@ export async function POST(request: Request) {
       const requestedIntent = materializationIntent({ assignToMe, dueAt, tagIds });
 
       const receipts = asObjects(lockedSource.actionCandidateReviewReceipts);
-      const acceptedReceipt = receipts.find((receipt) => (
+      const terminalReceipt = receipts.filter((receipt) => (
         text(receipt.actionCandidateId) === actionCandidateId
-        && text(receipt.decision) === "ACCEPT"
-      ));
-      if (acceptedReceipt) {
-        if (decision !== "ACCEPT") {
+        && (text(receipt.decision) === "ACCEPT" || text(receipt.decision) === "MERGE")
+      )).at(-1) ?? null;
+      if (terminalReceipt) {
+        const completedDecision = text(terminalReceipt.decision);
+        if (decision !== completedDecision) {
           throw new ReviewBoundaryError(
             409,
-            "ACTION_CANDIDATE_ALREADY_ACCEPTED",
-            "This candidate already became an ActionItem and cannot be edited, rejected, or deferred as an uncommitted draft.",
+            "ACTION_CANDIDATE_ALREADY_COMPLETED",
+            completedDecision === "MERGE"
+              ? "This candidate already added evidence to an existing task and cannot be reviewed again as an uncommitted draft."
+              : "This candidate already became an ActionItem and cannot be reviewed again as an uncommitted draft.",
           );
         }
         if (
-          acceptedReceipt.kind !== REVIEW_RECEIPT_KIND
-          || text(acceptedReceipt.transcriptJobId) !== transcriptJobId
-          || text(acceptedReceipt.recordingAssetId) !== recordingAssetId
-          || text(acceptedReceipt.packetBuildId) !== packetBuildId
-          || text(acceptedReceipt.summaryNoteId) !== summaryNoteId
-          || text(acceptedReceipt.roomId) !== roomId
-          || text(acceptedReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
+          terminalReceipt.kind !== REVIEW_RECEIPT_KIND
+          || text(terminalReceipt.transcriptJobId) !== transcriptJobId
+          || text(terminalReceipt.recordingAssetId) !== recordingAssetId
+          || text(terminalReceipt.packetBuildId) !== packetBuildId
+          || text(terminalReceipt.summaryNoteId) !== summaryNoteId
+          || text(terminalReceipt.roomId) !== roomId
+          || text(terminalReceipt.transcriptSnapshotSha256) !== transcriptSnapshotSha256
         ) {
           throw new ReviewBoundaryError(
             409,
@@ -568,45 +641,74 @@ export async function POST(request: Request) {
             "The accepted candidate receipt no longer matches this packet build and source evidence.",
           );
         }
-        if (!sameMaterializationIntent(acceptedReceipt.materializationIntent, requestedIntent)) {
+        if (completedDecision === "ACCEPT" && !sameMaterializationIntent(terminalReceipt.materializationIntent, requestedIntent)) {
           throw new ReviewBoundaryError(
             409,
             "ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT",
             "This candidate was already accepted with different owner, due-date, or tag choices. Open the canonical task to edit it.",
           );
         }
-        const acceptedActionItemId = text(acceptedReceipt.actionItemId);
-        const acceptedActionItem = acceptedActionItemId
-          ? await tx.actionItem.findUnique({ where: { id: acceptedActionItemId } })
+        if (completedDecision === "MERGE" && !exactMergeTargetRequest(terminalReceipt, mergeTargetTaskId, mergeExpectedUpdatedAt)) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_IDEMPOTENCY_CONFLICT",
+            "This candidate already added evidence to a different task snapshot. Open that canonical task instead.",
+          );
+        }
+        const completedActionItemId = text(terminalReceipt.actionItemId);
+        const completedActionItem = completedActionItemId
+          ? await tx.actionItem.findUnique({ where: { id: completedActionItemId } })
           : null;
-        const acceptedActionSource = sourceJson(acceptedActionItem?.sourceJson);
-        if (
-          !acceptedActionItem
-          || text(acceptedActionSource.reviewReceiptId) !== text(acceptedReceipt.id)
-          || !acceptedActionMatches(acceptedActionItem, {
+        const acceptedActionSource = sourceJson(completedActionItem?.sourceJson);
+        const acceptedActionMatchesReceipt = completedDecision !== "ACCEPT" || Boolean(
+          completedActionItem
+          && text(acceptedActionSource.reviewReceiptId) === text(terminalReceipt.id)
+          && acceptedActionMatches(completedActionItem, {
             roomId,
             summaryNoteId,
             actionCandidateId,
             transcriptJobId,
             recordingAssetId,
             packetBuildId,
-          })
-        ) {
+          }),
+        );
+        let mergedEvidenceMatches = completedDecision !== "MERGE";
+        if (completedDecision === "MERGE") {
+          const evidenceReceipt = await tx.actionItemEvidenceReceipt.findUnique({
+            where: { id: text(terminalReceipt.taskEvidenceReceiptId) },
+          });
+          const mergedSource = readTranscriptMergedTaskSource(evidenceReceipt?.evidenceJson);
+          mergedEvidenceMatches = Boolean(
+            completedActionItem?.assignedUserId === userId
+            && evidenceReceipt?.kind === TASK_EVIDENCE_MERGE_KIND
+            && evidenceReceipt?.actionItemId === completedActionItem?.id
+            && evidenceReceipt?.actorUserId === userId
+            && mergedSource?.receiptId === text(terminalReceipt.id)
+            && mergedSource?.actionCandidateId === actionCandidateId
+            && mergedSource?.sourceAnchor.roomId === roomId
+            && mergedSource?.sourceAnchor.transcriptJobId === transcriptJobId
+            && mergedSource?.sourceAnchor.recordingAssetId === recordingAssetId
+            && mergedSource?.sourceAnchor.segmentId === candidate.segmentId,
+          );
+        }
+        if (!completedActionItem || !acceptedActionMatchesReceipt || !mergedEvidenceMatches) {
           throw new ReviewBoundaryError(
             409,
             "ACTION_CANDIDATE_RECEIPT_MISMATCH",
-            "The accepted candidate receipt no longer matches one materialized action item.",
+            "The completed candidate receipt no longer matches one canonical task and its exact evidence ledger.",
           );
         }
         return {
           candidate,
-          receipt: acceptedReceipt,
-          actionItem: acceptedActionItem,
+          receipt: terminalReceipt,
+          actionItem: completedActionItem,
           idempotentReplay: true,
         };
       }
 
-      if (candidate.committedActionItemId || candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM") {
+      if (candidate.committedActionItemId
+          || candidate.reviewStatus === "ACCEPTED_AS_ACTION_ITEM"
+          || candidate.reviewStatus === "MERGED_INTO_ACTION_ITEM") {
         throw new ReviewBoundaryError(
           409,
           "ACTION_CANDIDATE_RECEIPT_REQUIRED",
@@ -614,7 +716,7 @@ export async function POST(request: Request) {
         );
       }
 
-      if (decision === "ACCEPT") {
+      if (decision === "ACCEPT" || decision === "MERGE") {
         const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
         if (unreviewedSegmentIds.length) {
           throw new ReviewBoundaryError(
@@ -634,6 +736,9 @@ export async function POST(request: Request) {
       };
       let actionItem: any = null;
       let acceptedTags: Array<{ id: string; label: string; slug: string }> = [];
+      let taskEvidenceReceiptId: string | null = null;
+      let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
+      let candidateSource: Record<string, unknown> | null = null;
 
       if (decision === "ACCEPT") {
         if (!sourceAnchor || !sourcePlaybackId) {
@@ -750,6 +855,88 @@ export async function POST(request: Request) {
             })),
           });
         }
+      } else if (decision === "MERGE") {
+        await tx.$queryRaw`SELECT "id" FROM "ActionItem" WHERE "id" = ${mergeTargetTaskId} FOR UPDATE`;
+        const projectId = text(lockedSummary.room?.projectId) || null;
+        const mergeTarget = await tx.actionItem.findFirst({
+          where: {
+            id: mergeTargetTaskId,
+            assignedUserId: userId,
+            status: "OPEN",
+            ...(projectId ? { projectId } : { roomId }),
+          },
+          include: {
+            tagLinks: { select: { tagId: true } },
+            goalLinks: { select: { goalId: true, relationship: true } },
+            reminder: { select: { id: true } },
+            recurrenceOccurrence: { select: { id: true } },
+          },
+        });
+        if (!mergeTarget || isUnreviewedTranscriptActionItemSource(mergeTarget.sourceJson)) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_MERGE_TARGET_UNAVAILABLE",
+            "That task is no longer open, actor-owned, and in this Nest. Refresh and choose another target.",
+          );
+        }
+        mergeTargetBefore = mergeTargetSnapshot(mergeTarget);
+        if (mergeTargetBefore.updatedAt !== mergeExpectedUpdatedAt) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_MERGE_TARGET_CHANGED",
+            "That task changed after you selected it. Refresh and review its current state before adding evidence.",
+          );
+        }
+        const resolvedEvidence = await resolveTranscriptEvidenceInTransaction({
+          tx,
+          actor,
+          roomId,
+          segmentId: candidate.segmentId,
+          segmentIds: candidate.segmentIds,
+          expectedProviderTextSha256: sourceAnchor?.providerTextSha256 ?? "",
+          expectedSourceTextSha256: candidate.sourceTextSha256,
+          evidenceKind: "task",
+        });
+        if (
+          resolvedEvidence.desk.transcriptJobId !== transcriptJobId
+          || resolvedEvidence.playback.recordingAssetId !== recordingAssetId
+          || (projectId && resolvedEvidence.desk.projectId !== projectId)
+        ) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_MERGE_EVIDENCE_CHANGED",
+            "The current released transcript evidence no longer matches this packet and Nest.",
+          );
+        }
+        candidateSource = {
+          schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
+          roomId,
+          transcriptJobId,
+          ...resolvedEvidence.sourceAnchor,
+          recordingAssetId,
+          playbackSourceId: resolvedEvidence.playback.sourceId,
+        };
+        taskEvidenceReceiptId = randomUUID();
+        await tx.actionItemEvidenceReceipt.create({
+          data: {
+            id: taskEvidenceReceiptId,
+            actionItemId: mergeTarget.id,
+            actorUserId: userId,
+            kind: TASK_EVIDENCE_MERGE_KIND,
+            note: reviewNote || (candidate.sourceText ?? candidate.detail).slice(0, MAX_REVIEW_NOTE_LENGTH),
+            occurredAt: new Date(reviewedAt),
+            evidenceJson: {
+              schema: TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
+              receiptId,
+              actionCandidateId,
+              mergedAt: reviewedAt,
+              mergedByUserId: userId,
+              candidateSource,
+              externalSideEffects: false,
+            },
+          },
+        });
+        actionItem = mergeTarget;
       }
 
       const receipt = {
@@ -775,6 +962,9 @@ export async function POST(request: Request) {
         materializationIntent: requestedIntent,
         appliedTags: acceptedTags,
         actionItemId: actionItem?.id ?? null,
+        taskEvidenceReceiptId,
+        mergeTargetBefore,
+        candidateSource,
         externalSideEffects: false,
         assignmentClaimed: assignToMe,
         deliveryClaimed: false,
@@ -785,7 +975,7 @@ export async function POST(request: Request) {
         title: draftAfter.title,
         detail: draftAfter.detail,
         reviewStatus: reviewStatus(decision),
-        humanApprovalRequired: decision !== "ACCEPT",
+        humanApprovalRequired: decision !== "ACCEPT" && decision !== "MERGE",
         committedActionItemId: actionItem?.id ?? null,
         lastHumanReview: {
           receiptId,
@@ -839,12 +1029,15 @@ export async function POST(request: Request) {
         : null,
       idempotentReplay: result.idempotentReplay,
       boundaries: responseBoundaries({
-        assignedToActor: Boolean(result.actionItem?.assignedUserId),
-        dueDateCreated: Boolean(result.actionItem?.dueAt),
-        tagsApplied: Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0,
+        assignedToActor: decision === "ACCEPT" && Boolean(result.actionItem?.assignedUserId),
+        dueDateCreated: decision === "ACCEPT" && Boolean(result.actionItem?.dueAt),
+        tagsApplied: decision === "ACCEPT" && Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0,
+        taskEvidenceAppended: decision === "MERGE",
       }),
       nextAction: decision === "ACCEPT"
         ? `The accepted draft is now one ${result.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task${result.actionItem?.dueAt ? " with an explicit due date" : ""}${Array.isArray(result.receipt?.materializationIntent?.tagIds) && result.receipt.materializationIntent.tagIds.length > 0 ? " and reviewed project tags" : ""}. Calendar placement, reminders, delivery, and publication remain separate explicit actions.`
+        : decision === "MERGE"
+          ? "Reviewed transcript evidence was appended to the selected existing task without changing its identity, status, owner, dates, reminder, recurrence, tags, goals, or project."
         : decision === "EDIT"
           ? "The packet draft was edited for further review; no open work was created."
           : decision === "REJECT"

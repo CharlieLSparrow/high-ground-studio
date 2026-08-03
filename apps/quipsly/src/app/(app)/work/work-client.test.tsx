@@ -41,6 +41,7 @@ const snapshot: WorkSnapshot = {
     provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
     project: null, tags: [], canEdit: true, canManageTags: true, canManageReminder: true,
     sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
+    lastMergedTranscriptEvidence: null,
   }],
   goals: [], commitments: [], weeklyReviews: [],
   counts: { openTasks: 1, attentionTasks: 1, overdueTasks: 0, completedTasks: 0, activeGoals: 0, activeCommitments: 0 },

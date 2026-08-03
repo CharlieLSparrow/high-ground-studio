@@ -118,7 +118,7 @@ describe("transcript coaching packet action review boundary", () => {
     }));
   });
 
-  it("keeps one complete commitment across adjacent immutable provider segments", () => {
+  it("keeps one explicit goal commitment across adjacent provider segments as a quarantined task candidate", async () => {
     const raw = [
       { id: "segment-1", speakerLabel: "Coach", startSeconds: 6, endSeconds: 11, text: "The test goal is to preserve the original recording, verify the exact checksum, and", corrections: [], verifications: [] },
       { id: "segment-2", speakerLabel: "Coach", startSeconds: 11, endSeconds: 16, text: "hold all transcript work until every participant has consented and a human explicitly releases", corrections: [], verifications: [] },
@@ -140,6 +140,46 @@ describe("transcript coaching packet action review boundary", () => {
     });
     expect(spans[0]?.evidenceSegments).toEqual(projected.slice(0, 3));
     expect(spans[1]?.segmentIds).toEqual(["segment-4"]);
+
+    const coachingNoteCreate = jest.fn(async ({ data }: any) => ({
+      id: data.kind === "SUMMARY" ? "summary-goal" : `highlight-${data.sourceJson.segmentId}`,
+      ...data,
+    }));
+    const actionItemCreate = jest.fn();
+    const result = await buildCoachingPacketFromTranscriptJob({
+      prisma: {
+        transcriptJob: {
+          findUnique: jest.fn().mockResolvedValue({
+            ...completedTranscriptJob(),
+            segments: raw,
+          }),
+        },
+        coachingNote: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: coachingNoteCreate,
+        },
+        actionItem: { create: actionItemCreate },
+      },
+      transcriptJobId: "transcript-1",
+      authorUserId: "coach-1",
+    });
+
+    const summaryWrite = coachingNoteCreate.mock.calls.find(
+      ([call]) => call.data.kind === "SUMMARY",
+    )?.[0].data;
+    expect(summaryWrite?.sourceJson.actionCandidates).toEqual([
+      expect.objectContaining({
+        segmentId: "segment-1",
+        segmentIds: ["segment-1", "segment-2", "segment-3"],
+        sourceText: spans[0]?.text,
+        detail: expect.stringContaining(spans[0]?.text),
+        reviewStatus: "READY_FOR_HUMAN_REVIEW",
+        humanApprovalRequired: true,
+        committedActionItemId: null,
+      }),
+    ]);
+    expect(result).toEqual(expect.objectContaining({ actionCandidateCount: 1, actionItemCount: 0 }));
+    expect(actionItemCreate).not.toHaveBeenCalled();
   });
 
   it("keeps coaching and podcast review lanes purpose-specific", () => {
