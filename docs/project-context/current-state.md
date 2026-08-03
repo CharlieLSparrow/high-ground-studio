@@ -12,16 +12,23 @@ Date: 2026-08-03
   `Release held — review current sources` state. A hold disables both recipient
   confirmation and release until the coach saves a new immutable private
   revision.
+- Nest and Capture also compare the complete editor and selected-record sets
+  with that immutable revision. Unsaved changes show `Save edits before
+  release`, clear any prior confirmation, and keep release bound to the named
+  saved revision instead of silently treating editor text as saved.
 - Signed-in rendered Nest operation saved revision 2 with four selected
   records, changed one disposable canonical task, read back the exact held
   reason and disabled controls, then saved revision 3 and restored readiness
   without releasing anything. The local receipt is retained on the external QA
   volume.
-- Focused Nest proof passes 3 suites / 14 tests; the disposable-PostgreSQL
+- A second rendered Nest operation changed revision 3 without saving, read the
+  exact unsaved-editor hold and disabled controls, then reloaded and proved the
+  saved title, readiness, and revision were unchanged.
+- Focused Nest proof passes 3 suites / 15 tests; the disposable-PostgreSQL
   operation passes 1/1; strict TypeScript and the mobile source contract pass;
-  all 1,016 iOS App Store static checks pass; and the compiled iPhone 17 Pro /
-  iOS 26.3.1 simulator held-release operation passes 1/1 with a permanent
-  screenshot attachment.
+  all 1,017 iOS App Store static checks pass; and the compiled iPhone 17 Pro /
+  iOS 26.3.1 simulator source-change and unsaved-editor operations pass 2/2
+  with permanent screenshot attachments.
 - This is local/simulator proof only. No Cloud Build, deployment, production
   write, provider mutation, physical-iPhone/TestFlight action, external
   message, calendar change, delivery, or publication occurred. Architecture

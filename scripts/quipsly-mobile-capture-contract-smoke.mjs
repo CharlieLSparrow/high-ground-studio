@@ -1844,8 +1844,11 @@ function checkTranscriptCorrectionContractSources() {
       && bridgeText.includes("workspace.readiness?.releaseAllowed == true")
       && mobileComponentsText.includes("CaptureCoachFollowUpReleaseReady")
       && mobileComponentsText.includes("CaptureCoachFollowUpReleaseHeld")
+      && mobileComponentsText.includes("CaptureCoachFollowUpUnsavedChanges")
+      && bridgeText.includes("func matches(_ output: MobileCaptureClientFollowUp)")
       && mobileComponentsText.includes("!releaseReady || !releaseConfirmed")
-      && captureUITestText.includes("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged"),
+      && captureUITestText.includes("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged")
+      && captureUITestText.includes("testCoachFollowUpHoldsReleaseForUnsavedEditorChanges"),
     "clientFollowUpReleaseSourceReadiness",
     "Nest rechecks the immutable follow-up manifest against current eligible canonical records inside the release transaction, while web and iPhone hold release and direct the coach to save a current private revision when a selected source changes.",
   );

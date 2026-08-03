@@ -758,10 +758,19 @@ struct MobileCoachClientFollowUpCard: View {
         return [session.id, output?.id ?? "none", String(output?.revision ?? 0), output?.status ?? "none", readiness?.status ?? "unchecked", changes].joined(separator: "|")
     }
 
-    private var releaseReady: Bool {
+    private var hasUnsavedDraftChanges: Bool {
+        guard let output = workspace?.output, output.status == "DRAFT" else { return false }
+        return !draft.matches(output)
+    }
+
+    private var sourcesReady: Bool {
         guard let output = workspace?.output, output.status == "DRAFT",
               let readiness = workspace?.readiness else { return false }
         return readiness.releaseAllowed && readiness.checkedRevision == output.revision
+    }
+
+    private var releaseReady: Bool {
+        sourcesReady && !hasUnsavedDraftChanges
     }
 
     private func readinessDetail(_ change: MobileCaptureClientFollowUpReadinessChange) -> String {
@@ -915,7 +924,7 @@ struct MobileCoachClientFollowUpCard: View {
 
                     if let output = workspace.output, output.status == "DRAFT" {
                         VStack(alignment: .leading, spacing: 8) {
-                            if releaseReady {
+                            if sourcesReady && !hasUnsavedDraftChanges {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Label("Current sources verified", systemImage: "checkmark.shield.fill")
                                         .font(.caption.bold())
@@ -926,6 +935,16 @@ struct MobileCoachClientFollowUpCard: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 .accessibilityIdentifier("CaptureCoachFollowUpReleaseReady")
+                            } else if sourcesReady {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Label("Save edits before release", systemImage: "square.and.arrow.down")
+                                        .font(.caption.bold())
+                                    Text("The release controls still point to private revision \(output.revision), not the unsaved editor values. Save a new private revision or restore the editor to this exact snapshot before confirming.")
+                                        .font(.caption2)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("CaptureCoachFollowUpUnsavedChanges")
                             } else {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Label("Release held — review current sources", systemImage: "exclamationmark.shield.fill")
@@ -1006,6 +1025,9 @@ struct MobileCoachClientFollowUpCard: View {
                 guard loadedWorkspaceVersion != workspaceVersion else { return }
                 draft = MobileCaptureClientFollowUpDraft.make(from: workspace)
                 loadedWorkspaceVersion = workspaceVersion
+                releaseConfirmed = false
+            }
+            .onChange(of: draft) { _, _ in
                 releaseConfirmed = false
             }
             .toolbar {

@@ -593,6 +593,21 @@ struct MobileCaptureClientFollowUpDraft: Hashable {
                 || !nextSessionFocus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
+    func matches(_ output: MobileCaptureClientFollowUp) -> Bool {
+        Self.normalized(title) == Self.normalized(output.title)
+            && Self.normalized(intro) == Self.normalized(output.intro)
+            && Self.normalized(nextSessionFocus) == Self.normalized(output.nextSessionFocus)
+            && noteIDs == Set(output.notes.map(\.id))
+            && goalIDs == Set(output.goals.map(\.id))
+            && taskIDs == Set(output.tasks.map(\.id))
+    }
+
+    private static func normalized(_ value: String?) -> String {
+        (value ?? "")
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func make(from workspace: MobileCaptureClientFollowUpWorkspace) -> Self {
         let eligibleNoteIDs = Set(workspace.eligible?.notes.map(\.id) ?? [])
         let eligibleGoalIDs = Set(workspace.eligible?.goals.map(\.id) ?? [])

@@ -194,6 +194,18 @@ function readinessChangeLabel(reason: NonNullable<FollowUpResponse["readiness"]>
   return "failed its source-manifest check";
 }
 
+function normalizedDraftText(value: string | null | undefined) {
+  return (value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function selectionMatches(
+  selected: Set<string>,
+  frozen: Array<{ id: string }>,
+) {
+  return selected.size === frozen.length
+    && frozen.every((item) => selected.has(item.id));
+}
+
 function FollowUpSourceLink({ anchor, recordLabel }: { anchor: FollowUpSourceAnchor | null | undefined; recordLabel: string }) {
   if (!anchor) return null;
   return <a
@@ -459,9 +471,30 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
   }, [load]);
 
   const selectedCount = noteIds.size + taskIds.size + goalIds.size;
-  const releaseReady = snapshot?.output?.status === "DRAFT"
+  const hasUnsavedDraftChanges = useMemo(() => {
+    const output = snapshot?.output;
+    if (!output || output.status !== "DRAFT") return false;
+    return normalizedDraftText(title) !== normalizedDraftText(output.title)
+      || normalizedDraftText(intro) !== normalizedDraftText(output.intro)
+      || normalizedDraftText(nextSessionFocus) !== normalizedDraftText(output.nextSessionFocus)
+      || !selectionMatches(noteIds, output.body.notes ?? [])
+      || !selectionMatches(goalIds, output.body.goals ?? [])
+      || !selectionMatches(taskIds, output.body.tasks ?? []);
+  }, [goalIds, intro, nextSessionFocus, noteIds, snapshot?.output, taskIds, title]);
+  const sourcesReady = snapshot?.output?.status === "DRAFT"
     && snapshot.readiness?.releaseAllowed === true
     && snapshot.readiness.checkedRevision === snapshot.output.revision;
+  const releaseReady = sourcesReady && !hasUnsavedDraftChanges;
+
+  useEffect(() => {
+    setReleaseConfirmed(false);
+  }, [
+    hasUnsavedDraftChanges,
+    snapshot?.output?.id,
+    snapshot?.output?.revision,
+    snapshot?.output?.status,
+    snapshot?.readiness?.status,
+  ]);
   const opened = useMemo(
     () =>
       snapshot?.output?.deliveryEvents.some(
@@ -896,10 +929,15 @@ export function SessionClientFollowUpCard({ roomId }: { roomId: string }) {
             )}
             {snapshot.output?.status === "DRAFT" ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                {releaseReady ? (
+                {sourcesReady && !hasUnsavedDraftChanges ? (
                   <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-emerald-950" data-testid="client-follow-up-release-ready">
                     <p className="text-xs font-black">Current sources verified</p>
                     <p className="mt-1 text-xs font-semibold leading-5">All {snapshot.readiness?.selectedCount ?? 0} selected canonical records still match private revision {snapshot.output.revision}. Release remains a separate confirmation.</p>
+                  </div>
+                ) : sourcesReady ? (
+                  <div className="rounded-xl border border-amber-300 bg-amber-100 p-3 text-amber-950" role="alert" data-testid="client-follow-up-unsaved-changes">
+                    <p className="text-xs font-black">Save edits before release</p>
+                    <p className="mt-1 text-xs font-semibold leading-5">The release controls still point to private revision {snapshot.output.revision}, not the unsaved editor values. Save a new private revision or restore the editor to this exact snapshot before confirming.</p>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-rose-950" role="alert" data-testid="client-follow-up-release-held">

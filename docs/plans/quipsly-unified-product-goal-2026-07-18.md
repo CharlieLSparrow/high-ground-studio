@@ -769,10 +769,18 @@ This is an active-goal checkpoint, not a completion claim.
   A stale, malformed, mismatched, or no-longer-eligible source disables both
   recipient confirmation and release until the coach saves a new immutable
   private revision. Nothing refreshes or releases silently.
+- Both clients also compare the complete editor and exact selected-record sets
+  with the immutable revision. Unsaved changes clear recipient confirmation,
+  name the private revision the release controls still target, and hold release
+  until the coach saves a new revision or restores the exact snapshot.
 - Signed-in rendered Nest operation saved a four-record revision, changed one
   disposable canonical task, read back the exact held reason and disabled
   controls, then saved a current revision and restored readiness without
   releasing. The receipt remains on the external QA volume.
+- A second rendered Nest operation changed that ready editor without saving,
+  read the exact unsaved-editor hold and disabled controls, then reloaded and
+  proved the saved revision was unchanged. Compiled simulator operation proves
+  the same boundary in Quipsly Capture.
 - Focused web and database proof, strict TypeScript, mobile and App Store
   contracts, and the compiled iPhone 17 Pro simulator held-release operation
   pass. The native result retains a screenshot of the actual source-specific

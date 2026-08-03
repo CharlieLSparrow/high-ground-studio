@@ -1470,6 +1470,55 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(release.isEnabled)
     }
 
+    func testCoachFollowUpHoldsReleaseForUnsavedEditorChanges() throws {
+        app.buttons["CaptureOpenNextSessionButton"].tap()
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+
+        let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
+        reveal(followUp)
+        XCTAssertTrue(followUp.waitForExistence(timeout: 5))
+
+        let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
+        let title = app.textFields["CaptureCoachFollowUpTitle"].firstMatch
+        revealBelow(title, in: recorderScroll)
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        title.typeText(" unsaved")
+        let keyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 5))
+        keyboardDone.tap()
+
+        let held = app.descendants(matching: .any)["CaptureCoachFollowUpUnsavedChanges"].firstMatch
+        revealBelow(held, in: recorderScroll)
+        XCTAssertTrue(held.waitForExistence(timeout: 5))
+        let heldTitle = app.staticTexts
+            .matching(identifier: "CaptureCoachFollowUpUnsavedChanges")
+            .matching(NSPredicate(format: "label CONTAINS %@", "Save edits before release"))
+        XCTAssertEqual(heldTitle.count, 1)
+        let heldDetail = app.staticTexts
+            .matching(identifier: "CaptureCoachFollowUpUnsavedChanges")
+            .matching(NSPredicate(
+                format: "label CONTAINS %@",
+                "release controls still point to private revision 1"
+            ))
+        XCTAssertEqual(heldDetail.count, 1)
+
+        let confirmation = app.switches["CaptureCoachFollowUpReleaseConfirmation"].firstMatch
+        revealBelow(confirmation, in: recorderScroll)
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertFalse(confirmation.isEnabled)
+
+        let release = app.buttons["CaptureCoachFollowUpRelease"].firstMatch
+        revealBelow(release, in: recorderScroll)
+        XCTAssertTrue(release.waitForExistence(timeout: 5))
+        XCTAssertFalse(release.isEnabled)
+
+        let unsavedScreenshot = XCTAttachment(screenshot: app.screenshot())
+        unsavedScreenshot.name = "Coach follow-up unsaved editor release hold"
+        unsavedScreenshot.lifetime = .keepAlways
+        add(unsavedScreenshot)
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))

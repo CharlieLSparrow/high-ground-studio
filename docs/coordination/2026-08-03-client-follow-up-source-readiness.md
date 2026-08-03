@@ -26,6 +26,21 @@ Saving the current selections creates a new private revision; it never rewrites
 the previous snapshot. A held draft is not silently refreshed and nothing is
 released automatically.
 
+## Unsaved editor boundary
+
+Release also fails closed when the editor no longer matches the immutable
+private revision. Nest and Quipsly Capture compare the complete normalized
+title, opening note, next-session focus, and exact selected note, goal, and task
+ID sets with the output snapshot. Any difference shows `Save edits before
+release`, clears an earlier recipient confirmation, and disables both
+confirmation and release.
+
+The warning explicitly says that the release controls still point to the
+existing private revision rather than the unsaved editor values. The coach must
+either save a new immutable private revision or restore the editor to the exact
+snapshot before confirming. Typing in the editor never changes which revision
+would be released.
+
 ## Canonical and concurrency boundary
 
 - Each new source manifest stores the selected canonical IDs, their complete
@@ -66,14 +81,23 @@ as the retained coach on Session `retained-coaching-follow-up-20260731`.
    task detail plus `Current sources verified` for all four selected records.
 7. Stopped without releasing anything.
 
+A second rendered operation changed the ready revision 3 title to `QA unsaved
+editor proof — do not save`. Nest immediately replaced readiness with `Save
+edits before release`, named private revision 3 as the release target, and
+disabled confirmation and release. Reloading discarded the unsaved value,
+restored the original title and `Current sources verified`, and retained
+revision 3. The operation did not save or release anything.
+
 The disposable task and private revisions remain in the retained local QA
 Session so later long-term testing can inspect them. They are test data, not a
 real client delivery. The machine-readable receipt is retained at
 `/Volumes/My Passport/Quipsly QA Artifacts/Client Follow-up Source Readiness 2026-08-03/nest-client-follow-up-source-readiness-receipt.json`.
+The unsaved-editor receipt is retained beside it as
+`nest-client-follow-up-unsaved-editor-receipt.json`.
 
 ## Verification
 
-- Focused Nest unit, route, readiness, and component proof: 3 suites, 14 tests,
+- Focused Nest unit, route, readiness, and component proof: 3 suites, 15 tests,
   pass. The database operation is opt-in and therefore skipped in this default
   group.
 - Disposable-PostgreSQL integration operation: 1/1 pass. It proves stale hold,
@@ -81,17 +105,21 @@ real client delivery. The machine-readable receipt is retained at
   concurrent mutation produces one Prisma serialization retry signal while the
   user-visible contract still passes.
 - Nest strict TypeScript: pass.
-- Mobile capture source contract: pass, including the shared readiness model
-  and release-lock requirements.
-- iOS App Store static contract: 1,016/1,016 pass.
-- Compiled iPhone 17 Pro / iOS 26.3.1 simulator operation: 1/1 pass. It opens
-  the coaching follow-up, reads the exact changed-source reason, captures the
-  held interface as a permanent test attachment, and proves confirmation and
-  release remain disabled.
+- Mobile capture source contract: 96/96 pass, including the shared readiness
+  model and both release-lock requirements.
+- iOS App Store static contract: 1,017/1,017 pass.
+- Compiled iPhone 17 Pro / iOS 26.3.1 simulator operations: 2/2 pass. One opens
+  the coaching follow-up and proves the exact changed-source hold. The other
+  changes the ready editor without saving, reads the exact private-revision
+  warning, and proves confirmation and release remain disabled. Both retain
+  permanent screenshot evidence.
 - `git diff --check`: pass after documentation finalization.
 
 The successful native result bundle is retained at
 `/Volumes/My Passport/Quipsly QA Artifacts/Client Follow-up Source Readiness 2026-08-03/HighGroundCapture-client-follow-up-source-readiness.xcresult`.
+The post-change source-readiness rerun and unsaved-editor result are retained as
+`HighGroundCapture-follow-up-source-readiness-v2.xcresult` and
+`HighGroundCapture-follow-up-unsaved-editor.xcresult` in the same directory.
 
 ## Remaining acceptance
 

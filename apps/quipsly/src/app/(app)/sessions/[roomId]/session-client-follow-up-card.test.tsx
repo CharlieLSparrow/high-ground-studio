@@ -423,4 +423,41 @@ describe("SessionClientFollowUpCard", () => {
     expect(screen.getByRole("button", { name: "Release to client in Quipsly" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
   });
+
+  it("clears confirmation and holds release while the editor differs from the immutable private revision", async () => {
+    const user = userEvent.setup();
+    const draftOutput = {
+      ...releasedOutput,
+      status: "DRAFT",
+      releasedAt: null,
+    };
+    global.fetch = jest.fn().mockResolvedValue(response({
+      ok: true,
+      role: "COACH",
+      room,
+      eligible,
+      output: draftOutput,
+      readiness: { ...readyReadiness, checkedRevision: 2 },
+    })) as typeof fetch;
+
+    render(<SessionClientFollowUpCard roomId="room-1" />);
+
+    expect(await screen.findByText("Current sources verified")).toBeInTheDocument();
+    const confirmation = screen.getByRole("checkbox", {
+      name: /I reviewed this exact snapshot/i,
+    });
+    await user.click(confirmation);
+    expect(confirmation).toBeChecked();
+
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.type(title, "Follow-up with one unsaved clarification");
+
+    expect(await screen.findByText("Save edits before release")).toBeInTheDocument();
+    expect(screen.getByText(/release controls still point to private revision 2/i)).toBeInTheDocument();
+    await waitFor(() => expect(confirmation).not.toBeChecked());
+    expect(confirmation).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Release to client in Quipsly" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save private draft changes" })).toBeEnabled();
+  });
 });
