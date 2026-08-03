@@ -1306,6 +1306,28 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    static func hasUsableProtectedCache(roomID: String) -> Bool {
+        guard let ownerEmail = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !ownerEmail.isEmpty,
+              let url = protectedCacheURL(roomID: roomID),
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            return false
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let cache = try? decoder.decode(ProtectedCache.self, from: data) else {
+            return false
+        }
+        let cacheAge = Date().timeIntervalSince(cache.savedAt)
+        return cache.schemaVersion == 1
+            && cache.ownerEmail == ownerEmail
+            && cache.roomID == roomID
+            && cacheAge >= -5 * 60
+            && cacheAge <= 30 * 24 * 60 * 60
+    }
+
     private func restoreProtectedCache(roomID: String) -> Bool {
         guard let ownerEmail = AuthManager.shared.userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !ownerEmail.isEmpty,
@@ -1315,10 +1337,12 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedCache.self, from: data)
+            let cacheAge = Date().timeIntervalSince(cache.savedAt)
             guard cache.schemaVersion == 1,
                   cache.ownerEmail == ownerEmail,
                   cache.roomID == roomID,
-                  Date().timeIntervalSince(cache.savedAt) <= 30 * 24 * 60 * 60 else {
+                  cacheAge >= -5 * 60,
+                  cacheAge <= 30 * 24 * 60 * 60 else {
                 try? FileManager.default.removeItem(at: url)
                 return false
             }
@@ -1687,10 +1711,8 @@ struct CaptureTranscriptReviewView: View {
                             tint: client.heldTranscriptDecisionCount > 0 ? .orange : .blue,
                             icon: client.heldTranscriptDecisionCount > 0 ? "exclamationmark.shield.fill" : "arrow.triangle.2.circlepath"
                         )
-                        .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
-                        .accessibilityValue(
-                            client.heldTranscriptDecisionCount > 0 ? "Held" : "Queued"
-                        )
+                        .id("transcript-outbox-status")
+                        .accessibilityIdentifier("CaptureTranscriptReviewOutboxDetailBoundary")
                     }
                     if let error = client.errorMessage ?? playback.errorMessage {
                         reviewNotice(title: "Needs attention", detail: error, tint: .orange, icon: "exclamationmark.triangle.fill")
@@ -1791,6 +1813,43 @@ struct CaptureTranscriptReviewView: View {
             .navigationTitle("Transcript review")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if client.pendingTranscriptDecisionCount > 0 || client.heldTranscriptDecisionCount > 0 {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                scrollTargetSegmentID = "transcript-outbox-status"
+                                scrollProxy.scrollTo("transcript-outbox-status", anchor: .top)
+                            }
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                Image(
+                                    systemName: client.heldTranscriptDecisionCount > 0
+                                        ? "exclamationmark.shield.fill"
+                                        : "checkmark.shield.fill"
+                                )
+                                Text("\(client.pendingTranscriptDecisionCount + client.heldTranscriptDecisionCount)")
+                                    .font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .foregroundStyle(.white)
+                                    .background(
+                                        client.heldTranscriptDecisionCount > 0 ? Color.orange : Color.blue,
+                                        in: Capsule()
+                                    )
+                                    .offset(x: 9, y: -7)
+                            }
+                            .frame(minWidth: 28, minHeight: 28)
+                        }
+                        .accessibilityLabel(
+                            "Transcript review outbox, \(client.pendingTranscriptDecisionCount) waiting, \(client.heldTranscriptDecisionCount) held"
+                        )
+                        .accessibilityHint("Shows the protected decisions saved on this iPhone.")
+                        .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
+                        .accessibilityValue(
+                            client.heldTranscriptDecisionCount > 0 ? "Held" : "Queued"
+                        )
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if previewOnly || !client.packetNoteCandidates.isEmpty {
@@ -3069,6 +3128,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .disabled(playbackPosition == nil || client.isMutating || previewOnly || pendingDecision != nil || correctionIsEmptyOrUnchanged)
+                .accessibilityIdentifier("CaptureTranscriptAcceptCorrectionButton_\(segment.id)")
                 Button("Keep draft") {
                     persistDraftIfNeeded()
                     isEditing = false

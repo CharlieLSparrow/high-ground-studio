@@ -92,6 +92,8 @@
     "quipsly:retained:native-transcript-packet": "node scripts/quipsly-retained-native-transcript-packet-operation.mjs",
     "quipsly:retained:native-reviewed-packet": "node scripts/quipsly-retained-native-reviewed-packet-materialization-operation.mjs",
     "test:quipsly:retained:native-reviewed-packet": "node scripts/quipsly-retained-native-reviewed-packet-materialization-operation.test.mjs",
+    "quipsly:retained:native-offline-transcript-review": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-offline-transcript-review-operation.mjs",
+    "test:quipsly:retained:native-offline-transcript-review": "node --test scripts/quipsly-retained-native-offline-transcript-review-operation.test.mjs",
     "quipsly:retained:native-coach-follow-up": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-coach-follow-up-operation.mjs",
     "quipsly:capture:app-store-metadata": "node scripts/release/quipsly-capture-app-store-metadata.mjs",
     "quipsly:capture:app-store-readback": "node scripts/release/quipsly-app-store-connect-readback.mjs",

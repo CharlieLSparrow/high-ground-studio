@@ -943,6 +943,7 @@ function checkTranscriptCorrectionContractSources() {
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
   const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
+  const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const shellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
   const webText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/transcript-correction-desk.tsx");
@@ -1072,6 +1073,11 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("guard reviewDecisionOutbox.markAcknowledged(decision.id) else")
       && nativeText.includes("CaptureTranscriptReviewOutboxBoundary")
       && captureUITestText.includes("testTranscriptReviewOutboxSurvivesRelaunchAndStaysAccountPartitioned")
+      && contentViewText.includes("CaptureOfflineTranscriptReviewLink_")
+      && contentViewText.includes("Exact local-source transcript review")
+      && runtimeRunnerText.includes("transcript-review-offline-reconcile")
+      && runtimeUITestText.includes("testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict")
+      && runtimeUITestText.includes("injectConcurrentTranscriptCorrection")
       && nativeText.includes("CaptureTranscriptPacketLoadedBoundary")
       && nativeText.includes("Review packet loaded")
       && nativeText.includes("Every candidate remains a proposal until a person reviews its source and explicitly creates canonical work.")

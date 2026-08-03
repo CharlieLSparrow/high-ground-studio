@@ -149,9 +149,60 @@ private struct ProtectedOfflineLibraryShell: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("CaptureOfflineAccessBanner")
 
-                    Text("Cached session consent is stale while Nest is unavailable. New recording, consent changes, uploads, rooms, transcripts, and every other network action are disabled. Notes, tasks, goals, and sources can still journal privately on this iPhone for retry after Nest verifies the same account again.")
+                    Text("Cached session consent is stale while Nest is unavailable. New recording, consent changes, uploads, rooms, transcript processing, and every other network action are disabled. Exact local-source transcript review plus Notes, Tasks, Goals, and Sources can journal privately on this iPhone for retry after Nest verifies the same account again.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                Section("Continue transcript review") {
+                    if offlineTranscriptRecordings.isEmpty {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("No transcript is available offline")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("Open transcript review once while online to protect a 30-day snapshot on this iPhone.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "text.badge.xmark")
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("CaptureOfflineTranscriptReviewEmptyState")
+                    } else {
+                        ForEach(offlineTranscriptRecordings) { recording in
+                            if let roomID = recording.callRoomId?
+                                .trimmingCharacters(in: .whitespacesAndNewlines),
+                               !roomID.isEmpty {
+                                NavigationLink {
+                                    CaptureTranscriptReviewView(
+                                        roomID: roomID,
+                                        sessionTitle: offlineReviewTitle(for: recording),
+                                        recording: recording,
+                                        previewOnly: false
+                                    )
+                                } label: {
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(offlineReviewTitle(for: recording))
+                                                .font(.subheadline.weight(.semibold))
+                                                .lineLimit(2)
+                                            Text("Protected snapshot · Exact local source")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    } icon: {
+                                        Image(systemName: "text.badge.checkmark")
+                                            .foregroundStyle(Color.accentColor)
+                                    }
+                                    .frame(minHeight: 52)
+                                }
+                                .accessibilityIdentifier("CaptureOfflineTranscriptReviewLink_\(recording.id)")
+                                .accessibilityHint("Opens the protected transcript snapshot against this exact local source. Canonical work remains unchanged until Nest reconnects.")
+                            }
+                        }
+                    }
                 }
 
                 Section("Capture work offline") {
@@ -246,6 +297,27 @@ private struct ProtectedOfflineLibraryShell: View {
         }
         .task { await captureModel.load() }
         .onDisappear { playback.stop() }
+    }
+
+    private var offlineTranscriptRecordings: [LocalRecording] {
+        library.recordings.filter { recording in
+            guard recording.status.isPlaybackEligible,
+                  let roomID = recording.callRoomId?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !roomID.isEmpty else {
+                return false
+            }
+            return CaptureTranscriptCorrectionClient.hasUsableProtectedCache(roomID: roomID)
+        }
+    }
+
+    private func offlineReviewTitle(for recording: LocalRecording) -> String {
+        guard let sessionTitle = recording.sessionTitle?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionTitle.isEmpty else {
+            return recording.displayTitle
+        }
+        return sessionTitle
     }
 }
 

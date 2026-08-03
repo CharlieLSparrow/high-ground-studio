@@ -50,6 +50,8 @@ TEST_COACH_FOLLOW_UP_INTRO="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_INTRO:-}"
 TEST_COACH_FOLLOW_UP_REVISED_INTRO="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_REVISED_INTRO:-}"
 TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS="${QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS:-}"
 TEST_TRANSCRIPT_SEGMENT_IDS="${QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS:-}"
+TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT="${QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT:-}"
+TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT="${QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT:-}"
 TEST_EXPECTED_PACKET_GOAL_TITLE="${QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE:-}"
 TEST_RECORDING_FIXTURE_PATH="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_PATH:-}"
 TEST_RECORDING_FIXTURE_LOCAL_ID="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID:-}"
@@ -104,6 +106,14 @@ case "$TEST_MODE" in
     TEST_CASE="testReviewedTranscriptPacketMaterializesOneCanonicalGoal"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || -z "$TEST_EXPECTED_PACKET_GOAL_TITLE" || -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_ROOM_ID" || -z "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" || -z "$TEST_RECORDING_FIXTURE_CONSENT_ID" || -z "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" || -z "$TEST_RECORDING_FIXTURE_SHA256" ]]; then
       echo "Transcript packet materialization mode requires exact Session, segment, goal, account, consent, asset, checksum, and retained-source fixture identities." >&2
+      exit 2
+    fi
+    ;;
+  transcript-review-offline-reconcile)
+    TEST_CASE="testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict"
+    IFS=',' read -r -a transcript_review_segment_ids <<< "$TEST_TRANSCRIPT_SEGMENT_IDS"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || "${#transcript_review_segment_ids[@]}" -ne 2 || -z "${transcript_review_segment_ids[0]}" || -z "${transcript_review_segment_ids[1]}" || -z "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" || -z "$TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT" || "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" == "$TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT" || -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_ROOM_ID" || -z "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" || -z "$TEST_RECORDING_FIXTURE_CONSENT_ID" || -z "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" || -z "$TEST_RECORDING_FIXTURE_SHA256" ]]; then
+      echo "Offline transcript review mode requires one exact Session, two distinct segment IDs, distinct phone/concurrent correction text, and exact account, consent, asset, checksum, and retained-source fixture identities." >&2
       exit 2
     fi
     ;;
@@ -289,7 +299,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -382,11 +392,11 @@ if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
     fi
     TEST_RECORDING_FIXTURE_PATH="$SMOKE_RECORDING_FIXTURE_FILE"
   fi
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" "$TEST_CLIENT_FOLLOW_UP_ID" "$TEST_CLIENT_FOLLOW_UP_TITLE" "$TEST_CLIENT_FOLLOW_UP_SHA256" "$TEST_COACH_FOLLOW_UP_TITLE" "$TEST_COACH_FOLLOW_UP_INTRO" "$TEST_COACH_FOLLOW_UP_REVISED_INTRO" "$TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS" "$TEST_TRANSCRIPT_SEGMENT_IDS" "$TEST_EXPECTED_PACKET_GOAL_TITLE" "$TEST_RECORDING_FIXTURE_PATH" "$TEST_RECORDING_FIXTURE_LOCAL_ID" "$TEST_RECORDING_FIXTURE_ASSET_ID" "$TEST_RECORDING_FIXTURE_ROOM_ID" "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" "$TEST_RECORDING_FIXTURE_CONSENT_ID" "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" "$TEST_RECORDING_FIXTURE_SHA256" "$TEST_RECORDING_FIXTURE_TITLE" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" "$TEST_CLIENT_FOLLOW_UP_ID" "$TEST_CLIENT_FOLLOW_UP_TITLE" "$TEST_CLIENT_FOLLOW_UP_SHA256" "$TEST_COACH_FOLLOW_UP_TITLE" "$TEST_COACH_FOLLOW_UP_INTRO" "$TEST_COACH_FOLLOW_UP_REVISED_INTRO" "$TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS" "$TEST_TRANSCRIPT_SEGMENT_IDS" "$TEST_EXPECTED_PACKET_GOAL_TITLE" "$TEST_RECORDING_FIXTURE_PATH" "$TEST_RECORDING_FIXTURE_LOCAL_ID" "$TEST_RECORDING_FIXTURE_ASSET_ID" "$TEST_RECORDING_FIXTURE_ROOM_ID" "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" "$TEST_RECORDING_FIXTURE_CONSENT_ID" "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" "$TEST_RECORDING_FIXTURE_SHA256" "$TEST_RECORDING_FIXTURE_TITLE" "$TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT" "$TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label, client_follow_up_id, client_follow_up_title, client_follow_up_sha256, coach_follow_up_title, coach_follow_up_intro, coach_follow_up_revised_intro, coach_follow_up_next_session_focus, transcript_segment_ids, expected_packet_goal_title, recording_fixture_path, recording_fixture_local_id, recording_fixture_asset_id, recording_fixture_room_id, recording_fixture_participant_id, recording_fixture_consent_id, recording_fixture_owner_account_id, recording_fixture_sha256, recording_fixture_title = sys.argv[1:55]
+path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label, client_follow_up_id, client_follow_up_title, client_follow_up_sha256, coach_follow_up_title, coach_follow_up_intro, coach_follow_up_revised_intro, coach_follow_up_next_session_focus, transcript_segment_ids, expected_packet_goal_title, recording_fixture_path, recording_fixture_local_id, recording_fixture_asset_id, recording_fixture_room_id, recording_fixture_participant_id, recording_fixture_consent_id, recording_fixture_owner_account_id, recording_fixture_sha256, recording_fixture_title, transcript_phone_correction_text, transcript_conflict_correction_text = sys.argv[1:57]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -433,6 +443,8 @@ with open(path, "w", encoding="utf-8") as handle:
             "coachFollowUpRevisedIntro": coach_follow_up_revised_intro or None,
             "coachFollowUpNextSessionFocus": coach_follow_up_next_session_focus or None,
             "transcriptSegmentIDs": [item for item in transcript_segment_ids.split(",") if item],
+            "transcriptPhoneCorrectionText": transcript_phone_correction_text or None,
+            "transcriptConflictCorrectionText": transcript_conflict_correction_text or None,
             "expectedPacketGoalTitle": expected_packet_goal_title or None,
             "recordingFixturePath": recording_fixture_path or None,
             "recordingFixtureLocalID": recording_fixture_local_id or None,

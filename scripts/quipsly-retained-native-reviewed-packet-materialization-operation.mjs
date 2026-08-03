@@ -15,9 +15,9 @@ const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
 
 const REPO_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const RUNNER = path.join(REPO_ROOT, "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh");
-const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
-const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
-const COACH_UID = "quipsly-coach-retained-20260731";
+export const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
+export const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
+export const COACH_UID = "quipsly-coach-retained-20260731";
 const SOURCE_ROOM_ID = "qa-retained-coaching-next-session-20260807";
 const SOURCE_ASSET_ID = "cmsc8ee1j0001qyxlxdja8ho8";
 const EXPECTED_SOURCE_TEXT = "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.";
@@ -95,7 +95,7 @@ function exactGoalCandidate(packetBody) {
   return goal;
 }
 
-async function cloneRetainedFixture(prisma) {
+export async function cloneRetainedFixture(prisma) {
   const stamp = `${Date.now()}-${randomBytes(4).toString("hex")}`;
   const roomID = `qa-reviewed-packet-${stamp}`;
   const roomTitle = `QA Retained · Reviewed packet ${stamp}`;
@@ -383,4 +383,7 @@ async function main() {
   }
 }
 
-await main();
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  await main();
+}

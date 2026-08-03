@@ -110,7 +110,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let coachFollowUpRevisedIntro: String?
         let coachFollowUpNextSessionFocus: String?
         let transcriptSegmentIDs: [String]
+        let transcriptPhoneCorrectionText: String?
+        let transcriptConflictCorrectionText: String?
         let expectedPacketGoalTitle: String?
+        let recordingFixtureLocalID: String?
         let recordingFixtureAssetID: String?
     }
 
@@ -166,7 +169,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 coachFollowUpNextSessionFocus: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS"],
                 transcriptSegmentIDs: (environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS"] ?? "")
                     .split(separator: ",").map(String.init),
+                transcriptPhoneCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_PHONE_CORRECTION_TEXT"],
+                transcriptConflictCorrectionText: environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_CONFLICT_CORRECTION_TEXT"],
                 expectedPacketGoalTitle: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE"],
+                recordingFixtureLocalID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID"],
                 recordingFixtureAssetID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID"]
             )
         }
@@ -234,7 +240,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             coachFollowUpRevisedIntro: payload["coachFollowUpRevisedIntro"] as? String,
             coachFollowUpNextSessionFocus: payload["coachFollowUpNextSessionFocus"] as? String,
             transcriptSegmentIDs: payload["transcriptSegmentIDs"] as? [String] ?? [],
+            transcriptPhoneCorrectionText: payload["transcriptPhoneCorrectionText"] as? String,
+            transcriptConflictCorrectionText: payload["transcriptConflictCorrectionText"] as? String,
             expectedPacketGoalTitle: payload["expectedPacketGoalTitle"] as? String,
+            recordingFixtureLocalID: payload["recordingFixtureLocalID"] as? String,
             recordingFixtureAssetID: payload["recordingFixtureAssetID"] as? String
         )
     }
@@ -656,6 +665,124 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
         else if keyboardDone.exists { keyboardDone.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
+    }
+
+    private func runtimeJSON(
+        _ request: URLRequest,
+        context: String,
+        requireOK: Bool = true
+    ) async throws -> [String: Any] {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              http.statusCode == 200,
+              !requireOK || payload["ok"] as? Bool == true else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            XCTFail("\(context) failed against the loopback acceptance fixture with HTTP \(status).")
+            throw NSError(
+                domain: "QuipslyCaptureRuntime",
+                code: status,
+                userInfo: [NSLocalizedDescriptionKey: context]
+            )
+        }
+        return payload
+    }
+
+    private func injectConcurrentTranscriptCorrection(
+        credentials: RuntimeSmokeCredentials,
+        segmentID: String,
+        correctedText: String
+    ) async throws {
+        guard let baseURL = URL(string: credentials.baseURL),
+              baseURL.scheme == "http",
+              ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? ""),
+              let roomID = credentials.sessionID,
+              !roomID.isEmpty else {
+            XCTFail("Concurrent transcript acceptance is restricted to one explicit loopback fixture.")
+            throw NSError(domain: "QuipslyCaptureRuntime", code: 1)
+        }
+        let emulatorHost = ProcessInfo.processInfo.environment["FIREBASE_AUTH_EMULATOR_HOST"]
+            ?? "127.0.0.1:9099"
+        guard !emulatorHost.contains("/"),
+              let authURL = URL(
+                string: "http://\(emulatorHost)/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key"
+              ),
+              ["127.0.0.1", "localhost", "::1"].contains(authURL.host ?? "") else {
+            XCTFail("Concurrent transcript acceptance requires the loopback Firebase emulator.")
+            throw NSError(domain: "QuipslyCaptureRuntime", code: 2)
+        }
+
+        var authRequest = URLRequest(url: authURL)
+        authRequest.httpMethod = "POST"
+        authRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        authRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "email": credentials.email,
+            "password": credentials.password,
+            "returnSecureToken": true,
+        ])
+        let auth = try await runtimeJSON(
+            authRequest,
+            context: "Firebase emulator authentication",
+            requireOK: false
+        )
+        guard let idToken = auth["idToken"] as? String, !idToken.isEmpty else {
+            XCTFail("The loopback Firebase emulator returned no bearer token.")
+            throw NSError(domain: "QuipslyCaptureRuntime", code: 3)
+        }
+
+        var deskComponents = URLComponents(
+            url: baseURL.appendingPathComponent("api/mobile/capture/transcripts/corrections"),
+            resolvingAgainstBaseURL: false
+        )
+        deskComponents?.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
+        guard let deskURL = deskComponents?.url else {
+            throw NSError(domain: "QuipslyCaptureRuntime", code: 4)
+        }
+        var deskRequest = URLRequest(url: deskURL)
+        deskRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        deskRequest.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        let desk = try await runtimeJSON(deskRequest, context: "Concurrent transcript evidence read")
+        guard let segments = desk["segments"] as? [[String: Any]],
+              let segment = segments.first(where: { $0["id"] as? String == segmentID }),
+              let providerText = segment["providerText"] as? String,
+              let endSeconds = segment["endSeconds"] as? NSNumber else {
+            XCTFail("The exact concurrent transcript segment is absent from the loopback fixture.")
+            throw NSError(domain: "QuipslyCaptureRuntime", code: 5)
+        }
+        let providerSpeaker = segment["providerSpeakerLabel"] as? String
+        let acceptedCorrection = segment["acceptedCorrection"] as? [String: Any]
+        let acceptedCorrectionID = acceptedCorrection?["id"] as? String
+        let providerSpeakerJSON: Any = providerSpeaker.map { $0 as Any } ?? NSNull()
+        let acceptedCorrectionIDJSON: Any = acceptedCorrectionID.map { $0 as Any } ?? NSNull()
+
+        var correctionRequest = URLRequest(
+            url: baseURL.appendingPathComponent("api/mobile/capture/transcripts/corrections")
+        )
+        correctionRequest.httpMethod = "POST"
+        correctionRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        correctionRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        correctionRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+            "operation": "accept-human-correction",
+            "roomId": roomID,
+            "segmentId": segmentID,
+            "clientRequestId": "runtime-concurrent-transcript-\(UUID().uuidString.lowercased())",
+            "expectedText": providerText,
+            "expectedSpeakerLabel": providerSpeakerJSON,
+            "expectedAcceptedCorrectionId": acceptedCorrectionIDJSON,
+            "correctedText": correctedText,
+            "correctedSpeakerLabel": providerSpeakerJSON,
+            "reason": "Concurrent loopback reviewer acceptance for stale-overlay reconciliation proof.",
+            "confirmedAgainstPlayback": true,
+            "playbackPositionSeconds": endSeconds.doubleValue,
+        ])
+        let correction = try await runtimeJSON(
+            correctionRequest,
+            context: "Concurrent transcript correction"
+        )
+        let accepted = correction["correction"] as? [String: Any]
+        XCTAssertEqual(accepted?["segmentId"] as? String, segmentID)
+        XCTAssertEqual(accepted?["correctedText"] as? String, correctedText)
+        XCTAssertEqual(accepted?["status"] as? String, "accepted")
     }
 
     private func appSwipeUp(_ app: XCUIApplication) {
@@ -1705,6 +1832,233 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Today must read back the exact canonical goal created from the fully reviewed packet."
         )
         attachRuntimeScreenshot(app, name: "Reviewed packet canonical goal readback")
+    }
+
+    @MainActor
+    func testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict() async throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false,
+              credentials.transcriptSegmentIDs.count == 2,
+              let rawLocalRecordingID = credentials.recordingFixtureLocalID,
+              !rawLocalRecordingID.isEmpty,
+              let localRecordingID = UUID(uuidString: rawLocalRecordingID)?.uuidString,
+              let expectedAssetID = credentials.recordingFixtureAssetID,
+              !expectedAssetID.isEmpty,
+              let phoneCorrectionText = credentials.transcriptPhoneCorrectionText,
+              !phoneCorrectionText.isEmpty,
+              let conflictCorrectionText = credentials.transcriptConflictCorrectionText,
+              !conflictCorrectionText.isEmpty,
+              phoneCorrectionText != conflictCorrectionText else {
+            throw XCTSkip("Offline transcript reconciliation requires one exact Session, two segments, distinct correction text, and retained-source identities.")
+        }
+        let confirmationSegmentID = credentials.transcriptSegmentIDs[0]
+        let correctionSegmentID = credentials.transcriptSegmentIDs[1]
+
+        var app = try launchSignedInCaptureApp(initialTab: "record")
+        let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
+        XCTAssertTrue(fixtureReceipt.waitForExistence(timeout: 20))
+        XCTAssertTrue(String(describing: fixtureReceipt.value ?? "").contains(expectedAssetID))
+
+        selectRequestedSession(in: app, credentials: credentials)
+        let onlineReviewLink = app.descendants(matching: .any)[
+            "CaptureSessionTranscriptReviewLink_\(sessionID)"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(onlineReviewLink, in: app, timeout: 45, swipeAttempts: 12),
+            "The exact retained Session must open canonical transcript review before the network is removed."
+        )
+        onlineReviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.buttons["CaptureTranscriptPlayButton_\(confirmationSegmentID)"].firstMatch,
+                in: app,
+                timeout: 30,
+                swipeAttempts: 14
+            ),
+            "Online readback must materialize the exact transcript snapshot before offline review."
+        )
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"].exists)
+        app.terminate()
+
+        func launchProtectedOfflineApp() -> XCUIApplication {
+            let offline = XCUIApplication()
+            offline.launchEnvironment["QUIPSLY_API_BASE_URL"] = "http://127.0.0.1:9"
+            offline.launchArguments.append("--quipsly-capture-runtime-smoke")
+            offline.launch()
+            return offline
+        }
+
+        func openOfflineReview(_ offline: XCUIApplication) -> Bool {
+            guard offline.descendants(matching: .any)["CaptureOfflineAccessBanner"]
+                .waitForExistence(timeout: 30) else {
+                XCTFail("Removing Nest must enter the account-bound protected offline shell.")
+                return false
+            }
+            let review = offline.descendants(matching: .any)[
+                "CaptureOfflineTranscriptReviewLink_\(localRecordingID)"
+            ].firstMatch
+            guard review.waitForExistence(timeout: 15) else {
+                XCTFail("Protected offline access must expose cached transcript review before the capture and follow-through feeds.")
+                return false
+            }
+            let hittable = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "hittable == true AND enabled == true"),
+                object: review
+            )
+            guard XCTWaiter.wait(for: [hittable], timeout: 10) == .completed else {
+                XCTFail("Protected transcript review must be an immediately reachable, enabled continuation action.")
+                return false
+            }
+            review.tap()
+            guard offline.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 20) else {
+                XCTFail("The protected transcript continuation must navigate into transcript review.")
+                return false
+            }
+            guard offline.descendants(matching: .any)["CaptureTranscriptProtectedCacheBoundary"]
+                .waitForExistence(timeout: 20) else {
+                XCTFail("The offline review must identify protected cached transcript evidence.")
+                return false
+            }
+            return true
+        }
+
+        app = launchProtectedOfflineApp()
+        guard openOfflineReview(app) else { return }
+
+        let confirmationPlay = app.buttons[
+            "CaptureTranscriptPlayButton_\(confirmationSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(confirmationPlay, in: app, timeout: 20, swipeAttempts: 14))
+        XCTAssertTrue(confirmationPlay.isEnabled)
+        confirmationPlay.tap()
+        let queueConfirmation = app.buttons[
+            "CaptureTranscriptConfirmAsIsButton_\(confirmationSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(queueConfirmation.waitForExistence(timeout: 5))
+        let confirmationReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"),
+            object: queueConfirmation
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [confirmationReady], timeout: 15), .completed)
+        XCTAssertTrue(queueConfirmation.label.localizedCaseInsensitiveContains("queue"))
+        queueConfirmation.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "CaptureTranscriptDecisionPending_\(confirmationSegmentID)"
+            ].waitForExistence(timeout: 8)
+        )
+
+        let correctionPlay = app.buttons[
+            "CaptureTranscriptPlayButton_\(correctionSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(correctionPlay, in: app, timeout: 20, swipeAttempts: 14))
+        correctionPlay.tap()
+        let correctionPlaybackReady = app.buttons[
+            "CaptureTranscriptConfirmAsIsButton_\(correctionSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(correctionPlaybackReady.waitForExistence(timeout: 5))
+        let correctionReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"),
+            object: correctionPlaybackReady
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [correctionReady], timeout: 15), .completed)
+        let correct = app.buttons["CaptureTranscriptCorrectButton_\(correctionSegmentID)"].firstMatch
+        XCTAssertTrue(correct.waitForExistence(timeout: 5))
+        correct.tap()
+        replaceText(
+            in: app.textFields["CaptureTranscriptCorrectWordsField"].firstMatch,
+            with: phoneCorrectionText,
+            app: app
+        )
+        let queueCorrection = app.buttons[
+            "CaptureTranscriptAcceptCorrectionButton_\(correctionSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(queueCorrection.waitForExistence(timeout: 8))
+        XCTAssertTrue(queueCorrection.isEnabled)
+        XCTAssertTrue(queueCorrection.label.localizedCaseInsensitiveContains("queue"))
+        queueCorrection.tap()
+
+        let queuedBoundary = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        guard queuedBoundary.waitForExistence(timeout: 8) else {
+            XCTFail("The transcript toolbar must keep protected outbox status visible wherever review leaves the reader.")
+            attachRuntimeScreenshot(app, name: "Offline transcript outbox status missing")
+            return
+        }
+        XCTAssertEqual(queuedBoundary.value as? String, "Queued")
+        XCTAssertTrue(queuedBoundary.label.contains("2 waiting"))
+        attachRuntimeScreenshot(app, name: "Offline transcript decisions protected before reconnect")
+        app.terminate()
+
+        app = launchProtectedOfflineApp()
+        guard openOfflineReview(app) else { return }
+        let recoveredBoundary = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        XCTAssertTrue(
+            recoveredBoundary.waitForExistence(timeout: 10),
+            "Both protected transcript decisions must survive app process death."
+        )
+        XCTAssertEqual(recoveredBoundary.value as? String, "Queued")
+        XCTAssertTrue(recoveredBoundary.label.contains("2 waiting"))
+
+        try await injectConcurrentTranscriptCorrection(
+            credentials: credentials,
+            segmentID: correctionSegmentID,
+            correctedText: conflictCorrectionText
+        )
+        app.terminate()
+
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+        let reconnectedReviewLink = app.descendants(matching: .any)[
+            "CaptureSessionTranscriptReviewLink_\(sessionID)"
+        ].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reconnectedReviewLink, in: app, timeout: 45, swipeAttempts: 12))
+        reconnectedReviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 20))
+
+        let heldBoundary = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        let heldReadback = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", "Held"),
+            object: heldBoundary
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [heldReadback], timeout: 60),
+            .completed,
+            "Reconnect must acknowledge the unchanged segment and hold the stale-overlay decision for review."
+        )
+        XCTAssertTrue(heldBoundary.label.contains("0 waiting"))
+        XCTAssertTrue(heldBoundary.label.contains("1 held"))
+
+        let verified = app.descendants(matching: .any)[
+            "CaptureTranscriptVerifiedAsIs_\(confirmationSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(verified, in: app, timeout: 30, swipeAttempts: 14),
+            "The non-conflicting offline decision must read back as one canonical playback verification."
+        )
+        let heldSegment = app.descendants(matching: .any)[
+            "CaptureTranscriptDecisionPending_\(correctionSegmentID)"
+        ].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(heldSegment, in: app, timeout: 20, swipeAttempts: 14))
+        XCTAssertEqual(heldSegment.value as? String, "Held")
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", conflictCorrectionText))
+                .firstMatch.waitForExistence(timeout: 8),
+            "Canonical readback must show the concurrent reviewed overlay rather than phone text."
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", phoneCorrectionText))
+                .firstMatch.exists,
+            "A held phone decision must not overwrite canonical transcript truth."
+        )
+        attachRuntimeScreenshot(app, name: "Offline transcript reconciliation and stale-overlay hold")
     }
 
     func testOutsiderCannotSeeRetainedTranscriptFollowThrough() throws {
