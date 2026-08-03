@@ -38,6 +38,7 @@ function connection() {
     id: "connection-1",
     status: "VERIFIED",
     verifiedAt: new Date("2026-08-02T00:00:00.000Z"),
+    lastCheckedAt: new Date("2026-08-02T01:00:00.000Z"),
     metadataJson: { accountLabel: "Calendar account" },
     oauthCredential: { encryptedPayload: "encrypted-not-a-token" },
     collections: [
@@ -65,17 +66,15 @@ function configureProvider(prisma: any) {
     .mockReturnValue({ encryptionKey: Buffer.alloc(32) } as never);
   jest.mocked(decryptGoogleRefreshToken).mockReturnValue("refresh-token");
   jest.mocked(refreshGoogleCalendarAccess).mockResolvedValue("access-token");
-  jest
-    .mocked(listOwnedGoogleCalendars)
-    .mockResolvedValue([
-      {
-        id: "owned-1",
-        summary: "Production",
-        primary: true,
-        accessRole: "owner",
-        timeZone: "America/Denver",
-      },
-    ]);
+  jest.mocked(listOwnedGoogleCalendars).mockResolvedValue([
+    {
+      id: "owned-1",
+      summary: "Production",
+      primary: true,
+      accessRole: "owner",
+      timeZone: "America/Denver",
+    },
+  ]);
 }
 
 describe("/api/calendar/connections/google", () => {
@@ -92,11 +91,9 @@ describe("/api/calendar/connections/google", () => {
   });
 
   it("returns only safe connection and owned-calendar selection data", async () => {
-    jest
-      .mocked(getQuipslySessionFromRequest)
-      .mockResolvedValue({
-        user: { id: "user-1", primaryEmail: "person@example.com" },
-      } as never);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.com" },
+    } as never);
     const prisma = {
       calendarConnection: {
         findFirst: jest.fn().mockResolvedValue(connection()),
@@ -120,14 +117,60 @@ describe("/api/calendar/connections/google", () => {
     expect(serialized).not.toContain("access-token");
     expect(serialized).not.toContain("encrypted-not-a-token");
     expect(serialized).not.toContain("encrypted-cursor-must-not-escape");
+    expect(payload.providerChecked).toBe(true);
+  });
+
+  it("returns a credential-free stored summary for mobile without contacting Google", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.com" },
+    } as never);
+    const stored = connection();
+    const prisma = {
+      calendarConnection: {
+        findFirst: jest.fn().mockResolvedValue(stored),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
+
+    const response = await GET(
+      new Request(
+        "https://nest.quipsly.com/api/calendar/connections/google?view=summary",
+        { headers: { authorization: "Bearer verified-mobile-token" } },
+      ),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.providerChecked).toBe(false);
+    expect(payload.connection).toEqual({
+      id: "connection-1",
+      status: "VERIFIED",
+      accountLabel: "Calendar account",
+      verifiedAt: "2026-08-02T00:00:00.000Z",
+      lastCheckedAt: "2026-08-02T01:00:00.000Z",
+    });
+    expect(payload.selections).toHaveLength(1);
+    expect(payload.selections[0]).not.toHaveProperty("providerCalendarId");
+    expect(decryptGoogleRefreshToken).not.toHaveBeenCalled();
+    expect(refreshGoogleCalendarAccess).not.toHaveBeenCalled();
+    expect(listOwnedGoogleCalendars).not.toHaveBeenCalled();
+    expect(prisma.calendarConnection.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          metadataJson: true,
+          collections: expect.any(Object),
+        }),
+      }),
+    );
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain("providerCalendarId");
+    expect(serialized).not.toContain("encrypted-not-a-token");
   });
 
   it("forbids a read-only collaborator from binding a shared production calendar before Google access", async () => {
-    jest
-      .mocked(getQuipslySessionFromRequest)
-      .mockResolvedValue({
-        user: { id: "user-1", primaryEmail: "person@example.com" },
-      } as never);
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.com" },
+    } as never);
     const prisma = {
       calendarConnection: {
         findFirst: jest.fn().mockResolvedValue(connection()),
@@ -196,15 +239,13 @@ describe("/api/calendar/connections/google", () => {
         findFirst: jest.fn().mockResolvedValue(connection()),
       },
       calendarNotificationChannel: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              id: "channel-row-1",
-              channelId: "channel-1",
-              resourceId: "resource-1",
-            },
-          ]),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "channel-row-1",
+            channelId: "channel-1",
+            resourceId: "resource-1",
+          },
+        ]),
       },
       $transaction: jest.fn(async (operation) => operation(transaction)),
     };

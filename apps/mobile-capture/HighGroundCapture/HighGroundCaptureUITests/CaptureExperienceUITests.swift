@@ -1145,6 +1145,26 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(manage.isHittable)
         manage.tap()
 
+        let googleProjection = app.descendants(matching: .any)[
+            "CaptureGoogleCalendarProjection"
+        ]
+        XCTAssertTrue(
+            googleProjection.waitForExistence(timeout: 5),
+            "Calendar continuity should expose the optional managed Google projection separately from subscription links."
+        )
+        XCTAssertTrue(app.staticTexts["Not connected"].exists)
+        let googleManage = app.buttons["CaptureGoogleCalendarManage"]
+        XCTAssertTrue(googleManage.exists)
+        XCTAssertFalse(
+            googleManage.isEnabled,
+            "Deterministic preview must not open an external OAuth or account-management flow."
+        )
+        let googleBoundary = app.staticTexts["CaptureGoogleCalendarBoundary"]
+        XCTAssertTrue(googleBoundary.exists)
+        XCTAssertTrue(googleBoundary.label.contains("optional"))
+        XCTAssertTrue(googleBoundary.label.contains("separate from signing in"))
+        XCTAssertTrue(googleBoundary.label.contains("explicitly project"))
+
         for purpose in ["PERSONAL_COMMITMENTS", "COACHING", "PODCAST_PRODUCTION"] {
             let lane = app.descendants(matching: .any)["CaptureCalendarLane_\(purpose)"]
             XCTAssertTrue(lane.exists, "Expected a deliberate calendar lane for \(purpose).")

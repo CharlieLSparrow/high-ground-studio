@@ -82,6 +82,110 @@ async function actorConnection(prisma: any, userId: string) {
   });
 }
 
+async function actorConnectionSummary(prisma: any, userId: string) {
+  return prisma.calendarConnection.findFirst({
+    where: {
+      userId,
+      provider: "GOOGLE",
+      connectionKind: "USER_OAUTH",
+      status: { not: "REVOKED" },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      verifiedAt: true,
+      lastCheckedAt: true,
+      metadataJson: true,
+      collections: {
+        where: { status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          purpose: true,
+          displayName: true,
+          nestId: true,
+          timezone: true,
+          liveUpdatesEnabled: true,
+          cursor: {
+            select: {
+              lastFullSyncAt: true,
+              lastIncrementalSyncAt: true,
+            },
+          },
+          notificationChannels: {
+            where: { status: { in: ["ACTIVE", "DRAINING"] } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              status: true,
+              expiresAt: true,
+              lastNotificationAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function safeConnection(connection: any) {
+  const metadata = metadataRecord(connection.metadataJson);
+  return {
+    id: connection.id,
+    status: connection.status,
+    accountLabel:
+      typeof metadata.accountLabel === "string"
+        ? metadata.accountLabel
+        : "Google Calendar",
+    verifiedAt:
+      connection.verifiedAt?.toISOString?.() ?? connection.verifiedAt ?? null,
+    lastCheckedAt:
+      connection.lastCheckedAt?.toISOString?.() ??
+      connection.lastCheckedAt ??
+      null,
+  };
+}
+
+function safeSelections(connection: any, includeProviderCalendarId: boolean) {
+  return connection.collections.map((selection: any) => ({
+    id: selection.id,
+    purpose: selection.purpose,
+    displayName: selection.displayName,
+    ...(includeProviderCalendarId
+      ? { providerCalendarId: selection.providerCalendarId }
+      : {}),
+    nestId: selection.nestId,
+    timezone: selection.timezone,
+    liveUpdatesEnabled: selection.liveUpdatesEnabled === true,
+    liveUpdates: selection.notificationChannels?.[0]
+      ? {
+          status: selection.notificationChannels[0].status,
+          expiresAt:
+            selection.notificationChannels[0].expiresAt?.toISOString?.() ??
+            selection.notificationChannels[0].expiresAt ??
+            null,
+          lastNotificationAt:
+            selection.notificationChannels[0].lastNotificationAt?.toISOString?.() ??
+            selection.notificationChannels[0].lastNotificationAt ??
+            null,
+        }
+      : null,
+    cursor: selection.cursor
+      ? {
+          lastFullSyncAt:
+            selection.cursor.lastFullSyncAt?.toISOString?.() ??
+            selection.cursor.lastFullSyncAt ??
+            null,
+          lastIncrementalSyncAt:
+            selection.cursor.lastIncrementalSyncAt?.toISOString?.() ??
+            selection.cursor.lastIncrementalSyncAt ??
+            null,
+        }
+      : null,
+  }));
+}
+
 async function providerCalendars(input: {
   connection: any;
   requestUrl: string;
@@ -126,54 +230,57 @@ async function providerCalendars(input: {
 
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
-  if (!session?.user?.id) return json({ ok: false, error: "Authentication required." }, 401);
+  if (!session?.user?.id)
+    return json({ ok: false, error: "Authentication required." }, 401);
   const prisma = getPrismaClient() as any;
   try {
+    const summaryOnly =
+      new URL(request.url).searchParams.get("view") === "summary";
+    if (summaryOnly) {
+      const connection = await actorConnectionSummary(prisma, session.user.id);
+      if (!connection) {
+        return json({
+          ok: true,
+          connection: null,
+          selections: [],
+          providerChecked: false,
+        });
+      }
+      return json({
+        ok: true,
+        connection: safeConnection(connection),
+        selections: safeSelections(connection, false),
+        providerChecked: false,
+      });
+    }
     const connection = await actorConnection(prisma, session.user.id);
-    if (!connection) return json({ ok: true, connection: null, calendars: [], selections: [] });
-    const provider = await providerCalendars({ connection, requestUrl: request.url, prisma });
-    const metadata = metadataRecord(connection.metadataJson);
+    if (!connection)
+      return json({
+        ok: true,
+        connection: null,
+        calendars: [],
+        selections: [],
+      });
+    const provider = await providerCalendars({
+      connection,
+      requestUrl: request.url,
+      prisma,
+    });
     return json({
       ok: true,
-      connection: {
-        id: connection.id,
-        status: connection.status,
-        accountLabel:
-          typeof metadata.accountLabel === "string"
-            ? metadata.accountLabel
-            : "Google Calendar",
-        verifiedAt: connection.verifiedAt?.toISOString() ?? null,
-      },
+      connection: safeConnection(connection),
       calendars: provider.calendars,
-      selections: connection.collections.map((selection: any) => ({
-        id: selection.id,
-        purpose: selection.purpose,
-        displayName: selection.displayName,
-        providerCalendarId: selection.providerCalendarId,
-        nestId: selection.nestId,
-        timezone: selection.timezone,
-        liveUpdatesEnabled: selection.liveUpdatesEnabled === true,
-        liveUpdates: selection.notificationChannels?.[0]
-          ? {
-              status: selection.notificationChannels[0].status,
-              expiresAt: selection.notificationChannels[0].expiresAt?.toISOString?.() ?? selection.notificationChannels[0].expiresAt ?? null,
-              lastNotificationAt: selection.notificationChannels[0].lastNotificationAt?.toISOString?.() ?? selection.notificationChannels[0].lastNotificationAt ?? null,
-            }
-          : null,
-        cursor: selection.cursor
-          ? {
-              lastFullSyncAt: selection.cursor.lastFullSyncAt?.toISOString?.() ?? selection.cursor.lastFullSyncAt ?? null,
-              lastIncrementalSyncAt: selection.cursor.lastIncrementalSyncAt?.toISOString?.() ?? selection.cursor.lastIncrementalSyncAt ?? null,
-            }
-          : null,
-      })),
+      selections: safeSelections(connection, true),
+      providerChecked: true,
     });
   } catch (error) {
     const known = error instanceof GoogleCalendarOAuthError;
     return json(
       {
         ok: false,
-        error: known ? error.message : "Google Calendar is temporarily unavailable.",
+        error: known
+          ? error.message
+          : "Google Calendar is temporarily unavailable.",
         code: known ? error.code : "calendar-provider-unavailable",
       },
       known ? error.status : 503,
@@ -183,16 +290,31 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
-  if (!session?.user?.id) return json({ ok: false, error: "Authentication required." }, 401);
-  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!session?.user?.id)
+    return json({ ok: false, error: "Authentication required." }, 401);
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
   const purpose = typeof body?.purpose === "string" ? body.purpose : "";
-  const calendarId = typeof body?.calendarId === "string" ? body.calendarId.trim() : "";
-  const projectId = typeof body?.projectId === "string" ? body.projectId.trim() : "";
+  const calendarId =
+    typeof body?.calendarId === "string" ? body.calendarId.trim() : "";
+  const projectId =
+    typeof body?.projectId === "string" ? body.projectId.trim() : "";
   if (!PURPOSES.has(purpose) || !calendarId) {
-    return json({ ok: false, error: "Choose a calendar and a Quipsly calendar lane." }, 400);
+    return json(
+      { ok: false, error: "Choose a calendar and a Quipsly calendar lane." },
+      400,
+    );
   }
   if (purpose === "PODCAST_PRODUCTION" && !projectId) {
-    return json({ ok: false, error: "Choose the episode Nest for this production calendar." }, 400);
+    return json(
+      {
+        ok: false,
+        error: "Choose the episode Nest for this production calendar.",
+      },
+      400,
+    );
   }
 
   const prisma = getPrismaClient() as any;
@@ -212,16 +334,37 @@ export async function POST(request: Request) {
           })
         : null;
       if (!access?.allowed || access.projectId !== projectId) {
-        return json({ ok: false, error: "You need edit access to select a team calendar for that episode Nest." }, 403);
+        return json(
+          {
+            ok: false,
+            error:
+              "You need edit access to select a team calendar for that episode Nest.",
+          },
+          403,
+        );
       }
       nestId = projectId;
     }
 
     const connection = await actorConnection(prisma, session.user.id);
-    if (!connection) return json({ ok: false, error: "Connect Google Calendar first." }, 409);
-    const provider = await providerCalendars({ connection, requestUrl: request.url, prisma });
-    const selected = provider.calendars.find((calendar) => calendar.id === calendarId);
-    if (!selected) return json({ ok: false, error: "That owned Google calendar is no longer available." }, 409);
+    if (!connection)
+      return json({ ok: false, error: "Connect Google Calendar first." }, 409);
+    const provider = await providerCalendars({
+      connection,
+      requestUrl: request.url,
+      prisma,
+    });
+    const selected = provider.calendars.find(
+      (calendar) => calendar.id === calendarId,
+    );
+    if (!selected)
+      return json(
+        {
+          ok: false,
+          error: "That owned Google calendar is no longer available.",
+        },
+        409,
+      );
 
     const existing = await prisma.calendarCollection.findUnique({
       where: {
@@ -286,16 +429,24 @@ export async function POST(request: Request) {
         },
       },
     });
-    return json({ ok: true, selection: {
-      id: collection.id,
-      purpose: collection.purpose,
-      displayName: collection.displayName,
-      projectId: collection.nestId,
-    } });
+    return json({
+      ok: true,
+      selection: {
+        id: collection.id,
+        purpose: collection.purpose,
+        displayName: collection.displayName,
+        projectId: collection.nestId,
+      },
+    });
   } catch (error) {
     const known = error instanceof GoogleCalendarOAuthError;
     return json(
-      { ok: false, error: known ? error.message : "The calendar selection could not be saved." },
+      {
+        ok: false,
+        error: known
+          ? error.message
+          : "The calendar selection could not be saved.",
+      },
       known ? error.status : 503,
     );
   }
@@ -303,7 +454,8 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
-  if (!session?.user?.id) return json({ ok: false, error: "Authentication required." }, 401);
+  if (!session?.user?.id)
+    return json({ ok: false, error: "Authentication required." }, 401);
   const prisma = getPrismaClient() as any;
   try {
     const connection = await actorConnection(prisma, session.user.id);
@@ -397,7 +549,12 @@ export async function DELETE(request: Request) {
   } catch (error) {
     const known = error instanceof GoogleCalendarOAuthError;
     return json(
-      { ok: false, error: known ? error.message : "Google Calendar could not be disconnected safely." },
+      {
+        ok: false,
+        error: known
+          ? error.message
+          : "Google Calendar could not be disconnected safely.",
+      },
       known ? error.status : 503,
     );
   }

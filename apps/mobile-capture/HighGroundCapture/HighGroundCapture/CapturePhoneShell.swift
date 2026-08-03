@@ -5,6 +5,7 @@ import SwiftUI
 import UIKit
 
 struct CapturePhoneShell: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var model = CaptureExperienceModel()
@@ -128,6 +129,15 @@ struct CapturePhoneShell: View {
             // Work, or a Session review. Refresh on entry so a successful
             // cross-surface mutation is visible without manual pull-to-refresh.
             Task { await model.todayClient.load() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active,
+                  !model.usesPreviewData,
+                  AuthManager.shared.networkActionsAllowed else { return }
+            // OAuth completes in the system browser. Refresh the credential-free
+            // summary when Capture becomes active again so the person sees the
+            // resulting account and lane selections without a full app reload.
+            Task { await model.calendarSubscriptionClient.refreshGoogleCalendarSummary() }
         }
         .onChange(of: audioCapture.captureState) { _, state in
             model.reconcileCaptureState(state)
@@ -1658,6 +1668,16 @@ private struct CaptureCalendarContinuityCard: View {
             }
 
             if isExpanded {
+                googleCalendarProjection
+
+                HStack(spacing: 8) {
+                    Image(systemName: "link")
+                        .foregroundStyle(.blue)
+                        .accessibilityHidden(true)
+                    Text("Read-only subscriptions")
+                        .font(.subheadline.weight(.bold))
+                }
+
                 ForEach(MobileCalendarFeedPurpose.allCases) { purpose in
                     calendarLane(purpose)
                 }
@@ -1773,6 +1793,107 @@ private struct CaptureCalendarContinuityCard: View {
         } message: {
             Text("The private URL will return not found. Quipsly schedule records remain unchanged.")
         }
+    }
+
+    private var googleCalendarProjection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label("Google Calendar projection", systemImage: "calendar.badge.checkmark")
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                if let connection = client.googleConnection {
+                    Text(connection.status.uppercased() == "VERIFIED" ? "Connected" : "Review")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(
+                            connection.status.uppercased() == "VERIFIED"
+                                ? Color.green
+                                : Color.orange
+                        )
+                } else if client.hasLoadedGoogleSummary {
+                    Text("Not connected")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let connection = client.googleConnection {
+                Text(connection.accountLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureGoogleCalendarAccount")
+
+                if client.googleSelections.isEmpty {
+                    Text("No Quipsly lane is allowed to project events yet.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(client.googleSelections) { selection in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(selection.purpose.title)
+                                    .font(.caption.weight(.bold))
+                                Text(selection.displayName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                if selection.liveUpdatesEnabled {
+                                    Text("Provider changes monitored")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier(
+                            "CaptureGoogleCalendarSelection_\(selection.purpose.rawValue)"
+                        )
+                    }
+                }
+            } else if client.hasLoadedGoogleSummary {
+                Text("Connect an account in Nest, then choose exactly which owned calendar may receive each coaching, podcast, or personal lane.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Checking your saved connection…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let url = client.googleCalendarManagementURL {
+                Link(destination: url) {
+                    Label(
+                        client.googleConnection == nil
+                            ? "Connect Google Calendar"
+                            : "Review calendars in Nest",
+                        systemImage: "safari"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(previewOnly || !AuthManager.shared.networkActionsAllowed)
+                .accessibilityIdentifier("CaptureGoogleCalendarManage")
+            }
+
+            if let error = client.googleErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("CaptureGoogleCalendarError")
+            }
+
+            Text("Nest opens in your browser for Google consent and calendar choice. Connecting is optional and separate from signing in. Quipsly remains scheduling truth; Google receives only events you explicitly project.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("CaptureGoogleCalendarBoundary")
+        }
+        .padding(12)
+        .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureGoogleCalendarProjection")
     }
 
     @ViewBuilder

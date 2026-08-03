@@ -1940,6 +1940,44 @@ struct MobileCalendarFeedMutationResponse: Decodable {
     let revoked: Int?
 }
 
+struct MobileGoogleCalendarConnectionSnapshot: Decodable, Hashable {
+    let id: String
+    let status: String
+    let accountLabel: String
+    let verifiedAt: String?
+    let lastCheckedAt: String?
+}
+
+struct MobileGoogleCalendarLiveUpdateSnapshot: Decodable, Hashable {
+    let status: String
+    let expiresAt: String?
+    let lastNotificationAt: String?
+}
+
+struct MobileGoogleCalendarCursorSnapshot: Decodable, Hashable {
+    let lastFullSyncAt: String?
+    let lastIncrementalSyncAt: String?
+}
+
+struct MobileGoogleCalendarSelectionSnapshot: Decodable, Identifiable, Hashable {
+    let id: String
+    let purpose: MobileCalendarFeedPurpose
+    let displayName: String
+    let nestId: String?
+    let timezone: String?
+    let liveUpdatesEnabled: Bool
+    let liveUpdates: MobileGoogleCalendarLiveUpdateSnapshot?
+    let cursor: MobileGoogleCalendarCursorSnapshot?
+}
+
+struct MobileGoogleCalendarSummaryResponse: Decodable {
+    let ok: Bool
+    let error: String?
+    let connection: MobileGoogleCalendarConnectionSnapshot?
+    let selections: [MobileGoogleCalendarSelectionSnapshot]?
+    let providerChecked: Bool?
+}
+
 struct MobileCaptureSessionCreateResponse: Codable {
     let ok: Bool
     let error: String?
@@ -5024,10 +5062,14 @@ final class CaptureTodayClient: ObservableObject {
 final class CaptureCalendarSubscriptionClient: ObservableObject {
     @Published private(set) var feeds: [MobileCalendarFeedStatus] = []
     @Published private(set) var oneTimeFeed: MobileCalendarFeedCreated?
+    @Published private(set) var googleConnection: MobileGoogleCalendarConnectionSnapshot?
+    @Published private(set) var googleSelections: [MobileGoogleCalendarSelectionSnapshot] = []
+    @Published private(set) var hasLoadedGoogleSummary = false
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
     @Published var statusMessage: String?
     @Published var errorMessage: String?
+    @Published var googleErrorMessage: String?
 
     private struct MutationRequest: Encodable {
         let purpose: String
@@ -5040,6 +5082,10 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
             ?? "https://nest.quipsly.com"
     )
+
+    var googleCalendarManagementURL: URL? {
+        URL(string: "\(baseURL)/schedule#google-calendar-connection-heading")
+    }
 
     func activeFeed(
         purpose: MobileCalendarFeedPurpose,
@@ -5079,15 +5125,30 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
             ),
         ]
         oneTimeFeed = nil
+        googleConnection = nil
+        googleSelections = []
+        hasLoadedGoogleSummary = true
         statusMessage = "Preview subscriptions are read-only. No private link was created or exposed."
         errorMessage = nil
+        googleErrorMessage = nil
     }
 
     func load() async {
-        guard !isLoading,
-              let url = URL(string: "\(baseURL)/api/calendar/feeds") else { return }
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
+        async let feedLoad: Void = loadFeeds()
+        async let googleLoad: Void = loadGoogleCalendarSummary()
+        _ = await (feedLoad, googleLoad)
+    }
+
+    func refreshGoogleCalendarSummary() async {
+        guard !isLoading, !isMutating else { return }
+        await loadGoogleCalendarSummary()
+    }
+
+    private func loadFeeds() async {
+        guard let url = URL(string: "\(baseURL)/api/calendar/feeds") else { return }
         errorMessage = nil
         do {
             var request = URLRequest(url: url)
@@ -5104,6 +5165,37 @@ final class CaptureCalendarSubscriptionClient: ObservableObject {
             feeds = payload.feeds ?? []
         } catch {
             errorMessage = "Calendar subscriptions are unavailable: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadGoogleCalendarSummary() async {
+        guard let url = URL(
+            string: "\(baseURL)/api/calendar/connections/google?view=summary"
+        ) else { return }
+        googleErrorMessage = nil
+        defer { hasLoadedGoogleSummary = true }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(
+                MobileGoogleCalendarSummaryResponse.self,
+                from: data
+            )
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureGoogleCalendarSummary",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "Google Calendar status could not be loaded."
+                    ]
+                )
+            }
+            googleConnection = payload.connection
+            googleSelections = payload.selections ?? []
+        } catch {
+            googleErrorMessage = "Google Calendar status is unavailable: \(error.localizedDescription)"
         }
     }
 

@@ -161,6 +161,81 @@ pnpm quipsly:calendar:push-scheduler:test
 pnpm quipsly:calendar:push-scheduler
 ```
 
+## iPhone connection continuity (August 3, 2026)
+
+Quipsly Capture now makes the managed Google projection reachable from Today
+without pretending Google Calendar is the canonical scheduler and without
+requesting EventKit read access:
+
+- the existing authenticated connection route accepts `?view=summary` and
+  returns only the actor's stored connection label/status, explicit lane
+  selections, reconciliation timestamps, and live-update state;
+- the summary query does not select the encrypted OAuth credential or provider
+  calendar ID, decrypt a token, refresh a token, or contact Google;
+- Capture loads that summary with its Firebase bearer credential alongside its
+  revocable iCalendar subscriptions;
+- the phone distinguishes optional managed Google projections from private,
+  read-only subscription URLs and reiterates that Quipsly owns scheduling
+  truth;
+- connection and lane changes open the Nest Schedule surface in the external
+  browser. Google consent is never embedded in a web view;
+- when Capture returns to the foreground, it refreshes the credential-free
+  summary so a completed browser flow appears without relaunching the app;
+- deterministic preview mode exposes the UX but cannot open the external OAuth
+  flow or create, rotate, or revoke a private subscription.
+
+This is intentionally a status-and-handoff surface. The phone never receives a
+Google access token, refresh token, client secret, provider calendar ID, or
+calendar event body.
+
+### Live activation audit
+
+The dedicated project now exists as `quipsly-calendar-integrations` under the
+Quipsly organization. The production deploy project `high-ground-odyssey`
+currently has enabled state-signing and token-encryption secrets, but it does
+not yet have the dedicated Calendar OAuth client ID/client secret, and the
+deployed `studio` service does not mount any `GOOGLE_CALENDAR_OAUTH_*` values.
+The existing `GOOGLE_CALENDAR_ID` deployment belongs to the older service
+calendar path and is not a substitute for user consent.
+
+The remaining activation is therefore a deliberate one-time operator gate:
+
+1. finish Google account re-verification on the OAuth Clients page for
+   `quipsly-calendar-integrations`;
+2. create a **Web application** client named `Quipsly Calendar` with the two
+   exact callback URLs listed above;
+3. store its ID and secret as enabled versions of
+   `quipsly-google-calendar-oauth-client-id` and
+   `quipsly-google-calendar-oauth-client-secret` in `high-ground-odyssey`;
+4. use the bounded preview release with `ENABLE_GOOGLE_CALENDAR_OAUTH=1`, prove
+   one real QA account's connect/select/reconcile/disconnect lifecycle, then
+   promote that exact image only if the contract passes.
+
+Google documents that OAuth client creation is a Cloud Console operation rather
+than a programmatic credential-management API ([OAuth 2.0 best
+practices](https://developers.google.com/identity/protocols/oauth2/resources/best-practices),
+[Create access
+credentials](https://developers.google.com/workspace/guides/create-credentials))
+and recommends separate clients for distinct platforms. The current Calendar
+grant is a [web-server OAuth
+flow](https://developers.google.com/identity/protocols/oauth2/web-server); the
+native app delegates it to the web surface instead of sharing the Firebase
+Google Sign-In client.
+
+### Focused verification
+
+- Quipsly TypeScript: pass.
+- Google Calendar regression: 11 suites and 66 tests pass.
+- connection route: 5 tests pass, including a bearer-shaped mobile summary
+  proving zero token decrypt, token refresh, provider list call, provider
+  calendar ID, or credential material.
+- Capture release static audit: 1,015 checks pass.
+- compiled iPhone 17 Pro simulator operation: the focused Calendar continuity
+  journey passes on iOS 26.3.1; result bundle:
+  `/private/tmp/quipsly-google-calendar-mobile-20260803-02.xcresult`.
+- no Cloud Build, Artifact Registry upload, Cloud Run revision, Google Calendar
+  write, or user OAuth grant was created by this batch.
+
 ## Verification evidence
 
 - Prisma Client generation: pass.

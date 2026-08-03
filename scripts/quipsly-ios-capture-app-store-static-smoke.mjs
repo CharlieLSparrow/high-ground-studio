@@ -1515,12 +1515,18 @@ assert(!appInfoText.includes("NSCalendarsFullAccessUsageDescription"), "Capture 
 assert(!appInfoText.includes("NSCalendarsWriteOnlyAccessUsageDescription"), "Capture must not declare write-only calendar access while it only uses EventKitUI.", { forbidden: "NSCalendarsWriteOnlyAccessUsageDescription" });
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureCalendarContinuityCard")', "shipping calendar continuity has a stable automation identity");
 requireIncludes(capturePhoneShellText, "Subscribe in Apple Calendar", "shipping calendar continuity offers an Apple Calendar subscription action");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoogleCalendarProjection")', "shipping calendar continuity exposes managed Google projection status");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureGoogleCalendarManage")', "shipping calendar continuity links to deliberate Google Calendar management");
+requireIncludes(capturePhoneShellText, "Connecting is optional and separate from signing in", "native Google Calendar copy preserves optional separate consent");
+requireIncludes(capturePhoneShellText, "Google receives only events you explicitly project", "native Google Calendar copy preserves canonical Quipsly truth");
 requireIncludes(capturePhoneShellText, "Share for Google or another calendar", "shipping calendar continuity offers a standard cross-provider subscription link");
 requireIncludes(capturePhoneShellText, "Google's mobile app cannot add a calendar from a URL.", "shipping Google calendar setup states the provider's desktop-only URL subscription boundary");
 requireIncludes(capturePhoneShellText, "Shown once", "shipping calendar capability is explicitly one-time");
 requireIncludes(capturePhoneShellText, "Subscriptions are read-only and revocable.", "shipping calendar projection states its lifecycle boundary");
 requireIncludes(capturePhoneShellText, "not recordings, transcript text, coaching notes, participant addresses, manuscripts, chat, or provider credentials", "shipping calendar projection excludes private working content");
 requireIncludes(bridgeText, "final class CaptureCalendarSubscriptionClient", "native calendar subscriptions use a dedicated authenticated client");
+requireIncludes(bridgeText, "/api/calendar/connections/google?view=summary", "native Google Calendar status uses the credential-free stored summary");
+requireIncludes(bridgeText, "MobileGoogleCalendarSummaryResponse", "native decodes safe Google connection and lane status");
 requireIncludes(bridgeText, "/api/calendar/feeds", "native calendar subscriptions use the canonical Nest API");
 requireIncludes(bridgeText, "AuthManager.shared.authenticatedData", "native calendar subscription operations require the signed-in Nest identity");
 requireIncludes(bridgeText, "oneTimeFeed = nil", "native calendar capability can be removed from memory");
