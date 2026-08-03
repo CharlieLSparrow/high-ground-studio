@@ -121,6 +121,13 @@ struct CapturePhoneShell: View {
         .task {
             await model.load()
         }
+        .onChange(of: visibleTab) { _, tab in
+            guard tab == .today, !model.usesPreviewData else { return }
+            // Today is a projection over work that can be created from Record,
+            // Work, or a Session review. Refresh on entry so a successful
+            // cross-surface mutation is visible without manual pull-to-refresh.
+            Task { await model.todayClient.load() }
+        }
         .onChange(of: audioCapture.captureState) { _, state in
             model.reconcileCaptureState(state)
         }

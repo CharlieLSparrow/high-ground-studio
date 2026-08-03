@@ -343,8 +343,21 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var nextSession: MobileCaptureSession? {
-        sessions.first(where: { !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased()) })
-            ?? sessions.first
+        let activeSessions = sessions.filter {
+            !["ENDED", "CANCELED", "FAILED"].contains(($0.status ?? "").uppercased())
+        }
+        return activeSessions.min { left, right in
+            switch (left.scheduledStart, right.scheduledStart) {
+            case let (leftDate?, rightDate?):
+                return leftDate < rightDate
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return left.id < right.id
+            }
+        } ?? sessions.first
     }
 
     var isProviderConnected: Bool {

@@ -27,6 +27,16 @@ const packetBuildId = "packet-build-1";
 const summaryNoteId = "summary-1";
 const goalCandidateId = `packet-goal-${packetBuildId}-segment-1`;
 
+function reviewedAsIs(text: string, speakerLabel: string, id = "verification-1") {
+  return [{
+    id,
+    reviewKind: "confirmed-as-is",
+    providerTextSha256: createHash("sha256").update(text).digest("hex"),
+    providerSpeakerLabel: speakerLabel,
+    createdAt: new Date("2026-08-02T02:10:00.000Z"),
+  }];
+}
+
 function request(payload: Record<string, unknown>) {
   return new Request("http://localhost/api/mobile/capture/transcripts/packet/goals", {
     method: "POST",
@@ -44,7 +54,7 @@ function harness() {
     endSeconds: 15,
     text: "My goal is to build a repeatable review habit.",
     corrections: [],
-    verifications: [],
+    verifications: reviewedAsIs("My goal is to build a repeatable review habit.", "Homer"),
   }];
   const { projected: _projected, ...transcriptSnapshot } = transcriptPacketSnapshot(segments);
   const summary = {
@@ -197,6 +207,33 @@ describe("packet goal review route", () => {
     expect((state.summary.sourceJson.goalCandidateReviewReceipts as any[])).toEqual([]);
   });
 
+  it("keeps ACCEPT outside canonical Goals until every source segment is playback-reviewed", async () => {
+    const state = harness();
+    state.segments[0]!.verifications = [];
+    const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(state.segments);
+    (state.summary.sourceJson as any).transcriptSnapshot = snapshot;
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
+    jest.mocked(getPrismaClient).mockReturnValue(state.prisma);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+
+    const response = await POST(request({
+      callRoomId: roomId,
+      transcriptJobId,
+      recordingAssetId,
+      summaryNoteId,
+      packetBuildId,
+      goalCandidateId,
+      decision: "ACCEPT",
+    }));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      errorCode: "GOAL_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+    });
+    expect(state.goalCreate).not.toHaveBeenCalled();
+    expect(state.prisma.coachingNote.update).not.toHaveBeenCalled();
+  });
+
   it("persists an edited review receipt without creating a Goal or task", async () => {
     const state = harness();
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test", isStaff: false } } as any);
@@ -326,7 +363,8 @@ describe("packet goal review route", () => {
     const sourceText = `${firstText} ${secondText}`;
     state.segments[0]!.endSeconds = 13;
     state.segments[0]!.text = firstText;
-    state.segments.push({ id: "segment-2", segmentIndex: 1, speakerLabel: "Homer", startSeconds: 13, endSeconds: 15, text: secondText, corrections: [], verifications: [] });
+    state.segments[0]!.verifications = reviewedAsIs(firstText, "Homer");
+    state.segments.push({ id: "segment-2", segmentIndex: 1, speakerLabel: "Homer", startSeconds: 13, endSeconds: 15, text: secondText, corrections: [], verifications: reviewedAsIs(secondText, "Homer", "verification-2") });
     const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(state.segments);
     const packetSource = state.summary.sourceJson as any;
     packetSource.transcriptSnapshot = snapshot;

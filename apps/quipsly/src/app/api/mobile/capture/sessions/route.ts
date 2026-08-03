@@ -205,27 +205,55 @@ export async function GET(request: Request) {
   const userId = session.user.id;
   const isStaff = session.user.isStaff;
   const actorEmail = text(session.user.primaryEmail || session.user.email).toLowerCase();
-
-  const rooms = await prisma.callRoom.findMany({
-    where: isStaff
-      ? {}
-      : {
-          OR: [
-            { createdByUserId: userId },
-            { participants: { some: { userId } } },
-            { booking: { clientUserId: userId } },
-            { booking: { coachUserId: userId } },
-            ...(actorEmail ? [{
-              project: {
-                accessGrants: {
-                  some: { email: actorEmail, status: "ACTIVE" as const },
-                },
+  const roomAccessWhere = isStaff
+    ? {}
+    : {
+        OR: [
+          { createdByUserId: userId },
+          { participants: { some: { userId } } },
+          { booking: { clientUserId: userId } },
+          { booking: { coachUserId: userId } },
+          ...(actorEmail ? [{
+            project: {
+              accessGrants: {
+                some: { email: actorEmail, status: "ACTIVE" as const },
               },
-            }] : []),
-          ],
-    },
-    orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
-    take: 30,
+            },
+          }] : []),
+        ],
+      };
+
+  // The picker is a working set, not an archive. An oldest-first capped query
+  // made a just-recorded Session disappear for accounts with more than 30
+  // historical rooms. Keep every accessible active room in the window, then
+  // fill it with the most recently changed rooms for review and follow-through.
+  const [activeRoomRefs, recentRoomRefs] = await Promise.all([
+    prisma.callRoom.findMany({
+      where: {
+        AND: [
+          roomAccessWhere,
+          { status: { in: ["PLANNED", "OPEN", "RECORDING"] } },
+        ],
+      },
+      orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
+      take: 30,
+      select: { id: true },
+    }),
+    prisma.callRoom.findMany({
+      where: roomAccessWhere,
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+      select: { id: true },
+    }),
+  ]);
+  const roomIds = [...new Set([
+    ...activeRoomRefs.map((room: { id: string }) => room.id),
+    ...recentRoomRefs.map((room: { id: string }) => room.id),
+  ])];
+
+  const rooms = roomIds.length === 0 ? [] : await prisma.callRoom.findMany({
+    where: { id: { in: roomIds } },
+    orderBy: { updatedAt: "desc" },
     include: {
       ...MOBILE_CAPTURE_ROOM_INCLUDE,
       notes: {

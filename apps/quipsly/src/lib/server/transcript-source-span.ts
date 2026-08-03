@@ -28,6 +28,17 @@ function reviewStatus(segment: any): "provider" | "human-reviewed" {
     : "provider";
 }
 
+export function unreviewedTranscriptSpanSegmentIds(segments: any[]) {
+  return segments
+    .filter((segment) => reviewStatus(segment) !== "human-reviewed")
+    .map((segment) => text(segment?.id))
+    .filter(Boolean);
+}
+
+export function transcriptSpanIsFullyHumanReviewed(segments: any[]) {
+  return segments.length > 0 && unreviewedTranscriptSpanSegmentIds(segments).length === 0;
+}
+
 export function transcriptSpanSegmentIds(value: unknown, primarySegmentId: string) {
   const ids = Array.isArray(value)
     ? value.map((candidate) => text(candidate)).filter(Boolean)

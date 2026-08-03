@@ -19,7 +19,10 @@ import {
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
   type TranscriptActionCandidate,
 } from "@/lib/server/coaching-packets";
-import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
+import {
+  buildTranscriptSourceAnchorFields,
+  unreviewedTranscriptSpanSegmentIds,
+} from "@/lib/server/transcript-source-span";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -211,6 +214,7 @@ function responseBoundaries(input: { assignedToActor?: boolean; dueDateCreated?:
     projectTagsApplied: input.tagsApplied === true,
     editRejectDeferCreateNoOpenWork: true,
     recordingAndTranscriptEvidenceRequired: true,
+    humanReviewedSourceRequired: true,
     canonicalSessionAccess: true,
     canonicalSessionMutationAccess: true,
     sessionAccessRechecked: true,
@@ -523,14 +527,14 @@ export async function POST(request: Request) {
       validateCandidateEvidence({ candidate, roomId, transcriptJobId, recordingAssetId, packetBuildId });
       const projectedSegments = projectTranscriptSegmentsForPacket(lockedTranscriptJob.segments);
       const evidenceSegments = resolvePacketEvidenceSpan(candidate, projectedSegments);
-      const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
-      if (!sourceAnchor) {
+      if (!evidenceSegments) {
         throw new ReviewBoundaryError(
           409,
           "STALE_ACTION_CANDIDATE_EVIDENCE",
           "The action candidate's complete transcript evidence no longer matches this packet. Build the current packet before reviewing it.",
         );
       }
+      const sourceAnchor = buildTranscriptSourceAnchorFields(evidenceSegments);
       const sourcePlaybackId = playbackSourceId(lockedTranscriptJob.asset);
 
       const requestedIntent = materializationIntent({ assignToMe, dueAt, tagIds });
@@ -607,6 +611,17 @@ export async function POST(request: Request) {
           "ACTION_CANDIDATE_RECEIPT_REQUIRED",
           "The candidate claims acceptance without a matching packet receipt. Repair evidence before continuing.",
         );
+      }
+
+      if (decision === "ACCEPT") {
+        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
+        if (unreviewedSegmentIds.length) {
+          throw new ReviewBoundaryError(
+            409,
+            "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+            `Listen to and confirm every source segment before creating this task. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
+          );
+        }
       }
 
       const reviewedAt = new Date().toISOString();

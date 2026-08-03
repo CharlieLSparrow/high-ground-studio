@@ -13,6 +13,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import {
   packetSnapshotMatches,
   packetTemplateMatches,
+  projectTranscriptSegmentsForPacket,
+  resolvePacketEvidenceSpan,
   selectLatestCorrelatedPacketNotes,
   TRANSCRIPT_PACKET_SEGMENT_ORDER_BY,
 } from "@/lib/server/coaching-packets";
@@ -21,6 +23,7 @@ import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-adviso
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
+import { unreviewedTranscriptSpanSegmentIds } from "@/lib/server/transcript-source-span";
 import {
   createTranscriptDerivedGoalInTransaction,
   normalizeTranscriptGoalTagIds,
@@ -70,6 +73,7 @@ function decision(value: unknown): TranscriptGoalReviewDecision | null {
 function boundaries(input: { targetDateCreated?: boolean; tagsApplied?: boolean } = {}) {
   return {
     explicitHumanDecision: true,
+    humanReviewedSourceRequired: true,
     acceptCreatesOneActorOwnedGoal: true,
     editRejectDeferCreateNoGoal: true,
     canonicalSessionAccess: true,
@@ -273,6 +277,17 @@ export async function POST(request: Request) {
           || candidate.packetBuildId !== packetBuildId) {
         throw new GoalReviewBoundaryError(409, "STALE_GOAL_CANDIDATE", "The goal candidate is missing from the current packet build. Refresh before reviewing it.");
       }
+      const evidenceSegments = resolvePacketEvidenceSpan(
+        candidate,
+        projectTranscriptSegmentsForPacket(transcriptJob.segments),
+      );
+      if (!evidenceSegments) {
+        throw new GoalReviewBoundaryError(
+          409,
+          "STALE_GOAL_CANDIDATE_EVIDENCE",
+          "The goal candidate's complete transcript evidence changed. Build the current packet before reviewing it.",
+        );
+      }
 
       const before = { title: candidate.suggestedTitle, description: candidate.suggestedDescription };
       const after = {
@@ -324,6 +339,16 @@ export async function POST(request: Request) {
       }
       if (candidate.committedGoalId && reviewDecision !== "ACCEPT") {
         throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate is already bound to a canonical Goal.");
+      }
+      if (reviewDecision === "ACCEPT") {
+        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
+        if (unreviewedSegmentIds.length) {
+          throw new GoalReviewBoundaryError(
+            409,
+            "GOAL_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+            `Listen to and confirm every source segment before creating this goal. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
+          );
+        }
       }
 
       const reviewedAt = new Date().toISOString();

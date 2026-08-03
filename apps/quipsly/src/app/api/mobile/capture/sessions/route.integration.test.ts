@@ -303,6 +303,51 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
     expect(session.canUseProjectTeamNotes).toBe(true);
   });
 
+  it("keeps a just-finished Session reachable after the account has more than 30 historical rooms", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const historyPrefix = `window-history-${nonce}-`;
+    const freshRoomId = `window-fresh-${nonce}`;
+    const historicalRooms = Array.from({ length: 32 }, (_, index) => ({
+      id: `${historyPrefix}${String(index).padStart(2, "0")}`,
+      createdByUserId: ownerUserId,
+      projectId,
+      purpose: "COACHING" as const,
+      status: "ENDED" as const,
+      title: `Historical Session ${index + 1}`,
+      scheduledStart: new Date(Date.UTC(2025, 0, index + 1)),
+      scheduledEnd: new Date(Date.UTC(2025, 0, index + 1, 1)),
+      endedAt: new Date(Date.UTC(2025, 0, index + 1, 1)),
+      updatedAt: new Date(Date.UTC(2025, 0, index + 1, 1)),
+    }));
+    try {
+      await prisma.callRoom.createMany({ data: historicalRooms });
+      await prisma.callRoom.create({
+        data: {
+          id: freshRoomId,
+          createdByUserId: ownerUserId,
+          projectId,
+          purpose: "COACHING",
+          status: "ENDED",
+          title: "Just-finished retained Session",
+          scheduledStart: new Date(Date.now() - 3_600_000),
+          scheduledEnd: new Date(),
+          endedAt: new Date(),
+        },
+      });
+
+      const response = await GET(new Request("http://localhost/api/mobile/capture/sessions"));
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.sessions.map((candidate: { id: string }) => candidate.id)).toContain(freshRoomId);
+      expect(payload.sessions[0].id).toBe(freshRoomId);
+      expect(payload.sessions.map((candidate: { id: string }) => candidate.id)).not.toContain(`${historyPrefix}00`);
+    } finally {
+      await prisma.callRoom.deleteMany({
+        where: { id: { in: [...historicalRooms.map((room) => room.id), freshRoomId] } },
+      });
+    }
+  });
+
   it("lets staff review shared and project-team work but not either author's private note", async () => {
     signedInAs(staffUserId, staffEmail, true);
     const { session, ids } = await projectedNoteIds();

@@ -79,6 +79,8 @@ export interface TranscriptActionCandidate {
   /** SHA-256 of `sourceText`, used to reject mutated packet projections. */
   sourceTextSha256?: string;
   sourceSpan?: TranscriptSourceSpanEvidence | null;
+  /** Human-review state for the complete evidence span, not only its primary segment. */
+  transcriptReviewStatus?: "provider" | "human-reviewed";
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -189,6 +191,7 @@ export function createTranscriptActionCandidate(input: {
   sourceText: string;
   sourceTextSha256: string;
   sourceSpan?: TranscriptSourceSpanEvidence | null;
+  transcriptReviewStatus: "provider" | "human-reviewed";
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -291,6 +294,9 @@ export function isTranscriptActionCandidate(
     && (candidate.sourceTextSha256 === undefined
       || (typeof candidate.sourceTextSha256 === "string" && /^[a-f0-9]{64}$/.test(candidate.sourceTextSha256)))
     && (candidate.sourceSpan === undefined || candidate.sourceSpan === null || readTranscriptSourceSpan(candidate.sourceSpan) !== null)
+    && (candidate.transcriptReviewStatus === undefined
+      || candidate.transcriptReviewStatus === "provider"
+      || candidate.transcriptReviewStatus === "human-reviewed")
     && (candidate.speakerLabel === null || typeof candidate.speakerLabel === "string")
     && typeof candidate.startSeconds === "number"
     && Number.isFinite(candidate.startSeconds)

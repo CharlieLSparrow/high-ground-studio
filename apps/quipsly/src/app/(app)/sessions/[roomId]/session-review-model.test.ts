@@ -17,6 +17,7 @@ describe("session review model", () => {
   const candidate: any = {
     id: "candidate-1", roomId: "room-1", transcriptJobId: "job-1", recordingAssetId: "asset-1",
     packetBuildId: "build-1", segmentId: "segment-1", title: "Draft", detail: "Evidence",
+    transcriptReviewStatus: "human-reviewed",
   };
 
   it("formats transcript evidence time without inventing a wall-clock", () => {
@@ -59,6 +60,7 @@ describe("session review model", () => {
       recordingAssetId: "asset-1",
       segmentId: "segment-1",
       providerTextSha256: "a".repeat(64),
+      transcriptReviewStatus: "human-reviewed",
       reviewStatus: "READY_FOR_HUMAN_REVIEW",
       committedGoalId: null,
     };
@@ -114,6 +116,7 @@ describe("session review model", () => {
       laneId: "coaching-insights",
       segmentId: "segment-1",
       providerTextSha256: "a".repeat(64),
+      transcriptReviewStatus: "human-reviewed",
       committedNoteId: null,
     };
     expect(noteCandidateMaterializationRequest({
@@ -140,5 +143,79 @@ describe("session review model", () => {
       packetLaneId: "coaching-insights",
     });
     expect(noteCandidateMaterializationRequest({ candidate: { ...noteCandidate, committedNoteId: "note-1" }, title: "Done", body: "Already saved", kind: "SESSION_NOTE", visibility: "AUTHOR_PRIVATE" })).toBeNull();
+  });
+
+  it("permits refinement but refuses canonical creation from provider-only transcript text", () => {
+    expect(candidateReviewRequest({
+      packet,
+      candidate: { ...candidate, transcriptReviewStatus: "provider" },
+      decision: "ACCEPT",
+    })).toBeNull();
+    expect(candidateReviewRequest({
+      packet,
+      candidate: { ...candidate, transcriptReviewStatus: "provider" },
+      decision: "EDIT",
+      title: "Refined candidate",
+    })).toMatchObject({ decision: "EDIT", title: "Refined candidate" });
+
+    const providerGoal = {
+      id: "packet-goal-build-1-segment-1",
+      clientRequestId: "packet-goal-build-1-segment-1",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      packetBuildId: "build-1",
+      segmentId: "segment-1",
+      providerTextSha256: "a".repeat(64),
+      transcriptReviewStatus: "provider",
+      reviewStatus: "READY_FOR_HUMAN_REVIEW",
+      committedGoalId: null,
+    } as any;
+    expect(goalCandidateReviewRequest({ packet, candidate: providerGoal, decision: "ACCEPT" })).toBeNull();
+    expect(goalCandidateReviewRequest({ packet, candidate: providerGoal, decision: "DEFER" })).toMatchObject({ decision: "DEFER" });
+
+    const providerNote = {
+      id: "packet-note-build-1-coaching-insights-segment-1",
+      clientRequestId: "packet-note-build-1-coaching-insights-segment-1",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      summaryNoteId: "summary-1",
+      packetBuildId: "build-1",
+      laneId: "coaching-insights",
+      segmentId: "segment-1",
+      providerTextSha256: "a".repeat(64),
+      transcriptReviewStatus: "provider",
+      committedNoteId: null,
+    } as any;
+    expect(noteCandidateMaterializationRequest({
+      candidate: providerNote,
+      title: "Provider note",
+      body: "Still unreviewed.",
+      kind: "SESSION_NOTE",
+      visibility: "AUTHOR_PRIVATE",
+    })).toBeNull();
+  });
+
+  it("refuses every packet decision after transcript review makes the packet stale", () => {
+    const stalePacket: any = {
+      ...packet,
+      packet: {
+        ...packet.packet,
+        transcriptReview: { packetStale: true },
+      },
+    };
+    expect(candidateReviewRequest({ packet: stalePacket, candidate, decision: "EDIT" })).toBeNull();
+    expect(goalCandidateReviewRequest({
+      packet: stalePacket,
+      candidate: {
+        ...candidate,
+        clientRequestId: "candidate-1",
+        providerTextSha256: "a".repeat(64),
+        reviewStatus: "READY_FOR_HUMAN_REVIEW",
+        committedGoalId: null,
+      },
+      decision: "DEFER",
+    })).toBeNull();
   });
 });

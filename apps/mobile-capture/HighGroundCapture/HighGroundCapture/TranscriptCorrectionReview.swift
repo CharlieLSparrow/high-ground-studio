@@ -215,6 +215,7 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
     var sourceText: String? = nil
     var sourceTextSha256: String? = nil
     var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
+    var transcriptReviewStatus: String? = nil
     let speakerLabel: String?
     let startSeconds: TimeInterval
     let endSeconds: TimeInterval
@@ -257,6 +258,9 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
     let sourceText: String
     var sourceTextSha256: String? = nil
     var sourceSpan: MobileCaptureTranscriptSourceSpan? = nil
+    var acceptedReviewId: String? = nil
+    var acceptedCorrectionId: String? = nil
+    var transcriptReviewStatus: String? = nil
     let providerTextSha256: String
     let suggestedTitle: String
     let suggestedDescription: String
@@ -355,6 +359,13 @@ private struct CapturePacketGoalReviewContext: Equatable {
 
 private struct CapturePacketGoalReviewEnvelope: Codable {
     struct Packet: Codable {
+        struct TranscriptReview: Codable {
+            let segmentCount: Int
+            let humanReviewedSegmentCount: Int
+            let providerOnlySegmentCount: Int
+            let fullyHumanReviewed: Bool
+            let packetStale: Bool
+        }
         struct Build: Codable { let packetBuildId: String? }
         struct Summary: Codable { let id: String }
         struct TaskMaterialization: Codable {
@@ -365,6 +376,8 @@ private struct CapturePacketGoalReviewEnvelope: Codable {
             let boundary: String
         }
         let build: Build?
+        let status: String?
+        let transcriptReview: TranscriptReview?
         let summary: Summary?
         let noteCandidates: [CapturePacketNoteCandidate]?
         let actionCandidates: [CapturePacketActionCandidate]?
@@ -390,6 +403,15 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetTaskTags: [CapturePacketTaskTag] = []
     @Published private(set) var packetTaskProjectName: String?
     @Published private(set) var packetReviewError: String?
+    @Published private(set) var packetStatus: String?
+    @Published private(set) var packetSegmentCount = 0
+    @Published private(set) var packetReviewedSegmentCount = 0
+    @Published private(set) var packetProviderOnlySegmentCount = 0
+    @Published private(set) var packetSnapshotStale = false
+
+    var packetNeedsRebuild: Bool {
+        packetStatus == "TRANSCRIPT_REVIEW_CHANGED" || packetSnapshotStale
+    }
 
     private var packetGoalReviewContext: CapturePacketGoalReviewContext?
 
@@ -418,6 +440,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskProjectName = "High Ground Odyssey"
             packetGoalReviewContext = .init(summaryNoteId: "preview-summary", packetBuildId: "preview-build")
             packetReviewError = nil
+            packetStatus = "READY_FOR_REVIEW"
+            packetSegmentCount = 0
+            packetReviewedSegmentCount = 0
+            packetProviderOnlySegmentCount = 0
+            packetSnapshotStale = false
             isUsingProtectedCache = false
             message = "Preview only — no recording is played and no correction can be saved."
             errorMessage = nil
@@ -430,6 +457,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
+            packetStatus = nil
+            resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
             } else {
@@ -471,6 +500,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
+            packetStatus = nil
+            resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
                 errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
             } else {
@@ -923,6 +954,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
+            packetStatus = nil
+            resetPacketReviewState()
             return
         }
         components.queryItems = [URLQueryItem(name: "callRoomId", value: roomID)]
@@ -942,7 +975,13 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetActionCandidates = payload.packet?.actionCandidates ?? []
             packetTaskTags = payload.packet?.taskMaterialization?.tags ?? []
             packetTaskProjectName = payload.packet?.taskMaterialization?.project?.name
-            if let summaryNoteId = payload.packet?.summary?.id,
+            packetStatus = payload.packet?.status
+            packetSegmentCount = payload.packet?.transcriptReview?.segmentCount ?? 0
+            packetReviewedSegmentCount = payload.packet?.transcriptReview?.humanReviewedSegmentCount ?? 0
+            packetProviderOnlySegmentCount = payload.packet?.transcriptReview?.providerOnlySegmentCount ?? 0
+            packetSnapshotStale = payload.packet?.transcriptReview?.packetStale ?? false
+            if !packetNeedsRebuild,
+               let summaryNoteId = payload.packet?.summary?.id,
                let packetBuildId = payload.packet?.build?.packetBuildId,
                !summaryNoteId.isEmpty,
                !packetBuildId.isEmpty {
@@ -958,8 +997,59 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetTaskTags = []
             packetTaskProjectName = nil
             packetGoalReviewContext = nil
+            packetStatus = nil
+            resetPacketReviewState()
             packetReviewError = error.localizedDescription
         }
+    }
+
+    func buildCurrentPacket(roomID: String, previewOnly: Bool) async -> Bool {
+        guard !previewOnly, !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
+            errorMessage = previewOnly
+                ? "Preview packet builds are intentionally disabled."
+                : "Reconnect to Nest before rebuilding this transcript packet."
+            return false
+        }
+        guard let transcriptJobID = desk?.transcriptJobId?.nonemptyTranscriptValue,
+              let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/packet") else {
+            errorMessage = "A completed transcript job is required before rebuilding this packet."
+            return false
+        }
+        isMutating = true
+        errorMessage = nil
+        defer { isMutating = false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "transcriptJobId": transcriptJobID,
+                "force": true,
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCapturePacketBuildResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw captureTranscriptError(data: data, fallback: payload.error ?? "The current packet could not be built.")
+            }
+            await load(roomID: roomID, previewOnly: false)
+            if errorMessage == nil {
+                message = payload.reusedExistingPacket == true
+                    ? "The current reviewed transcript already has this packet."
+                    : "Current packet built from the latest reviewed transcript. Candidates still require explicit decisions."
+            }
+            return errorMessage == nil
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func resetPacketReviewState() {
+        packetStatus = nil
+        packetSegmentCount = 0
+        packetReviewedSegmentCount = 0
+        packetProviderOnlySegmentCount = 0
+        packetSnapshotStale = false
     }
 
     private func mutate(roomID: String, body: [String: Any], success: String) async {
@@ -1182,6 +1272,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     private var player: AVAudioPlayer?
     private var playbackClock: Task<Void, Never>?
     private var activeRecordingID: UUID?
+    private var activeSegmentEnd: TimeInterval?
     private var playedSegmentIDs = Set<String>()
     private var pauseAt: TimeInterval?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
@@ -1219,6 +1310,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
             }
             self.player = player
             activeRecordingID = recording.id
+            activeSegmentEnd = segment.endSeconds
             currentTime = player.currentTime
             pauseAt = min(player.duration, segment.endSeconds + 2)
             playedSegmentIDs.insert(segment.id)
@@ -1237,7 +1329,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
     func confirmedPosition(for segment: CaptureTranscriptSegment, recording: LocalRecording?) -> TimeInterval? {
         guard recording?.id == activeRecordingID,
               playedSegmentIDs.contains(segment.id),
-              currentTime >= max(0, segment.startSeconds - 1),
+              currentTime >= max(segment.startSeconds, segment.endSeconds - 0.25),
               currentTime <= segment.endSeconds + 3 else { return nil }
         return currentTime
     }
@@ -1251,6 +1343,7 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         if resetPosition {
             player = nil
             activeRecordingID = nil
+            activeSegmentEnd = nil
             currentTime = 0
             pauseAt = nil
             playedSegmentIDs.removeAll()
@@ -1276,7 +1369,14 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
 extension CaptureTranscriptPlaybackController: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
-            self.currentTime = player.currentTime
+            // AVAudioPlayer can report zero after a normal end-of-file. Keep a
+            // durable terminal position so a source span near the tail does
+            // not flash its confirmation control for only one timer tick.
+            let terminalPosition = min(
+                player.duration,
+                self.activeSegmentEnd ?? player.duration
+            )
+            self.currentTime = max(self.currentTime, terminalPosition)
             self.pause(resetPosition: false)
             if !flag { self.errorMessage = "Playback ended before iOS could finish the retained recording." }
         }
@@ -1389,6 +1489,9 @@ struct CaptureTranscriptReviewView: View {
                                 icon: "checkmark.shield.fill"
                             )
                             .accessibilityIdentifier("CaptureTranscriptPacketLoadedBoundary")
+                        }
+                        if client.packetSegmentCount > 0 {
+                            packetTranscriptReviewBoundary
                         }
                         if !previewOnly, !client.packetNoteCandidates.isEmpty {
                             packetNoteReviewSection(
@@ -1636,7 +1739,7 @@ struct CaptureTranscriptReviewView: View {
                     projectName: client.packetTaskProjectName,
                     availableTags: client.packetTaskTags,
                     previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache,
+                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
                     client: client,
                     onOpenSource: { onOpenSource(candidate.segmentId) }
                 )
@@ -1659,6 +1762,45 @@ struct CaptureTranscriptReviewView: View {
         return "\(notes) \(notes == 1 ? "note" : "notes") · \(tasks) \(tasks == 1 ? "task" : "tasks") · \(goals) \(goals == 1 ? "goal" : "goals"). Every candidate remains a proposal until a person reviews its source and explicitly creates canonical work."
     }
 
+    private var packetTranscriptReviewBoundary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(
+                "\(client.packetReviewedSegmentCount) of \(client.packetSegmentCount) transcript segments reviewed",
+                systemImage: client.packetProviderOnlySegmentCount == 0 ? "checkmark.shield.fill" : "ear.badge.checkmark"
+            )
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(client.packetProviderOnlySegmentCount == 0 ? Color.green : Color.orange)
+            .accessibilityIdentifier("CaptureTranscriptReviewProgressCount")
+            Text(client.packetProviderOnlySegmentCount == 0
+                ? "Every segment in this packet has a current playback-review receipt. Each candidate still needs its own deliberate create decision."
+                : "\(client.packetProviderOnlySegmentCount) segment\(client.packetProviderOnlySegmentCount == 1 ? " remains" : "s remain") provider-only. A candidate cannot become canonical work until every segment in its source span is heard and confirmed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if client.packetNeedsRebuild {
+                Text("Transcript review changed after this packet was built. The saved packet remains inspectable, but decisions are locked until a new append-only packet snapshots the current review state.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    Task { _ = await client.buildCurrentPacket(roomID: roomID, previewOnly: previewOnly) }
+                } label: {
+                    Label("Build current packet", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .disabled(previewOnly || client.isMutating || client.isUsingProtectedCache)
+                .accessibilityIdentifier("CaptureTranscriptBuildCurrentPacketButton")
+            }
+        }
+        .reviewCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(client.packetNeedsRebuild
+            ? "CaptureTranscriptPacketStaleBoundary"
+            : "CaptureTranscriptPacketReviewProgress")
+    }
+
     private func packetNoteReviewSection(
         candidates: [CapturePacketNoteCandidate],
         onOpenSource: @escaping (String) -> Void
@@ -1676,7 +1818,7 @@ struct CaptureTranscriptReviewView: View {
                     candidate: candidate,
                     canUseProjectTeamNotes: canUseProjectTeamNotes,
                     previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache,
+                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
                     client: client,
                     onOpenSource: { onOpenSource(candidate.segmentId) }
                 )
@@ -1701,7 +1843,7 @@ struct CaptureTranscriptReviewView: View {
                     projectName: client.packetTaskProjectName,
                     availableTags: client.packetTaskTags,
                     previewOnly: previewOnly,
-                    decisionsLocked: client.isUsingProtectedCache,
+                    decisionsLocked: client.isUsingProtectedCache || client.packetNeedsRebuild,
                     client: client,
                     onOpenSource: { onOpenSource(candidate.segmentId) }
                 )
@@ -1713,7 +1855,9 @@ struct CaptureTranscriptReviewView: View {
 
     private func reviewNotice(title: String, detail: String, tint: Color, icon: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon).foregroundStyle(tint)
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.subheadline.weight(.bold))
                 Text(detail).font(.caption).foregroundStyle(.secondary)
@@ -1792,6 +1936,10 @@ private struct CapturePacketNoteCandidateCard: View {
 
     private var accepted: Bool { candidate.committedNoteId?.isEmpty == false }
     private var laneRejected: Bool { candidate.laneStatus == "REJECTED_BY_HUMAN" }
+    private var sourceFullyReviewed: Bool {
+        candidate.transcriptReviewStatus == "human-reviewed"
+            && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
+    }
     private var availableKinds: [MobileSessionNoteKind] {
         canUseProjectTeamNotes ? MobileSessionNoteKind.allCases : MobileSessionNoteKind.allCases.filter { $0 != .production }
     }
@@ -1830,6 +1978,13 @@ private struct CapturePacketNoteCandidateCard: View {
             .buttonStyle(.bordered)
             .frame(minHeight: 44)
             .accessibilityIdentifier("CapturePacketNoteSourceButton_\(candidate.id)")
+            if !accepted && !sourceFullyReviewed {
+                Label("Listen through every source segment and confirm it before saving this candidate.", systemImage: "ear.badge.exclamationmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CapturePacketNoteSourceReviewRequired")
+            }
 
             if accepted {
                 Label("Saved as one canonical Session note", systemImage: "checkmark.circle.fill")
@@ -1882,7 +2037,7 @@ private struct CapturePacketNoteCandidateCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                     .frame(minHeight: 44)
-                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked)
+                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || client.isMutating || previewOnly || decisionsLocked || !sourceFullyReviewed)
                     .accessibilityIdentifier("CapturePacketCreateNoteButton")
                     Button("Cancel") { isReviewing = false }
                         .buttonStyle(.bordered)
@@ -1911,7 +2066,7 @@ private struct CapturePacketNoteCandidateCard: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
                 .frame(minHeight: 44)
-                .disabled(client.isMutating || decisionsLocked || laneRejected)
+                .disabled(client.isMutating || decisionsLocked || laneRejected || !sourceFullyReviewed)
                 .accessibilityIdentifier("CapturePacketReviewNoteButton")
                 .accessibilityHint("Creates nothing until you inspect purpose and audience and press Save source-linked note.")
                 if laneRejected {
@@ -1969,6 +2124,11 @@ private struct CapturePacketTaskCandidateCard: View {
         candidate.committedActionItemId != nil || candidate.reviewStatus == "ACCEPTED_AS_ACTION_ITEM"
     }
 
+    private var sourceFullyReviewed: Bool {
+        candidate.transcriptReviewStatus == "human-reviewed"
+            && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
+    }
+
     private var decisionsDisabled: Bool {
         previewOnly || decisionsLocked || client.isMutating
     }
@@ -2002,8 +2162,14 @@ private struct CapturePacketTaskCandidateCard: View {
             }
             Button("Review exact transcript source", action: onOpenSource)
                 .buttonStyle(.bordered)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("CapturePacketTaskSource_\(candidate.segmentId)")
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("CapturePacketTaskSource_\(candidate.segmentId)")
+            if !accepted && !sourceFullyReviewed {
+                Label("Source review required before this proposal can become a task.", systemImage: "ear.badge.exclamationmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("CapturePacketTaskSourceReviewRequired")
+            }
 
             if accepted {
                 Label("Accepted as canonical Quipsly work", systemImage: "checkmark.shield.fill")
@@ -2083,7 +2249,7 @@ private struct CapturePacketTaskCandidateCard: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(decisionsDisabled || !sourceFullyReviewed || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("CapturePacketTaskCreateButton")
                         Button("Cancel") { isCreating = false }
                             .buttonStyle(.bordered)
@@ -2118,7 +2284,7 @@ private struct CapturePacketTaskCandidateCard: View {
                 HStack {
                     Button("Review & create task") { isCreating = true }
                     .buttonStyle(.borderedProminent)
-                    .disabled(decisionsLocked || client.isMutating)
+                    .disabled(decisionsLocked || client.isMutating || !sourceFullyReviewed)
                     .accessibilityIdentifier("CapturePacketTaskAcceptButton")
                     Button("Edit") { isEditing = true }
                         .buttonStyle(.bordered)
@@ -2209,6 +2375,11 @@ private struct CapturePacketGoalCandidateCard: View {
         candidate.committedGoalId != nil || candidate.reviewStatus == "ACCEPTED_AS_GOAL"
     }
 
+    private var sourceFullyReviewed: Bool {
+        candidate.transcriptReviewStatus == "human-reviewed"
+            && (candidate.sourceSpan?.segments.allSatisfy { $0.reviewStatus == "human-reviewed" } ?? true)
+    }
+
     private var decisionsDisabled: Bool {
         previewOnly || decisionsLocked || client.isMutating
     }
@@ -2242,8 +2413,14 @@ private struct CapturePacketGoalCandidateCard: View {
             }
             Button("Review exact transcript source", action: onOpenSource)
                 .buttonStyle(.bordered)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("CapturePacketGoalSource_\(candidate.segmentId)")
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("CapturePacketGoalSource_\(candidate.segmentId)")
+            if !accepted && !sourceFullyReviewed {
+                Label("Source review required before this proposal can become a goal.", systemImage: "ear.badge.exclamationmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("CapturePacketGoalSourceReviewRequired")
+            }
 
             if accepted {
                 Label("Accepted as one canonical goal", systemImage: "checkmark.shield.fill")
@@ -2320,7 +2497,7 @@ private struct CapturePacketGoalCandidateCard: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.purple)
-                        .disabled(decisionsDisabled || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(decisionsDisabled || !sourceFullyReviewed || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("CapturePacketGoalCreateButton")
                         Button("Cancel") { isCreating = false }
                             .buttonStyle(.bordered)
@@ -2365,7 +2542,7 @@ private struct CapturePacketGoalCandidateCard: View {
                     Button("Review & create goal") { isCreating = true }
                     .buttonStyle(.borderedProminent)
                     .tint(.purple)
-                    .disabled(decisionsLocked || client.isMutating)
+                    .disabled(decisionsLocked || client.isMutating || !sourceFullyReviewed)
                     .accessibilityIdentifier("CapturePacketGoalAcceptButton")
                     Button("Edit") { isEditing = true }
                         .buttonStyle(.bordered)
@@ -2474,6 +2651,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 .buttonStyle(.bordered)
                 .disabled(!hasExactLocalSource || client.isMutating)
                 .accessibilityLabel("Play transcript segment from \(segment.startSeconds.captureTranscriptTimestamp)")
+                .accessibilityIdentifier("CaptureTranscriptPlayButton_\(segment.id)")
             }
 
             if let accepted = segment.acceptedCorrection {
@@ -2572,7 +2750,7 @@ private struct CaptureTranscriptSegmentCard: View {
             TextField("Why this changed (optional)", text: $reason, axis: .vertical)
                 .lineLimit(2...4)
                 .textFieldStyle(.roundedBorder)
-            Label(playbackPosition == nil ? "Play this exact timestamp before accepting." : "Exact local timestamp played and ready for confirmation.", systemImage: playbackPosition == nil ? "ear.badge.exclamationmark" : "checkmark.circle.fill")
+            Label(playbackPosition == nil ? "Listen through this exact segment before accepting." : "Exact local segment heard through its end and ready for confirmation.", systemImage: playbackPosition == nil ? "ear.badge.exclamationmark" : "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(playbackPosition == nil ? Color.orange : Color.green)
             if let draftStatus {

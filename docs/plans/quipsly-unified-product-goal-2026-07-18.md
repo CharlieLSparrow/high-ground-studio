@@ -6695,3 +6695,32 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - This is simulator and retained-local evidence, not physical-iPhone playback,
   capture, failure recovery, or completion. Full evidence is in
   `docs/coordination/2026-08-02-native-session-transcript-packet-review.md`.
+
+### Native reviewed packet to canonical goal checkpoint — 2026-08-02
+
+- Closed the transcript-truth gap at the real write boundary. Packet notes,
+  tasks, and goals now require every immutable segment in the candidate's
+  complete evidence span to carry current human playback-review evidence before
+  `ACCEPT` can materialize canonical work. Nest and Capture project the same
+  complete-span state and lock stale packet snapshots until a person explicitly
+  builds a new append-only packet.
+- Operated a fresh retained coaching Session through the compiled iPhone app:
+  played all three source segments through their exact ends, confirmed each,
+  rebuilt the packet, explicitly created one canonical goal, returned to Today,
+  and saw the same goal there. Independent PostgreSQL readback proved 3 exact
+  playback receipts, 3 reviewed source segments, 1 goal, 0 tasks, 0 canonical
+  transcript-derived notes, 0 calendar links, and no incidental write boundary.
+- Real use found and repaired three product defects: a 30-room oldest-first
+  Session cap that hid new work, end-of-file playback position resetting before
+  confirmation, and a stale Today projection after cross-surface goal creation.
+- The retained operation is loopback-only, Keychain-backed, checksum-verified,
+  account-partitioned, DEBUG-only at its XCTest source bridge, and keeps its
+  evidence for longitudinal regression. Full enabled Nest verification passed
+  at 240 suites / 1,267 tests, plus the 5/5 Session-window database regression,
+  strict TypeScript, an optimized 160-page Nest build under the release
+  pipeline's existing 8 GB heap, and the operated iPhone test.
+- This remains simulator and retained-local evidence. It does not satisfy the
+  physical-iPhone capture/failure-recovery, second real coaching workflow,
+  production Nest, provider Calendar, TestFlight, or App Store gates. Full
+  evidence is in
+  `docs/coordination/2026-08-02-native-reviewed-packet-materialization.md`.

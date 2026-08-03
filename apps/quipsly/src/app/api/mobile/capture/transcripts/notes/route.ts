@@ -33,6 +33,7 @@ import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/s
 import {
   buildTranscriptSourceAnchorFields,
   resolveTranscriptSpanSegments,
+  unreviewedTranscriptSpanSegmentIds,
 } from "@/lib/server/transcript-source-span";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +77,7 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
     explicitVisibility: true,
     packetCandidateReviewed: packetCandidate,
     packetSnapshotRechecked: packetCandidate,
+    humanReviewedSourceRequired: packetCandidate,
     noteCreated,
     providerTranscriptMutated: false,
     correctionOverlayMutated: false,
@@ -357,7 +359,10 @@ export async function POST(request: Request) {
         primarySegmentId: segmentId,
         segments: desk.segments,
       });
-      const sourceAnchor = evidenceSegments ? buildTranscriptSourceAnchorFields(evidenceSegments) : null;
+      if (!evidenceSegments) {
+        throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
+      }
+      const sourceAnchor = buildTranscriptSourceAnchorFields(evidenceSegments);
       if (!sourceAnchor) {
         throw new TranscriptCorrectionError("The transcript evidence span changed or is unavailable.", 409, "STALE_TRANSCRIPT_SEGMENT");
       }
@@ -375,6 +380,17 @@ export async function POST(request: Request) {
           throw new TranscriptCorrectionError("That note request identity is already bound to different evidence or content.", 409, "IDEMPOTENCY_CONFLICT");
         }
         return { note: replay, idempotentReplay: true };
+      }
+
+      if (packetContext) {
+        const unreviewedSegmentIds = unreviewedTranscriptSpanSegmentIds(evidenceSegments);
+        if (unreviewedSegmentIds.length) {
+          throw new TranscriptCorrectionError(
+            `Listen to and confirm every source segment before saving this packet note. ${unreviewedSegmentIds.length} segment${unreviewedSegmentIds.length === 1 ? " remains" : "s remain"} provider-only.`,
+            409,
+            "PACKET_NOTE_TRANSCRIPT_REVIEW_REQUIRED",
+          );
+        }
       }
 
       const createdAt = new Date().toISOString();

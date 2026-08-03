@@ -17,6 +17,7 @@ export type SessionReviewCandidate = {
   segmentIds?: string[];
   sourceText?: string;
   sourceTextSha256?: string;
+  transcriptReviewStatus?: "provider" | "human-reviewed";
   speakerLabel: string | null;
   startSeconds: number;
   endSeconds: number;
@@ -39,6 +40,7 @@ export type SessionReviewGoalCandidate = {
   endSeconds: number;
   sourceText: string;
   sourceTextSha256?: string;
+  transcriptReviewStatus?: "provider" | "human-reviewed";
   providerTextSha256: string;
   suggestedTitle: string;
   suggestedDescription: string;
@@ -150,7 +152,7 @@ export function noteCandidateMaterializationRequest(input: {
   visibility: SessionNoteVisibility;
 }) {
   const body = input.body.trim();
-  if (!body || input.candidate.committedNoteId) return null;
+  if (!body || input.candidate.committedNoteId || input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
   return {
     roomId: input.candidate.roomId,
     segmentId: input.candidate.segmentId,
@@ -188,6 +190,8 @@ export function goalCandidateReviewRequest(input: {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id || input.candidate.committedGoalId || input.candidate.reviewStatus === "ACCEPTED_AS_GOAL") return null;
+  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if (input.packet.packet?.transcriptReview?.packetStale) return null;
   return {
     callRoomId: input.candidate.roomId,
     transcriptJobId: input.candidate.transcriptJobId,
@@ -228,6 +232,8 @@ export function candidateReviewRequest(input: {
 }) {
   const summaryNoteId = input.packet.packet?.summary?.id;
   const packetBuildId = input.packet.packet?.build?.packetBuildId;
+  if (input.decision === "ACCEPT" && input.candidate.transcriptReviewStatus !== "human-reviewed") return null;
+  if (input.packet.packet?.transcriptReview?.packetStale) return null;
   if (!summaryNoteId || !packetBuildId || !input.packet.transcriptJob?.asset?.id) return null;
   const acceptsCanonicalWork = input.decision === "ACCEPT";
 

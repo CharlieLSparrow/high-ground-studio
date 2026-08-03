@@ -132,7 +132,9 @@ export function buildPacketGoalCandidates(input: {
       sourceSpan: anchor.sourceSpan,
       acceptedReviewId: segment.acceptedReviewId,
       acceptedCorrectionId: segment.acceptedCorrectionId,
-      transcriptReviewStatus: segment.reviewStatus,
+      transcriptReviewStatus: spanSegments.every((item) => item.reviewStatus === "human-reviewed")
+        ? "human-reviewed"
+        : "provider",
       suggestedTitle,
       suggestedDescription,
       reviewStatus: committedGoal ? "ACCEPTED_AS_GOAL" : goalReviewStatus(latestReceipt?.decision),
@@ -211,7 +213,9 @@ export function buildPacketNoteCandidates(input: {
         sourceSpan: anchor.sourceSpan,
         acceptedReviewId: segment.acceptedReviewId,
         acceptedCorrectionId: segment.acceptedCorrectionId,
-        transcriptReviewStatus: segment.reviewStatus,
+        transcriptReviewStatus: spanSegments.every((entry) => entry.reviewStatus === "human-reviewed")
+          ? "human-reviewed"
+          : "provider",
         suggestedTitle: laneLabel,
         suggestedBody: sourceText,
         suggestedKind: "SESSION_NOTE",

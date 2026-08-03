@@ -26,6 +26,16 @@ const SUMMARY_NOTE_ID = "summary-1";
 const PACKET_BUILD_ID = "packet-build-1";
 const ACTION_CANDIDATE_ID = `quipsly-transcript-action-candidate-v1:${TRANSCRIPT_JOB_ID}:segment-1`;
 
+function reviewedAsIs(text: string, speakerLabel: string, id = "verification-1") {
+  return [{
+    id,
+    reviewKind: "confirmed-as-is",
+    providerTextSha256: createHash("sha256").update(text).digest("hex"),
+    providerSpeakerLabel: speakerLabel,
+    createdAt: new Date("2026-08-02T02:10:00.000Z"),
+  }];
+}
+
 function actionCandidate(overrides: Record<string, unknown> = {}) {
   return {
     id: ACTION_CANDIDATE_ID,
@@ -56,7 +66,7 @@ function createPrismaHarness() {
     endSeconds: 18,
     text: "I will send the revised episode outline.",
     corrections: [],
-    verifications: [],
+    verifications: reviewedAsIs("I will send the revised episode outline.", "Charlie"),
   }];
   const { projected: _projected, ...transcriptSnapshot } = transcriptPacketSnapshot(segments);
   const summary = {
@@ -261,6 +271,21 @@ describe("action candidate review route", () => {
     expect((harness.summary.sourceJson as any).actionCandidateReviewReceipts).toEqual([]);
   });
 
+  it("keeps ACCEPT quarantined until every source segment is playback-reviewed", async () => {
+    harness.segments[0]!.verifications = [];
+    const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
+    (harness.summary.sourceJson as any).transcriptSnapshot = snapshot;
+
+    const response = await POST(reviewRequest("ACCEPT"));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      errorCode: "ACTION_CANDIDATE_TRANSCRIPT_REVIEW_REQUIRED",
+    });
+    expect(harness.prisma.actionItem.create).not.toHaveBeenCalled();
+    expect(harness.prisma.coachingNote.update).not.toHaveBeenCalled();
+  });
+
   it("serializes concurrent ACCEPT repeats into exactly one provenance-rich, unassigned ActionItem", async () => {
     const [firstResponse, secondResponse] = await Promise.all([
       POST(reviewRequest("ACCEPT")),
@@ -381,6 +406,10 @@ describe("action candidate review route", () => {
     const sourceText = "I will preserve the original recording and wait for explicit release.";
     harness.segments[0]!.endSeconds = 15;
     harness.segments[0]!.text = "I will preserve the original recording and";
+    harness.segments[0]!.verifications = reviewedAsIs(
+      "I will preserve the original recording and",
+      "Charlie",
+    );
     harness.segments.push({
       id: "segment-2",
       segmentIndex: 1,
@@ -389,7 +418,7 @@ describe("action candidate review route", () => {
       endSeconds: 18,
       text: "wait for explicit release.",
       corrections: [],
-      verifications: [],
+      verifications: reviewedAsIs("wait for explicit release.", "Charlie", "verification-2"),
     });
     const { projected: _projected, ...snapshot } = transcriptPacketSnapshot(harness.segments);
     const source = harness.summary.sourceJson as any;

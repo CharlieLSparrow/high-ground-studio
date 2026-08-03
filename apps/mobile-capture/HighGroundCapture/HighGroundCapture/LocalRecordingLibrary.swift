@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AVFoundation
+import CryptoKit
 
 enum LocalRecordingMediaKind: String, Codable, CaseIterable {
     case audio
@@ -575,6 +576,134 @@ final class LocalRecordingLibrary: ObservableObject {
         activeOwnerAccountID = normalizedOwnerID(ownerAccountID)
         sortAndPublish()
     }
+
+#if DEBUG
+    /// Installs one exact, checksum-verified source file for the operated
+    /// simulator acceptance journey. This is unavailable in release builds
+    /// and requires the explicit runtime-smoke playback-fixture launch flag.
+    @discardableResult
+    func installRuntimeSmokePlaybackFixtureIfRequested() throws -> LocalRecording? {
+        let process = ProcessInfo.processInfo
+        guard process.arguments.contains("--quipsly-capture-runtime-smoke"),
+              process.arguments.contains("--quipsly-capture-runtime-playback-fixture") else {
+            return nil
+        }
+        let credentialsPath = process.environment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"]
+            ?? "/tmp/quipsly-capture-runtime-ui-smoke-credentials.json"
+        let credentialData = try Data(contentsOf: URL(fileURLWithPath: credentialsPath))
+        let fixture = try decoder.decode(RuntimeSmokePlaybackFixture.self, from: credentialData)
+        guard let localID = UUID(uuidString: fixture.recordingFixtureLocalID),
+              let ownerAccountID = normalizedOwnerID(fixture.recordingFixtureOwnerAccountID),
+              let expectedSHA256 = normalizedSHA256(fixture.recordingFixtureSHA256),
+              let assetID = nonempty(fixture.recordingFixtureAssetID),
+              let roomID = nonempty(fixture.recordingFixtureRoomID),
+              let participantID = nonempty(fixture.recordingFixtureParticipantID),
+              let consentID = nonempty(fixture.recordingFixtureConsentID) else {
+            throw LibraryError.invalidRuntimeSmokeFixture
+        }
+        guard ownerAccountID == normalizedOwnerID(activeOwnerAccountID),
+              ownerAccountID == AuthManager.currentStoredOwnerID() else {
+            throw LibraryError.runtimeSmokeFixtureOwnerMismatch
+        }
+
+        let sourceURL = URL(fileURLWithPath: fixture.recordingFixturePath).resolvingSymlinksInPath()
+        let temporaryRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .resolvingSymlinksInPath()
+        let sourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+        let isAppTemporarySource = sourceURL.path.hasPrefix(temporaryRoot.path + "/")
+        let isXCTestHostBridge = sourceURL.path.hasPrefix(
+            "/private/tmp/quipsly-capture-runtime-playback-fixture-"
+        ) || sourceURL.path.hasPrefix(
+            "/tmp/quipsly-capture-runtime-playback-fixture-"
+        )
+        guard (isAppTemporarySource || isXCTestHostBridge),
+              sourceValues.isRegularFile == true,
+              sourceValues.isSymbolicLink != true,
+              Self.supportedAudioFileExtensions.contains(sourceURL.pathExtension.lowercased()) else {
+            throw LibraryError.runtimeSmokeFixtureSourceRejected
+        }
+
+        let sourceData = try Data(contentsOf: sourceURL, options: .mappedIfSafe)
+        let actualSHA256 = SHA256.hash(data: sourceData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        guard actualSHA256 == expectedSHA256 else {
+            throw LibraryError.runtimeSmokeFixtureChecksumMismatch
+        }
+
+        try ensureRecordingsDirectory()
+        let targetURL = recordingsDirectoryURL
+            .appendingPathComponent("quipsly-runtime-smoke-\(localID.uuidString.lowercased())")
+            .appendingPathExtension(sourceURL.pathExtension.lowercased())
+        if fileManager.fileExists(atPath: targetURL.path) {
+            let existingData = try Data(contentsOf: targetURL, options: .mappedIfSafe)
+            let existingSHA256 = SHA256.hash(data: existingData)
+                .map { String(format: "%02x", $0) }
+                .joined()
+            guard existingSHA256 == expectedSHA256 else {
+                throw LibraryError.runtimeSmokeFixtureChecksumMismatch
+            }
+        } else {
+            try sourceData.write(
+                to: targetURL,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
+        }
+
+        let validation = Self.validateSourceHeader(at: targetURL, mediaKind: .audio)
+        guard validation.isPlayable, let durationSeconds = validation.durationSeconds else {
+            throw LibraryError.runtimeSmokeFixtureNotPlayable
+        }
+        let installedAt = Date()
+        let recording = LocalRecording(
+            id: localID,
+            ownerAccountID: ownerAccountID,
+            fileName: targetURL.lastPathComponent,
+            displayTitle: nonempty(fixture.recordingFixtureTitle) ?? "Runtime transcript source",
+            sessionTitle: nonempty(fixture.recordingFixtureTitle),
+            startedAt: installedAt.addingTimeInterval(-durationSeconds),
+            stoppedAt: installedAt,
+            durationSeconds: durationSeconds,
+            byteCount: Int64(sourceData.count),
+            status: .uploaded,
+            projectSlug: nil,
+            episodeSlug: nil,
+            callRoomId: roomID,
+            participantId: participantID,
+            recordingConsentId: consentID,
+            recordingConsentGranted: true,
+            recordingAssetId: assetID,
+            capturePurpose: "operated-runtime-transcript-review",
+            mediaKind: .audio,
+            captureGroupId: localID,
+            roomStartReceiptId: nil,
+            sourceProfile: nil,
+            recordingSegmentsJson: nil,
+            uploadProgress: 1,
+            uploadedSourceId: assetID,
+            serverVerificationStatus: "verified",
+            sourceSHA256: expectedSHA256,
+            verifiedCloudSHA256: expectedSHA256,
+            verifiedCloudSizeBytes: Int64(sourceData.count),
+            verifiedCloudAt: installedAt,
+            statusMessage: "Exact retained source installed for the operated simulator acceptance journey."
+        )
+        try commit(upserting: recording)
+        return recording
+    }
+
+    private struct RuntimeSmokePlaybackFixture: Decodable {
+        let recordingFixturePath: String
+        let recordingFixtureLocalID: String
+        let recordingFixtureAssetID: String
+        let recordingFixtureRoomID: String
+        let recordingFixtureParticipantID: String
+        let recordingFixtureConsentID: String
+        let recordingFixtureOwnerAccountID: String
+        let recordingFixtureSHA256: String
+        let recordingFixtureTitle: String?
+    }
+#endif
 
     func makeUniqueRecordingURL(startedAt: Date = Date()) throws -> URL {
         try makeUniqueSourceURL(mediaKind: .audio, startedAt: startedAt)
@@ -1879,6 +2008,11 @@ final class LocalRecordingLibrary: ObservableObject {
         case invalidOrDuplicateRecordingIdentity
         case unsupportedSourceContainer
         case roomStopReceiptConflict
+        case invalidRuntimeSmokeFixture
+        case runtimeSmokeFixtureOwnerMismatch
+        case runtimeSmokeFixtureSourceRejected
+        case runtimeSmokeFixtureChecksumMismatch
+        case runtimeSmokeFixtureNotPlayable
 
         var errorDescription: String? {
             switch self {
@@ -1900,6 +2034,16 @@ final class LocalRecordingLibrary: ObservableObject {
                 return "Quipsly refused a source container that does not match the selected audio or video recording mode."
             case .roomStopReceiptConflict:
                 return "Quipsly already preserved a different STOP receipt for this immutable source."
+            case .invalidRuntimeSmokeFixture:
+                return "The operated playback fixture is incomplete, outside the temporary test bridge, or belongs to another account."
+            case .runtimeSmokeFixtureOwnerMismatch:
+                return "The operated playback fixture owner does not match the active protected account partition."
+            case .runtimeSmokeFixtureSourceRejected:
+                return "The operated playback fixture source is outside the protected XCTest host bridge."
+            case .runtimeSmokeFixtureChecksumMismatch:
+                return "The operated playback fixture does not match its expected SHA-256."
+            case .runtimeSmokeFixtureNotPlayable:
+                return "The operated playback fixture could not be decoded as a complete audio source."
             }
         }
     }

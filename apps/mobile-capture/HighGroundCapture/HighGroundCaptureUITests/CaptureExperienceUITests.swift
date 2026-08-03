@@ -1389,17 +1389,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(packetTaskAccept)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskReviewSection"].exists)
         XCTAssertTrue(app.buttons["CapturePacketTaskSource_preview-segment"].exists)
-        XCTAssertTrue(packetTaskAccept.isEnabled, "Preview may inspect task materialization choices while the final write stays disabled.")
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketTaskSourceReviewRequired"].exists)
+        XCTAssertFalse(packetTaskAccept.isEnabled, "Provider-only preview evidence must not open canonical task creation.")
         XCTAssertFalse(app.buttons["CapturePacketTaskDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketTaskRejectButton"].isEnabled)
-        packetTaskAccept.tap()
-        XCTAssertTrue(app.textFields["CapturePacketTaskCreateTitleField"].exists)
-        XCTAssertTrue(app.textFields["CapturePacketTaskCreateDetailField"].exists)
-        XCTAssertTrue(app.segmentedControls["CapturePacketTaskOwnerPicker"].exists)
-        XCTAssertTrue(app.switches["CapturePacketTaskDueDateToggle"].exists)
-        XCTAssertTrue(app.buttons["CapturePacketTaskTag_preview-follow-through"].exists)
-        XCTAssertTrue(app.buttons["CapturePacketTaskTag_preview-coaching"].exists)
-        XCTAssertFalse(app.buttons["CapturePacketTaskCreateButton"].isEnabled)
         try app.performAccessibilityAudit(for: [
             .hitRegion,
             .sufficientElementDescription,
@@ -1409,7 +1402,6 @@ final class CaptureExperienceUITests: XCTestCase {
         taskReviewScreenshot.name = "Transcript task materialization review"
         taskReviewScreenshot.lifetime = .keepAlways
         add(taskReviewScreenshot)
-        app.buttons["CapturePacketTaskCancelCreateButton"].tap()
         let editPacketTask = app.buttons["CapturePacketTaskEditButton"]
         XCTAssertTrue(editPacketTask.isEnabled, "Preview may inspect a packet task draft while every review mutation stays disabled.")
         editPacketTask.tap()
@@ -1422,17 +1414,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(packetGoalAccept)
         XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalReviewSection"].exists)
         XCTAssertTrue(app.buttons["CapturePacketGoalSource_preview-segment"].exists)
-        XCTAssertTrue(packetGoalAccept.isEnabled, "Preview may inspect every goal field while the final mutation remains disabled.")
+        XCTAssertTrue(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].exists)
+        XCTAssertFalse(packetGoalAccept.isEnabled, "Provider-only preview evidence must not open canonical goal creation.")
         XCTAssertFalse(app.buttons["CapturePacketGoalDeferButton"].isEnabled)
         XCTAssertFalse(app.buttons["CapturePacketGoalRejectButton"].isEnabled)
-        packetGoalAccept.tap()
-        XCTAssertTrue(app.textFields["CapturePacketGoalCreateTitleField"].exists)
-        XCTAssertTrue(app.textFields["CapturePacketGoalCreateDescriptionField"].exists)
-        XCTAssertTrue(app.switches["CapturePacketGoalTargetDateToggle"].exists)
-        XCTAssertTrue(app.buttons["CapturePacketGoalTag_preview-follow-through"].exists)
-        XCTAssertTrue(app.buttons["CapturePacketGoalTag_preview-coaching"].exists)
-        XCTAssertFalse(app.buttons["CapturePacketGoalCreateButton"].isEnabled)
-        app.buttons["CapturePacketGoalCancelCreateButton"].tap()
         let editPacketGoal = app.buttons["CapturePacketGoalEditButton"]
         XCTAssertTrue(editPacketGoal.isEnabled, "Preview may inspect a packet goal draft while every review mutation stays disabled.")
         editPacketGoal.tap()

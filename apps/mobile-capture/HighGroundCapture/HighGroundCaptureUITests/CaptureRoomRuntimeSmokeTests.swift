@@ -109,6 +109,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let coachFollowUpIntro: String?
         let coachFollowUpRevisedIntro: String?
         let coachFollowUpNextSessionFocus: String?
+        let transcriptSegmentIDs: [String]
+        let expectedPacketGoalTitle: String?
+        let recordingFixtureAssetID: String?
     }
 
     private func runtimeSmokeCredentials() throws -> RuntimeSmokeCredentials {
@@ -160,7 +163,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 coachFollowUpTitle: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_TITLE"],
                 coachFollowUpIntro: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_INTRO"],
                 coachFollowUpRevisedIntro: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_REVISED_INTRO"],
-                coachFollowUpNextSessionFocus: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS"]
+                coachFollowUpNextSessionFocus: environment["QUIPSLY_CAPTURE_UI_TEST_COACH_FOLLOW_UP_NEXT_SESSION_FOCUS"],
+                transcriptSegmentIDs: (environment["QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS"] ?? "")
+                    .split(separator: ",").map(String.init),
+                expectedPacketGoalTitle: environment["QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE"],
+                recordingFixtureAssetID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID"]
             )
         }
 
@@ -225,7 +232,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             coachFollowUpTitle: payload["coachFollowUpTitle"] as? String,
             coachFollowUpIntro: payload["coachFollowUpIntro"] as? String,
             coachFollowUpRevisedIntro: payload["coachFollowUpRevisedIntro"] as? String,
-            coachFollowUpNextSessionFocus: payload["coachFollowUpNextSessionFocus"] as? String
+            coachFollowUpNextSessionFocus: payload["coachFollowUpNextSessionFocus"] as? String,
+            transcriptSegmentIDs: payload["transcriptSegmentIDs"] as? [String] ?? [],
+            expectedPacketGoalTitle: payload["expectedPacketGoalTitle"] as? String,
+            recordingFixtureAssetID: payload["recordingFixtureAssetID"] as? String
         )
     }
 
@@ -241,6 +251,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] = credentialsPath
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
+        if credentials.recordingFixtureAssetID?.isEmpty == false {
+            app.launchArguments.append("--quipsly-capture-runtime-playback-fixture")
+        }
         if initialTab != "today" {
             app.launchArguments.append("--capture-ui-preview-tab=\(initialTab)")
         }
@@ -1546,7 +1559,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.staticTexts["Complete thought across 3 immutable transcript segments"].firstMatch.waitForExistence(timeout: 12),
             "The native candidate must disclose its complete three-segment evidence span."
         )
-        XCTAssertTrue(createGoal.isEnabled)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].firstMatch.waitForExistence(timeout: 12),
+            "Provider-only packet evidence must explain that every source segment needs playback review."
+        )
+        XCTAssertFalse(
+            createGoal.isEnabled,
+            "A packet goal must not become canonical work until its complete three-segment source has been reviewed."
+        )
 
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.name = "Retained complete transcript span — review only"
@@ -1555,6 +1575,136 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         attachRecordingIdentity(completeThought, name: "Retained packet complete goal source")
         // Intentionally do not tap any packet decision. The enclosing operator
         // compares authoritative packet readback before and after this test.
+    }
+
+    func testReviewedTranscriptPacketMaterializesOneCanonicalGoal() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false,
+              credentials.transcriptSegmentIDs.count == 3,
+              let expectedGoalTitle = credentials.expectedPacketGoalTitle,
+              !expectedGoalTitle.isEmpty,
+              let expectedAssetID = credentials.recordingFixtureAssetID,
+              !expectedAssetID.isEmpty else {
+            throw XCTSkip("Reviewed packet materialization requires exact Session, three-segment source, goal title, and recording-asset identities.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        let fixtureReceipt = app.descendants(matching: .any)["CaptureRuntimePlaybackFixtureReceipt"].firstMatch
+        XCTAssertTrue(
+            fixtureReceipt.waitForExistence(timeout: 20),
+            "The compiled app must install the checksum-verified retained source before transcript review."
+        )
+        XCTAssertTrue(
+            String(describing: fixtureReceipt.value ?? "").contains(expectedAssetID),
+            "The operated fixture receipt must identify the exact canonical recording asset; got \(String(describing: fixtureReceipt.value ?? "nil"))."
+        )
+
+        selectRequestedSession(in: app, credentials: credentials)
+        let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(reviewLink, in: app, timeout: 30, swipeAttempts: 8))
+        reviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].waitForExistence(timeout: 3),
+            "The exact retained local source should make playback review available on this operated simulator."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch.waitForExistence(timeout: 30)
+        )
+
+        for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12),
+                "The exact packet source segment \(segmentID) must expose retained-source playback."
+            )
+            XCTAssertTrue(play.isEnabled)
+            play.tap()
+
+            let confirm = app.buttons["CaptureTranscriptConfirmAsIsButton_\(segmentID)"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+            let playbackReachedSegmentEnd = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "enabled == true"),
+                object: confirm
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [playbackReachedSegmentEnd], timeout: 15),
+                .completed,
+                "Playback must reach the exact segment end before its provider text can be confirmed."
+            )
+            confirm.tap()
+            let progress = app.staticTexts["CaptureTranscriptReviewProgressCount"].firstMatch
+            let expectedReviewedCount = reviewIndex + 1
+            let receiptReadBack = XCTNSPredicateExpectation(
+                predicate: NSPredicate(
+                    format: "label BEGINSWITH %@",
+                    "\(expectedReviewedCount) of "
+                ),
+                object: progress
+            )
+            XCTAssertEqual(
+                XCTWaiter.wait(for: [receiptReadBack], timeout: 30),
+                .completed,
+                "Nest must read back review progress after the human playback-verification receipt for \(segmentID)."
+            )
+        }
+
+        let buildCurrentPacket = app.buttons["CaptureTranscriptBuildCurrentPacketButton"].firstMatch
+        for _ in 0..<16 where !buildCurrentPacket.exists {
+            app.scrollViews["CaptureTranscriptReviewView"].firstMatch.swipeDown()
+        }
+        XCTAssertTrue(
+            buildCurrentPacket.waitForExistence(timeout: 10),
+            "Changing transcript review state must stale the old packet and expose an append-only rebuild."
+        )
+        XCTAssertTrue(buildCurrentPacket.isEnabled)
+        buildCurrentPacket.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPacketStaleBoundary"].firstMatch
+                .waitForNonExistence(timeout: 30),
+            "The rebuilt packet must snapshot the current human-reviewed transcript state."
+        )
+
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let jumpToGoals = app.buttons["CaptureTranscriptJumpToGoals"].firstMatch
+        XCTAssertTrue(jumpToGoals.waitForExistence(timeout: 10))
+        jumpToGoals.tap()
+
+        let accept = app.buttons["CapturePacketGoalAcceptButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(accept, in: app, timeout: 20, swipeAttempts: 8))
+        XCTAssertFalse(app.descendants(matching: .any)["CapturePacketGoalSourceReviewRequired"].firstMatch.exists)
+        XCTAssertTrue(accept.isEnabled)
+        let exactGoalTitle = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", expectedGoalTitle)
+        ).firstMatch
+        XCTAssertTrue(exactGoalTitle.waitForExistence(timeout: 8))
+        accept.tap()
+        let create = app.buttons["CapturePacketGoalCreateButton"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 8))
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+
+        let accepted = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalAccepted_")
+        ).firstMatch
+        XCTAssertTrue(
+            accepted.waitForExistence(timeout: 30),
+            "The explicit create decision must read back as one accepted canonical goal."
+        )
+
+        tapRootTab("Today", in: app)
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", expectedGoalTitle)).firstMatch,
+                in: app,
+                timeout: 30,
+                swipeAttempts: 12
+            ),
+            "Today must read back the exact canonical goal created from the fully reviewed packet."
+        )
+        attachRuntimeScreenshot(app, name: "Reviewed packet canonical goal readback")
     }
 
     func testOutsiderCannotSeeRetainedTranscriptFollowThrough() throws {
