@@ -34,14 +34,28 @@ docs/coordination/quipsly-episode-4-editing-hardening-log.md
 
 - Worktree: `/Users/wall-e/Dev/high-ground-studio-product`
 - Branch: `codex/quipsly-product-20260724`
-- Current slice: released client coaching follow-up projection across Nest
-  Today and Capture Today, with explicit exact-hash acknowledgement in the
-  canonical Session.
+- Current slice: one canonical weekly-plan and reflection decision across Nest
+  Work and Capture Today, protected before iPhone sync and operated through
+  process-relaunch/database readback.
 - Evidence:
-  `docs/coordination/2026-08-03-client-follow-up-today-attention.md`
+  `docs/coordination/2026-08-03-capture-weekly-plan-operation.md`
 - Boundary: local post-Build-27 source; no deploy, TestFlight, cloud, billing,
   production database, or provider mutation. Coordinate before touching the
-  follow-up release/readiness/projection files or native Today handoff.
+  weekly-commitment kernel, mobile Today route/client, or native weekly-plan
+  outbox and editor.
+
+### Current product-development authority
+
+- Large integrated vertical slices are encouraged across Capture, Nest,
+  Studio, writing/research, projects, collaboration, learning, and publishing.
+- Local schema evolution is authorized when it removes a real architecture
+  constraint and includes migration, verification, compatibility, and rollback
+  reasoning. Do not preserve accidental prototype structure by default.
+- Production-destructive changes still require exact target resolution,
+  recoverable backup/readback, and a bounded rollout even when the direction is
+  already approved.
+- Current architecture direction:
+  `docs/architecture/quipsly-platform-spine.md`.
 
 ### Quipsly SaaS Transition (Build Our Own) Sprint
 

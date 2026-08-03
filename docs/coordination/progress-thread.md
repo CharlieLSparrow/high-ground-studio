@@ -1675,3 +1675,23 @@ checks, blockers, and next handoff.
   `docs/coordination/2026-08-03-client-follow-up-today-attention.md`.
 - Delivery boundary: local post-Build-27 source only. No cloud, production,
   Apple, billing, external delivery, or provider mutation occurred.
+
+### 2026-08-03 - One weekly plan survives signed-in iPhone relaunch
+
+- Nest Work and Capture Today now share one serializable, optimistic,
+  idempotent weekly-plan transaction with append-only human-decision receipts.
+- Capture protects complete plan/reflection intent in an account-partitioned
+  outbox before network use and holds stale conflicts for explicit review.
+- Real compiled operation found and fixed missing keyboard dismissal in the
+  multiline form, then saved and read exact canonical values after process
+  relaunch.
+- Independent PostgreSQL snapshots proved Task, Goal, focus-plan, appointment,
+  calendar, delivery, chat, and provider counts did not change.
+- Verification: focused Nest 55/55, TypeScript, native outbox harness,
+  deterministic editor UI, signed-in compiled iPhone operation, mobile
+  contract, App Store/static, and local doctor all pass.
+- Architecture/evidence:
+  `docs/coordination/2026-08-03-capture-weekly-plan-operation.md` and
+  `docs/architecture/quipsly-platform-spine.md`.
+- Delivery boundary: local post-Build-27 source only; no deploy, TestFlight,
+  production database, cloud, billing, or provider mutation.

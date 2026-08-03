@@ -2009,6 +2009,7 @@ struct TodayFollowThroughCard: View {
     @State private var sourceToFile: MobileSourceInboxSource?
     @State private var focusToComplete: MobileCaptureTodayFocusBlock?
     @State private var taskToPlan: MobileCaptureTodayTask?
+    @State private var showsWeeklyPlanEditor = false
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -2993,8 +2994,8 @@ struct TodayFollowThroughCard: View {
                 .accessibilityIdentifier("CaptureTodayWeeklyReview")
             }
 
-            if let weekly = client.weeklyPlan {
-                VStack(alignment: .leading, spacing: 7) {
+            if let weekly = client.presentedWeeklyPlan {
+                VStack(alignment: .leading, spacing: 9) {
                     Label("This week", systemImage: "calendar.badge.checkmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.green)
@@ -3007,10 +3008,58 @@ struct TodayFollowThroughCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if let reflection = weekly.progressNotes, !reflection.isEmpty {
+                        Text("Reflection: \(reflection)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if weekly.clientReviewedAt != nil {
+                        Label("Reviewed against what actually happened", systemImage: "checkmark.seal")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
+                    weeklyPlanDecisionStatus
+                    Button {
+                        showsWeeklyPlanEditor = true
+                    } label: {
+                        Label("Edit weekly plan", systemImage: "square.and.pencil")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(client.isMutating || client.pendingWeeklyPlanDecision != nil)
+                    .accessibilityIdentifier("CaptureTodayWeeklyPlanEdit")
                 }
+                .padding(12)
+                .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTodayWeeklyPlan")
+            } else if client.currentWeekStartsOn != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Plan the week", systemImage: "calendar.badge.plus")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.green)
+                    Text("Choose up to three concrete commitments, name the support you need, and reflect without pretending a task or goal is complete.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    weeklyPlanDecisionStatus
+                    Button {
+                        showsWeeklyPlanEditor = true
+                    } label: {
+                        Label("Plan this week", systemImage: "square.and.pencil")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(client.isMutating || client.pendingWeeklyPlanDecision != nil)
+                    .accessibilityIdentifier("CaptureTodayWeeklyPlanCreate")
+                }
+                .padding(12)
+                .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTodayWeeklyPlanEmpty")
             }
 
-            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.weeklyPlan == nil, client.weeklyReview == nil, !client.isLoading, !inboxClient.isLoading {
+            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.presentedWeeklyPlan == nil, client.weeklyReview == nil, !client.isLoading, !inboxClient.isLoading {
                 Text("No committed follow-through is available yet. Add a task, goal, focus block, weekly plan, or source annotation in Nest; Today will use the same canonical record.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -3023,7 +3072,7 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Focus planning and completion, task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus-plan retries keep one stable identity and create only a private WorkPlanBlock—never a deadline, reminder, appointment, or external calendar event. Focus completion records explicit actual minutes and never completes the linked task or goal. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Focus planning and completion, task and goal tag selections, weekly plans and reflections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus-plan retries keep one stable identity and create only a private WorkPlanBlock—never a deadline, reminder, appointment, or external calendar event. Focus completion records explicit actual minutes and never completes the linked task or goal. A weekly plan changes no Task, Goal, Calendar event, message, or provider. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -3044,6 +3093,15 @@ struct TodayFollowThroughCard: View {
         .sheet(item: $taskToPlan) { task in
             CaptureFocusPlanningSheet(client: client, task: task, previewOnly: previewOnly)
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showsWeeklyPlanEditor) {
+            CaptureWeeklyPlanSheet(
+                client: client,
+                plan: client.presentedWeeklyPlan,
+                weekStartsOn: client.currentWeekStartsOn ?? "",
+                previewOnly: previewOnly
+            )
+            .presentationDetents([.large])
         }
         .navigationDestination(for: CaptureTranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -3150,6 +3208,38 @@ struct TodayFollowThroughCard: View {
                     canonicalTagIDs: goal.tagIds ?? [],
                     expectedUpdatedAt: goal.updatedAt
                 )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var weeklyPlanDecisionStatus: some View {
+        if let pending = client.pendingWeeklyPlanDecision {
+            Label(
+                pending.disposition == .held
+                    ? "Phone plan needs review"
+                    : "Protected on this iPhone · waiting for Nest",
+                systemImage: pending.disposition == .held
+                    ? "exclamationmark.triangle.fill"
+                    : "lock.iphone"
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(pending.disposition == .held ? Color.orange : Color.blue)
+            .accessibilityIdentifier("CaptureTodayWeeklyPlanPending")
+            .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
+            if pending.disposition == .held {
+                HStack {
+                    Button("Retry") {
+                        Task { await client.retryHeldWeeklyPlanDecision() }
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureTodayWeeklyPlanRetry")
+                    Button("Discard phone change", role: .destructive) {
+                        Task { await client.discardHeldWeeklyPlanDecision() }
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureTodayWeeklyPlanDiscard")
+                }
             }
         }
     }
@@ -3368,6 +3458,141 @@ struct TodayFollowThroughCard: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CaptureWeeklyPlanSheet: View {
+    private enum FocusedField: Hashable {
+        case commitmentOne
+        case commitmentTwo
+        case commitmentThree
+        case support
+        case reflection
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureTodayClient
+    let weekStartsOn: String
+    let previewOnly: Bool
+    @State private var commitmentOne: String
+    @State private var commitmentTwo: String
+    @State private var commitmentThree: String
+    @State private var supportNeeded: String
+    @State private var progressNotes: String
+    @State private var clientReviewed: Bool
+    @FocusState private var focusedField: FocusedField?
+    private let reviewAlreadyRecorded: Bool
+
+    init(
+        client: CaptureTodayClient,
+        plan: MobileCaptureTodayWeeklyPlan?,
+        weekStartsOn: String,
+        previewOnly: Bool
+    ) {
+        self.client = client
+        self.weekStartsOn = weekStartsOn
+        self.previewOnly = previewOnly
+        let commitments = plan?.commitments ?? []
+        _commitmentOne = State(initialValue: commitments.indices.contains(0) ? commitments[0] : "")
+        _commitmentTwo = State(initialValue: commitments.indices.contains(1) ? commitments[1] : "")
+        _commitmentThree = State(initialValue: commitments.indices.contains(2) ? commitments[2] : "")
+        _supportNeeded = State(initialValue: plan?.supportNeeded ?? "")
+        _progressNotes = State(initialValue: plan?.progressNotes ?? "")
+        _clientReviewed = State(initialValue: plan?.clientReviewedAt != nil)
+        reviewAlreadyRecorded = plan?.clientReviewedAt != nil
+    }
+
+    private var normalizedCommitments: [String] {
+        [commitmentOne, commitmentTwo, commitmentThree]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Commit to what matters") {
+                    TextField("First commitment", text: $commitmentOne, axis: .vertical)
+                        .lineLimit(2...5)
+                        .focused($focusedField, equals: .commitmentOne)
+                        .accessibilityIdentifier("CaptureWeeklyPlanCommitmentOne")
+                    TextField("Second commitment (optional)", text: $commitmentTwo, axis: .vertical)
+                        .lineLimit(2...5)
+                        .focused($focusedField, equals: .commitmentTwo)
+                        .accessibilityIdentifier("CaptureWeeklyPlanCommitmentTwo")
+                    TextField("Third commitment (optional)", text: $commitmentThree, axis: .vertical)
+                        .lineLimit(2...5)
+                        .focused($focusedField, equals: .commitmentThree)
+                        .accessibilityIdentifier("CaptureWeeklyPlanCommitmentThree")
+                    Text("These are deliberate commitments, not automatically completed Tasks or Goals.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Support and reflection") {
+                    TextField("What support would help?", text: $supportNeeded, axis: .vertical)
+                        .lineLimit(2...6)
+                        .focused($focusedField, equals: .support)
+                        .accessibilityIdentifier("CaptureWeeklyPlanSupport")
+                    TextField("What moved, what did not, and what did you learn?", text: $progressNotes, axis: .vertical)
+                        .lineLimit(3...8)
+                        .focused($focusedField, equals: .reflection)
+                        .accessibilityIdentifier("CaptureWeeklyPlanReflection")
+                    Toggle("I reviewed this against what actually happened", isOn: $clientReviewed)
+                        .disabled(reviewAlreadyRecorded)
+                        .accessibilityIdentifier("CaptureWeeklyPlanReviewed")
+                    if reviewAlreadyRecorded {
+                        Text("Review was already recorded and remains part of the plan's audit history.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Review records your reflection separately. It never marks linked work complete or tells your coach that something happened when it did not.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Safety") {
+                    Label("Saved to a protected iPhone outbox before Nest sync", systemImage: "lock.iphone")
+                        .accessibilityIdentifier("CaptureWeeklyPlanOutboxBoundary")
+                    Text("This changes one private Quipsly weekly plan. It does not send a message, schedule a calendar event, change a Task or Goal, or contact a provider.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureWeeklyPlanSideEffectBoundary")
+                }
+            }
+            .accessibilityIdentifier("CaptureWeeklyPlanForm")
+            .navigationTitle("This week")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            let saved = await client.saveWeeklyPlan(
+                                commitments: normalizedCommitments,
+                                supportNeeded: supportNeeded,
+                                progressNotes: progressNotes,
+                                clientReviewed: reviewAlreadyRecorded || clientReviewed
+                            )
+                            if saved { dismiss() }
+                        }
+                    }
+                    .disabled(
+                        previewOnly
+                            || client.isMutating
+                            || client.pendingWeeklyPlanDecision != nil
+                            || normalizedCommitments.isEmpty
+                    )
+                    .accessibilityIdentifier("CaptureWeeklyPlanSave")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("CaptureWeeklyPlanKeyboardDone")
+                }
+            }
+            .accessibilityIdentifier("CaptureWeeklyPlanSheet")
+        }
     }
 }
 

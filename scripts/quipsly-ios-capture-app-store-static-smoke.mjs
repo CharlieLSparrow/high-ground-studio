@@ -387,6 +387,8 @@ requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smok
 requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'client-follow-up)', "runtime UI smoke can select the retained client follow-up delivery proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'today-client-follow-up)', "runtime UI smoke can select the preview Today-to-exact-Session follow-up proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'weekly-plan-preview)', "runtime UI smoke can select the protected weekly-plan and reflection editor proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'weekly-plan-operation)', "runtime UI smoke can select the signed-in canonical weekly-plan operation mode");
 requireIncludes(runtimeUISmokeRunnerText, 'coach-follow-up-authoring)', "runtime UI smoke can select the assigned-coach draft, revision, and release proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'coaching-follow-through-work)', "runtime UI smoke can select the exact next-Session follow-through to Work proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
@@ -402,6 +404,8 @@ requireIncludes(runtimeUISmokeTestsText, "func testPrivateSourceInboxFilesIntoCa
 requireIncludes(runtimeUISmokeTestsText, "func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture", "runtime UI smoke reads and acknowledges one exact released client follow-up");
 requireIncludes(runtimeUISmokeTestsText, "func testAssignedCoachCreatesRevisesAndReleasesClientFollowUpInCapture", "runtime UI smoke operates assigned-coach draft, revision, and explicit in-app release");
 requireIncludes(runtimeUISmokeTestsText, "func testClientOpensExactFollowThroughGoalInWork", "runtime UI smoke opens one exact carried-forward goal in canonical Work");
+requireIncludes(deterministicUITestsText, "func testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe", "deterministic UI smoke operates the protected weekly-plan and reflection editor without claiming a preview save");
+requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneUpdatesCanonicalWeeklyPlanAndSurvivesRelaunch", "runtime UI smoke changes one canonical weekly plan through iPhone controls and reads it back after relaunch");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUp_", "runtime UI smoke addresses the exact released follow-up artifact");
 requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpAcknowledge_", "runtime UI smoke addresses the explicit client open acknowledgement");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");

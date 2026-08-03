@@ -11,6 +11,7 @@ import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-proje
 import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { saveWeeklyCommitmentInTransaction } from "@/lib/server/weekly-commitment";
 
 import { GET, POST } from "./route";
 
@@ -25,6 +26,10 @@ jest.mock("@/lib/server/source-annotations", () => ({
 }));
 jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
 jest.mock("@/lib/server/transcript-corrections", () => ({ readTranscriptCorrectionDesk: jest.fn() }));
+jest.mock("@/lib/server/weekly-commitment", () => ({
+  ...jest.requireActual("@/lib/server/weekly-commitment"),
+  saveWeeklyCommitmentInTransaction: jest.fn(),
+}));
 
 const expected = new Date("2026-07-18T18:00:00.000Z");
 const persisted = new Date("2026-07-18T18:00:01.000Z");
@@ -74,6 +79,90 @@ describe("mobile Capture Today contract", () => {
     const response = await GET(new Request("http://localhost/api/mobile/capture/today"));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("saves one protected iPhone weekly plan through the canonical transaction", async () => {
+    signedIn();
+    const transaction = jest.fn(async (callback: (client: unknown) => unknown) => callback({}));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+    jest.mocked(saveWeeklyCommitmentInTransaction).mockResolvedValue({
+      kind: "saved",
+      commitment: { id: "week-1", updatedAt: persisted },
+      receiptId: "mobile-weekly-plan-99999999-9999-4999-8999-999999999999",
+      clientRequestId: "99999999-9999-4999-8999-999999999999",
+      idempotentReplay: false,
+      intentSha256: "a".repeat(64),
+    });
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "weekly-plan-save",
+        weekStartsOn: "2026-07-13",
+        commitmentOne: "Practice the boundary once",
+        commitmentTwo: "Write down what changed",
+        supportNeeded: "Review one example together",
+        progressNotes: "The first attempt felt awkward.",
+        clientReviewed: true,
+        expectedUpdatedAt: null,
+        clientRequestId: "99999999-9999-4999-8999-999999999999",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "weekly-plan-save",
+      id: "week-1",
+      weekStartsOn: "2026-07-13",
+      commitments: ["Practice the boundary once", "Write down what changed"],
+      supportNeeded: "Review one example together",
+      progressNotes: "The first attempt felt awkward.",
+      clientReviewed: true,
+      updatedAt: persisted.toISOString(),
+      receiptId: "mobile-weekly-plan-99999999-9999-4999-8999-999999999999",
+      clientRequestId: "99999999-9999-4999-8999-999999999999",
+      intentSha256: "a".repeat(64),
+      idempotentReplay: false,
+      boundaries: {
+        weeklyPlanCanonical: true,
+        weeklyPlanOfflineOutboxSupported: true,
+        weeklyPlanMutatesTasksOrGoals: false,
+        weeklyPlanExternalSideEffects: false,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(saveWeeklyCommitmentInTransaction).toHaveBeenCalledWith({}, expect.objectContaining({
+      clientUserId: "user-1",
+      weekStartsAt: new Date("2026-07-13T12:00:00.000Z"),
+      commitments: ["Practice the boundary once", "Write down what changed", undefined],
+      clientReviewed: true,
+      expectedUpdatedAt: null,
+      surface: "ios-capture-today",
+    }));
+  });
+
+  it("holds a stale iPhone weekly plan instead of overwriting another client", async () => {
+    signedIn();
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: unknown) => unknown) => callback({})),
+    } as any);
+    jest.mocked(saveWeeklyCommitmentInTransaction).mockResolvedValue({ kind: "conflict" });
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "weekly-plan-save",
+        weekStartsOn: "2026-07-13",
+        commitmentOne: "Practice once",
+        expectedUpdatedAt: expected.toISOString(),
+        clientRequestId: "99999999-9999-4999-8999-999999999999",
+      }),
+    }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
   });
 
   it("returns canonical actor work while quarantining transcript candidates", async () => {

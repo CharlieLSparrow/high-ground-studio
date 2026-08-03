@@ -82,6 +82,7 @@
     "quipsly:retained:calendar-subscription": "node scripts/quipsly-retained-calendar-subscription-operation.mjs",
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
+    "quipsly:retained:native-weekly-plan": "node scripts/quipsly-retained-native-weekly-plan-operation.mjs",
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",
     "quipsly:retained:production-project-web-readback": "node scripts/quipsly-retained-production-project-web-readback.mjs",
     "quipsly:retained:production-follow-through": "node scripts/quipsly-retained-production-follow-through-operation.mjs",

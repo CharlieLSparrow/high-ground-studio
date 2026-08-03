@@ -1011,6 +1011,39 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe() {
+        let plan = app.descendants(matching: .any)["CaptureTodayWeeklyPlan"].firstMatch
+        reveal(plan)
+        XCTAssertTrue(plan.waitForExistence(timeout: 5))
+
+        let edit = app.buttons["CaptureTodayWeeklyPlanEdit"].firstMatch
+        reveal(edit)
+        XCTAssertTrue(edit.isHittable)
+        edit.tap()
+        XCTAssertTrue(app.navigationBars["This week"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanCommitmentOne"].value as? String, "Proof-listen one real session")
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanCommitmentTwo"].value as? String, "Send one source-linked follow-up")
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanSupport"].value as? String, "A second listener for the final recap")
+        let weeklyPlanForm = app.collectionViews.firstMatch
+        XCTAssertTrue(weeklyPlanForm.waitForExistence(timeout: 5))
+        let outboxBoundary = app.descendants(matching: .any)["CaptureWeeklyPlanOutboxBoundary"].firstMatch
+        revealBelow(outboxBoundary, in: weeklyPlanForm)
+        XCTAssertTrue(outboxBoundary.waitForExistence(timeout: 5))
+        let boundary = app.descendants(matching: .any)["CaptureWeeklyPlanSideEffectBoundary"].firstMatch
+        revealBelow(boundary, in: weeklyPlanForm)
+        XCTAssertTrue(boundary.waitForExistence(timeout: 5))
+        XCTAssertTrue(boundary.label.contains("change a Task or Goal"))
+        XCTAssertTrue(boundary.label.contains("contact a provider"))
+        XCTAssertFalse(
+            app.buttons["CaptureWeeklyPlanSave"].isEnabled,
+            "Preview may demonstrate the complete editor but must not claim a canonical or queued save."
+        )
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Protected weekly plan and reflection editor"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))

@@ -16,6 +16,11 @@ import { createAndAssignWorkEntityTag, createWorkTagTaxonomy, mutateWorkTagTaxon
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
 import {
+  normalizeWeeklyCommitmentIntent,
+  parseWeeklyCommitmentWeekStart,
+  saveWeeklyCommitmentInTransaction,
+} from "@/lib/server/weekly-commitment";
+import {
   editTaskRecurrenceOccurrenceInTransaction,
   materializeTaskOccurrence,
   replaceTaskRecurrenceFromOccurrenceInTransaction,
@@ -221,14 +226,6 @@ function expectedRevision(value: unknown) {
   const text = cleanId(value, 80);
   const date = new Date(text);
   return text && Number.isFinite(date.getTime()) ? date : null;
-}
-
-function weekStartDate(value: unknown) {
-  const text = cleanId(value, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-  const date = new Date(`${text}T12:00:00.000Z`);
-  if (!Number.isFinite(date.getTime()) || date.getUTCDay() !== 1 || date.toISOString().slice(0, 10) !== text) return null;
-  return Math.abs(date.getTime() - Date.now()) <= 400 * 86_400_000 ? date : null;
 }
 
 async function visibleProjectId(input: { projectId?: string | null; actorEmail: string; prisma: any }) {
@@ -639,68 +636,38 @@ export async function saveWeeklyCommitment(input: {
 }): Promise<SaveWeeklyCommitmentResult> {
   const session = await getQuipslySession();
   if (!session?.user?.id) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before saving a private weekly plan." };
-  const weekStartsAt = weekStartDate(input?.weekStartsOn);
-  const commitments = [
-    cleanText(input?.commitmentOne, 1000),
-    cleanText(input?.commitmentTwo, 1000),
-    cleanText(input?.commitmentThree, 1000),
-  ];
-  const supportNeeded = cleanText(input?.supportNeeded, 3000);
-  const progressNotes = cleanText(input?.progressNotes, 5000);
+  const now = new Date();
+  const weekStartsAt = parseWeeklyCommitmentWeekStart(input?.weekStartsOn, now);
+  const normalized = normalizeWeeklyCommitmentIntent(input);
   const expectedText = cleanId(input?.expectedUpdatedAt, 80);
   const expected = expectedText ? expectedRevision(expectedText) : null;
-  if (!weekStartsAt || !commitments[0] || (expectedText && !expected)) {
+  if (!weekStartsAt || !normalized.commitments[0] || (expectedText && !expected)) {
     return { ok: false, code: "INVALID_INPUT", error: "Choose a valid Monday and add at least one concrete weekly commitment." };
   }
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const now = new Date();
-  const receiptId = randomUUID();
+  const clientRequestId = randomUUID();
+  const receiptId = `web-weekly-plan-${clientRequestId}`;
   try {
-    const result = await prisma.$transaction(async (tx: any) => {
-      const current = await tx.weeklyCommitment.findUnique({
-        where: { clientUserId_weekStartsAt: { clientUserId: userId, weekStartsAt } },
-        select: { id: true, status: true, clientReviewedAt: true, sourceJson: true, updatedAt: true },
-      });
-      if (current && current.status !== "ACTIVE") return { kind: "not-found" as const };
-      if (current && (!expected || current.updatedAt.getTime() !== expected.getTime())) return { kind: "conflict" as const };
-      if (!current && expected) return { kind: "conflict" as const };
-      const source = safeRecord(current?.sourceJson);
-      const priorReceipts = Array.isArray(source.clientPlanReceipts)
-        ? source.clientPlanReceipts.filter((value) => value && typeof value === "object" && !Array.isArray(value)).slice(-23)
-        : [];
-      const receipt = {
-        id: receiptId,
-        kind: "quipsly-weekly-commitment-save-v1",
-        savedAt: now.toISOString(),
-        savedByUserId: userId,
+    const result = await prisma.$transaction(
+      (tx: any) => saveWeeklyCommitmentInTransaction(tx, {
+        clientUserId: userId,
+        weekStartsAt,
+        commitments: normalized.commitments,
+        supportNeeded: normalized.supportNeeded,
+        progressNotes: normalized.progressNotes,
         clientReviewed: input.clientReviewed === true,
-        externalSideEffects: false,
-      };
-      const data = {
-        commitmentOne: commitments[0],
-        commitmentTwo: commitments[1] || null,
-        commitmentThree: commitments[2] || null,
-        supportNeeded: supportNeeded || null,
-        progressNotes: progressNotes || null,
-        clientReviewedAt: input.clientReviewed === true ? now : current?.clientReviewedAt ?? null,
-        sourceJson: { ...source, source: "quipsly-client-weekly-plan-v1", clientPlanReceipts: [...priorReceipts, receipt] },
-      };
-      if (!current) {
-        const created = await tx.weeklyCommitment.create({
-          data: { clientUserId: userId, weekStartsAt, ...data },
-          select: { id: true, updatedAt: true },
-        });
-        return { kind: "saved" as const, commitment: created };
-      }
-      const updated = await tx.weeklyCommitment.updateMany({ where: { id: current.id, clientUserId: userId, status: "ACTIVE", updatedAt: expected! }, data });
-      if (updated.count !== 1) return { kind: "conflict" as const };
-      const persisted = await tx.weeklyCommitment.findUnique({ where: { id: current.id }, select: { id: true, updatedAt: true } });
-      return { kind: "saved" as const, commitment: persisted };
-    });
+        expectedUpdatedAt: expected,
+        clientRequestId,
+        receiptId,
+        surface: "nest-work",
+        now,
+      }),
+      { isolationLevel: "Serializable" },
+    );
     if (result.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "This weekly record is no longer active and cannot be rewritten." };
-    if (result.kind === "conflict" || !result.commitment) return { ok: false, code: "CONFLICT", error: "This weekly plan changed elsewhere. Refresh before saving again." };
+    if (result.kind === "conflict" || result.kind === "identity-conflict") return { ok: false, code: "CONFLICT", error: "This weekly plan changed elsewhere. Refresh before saving again." };
     revalidatePath("/work");
     revalidatePath("/schedule");
     return { ok: true, commitmentId: result.commitment.id, updatedAt: result.commitment.updatedAt.toISOString(), receiptId };

@@ -1078,6 +1078,8 @@ function checkTranscriptCorrectionContractSources() {
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
   const clientFollowUpServiceText = sourceText("apps/quipsly/src/lib/server/session-client-follow-up.ts");
   const clientFollowUpAttentionText = sourceText("apps/quipsly/src/lib/server/client-follow-up-attention.ts");
+  const weeklyCommitmentText = sourceText("apps/quipsly/src/lib/server/weekly-commitment.ts");
+  const weeklyPlanOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/WeeklyPlanDecisionOutbox.swift");
   const clientFollowUpWebText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-client-follow-up-card.tsx");
   const todayPageText = sourceText("apps/quipsly/src/app/(app)/today/today-page.tsx");
   const sessionFollowThroughServiceText = sourceText("apps/quipsly/src/lib/server/session-follow-through.ts");
@@ -1869,6 +1871,23 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes("testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt"),
     "clientFollowUpTodayAttention",
     "A newly released unopened coaching follow-up projects to the exact recipient's Today surface on Nest and iPhone, then opens the exact Session while acknowledgment remains explicit and separate.",
+  );
+  expect(
+    weeklyCommitmentText.includes("saveWeeklyCommitmentInTransaction")
+      && weeklyCommitmentText.includes("quipsly-weekly-commitment-save-v2")
+      && weeklyCommitmentText.includes("intentSha256")
+      && weeklyCommitmentText.includes("idempotentReplay: true")
+      && todayRouteText.includes('action === "weekly-plan-save"')
+      && todayRouteText.includes("weeklyPlanOfflineOutboxSupported")
+      && bridgeText.includes("WeeklyPlanDecisionOutbox.shared")
+      && bridgeText.includes("syncWeeklyPlanDecision")
+      && weeklyPlanOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && weeklyPlanOutboxText.includes("ownerAccountID")
+      && shellText.includes("CaptureWeeklyPlanSheet")
+      && shellText.includes("does not send a message")
+      && captureUITestText.includes("testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe"),
+    "protectedIPhoneWeeklyPlanReflection",
+    "Nest and Capture share one optimistic weekly-plan transaction while iPhone protects complete plan and reflection intent before sync, retries by stable identity, holds conflicts, and changes no task, goal, calendar, message, or provider.",
   );
   expect(
     sessionFollowThroughServiceText.includes("progressedSinceRelease")

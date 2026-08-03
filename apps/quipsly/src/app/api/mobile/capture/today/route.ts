@@ -27,6 +27,11 @@ import {
 import { isIanaTimeZone, parseRecurrenceStart, validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 import { createWorkPlanBlockInTransaction } from "@/lib/server/work-plan-blocks";
+import {
+  normalizeWeeklyCommitmentIntent,
+  parseWeeklyCommitmentWeekStart,
+  saveWeeklyCommitmentInTransaction,
+} from "@/lib/server/weekly-commitment";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +127,10 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     writingDraftExternalSideEffects: false,
     clientFollowUpAttentionReadOnly: true,
     clientFollowUpAcknowledgementExplicit: true,
+    weeklyPlanCanonical: true,
+    weeklyPlanOfflineOutboxSupported: true,
+    weeklyPlanMutatesTasksOrGoals: false,
+    weeklyPlanExternalSideEffects: false,
   };
 }
 
@@ -460,6 +469,7 @@ export async function GET(request: Request) {
       ok: true,
       briefKind: "quipsly-mobile-today-v1",
       generatedAt: now.toISOString(),
+      currentWeekStartsAt: weekStartsAt.toISOString().slice(0, 10),
       clientFollowUpAttention,
       tasks,
       goals,
@@ -517,12 +527,83 @@ export async function POST(request: Request) {
   if (!session?.user) return NextResponse.json({ ok: false, error: "Sign in before changing private Today work." }, { status: 401 });
   const input = await body(request);
   const action = text(input.action, 80);
-  const id = text(input.id);
-  const expected = revision(input.expectedUpdatedAt);
-  if (!id || !expected) return NextResponse.json({ ok: false, error: "The Today decision is missing its record ID or revision." }, { status: 400 });
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const now = new Date();
+  if (action === "weekly-plan-save") {
+    const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+    const weekStartsAt = parseWeeklyCommitmentWeekStart(input.weekStartsOn, now);
+    const normalized = normalizeWeeklyCommitmentIntent({
+      commitmentOne: input.commitmentOne,
+      commitmentTwo: input.commitmentTwo,
+      commitmentThree: input.commitmentThree,
+      supportNeeded: input.supportNeeded,
+      progressNotes: input.progressNotes,
+    });
+    const expectedText = text(input.expectedUpdatedAt, 80);
+    const expectedUpdatedAt = expectedText ? revision(expectedText) : null;
+    const receiptId = `mobile-weekly-plan-${clientRequestId}`;
+    if (
+      !UUID_PATTERN.test(clientRequestId)
+      || !weekStartsAt
+      || !normalized.commitments[0]
+      || (expectedText && !expectedUpdatedAt)
+    ) {
+      return NextResponse.json({
+        ok: false,
+        error: "Choose a valid Monday, at least one concrete commitment, and a stable phone request.",
+      }, { status: 400 });
+    }
+    try {
+      const result = await prisma.$transaction(
+        (tx: any) => saveWeeklyCommitmentInTransaction(tx, {
+          clientUserId: userId,
+          weekStartsAt,
+          commitments: normalized.commitments,
+          supportNeeded: normalized.supportNeeded,
+          progressNotes: normalized.progressNotes,
+          clientReviewed: input.clientReviewed === true,
+          expectedUpdatedAt,
+          clientRequestId,
+          receiptId,
+          surface: "ios-capture-today",
+          now,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "not-found") {
+        return NextResponse.json({ ok: false, error: "This weekly record is no longer active and cannot be rewritten." }, { status: 404 });
+      }
+      if (result.kind === "conflict" || result.kind === "identity-conflict") {
+        return NextResponse.json({ ok: false, code: "CONFLICT", error: "This weekly plan changed elsewhere. Refresh Today before saving again." }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id: result.commitment.id,
+        weekStartsOn: weekStartsAt.toISOString().slice(0, 10),
+        commitments: normalized.commitments.filter(Boolean),
+        supportNeeded: normalized.supportNeeded,
+        progressNotes: normalized.progressNotes,
+        clientReviewed: input.clientReviewed === true,
+        updatedAt: result.commitment.updatedAt.toISOString(),
+        receiptId: result.receiptId,
+        clientRequestId: result.clientRequestId,
+        intentSha256: result.intentSha256,
+        idempotentReplay: result.idempotentReplay,
+        boundaries: responseBoundaries(),
+      });
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && String((error as { code?: unknown }).code) === "P2002") {
+        return NextResponse.json({ ok: false, code: "CONFLICT", error: "This weekly plan was created elsewhere. Refresh Today before saving again." }, { status: 409 });
+      }
+      console.error("[mobile-today] failed to save weekly plan", error);
+      return NextResponse.json({ ok: false, error: "Quipsly could not save this weekly plan. It remains protected on the phone and no external action occurred." }, { status: 503 });
+    }
+  }
+  const id = text(input.id);
+  const expected = revision(input.expectedUpdatedAt);
+  if (!id || !expected) return NextResponse.json({ ok: false, error: "The Today decision is missing its record ID or revision." }, { status: 400 });
   const receiptId = randomUUID();
   try {
     if (action === "focus-create") {

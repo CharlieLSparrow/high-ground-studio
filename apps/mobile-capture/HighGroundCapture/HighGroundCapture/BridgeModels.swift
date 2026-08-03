@@ -1620,6 +1620,10 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let writingDraftExternalSideEffects: Bool?
     let clientFollowUpAttentionReadOnly: Bool?
     let clientFollowUpAcknowledgementExplicit: Bool?
+    let weeklyPlanCanonical: Bool?
+    let weeklyPlanOfflineOutboxSupported: Bool?
+    let weeklyPlanMutatesTasksOrGoals: Bool?
+    let weeklyPlanExternalSideEffects: Bool?
 }
 
 struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
@@ -1651,6 +1655,7 @@ struct MobileCaptureTodayResponse: Codable, Hashable {
     let error: String?
     let briefKind: String?
     let generatedAt: String?
+    let currentWeekStartsAt: String?
     let clientFollowUpAttention: MobileCaptureClientFollowUpAttention?
     let tasks: [MobileCaptureTodayTask]?
     let goals: [MobileCaptureTodayGoal]?
@@ -1703,6 +1708,12 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let startsAt: String?
     let endsAt: String?
     let idempotentReplay: Bool?
+    let weekStartsOn: String?
+    let commitments: [String]?
+    let supportNeeded: String?
+    let progressNotes: String?
+    let clientReviewed: Bool?
+    let intentSha256: String?
     let title: String?
     let detail: String?
     let dueAt: String?
@@ -3631,6 +3642,8 @@ final class CaptureTodayClient: ObservableObject {
     @Published private(set) var heldWorkTagDecisionCount = 0
     @Published private(set) var pendingWritingDraftDecisionCount = 0
     @Published private(set) var heldWritingDraftDecisionCount = 0
+    @Published private(set) var pendingWeeklyPlanDecisionCount = 0
+    @Published private(set) var heldWeeklyPlanDecisionCount = 0
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
@@ -3639,11 +3652,13 @@ final class CaptureTodayClient: ObservableObject {
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
     private let workTagDecisionOutbox = WorkTagDecisionOutbox.shared
     private let writingDraftOutbox = SourceAnnotationDraftOutbox.shared
+    private let weeklyPlanOutbox = WeeklyPlanDecisionOutbox.shared
     private var isFlushingFocusDecisions = false
     private var isFlushingFocusPlans = false
     private var isFlushingReminderDecisions = false
     private var isFlushingWorkTagDecisions = false
     private var isFlushingWritingDraftDecisions = false
+    private var isFlushingWeeklyPlanDecisions = false
     private var latestWritingDraftURLs: [String: URL] = [:]
 
     private struct ProtectedCache: Codable {
@@ -3665,6 +3680,29 @@ final class CaptureTodayClient: ObservableObject {
     var transcriptReviews: [MobileCaptureTodayTranscriptReview] { brief?.transcriptReviews ?? [] }
     var sourceAnnotations: [MobileCaptureTodaySourceAnnotation] { brief?.sourceAnnotations ?? [] }
     var weeklyPlan: MobileCaptureTodayWeeklyPlan? { brief?.weeklyPlan }
+    var currentWeekStartsOn: String? {
+        brief?.currentWeekStartsAt
+            ?? brief?.weeklyPlan?.weekStartsAt.prefix(10).description
+    }
+    var pendingWeeklyPlanDecision: PendingWeeklyPlanDecision? {
+        guard let currentWeekStartsOn else { return nil }
+        return weeklyPlanOutbox.decision(forWeekStarting: currentWeekStartsOn)
+    }
+    var presentedWeeklyPlan: MobileCaptureTodayWeeklyPlan? {
+        guard let pending = pendingWeeklyPlanDecision else { return weeklyPlan }
+        return MobileCaptureTodayWeeklyPlan(
+            id: weeklyPlan?.id ?? "pending-\(pending.clientRequestID)",
+            weekStartsAt: pending.weekStartsOn,
+            commitments: pending.commitments,
+            supportNeeded: pending.supportNeeded,
+            progressNotes: pending.progressNotes,
+            clientReviewedAt: pending.clientReviewed
+                ? ISO8601DateFormatter().string(from: pending.capturedAt)
+                : weeklyPlan?.clientReviewedAt,
+            updatedAt: weeklyPlan?.updatedAt
+                ?? ISO8601DateFormatter().string(from: pending.capturedAt)
+        )
+    }
 
     func pendingFocusDecision(for blockID: String) -> PendingFocusBlockDecision? {
         focusDecisionOutbox.decision(forBlockID: blockID)
@@ -3774,6 +3812,7 @@ final class CaptureTodayClient: ObservableObject {
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
         publishWritingDraftDecisionCounts()
+        publishWeeklyPlanDecisionCounts()
         let start = ISO8601DateFormatter().string(from: now.addingTimeInterval(1_800))
         let end = ISO8601DateFormatter().string(from: now.addingTimeInterval(4_800))
         brief = MobileCaptureTodayResponse(
@@ -3781,6 +3820,7 @@ final class CaptureTodayClient: ObservableObject {
             error: nil,
             briefKind: "quipsly-mobile-today-v1-preview",
             generatedAt: ISO8601DateFormatter().string(from: now),
+            currentWeekStartsAt: Self.weekStartsOn(for: now),
             clientFollowUpAttention: MobileCaptureClientFollowUpAttention(
                 schema: "quipsly-client-follow-up-attention-v1",
                 outputId: "preview-client-follow-up",
@@ -3892,7 +3932,7 @@ final class CaptureTodayClient: ObservableObject {
                 MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
                 MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
             ],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, focusBlockPlanningAvailable: true, planningFocusBlockMutatesTarget: false, planningFocusBlockCreatesAppointment: false, planningFocusBlockSchedulesReminder: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false, clientFollowUpAttentionReadOnly: true, clientFollowUpAcknowledgementExplicit: true)
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, focusBlockActualTimeExplicitOnly: true, focusBlockPlanningAvailable: true, planningFocusBlockMutatesTarget: false, planningFocusBlockCreatesAppointment: false, planningFocusBlockSchedulesReminder: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false, clientFollowUpAttentionReadOnly: true, clientFollowUpAcknowledgementExplicit: true, weeklyPlanCanonical: true, weeklyPlanOfflineOutboxSupported: true, weeklyPlanMutatesTasksOrGoals: false, weeklyPlanExternalSideEffects: false)
         )
         isUsingProtectedCache = false
         if !CaptureLaunchConfiguration.usesFocusOutboxUITest
@@ -3908,6 +3948,7 @@ final class CaptureTodayClient: ObservableObject {
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
         publishWritingDraftDecisionCounts()
+        publishWeeklyPlanDecisionCounts()
         if brief == nil {
             _ = restoreProtectedCache()
         }
@@ -3940,7 +3981,8 @@ final class CaptureTodayClient: ObservableObject {
             let synchronizedReminders = await flushReminderDecisions()
             let synchronizedTags = await flushWorkTagDecisions()
             let synchronizedWritingDrafts = await flushWritingDraftDecisions()
-            if synchronizedFocus || synchronizedFocusPlans || synchronizedReminders || synchronizedTags || synchronizedWritingDrafts {
+            let synchronizedWeeklyPlan = await flushWeeklyPlanDecisions()
+            if synchronizedFocus || synchronizedFocusPlans || synchronizedReminders || synchronizedTags || synchronizedWritingDrafts || synchronizedWeeklyPlan {
                 Task { [weak self] in
                     await self?.load()
                 }
@@ -3948,9 +3990,65 @@ final class CaptureTodayClient: ObservableObject {
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing a protected Today snapshot; focus plans and completion, reminders, tags, and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
+                ? "Nest is unavailable. Showing a protected Today snapshot; focus plans and completion, reminders, tags, weekly plans, reflections, and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
                 : error.localizedDescription
         }
+    }
+
+    func saveWeeklyPlan(
+        commitments: [String],
+        supportNeeded: String?,
+        progressNotes: String?,
+        clientReviewed: Bool
+    ) async -> Bool {
+        guard let weekStartsOn = currentWeekStartsOn else {
+            errorMessage = "Refresh Today before preparing this week's plan."
+            return false
+        }
+        do {
+            let decision = try weeklyPlanOutbox.enqueue(
+                weekStartsOn: weekStartsOn,
+                commitments: commitments,
+                supportNeeded: supportNeeded,
+                progressNotes: progressNotes,
+                clientReviewed: clientReviewed,
+                expectedUpdatedAt: weeklyPlan?.updatedAt
+            )
+            publishWeeklyPlanDecisionCounts()
+            guard AuthManager.shared.networkActionsAllowed else {
+                errorMessage = "Weekly plan protected on this iPhone and queued for Nest. No task, goal, calendar, or message changed."
+                return true
+            }
+            isMutating = true
+            defer { isMutating = false }
+            let synchronized = await syncWeeklyPlanDecision(decision)
+            if synchronized {
+                errorMessage = nil
+                await load()
+            }
+            return synchronized
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retryHeldWeeklyPlanDecision() async {
+        guard let decision = pendingWeeklyPlanDecision,
+              decision.disposition == .held else { return }
+        weeklyPlanOutbox.releaseForRetry(decision.id)
+        publishWeeklyPlanDecisionCounts()
+        _ = await flushWeeklyPlanDecisions()
+        await load()
+    }
+
+    func discardHeldWeeklyPlanDecision() async {
+        guard let decision = pendingWeeklyPlanDecision,
+              decision.disposition == .held else { return }
+        weeklyPlanOutbox.markAcknowledged(decision.id)
+        publishWeeklyPlanDecisionCounts()
+        errorMessage = nil
+        await load()
     }
 
     func setTaskReminder(_ task: MobileCaptureTodayTask, remindAt: Date?) async -> Bool {
@@ -4690,6 +4788,99 @@ final class CaptureTodayClient: ObservableObject {
     }
 
     @discardableResult
+    private func flushWeeklyPlanDecisions() async -> Bool {
+        guard !isFlushingWeeklyPlanDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishWeeklyPlanDecisionCounts()
+            return false
+        }
+        isFlushingWeeklyPlanDecisions = true
+        defer {
+            isFlushingWeeklyPlanDecisions = false
+            publishWeeklyPlanDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in weeklyPlanOutbox.entries where decision.disposition == .pending {
+            if await syncWeeklyPlanDecision(decision) { synchronizedAny = true }
+        }
+        return synchronizedAny
+    }
+
+    private func syncWeeklyPlanDecision(_ decision: PendingWeeklyPlanDecision) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var body: [String: Any] = [
+                "action": "weekly-plan-save",
+                "weekStartsOn": decision.weekStartsOn,
+                "commitmentOne": decision.commitments[0],
+                "commitmentTwo": decision.commitments.count > 1 ? decision.commitments[1] : NSNull(),
+                "commitmentThree": decision.commitments.count > 2 ? decision.commitments[2] : NSNull(),
+                "supportNeeded": decision.supportNeeded ?? NSNull(),
+                "progressNotes": decision.progressNotes ?? NSNull(),
+                "clientReviewed": decision.clientReviewed,
+                "clientRequestId": decision.clientRequestID,
+            ]
+            body["expectedUpdatedAt"] = decision.expectedUpdatedAt ?? NSNull()
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                let message = payload.error ?? "Nest could not reconcile this weekly plan."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    weeklyPlanOutbox.markRetryable(decision.id, message: message)
+                } else {
+                    weeklyPlanOutbox.markHeld(decision.id, code: payload.code, message: message)
+                }
+                errorMessage = message
+                publishWeeklyPlanDecisionCounts()
+                return false
+            }
+            let expectedSupport = decision.supportNeeded
+            let expectedProgress = decision.progressNotes
+            guard payload.action == "weekly-plan-save",
+                  payload.weekStartsOn == decision.weekStartsOn,
+                  payload.commitments == decision.commitments,
+                  payload.supportNeeded == expectedSupport,
+                  payload.progressNotes == expectedProgress,
+                  payload.clientReviewed == decision.clientReviewed,
+                  payload.clientRequestId == decision.clientRequestID,
+                  payload.receiptId == decision.projectedReceiptID,
+                  payload.id?.isEmpty == false,
+                  payload.updatedAt?.isEmpty == false,
+                  payload.intentSha256?.range(of: #"^[a-f0-9]{64}$"#, options: .regularExpression) != nil,
+                  payload.idempotentReplay != nil,
+                  payload.boundaries?.weeklyPlanCanonical == true,
+                  payload.boundaries?.weeklyPlanOfflineOutboxSupported == true,
+                  payload.boundaries?.weeklyPlanMutatesTasksOrGoals == false,
+                  payload.boundaries?.weeklyPlanExternalSideEffects == false,
+                  payload.boundaries?.externalCalendarMutated == false,
+                  payload.boundaries?.providerMutated == false else {
+                let message = "Nest returned a different weekly plan, receipt, or safety boundary. The protected phone decision is held for review."
+                weeklyPlanOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
+                errorMessage = message
+                publishWeeklyPlanDecisionCounts()
+                return false
+            }
+            weeklyPlanOutbox.markAcknowledged(decision.id)
+            publishWeeklyPlanDecisionCounts()
+            return true
+        } catch {
+            weeklyPlanOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Weekly plan remains protected for retry: \(error.localizedDescription)"
+            publishWeeklyPlanDecisionCounts()
+            return false
+        }
+    }
+
+    private func publishWeeklyPlanDecisionCounts() {
+        pendingWeeklyPlanDecisionCount = weeklyPlanOutbox.pendingCount
+        heldWeeklyPlanDecisionCount = weeklyPlanOutbox.heldCount
+    }
+
+    @discardableResult
     private func flushFocusPlans() async -> Bool {
         guard !isFlushingFocusPlans,
               AuthManager.shared.networkActionsAllowed else {
@@ -5049,6 +5240,19 @@ final class CaptureTodayClient: ObservableObject {
 
     nonisolated private static func localGoalDateString(_ date: Date, timezone: String) -> String {
         String(localTaskDateString(date, timezone: timezone).prefix(10))
+    }
+
+    nonisolated private static func weekStartsOn(for date: Date) -> String {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        let monday = calendar.date(from: components) ?? date
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: monday)
     }
 
     nonisolated private static func normalizedTaskText(_ value: String) -> String {

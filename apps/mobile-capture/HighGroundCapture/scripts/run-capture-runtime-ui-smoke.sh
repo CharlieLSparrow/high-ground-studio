@@ -67,6 +67,10 @@ TEST_RECORDING_FIXTURE_CONSENT_ID="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_C
 TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID:-}"
 TEST_RECORDING_FIXTURE_SHA256="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_SHA256:-}"
 TEST_RECORDING_FIXTURE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_TITLE:-}"
+TEST_WEEKLY_PLAN_COMMITMENT_ONE="${QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_ONE:-}"
+TEST_WEEKLY_PLAN_COMMITMENT_TWO="${QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_TWO:-}"
+TEST_WEEKLY_PLAN_SUPPORT="${QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_SUPPORT:-}"
+TEST_WEEKLY_PLAN_REFLECTION="${QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_REFLECTION:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
@@ -90,6 +94,18 @@ case "$TEST_MODE" in
     TEST_CLASS="CaptureExperienceUITests"
     TEST_CASE="testTodayOpensTheExactNewClientFollowUpWithoutAcknowledgingIt"
     REQUIRES_PASSWORD_CREDENTIALS=false
+    ;;
+  weekly-plan-preview)
+    TEST_CLASS="CaptureExperienceUITests"
+    TEST_CASE="testTodayWeeklyPlanEditorKeepsReflectionHonestAndOfflineSafe"
+    REQUIRES_PASSWORD_CREDENTIALS=false
+    ;;
+  weekly-plan-operation)
+    TEST_CASE="testSignedInIPhoneUpdatesCanonicalWeeklyPlanAndSurvivesRelaunch"
+    if [[ -z "$TEST_WEEKLY_PLAN_COMMITMENT_ONE" || -z "$TEST_WEEKLY_PLAN_COMMITMENT_TWO" || -z "$TEST_WEEKLY_PLAN_SUPPORT" || -z "$TEST_WEEKLY_PLAN_REFLECTION" ]]; then
+      echo "Weekly-plan operation mode requires two exact commitments, support, and reflection text." >&2
+      exit 2
+    fi
     ;;
   session-create-surface)
     TEST_CASE="testIPhoneCreatesRetainedSessionAndReadsRecordingTruth"
@@ -337,7 +353,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, today-client-follow-up, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, today-client-follow-up, weekly-plan-preview, weekly-plan-operation, session-create-surface, transcript-follow-through, transcript-packet-span, transcript-packet-materialization, transcript-packet-note-merge, transcript-packet-goal-evidence-merge, transcript-packet-task-evidence-merge, transcript-review-offline-reconcile, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, nest-portability, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -504,12 +520,34 @@ with open(path, "w", encoding="utf-8") as handle:
         handle,
     )
 PY
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$TEST_WEEKLY_PLAN_COMMITMENT_ONE" "$TEST_WEEKLY_PLAN_COMMITMENT_TWO" "$TEST_WEEKLY_PLAN_SUPPORT" "$TEST_WEEKLY_PLAN_REFLECTION" <<'PY'
+import json
+import sys
+
+path, commitment_one, commitment_two, support, reflection = sys.argv[1:6]
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+payload.update(
+    {
+        "weeklyPlanCommitmentOne": commitment_one or None,
+        "weeklyPlanCommitmentTwo": commitment_two or None,
+        "weeklyPlanSupport": support or None,
+        "weeklyPlanReflection": reflection or None,
+    }
+)
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
 fi
 
 export QUIPSLY_CAPTURE_UI_TEST_BASE_URL="$BASE_URL"
 export QUIPSLY_CAPTURE_UI_TEST_EMAIL="$TEST_EMAIL"
 export QUIPSLY_CAPTURE_UI_TEST_PASSWORD="$TEST_PASSWORD"
 export QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE="$SMOKE_CREDENTIALS_FILE"
+export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_ONE="$TEST_WEEKLY_PLAN_COMMITMENT_ONE"
+export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_TWO="$TEST_WEEKLY_PLAN_COMMITMENT_TWO"
+export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_SUPPORT="$TEST_WEEKLY_PLAN_SUPPORT"
+export QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_REFLECTION="$TEST_WEEKLY_PLAN_REFLECTION"
 export DEVELOPER_DIR="$DEVELOPER_DIR_VALUE"
 
 XCODEBUILD_ARGUMENTS=(

@@ -120,6 +120,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let packetNoteEditedBody: String?
         let recordingFixtureLocalID: String?
         let recordingFixtureAssetID: String?
+        let weeklyPlanCommitmentOne: String?
+        let weeklyPlanCommitmentTwo: String?
+        let weeklyPlanSupport: String?
+        let weeklyPlanReflection: String?
     }
 
     private func runtimeSmokeCredentials() throws -> RuntimeSmokeCredentials {
@@ -183,7 +187,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 packetNoteEditedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_TITLE"],
                 packetNoteEditedBody: environment["QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_BODY"],
                 recordingFixtureLocalID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_LOCAL_ID"],
-                recordingFixtureAssetID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID"]
+                recordingFixtureAssetID: environment["QUIPSLY_CAPTURE_UI_TEST_RECORDING_FIXTURE_ASSET_ID"],
+                weeklyPlanCommitmentOne: environment["QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_ONE"],
+                weeklyPlanCommitmentTwo: environment["QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_COMMITMENT_TWO"],
+                weeklyPlanSupport: environment["QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_SUPPORT"],
+                weeklyPlanReflection: environment["QUIPSLY_CAPTURE_UI_TEST_WEEKLY_PLAN_REFLECTION"]
             )
         }
 
@@ -259,7 +267,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             packetNoteEditedTitle: payload["packetNoteEditedTitle"] as? String,
             packetNoteEditedBody: payload["packetNoteEditedBody"] as? String,
             recordingFixtureLocalID: payload["recordingFixtureLocalID"] as? String,
-            recordingFixtureAssetID: payload["recordingFixtureAssetID"] as? String
+            recordingFixtureAssetID: payload["recordingFixtureAssetID"] as? String,
+            weeklyPlanCommitmentOne: payload["weeklyPlanCommitmentOne"] as? String,
+            weeklyPlanCommitmentTwo: payload["weeklyPlanCommitmentTwo"] as? String,
+            weeklyPlanSupport: payload["weeklyPlanSupport"] as? String,
+            weeklyPlanReflection: payload["weeklyPlanReflection"] as? String
         )
     }
 
@@ -689,9 +701,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app.typeText(value)
         let packetNoteKeyboardDone = app.buttons["CapturePacketNoteKeyboardDone"].firstMatch
         let coachKeyboardDone = app.buttons["CaptureCoachFollowUpKeyboardDone"].firstMatch
+        let weeklyPlanKeyboardDone = app.buttons["CaptureWeeklyPlanKeyboardDone"].firstMatch
         let keyboardDone = app.keyboards.buttons["Done"].firstMatch
         if packetNoteKeyboardDone.waitForExistence(timeout: 2) { packetNoteKeyboardDone.tap() }
         else if coachKeyboardDone.waitForExistence(timeout: 2) { coachKeyboardDone.tap() }
+        else if weeklyPlanKeyboardDone.waitForExistence(timeout: 2) { weeklyPlanKeyboardDone.tap() }
         else if keyboardDone.exists { keyboardDone.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16)).tap() }
     }
@@ -982,6 +996,100 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             newTagLabel: tagLabel,
             in: app
         )
+    }
+
+    func testSignedInIPhoneUpdatesCanonicalWeeklyPlanAndSurvivesRelaunch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let commitmentOne = try XCTUnwrap(credentials.weeklyPlanCommitmentOne)
+        let commitmentTwo = try XCTUnwrap(credentials.weeklyPlanCommitmentTwo)
+        let support = try XCTUnwrap(credentials.weeklyPlanSupport)
+        let reflection = try XCTUnwrap(credentials.weeklyPlanReflection)
+
+        func openEditor(in app: XCUIApplication) {
+            let trigger = app.buttons.matching(
+                NSPredicate(
+                    format: "identifier == %@ OR identifier == %@",
+                    "CaptureTodayWeeklyPlanEdit",
+                    "CaptureTodayWeeklyPlanCreate"
+                )
+            ).firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(trigger, in: app, timeout: 30, swipeAttempts: 12),
+                "Today should expose the current canonical weekly plan or the explicit create action."
+            )
+            trigger.tap()
+            XCTAssertTrue(
+                app.collectionViews["CaptureWeeklyPlanSheet"].waitForExistence(timeout: 8),
+                "The signed-in app should present the protected weekly-plan editor."
+            )
+        }
+
+        func reveal(_ element: XCUIElement, in form: XCUIElement) {
+            for _ in 0..<16 where !element.isHittable {
+                form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+                    .press(
+                        forDuration: 0.05,
+                        thenDragTo: form.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42)
+                        )
+                    )
+                RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+            }
+            XCTAssertTrue(element.isHittable, "The weekly-plan editor must keep every operated field reachable.")
+        }
+
+        var app = try launchSignedInCaptureApp(initialTab: "today")
+        openEditor(in: app)
+        let form = app.collectionViews["CaptureWeeklyPlanSheet"].firstMatch
+        let commitmentOneField = app.textFields["CaptureWeeklyPlanCommitmentOne"].firstMatch
+        let commitmentTwoField = app.textFields["CaptureWeeklyPlanCommitmentTwo"].firstMatch
+        replaceText(in: commitmentOneField, with: commitmentOne, app: app)
+        replaceText(in: commitmentTwoField, with: commitmentTwo, app: app)
+
+        let supportField = app.textFields["CaptureWeeklyPlanSupport"].firstMatch
+        reveal(supportField, in: form)
+        replaceText(in: supportField, with: support, app: app)
+        let reflectionField = app.textFields["CaptureWeeklyPlanReflection"].firstMatch
+        reveal(reflectionField, in: form)
+        replaceText(in: reflectionField, with: reflection, app: app)
+        let reviewed = app.switches["CaptureWeeklyPlanReviewed"].firstMatch
+        reveal(reviewed, in: form)
+        if reviewed.value as? String == "0" {
+            reviewed.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            expectation(
+                for: NSPredicate(format: "value == %@", "1"),
+                evaluatedWith: reviewed
+            )
+            waitForExpectations(timeout: 3)
+        }
+        XCTAssertEqual(reviewed.value as? String, "1")
+
+        let save = app.buttons["CaptureWeeklyPlanSave"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(
+            form.waitForNonExistence(timeout: 30),
+            "The editor should close only after Nest acknowledges the protected decision."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayWeeklyPlanPending"].exists,
+            "A successful signed-in operation should leave no unresolved phone outbox item."
+        )
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "today")
+        let canonicalCard = app.descendants(matching: .any)["CaptureTodayWeeklyPlan"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(canonicalCard, in: app, timeout: 30, swipeAttempts: 12),
+            "The current weekly plan should survive process relaunch."
+        )
+        openEditor(in: app)
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanCommitmentOne"].value as? String, commitmentOne)
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanCommitmentTwo"].value as? String, commitmentTwo)
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanSupport"].value as? String, support)
+        XCTAssertEqual(app.textFields["CaptureWeeklyPlanReflection"].value as? String, reflection)
+        XCTAssertEqual(app.switches["CaptureWeeklyPlanReviewed"].value as? String, "1")
+        attachRuntimeScreenshot(app, name: "Canonical weekly plan after signed-in iPhone relaunch")
     }
 
     func testOwnerCreatesTwoVersionedNestBackupsFromAccount() throws {
