@@ -38,7 +38,9 @@ There is no correctness benefit in rebuilding the same commit under a new
 timestamp. `quipsly-deploy-preview.sh` now defaults to
 `source-<full-commit-sha>` and reads back the registry digest before deciding
 whether Cloud Build is needed. `REUSE_EXISTING_IMAGE=0` remains an explicit
-diagnostic escape hatch; it is not the routine release path.
+diagnostic assertion, but it cannot overwrite an existing canonical source
+tag. Once `source-<full-commit-sha>` exists, the routine path reuses it and the
+override fails closed; a distinct binary requires a distinct commit identity.
 
 The dedicated transcript-worker release follows the same rule. Its default tag
 is the full committed source SHA, registry failures fail closed, and an existing
@@ -177,6 +179,37 @@ and supplies Quipsly's server-side `GEMINI_API_KEY`; that $17.34 is model usage,
 not Cloud Build or deployment spend. Future optimization belongs in per-feature
 AI metering, caching, quotas, and model selection rather than the release
 pipeline.
+
+## Follow-up readback — 2026-08-02
+
+The next credentialed, read-only 30-day audit found 113 builds: 88 succeeded,
+19 failed, and 6 were canceled. Estimated priced build compute was $38.14;
+83 `E2_HIGHCPU_32` builds account for $36.14 of that estimate. Only two builds
+were newer than the prior snapshot: one successful schema image and one failed
+non-urgent `E2_HIGHCPU_8` qualification. No cloud build was triggered by this
+readback or by the local product work documented here.
+
+The smaller-worker history is now explicit in the audit receipt: 2 successes,
+7 failures, and 3 cancellations in 30 days. Because failed attempts still cost
+money, the audit no longer recommends buying another smaller-worker benchmark
+when non-successes outnumber successes. It recommends retaining the reliable
+32-core worker for the comparatively infrequent required image and reducing
+peak build memory before another qualification.
+
+The cost controls are measurably reducing retained infrastructure:
+
+- all four Cloud Run services have zero minimum instances;
+- Artifact Registry has two cleanup policies and fell from 927 to 477 versions;
+- versions older than 30 days fell from 536 to 84;
+- the audit found no version currently eligible under the protected 45-day /
+  keep-10-per-package policy; and
+- exact-source reuse remains the remaining release-churn recommendation, with
+  four repeated committed-source builds in the 30-day window.
+
+The private read-only receipt is
+`/private/tmp/quipsly-cloud-cost-audit-20260802-postfix-1785723585.json`.
+It records zero artifact deletion, cleanup-policy change, service change,
+database change, or other mutation by the audit itself.
 
 The repository still exposed a second timestamp-tag deployment path through
 package scripts, the HGO/Quipsly conductor, readiness output, and coaching

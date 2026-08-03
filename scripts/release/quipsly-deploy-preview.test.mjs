@@ -57,6 +57,12 @@ test("preview deploy reuses one verified image for one committed source", () => 
   assert.match(source, /Reusing exact-source Quipsly image/);
   assert.match(source, /Cloud Build skipped: this committed source already has a verified image/);
   assert.match(source, /REUSE_EXISTING_IMAGE must be 0 or 1/);
+  assert.match(source, /Refusing to replace an existing immutable Quipsly image tag/);
+  assert.match(source, /Create a new commit for a distinct Nest release identity/);
+  assert.match(
+    source,
+    /elif \[\[ "\$\{image_readback_status\}" == "0" \]\]; then[\s\S]*REUSE_EXISTING_IMAGE[\s\S]*Refusing to replace an existing immutable Quipsly image tag/,
+  );
   assert.match(source, /CLOUD_BUILD_MACHINE_TYPE="\$\{CLOUD_BUILD_MACHINE_TYPE:-e2-highcpu-32\}"/);
   assert.match(source, /--machine-type "\$\{CLOUD_BUILD_MACHINE_TYPE\}"/);
   assert.match(source, /MIN_CLOUD_BUILD_INTERVAL_HOURS="\$\{MIN_CLOUD_BUILD_INTERVAL_HOURS:-72\}"/);

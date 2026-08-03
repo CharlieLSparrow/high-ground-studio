@@ -107,6 +107,13 @@ test("attributes repeated committed-source builds and protects traffic digests",
   assert.equal(receipt.builds.buildCount, 3);
   assert.equal(receipt.builds.repeatedCommittedSourceBuildCount, 1);
   assert.equal(receipt.builds.estimatedComputeUsd, 1.248);
+  const highCpu32 = receipt.builds.byMachineType.find(
+    (entry) => entry.machineType === "E2_HIGHCPU_32",
+  );
+  assert.deepEqual(
+    highCpu32?.statusCounts,
+    [{ status: "FAILURE", count: 1 }, { status: "SUCCESS", count: 1 }],
+  );
   assert.equal(receipt.artifacts.olderThan30DaysCount, 1);
   assert.equal(receipt.artifacts.trafficServingProtectedVersionCount, 2);
   assert.equal(
@@ -128,6 +135,39 @@ test("attributes repeated committed-source builds and protects traffic digests",
     ],
   );
   assert.equal(receipt.boundaries.artifactDeletionPerformed, false);
+});
+
+test("does not recommend rebuying an unreliable smaller-worker experiment", () => {
+  const builds = [
+    build("SUCCESS", "E2_HIGHCPU_32", "2026-08-01T17:00:00.000Z", "2026-08-01T17:10:00.000Z", "a".repeat(40)),
+    build("SUCCESS", "E2_HIGHCPU_8", "2026-08-01T16:00:00.000Z", "2026-08-01T16:20:00.000Z", "b".repeat(40)),
+    build("FAILURE", "E2_HIGHCPU_8", "2026-08-01T15:00:00.000Z", "2026-08-01T15:20:00.000Z", "c".repeat(40)),
+    build("CANCELLED", "E2_HIGHCPU_8", "2026-08-01T14:00:00.000Z", "2026-08-01T14:20:00.000Z", "d".repeat(40)),
+  ];
+  const receipt = summarizeQuipslyCloudCost({
+    auditedAt: "2026-08-01T18:00:00.000Z",
+    windowStartedAt: "2026-07-02T18:00:00.000Z",
+    projectId: "high-ground-odyssey",
+    region: "us-central1",
+    repository: "high-ground-studio",
+    serviceName: "studio",
+    builds,
+    images: [],
+    service: {},
+    services: [],
+    revisions: [],
+    cleanupPolicies: [],
+  });
+
+  const workerRecommendation = receipt.recommendations.find((entry) =>
+    ["benchmark-smaller-build-worker", "keep-reliable-build-worker"].includes(entry.code),
+  );
+  assert.equal(workerRecommendation?.code, "keep-reliable-build-worker");
+  assert.match(
+    workerRecommendation?.finding ?? "",
+    /completed 1 build\(s\) but failed or was canceled 2 time\(s\)/,
+  );
+  assert.match(workerRecommendation?.action ?? "", /reduce peak build memory/);
 });
 
 test("distinguishes a resolved traffic digest from one protected by retention", () => {

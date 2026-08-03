@@ -50,19 +50,33 @@ export function summarizeQuipslyCloudCost(input) {
         "Reuse the verified source-SHA image for preview retries and promotion.",
     });
   }
-  if (
-    buildSummary.byMachineType.some(
-      (entry) => entry.machineType === "E2_HIGHCPU_32",
-    )
-  ) {
-    recommendations.push({
-      priority: "high",
-      code: "benchmark-smaller-build-worker",
-      finding:
-        "Quipsly uses the most expensive default-pool worker class in this audit.",
-      action:
-        "Benchmark E2_HIGHCPU_8 on one non-urgent exact-source build; retain E2_HIGHCPU_32 only if the smaller worker is not materially cheaper or reliable.",
-    });
+  const highCpu32 = buildSummary.byMachineType.find(
+    (entry) => entry.machineType === "E2_HIGHCPU_32",
+  );
+  const highCpu8 = buildSummary.byMachineType.find(
+    (entry) => entry.machineType === "E2_HIGHCPU_8",
+  );
+  if (highCpu32) {
+    const smallerSuccesses = machineStatusCount(highCpu8, "SUCCESS");
+    const smallerNonSuccesses = highCpu8
+      ? highCpu8.buildCount - smallerSuccesses
+      : 0;
+    recommendations.push(smallerNonSuccesses > smallerSuccesses
+      ? {
+          priority: "medium",
+          code: "keep-reliable-build-worker",
+          finding: `E2_HIGHCPU_8 completed ${smallerSuccesses} build(s) but failed or was canceled ${smallerNonSuccesses} time(s) in this audit window.`,
+          action:
+            "Keep E2_HIGHCPU_32 for required images; reduce peak build memory before another smaller-worker qualification instead of buying repeated failed attempts.",
+        }
+      : {
+          priority: "high",
+          code: "benchmark-smaller-build-worker",
+          finding:
+            "Quipsly uses the most expensive default-pool worker class in this audit.",
+          action:
+            "Benchmark E2_HIGHCPU_8 on one non-urgent exact-source build; retain E2_HIGHCPU_32 only if the smaller worker is not materially cheaper or reliable.",
+        });
   }
   if (imageSummary.olderThan30DaysCount > 0 && cleanupPolicies.length === 0) {
     recommendations.push({
@@ -164,9 +178,14 @@ function summarizeBuilds(builds) {
       buildCount: 0,
       durationSeconds: 0,
       estimatedComputeUsd: null,
+      statusCounts: new Map(),
     };
     machine.buildCount += 1;
     machine.durationSeconds += durationSeconds;
+    machine.statusCounts.set(
+      status,
+      (machine.statusCounts.get(status) ?? 0) + 1,
+    );
     if (rate == null) {
       unpricedBuildCount += 1;
     } else {
@@ -204,8 +223,11 @@ function summarizeBuilds(builds) {
       0,
     ),
     byMachineType: [...machineTypes.values()]
-      .map((entry) => ({
+      .map(({ statusCounts: machineStatuses, ...entry }) => ({
         ...entry,
+        statusCounts: [...machineStatuses.entries()]
+          .map(([status, count]) => ({ status, count }))
+          .sort((left, right) => left.status.localeCompare(right.status)),
         estimatedComputeUsd:
           entry.estimatedComputeUsd == null
             ? null
@@ -215,6 +237,11 @@ function summarizeBuilds(builds) {
     pricingBasis:
       "Google Cloud us-central1 default-pool list price captured 2026-08-01; excludes free-tier credits, storage, logging, tax, and negotiated discounts.",
   };
+}
+
+function machineStatusCount(machine, status) {
+  return machine?.statusCounts.find((entry) => entry.status === status)?.count
+    ?? 0;
 }
 
 function summarizeImages(images, now, protectedDigests) {

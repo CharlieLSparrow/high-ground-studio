@@ -6724,3 +6724,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   production Nest, provider Calendar, TestFlight, or App Store gates. Full
   evidence is in
   `docs/coordination/2026-08-02-native-reviewed-packet-materialization.md`.
+
+### Cloud release cost-control follow-up — 2026-08-02
+
+- Credentialed read-only 30-day readback confirms Cloud Build is the blue
+  deployment-driven spend: 113 builds and about $38.14 of estimated priced
+  compute, with 83 `E2_HIGHCPU_32` builds accounting for $36.14. The separate
+  red project remains Gemini API usage rather than deployments; Cloud SQL is
+  the intentional persistent database baseline.
+- Existing controls are materially reducing retained infrastructure. All four
+  Cloud Run services have zero minimum instances. Two Artifact Registry cleanup
+  policies reduced inventory from 927 to 477 versions and old versions from 536
+  to 84 without the audit mutating infrastructure.
+- Corrected the cost auditor's worker advice using actual outcomes. The smaller
+  `E2_HIGHCPU_8` lane has 2 successes versus 10 failures/cancellations in the
+  window, so it now recommends preserving the reliable worker for infrequent
+  required builds and reducing peak memory before buying another experiment.
+- Closed the final Nest exact-source escape hatch: even
+  `REUSE_EXISTING_IMAGE=0` now refuses to replace an existing canonical
+  `source-<commit>` tag. Preview retries and promotion reuse the verified
+  digest; a distinct binary requires a distinct commit. Thirty-one release,
+  cleanup, immutable-image, and pipeline contracts pass. No build, deploy,
+  cleanup mutation, service mutation, or database mutation occurred.
+- Full measured state and the private local receipt path are documented in
+  `docs/deploy/quipsly-cloud-cost-control.md`.

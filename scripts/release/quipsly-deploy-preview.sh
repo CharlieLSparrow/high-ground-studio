@@ -394,9 +394,15 @@ if [[ "${SKIP_BUILD:-0}" == "1" || "${SKIP_CLOUD_BUILD:-0}" == "1" ]]; then
     exit 2
   fi
   echo "Using explicitly selected existing Quipsly image ${IMAGE_URI} (${existing_image_digest})"
-elif [[ "${REUSE_EXISTING_IMAGE}" == "1" && "${image_readback_status}" == "0" ]]; then
-  echo "Reusing exact-source Quipsly image ${IMAGE_URI} (${existing_image_digest})"
-  echo "Cloud Build skipped: this committed source already has a verified image."
+elif [[ "${image_readback_status}" == "0" ]]; then
+  if [[ "${REUSE_EXISTING_IMAGE}" == "1" ]]; then
+    echo "Reusing exact-source Quipsly image ${IMAGE_URI} (${existing_image_digest})"
+    echo "Cloud Build skipped: this committed source already has a verified image."
+  else
+    echo "Refusing to replace an existing immutable Quipsly image tag." >&2
+    echo "Create a new commit for a distinct Nest release identity." >&2
+    exit 2
+  fi
 elif [[ "${image_readback_status}" == "2" ]]; then
   exit 2
 else
