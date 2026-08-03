@@ -6909,3 +6909,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   occurred. Physical-iPhone offline/reconnect/conflict and real separate-account
   proof remain required before the goal gate can close. Full evidence is in
   `docs/coordination/2026-08-03-offline-transcript-review-outbox.md`.
+
+### Operated offline transcript reconciliation checkpoint — 2026-08-03
+
+- Made protected transcript review a top-level offline continuation instead of
+  burying it under the local Library feed. Only the current owner's valid
+  30-day protected snapshot plus exact playback-eligible local source appears;
+  future-dated cache evidence fails closed.
+- Kept transcript outbox truth visible through long-document scrolling with a
+  persistent toolbar badge that reports waiting/held counts and returns to the
+  complete explanation. Exact queued correction controls now have stable
+  per-segment identities for operated verification.
+- A fresh compiled iPhone 17 Pro / iOS 26.3.1 Simulator operation used current
+  local Nest, the Firebase emulator, PostgreSQL, and unreachable loopback port
+  9 to prove online cache priming, actual API unreachability, two exact-source
+  playback decisions, process death, offline recovery, a concurrent canonical
+  correction, reconnect, one acknowledged as-heard verification, and one held
+  stale overlay.
+- Independent PostgreSQL readback proved immutable provider segments and zero
+  notes, tasks, goals, or calendar links. The operated journey passed 1/1 at
+  `/private/tmp/quipsly-offline-transcript-review-1785746434938-bd654b20-54542.xcresult`;
+  server correction tests pass 13/13, retained operator contracts pass 2/2,
+  strict Nest TypeScript, mobile contract smoke, release-source verification,
+  Swift parse, and patch hygiene all pass.
+- This remains post-Build-27 local Simulator proof. No release, TestFlight,
+  cloud, deploy, production database, or provider mutation occurred. Physical
+  iPhone, production Nest, and separate real-account acceptance remain open.
+  Full evidence is in
+  `docs/coordination/2026-08-03-operated-offline-transcript-review.md`.
