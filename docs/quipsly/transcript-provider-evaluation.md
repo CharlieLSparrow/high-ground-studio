@@ -178,6 +178,36 @@ The initial useful corpus should contain at least twelve 60–180 second windows
 Long episodes and sessions remain acceptance tests after provider selection.
 They are not a substitute for a controlled corpus.
 
+### Version 2 coverage contract
+
+Corpus v2 makes the table above executable rather than advisory. Every window
+declares exactly one workload and one or more controlled conditions from that
+workload. Every provider candidate also declares its actual evidence boundary:
+
+- `speakerAttribution`: `word`, `segment`, or `unavailable`;
+- `timingGranularity`: `word`, `segment`, or `unavailable`.
+
+The report contains separate podcast and coaching sections, required/present/
+missing condition lists, expected versus attempted windows for every provider,
+and clean/difficult strata. A provider receives `pass` only after it succeeds
+on every classified workload window, including every required condition, and measures no worse than 5% clean-audio WER, 10%
+difficult-audio WER, and 3% speaker error. Missing corpus conditions, missing
+provider candidates, failed required conditions, or unsupported speaker
+evidence produce `insufficient-evidence`; they cannot accidentally look like a
+good blended average. An observed metric that exceeds a complete evidence bar
+produces `fail`.
+
+These threshold fields are release evidence, not an automatic provider choice.
+Policy, correction effort, latency, cost, failure recovery, and the full-session
+acceptance passes still require a human decision receipt.
+
+The parser remains backward-readable for v1 inputs. A legacy single-purpose
+corpus can retain its workload, but has no controlled-condition evidence. A
+legacy mixed corpus is reported with unclassified windows; Quipsly does not
+guess workload from IDs, transcript text, or speaker names. Reclassify those
+windows in a new immutable v2 corpus revision before using them for a release
+decision.
+
 ## Metrics
 
 The implemented evaluator produces:
@@ -192,6 +222,8 @@ The implemented evaluator produces:
   billing evidence is absent;
 - measured correction time and correction-operation count;
 - policy receipt hashes and retryable/non-retryable failure counts.
+- explicit corpus and per-provider coverage, plus threshold assessments that
+  fail closed when required evidence is absent.
 
 Alignment minimizes word edits and then maximizes exact word matches. That
 secondary rule prevents an equally valid WER path from degrading speaker and
@@ -231,8 +263,13 @@ cannot silently replace evidence.
    cd /Users/wall-e/Dev/high-ground-studio-product
    pnpm quipsly:transcript:evaluate -- \
      --input /path/to/private-corpus-revision.json \
-     --output /path/to/create-once-evaluation-report.json
+     --output /path/to/create-once-evaluation-report.json \
+     --html-output /path/to/create-once-evaluation-review.html
    ```
+
+   The optional standalone review board is rendered from the aggregate report,
+   not from the private corpus. It carries the same no-transcript/no-identity
+   privacy boundary, works without a server, and is intentionally read-only.
 
 7. Review the separate podcast and coaching evidence with a human. Record the
    chosen default, fallback, policy requirements, model/config pin, and rollback

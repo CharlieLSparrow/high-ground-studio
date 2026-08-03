@@ -1,6 +1,6 @@
 {
-  "kind": "quipsly-private-transcript-evaluation-corpus-v1",
-  "version": 1,
+  "kind": "quipsly-private-transcript-evaluation-corpus-v2",
+  "version": 2,
   "corpusId": "synthetic-example-corpus",
   "revisionId": "synthetic-revision-001",
   "purpose": "mixed",
@@ -12,6 +12,10 @@
       "windowId": "synthetic-window-001",
       "sourceSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       "durationSeconds": 3,
+      "workload": "podcast",
+      "conditions": [
+        "clean-charlie-speech"
+      ],
       "reference": {
         "approvalStatus": "human-approved",
         "revisionId": "synthetic-human-reference-v1",
@@ -40,6 +44,8 @@
           "model": "synthetic-model-v1",
           "adapterVersion": "synthetic-adapter-v1",
           "requestConfigSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "speakerAttribution": "word",
+          "timingGranularity": "word",
           "outcome": "succeeded",
           "completedAt": "2026-08-01T18:06:00.000Z",
           "elapsedMilliseconds": 1200,

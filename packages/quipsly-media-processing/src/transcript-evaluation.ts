@@ -1,12 +1,44 @@
 export const TRANSCRIPT_EVALUATION_CORPUS_KIND =
-  "quipsly-private-transcript-evaluation-corpus-v1" as const;
+  "quipsly-private-transcript-evaluation-corpus-v2" as const;
 export const TRANSCRIPT_EVALUATION_REPORT_KIND =
-  "quipsly-private-transcript-evaluation-report-v1" as const;
-export const TRANSCRIPT_EVALUATION_VERSION = 1 as const;
+  "quipsly-private-transcript-evaluation-report-v2" as const;
+export const TRANSCRIPT_EVALUATION_VERSION = 2 as const;
+export const LEGACY_TRANSCRIPT_EVALUATION_CORPUS_KIND =
+  "quipsly-private-transcript-evaluation-corpus-v1" as const;
+export const LEGACY_TRANSCRIPT_EVALUATION_VERSION = 1 as const;
+
+export const PODCAST_TRANSCRIPT_EVALUATION_CONDITIONS = [
+  "clean-charlie-speech",
+  "clean-homer-speech",
+  "normal-exchange",
+  "overlap-or-interruption",
+  "watched-clip-bleed",
+  "degraded-remote-audio",
+] as const;
+
+export const COACHING_TRANSCRIPT_EVALUATION_CONDITIONS = [
+  "coach-client-turn-taking",
+  "names-and-domain-terms",
+  "commitments-and-dates",
+  "interruption-or-emotional-speech",
+  "quiet-or-distant-voice",
+  "noisy-or-recovery-prone-capture",
+] as const;
+
+export type TranscriptEvaluationWorkload = "podcast" | "coaching";
+export type TranscriptEvaluationCondition =
+  | typeof PODCAST_TRANSCRIPT_EVALUATION_CONDITIONS[number]
+  | typeof COACHING_TRANSCRIPT_EVALUATION_CONDITIONS[number];
+export type TranscriptEvaluationDifficulty = "clean" | "difficult";
+export type TranscriptEvaluationSpeakerAttribution =
+  "word" | "segment" | "unavailable" | "unknown";
+export type TranscriptEvaluationTimingGranularity =
+  "word" | "segment" | "unavailable" | "unknown";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/;
 const MAX_WORDS_PER_WINDOW = 3_000;
+const parsedCorpora = new WeakSet<object>();
 
 export type TranscriptEvaluationWord = {
   text: string;
@@ -31,6 +63,8 @@ export type TranscriptEvaluationProviderIdentity = {
   model: string;
   adapterVersion: string;
   requestConfigSha256: string;
+  speakerAttribution: TranscriptEvaluationSpeakerAttribution;
+  timingGranularity: TranscriptEvaluationTimingGranularity;
 };
 
 export type TranscriptEvaluationCorrectionObservation = {
@@ -75,6 +109,8 @@ export type TranscriptEvaluationWindow = {
   windowId: string;
   sourceSha256: string;
   durationSeconds: number;
+  workload: TranscriptEvaluationWorkload | "unknown";
+  conditions: TranscriptEvaluationCondition[];
   reference: TranscriptEvaluationReference;
   candidates: TranscriptEvaluationCandidate[];
 };
@@ -128,6 +164,10 @@ export type TranscriptEvaluationProviderReport = {
   model: string;
   adapterVersion: string;
   requestConfigSha256: string;
+  speakerAttribution: TranscriptEvaluationSpeakerAttribution;
+  timingGranularity: TranscriptEvaluationTimingGranularity;
+  expectedWindowCount: number;
+  missingCandidateWindowCount: number;
   attemptedWindowCount: number;
   succeededWindowCount: number;
   failedWindowCount: number;
@@ -136,7 +176,7 @@ export type TranscriptEvaluationProviderReport = {
   speakerMetrics: TranscriptSpeakerMetrics | null;
   timingMetrics: TranscriptTimingMetrics | null;
   elapsedMilliseconds: number;
-  realTimeFactor: number;
+  realTimeFactor: number | null;
   costObservationCount: number;
   estimatedCostUsd: number | null;
   correctionObservationCount: number;
@@ -144,6 +184,42 @@ export type TranscriptEvaluationProviderReport = {
   correctionOperationCount: number;
   policyReceiptSha256s: string[];
   failureCodes: Array<{ code: string; count: number; retryableCount: number }>;
+};
+
+export type TranscriptEvaluationCoverage = {
+  workload: TranscriptEvaluationWorkload;
+  requiredConditions: TranscriptEvaluationCondition[];
+  presentConditions: TranscriptEvaluationCondition[];
+  missingConditions: TranscriptEvaluationCondition[];
+  windowCount: number;
+  complete: boolean;
+};
+
+export type TranscriptEvaluationThresholdStatus = "pass" | "fail" | "insufficient-evidence";
+
+export type TranscriptEvaluationThresholdAssessment = {
+  status: TranscriptEvaluationThresholdStatus;
+  cleanWordErrorRate: { maximum: 0.05; observed: number | null; status: TranscriptEvaluationThresholdStatus };
+  difficultWordErrorRate: { maximum: 0.1; observed: number | null; status: TranscriptEvaluationThresholdStatus };
+  speakerErrorRate: { maximum: 0.03; observed: number | null; status: TranscriptEvaluationThresholdStatus };
+  reasons: string[];
+};
+
+export type TranscriptEvaluationWorkloadProviderReport = TranscriptEvaluationProviderReport & {
+  cleanWordMetrics: TranscriptWordErrorMetrics | null;
+  difficultWordMetrics: TranscriptWordErrorMetrics | null;
+  attemptedConditions: TranscriptEvaluationCondition[];
+  succeededConditions: TranscriptEvaluationCondition[];
+  failedConditions: TranscriptEvaluationCondition[];
+  missingCandidateConditions: TranscriptEvaluationCondition[];
+  thresholdAssessment: TranscriptEvaluationThresholdAssessment;
+};
+
+export type TranscriptEvaluationWorkloadReport = {
+  workload: TranscriptEvaluationWorkload;
+  windowCount: number;
+  coverage: TranscriptEvaluationCoverage;
+  providers: TranscriptEvaluationWorkloadProviderReport[];
 };
 
 export type TranscriptEvaluationReport = {
@@ -155,13 +231,22 @@ export type TranscriptEvaluationReport = {
   generatedAt: string;
   consentReceiptSha256: string;
   windowCount: number;
+  coverage: {
+    minimumWindowCount: 12;
+    unclassifiedWindowCount: number;
+    complete: boolean;
+    workloads: TranscriptEvaluationCoverage[];
+  };
   sourceReceipts: Array<{
     windowId: string;
     sourceSha256: string;
+    workload: TranscriptEvaluationWorkload | "unknown";
+    conditions: TranscriptEvaluationCondition[];
     referenceRevisionId: string;
     referenceContentSha256: string;
   }>;
   providers: TranscriptEvaluationProviderReport[];
+  workloads: TranscriptEvaluationWorkloadReport[];
   interpretation: {
     universalProviderScore: false;
     providerConfidenceComparable: false;
@@ -178,14 +263,38 @@ type Alignment = {
   exactMatches: Array<{ referenceIndex: number; candidateIndex: number }>;
 };
 
+const REQUIRED_CONDITIONS: Record<TranscriptEvaluationWorkload, readonly TranscriptEvaluationCondition[]> = {
+  podcast: PODCAST_TRANSCRIPT_EVALUATION_CONDITIONS,
+  coaching: COACHING_TRANSCRIPT_EVALUATION_CONDITIONS,
+};
+
+const CONDITION_DIFFICULTY: Record<TranscriptEvaluationCondition, TranscriptEvaluationDifficulty> = {
+  "clean-charlie-speech": "clean",
+  "clean-homer-speech": "clean",
+  "normal-exchange": "clean",
+  "overlap-or-interruption": "difficult",
+  "watched-clip-bleed": "difficult",
+  "degraded-remote-audio": "difficult",
+  "coach-client-turn-taking": "clean",
+  "names-and-domain-terms": "clean",
+  "commitments-and-dates": "clean",
+  "interruption-or-emotional-speech": "difficult",
+  "quiet-or-distant-voice": "difficult",
+  "noisy-or-recovery-prone-capture": "difficult",
+};
+
 export function parseTranscriptEvaluationCorpus(
   value: unknown,
 ): TranscriptEvaluationCorpus {
+  if (value != null && typeof value === "object" && parsedCorpora.has(value)) {
+    return value as TranscriptEvaluationCorpus;
+  }
   const row = record(value);
-  if (
-    row.kind !== TRANSCRIPT_EVALUATION_CORPUS_KIND
-    || row.version !== TRANSCRIPT_EVALUATION_VERSION
-  ) {
+  const isCurrent = row.kind === TRANSCRIPT_EVALUATION_CORPUS_KIND
+    && row.version === TRANSCRIPT_EVALUATION_VERSION;
+  const isLegacy = row.kind === LEGACY_TRANSCRIPT_EVALUATION_CORPUS_KIND
+    && row.version === LEGACY_TRANSCRIPT_EVALUATION_VERSION;
+  if (!isCurrent && !isLegacy) {
     throw new Error("Transcript evaluation corpus kind or version is invalid.");
   }
   const corpusId = safeId(row.corpusId, "corpusId");
@@ -194,7 +303,11 @@ export function parseTranscriptEvaluationCorpus(
   if (!(["podcast", "coaching", "mixed"] as string[]).includes(purpose)) {
     throw new Error("Transcript evaluation corpus purpose is invalid.");
   }
-  const windows = array(row.windows).map(parseWindow);
+  const windows = array(row.windows).map((window) => parseWindow(
+    window,
+    isLegacy ? LEGACY_TRANSCRIPT_EVALUATION_VERSION : TRANSCRIPT_EVALUATION_VERSION,
+    purpose as TranscriptEvaluationCorpus["purpose"],
+  ));
   if (windows.length === 0) {
     throw new Error("Transcript evaluation corpus requires at least one window.");
   }
@@ -202,7 +315,7 @@ export function parseTranscriptEvaluationCorpus(
   if (windowIds.size !== windows.length) {
     throw new Error("Transcript evaluation window IDs must be unique.");
   }
-  return {
+  const corpus: TranscriptEvaluationCorpus = {
     kind: TRANSCRIPT_EVALUATION_CORPUS_KIND,
     version: TRANSCRIPT_EVALUATION_VERSION,
     corpusId,
@@ -213,6 +326,8 @@ export function parseTranscriptEvaluationCorpus(
     consentReceiptSha256: sha256(row.consentReceiptSha256, "consentReceiptSha256"),
     windows,
   };
+  parsedCorpora.add(corpus);
+  return corpus;
 }
 
 export function evaluateTranscriptCandidate(
@@ -268,47 +383,31 @@ export function buildTranscriptEvaluationReport(
   corpusInput: TranscriptEvaluationCorpus,
   generatedAt: string,
 ): TranscriptEvaluationReport {
-  const corpus = parseTranscriptEvaluationCorpus(corpusInput);
+  const corpus = parsedCorpora.has(corpusInput)
+    ? corpusInput
+    : parseTranscriptEvaluationCorpus(corpusInput);
   const groups = new Map<string, ProviderAccumulator>();
+  const providerTemplates = new Map<string, TranscriptEvaluationCandidate>();
   for (const window of corpus.windows) {
     for (const candidate of window.candidates) {
       const key = providerIdentityKey(candidate);
+      providerTemplates.set(key, candidate);
       const aggregate = groups.get(key) ?? newProviderAccumulator(candidate);
-      aggregate.attemptedWindowCount += 1;
-      aggregate.sourceDurationSeconds += window.durationSeconds;
-      aggregate.elapsedMilliseconds += candidate.elapsedMilliseconds;
-      aggregate.policyReceiptSha256s.add(candidate.policy.receiptSha256);
-      if (candidate.estimatedCostUsd != null) {
-        aggregate.costObserved = true;
-        aggregate.costObservationCount += 1;
-        aggregate.estimatedCostUsd += candidate.estimatedCostUsd;
-      }
-      if (candidate.outcome === "failed") {
-        aggregate.failedWindowCount += 1;
-        const failure = aggregate.failures.get(candidate.errorCode) ?? {
-          count: 0,
-          retryableCount: 0,
-        };
-        failure.count += 1;
-        if (candidate.retryable) failure.retryableCount += 1;
-        aggregate.failures.set(candidate.errorCode, failure);
-      } else {
-        aggregate.succeededWindowCount += 1;
-        const evaluated = evaluateTranscriptCandidateWithEvidence(
-          window.reference.words,
-          candidate.words,
-        );
-        addCandidateMetrics(aggregate, evaluated.metrics, evaluated.timingDrifts);
-        if (candidate.correction) {
-          aggregate.correctionObservationCount += 1;
-          aggregate.correctionElapsedMilliseconds +=
-            candidate.correction.elapsedMilliseconds;
-          aggregate.correctionOperationCount += candidate.correction.operationCount;
-        }
-      }
+      accumulateCandidate(aggregate, window, candidate);
       groups.set(key, aggregate);
     }
   }
+
+  const coverage = (["podcast", "coaching"] as const).map((workload) => (
+    workloadCoverage(corpus.windows, workload)
+  ));
+  const unclassifiedWindowCount = corpus.windows.filter((window) => window.workload === "unknown").length;
+  const workloads = (["podcast", "coaching"] as const).map((workload) => buildWorkloadReport(
+    workload,
+    corpus.windows.filter((window) => window.workload === workload),
+    coverage.find((entry) => entry.workload === workload)!,
+    providerTemplates,
+  ));
 
   return {
     kind: TRANSCRIPT_EVALUATION_REPORT_KIND,
@@ -319,15 +418,26 @@ export function buildTranscriptEvaluationReport(
     generatedAt: isoDate(generatedAt, "generatedAt"),
     consentReceiptSha256: corpus.consentReceiptSha256,
     windowCount: corpus.windows.length,
+    coverage: {
+      minimumWindowCount: 12,
+      unclassifiedWindowCount,
+      complete: corpus.windows.length >= 12
+        && unclassifiedWindowCount === 0
+        && coverage.every((entry) => entry.complete),
+      workloads: coverage,
+    },
     sourceReceipts: corpus.windows.map((window) => ({
       windowId: window.windowId,
       sourceSha256: window.sourceSha256,
+      workload: window.workload,
+      conditions: window.conditions,
       referenceRevisionId: window.reference.revisionId,
       referenceContentSha256: window.reference.contentSha256,
     })),
     providers: [...groups.values()]
-      .map(providerReport)
+      .map((aggregate) => providerReport(aggregate, corpus.windows.length))
       .sort((left, right) => providerIdentityKey(left).localeCompare(providerIdentityKey(right))),
+    workloads,
     interpretation: {
       universalProviderScore: false,
       providerConfidenceComparable: false,
@@ -364,8 +474,27 @@ type ProviderAccumulator = TranscriptEvaluationProviderIdentity & {
   timingDrifts: number[];
 };
 
-function parseWindow(value: unknown): TranscriptEvaluationWindow {
+type ProviderWorkloadEvidence = {
+  aggregate: ProviderAccumulator;
+  clean: ProviderAccumulator;
+  difficult: ProviderAccumulator;
+  attemptedConditions: Set<TranscriptEvaluationCondition>;
+  succeededConditions: Set<TranscriptEvaluationCondition>;
+  failedConditions: Set<TranscriptEvaluationCondition>;
+  missingCandidateConditions: Set<TranscriptEvaluationCondition>;
+};
+
+function parseWindow(
+  value: unknown,
+  schemaVersion: 1 | 2,
+  corpusPurpose: TranscriptEvaluationCorpus["purpose"],
+): TranscriptEvaluationWindow {
   const row = record(value);
+  const { workload, conditions } = parseWindowClassification(
+    row,
+    schemaVersion,
+    corpusPurpose,
+  );
   const referenceRow = record(row.reference);
   if (referenceRow.approvalStatus !== "human-approved") {
     throw new Error("Evaluation references must be explicitly human-approved.");
@@ -381,7 +510,7 @@ function parseWindow(value: unknown): TranscriptEvaluationWindow {
   if (normalizeWords(reference.words).length === 0) {
     throw new Error("A human-approved transcript reference must contain words.");
   }
-  const candidates = array(row.candidates).map(parseCandidate);
+  const candidates = array(row.candidates).map((candidate) => parseCandidate(candidate, schemaVersion));
   if (candidates.length === 0) {
     throw new Error("Each transcript evaluation window requires a candidate.");
   }
@@ -393,12 +522,48 @@ function parseWindow(value: unknown): TranscriptEvaluationWindow {
     windowId: safeId(row.windowId, "windowId"),
     sourceSha256: sha256(row.sourceSha256, "sourceSha256"),
     durationSeconds: positiveFinite(row.durationSeconds, "durationSeconds"),
+    workload,
+    conditions,
     reference,
     candidates,
   };
 }
 
-function parseCandidate(value: unknown): TranscriptEvaluationCandidate {
+function parseWindowClassification(
+  row: Record<string, unknown>,
+  schemaVersion: 1 | 2,
+  corpusPurpose: TranscriptEvaluationCorpus["purpose"],
+): Pick<TranscriptEvaluationWindow, "workload" | "conditions"> {
+  if (schemaVersion === 1) {
+    return {
+      workload: corpusPurpose === "mixed" ? "unknown" : corpusPurpose,
+      conditions: [],
+    };
+  }
+  const workload = requiredText(row.workload, "window.workload");
+  if (workload !== "podcast" && workload !== "coaching") {
+    throw new Error("Transcript evaluation window workload is invalid.");
+  }
+  if (corpusPurpose !== "mixed" && corpusPurpose !== workload) {
+    throw new Error("Transcript evaluation window workload must match the corpus purpose.");
+  }
+  const conditions = array(row.conditions).map((condition, index) => {
+    const normalized = requiredText(condition, `window.conditions[${index}]`);
+    if (!(REQUIRED_CONDITIONS[workload] as readonly string[]).includes(normalized)) {
+      throw new Error(`Transcript evaluation condition ${normalized} does not belong to ${workload}.`);
+    }
+    return normalized as TranscriptEvaluationCondition;
+  });
+  if (conditions.length === 0) {
+    throw new Error("A v2 transcript evaluation window requires at least one controlled condition.");
+  }
+  if (new Set(conditions).size !== conditions.length) {
+    throw new Error("Transcript evaluation window conditions must be unique.");
+  }
+  return { workload, conditions };
+}
+
+function parseCandidate(value: unknown, schemaVersion: 1 | 2): TranscriptEvaluationCandidate {
   const row = record(value);
   const outcome = requiredText(row.outcome);
   const identity: TranscriptEvaluationProviderIdentity = {
@@ -407,6 +572,20 @@ function parseCandidate(value: unknown): TranscriptEvaluationCandidate {
     model: requiredText(row.model, "candidate.model"),
     adapterVersion: safeId(row.adapterVersion, "candidate.adapterVersion"),
     requestConfigSha256: sha256(row.requestConfigSha256, "candidate.requestConfigSha256"),
+    speakerAttribution: schemaVersion === 1
+      ? "unknown"
+      : providerCapability(
+        row.speakerAttribution,
+        "candidate.speakerAttribution",
+        ["word", "segment", "unavailable"],
+      ) as TranscriptEvaluationSpeakerAttribution,
+    timingGranularity: schemaVersion === 1
+      ? "unknown"
+      : providerCapability(
+        row.timingGranularity,
+        "candidate.timingGranularity",
+        ["word", "segment", "unavailable"],
+      ) as TranscriptEvaluationTimingGranularity,
   };
   const shared = {
     ...identity,
@@ -433,6 +612,18 @@ function parseCandidate(value: unknown): TranscriptEvaluationCandidate {
     words: parseWords(row.words, "candidate.words"),
     correction: row.correction == null ? null : parseCorrection(row.correction),
   };
+}
+
+function providerCapability(
+  value: unknown,
+  field: string,
+  allowed: readonly string[],
+) {
+  const normalized = requiredText(value, field);
+  if (!allowed.includes(normalized)) {
+    throw new Error(`${field} is invalid.`);
+  }
+  return normalized;
 }
 
 function parsePolicy(value: unknown): TranscriptEvaluationPolicyReceipt {
@@ -718,6 +909,8 @@ function newProviderAccumulator(candidate: TranscriptEvaluationCandidate): Provi
     model: candidate.model,
     adapterVersion: candidate.adapterVersion,
     requestConfigSha256: candidate.requestConfigSha256,
+    speakerAttribution: candidate.speakerAttribution,
+    timingGranularity: candidate.timingGranularity,
     attemptedWindowCount: 0,
     succeededWindowCount: 0,
     failedWindowCount: 0,
@@ -744,6 +937,144 @@ function newProviderAccumulator(candidate: TranscriptEvaluationCandidate): Provi
   };
 }
 
+function accumulateCandidate(
+  aggregate: ProviderAccumulator,
+  window: TranscriptEvaluationWindow,
+  candidate: TranscriptEvaluationCandidate,
+) {
+  aggregate.attemptedWindowCount += 1;
+  aggregate.sourceDurationSeconds += window.durationSeconds;
+  aggregate.elapsedMilliseconds += candidate.elapsedMilliseconds;
+  aggregate.policyReceiptSha256s.add(candidate.policy.receiptSha256);
+  if (candidate.estimatedCostUsd != null) {
+    aggregate.costObserved = true;
+    aggregate.costObservationCount += 1;
+    aggregate.estimatedCostUsd += candidate.estimatedCostUsd;
+  }
+  if (candidate.outcome === "failed") {
+    aggregate.failedWindowCount += 1;
+    const failure = aggregate.failures.get(candidate.errorCode) ?? {
+      count: 0,
+      retryableCount: 0,
+    };
+    failure.count += 1;
+    if (candidate.retryable) failure.retryableCount += 1;
+    aggregate.failures.set(candidate.errorCode, failure);
+    return;
+  }
+  aggregate.succeededWindowCount += 1;
+  const evaluated = evaluateTranscriptCandidateWithEvidence(
+    window.reference.words,
+    candidate.words,
+  );
+  addCandidateMetrics(aggregate, evaluated.metrics, evaluated.timingDrifts);
+  if (candidate.correction) {
+    aggregate.correctionObservationCount += 1;
+    aggregate.correctionElapsedMilliseconds += candidate.correction.elapsedMilliseconds;
+    aggregate.correctionOperationCount += candidate.correction.operationCount;
+  }
+}
+
+function workloadCoverage(
+  windows: TranscriptEvaluationWindow[],
+  workload: TranscriptEvaluationWorkload,
+): TranscriptEvaluationCoverage {
+  const workloadWindows = windows.filter((window) => window.workload === workload);
+  const present = new Set(workloadWindows.flatMap((window) => window.conditions));
+  const requiredConditions = [...REQUIRED_CONDITIONS[workload]];
+  const presentConditions = requiredConditions.filter((condition) => present.has(condition));
+  const missingConditions = requiredConditions.filter((condition) => !present.has(condition));
+  return {
+    workload,
+    requiredConditions,
+    presentConditions,
+    missingConditions,
+    windowCount: workloadWindows.length,
+    complete: workloadWindows.length >= requiredConditions.length && missingConditions.length === 0,
+  };
+}
+
+function buildWorkloadReport(
+  workload: TranscriptEvaluationWorkload,
+  windows: TranscriptEvaluationWindow[],
+  coverage: TranscriptEvaluationCoverage,
+  providerTemplates: Map<string, TranscriptEvaluationCandidate>,
+): TranscriptEvaluationWorkloadReport {
+  const evidence = new Map<string, ProviderWorkloadEvidence>();
+  for (const [key, template] of providerTemplates) {
+    evidence.set(key, {
+      aggregate: newProviderAccumulator(template),
+      clean: newProviderAccumulator(template),
+      difficult: newProviderAccumulator(template),
+      attemptedConditions: new Set(),
+      succeededConditions: new Set(),
+      failedConditions: new Set(),
+      missingCandidateConditions: new Set(),
+    });
+  }
+  for (const window of windows) {
+    const byProvider = new Map(window.candidates.map((candidate) => [providerIdentityKey(candidate), candidate]));
+    for (const [key, providerEvidence] of evidence) {
+      const candidate = byProvider.get(key);
+      if (!candidate) {
+        window.conditions.forEach((condition) => providerEvidence.missingCandidateConditions.add(condition));
+        continue;
+      }
+      window.conditions.forEach((condition) => providerEvidence.attemptedConditions.add(condition));
+      if (candidate.outcome === "failed") {
+        window.conditions.forEach((condition) => providerEvidence.failedConditions.add(condition));
+      } else {
+        window.conditions.forEach((condition) => providerEvidence.succeededConditions.add(condition));
+      }
+      accumulateCandidate(providerEvidence.aggregate, window, candidate);
+      const difficulties = new Set(window.conditions.map((condition) => CONDITION_DIFFICULTY[condition]));
+      for (const difficulty of difficulties) {
+        accumulateCandidate(providerEvidence[difficulty], window, candidate);
+      }
+    }
+  }
+  return {
+    workload,
+    windowCount: windows.length,
+    coverage,
+    providers: [...evidence.values()].map((providerEvidence) => {
+      const report = providerReport(providerEvidence.aggregate, windows.length);
+      const cleanWordMetrics = providerReport(providerEvidence.clean, windows.filter((window) => (
+        window.conditions.some((condition) => CONDITION_DIFFICULTY[condition] === "clean")
+      )).length).wordMetrics;
+      const difficultWordMetrics = providerReport(providerEvidence.difficult, windows.filter((window) => (
+        window.conditions.some((condition) => CONDITION_DIFFICULTY[condition] === "difficult")
+      )).length).wordMetrics;
+      const conditionLists = {
+        attemptedConditions: sortedConditions(providerEvidence.attemptedConditions, workload),
+        succeededConditions: sortedConditions(providerEvidence.succeededConditions, workload),
+        failedConditions: sortedConditions(providerEvidence.failedConditions, workload),
+        missingCandidateConditions: sortedConditions(providerEvidence.missingCandidateConditions, workload),
+      };
+      return {
+        ...report,
+        cleanWordMetrics,
+        difficultWordMetrics,
+        ...conditionLists,
+        thresholdAssessment: thresholdAssessment(
+          report,
+          cleanWordMetrics,
+          difficultWordMetrics,
+          coverage,
+          conditionLists.succeededConditions,
+        ),
+      };
+    }).sort((left, right) => providerIdentityKey(left).localeCompare(providerIdentityKey(right))),
+  };
+}
+
+function sortedConditions(
+  conditions: Set<TranscriptEvaluationCondition>,
+  workload: TranscriptEvaluationWorkload,
+) {
+  return REQUIRED_CONDITIONS[workload].filter((condition) => conditions.has(condition));
+}
+
 function addCandidateMetrics(
   aggregate: ProviderAccumulator,
   metrics: TranscriptEvaluationCandidateMetrics,
@@ -761,7 +1092,10 @@ function addCandidateMetrics(
   aggregate.timingDrifts.push(...timingDrifts);
 }
 
-function providerReport(aggregate: ProviderAccumulator): TranscriptEvaluationProviderReport {
+function providerReport(
+  aggregate: ProviderAccumulator,
+  expectedWindowCount: number,
+): TranscriptEvaluationProviderReport {
   const wordErrorCount = aggregate.substitutions + aggregate.deletions + aggregate.insertions;
   const wordMetrics = aggregate.succeededWindowCount === 0 ? null : {
     referenceWordCount: aggregate.referenceWordCount,
@@ -772,7 +1106,9 @@ function providerReport(aggregate: ProviderAccumulator): TranscriptEvaluationPro
     wordErrorCount,
     wordErrorRate: wordErrorCount / aggregate.referenceWordCount,
   };
-  const speakerMetricsValue = aggregate.succeededWindowCount === 0 ? null : {
+  const speakerMetricsValue = aggregate.succeededWindowCount === 0
+    || aggregate.speakerAttribution === "unavailable"
+    || aggregate.speakerAttribution === "unknown" ? null : {
     referenceSpeakerWordMatches: aggregate.referenceSpeakerWordMatches,
     candidateSpeakerAttributedMatches: aggregate.candidateSpeakerAttributedMatches,
     speakerConfusions: aggregate.speakerConfusions,
@@ -788,6 +1124,10 @@ function providerReport(aggregate: ProviderAccumulator): TranscriptEvaluationPro
     model: aggregate.model,
     adapterVersion: aggregate.adapterVersion,
     requestConfigSha256: aggregate.requestConfigSha256,
+    speakerAttribution: aggregate.speakerAttribution,
+    timingGranularity: aggregate.timingGranularity,
+    expectedWindowCount,
+    missingCandidateWindowCount: Math.max(0, expectedWindowCount - aggregate.attemptedWindowCount),
     attemptedWindowCount: aggregate.attemptedWindowCount,
     succeededWindowCount: aggregate.succeededWindowCount,
     failedWindowCount: aggregate.failedWindowCount,
@@ -795,10 +1135,13 @@ function providerReport(aggregate: ProviderAccumulator): TranscriptEvaluationPro
     wordMetrics,
     speakerMetrics: speakerMetricsValue,
     timingMetrics: aggregate.succeededWindowCount === 0
+      || aggregate.timingGranularity !== "word"
       ? null
       : timingReport(aggregate.timingDrifts),
     elapsedMilliseconds: aggregate.elapsedMilliseconds,
-    realTimeFactor: aggregate.elapsedMilliseconds / (aggregate.sourceDurationSeconds * 1_000),
+    realTimeFactor: aggregate.sourceDurationSeconds === 0
+      ? null
+      : aggregate.elapsedMilliseconds / (aggregate.sourceDurationSeconds * 1_000),
     costObservationCount: aggregate.costObservationCount,
     estimatedCostUsd: aggregate.costObserved ? aggregate.estimatedCostUsd : null,
     correctionObservationCount: aggregate.correctionObservationCount,
@@ -811,6 +1154,60 @@ function providerReport(aggregate: ProviderAccumulator): TranscriptEvaluationPro
       .map(([code, failure]) => ({ code, ...failure }))
       .sort((left, right) => left.code.localeCompare(right.code)),
   };
+}
+
+function thresholdAssessment(
+  report: TranscriptEvaluationProviderReport,
+  cleanWordMetrics: TranscriptWordErrorMetrics | null,
+  difficultWordMetrics: TranscriptWordErrorMetrics | null,
+  coverage: TranscriptEvaluationCoverage,
+  succeededConditions: TranscriptEvaluationCondition[],
+): TranscriptEvaluationThresholdAssessment {
+  const reasons: string[] = [];
+  const allConditionsSucceeded = coverage.requiredConditions.every((condition) => (
+    succeededConditions.includes(condition)
+  ));
+  const allWindowsSucceeded = report.succeededWindowCount === report.expectedWindowCount
+    && report.failedWindowCount === 0
+    && report.missingCandidateWindowCount === 0;
+  if (!coverage.complete) reasons.push("required-workload-conditions-missing-from-corpus");
+  if (!allConditionsSucceeded) reasons.push("provider-did-not-succeed-on-every-required-condition");
+  if (!allWindowsSucceeded) reasons.push("provider-did-not-succeed-on-every-workload-window");
+  if (report.speakerAttribution === "unavailable") reasons.push("speaker-attribution-unavailable");
+  if (report.speakerAttribution === "unknown") reasons.push("speaker-attribution-capability-unknown");
+
+  const evidenceComplete = coverage.complete && allConditionsSucceeded && allWindowsSucceeded;
+  const clean = thresholdMetric(cleanWordMetrics?.wordErrorRate ?? null, 0.05, evidenceComplete);
+  const difficult = thresholdMetric(difficultWordMetrics?.wordErrorRate ?? null, 0.1, evidenceComplete);
+  const speakers = thresholdMetric(
+    report.speakerMetrics?.speakerErrorRate ?? null,
+    0.03,
+    evidenceComplete
+      && report.speakerAttribution !== "unavailable"
+      && report.speakerAttribution !== "unknown",
+  );
+  const statuses = [clean.status, difficult.status, speakers.status];
+  const status: TranscriptEvaluationThresholdStatus = statuses.includes("insufficient-evidence")
+    ? "insufficient-evidence"
+    : statuses.includes("fail") ? "fail" : "pass";
+  return {
+    status,
+    cleanWordErrorRate: { maximum: 0.05, observed: clean.observed, status: clean.status },
+    difficultWordErrorRate: { maximum: 0.1, observed: difficult.observed, status: difficult.status },
+    speakerErrorRate: { maximum: 0.03, observed: speakers.observed, status: speakers.status },
+    reasons,
+  };
+}
+
+function thresholdMetric(
+  observed: number | null,
+  maximum: number,
+  evidenceComplete: boolean,
+): { observed: number | null; status: TranscriptEvaluationThresholdStatus } {
+  if (!evidenceComplete || observed == null) {
+    return { observed, status: "insufficient-evidence" };
+  }
+  return { observed, status: observed <= maximum ? "pass" : "fail" };
 }
 
 function timingReport(drifts: number[]): TranscriptTimingMetrics {
@@ -841,6 +1238,8 @@ function providerIdentityKey(identity: TranscriptEvaluationProviderIdentity) {
     identity.model,
     identity.adapterVersion,
     identity.requestConfigSha256,
+    identity.speakerAttribution,
+    identity.timingGranularity,
   ].join("::");
 }
 

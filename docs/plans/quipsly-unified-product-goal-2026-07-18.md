@@ -6818,3 +6818,30 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   TestFlight candidate should batch a substantial product increment rather
   than spend a release on metadata alone. Full evidence is in
   `docs/coordination/2026-08-02-app-store-submission-readiness.md`.
+
+### Workload-stratified transcript evidence checkpoint — 2026-08-02
+
+- Versioned the private transcript corpus and aggregate report to v2 so every
+  window carries an explicit podcast/coaching workload and controlled recording
+  condition, and every provider candidate declares its real speaker and timing
+  evidence boundary.
+- Reports now separate podcast from coaching and clean from difficult audio,
+  account for expected/attempted/failed/missing provider windows, and fail
+  closed when any of the twelve required conditions is absent. A complete
+  quantitative pass requires at most 5% clean WER, 10% difficult WER, and 3%
+  speaker error; it still does not choose an automatic universal provider.
+- Preserved v1 readability without guessing. Legacy mixed windows remain
+  explicitly unclassified, and unavailable diarization or non-word timing stay
+  unavailable rather than becoming fabricated metrics.
+- Added a create-once, standalone operator evidence board generated only from
+  the privacy-safe aggregate report. Desktop and 390 px rendered review passed
+  with no page overflow; provider tables scroll within their mobile container.
+- Pinned TypeScript 7.0.2 typecheck and 10/10 focused evaluator contracts pass,
+  including complete 12-condition success, measured threshold failure,
+  provider-window absence, legacy normalization, capability boundaries, XSS
+  escaping, and report privacy. No media upload, provider call, private-corpus
+  mutation, production-default change, deploy, or external mutation occurred.
+- Real consented corpus selection, provider runs, correction timing, physical
+  Apple evidence, full HGO/coaching passes, and separate-account authorization
+  remain required. Full contract and evidence are in
+  `docs/coordination/2026-08-02-transcript-evaluation-v2.md`.

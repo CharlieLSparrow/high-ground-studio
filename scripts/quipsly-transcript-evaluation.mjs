@@ -7,6 +7,7 @@ import {
   buildTranscriptEvaluationReport,
   parseTranscriptEvaluationCorpus,
 } from "../packages/quipsly-media-processing/src/transcript-evaluation.ts";
+import { renderTranscriptEvaluationReportHtml } from "../packages/quipsly-media-processing/src/transcript-evaluation-report-html.ts";
 
 const options = parseArguments(process.argv.slice(2));
 const inputPath = resolve(options.input);
@@ -25,6 +26,14 @@ if (options.stdout) {
   await writeFile(outputPath, serialized, { encoding: "utf8", flag: "wx" });
   process.stdout.write(`${outputPath}\n`);
 }
+if (options.htmlOutput) {
+  const htmlOutputPath = resolve(options.htmlOutput);
+  await writeFile(htmlOutputPath, renderTranscriptEvaluationReportHtml(report), {
+    encoding: "utf8",
+    flag: "wx",
+  });
+  (options.stdout ? process.stderr : process.stdout).write(`${htmlOutputPath}\n`);
+}
 
 function parseArguments(argumentsList) {
   const parsed = {
@@ -32,6 +41,7 @@ function parseArguments(argumentsList) {
     output: "",
     stdout: false,
     generatedAt: null,
+    htmlOutput: "",
   };
   for (let index = 0; index < argumentsList.length; index += 1) {
     const argument = argumentsList[index];
@@ -39,15 +49,17 @@ function parseArguments(argumentsList) {
     if (argument === "--input") parsed.input = argumentsList[++index] ?? "";
     else if (argument === "--output") parsed.output = argumentsList[++index] ?? "";
     else if (argument === "--generated-at") parsed.generatedAt = argumentsList[++index] ?? "";
+    else if (argument === "--html-output") parsed.htmlOutput = argumentsList[++index] ?? "";
     else if (argument === "--stdout") parsed.stdout = true;
     else if (argument === "--help" || argument === "-h") {
       process.stdout.write([
         "Usage:",
-        "  pnpm quipsly:transcript:evaluate --input PRIVATE_CORPUS.json --output REPORT.json",
+        "  pnpm quipsly:transcript:evaluate --input PRIVATE_CORPUS.json --output REPORT.json --html-output REVIEW.html",
         "  pnpm quipsly:transcript:evaluate --input PRIVATE_CORPUS.json --stdout",
         "",
         "The output path is create-only. The aggregate report omits transcript text,",
-        "speaker/reviewer identities, policy URLs, and source paths.",
+        "speaker/reviewer identities, policy URLs, and source paths. The optional",
+        "HTML review is generated from the same privacy-safe aggregate report.",
         "",
       ].join("\n"));
       process.exit(0);
