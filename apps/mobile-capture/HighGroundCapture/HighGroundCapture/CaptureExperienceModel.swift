@@ -166,6 +166,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesTranscriptReviewOutboxUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-transcript-review-outbox-ui-test"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var previewTab: CaptureRootTab? {
         #if DEBUG
         let prefix = "--capture-ui-preview-tab="

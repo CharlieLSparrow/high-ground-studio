@@ -1496,6 +1496,62 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(goalBoundary.label.contains("creates no task, target date, reminder, calendar event, message, or publication"))
     }
 
+    func testTranscriptReviewOutboxSurvivesRelaunchAndStaysAccountPartitioned() {
+        let owner = "transcript-review-outbox-\(UUID().uuidString.lowercased())"
+        let otherOwner = "transcript-review-outbox-other-\(UUID().uuidString.lowercased())"
+        let ownerArguments = [
+            "--capture-ui-preview",
+            "--capture-share-owner-ui-preview=\(owner)",
+        ]
+
+        app.terminate()
+        app.launchArguments = ownerArguments + [
+            "--capture-transcript-review-outbox-ui-test",
+        ]
+        app.launch()
+        openPreviewTranscriptReview()
+
+        let outboxBoundary = app.descendants(matching: .any)[
+            "CaptureTranscriptReviewOutboxBoundary"
+        ].firstMatch
+        XCTAssertTrue(
+            outboxBoundary.waitForExistence(timeout: 8),
+            "The deterministic fixture should publish its protected transcript outbox state."
+        )
+        XCTAssertEqual(outboxBoundary.value as? String, "Queued")
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        openPreviewTranscriptReview()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
+                .waitForExistence(timeout: 8),
+            "The same account must recover the outbox summary after process death."
+        )
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-share-owner-ui-preview=\(otherOwner)",
+        ]
+        app.launch()
+        openPreviewTranscriptReview()
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
+                .waitForExistence(timeout: 2),
+            "A different account must not see another person's protected transcript decision."
+        )
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        openPreviewTranscriptReview()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
+                .waitForExistence(timeout: 8)
+        )
+    }
+
     func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
@@ -2168,6 +2224,17 @@ final class CaptureExperienceUITests: XCTestCase {
             file: file,
             line: line
         )
+    }
+
+    private func openPreviewTranscriptReview() {
+        let library = app.tabBars.buttons["Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 12))
+        library.tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 8))
+        let reviewLink = app.buttons["CaptureTranscriptReviewPreviewLink"]
+        XCTAssertTrue(reviewLink.waitForExistence(timeout: 8))
+        reviewLink.tap()
+        XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 8))
     }
 
     private func reveal(_ element: XCUIElement) {

@@ -942,6 +942,7 @@ function checkTranscriptCorrectionContractSources() {
   const taskDomainText = sourceText("packages/quipsly-domain/src/transcript-derived-task.ts");
   const serviceText = sourceText("apps/quipsly/src/lib/server/transcript-corrections.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
+  const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const shellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
   const webText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/transcript-correction-desk.tsx");
@@ -1057,6 +1058,20 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("providerTextSha256 == segment.providerTextSha256")
       && nativeText.includes("Protected local draft saved · not synced")
       && nativeText.includes("CaptureTranscriptCorrectionDraftStore.remove")
+      && transcriptReviewOutboxText.includes("owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID())")
+      && transcriptReviewOutboxText.includes("expectedProviderText")
+      && transcriptReviewOutboxText.includes("expectedAcceptedCorrectionID")
+      && transcriptReviewOutboxText.includes("playbackPositionSeconds")
+      && transcriptReviewOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && transcriptReviewOutboxText.includes("var clientRequestID: String")
+      && transcriptReviewOutboxText.includes("id.uuidString.lowercased()")
+      && nativeText.includes("payload.boundaries?.providerSegmentsImmutable == true")
+      && nativeText.includes("payload.boundaries?.correctionOverlayVersioned == true")
+      && nativeText.includes("payload.boundaries?.mediaTimeAnchorsPreserved == true")
+      && nativeText.includes("code: \"ACKNOWLEDGEMENT_MISMATCH\"")
+      && nativeText.includes("guard reviewDecisionOutbox.markAcknowledged(decision.id) else")
+      && nativeText.includes("CaptureTranscriptReviewOutboxBoundary")
+      && captureUITestText.includes("testTranscriptReviewOutboxSurvivesRelaunchAndStaysAccountPartitioned")
       && nativeText.includes("CaptureTranscriptPacketLoadedBoundary")
       && nativeText.includes("Review packet loaded")
       && nativeText.includes("Every candidate remains a proposal until a person reviews its source and explicitly creates canonical work.")
@@ -1070,7 +1085,7 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("session.actionPacket?.capabilities?.canReviewPacket == true")
       && shellText.includes("It does not start playback or accept any candidate."),
     "nativeTranscriptCorrectionExactSourceBoundary",
-    "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect offline readback, and keep cached, preview, remote-only, and AI states non-authoritative.",
+    "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect account-partitioned offline playback decisions with stable idempotency and exact acknowledgement, and keep preview, remote-only, packet, and AI states non-authoritative.",
   );
   expect(
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")

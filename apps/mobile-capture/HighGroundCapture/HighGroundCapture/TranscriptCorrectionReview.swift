@@ -128,11 +128,23 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
 
 private struct CaptureTranscriptAPIError: Codable {
     let error: String?
+    let errorCode: String?
+}
+
+private struct CaptureTranscriptMutationBoundaries: Codable {
+    let providerSegmentsImmutable: Bool?
+    let correctionOverlayVersioned: Bool?
+    let acceptedHumanCorrectionRequiresPlaybackConfirmation: Bool?
+    let confirmedAsIsRequiresPlaybackConfirmation: Bool?
+    let mediaTimeAnchorsPreserved: Bool?
 }
 
 private struct CaptureTranscriptMutationResponse: Codable {
     let ok: Bool
     let idempotentReplay: Bool?
+    let correction: CaptureTranscriptCorrection?
+    let verification: CaptureTranscriptSegmentVerification?
+    let boundaries: CaptureTranscriptMutationBoundaries?
 }
 
 private struct CaptureTranscriptTaskMutationResponse: Codable {
@@ -408,12 +420,16 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetReviewedSegmentCount = 0
     @Published private(set) var packetProviderOnlySegmentCount = 0
     @Published private(set) var packetSnapshotStale = false
+    @Published private(set) var pendingTranscriptDecisionCount = 0
+    @Published private(set) var heldTranscriptDecisionCount = 0
 
     var packetNeedsRebuild: Bool {
         packetStatus == "TRANSCRIPT_REVIEW_CHANGED" || packetSnapshotStale
     }
 
     private var packetGoalReviewContext: CapturePacketGoalReviewContext?
+    private let reviewDecisionOutbox = TranscriptReviewDecisionOutbox.shared
+    private var isFlushingReviewDecisions = false
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
@@ -427,9 +443,36 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         let desk: CaptureTranscriptCorrectionDesk
     }
 
+    func pendingDecision(
+        roomID: String,
+        segmentID: String
+    ) -> PendingTranscriptReviewDecision? {
+        reviewDecisionOutbox.decision(roomID: roomID, segmentID: segmentID)
+    }
+
     func load(roomID: String, previewOnly: Bool) async {
         guard !previewOnly else {
             desk = .preview(roomID: roomID)
+            if CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest,
+               let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner,
+               let segment = desk?.segments.first {
+                reviewDecisionOutbox.activateOwner(previewOwner)
+                if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
+                    do {
+                        _ = try reviewDecisionOutbox.enqueueConfirmation(
+                            roomID: roomID,
+                            segmentID: segment.id,
+                            expectedProviderText: segment.providerText,
+                            expectedProviderSpeakerLabel: segment.providerSpeakerLabel,
+                            expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
+                            playbackPositionSeconds: segment.endSeconds
+                        )
+                    } catch {
+                        errorMessage = "Transcript outbox UI proof could not stage its protected decision: \(error.localizedDescription)"
+                    }
+                }
+            }
+            publishReviewDecisionCounts()
             packetGoalCandidates = [.preview(roomID: roomID)]
             packetNoteCandidates = [.preview(roomID: roomID)]
             packetActionCandidates = [.preview(roomID: roomID)]
@@ -447,9 +490,12 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetSnapshotStale = false
             isUsingProtectedCache = false
             message = "Preview only — no recording is played and no correction can be saved."
-            errorMessage = nil
+            if !CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest {
+                errorMessage = nil
+            }
             return
         }
+        publishReviewDecisionCounts()
         guard AuthManager.shared.networkActionsAllowed else {
             packetGoalCandidates = []
             packetNoteCandidates = []
@@ -460,7 +506,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetStatus = nil
             resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
-                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
+                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed corrections can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 errorMessage = "Sign in with a stable Quipsly account before loading transcript review."
                 desk = nil
@@ -493,6 +539,12 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             if let desk { persist(desk, roomID: roomID) }
             message = nil
             await loadPacketCandidates(roomID: roomID)
+            let synchronizedReview = await flushReviewDecisions()
+            if synchronizedReview {
+                Task { [weak self] in
+                    await self?.load(roomID: roomID, previewOnly: false)
+                }
+            }
         } catch {
             packetGoalCandidates = []
             packetNoteCandidates = []
@@ -503,7 +555,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetStatus = nil
             resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
-                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; local playback works, but decisions stay locked until authority is verified."
+                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed corrections can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 desk = nil
                 isUsingProtectedCache = false
@@ -520,28 +572,39 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         reason: String,
         playbackPosition: TimeInterval,
         previewOnly: Bool
-    ) async {
-        guard !previewOnly, !isUsingProtectedCache else {
-            errorMessage = isUsingProtectedCache
-                ? "Reconnect to Nest before saving a transcript correction. The protected snapshot was not modified."
-                : "Preview transcript changes are intentionally disabled."
-            return
+    ) async -> Bool {
+        guard !previewOnly else {
+            errorMessage = "Preview transcript changes are intentionally disabled."
+            return false
         }
-        let body: [String: Any] = [
-            "operation": "accept-human-correction",
-            "roomId": roomID,
-            "segmentId": segment.id,
-            "clientRequestId": "iphone-transcript-\(segment.id)-\(UUID().uuidString)",
-            "expectedText": segment.providerText,
-            "expectedSpeakerLabel": captureTranscriptJSONNullable(segment.providerSpeakerLabel),
-            "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(segment.acceptedCorrection?.id),
-            "correctedText": correctedText,
-            "correctedSpeakerLabel": correctedSpeaker,
-            "reason": reason,
-            "confirmedAgainstPlayback": true,
-            "playbackPositionSeconds": playbackPosition,
-        ]
-        await mutate(roomID: roomID, body: body, success: "Playback-reviewed correction saved.")
+        do {
+            _ = try reviewDecisionOutbox.enqueueCorrection(
+                roomID: roomID,
+                segmentID: segment.id,
+                expectedProviderText: segment.providerText,
+                expectedProviderSpeakerLabel: segment.providerSpeakerLabel,
+                expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
+                correctedText: correctedText,
+                correctedSpeakerLabel: correctedSpeaker,
+                reason: reason,
+                playbackPositionSeconds: playbackPosition
+            )
+            publishReviewDecisionCounts()
+            errorMessage = nil
+            message = "Playback-reviewed correction protected on this iPhone and waiting for exact Nest acknowledgement."
+            if AuthManager.shared.networkActionsAllowed {
+                _ = await flushReviewDecisions()
+                if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
+                    await load(roomID: roomID, previewOnly: false)
+                    if errorMessage == nil { message = "Playback-reviewed correction saved." }
+                }
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            publishReviewDecisionCounts()
+            return false
+        }
     }
 
     func confirmSegmentAsIs(
@@ -549,30 +612,38 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         segment: CaptureTranscriptSegment,
         playbackPosition: TimeInterval,
         previewOnly: Bool
-    ) async {
-        guard !previewOnly, !isUsingProtectedCache else {
-            errorMessage = isUsingProtectedCache
-                ? "Reconnect to Nest before confirming this transcript segment. The protected snapshot was not modified."
-                : "Preview transcript review is intentionally disabled."
-            return
+    ) async -> Bool {
+        guard !previewOnly else {
+            errorMessage = "Preview transcript review is intentionally disabled."
+            return false
         }
-        let body: [String: Any] = [
-            "operation": "confirm-segment-as-is",
-            "roomId": roomID,
-            "segmentId": segment.id,
-            "clientRequestId": "iphone-transcript-verify-\(segment.id)-\(UUID().uuidString)",
-            "expectedText": segment.providerText,
-            "expectedSpeakerLabel": captureTranscriptJSONNullable(segment.providerSpeakerLabel),
-            "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(segment.acceptedCorrection?.id),
-            "confirmedAgainstPlayback": true,
-            "playbackPositionSeconds": playbackPosition,
-            "reviewNote": "Confirmed as-is in Quipsly Capture against the exact retained local recording.",
-        ]
-        await mutate(
-            roomID: roomID,
-            body: body,
-            success: "Segment confirmed as heard. Provider evidence stayed unchanged."
-        )
+        do {
+            _ = try reviewDecisionOutbox.enqueueConfirmation(
+                roomID: roomID,
+                segmentID: segment.id,
+                expectedProviderText: segment.providerText,
+                expectedProviderSpeakerLabel: segment.providerSpeakerLabel,
+                expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
+                playbackPositionSeconds: playbackPosition
+            )
+            publishReviewDecisionCounts()
+            errorMessage = nil
+            message = "As-heard confirmation protected on this iPhone and waiting for exact Nest acknowledgement."
+            if AuthManager.shared.networkActionsAllowed {
+                _ = await flushReviewDecisions()
+                if reviewDecisionOutbox.decision(roomID: roomID, segmentID: segment.id) == nil {
+                    await load(roomID: roomID, previewOnly: false)
+                    if errorMessage == nil {
+                        message = "Segment confirmed as heard. Provider evidence stayed unchanged."
+                    }
+                }
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            publishReviewDecisionCounts()
+            return false
+        }
     }
 
     func reviewAIProposal(
@@ -1052,6 +1123,153 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         packetSnapshotStale = false
     }
 
+    func retryHeldDecision(_ id: UUID, roomID: String) async {
+        reviewDecisionOutbox.releaseForRetry(id)
+        publishReviewDecisionCounts()
+        _ = await flushReviewDecisions()
+        if reviewDecisionOutbox.entries.contains(where: { $0.id == id }) == false {
+            await load(roomID: roomID, previewOnly: false)
+        }
+    }
+
+    @discardableResult
+    private func flushReviewDecisions() async -> Bool {
+        guard !isFlushingReviewDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishReviewDecisionCounts()
+            return false
+        }
+        isFlushingReviewDecisions = true
+        isMutating = true
+        defer {
+            isFlushingReviewDecisions = false
+            isMutating = false
+            publishReviewDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in reviewDecisionOutbox.entries where decision.disposition == .pending {
+            if await syncReviewDecision(decision) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncReviewDecision(_ decision: PendingTranscriptReviewDecision) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/corrections") else {
+            let message = "The configured Nest URL is invalid."
+            reviewDecisionOutbox.markHeld(decision.id, code: "INVALID_NEST_URL", message: message)
+            errorMessage = message
+            return false
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var body: [String: Any] = [
+                "operation": decision.operation.rawValue,
+                "roomId": decision.roomID,
+                "segmentId": decision.segmentID,
+                "clientRequestId": decision.clientRequestID,
+                "expectedText": decision.expectedProviderText,
+                "expectedSpeakerLabel": captureTranscriptJSONNullable(decision.expectedProviderSpeakerLabel),
+                "expectedAcceptedCorrectionId": captureTranscriptJSONNullable(decision.expectedAcceptedCorrectionID),
+                "confirmedAgainstPlayback": true,
+                "playbackPositionSeconds": decision.playbackPositionSeconds,
+            ]
+            switch decision.operation {
+            case .acceptHumanCorrection:
+                body["correctedText"] = captureTranscriptJSONNullable(decision.correctedText)
+                body["correctedSpeakerLabel"] = captureTranscriptJSONNullable(decision.correctedSpeakerLabel)
+                body["reason"] = captureTranscriptJSONNullable(decision.reason)
+            case .confirmSegmentAsIs:
+                body["reviewNote"] = "Confirmed as-is in Quipsly Capture against the exact retained local recording."
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload?.ok == true else {
+                let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)
+                let message = apiError?.error ?? "Nest could not reconcile this transcript decision."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    reviewDecisionOutbox.markRetryable(decision.id, message: message)
+                    errorMessage = "Transcript decision remains protected for retry: \(message)"
+                } else {
+                    reviewDecisionOutbox.markHeld(
+                        decision.id,
+                        code: apiError?.errorCode,
+                        message: message
+                    )
+                    errorMessage = "Transcript decision needs review before retry: \(message)"
+                }
+                return false
+            }
+            guard let payload,
+                  payload.boundaries?.providerSegmentsImmutable == true,
+                  payload.boundaries?.correctionOverlayVersioned == true,
+                  payload.boundaries?.mediaTimeAnchorsPreserved == true else {
+                let message = "Nest returned incomplete transcript safety boundaries. The protected phone decision is held for review."
+                reviewDecisionOutbox.markHeld(
+                    decision.id,
+                    code: "ACKNOWLEDGEMENT_MISMATCH",
+                    message: message
+                )
+                errorMessage = message
+                return false
+            }
+            switch decision.operation {
+            case .acceptHumanCorrection:
+                guard payload.boundaries?.acceptedHumanCorrectionRequiresPlaybackConfirmation == true,
+                      let correction = payload.correction,
+                      correction.segmentId == decision.segmentID,
+                      correction.origin == "human",
+                      correction.status == "accepted",
+                      correction.correctedText == decision.correctedText,
+                      correction.correctedSpeakerLabel == decision.correctedSpeakerLabel else {
+                    let message = "Nest acknowledged different correction content or evidence. The protected phone decision is held for review."
+                    reviewDecisionOutbox.markHeld(
+                        decision.id,
+                        code: "ACKNOWLEDGEMENT_MISMATCH",
+                        message: message
+                    )
+                    errorMessage = message
+                    return false
+                }
+            case .confirmSegmentAsIs:
+                guard payload.boundaries?.confirmedAsIsRequiresPlaybackConfirmation == true,
+                      let verification = payload.verification,
+                      verification.segmentId == decision.segmentID,
+                      verification.reviewKind == "confirmed-as-is" else {
+                    let message = "Nest acknowledged different transcript verification evidence. The protected phone decision is held for review."
+                    reviewDecisionOutbox.markHeld(
+                        decision.id,
+                        code: "ACKNOWLEDGEMENT_MISMATCH",
+                        message: message
+                    )
+                    errorMessage = message
+                    return false
+                }
+            }
+            guard reviewDecisionOutbox.markAcknowledged(decision.id) else {
+                let message = reviewDecisionOutbox.persistenceError
+                    ?? "Nest acknowledged this transcript decision, but the protected phone ledger could not close it. It remains visible for safe idempotent recovery."
+                errorMessage = message
+                return false
+            }
+            publishReviewDecisionCounts()
+            return true
+        } catch {
+            reviewDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Transcript decision remains protected for retry: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func publishReviewDecisionCounts() {
+        pendingTranscriptDecisionCount = reviewDecisionOutbox.pendingCount
+        heldTranscriptDecisionCount = reviewDecisionOutbox.heldCount
+    }
+
     private func mutate(roomID: String, body: [String: Any], success: String) async {
         guard !isUsingProtectedCache, AuthManager.shared.networkActionsAllowed else {
             errorMessage = "Sign in with a stable Quipsly account before changing transcript review."
@@ -1454,11 +1672,25 @@ struct CaptureTranscriptReviewView: View {
                     if client.isUsingProtectedCache {
                         reviewNotice(
                             title: "Protected offline snapshot",
-                            detail: "You can inspect the transcript and play the exact retained local source. Accept and reject stay disabled until Nest verifies this account again.",
+                            detail: "You can inspect the transcript and play the exact retained local source. A playback-reviewed correction or as-heard confirmation can wait in the protected phone outbox; packet, task, goal, note, and AI-proposal decisions stay locked until Nest verifies this account again.",
                             tint: .gray,
                             icon: "lock.shield.fill"
                         )
                         .accessibilityIdentifier("CaptureTranscriptProtectedCacheBoundary")
+                    }
+                    if client.pendingTranscriptDecisionCount > 0 || client.heldTranscriptDecisionCount > 0 {
+                        reviewNotice(
+                            title: client.heldTranscriptDecisionCount > 0
+                                ? "Transcript decision needs review"
+                                : "Transcript review protected on this iPhone",
+                            detail: "\(client.pendingTranscriptDecisionCount) waiting · \(client.heldTranscriptDecisionCount) held. Provider evidence and media time remain unchanged until Nest acknowledges the exact decision.",
+                            tint: client.heldTranscriptDecisionCount > 0 ? .orange : .blue,
+                            icon: client.heldTranscriptDecisionCount > 0 ? "exclamationmark.shield.fill" : "arrow.triangle.2.circlepath"
+                        )
+                        .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
+                        .accessibilityValue(
+                            client.heldTranscriptDecisionCount > 0 ? "Held" : "Queued"
+                        )
                     }
                     if let error = client.errorMessage ?? playback.errorMessage {
                         reviewNotice(title: "Needs attention", detail: error, tint: .orange, icon: "exclamationmark.triangle.fill")
@@ -2693,12 +2925,61 @@ private struct CaptureTranscriptSegmentCard: View {
                 proposalReview(proposal)
             }
 
+            if let pendingDecision {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(
+                        pendingDecision.disposition == .held
+                            ? "Decision held for review"
+                            : "Decision queued on this iPhone",
+                        systemImage: pendingDecision.disposition == .held
+                            ? "exclamationmark.shield.fill"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(
+                        pendingDecision.disposition == .held ? Color.orange : Color.blue
+                    )
+                    Text(
+                        pendingDecision.lastErrorMessage
+                            ?? "The exact playback position, provider evidence, and expected reviewed overlay are protected until Nest acknowledges this stable request."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if pendingDecision.disposition == .held {
+                        Button("Review state and retry") {
+                            Task {
+                                await client.retryHeldDecision(
+                                    pendingDecision.id,
+                                    roomID: roomID
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("CaptureTranscriptDecisionRetry_\(segment.id)")
+                    }
+                }
+                .padding(12)
+                .background(
+                    (pendingDecision.disposition == .held ? Color.orange : Color.blue)
+                        .opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureTranscriptDecisionPending_\(segment.id)")
+                .accessibilityValue(
+                    pendingDecision.disposition == .held ? "Held" : "Queued"
+                )
+            }
+
             if isEditing {
                 correctionEditor
             } else {
                 if segment.acceptedCorrection == nil,
                    segment.acceptedVerification == nil {
-                    Button("Confirm correct as heard") {
+                    Button(decisionsLocked ? "Queue correct as heard" : "Confirm correct as heard") {
                         guard let playbackPosition else { return }
                         Task {
                             await client.confirmSegmentAsIs(
@@ -2711,7 +2992,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
-                    .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked)
+                    .disabled(playbackPosition == nil || client.isMutating || previewOnly || pendingDecision != nil)
                     .accessibilityIdentifier("CaptureTranscriptConfirmAsIsButton_\(segment.id)")
                     .accessibilityHint("Plays no media and saves only after this exact timestamp was already played.")
                 }
@@ -2719,7 +3000,7 @@ private struct CaptureTranscriptSegmentCard: View {
                     beginEditing()
                 }
                 .buttonStyle(.bordered)
-                .disabled((!hasExactLocalSource && !previewOnly) || client.isMutating || decisionsLocked)
+                .disabled((!hasExactLocalSource && !previewOnly) || client.isMutating || pendingDecision != nil)
                 .accessibilityIdentifier("CaptureTranscriptCorrectButton_\(segment.id)")
             }
 
@@ -2767,10 +3048,10 @@ private struct CaptureTranscriptSegmentCard: View {
                     .accessibilityIdentifier("CaptureTranscriptLocalDraftStatus")
             }
             VStack(alignment: .leading, spacing: 8) {
-                Button("Accept reviewed correction") {
+                Button(decisionsLocked ? "Queue reviewed correction" : "Accept reviewed correction") {
                     guard let playbackPosition else { return }
                     Task {
-                        await client.acceptHumanCorrection(
+                        if await client.acceptHumanCorrection(
                             roomID: roomID,
                             segment: segment,
                             correctedText: correctedText,
@@ -2778,8 +3059,7 @@ private struct CaptureTranscriptSegmentCard: View {
                             reason: reason,
                             playbackPosition: playbackPosition,
                             previewOnly: previewOnly
-                        )
-                        if client.errorMessage == nil {
+                        ) {
                             CaptureTranscriptCorrectionDraftStore.remove(roomID: roomID, segmentID: segment.id)
                             draftStatus = nil
                             isEditing = false
@@ -2788,7 +3068,7 @@ private struct CaptureTranscriptSegmentCard: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .disabled(playbackPosition == nil || client.isMutating || previewOnly || decisionsLocked || correctionIsEmptyOrUnchanged)
+                .disabled(playbackPosition == nil || client.isMutating || previewOnly || pendingDecision != nil || correctionIsEmptyOrUnchanged)
                 Button("Keep draft") {
                     persistDraftIfNeeded()
                     isEditing = false
@@ -2805,7 +3085,7 @@ private struct CaptureTranscriptSegmentCard: View {
             .font(.caption.weight(.semibold))
             .frame(minHeight: 44)
             .contentShape(Rectangle())
-            Text("Saving adds an audited overlay. It does not move media time, create tasks, send notes, or publish anything.")
+            Text("The decision is protected on this iPhone first. Nest adds an audited overlay only after exact evidence and conflict checks; media time, tasks, notes, and publication remain unchanged.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -3129,6 +3409,10 @@ private struct CaptureTranscriptSegmentCard: View {
               recording.recordingAssetId == expectedRecordingAssetID,
               recording.status.isPlaybackEligible else { return false }
         return library.fileURL(for: recording) != nil
+    }
+
+    private var pendingDecision: PendingTranscriptReviewDecision? {
+        client.pendingDecision(roomID: roomID, segmentID: segment.id)
     }
 
     private var correctionIsEmptyOrUnchanged: Bool {
