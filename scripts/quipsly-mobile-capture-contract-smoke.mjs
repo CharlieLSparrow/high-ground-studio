@@ -1057,10 +1057,20 @@ function checkTranscriptCorrectionContractSources() {
       && nativeText.includes("providerTextSha256 == segment.providerTextSha256")
       && nativeText.includes("Protected local draft saved · not synced")
       && nativeText.includes("CaptureTranscriptCorrectionDraftStore.remove")
+      && nativeText.includes("CaptureTranscriptPacketLoadedBoundary")
+      && nativeText.includes("Review packet loaded")
+      && nativeText.includes("Every candidate remains a proposal until a person reviews its source and explicitly creates canonical work.")
+      && nativeText.includes("CaptureTranscriptPacketErrorBoundary")
       && shellText.includes("Review transcript against this source")
-      && shellText.includes("CaptureTranscriptReviewPreviewLink"),
+      && shellText.includes("CaptureTranscriptReviewPreviewLink")
+      && shellText.includes("CaptureSessionTranscriptReviewLink_")
+      && shellText.includes("Review transcript and packet")
+      && shellText.includes("Review only — exact local source unavailable")
+      && shellText.includes("session.coachingPacketSummaryNoteId != nil")
+      && shellText.includes("session.actionPacket?.capabilities?.canReviewPacket == true")
+      && shellText.includes("It does not start playback or accept any candidate."),
     "nativeTranscriptCorrectionExactSourceBoundary",
-    "iPhone Library reviews transcript overlays against an exact retained recording-asset match, protects offline readback, and keeps cached, preview, remote-only, and AI states non-authoritative.",
+    "iPhone Library and the selected canonical Session open transcript overlays and packet candidates against an exact retained recording-asset match, protect offline readback, and keep cached, preview, remote-only, and AI states non-authoritative.",
   );
   expect(
     taskRouteText.includes("schema: TRANSCRIPT_DERIVED_TASK_SCHEMA")

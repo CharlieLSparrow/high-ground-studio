@@ -620,6 +620,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         add(attachment)
     }
 
+    private func attachRuntimeScreenshot(_ app: XCUIApplication, name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     private func replaceText(in element: XCUIElement, with value: String, app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         for _ in 0..<12 where !element.isHittable { appSwipeUp(app) }
@@ -1462,6 +1469,92 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch.exists,
             "A different iPhone must remain review-only when it does not hold the exact local recording asset."
         )
+    }
+
+    func testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              credentials.sessionTitle?.isEmpty == false else {
+            throw XCTSkip("Complete-span packet review requires the exact retained Session ID and title.")
+        }
+        let app = try launchSignedInCaptureApp(initialTab: "record")
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let reviewLink = app.descendants(matching: .any)["CaptureSessionTranscriptReviewLink_\(sessionID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(reviewLink, in: app, timeout: 30, swipeAttempts: 8),
+            "The exact completed canonical Session should expose direct transcript and packet review."
+        )
+        XCTAssertTrue(reviewLink.isHittable)
+        reviewLink.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30),
+            "Direct Session review should open the compiled canonical transcript surface."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch.waitForExistence(timeout: 20),
+            "The simulator must stay review-only because it does not hold the protected imported source asset."
+        )
+
+        let packetLoaded = app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch
+        XCTAssertTrue(
+            packetLoaded.waitForExistence(timeout: 30),
+            "The canonical packet request should finish before the test navigates to a review lane."
+        )
+        guard packetLoaded.exists else {
+            attachRuntimeScreenshot(app, name: "Retained packet did not reach loaded boundary")
+            return
+        }
+
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 12))
+        guard jumpMenu.exists else {
+            attachRuntimeScreenshot(app, name: "Retained packet jump menu unavailable")
+            return
+        }
+        jumpMenu.tap()
+        let jumpToGoals = app.buttons["CaptureTranscriptJumpToGoals"].firstMatch
+        XCTAssertTrue(
+            jumpToGoals.waitForExistence(timeout: 12),
+            "A loaded goal candidate should make the explicit Goals jump action available."
+        )
+        guard jumpToGoals.exists else {
+            attachRuntimeScreenshot(app, name: "Retained packet Goals jump unavailable")
+            return
+        }
+        jumpToGoals.tap()
+
+        let createGoal = app.buttons["CapturePacketGoalAcceptButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(createGoal, in: app, timeout: 20, swipeAttempts: 6),
+            "The retained v4 goal lane should expose its deliberate human creation control."
+        )
+        guard createGoal.exists else {
+            attachRuntimeScreenshot(app, name: "Retained packet goal control unavailable after explicit jump")
+            return
+        }
+        let completeThought = "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it."
+        let completeSourceText = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", completeThought)
+        ).firstMatch
+        XCTAssertTrue(
+            completeSourceText.waitForExistence(timeout: 12),
+            "Capture must render the entire source thought instead of truncating it to one transcript segment."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Complete thought across 3 immutable transcript segments"].firstMatch.waitForExistence(timeout: 12),
+            "The native candidate must disclose its complete three-segment evidence span."
+        )
+        XCTAssertTrue(createGoal.isEnabled)
+
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Retained complete transcript span — review only"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        attachRecordingIdentity(completeThought, name: "Retained packet complete goal source")
+        // Intentionally do not tap any packet decision. The enclosing operator
+        // compares authoritative packet readback before and after this test.
     }
 
     func testOutsiderCannotSeeRetainedTranscriptFollowThrough() throws {

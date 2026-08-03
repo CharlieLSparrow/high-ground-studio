@@ -1380,6 +1380,15 @@ struct CaptureTranscriptReviewView: View {
                                 tint: .orange,
                                 icon: "target"
                             )
+                            .accessibilityIdentifier("CaptureTranscriptPacketErrorBoundary")
+                        } else if packetCandidateCount > 0 {
+                            reviewNotice(
+                                title: "Review packet loaded",
+                                detail: packetCandidateSummary,
+                                tint: .green,
+                                icon: "checkmark.shield.fill"
+                            )
+                            .accessibilityIdentifier("CaptureTranscriptPacketLoadedBoundary")
                         }
                         if !previewOnly, !client.packetNoteCandidates.isEmpty {
                             packetNoteReviewSection(
@@ -1635,6 +1644,19 @@ struct CaptureTranscriptReviewView: View {
         }
         .reviewCard()
         .accessibilityIdentifier("CapturePacketGoalReviewSection")
+    }
+
+    private var packetCandidateCount: Int {
+        client.packetNoteCandidates.count
+            + client.packetActionCandidates.count
+            + client.packetGoalCandidates.count
+    }
+
+    private var packetCandidateSummary: String {
+        let notes = client.packetNoteCandidates.count
+        let tasks = client.packetActionCandidates.count
+        let goals = client.packetGoalCandidates.count
+        return "\(notes) \(notes == 1 ? "note" : "notes") · \(tasks) \(tasks == 1 ? "task" : "tasks") · \(goals) \(goals == 1 ? "goal" : "goals"). Every candidate remains a proposal until a person reviews its source and explicitly creates canonical work."
     }
 
     private func packetNoteReviewSection(

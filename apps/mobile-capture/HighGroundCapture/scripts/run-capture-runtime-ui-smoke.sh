@@ -82,6 +82,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  transcript-packet-span)
+    TEST_CASE="testRetainedSessionShowsCompleteMultiSegmentPacketOnIPhone"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Transcript packet span mode requires the exact retained Session ID and title." >&2
+      exit 2
+    fi
+    ;;
   client-follow-up)
     TEST_CASE="testReleasedClientFollowUpAppearsAndAcknowledgesInCapture"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_ID" || -z "$TEST_CLIENT_FOLLOW_UP_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_SHA256" ]]; then
@@ -257,7 +264,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, transcript-packet-span, client-follow-up, coach-follow-up-authoring, coaching-continuity, coaching-follow-through-work, account-identity, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
     exit 2
     ;;
 esac

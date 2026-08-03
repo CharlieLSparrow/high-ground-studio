@@ -5170,6 +5170,11 @@ private struct CaptureRecorderView: View {
                     }
                     .captureCard()
 
+                    CaptureSessionTranscriptReviewCard(
+                        session: session,
+                        previewOnly: model.usesPreviewData
+                    )
+
                     if recordingMode == .audio {
                         RecorderHero(
                             session: session,
@@ -6326,6 +6331,83 @@ private struct CaptureSessionTruthPanel: View {
             return
         }
         await model.load()
+    }
+}
+
+private struct CaptureSessionTranscriptReviewCard: View {
+    let session: MobileCaptureSession
+    let previewOnly: Bool
+    @StateObject private var library = LocalRecordingLibrary.shared
+
+    var body: some View {
+        if transcriptReviewAvailable {
+            NavigationLink {
+                CaptureTranscriptReviewView(
+                    roomID: session.callRoomId,
+                    sessionTitle: session.displayTitle,
+                    recording: matchingTranscriptRecording,
+                    previewOnly: previewOnly,
+                    canUseProjectTeamNotes: session.canUseProjectTeamNotes == true
+                )
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.title3)
+                        .foregroundStyle(.purple)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Review transcript and packet")
+                            .font(.subheadline.weight(.bold))
+                        Text(transcriptReviewSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(matchingTranscriptRecording == nil
+                            ? "Review only — exact local source unavailable"
+                            : "Exact local source ready for playback review")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(matchingTranscriptRecording == nil ? Color.orange : Color.green)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .captureCard()
+            .accessibilityHint("Opens the canonical transcript and source-grounded review packet. It does not start playback or accept any candidate.")
+            .accessibilityIdentifier("CaptureSessionTranscriptReviewLink_\(session.callRoomId)")
+        }
+    }
+
+    private var transcriptReviewAvailable: Bool {
+        session.latestTranscriptStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() == "COMPLETED"
+            || session.coachingPacketSummaryNoteId != nil
+            || session.actionPacket?.capabilities?.canReviewPacket == true
+    }
+
+    private var transcriptReviewSummary: String {
+        let segmentCount = session.latestTranscriptSegmentCount ?? 0
+        let transcript = segmentCount > 0
+            ? "Completed transcript · \(segmentCount) \(segmentCount == 1 ? "segment" : "segments")"
+            : session.transcriptBadgeLabel
+        return "\(transcript) · \(session.packetBadgeLabel)"
+    }
+
+    private var matchingTranscriptRecording: LocalRecording? {
+        guard let expectedAssetID = session.latestRecordingAssetId?.nonempty else { return nil }
+        return library.recordings.first {
+            $0.callRoomId == session.callRoomId
+                && $0.recordingAssetId == expectedAssetID
+                && $0.status.isPlaybackEligible
+                && library.fileURL(for: $0) != nil
+        }
     }
 }
 

@@ -6674,3 +6674,24 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   source contract, and the 245/245 repository contract gate pass.
   Full evidence is in
   `docs/coordination/2026-08-02-transcript-evidence-spans.md`.
+
+### Native Session-to-packet review checkpoint — 2026-08-02
+
+- Added a direct **Review transcript and packet** card to the selected Session
+  on iPhone Record whenever canonical transcript or packet evidence exists. It
+  reports exact local-source availability and never starts playback or accepts
+  a proposal as a side effect of navigation.
+- Added explicit packet-loaded/error boundaries and a human-readable candidate
+  count to the protected transcript desk. Notes, tasks, and goals remain
+  proposals until a person reviews source evidence and deliberately creates
+  canonical work.
+- Operated the compiled app against the retained coaching Session and v4 packet.
+  The UI reached the exact goal through the shipping Goals jump, rendered the
+  complete thought across three immutable transcript segments, and exposed but
+  did not tap the human goal-creation control.
+- Authoritative before/after packet digests were identical. The operation left
+  0 canonical notes, 0 tasks, and 0 goals, preserved its screenshot and
+  `.xcresult`, and printed no credential.
+- This is simulator and retained-local evidence, not physical-iPhone playback,
+  capture, failure recovery, or completion. Full evidence is in
+  `docs/coordination/2026-08-02-native-session-transcript-packet-review.md`.
