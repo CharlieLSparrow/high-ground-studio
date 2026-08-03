@@ -6968,3 +6968,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   genuine coaching/HGO workflows, TestFlight, provider delivery, and the other
   unified-goal acceptance gates remain open. No cloud build, deploy, production
   database write, provider mutation, or App Store action occurred.
+
+### Cloud retention correction checkpoint — 2026-08-03
+
+- Credentialed billing-resource readback attributes the blue High Ground
+  Odyssey row primarily to Quipsly deployment infrastructure, while the red
+  HighGroundOdyssey row is separate Gemini API usage. The 30-day deployment
+  audit reads 113 builds, including 83 `E2_HIGHCPU_32` builds with $36.14 of
+  $38.14 estimated priced build compute; 19 builds failed and six were
+  canceled.
+- The prior 45-day Artifact Registry rule was an incomplete boundary: after
+  reducing 927 versions to 477 it still left 103,302.543 MB in the repository.
+  The checked-in and active rule now evaluates versions after three days while
+  keeping the newest ten versions of every package.
+- The guarded live audit proved all five traffic-serving digests survive before
+  activation and identified 341 eligible versions with 107,894,496,919 summed
+  known bytes. Google applies deletion asynchronously; no database, media,
+  Cloud Run traffic, IAM, or named live image was deleted.
+- Future build spend is bounded by exact committed-source image reuse and a
+  72-hour default interval for new successful Nest images. All four Cloud Run
+  services retain zero minimum instances, no build has run since 2026-08-02,
+  and production health still identifies `studio-00492-jeg`.
+- Exact post-change evidence is retained at
+  `/private/tmp/quipsly-cloud-cost-audit-20260803-tightened.json` and in
+  `docs/deploy/quipsly-cloud-cost-control.md`.

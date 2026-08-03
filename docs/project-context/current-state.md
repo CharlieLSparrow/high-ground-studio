@@ -253,11 +253,12 @@ Implementation commit: `03a316e1`
 
 - The supported Nest release paths now reuse an exact committed-source image
   before building, so retries and promotion do not pay for duplicate images.
-- Artifact Registry now has active 45-day cleanup with a keep-ten-per-package
-  rule. Retention-aware proof preserves every traffic-serving digest; the
-  asynchronous evaluator reduced the inventory from 929 to 477 versions. The
-  remaining storage is dominated by current and legacy build caches, not Cloud
-  Run request traffic.
+- Artifact Registry now has active three-day cleanup with a
+  keep-ten-per-package rule. Retention-aware proof preserves all five
+  traffic-serving digests; 341 versions with 107,894,496,919 summed known bytes
+  are eligible for asynchronous cleanup. The prior 45-day rule reduced the
+  inventory from 929 to 477 versions but left 103,302.543 MB billable, so it
+  did not close the actual storage-cost boundary.
 - The cost auditor now covers every Cloud Run service and every
   traffic-serving revision in the region. This fixed a blind spot that had
   omitted the always-warm `studio-collab` service.

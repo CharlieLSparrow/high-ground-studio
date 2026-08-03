@@ -17,9 +17,9 @@ Without a flag, validates the checked-in policy, audits live Cloud Run image
 protection, and prints the activation boundary without changing Google Cloud.
 
 Activation additionally requires:
-  CONFIRM_ARTIFACT_DELETION=high-ground-studio-45d-keep10
+  CONFIRM_ARTIFACT_DELETION=high-ground-studio-3d-keep10
 
-The active policy deletes repository versions only after they are 45 days old
+The active policy deletes repository versions only after they are 3 days old
 and always keeps the newest 10 versions of every package. Google applies the
 policy asynchronously. This command never deletes a named image directly.
 EOF
@@ -43,7 +43,7 @@ done
 node - "${policy_file}" <<'NODE'
 const fs = require("node:fs");
 const policies = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const remove = policies.find((policy) => policy.name === "delete-any-after-45-days");
+const remove = policies.find((policy) => policy.name === "delete-any-after-3-days");
 const keep = policies.find((policy) => policy.name === "keep-recent-10-per-package");
 if (!Array.isArray(policies) || policies.length !== 2) {
   throw new Error("Expected exactly one delete policy and one keep policy.");
@@ -51,11 +51,11 @@ if (!Array.isArray(policies) || policies.length !== 2) {
 if (
   remove?.action?.type !== "Delete"
   || remove?.condition?.tagState !== "any"
-  || remove?.condition?.olderThan !== "45d"
+  || remove?.condition?.olderThan !== "3d"
   || remove.condition.tagPrefixes
   || remove.condition.packageNamePrefixes
 ) {
-  throw new Error("Delete policy must remain limited to versions older than 45 days.");
+  throw new Error("Delete policy must remain limited to versions older than 3 days.");
 }
 if (
   keep?.action?.type !== "Keep"
@@ -113,7 +113,7 @@ process.stdin.on("end", () => {
 '
 
 echo "Repository: ${project_id}/${location}/${repository}"
-echo "Policy: delete versions older than 45 days; keep newest 10 per package"
+echo "Policy: delete versions older than 3 days; keep newest 10 per package"
 echo "Boundary: background cleanup only; current traffic digests were resolved and protected"
 
 if [[ "${activate}" != "1" ]]; then
@@ -122,8 +122,8 @@ if [[ "${activate}" != "1" ]]; then
   exit 0
 fi
 
-if [[ "${confirmation}" != "high-ground-studio-45d-keep10" ]]; then
-  echo "Refusing active cleanup without CONFIRM_ARTIFACT_DELETION=high-ground-studio-45d-keep10." >&2
+if [[ "${confirmation}" != "high-ground-studio-3d-keep10" ]]; then
+  echo "Refusing active cleanup without CONFIRM_ARTIFACT_DELETION=high-ground-studio-3d-keep10." >&2
   exit 2
 fi
 

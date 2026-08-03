@@ -255,3 +255,37 @@ Artifact Registry reports 152,454.130 MB, 929 versions, and active cleanup
 (`Dry run is disabled`). The asynchronous evaluator has not yet reduced the
 inventory. All five traffic-serving digests survive the retention policy. All
 four Cloud Run services still report zero minimum instances.
+
+## Retention correction — 2026-08-03
+
+The active 45-day rule proved too conservative for Quipsly's historical build
+churn. It reduced the repository from 927 to 477 versions, but still left
+103,302.543 MB billable because recently created Studio images and BuildKit
+caches dominated storage. Keeping ten rollback versions per package already
+provides the durable safety boundary; requiring every other version to age 45
+days merely prolonged the storage charge.
+
+The active policy now:
+
+- evaluates every version older than three days for deletion, including tagged
+  checkpoint and cache versions; and
+- keeps the ten newest versions of every package, regardless of age.
+
+Before activation, the guarded live audit resolved all five traffic-serving
+digests and proved all five survive the exact three-day / keep-ten rule. It
+identified 341 eligible versions with 107,894,496,919 summed known bytes. That
+sum is not the billable repository total because image layers are deduplicated,
+but it demonstrates that the prior rule retained substantial stale content.
+The provider normalized three days to `259200s`, confirmed active cleanup, and
+continues to apply deletions asynchronously.
+
+The same readback found no new Cloud Build after
+`f747c2b3-09ab-40a1-924d-e15b19ccac13` on 2026-08-02. The 72-hour new-image
+gate and exact-source reuse remain the primary future build controls. All four
+Cloud Run services retain zero minimum instances, and
+`https://nest.quipsly.com/api/healthz` still reports serving revision
+`studio-00492-jeg`. Cloud SQL, media, traffic, IAM, and application data were
+not changed.
+
+The read-only post-change audit receipt is
+`/private/tmp/quipsly-cloud-cost-audit-20260803-tightened.json`.

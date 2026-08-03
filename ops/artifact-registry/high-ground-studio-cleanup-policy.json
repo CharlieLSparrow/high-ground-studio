@@ -1,12 +1,12 @@
 [
   {
-    "name": "delete-any-after-45-days",
+    "name": "delete-any-after-3-days",
     "action": {
       "type": "Delete"
     },
     "condition": {
       "tagState": "any",
-      "olderThan": "45d"
+      "olderThan": "3d"
     }
   },
   {

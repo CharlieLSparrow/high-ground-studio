@@ -10,7 +10,7 @@ test("active cleanup requires both an explicit mode and exact confirmation", () 
   assert.equal(spawnSync("bash", ["-n", scriptPath]).status, 0);
   assert.match(script, /--activate-after-audit/);
   assert.match(script, /CONFIRM_ARTIFACT_DELETION/);
-  assert.match(script, /high-ground-studio-45d-keep10/);
+  assert.match(script, /high-ground-studio-3d-keep10/);
   assert.match(script, /--no-dry-run/);
 });
 

@@ -7,7 +7,7 @@ const CLOUD_BUILD_RATES_US_CENTRAL1 = Object.freeze({
   N1_HIGHCPU_32: 0.0624,
 });
 
-const ARTIFACT_RETENTION_DAYS = 45;
+const ARTIFACT_RETENTION_DAYS = 3;
 const ARTIFACT_KEEP_RECENT_PER_PACKAGE = 10;
 
 export function summarizeQuipslyCloudCost(input) {
