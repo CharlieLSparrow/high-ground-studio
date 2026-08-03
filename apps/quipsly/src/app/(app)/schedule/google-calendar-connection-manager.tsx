@@ -51,6 +51,12 @@ type Selection = {
   providerCalendarId: string;
   nestId: string | null;
   timezone: string;
+  liveUpdatesEnabled: boolean;
+  liveUpdates?: {
+    status: string;
+    expiresAt: string | null;
+    lastNotificationAt: string | null;
+  } | null;
   cursor?: {
     lastFullSyncAt: string | null;
     lastIncrementalSyncAt: string | null;
@@ -321,6 +327,32 @@ export function GoogleCalendarConnectionManager({
     }
   }
 
+  async function setLiveUpdates(selection: Selection, enabled: boolean) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/calendar/connections/google/live-updates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionId: selection.id, enabled }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.error || "Could not change Google Calendar live updates.");
+      }
+      setMessage(
+        enabled
+          ? "Live change alerts are on. Google sends identity-only wake-ups; Quipsly still performs its privacy-minimized check before recording any conflict."
+          : "Live change alerts are off. Manual checks still work, and Quipsly retained the audit history.",
+      );
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not change Google Calendar live updates.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reviewConflict(
     conflict: CalendarConflict,
     intent: "PREPARE_QUIPSLY_UPDATE" | "STOP_PROJECTING",
@@ -539,9 +571,20 @@ export function GoogleCalendarConnectionManager({
                     <li key={selection.id} className="rounded-xl bg-emerald-50 p-3">
                       <span className="font-black">{laneLabel(selection.purpose)}</span><br />{selection.displayName}
                       <p className="mt-1 text-[11px] text-[#5d746a]">{lastChecked ? `Provider checked ${new Date(lastChecked).toLocaleString()}` : "Provider changes have not been checked yet."}</p>
-                      <button type="button" onClick={() => void reconcileSelection(selection.id)} disabled={busy} className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-[11px] font-black text-[#315346] disabled:opacity-50">
-                        <RefreshCcw size={13} aria-hidden="true" />Check Google changes
-                      </button>
+                      <p className="mt-1 text-[11px] text-[#5d746a]">
+                        {selection.liveUpdatesEnabled
+                          ? `Live alerts on${selection.liveUpdates?.expiresAt ? ` · lease renews before ${new Date(selection.liveUpdates.expiresAt).toLocaleString()}` : ""}`
+                          : "Live alerts off · manual checks remain available"}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void reconcileSelection(selection.id)} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-[11px] font-black text-[#315346] disabled:opacity-50">
+                          <RefreshCcw size={13} aria-hidden="true" />Check Google changes
+                        </button>
+                        <button type="button" onClick={() => void setLiveUpdates(selection, !selection.liveUpdatesEnabled)} disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-[11px] font-black text-[#315346] disabled:opacity-50">
+                          {selection.liveUpdatesEnabled ? <CalendarX2 size={13} aria-hidden="true" /> : <CalendarCheck2 size={13} aria-hidden="true" />}
+                          {selection.liveUpdatesEnabled ? "Turn off live alerts" : "Turn on live alerts"}
+                        </button>
+                      </div>
                     </li>
                   );
                 })}

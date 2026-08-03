@@ -150,6 +150,37 @@ Provider-side changes are classified:
 - changes made during an in-flight Quipsly write: resolve using projection
   version, `etag`, and a visible conflict record.
 
+Push delivery is a wake-up layer over that same reconciliation contract, not a
+second import path. Each Google `events.watch` lease has its own channel row so
+a proven replacement can overlap the prior channel during renewal. Quipsly
+stores the random channel token only as a SHA-256 digest, verifies the exact
+channel/resource/token/message tuple, accepts only documented resource states,
+and compares message numbers as arbitrary-precision integers. A verified empty
+notification creates or reuses one active reconciliation wake for the selected
+calendar and returns immediately. The worker later performs the existing
+identity/etag/status/private-linkage-only read. Duplicate or out-of-order
+notifications are auditable skips, not new work.
+
+Google does not guarantee delivery, so periodic/manual reconciliation remains
+the correctness backstop. The initial `sync` notification may arrive before the
+watch response; Quipsly acknowledges the pre-created channel/token but does not
+trust an unbound resource identity. Successful activation always queues an
+initial full check, so this race loses no evidence. Failed provider responses
+remain `UNKNOWN` leases until provider expiry rather than being falsely called
+stopped.
+
+Cloud Scheduler drains wakes and renews leases every 15 minutes. It authenticates
+with a short-lived Google-signed OIDC token bound to one service account and the
+exact Cloud Run `run.app` audience. The public Nest route verifies both claims
+inside the application because the main web service is publicly reachable. No
+static scheduler bearer secret is stored in the job.
+
+- [Google Calendar push notifications](https://developers.google.com/workspace/calendar/api/guides/push)
+- [Google Calendar events.watch](https://developers.google.com/workspace/calendar/api/v3/reference/events/watch)
+- [Google Calendar incremental synchronization](https://developers.google.com/workspace/calendar/api/guides/sync)
+- [Cloud Scheduler authenticated HTTP targets](https://docs.cloud.google.com/scheduler/docs/http-target-auth)
+- [Cloud Run service-to-service authentication](https://docs.cloud.google.com/run/docs/authenticating/service-to-service)
+
 ### Apple Calendar and iCalendar
 
 On iPhone, the first action is **Add to Calendar…** using the system event editor.

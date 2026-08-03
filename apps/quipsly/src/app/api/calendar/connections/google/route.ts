@@ -11,6 +11,7 @@ import {
   refreshGoogleCalendarAccess,
   revokeGoogleCalendarToken,
 } from "@/lib/server/google-calendar-oauth";
+import { stopGoogleCalendarChannel } from "@/lib/server/google-calendar-push";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
@@ -58,10 +59,21 @@ async function actorConnection(prisma: any, userId: string) {
           providerCalendarId: true,
           nestId: true,
           timezone: true,
+          liveUpdatesEnabled: true,
           cursor: {
             select: {
               lastFullSyncAt: true,
               lastIncrementalSyncAt: true,
+            },
+          },
+          notificationChannels: {
+            where: { status: { in: ["ACTIVE", "DRAINING"] } },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              status: true,
+              expiresAt: true,
+              lastNotificationAt: true,
             },
           },
         },
@@ -140,6 +152,14 @@ export async function GET(request: Request) {
         providerCalendarId: selection.providerCalendarId,
         nestId: selection.nestId,
         timezone: selection.timezone,
+        liveUpdatesEnabled: selection.liveUpdatesEnabled === true,
+        liveUpdates: selection.notificationChannels?.[0]
+          ? {
+              status: selection.notificationChannels[0].status,
+              expiresAt: selection.notificationChannels[0].expiresAt?.toISOString?.() ?? selection.notificationChannels[0].expiresAt ?? null,
+              lastNotificationAt: selection.notificationChannels[0].lastNotificationAt?.toISOString?.() ?? selection.notificationChannels[0].lastNotificationAt ?? null,
+            }
+          : null,
         cursor: selection.cursor
           ? {
               lastFullSyncAt: selection.cursor.lastFullSyncAt?.toISOString?.() ?? selection.cursor.lastFullSyncAt ?? null,
@@ -300,11 +320,54 @@ export async function DELETE(request: Request) {
       connection.oauthCredential.encryptedPayload,
       config.encryptionKey,
     );
+    const channels = await prisma.calendarNotificationChannel.findMany({
+      where: {
+        collection: { connectionId: connection.id },
+        status: { in: ["ACTIVE", "DRAINING"] },
+        resourceId: { not: null },
+      },
+      select: { id: true, channelId: true, resourceId: true },
+    });
+    let accessToken: string | null = null;
+    try {
+      accessToken = await refreshGoogleCalendarAccess({ refreshToken, config });
+    } catch {
+      // Revoking the durable grant remains the privacy-preserving action when
+      // access-token refresh has already failed. Locally disabling the channel
+      // makes any remaining empty notifications unusable until their lease
+      // expires.
+    }
+    if (accessToken) {
+      for (const channel of channels) {
+        await stopGoogleCalendarChannel({
+          accessToken,
+          channelId: channel.channelId,
+          resourceId: channel.resourceId,
+        }).catch(() => null);
+      }
+    }
     const providerResult = await revokeGoogleCalendarToken(refreshToken);
     await prisma.$transaction(async (transaction: any) => {
+      await transaction.calendarNotificationChannel.updateMany({
+        where: { collection: { connectionId: connection.id } },
+        data: { status: "STOPPED", stoppedAt: new Date() },
+      });
+      await transaction.calendarReconciliationWake.updateMany({
+        where: {
+          collection: { connectionId: connection.id },
+          status: { in: ["QUEUED", "PROCESSING"] },
+        },
+        data: {
+          activeKey: null,
+          status: "FAILED",
+          claimedAt: null,
+          completedAt: new Date(),
+          lastErrorCode: "calendar-connection-revoked",
+        },
+      });
       await transaction.calendarCollection.updateMany({
         where: { connectionId: connection.id },
-        data: { status: "REVOKED" },
+        data: { status: "REVOKED", liveUpdatesEnabled: false },
       });
       await transaction.calendarOAuthCredential.deleteMany({
         where: { connectionId: connection.id },

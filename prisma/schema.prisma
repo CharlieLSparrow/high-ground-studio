@@ -400,6 +400,9 @@ enum CalendarSyncOperation {
   VERIFY
   FULL_SYNC
   INCREMENTAL_SYNC
+  WATCH_START
+  WATCH_NOTIFICATION
+  WATCH_STOP
   CREATE_EVENT
   UPDATE_EVENT
   CANCEL_EVENT
@@ -419,6 +422,22 @@ enum CalendarSyncOutcome {
 enum CalendarFeedStatus {
   ACTIVE
   REVOKED
+}
+
+enum CalendarNotificationChannelStatus {
+  STARTING
+  ACTIVE
+  DRAINING
+  STOPPED
+  EXPIRED
+  UNKNOWN
+}
+
+enum CalendarReconciliationWakeStatus {
+  QUEUED
+  PROCESSING
+  SUCCEEDED
+  FAILED
 }
 
 enum TaskRecurrenceCadence {
@@ -1325,18 +1344,21 @@ model CalendarCollection {
   visibility         CalendarCollectionVisibility @default(PRIVATE)
   isDefault          Boolean                      @default(false)
   status             CalendarCollectionStatus     @default(ACTIVE)
+  liveUpdatesEnabled Boolean                      @default(false)
   metadataJson       Json                         @default("{}")
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
 
-  connection  CalendarConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  workspace   StudioWorkspace?      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  nest        StudioProject?        @relation(fields: [nestId], references: [id], onDelete: Cascade)
-  owner       User?                 @relation("CalendarCollectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
-  projections CalendarProjection[]
-  cursor      CalendarSyncCursor?
-  receipts    CalendarSyncReceipt[]
-  feeds       CalendarFeed[]
+  connection           CalendarConnection?           @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  workspace            StudioWorkspace?              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  nest                 StudioProject?                @relation(fields: [nestId], references: [id], onDelete: Cascade)
+  owner                User?                         @relation("CalendarCollectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  projections          CalendarProjection[]
+  cursor               CalendarSyncCursor?
+  receipts             CalendarSyncReceipt[]
+  feeds                CalendarFeed[]
+  notificationChannels CalendarNotificationChannel[]
+  reconciliationWakes  CalendarReconciliationWake[]
 
   @@unique([connectionId, providerCalendarId])
   @@index([workspaceId, purpose, status])
@@ -1344,6 +1366,49 @@ model CalendarCollection {
   @@index([ownerUserId, purpose, status])
   @@index([connectionId, status])
   @@index([purpose, isDefault])
+}
+
+model CalendarNotificationChannel {
+  id                 String                            @id @default(cuid())
+  collectionId       String
+  channelId          String                            @unique
+  resourceId         String?
+  tokenDigest        String
+  status             CalendarNotificationChannelStatus @default(STARTING)
+  expiresAt          DateTime?
+  lastMessageNumber  String?
+  lastResourceState  String?
+  lastNotificationAt DateTime?
+  stoppedAt          DateTime?
+  metadataJson       Json                              @default("{}")
+  createdAt          DateTime                          @default(now())
+  updatedAt          DateTime                          @updatedAt
+
+  collection CalendarCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, status, expiresAt])
+  @@index([status, expiresAt])
+}
+
+model CalendarReconciliationWake {
+  id            String                           @id @default(cuid())
+  collectionId  String
+  activeKey     String?                          @unique
+  status        CalendarReconciliationWakeStatus @default(QUEUED)
+  reason        String
+  attemptCount  Int                              @default(0)
+  availableAt   DateTime                         @default(now())
+  claimedAt     DateTime?
+  completedAt   DateTime?
+  lastErrorCode String?
+  metadataJson  Json                             @default("{}")
+  createdAt     DateTime                         @default(now())
+  updatedAt     DateTime                         @updatedAt
+
+  collection CalendarCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([collectionId, createdAt])
 }
 
 model CalendarProjection {

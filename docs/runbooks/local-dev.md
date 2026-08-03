@@ -46,6 +46,12 @@ Derived from source usage:
 - `GOOGLE_CALENDAR_IMPERSONATION_EMAIL`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_ID`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_OAUTH_CLIENT_ID`
+- `GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_OAUTH_STATE_SECRET`
+- `GOOGLE_CALENDAR_OAUTH_TOKEN_ENCRYPTION_KEY`
+- `GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT`
+- `GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE`
 - `GOOGLE_CALENDAR_SEND_UPDATES`
 - `HGO_GA_MEASUREMENT_ID`
 - `GOOGLE_ANALYTICS_PROPERTY_ID`
@@ -109,6 +115,13 @@ Notes:
 - `GOOGLE_CALENDAR_SEND_UPDATES` may be `none`, `externalOnly`, or `all`; it
   defaults to `none` so early sync tests do not surprise clients with calendar
   email.
+- Google Calendar live alerts fail closed until the exact Scheduler service
+  account and Cloud Run audience are configured. Local provider operation uses
+  a mocked Google boundary and the real loopback PostgreSQL schema:
+
+```bash
+pnpm quipsly:local:google-calendar-push-dogfood
+```
 - `/team/growth` uses the `WorldHubSeoBrief`, `WorldHubAnalyticsSnapshot`,
   `WorldHubMonetizationPlacement`, and `WorldHubMonetizationResearchNote`
   tables for app-owned SEO briefs, manual analytics snapshots, ad slots,

@@ -1,6 +1,35 @@
 # Current State
 
-Date: 2026-08-02
+Date: 2026-08-03
+
+## Google Calendar live-change delivery checkpoint
+
+- Each verified Google calendar lane can now explicitly turn live alerts on or
+  off while retaining the manual reconciliation control. Renewable watch
+  channels use separate lease rows, digest-only channel tokens, exact resource
+  identity, arbitrary-precision message ordering, and auditable replay skips.
+- The public webhook accepts only an empty, verified notification and creates
+  or reuses one durable wake. A recoverable worker delegates to the existing
+  identity/etag/status/private-linkage-only reconciliation service; it does not
+  import provider event content or mutate Google events.
+- The scheduler also queues a deduplicated cursor reconciliation when a live
+  collection has been quiet for 24 hours, so a dropped Google notification
+  cannot become permanent drift.
+- Lease renewal activates a unique replacement before draining/stopping the
+  old exact channel. The 15-minute Cloud Scheduler lane uses short-lived
+  Google-signed OIDC bound to one service account and Cloud Run audience, with
+  no static scheduler bearer secret.
+- The additive migration was applied only to loopback PostgreSQL. A real local
+  database operation passed activation/full sync, verified notification,
+  incremental conflict, exact replay suppression, wrong-token denial, renewal,
+  24-hour correctness backstop, disable, and zero-residue cleanup. Focused
+  calendar proof passes 7 suites / 34 tests; the full Quipsly run passes 244
+  suites / 1,294 tests; product contracts pass 254/254; scheduler contracts
+  pass 2/2; strict TypeScript and the optimized 163-page build pass.
+- No production migration, Cloud Scheduler job, Google watch channel, OAuth
+  grant, Google event, cloud revision, or device mutation occurred. Cloud
+  activation/readback remains gated on gcloud reauthentication and is recorded
+  in `docs/coordination/2026-08-03-google-calendar-push-delivery.md`.
 
 ## Production calendar authoring and Google projection checkpoint
 

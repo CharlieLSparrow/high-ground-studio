@@ -143,11 +143,23 @@ Configure these private environment values:
 - `GOOGLE_CALENDAR_OAUTH_STATE_SECRET` (at least 32 random bytes)
 - `GOOGLE_CALENDAR_OAUTH_TOKEN_ENCRYPTION_KEY` (exactly 32 random bytes,
   base64url encoded)
+- `GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT` (the dedicated Scheduler
+  identity)
+- `GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE` (the exact Cloud Run `run.app` service
+  URL, without a path)
 
 The secret seeder maps them to dedicated `quipsly-google-calendar-oauth-*`
 Secret Manager resources. The preview deploy mounts them only when
 `ENABLE_GOOGLE_CALENDAR_OAUTH=1`; enabling the feature fails closed unless all
-four secrets have an enabled version.
+four secrets have an enabled version. The two push-worker values are
+non-secret identity bindings. The deploy helper derives the audience from the
+deployed service, and the separate scheduler activation helper creates an OIDC
+job without embedding a bearer secret.
+
+```bash
+pnpm quipsly:calendar:push-scheduler:test
+pnpm quipsly:calendar:push-scheduler
+```
 
 ## Verification evidence
 
