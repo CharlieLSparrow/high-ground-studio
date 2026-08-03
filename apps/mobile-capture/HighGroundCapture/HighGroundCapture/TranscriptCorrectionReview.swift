@@ -2061,14 +2061,21 @@ private struct CapturePacketNoteCandidateCard: View {
                         : .authorPrivate
                     isReviewing = true
                 } label: {
-                    Label("Review & save note", systemImage: "note.text.badge.plus")
+                    Label(
+                        sourceFullyReviewed ? "Review & save note" : "Review note details",
+                        systemImage: "note.text.badge.plus"
+                    )
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
                 .frame(minHeight: 44)
-                .disabled(client.isMutating || decisionsLocked || laneRejected || !sourceFullyReviewed)
+                .disabled(client.isMutating || decisionsLocked || laneRejected)
                 .accessibilityIdentifier("CapturePacketReviewNoteButton")
-                .accessibilityHint("Creates nothing until you inspect purpose and audience and press Save source-linked note.")
+                .accessibilityHint(
+                    sourceFullyReviewed
+                        ? "Creates nothing until you inspect purpose and audience and press Save source-linked note."
+                        : "Inspect purpose and audience now. Saving remains unavailable until you listen through and confirm every source segment."
+                )
                 if laneRejected {
                     Text("This lane was rejected. Reopen it before saving one of its candidates.")
                         .font(.caption2.weight(.semibold))
