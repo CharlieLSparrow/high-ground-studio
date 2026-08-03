@@ -6748,3 +6748,42 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   cleanup mutation, service mutation, or database mutation occurred.
 - Full measured state and the private local receipt path are documented in
   `docs/deploy/quipsly-cloud-cost-control.md`.
+
+### Native canonical focus-planning checkpoint — 2026-08-02
+
+- Added **Plan focus** to every open canonical task in Capture Today, including
+  recurring occurrences and tasks materialized only after human transcript
+  review. The iPhone and Nest Schedule now create the same `WorkPlanBlock`;
+  there is no mobile-only planning record.
+- Capture persists an account-partitioned, file-protected request before
+  delivery. Its stable UUID deterministically identifies the server block, so
+  interrupted responses retry the same intent instead of duplicating time.
+  Held conflicts remain visible with explicit Retry and Discard decisions.
+- Moved Schedule and Capture creation behind one serializable server boundary.
+  It reauthorizes the open task or active owned goal, rejects unreviewed
+  transcript candidates, preserves optimistic revisions, and records exact DST
+  resolution and creation provenance.
+- The UI and receipt state the negative boundaries directly: planning changes
+  no task status, deadline, recurrence, reminder, appointment, booking,
+  provider, or Google/Apple Calendar. Existing **Record work** remains a
+  separate explicit-actual-time decision and never completes the task or goal.
+- Both protected Swift outbox harnesses, 32 focused Nest contracts, strict
+  Quipsly TypeScript, the full unsigned simulator build, and the operated
+  compiled Today journey pass. The planner opens full height so its target,
+  time, boundaries, and commit action form one decision surface.
+- The generated real-Firebase dogfood then operated the compiled iPhone app
+  against current local Nest and PostgreSQL: it saved exactly one deterministic
+  50-minute block, relaunched, read back the same identity, and independently
+  proved the Task revision/status/deadline plus reminder, appointment,
+  provider, and external-calendar state were untouched. The focused XCTest
+  passed 1/1 at
+  `/tmp/quipsly-capture-runtime-ui-focus-plan-20260803T034306Z-43329.xcresult`.
+- Cleanup independently returned zero for the exact generated Task and focus
+  block, removed all remaining generated database records, and proved the
+  generated Firebase identity absent. Repeated dogfood also found and repaired
+  a simulator-Keychain actor-change defect without weakening same-run relaunch
+  persistence; the local lifecycle contract now passes 9/9.
+- This closes retained local PostgreSQL write/readback, not production Nest,
+  physical-iPhone persistence/recovery, TestFlight, or real cross-device
+  visibility. Full contract detail is in
+  `docs/coordination/2026-08-02-native-focus-planning.md`.

@@ -995,6 +995,28 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(taskTags.exists)
         XCTAssertTrue(taskTags.label.contains("High Ground Odyssey"))
         XCTAssertTrue(taskTags.label.contains("Proof listen"))
+        let planFocus = app.buttons["CaptureTodayTaskPlanFocus_preview-task"]
+        reveal(planFocus)
+        XCTAssertTrue(planFocus.exists)
+        XCTAssertEqual(planFocus.label, "Plan focus")
+        XCTAssertTrue(planFocus.isEnabled, "Opening the no-side-effect planner should remain testable in preview mode.")
+        planFocus.tap()
+        XCTAssertTrue(app.navigationBars["Plan focus"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanStart"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanDuration"].exists)
+        XCTAssertTrue(app.staticTexts["Does not change the task deadline or status"].exists)
+        let reminderBoundary = app.staticTexts["Does not create a reminder or appointment"]
+        reveal(reminderBoundary)
+        XCTAssertTrue(reminderBoundary.exists)
+        let calendarBoundary = app.staticTexts["Does not write to Google or Apple Calendar"]
+        reveal(calendarBoundary)
+        XCTAssertTrue(calendarBoundary.exists)
+        let savePlan = app.buttons["CaptureTodayFocusPlanSave"]
+        reveal(savePlan)
+        XCTAssertTrue(savePlan.exists)
+        XCTAssertFalse(savePlan.isEnabled, "Preview inspection must never write a canonical focus block.")
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.navigationBars["Plan focus"].exists)
 
         let transcriptReview = app.staticTexts["Transcript review"]
         reveal(transcriptReview)
@@ -1021,7 +1043,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let boundary = app.descendants(matching: .any)["CaptureTodayFollowThroughBoundary"]
         reveal(boundary)
         XCTAssertTrue(boundary.exists)
-        XCTAssertTrue(boundary.label.contains("never complete the linked task or goal"))
+        XCTAssertTrue(boundary.label.contains("never completes the linked task or goal"))
+        XCTAssertTrue(boundary.label.contains("never a deadline, reminder, appointment, or external calendar event"))
 
         for _ in 0..<8 where !sourceLink.isHittable {
             app.swipeDown()

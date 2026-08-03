@@ -24,6 +24,7 @@ import {
 } from "@/lib/server/task-recurrence";
 import { isIanaTimeZone, parseRecurrenceStart, validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { createWorkPlanBlockInTransaction } from "@/lib/server/work-plan-blocks";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,10 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     immutableSourceAnchors: true,
     completingFocusBlockMutatesTarget: false,
     focusBlockActualTimeExplicitOnly: true,
+    focusBlockPlanningAvailable: true,
+    planningFocusBlockMutatesTarget: false,
+    planningFocusBlockCreatesAppointment: false,
+    planningFocusBlockSchedulesReminder: false,
     aiOutputRequiresHumanReview: true,
     transcriptReviewMutatesWork: false,
     transcriptReviewRequiresReleasedPlayback: true,
@@ -506,6 +511,62 @@ export async function POST(request: Request) {
   const now = new Date();
   const receiptId = randomUUID();
   try {
+    if (action === "focus-create") {
+      const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+      const startsAtLocal = text(input.startsAtLocal, 80);
+      const timezone = text(input.timezone, 100);
+      const durationMinutes = Number(input.durationMinutes);
+      if (!UUID_PATTERN.test(clientRequestId)
+          || !startsAtLocal
+          || !timezone
+          || !Number.isInteger(durationMinutes)
+          || durationMinutes < 15
+          || durationMinutes > 720) {
+        return NextResponse.json({
+          ok: false,
+          error: "Choose a valid local start, timezone, duration from 15 minutes to 12 hours, and stable phone request.",
+        }, { status: 400 });
+      }
+      const focusReceiptId = `mobile-focus-create-${clientRequestId}`;
+      const result = await prisma.$transaction(
+        (tx: any) => createWorkPlanBlockInTransaction(tx, {
+          targetType: "task",
+          targetId: id,
+          startsAt: startsAtLocal,
+          durationMinutes,
+          timezone,
+          actorUserId: userId,
+          surface: "ios-capture-today",
+          expectedTargetUpdatedAt: expected,
+          clientRequestId,
+          now,
+          receiptId: focusReceiptId,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "invalid") {
+        return NextResponse.json({ ok: false, error: "This focus plan has an invalid time or request identity." }, { status: 400 });
+      }
+      if (result.kind === "not-found") {
+        return NextResponse.json({ ok: false, error: "Only an accessible open committed task can be planned." }, { status: 404 });
+      }
+      if (result.kind === "conflict" || result.kind === "identity-conflict") {
+        return NextResponse.json({ ok: false, code: "CONFLICT", error: "This task or phone request changed elsewhere. Refresh Today before planning it." }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        planBlockId: result.planBlockId,
+        startsAt: result.startsAt.toISOString(),
+        endsAt: result.endsAt.toISOString(),
+        updatedAt: result.updatedAt.toISOString(),
+        receiptId: result.receiptId,
+        clientRequestId,
+        idempotentReplay: result.idempotentReplay,
+        boundaries: responseBoundaries(),
+      });
+    }
     if (action === "task-edit") {
       const title = normalizedText(input.title);
       const normalizedDetail = normalizedText(input.detail);

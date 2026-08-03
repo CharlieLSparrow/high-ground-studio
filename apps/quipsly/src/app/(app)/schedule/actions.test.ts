@@ -28,14 +28,15 @@ describe("personal focus-block decisions", () => {
 
   it("plans one accessible open task without mutating calendar or target state", async () => {
     signedIn();
-    const prisma = {
+    const tx = {
       actionItem: { findFirst: jest.fn().mockResolvedValue({ id: "task-1", sourceJson: { source: "quipsly-work-manual-v1" } }) },
       workPlanBlock: { create: jest.fn().mockResolvedValue({ id: "block-1", updatedAt: persisted }) },
     };
+    const prisma = { $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)) };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
     const result = await createWorkPlanBlock({ targetType: "task", targetId: "task-1", startsAt: "2026-07-19T12:00", durationMinutes: 50, timezone: "America/Denver" });
     expect(result).toMatchObject({ ok: true, planBlockId: "block-1", receiptId: expect.any(String) });
-    expect(prisma.workPlanBlock.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+    expect(tx.workPlanBlock.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       ownerUserId: "user-1",
       actionItemId: "task-1",
       goalId: null,

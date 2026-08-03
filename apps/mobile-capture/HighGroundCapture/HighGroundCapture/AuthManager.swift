@@ -288,6 +288,42 @@ final class AuthManager: ObservableObject {
         #endif
     }
 
+    /// Clears only Capture's saved authentication partition when a simulator
+    /// runtime smoke changes disposable actors. The actor marker survives app
+    /// replacement, just like the Keychain credentials it guards, while an
+    /// in-test relaunch for the same actor retains the authenticated session.
+    /// Release builds and physical devices contain no active reset path.
+    nonisolated static func configureRuntimeSmokeAccountResetIfRequested() {
+        #if DEBUG && targetEnvironment(simulator)
+        let process = ProcessInfo.processInfo
+        guard process.arguments.contains("--quipsly-capture-runtime-smoke"),
+              let credentialsPath = process.environment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"],
+              credentialsPath == "/tmp/quipsly-capture-runtime-ui-smoke-credentials.json",
+              let data = try? Data(contentsOf: URL(fileURLWithPath: credentialsPath)),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawEmail = payload["email"] as? String else { return }
+
+        let actor = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !actor.isEmpty, actor.count <= 320 else { return }
+
+        let markerAccount = "runtimeSmokeAuthenticatedActor"
+        guard getKeychainItem(account: markerAccount) != actor else { return }
+
+        for account in [
+            "accessToken",
+            "refreshToken",
+            "expiresAtEpochSeconds",
+            "userEmail",
+            "userName",
+            "accountOwnerID",
+            "verifiedIdentityAtEpochSeconds",
+        ] {
+            deleteKeychainItemForUITest(account: account)
+        }
+        saveKeychainItemForUITest(account: markerAccount, value: actor)
+        #endif
+    }
+
     func checkExistingSession() {
         userName = getKeychainItem(account: "userName")
         userEmail = getKeychainItem(account: "userEmail")

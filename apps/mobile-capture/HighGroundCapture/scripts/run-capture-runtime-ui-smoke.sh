@@ -176,6 +176,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  focus-plan)
+    TEST_CASE="testCanonicalTaskFocusPlanPersistsThroughNestWithoutMutatingTask"
+    if [[ -z "$TEST_TASK_ID" ]]; then
+      echo "Focus-plan mode requires one exact open task ID." >&2
+      exit 2
+    fi
+    ;;
   goal-edit)
     TEST_CASE="testCanonicalGoalEditRoundTripsAndRestoresThroughNest"
     if [[ -z "$TEST_GOAL_ID" || -z "$TEST_GOAL_EDIT_SOURCE_TITLE" || -z "$TEST_GOAL_EDIT_UPDATED_TITLE" ]]; then

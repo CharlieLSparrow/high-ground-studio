@@ -1855,6 +1855,68 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
     }
 
+    func testCanonicalTaskFocusPlanPersistsThroughNestWithoutMutatingTask() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty else {
+            throw XCTSkip("The focus-plan journey requires one exact open task ID.")
+        }
+        let app = try launchSignedInCaptureApp()
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+            showMore.tap()
+        }
+
+        let plan = app.buttons["CaptureTodayTaskPlanFocus_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(plan, in: app, timeout: 25, swipeAttempts: 12),
+            "The exact canonical task should expose one deliberate focus-planning action."
+        )
+        XCTAssertTrue(plan.isEnabled)
+        plan.tap()
+
+        XCTAssertTrue(app.navigationBars["Plan focus"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanStart"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTodayFocusPlanDuration"].exists)
+        XCTAssertTrue(app.staticTexts["Does not change the task deadline or status"].exists)
+        XCTAssertTrue(app.staticTexts["Does not create a reminder or appointment"].exists)
+        XCTAssertTrue(app.staticTexts["Does not write to Google or Apple Calendar"].exists)
+
+        let save = app.buttons["CaptureTodayFocusPlanSave"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        let planned = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTodayFocusBlock_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(planned, in: app, timeout: 35, swipeAttempts: 12),
+            "Nest acknowledgement should project the same persisted block back into iPhone Today."
+        )
+        let plannedIdentifier = planned.identifier
+        XCTAssertTrue(plannedIdentifier.hasPrefix("CaptureTodayFocusBlock_mobile-focus-create-"))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayFocusPlanPending_\(taskID)"].exists,
+            "An exact Nest acknowledgement must close the protected creation outbox."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureTodayFocusDoneButton"].isEnabled,
+            "A persisted plan should offer the separate explicit actual-time decision."
+        )
+
+        app.terminate()
+        let relaunched = try launchSignedInCaptureApp()
+        let persisted = relaunched.descendants(matching: .any)[plannedIdentifier].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(persisted, in: relaunched, timeout: 35, swipeAttempts: 12),
+            "Relaunch should read the identical canonical focus block back from Nest."
+        )
+        XCTAssertTrue(relaunched.buttons["CaptureTodayFocusDoneButton"].isEnabled)
+        XCTAssertFalse(
+            relaunched.descendants(matching: .any)["CaptureTodayFocusPlanPending_\(taskID)"].exists
+        )
+    }
+
     func testCanonicalGoalEditRoundTripsAndRestoresThroughNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let goalID = credentials.goalID, !goalID.isEmpty,

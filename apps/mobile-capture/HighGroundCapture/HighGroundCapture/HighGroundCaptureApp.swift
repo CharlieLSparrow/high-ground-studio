@@ -14,6 +14,7 @@ struct HighGroundCaptureApp: App {
     @StateObject private var videoCapture = VideoCaptureController()
 
     init() {
+        AuthManager.configureRuntimeSmokeAccountResetIfRequested()
         AuthManager.configureShareExtensionUITestOwnerIfRequested()
     }
 

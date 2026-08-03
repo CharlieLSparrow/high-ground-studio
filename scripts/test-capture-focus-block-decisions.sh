@@ -21,3 +21,12 @@ xcrun swiftc \
   -o "$temporary_directory/focus-block-decision-harness"
 
 "$temporary_directory/focus-block-decision-harness"
+
+xcrun swiftc \
+  -D FOCUS_BLOCK_PLAN_HARNESS \
+  -parse-as-library \
+  "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/FocusBlockPlanOutbox.swift" \
+  "$repo_root/apps/mobile-capture/HighGroundCapture/Testing/FocusBlockPlanOutboxHarness.swift" \
+  -o "$temporary_directory/focus-block-plan-harness"
+
+"$temporary_directory/focus-block-plan-harness"

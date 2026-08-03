@@ -1794,6 +1794,7 @@ struct TodayFollowThroughCard: View {
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var sourceToFile: MobileSourceInboxSource?
     @State private var focusToComplete: MobileCaptureTodayFocusBlock?
+    @State private var taskToPlan: MobileCaptureTodayTask?
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -2025,6 +2026,53 @@ struct TodayFollowThroughCard: View {
                                         .disabled(decisionsDisabled)
                                         .accessibilityIdentifier("CaptureTodayTaskEdit_\(task.id)")
                                         .accessibilityHint("Edits the canonical title, detail, and due date without changing tags, reminders, status, or external systems.")
+
+                                    }
+                                    if task.status == "OPEN" {
+                                        if let pendingPlan = client.pendingFocusPlan(for: task.id) {
+                                            Label(
+                                                pendingPlan.disposition == .held
+                                                    ? "Focus plan needs review"
+                                                    : "Focus plan saved on iPhone · waiting for Nest",
+                                                systemImage: pendingPlan.disposition == .held
+                                                    ? "exclamationmark.triangle.fill"
+                                                    : "lock.doc.fill"
+                                            )
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(pendingPlan.disposition == .held ? Color.orange : Color.indigo)
+                                            .accessibilityIdentifier("CaptureTodayFocusPlanPending_\(task.id)")
+                                            HStack {
+                                                Button("Retry plan") {
+                                                    Task { await client.retryFocusPlan(for: task.id) }
+                                                }
+                                                .buttonStyle(.borderedProminent)
+                                                .disabled(previewOnly || client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                                                .accessibilityIdentifier("CaptureTodayFocusPlanRetry_\(task.id)")
+                                                if pendingPlan.disposition == .held {
+                                                    Button("Discard", role: .destructive) {
+                                                        Task { await client.discardHeldFocusPlan(for: task.id) }
+                                                    }
+                                                    .buttonStyle(.bordered)
+                                                    .disabled(previewOnly || client.isMutating)
+                                                    .accessibilityIdentifier("CaptureTodayFocusPlanDiscard_\(task.id)")
+                                                }
+                                            }
+                                        } else {
+                                            Button {
+                                                taskToPlan = task
+                                            } label: {
+                                                Label("Plan focus", systemImage: "timer")
+                                                    .frame(minHeight: 44)
+                                            }
+                                            .font(.caption.weight(.bold))
+                                            .buttonStyle(.bordered)
+                                            .disabled(
+                                                client.isMutating
+                                                    || client.brief?.boundaries?.focusBlockPlanningAvailable != true
+                                            )
+                                            .accessibilityIdentifier("CaptureTodayTaskPlanFocus_\(task.id)")
+                                            .accessibilityHint("Plans private work time in Quipsly. It does not change the deadline, reminder, task status, appointment, or external calendar.")
+                                        }
                                     }
                                     if let reminder = task.reminder,
                                        reminder.status == "ACTIVE" {
@@ -2682,7 +2730,7 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Focus completion, task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus retries keep one stable operation identity, record explicit actual minutes, and never complete the linked task or goal. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Focus planning and completion, task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Focus-plan retries keep one stable identity and create only a private WorkPlanBlock—never a deadline, reminder, appointment, or external calendar event. Focus completion records explicit actual minutes and never completes the linked task or goal. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Weekly review is a deterministic summary and never invents missing work. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -2699,6 +2747,10 @@ struct TodayFollowThroughCard: View {
         .sheet(item: $focusToComplete) { focus in
             CaptureFocusCompletionSheet(client: client, block: focus)
                 .presentationDetents([.medium])
+        }
+        .sheet(item: $taskToPlan) { task in
+            CaptureFocusPlanningSheet(client: client, task: task, previewOnly: previewOnly)
+                .presentationDetents([.large])
         }
         .navigationDestination(for: TranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
@@ -3075,6 +3127,83 @@ private struct CaptureFocusCompletionSheet: View {
             }
             .navigationTitle("Complete focus")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}
+
+private struct CaptureFocusPlanningSheet: View {
+    @ObservedObject var client: CaptureTodayClient
+    let task: MobileCaptureTodayTask
+    let previewOnly: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var startsAt: Date
+    @State private var durationMinutes = 50
+
+    init(client: CaptureTodayClient, task: MobileCaptureTodayTask, previewOnly: Bool) {
+        self.client = client
+        self.task = task
+        self.previewOnly = previewOnly
+        let calendar = Calendar.current
+        let proposed = Date().addingTimeInterval(30 * 60)
+        let minute = calendar.component(.minute, from: proposed)
+        let roundingMinutes = (5 - minute % 5) % 5
+        _startsAt = State(initialValue: calendar.date(byAdding: .minute, value: roundingMinutes, to: proposed) ?? proposed)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Plan private work") {
+                    Text(task.title)
+                        .font(.headline)
+                    DatePicker(
+                        "Start",
+                        selection: $startsAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .accessibilityIdentifier("CaptureTodayFocusPlanStart")
+                    Stepper(value: $durationMinutes, in: 15...720, step: 5) {
+                        Text("\(durationMinutes) minutes")
+                            .font(.body.weight(.semibold))
+                    }
+                    .accessibilityIdentifier("CaptureTodayFocusPlanDuration")
+                }
+
+                Section("Clear boundaries") {
+                    Label("Creates one private Quipsly focus block", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Label("Does not change the task deadline or status", systemImage: "minus.circle")
+                    Label("Does not create a reminder or appointment", systemImage: "minus.circle")
+                    Label("Does not write to Google or Apple Calendar", systemImage: "calendar.badge.minus")
+                    Text("The exact plan is protected on this iPhone before sync. If Nest’s response is interrupted, the same request identity is retried without creating a duplicate block.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Button {
+                        Task {
+                            if await client.planFocusBlock(
+                                for: task,
+                                startsAt: startsAt,
+                                durationMinutes: durationMinutes
+                            ) {
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        Label("Plan focus block", systemImage: "timer")
+                    }
+                    .disabled(previewOnly || client.isMutating || !(15...720).contains(durationMinutes))
+                    .accessibilityIdentifier("CaptureTodayFocusPlanSave")
+                }
+            }
+            .navigationTitle("Plan focus")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }

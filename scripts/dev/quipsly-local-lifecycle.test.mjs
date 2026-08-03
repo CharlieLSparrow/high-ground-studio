@@ -26,6 +26,24 @@ const generatedMobileDogfood = readFileSync(
   generatedMobileDogfoodPath,
   "utf8",
 );
+const captureAuthManager = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
+const captureApp = readFileSync(
+  fileURLToPath(
+    new URL(
+      "../../apps/mobile-capture/HighGroundCapture/HighGroundCapture/HighGroundCaptureApp.swift",
+      import.meta.url,
+    ),
+  ),
+  "utf8",
+);
 const quipslyPackageJson = readFileSync(
   fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
   "utf8",
@@ -253,4 +271,31 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
   assert.doesNotMatch(generatedMobileDogfood, /set -x/);
   assert.doesNotMatch(generatedMobileDogfood, /echo .*database_url/);
   assert.doesNotMatch(generatedMobileDogfood, /echo .*firebase_api_key/);
+});
+
+test("generated Capture dogfood changes disposable actors without losing same-run relaunch state", () => {
+  assert.match(
+    captureApp,
+    /AuthManager\.configureRuntimeSmokeAccountResetIfRequested\(\)/,
+  );
+  assert.match(
+    captureAuthManager,
+    /#if DEBUG && targetEnvironment\(simulator\)/,
+  );
+  assert.match(
+    captureAuthManager,
+    /arguments\.contains\("--quipsly-capture-runtime-smoke"\)/,
+  );
+  assert.match(
+    captureAuthManager,
+    /credentialsPath == "\/tmp\/quipsly-capture-runtime-ui-smoke-credentials\.json"/,
+  );
+  assert.match(
+    captureAuthManager,
+    /getKeychainItem\(account: markerAccount\) != actor/,
+  );
+  assert.match(
+    captureAuthManager,
+    /saveKeychainItemForUITest\(account: markerAccount, value: actor\)/,
+  );
 });

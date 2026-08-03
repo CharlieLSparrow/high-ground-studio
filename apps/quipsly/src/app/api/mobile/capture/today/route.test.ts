@@ -1005,6 +1005,175 @@ describe("mobile Capture Today contract", () => {
     }) }) }));
   });
 
+  it("plans one private task focus block idempotently without changing calendars, reminders, appointments, or target state", async () => {
+    signedIn();
+    const clientRequestId = "816f5999-df45-4df0-8875-225da74c126d";
+    const blockId = `mobile-focus-create-${clientRequestId}`;
+    const tx = {
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({ id: "task-1", sourceJson: { source: "manual" }, updatedAt: expected }),
+      },
+      workPlanBlock: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: blockId, updatedAt: persisted }),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "focus-create",
+        id: "task-1",
+        startsAtLocal: "2026-07-19T12:00",
+        durationMinutes: 50,
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+        clientRequestId,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      action: "focus-create",
+      id: "task-1",
+      planBlockId: blockId,
+      receiptId: blockId,
+      clientRequestId,
+      idempotentReplay: false,
+      startsAt: "2026-07-19T18:00:00.000Z",
+      endsAt: "2026-07-19T18:50:00.000Z",
+      boundaries: {
+        focusBlockPlanningAvailable: true,
+        planningFocusBlockMutatesTarget: false,
+        planningFocusBlockCreatesAppointment: false,
+        planningFocusBlockSchedulesReminder: false,
+        externalCalendarMutated: false,
+        providerMutated: false,
+      },
+    });
+    expect(tx.workPlanBlock.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: blockId,
+        ownerUserId: "user-1",
+        actionItemId: "task-1",
+        goalId: null,
+        sourceJson: expect.objectContaining({ creationReceipt: expect.objectContaining({
+          surface: "ios-capture-today",
+          clientRequestId,
+          externalCalendarMutated: false,
+          providerMutated: false,
+          appointmentCreated: false,
+          targetStatusMutated: false,
+          targetDeadlineMutated: false,
+          reminderScheduled: false,
+        }) }),
+      }),
+    }));
+    expect(tx).not.toHaveProperty("taskReminder");
+    expect(tx).not.toHaveProperty("calendarEvent");
+  });
+
+  it("acknowledges the same iPhone focus plan after a lost response without creating a duplicate block", async () => {
+    signedIn();
+    const clientRequestId = "816f5999-df45-4df0-8875-225da74c126d";
+    const blockId = `mobile-focus-create-${clientRequestId}`;
+    const receipt = {
+      id: blockId,
+      kind: "quipsly-work-plan-block-create-v1",
+      surface: "ios-capture-today",
+      clientRequestId,
+      expectedTargetUpdatedAt: expected.toISOString(),
+    };
+    const tx = {
+      actionItem: { findFirst: jest.fn() },
+      workPlanBlock: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: blockId,
+          ownerUserId: "user-1",
+          actionItemId: "task-1",
+          goalId: null,
+          startsAt: new Date("2026-07-19T18:00:00.000Z"),
+          endsAt: new Date("2026-07-19T18:50:00.000Z"),
+          timezone: "America/Denver",
+          sourceJson: { creationReceipt: receipt },
+          updatedAt: persisted,
+        }),
+        create: jest.fn(),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "focus-create",
+        id: "task-1",
+        startsAtLocal: "2026-07-19T12:00",
+        durationMinutes: 50,
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+        clientRequestId,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      planBlockId: blockId,
+      receiptId: blockId,
+      clientRequestId,
+      idempotentReplay: true,
+    });
+    expect(tx.actionItem.findFirst).not.toHaveBeenCalled();
+    expect(tx.workPlanBlock.create).not.toHaveBeenCalled();
+  });
+
+  it("does not enumerate another account's deterministic focus-plan identity", async () => {
+    signedIn();
+    const clientRequestId = "816f5999-df45-4df0-8875-225da74c126d";
+    const tx = {
+      actionItem: { findFirst: jest.fn() },
+      workPlanBlock: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: `mobile-focus-create-${clientRequestId}`,
+          ownerUserId: "other-user",
+          actionItemId: "other-task",
+          goalId: null,
+          startsAt: new Date("2026-07-19T18:00:00.000Z"),
+          endsAt: new Date("2026-07-19T18:50:00.000Z"),
+          timezone: "America/Denver",
+          sourceJson: {},
+          updatedAt: persisted,
+        }),
+        create: jest.fn(),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "focus-create",
+        id: "task-1",
+        startsAtLocal: "2026-07-19T12:00",
+        durationMinutes: 50,
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+        clientRequestId,
+      }),
+    }));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false });
+    expect(tx.actionItem.findFirst).not.toHaveBeenCalled();
+    expect(tx.workPlanBlock.create).not.toHaveBeenCalled();
+  });
+
   it("acknowledges an already-applied focus decision after a lost response even beyond bounded receipt history", async () => {
     signedIn();
     const clientRequestId = "63aeb0ea-8ba7-4b89-b007-d969df3cefe4";

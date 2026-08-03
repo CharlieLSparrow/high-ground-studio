@@ -2,7 +2,7 @@
 
 Candidate date: 2026-07-18
 
-Latest addendum: 2026-07-30
+Latest addendum: 2026-08-02
 
 Scope: iPhone capture app, mobile-capture Nest APIs, durable media upload, and release-readiness surfaces
 
@@ -83,6 +83,7 @@ The final local run records exact results after all hardening changes settled. S
 | Account deletion operating loop | disposable verified Firebase-emulator identity against local Nest/Postgres | PASS — create, idempotent replay, reopen, review, completion readback, and cleanup |
 | Account deletion iPhone UX | focused iPhone 17 Pro iOS 26.3.1 simulator journey | PASS — 1/1; 30-day timing, persistent-status explanation, and preview no-write boundary |
 | Canonical project-note editing | disposable real Firebase identity, current local Nest, loopback PostgreSQL, and focused iPhone Simulator journey | PASS — temporary title/body read back, exact title/body/revision/tags restored, stable block retained, 2 reversible receipts, zero external effects, database and Firebase residue absent |
+| Canonical Task focus planning | disposable real Firebase identity, current local Nest, loopback PostgreSQL, and focused iPhone 17 Pro / iOS 26.3.1 Simulator journey | PASS — one deterministic 50-minute `WorkPlanBlock`, same identity after app termination/relaunch, unchanged Task revision/status/deadline, no reminder/appointment/provider/external-calendar mutation, exact Task and block cleanup read back as zero, generated Firebase identity absent; `/tmp/quipsly-capture-runtime-ui-focus-plan-20260803T034306Z-43329.xcresult` |
 | Debug Simulator | generic iOS Simulator `xcodebuild` | PASS — arm64 and x86_64 |
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, Release configuration, signing disabled | PASS — retired facade editor/export sources are absent and the current production graph emits no build warning |

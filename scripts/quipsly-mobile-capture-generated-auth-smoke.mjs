@@ -304,6 +304,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     deletedInvites: 0,
     deletedGrants: 0,
     deletedCallRooms: 0,
+    deletedActionItems: 0,
     deletedSourceAnnotationUses: 0,
     deletedSourceAnnotations: 0,
     deletedCreatedProjects: 0,
@@ -320,8 +321,10 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
   const prisma = createPrisma(env);
   const homeSlug = `home-${slugifyEmailForHomeNest(email)}`;
   const deletedRoomIds = [];
+  const deletedActionItemIds = [];
   const deletedProjectIds = [];
   let generatedUserId = null;
+  let databaseCleanupError = null;
 
   try {
     const user = await prisma.user.findFirst({
@@ -351,6 +354,21 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
         deletedRoomIds.push(room.id);
         cleanup.deletedCallRooms += 1;
       }
+
+      // Project and assigned-user relations deliberately preserve ordinary
+      // tasks with SET NULL. Disposable dogfood must therefore delete its own
+      // remaining generated tasks explicitly instead of mistaking detached
+      // rows for successful cleanup.
+      const actionItems = await prisma.actionItem.findMany({
+        where: { assignedUserId: user.id },
+        select: { id: true },
+      });
+      deletedActionItemIds.push(...actionItems.map((item) => item.id));
+      cleanup.deletedActionItems = (
+        await prisma.actionItem.deleteMany({
+          where: { id: { in: deletedActionItemIds } },
+        })
+      ).count;
     }
 
     cleanup.deletedInvites = (await prisma.studioNestInvite.deleteMany({ where: { email } })).count;
@@ -426,6 +444,8 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       remainingInvites,
       remainingGrants,
       remainingRooms,
+      remainingActionItems,
+      remainingWorkPlanBlocks,
       remainingProjects,
       remainingMemberships,
       remainingUsers,
@@ -434,6 +454,12 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       prisma.studioProjectAccessGrant.count({ where: { email } }),
       prisma.callRoom.count({
         where: deletedRoomIds.length ? { id: { in: deletedRoomIds } } : { id: "__none__" },
+      }),
+      prisma.actionItem.count({
+        where: deletedActionItemIds.length ? { id: { in: deletedActionItemIds } } : { id: "__none__" },
+      }),
+      prisma.workPlanBlock.count({
+        where: generatedUserId ? { ownerUserId: generatedUserId } : { ownerUserId: "__none__" },
       }),
       prisma.studioProject.count({
         where: deletedProjectIds.length ? { id: { in: deletedProjectIds } } : { id: "__none__" },
@@ -454,6 +480,8 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       invites: remainingInvites,
       grants: remainingGrants,
       rooms: remainingRooms,
+      actionItems: remainingActionItems,
+      workPlanBlocks: remainingWorkPlanBlocks,
       projects: remainingProjects,
       memberships: remainingMemberships,
       users: remainingUsers,
@@ -464,6 +492,11 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       { residue },
     );
     cleanup.databaseArtifactsAbsentAfterCleanup = true;
+  } catch (error) {
+    // Firebase cleanup is independent of PostgreSQL health. Preserve the
+    // database failure for the operator, but never strand a disposable remote
+    // identity just because the local database disappeared mid-cleanup.
+    databaseCleanupError = error;
   } finally {
     await prisma.$disconnect();
   }
@@ -493,6 +526,8 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     if (error?.code !== "auth/user-not-found") throw error;
     cleanup.firebaseUserAbsentAfterCleanup = true;
   }
+
+  if (databaseCleanupError) throw databaseCleanupError;
 
   return cleanup;
 }
@@ -864,6 +899,7 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
   return {
     taskId: task.body.entry.id,
     taskTitle: taskRequest.title,
+    taskUpdatedAt: task.body.entry.updatedAt,
     goalId: goal.body.entry.id,
     goalTitle,
     goalTargetLocalDate,
@@ -891,6 +927,112 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     tagUsageCountsProven: true,
     externalSideEffects: false,
   };
+}
+
+async function assertGeneratedFocusPlan(env, baseUrl, idToken, email, projectWorkProof) {
+  const prisma = createPrisma(env);
+  const authorization = `Bearer ${idToken}`;
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: email },
+          { aliases: { some: { email } } },
+        ],
+      },
+      select: { id: true },
+    });
+    assert(user?.id, "Focus-plan readback could not resolve the generated actor.");
+
+    const [task, blocks, reminderCount] = await Promise.all([
+      prisma.actionItem.findUnique({
+        where: { id: projectWorkProof.taskId },
+        select: { id: true, title: true, status: true, dueAt: true, updatedAt: true },
+      }),
+      prisma.workPlanBlock.findMany({
+        where: { ownerUserId: user.id, actionItemId: projectWorkProof.taskId },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.taskReminder.count({
+        where: { ownerUserId: user.id, actionItemId: projectWorkProof.taskId },
+      }),
+    ]);
+    assert(
+      task?.title === projectWorkProof.taskTitle
+        && task?.status === "OPEN"
+        && task?.dueAt === null
+        && task?.updatedAt?.toISOString() === projectWorkProof.taskUpdatedAt,
+      "Planning focus time changed the canonical task title, status, deadline, or revision.",
+      { task },
+    );
+    assert(blocks.length === 1, "The operated iPhone journey must create exactly one canonical focus block.", {
+      blockCount: blocks.length,
+    });
+
+    const block = blocks[0];
+    const source = block.sourceJson && typeof block.sourceJson === "object"
+      ? block.sourceJson
+      : {};
+    const receipt = source.creationReceipt && typeof source.creationReceipt === "object"
+      ? source.creationReceipt
+      : {};
+    assert(
+      block.id.startsWith("mobile-focus-create-")
+        && block.status === "PLANNED"
+        && block.actualMinutes === null
+        && block.completedAt === null
+        && block.endsAt.getTime() - block.startsAt.getTime() === 50 * 60_000
+        && receipt.id === block.id
+        && receipt.kind === "quipsly-work-plan-block-create-v1"
+        && receipt.surface === "ios-capture-today"
+        && receipt.targetType === "task"
+        && receipt.targetId === projectWorkProof.taskId
+        && receipt.externalCalendarMutated === false
+        && receipt.providerMutated === false
+        && receipt.appointmentCreated === false
+        && receipt.targetStatusMutated === false
+        && receipt.targetDeadlineMutated === false
+        && receipt.reminderScheduled === false
+        && reminderCount === 0,
+      "The canonical focus block or its no-side-effect receipt did not match the exact iPhone decision.",
+      { blockId: block.id, status: block.status, reminderCount, receipt },
+    );
+
+    const today = await requestJson(`${baseUrl}/api/mobile/capture/today`, {
+      headers: { authorization },
+    });
+    const projected = Array.isArray(today.body?.focusBlocks)
+      ? today.body.focusBlocks.find((candidate) => candidate.id === block.id)
+      : null;
+    assert(
+      today.response.status === 200
+        && today.body?.ok === true
+        && projected?.targetId === projectWorkProof.taskId
+        && projected?.status === "PLANNED"
+        && today.body?.boundaries?.focusBlockPlanningAvailable === true
+        && today.body?.boundaries?.planningFocusBlockMutatesTarget === false
+        && today.body?.boundaries?.planningFocusBlockCreatesAppointment === false
+        && today.body?.boundaries?.planningFocusBlockSchedulesReminder === false,
+      `Canonical Today readback did not project the operated focus block. HTTP ${today.response.status}`,
+      { body: today.body },
+    );
+
+    return {
+      oneCanonicalBlock: true,
+      deterministicPhoneIdentity: true,
+      fiftyMinutePlan: true,
+      persistedAfterRelaunch: true,
+      taskRevisionPreserved: true,
+      taskStatusPreserved: true,
+      taskDeadlinePreserved: true,
+      reminderAbsent: true,
+      appointmentAbsent: true,
+      providerUnchanged: true,
+      externalCalendarUnchanged: true,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 async function createGeneratedSourceInboxCapture(
@@ -2124,7 +2266,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "focus-plan", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -2134,7 +2276,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(workflow)) {
+  if (!["full", "task-edit", "focus-plan", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
   if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
@@ -2153,6 +2295,7 @@ async function main() {
   let roomJoinProof = null;
   let sessionContextProof = null;
   let runtimeUISmoke = { requested: shouldRunRuntimeUISmoke, passed: false };
+  let focusPlanProof = null;
   let noteEditRestoration = null;
   let annotationProof = null;
   let annotationReviewRestoration = null;
@@ -2261,6 +2404,15 @@ async function main() {
           sourceInboxTagLabel: sourceInboxProof?.annotationTagLabel || "",
         },
       );
+      if (workflow === "focus-plan") {
+        focusPlanProof = await assertGeneratedFocusPlan(
+          env,
+          baseUrl,
+          firebaseBody.idToken,
+          email,
+          projectWorkProof,
+        );
+      }
       if (workflow === "note-edit") {
         noteEditRestoration = await assertGeneratedDocumentNoteRestored(
           env,
@@ -2322,6 +2474,7 @@ async function main() {
       roomJoin: roomJoinProof,
       sessionContext: sessionContextProof,
       runtimeUISmoke,
+      focusPlanProof,
       noteEditRestoration,
       annotationReview: annotationProof
         ? {
