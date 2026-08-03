@@ -14,6 +14,8 @@ const [operation, runner, contentView, reviewView, runtimeTests] = await Promise
 assert.match(operation, /QUIPSLY_RETAINED_OFFLINE_TRANSCRIPT_REVIEW_OPERATION === "1"/);
 assert.match(operation, /requires an explicit loopback PostgreSQL database/);
 assert.match(operation, /transcriptSegmentVerification\.findMany/);
+assert.match(operation, /transcriptSpeakerAttribution\.findMany/);
+assert.match(operation, /speakerIdentitySeparateFromWordReview: true/);
 assert.match(operation, /corrections\[0\]\.correctedText === conflictCorrectionText/);
 assert.match(operation, /corrections\[0\]\.correctedText !== phoneCorrectionText/);
 assert.match(operation, /providerSegmentsImmutable: true/);
@@ -23,11 +25,18 @@ assert.match(runner, /distinct phone\/concurrent correction text/);
 assert.match(contentView, /CaptureOfflineTranscriptReviewLink_/);
 assert.match(contentView, /Exact local-source transcript review/);
 assert.match(reviewView, /CaptureTranscriptAcceptCorrectionButton_/);
+assert.match(reviewView, /CaptureTranscriptSpeakerPending_/);
+assert.match(reviewView, /activeRoomID = roomID\.trimmingCharacters/);
+assert.match(reviewView, /reviewDecisionOutbox\.entries\.filter \{ \$0\.roomID == activeRoomID \}/);
+assert.match(reviewView, /speakerAttributionOutbox\.entries\.filter \{ \$0\.roomID == activeRoomID \}/);
+assert.match(reviewView, /word decisions and voice identities can be queued safely/);
 assert.match(runtimeTests, /testOfflineTranscriptReviewQueuesSurvivesRelaunchReconcilesAndHoldsConflict/);
 assert.match(runtimeTests, /CaptureTranscriptProtectedCacheBoundary/);
 assert.match(runtimeTests, /injectConcurrentTranscriptCorrection/);
 assert.match(runtimeTests, /CaptureTranscriptReviewOutboxBoundary/);
 assert.match(runtimeTests, /CaptureTranscriptVerifiedAsIs_/);
 assert.match(runtimeTests, /CaptureTranscriptDecisionPending_/);
+assert.match(runtimeTests, /CaptureTranscriptSpeakerUseSample_/);
+assert.match(runtimeTests, /CaptureTranscriptSpeakerPending_/);
 
 console.log("PASS retained native offline transcript-review operation contract");

@@ -41,6 +41,34 @@ struct CaptureTranscriptSpeakerAttribution: Codable, Identifiable, Equatable {
     let reviewedAt: String
 }
 
+struct CaptureTranscriptParticipant: Codable, Identifiable, Equatable {
+    let id: String
+    let userId: String?
+    let displayLabel: String
+    let role: String
+    let isCurrentActor: Bool
+}
+
+struct CaptureTranscriptSpeakerSample: Codable, Identifiable, Equatable {
+    let segmentId: String
+    let startSeconds: TimeInterval
+    let endSeconds: TimeInterval
+    let text: String
+
+    var id: String { segmentId }
+}
+
+struct CaptureTranscriptSpeakerGroup: Codable, Identifiable, Equatable {
+    let providerSpeakerLabel: String
+    let turnCount: Int
+    let providerSnapshotSha256: String
+    let attribution: CaptureTranscriptSpeakerAttribution?
+    let staleAttribution: Bool
+    let samples: [CaptureTranscriptSpeakerSample]
+
+    var id: String { providerSpeakerLabel }
+}
+
 struct CaptureTranscriptSegment: Codable, Identifiable, Equatable {
     let id: String
     let speakerLabel: String?
@@ -78,6 +106,10 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
     let transcriptJobId: String?
     let gate: CaptureTranscriptGate
     let playback: CaptureTranscriptPlayback?
+    /// Optional keeps protected v1 caches and older compatible Nest responses
+    /// readable while the native voice-identification surface rolls forward.
+    let participants: [CaptureTranscriptParticipant]?
+    let speakerGroups: [CaptureTranscriptSpeakerGroup]?
     let segments: [CaptureTranscriptSegment]
     let boundaries: [String: Bool]
 
@@ -111,6 +143,13 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
             proposals: [proposal],
             correctionHistory: [proposal]
         )
+        let participant = CaptureTranscriptParticipant(
+            id: "preview-participant-charlie",
+            userId: "preview-user-charlie",
+            displayLabel: "Charlie",
+            role: "HOST",
+            isCurrentActor: true
+        )
         return .init(
             ok: true,
             roomId: roomID,
@@ -124,6 +163,24 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                 durationSeconds: 60,
                 label: "Preview session recording"
             ),
+            participants: [participant],
+            speakerGroups: [
+                .init(
+                    providerSpeakerLabel: "Speaker",
+                    turnCount: 1,
+                    providerSnapshotSha256: String(repeating: "a", count: 64),
+                    attribution: nil,
+                    staleAttribution: false,
+                    samples: [
+                        .init(
+                            segmentId: segment.id,
+                            startSeconds: segment.startSeconds,
+                            endSeconds: segment.endSeconds,
+                            text: segment.providerText
+                        ),
+                    ]
+                ),
+            ],
             segments: [segment],
             boundaries: [
                 "providerSegmentsImmutable": true,
@@ -131,6 +188,7 @@ struct CaptureTranscriptCorrectionDesk: Codable, Equatable {
                 "acceptedHumanCorrectionRequiresPlaybackConfirmation": true,
                 "aiOutputRequiresHumanReview": true,
                 "mediaTimeAnchorsPreserved": true,
+                "speakerIdentitySeparateFromWordReview": true,
                 "noTaskCreated": true,
                 "noExternalDelivery": true,
                 "noPublication": true,
@@ -150,6 +208,7 @@ private struct CaptureTranscriptMutationBoundaries: Codable {
     let acceptedHumanCorrectionRequiresPlaybackConfirmation: Bool?
     let confirmedAsIsRequiresPlaybackConfirmation: Bool?
     let mediaTimeAnchorsPreserved: Bool?
+    let speakerIdentitySeparateFromWordReview: Bool?
 }
 
 private struct CaptureTranscriptMutationResponse: Codable {
@@ -157,6 +216,7 @@ private struct CaptureTranscriptMutationResponse: Codable {
     let idempotentReplay: Bool?
     let correction: CaptureTranscriptCorrection?
     let verification: CaptureTranscriptSegmentVerification?
+    let attribution: CaptureTranscriptSpeakerAttribution?
     let boundaries: CaptureTranscriptMutationBoundaries?
 }
 
@@ -435,6 +495,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     @Published private(set) var packetSnapshotStale = false
     @Published private(set) var pendingTranscriptDecisionCount = 0
     @Published private(set) var heldTranscriptDecisionCount = 0
+    @Published private(set) var pendingSpeakerAttributionCount = 0
+    @Published private(set) var heldSpeakerAttributionCount = 0
 
     var packetNeedsRebuild: Bool {
         packetStatus == "TRANSCRIPT_REVIEW_CHANGED" || packetSnapshotStale
@@ -442,7 +504,10 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     private var packetGoalReviewContext: CapturePacketGoalReviewContext?
     private let reviewDecisionOutbox = TranscriptReviewDecisionOutbox.shared
+    private let speakerAttributionOutbox = TranscriptSpeakerAttributionOutbox.shared
     private var isFlushingReviewDecisions = false
+    private var isFlushingSpeakerAttributions = false
+    private var activeRoomID: String?
 
     private let baseURL = normalizedNestBaseURL(
         Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
@@ -463,7 +528,18 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         reviewDecisionOutbox.decision(roomID: roomID, segmentID: segmentID)
     }
 
+    func pendingSpeakerAttribution(
+        roomID: String,
+        providerSpeakerLabel: String
+    ) -> PendingTranscriptSpeakerAttribution? {
+        speakerAttributionOutbox.attribution(
+            roomID: roomID,
+            providerSpeakerLabel: providerSpeakerLabel
+        )
+    }
+
     func load(roomID: String, previewOnly: Bool) async {
+        activeRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !previewOnly else {
             desk = .preview(roomID: roomID)
             if CaptureLaunchConfiguration.usesTranscriptReviewOutboxUITest,
@@ -485,7 +561,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                     }
                 }
             }
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             packetGoalCandidates = [.preview(roomID: roomID)]
             packetNoteCandidates = [.preview(roomID: roomID)]
             packetActionCandidates = [.preview(roomID: roomID)]
@@ -508,7 +584,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             }
             return
         }
-        publishReviewDecisionCounts()
+        publishOutboxCounts()
         guard AuthManager.shared.networkActionsAllowed else {
             packetGoalCandidates = []
             packetNoteCandidates = []
@@ -519,7 +595,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetStatus = nil
             resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
-                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed corrections can be queued safely, while packet and AI decisions stay locked until authority is verified."
+                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed word decisions and voice identities can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 errorMessage = "Sign in with a stable Quipsly account before loading transcript review."
                 desk = nil
@@ -553,7 +629,8 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             message = nil
             await loadPacketCandidates(roomID: roomID)
             let synchronizedReview = await flushReviewDecisions()
-            if synchronizedReview {
+            let synchronizedSpeaker = await flushSpeakerAttributions()
+            if synchronizedReview || synchronizedSpeaker {
                 Task { [weak self] in
                     await self?.load(roomID: roomID, previewOnly: false)
                 }
@@ -568,7 +645,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             packetStatus = nil
             resetPacketReviewState()
             if restoreProtectedCache(roomID: roomID) {
-                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed corrections can be queued safely, while packet and AI decisions stay locked until authority is verified."
+                errorMessage = "Nest is unavailable. Showing a protected transcript snapshot; exact local playback-reviewed word decisions and voice identities can be queued safely, while packet and AI decisions stay locked until authority is verified."
             } else {
                 desk = nil
                 isUsingProtectedCache = false
@@ -602,7 +679,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 reason: reason,
                 playbackPositionSeconds: playbackPosition
             )
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             errorMessage = nil
             message = "Playback-reviewed correction protected on this iPhone and waiting for exact Nest acknowledgement."
             if AuthManager.shared.networkActionsAllowed {
@@ -615,7 +692,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             return false
         }
     }
@@ -639,7 +716,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 expectedAcceptedCorrectionID: segment.acceptedCorrection?.id,
                 playbackPositionSeconds: playbackPosition
             )
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             errorMessage = nil
             message = "As-heard confirmation protected on this iPhone and waiting for exact Nest acknowledgement."
             if AuthManager.shared.networkActionsAllowed {
@@ -654,7 +731,55 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
+            return false
+        }
+    }
+
+    func identifyProviderSpeaker(
+        roomID: String,
+        transcriptJobID: String,
+        group: CaptureTranscriptSpeakerGroup,
+        participantID: String,
+        samplePositions: [String: TimeInterval],
+        previewOnly: Bool
+    ) async -> Bool {
+        guard !previewOnly else {
+            errorMessage = "Preview voice identities are intentionally disabled."
+            return false
+        }
+        let samples = group.samples.compactMap { sample -> PendingTranscriptSpeakerSample? in
+            guard let position = samplePositions[sample.segmentId] else { return nil }
+            return .init(segmentID: sample.segmentId, playbackPositionSeconds: position)
+        }
+        do {
+            _ = try speakerAttributionOutbox.enqueue(
+                roomID: roomID,
+                transcriptJobID: transcriptJobID,
+                providerSpeakerLabel: group.providerSpeakerLabel,
+                participantID: participantID,
+                expectedProviderSnapshotSHA256: group.providerSnapshotSha256,
+                samples: samples
+            )
+            publishOutboxCounts()
+            errorMessage = nil
+            message = "Voice identity review protected on this iPhone and waiting for exact Nest acknowledgement. No words were marked reviewed."
+            if AuthManager.shared.networkActionsAllowed {
+                _ = await flushSpeakerAttributions()
+                if pendingSpeakerAttribution(
+                    roomID: roomID,
+                    providerSpeakerLabel: group.providerSpeakerLabel
+                ) == nil {
+                    await load(roomID: roomID, previewOnly: false)
+                    if errorMessage == nil {
+                        message = "Voice identified from protected playback samples. No words were marked reviewed."
+                    }
+                }
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            publishOutboxCounts()
             return false
         }
     }
@@ -1138,9 +1263,18 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
 
     func retryHeldDecision(_ id: UUID, roomID: String) async {
         reviewDecisionOutbox.releaseForRetry(id)
-        publishReviewDecisionCounts()
+        publishOutboxCounts()
         _ = await flushReviewDecisions()
         if reviewDecisionOutbox.entries.contains(where: { $0.id == id }) == false {
+            await load(roomID: roomID, previewOnly: false)
+        }
+    }
+
+    func retryHeldSpeakerAttribution(_ id: UUID, roomID: String) async {
+        speakerAttributionOutbox.releaseForRetry(id)
+        publishOutboxCounts()
+        _ = await flushSpeakerAttributions()
+        if speakerAttributionOutbox.entries.contains(where: { $0.id == id }) == false {
             await load(roomID: roomID, previewOnly: false)
         }
     }
@@ -1149,7 +1283,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
     private func flushReviewDecisions() async -> Bool {
         guard !isFlushingReviewDecisions,
               AuthManager.shared.networkActionsAllowed else {
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             return false
         }
         isFlushingReviewDecisions = true
@@ -1157,7 +1291,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         defer {
             isFlushingReviewDecisions = false
             isMutating = false
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
         }
         var synchronizedAny = false
         for decision in reviewDecisionOutbox.entries where decision.disposition == .pending {
@@ -1269,7 +1403,7 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                 errorMessage = message
                 return false
             }
-            publishReviewDecisionCounts()
+            publishOutboxCounts()
             return true
         } catch {
             reviewDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
@@ -1278,9 +1412,116 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
         }
     }
 
-    private func publishReviewDecisionCounts() {
-        pendingTranscriptDecisionCount = reviewDecisionOutbox.pendingCount
-        heldTranscriptDecisionCount = reviewDecisionOutbox.heldCount
+    @discardableResult
+    private func flushSpeakerAttributions() async -> Bool {
+        guard !isFlushingSpeakerAttributions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishOutboxCounts()
+            return false
+        }
+        isFlushingSpeakerAttributions = true
+        isMutating = true
+        defer {
+            isFlushingSpeakerAttributions = false
+            isMutating = false
+            publishOutboxCounts()
+        }
+        var synchronizedAny = false
+        for attribution in speakerAttributionOutbox.entries where attribution.disposition == .pending {
+            if await syncSpeakerAttribution(attribution) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncSpeakerAttribution(_ decision: PendingTranscriptSpeakerAttribution) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/transcripts/corrections") else {
+            let message = "The configured Nest URL is invalid."
+            speakerAttributionOutbox.markHeld(decision.id, code: "INVALID_NEST_URL", message: message)
+            errorMessage = message
+            return false
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "operation": "attribute-provider-speaker",
+                "roomId": decision.roomID,
+                "providerSpeakerLabel": decision.providerSpeakerLabel,
+                "participantId": decision.participantID,
+                "clientRequestId": decision.clientRequestID,
+                "expectedProviderSnapshotSha256": decision.expectedProviderSnapshotSHA256,
+                "samples": decision.samples.map {
+                    [
+                        "segmentId": $0.segmentID,
+                        "playbackPositionSeconds": $0.playbackPositionSeconds,
+                    ]
+                },
+                "confirmedAgainstPlayback": true,
+                "reviewNote": "Identified in Quipsly Capture from exact retained local recording samples. No transcript words were marked reviewed.",
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try? JSONDecoder().decode(CaptureTranscriptMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload?.ok == true else {
+                let apiError = try? JSONDecoder().decode(CaptureTranscriptAPIError.self, from: data)
+                let message = apiError?.error ?? "Nest could not reconcile this voice identity review."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    speakerAttributionOutbox.markRetryable(decision.id, message: message)
+                    errorMessage = "Voice identity review remains protected for retry: \(message)"
+                } else {
+                    speakerAttributionOutbox.markHeld(decision.id, code: apiError?.errorCode, message: message)
+                    errorMessage = "Voice identity review needs attention before retry: \(message)"
+                }
+                return false
+            }
+            guard let payload,
+                  payload.boundaries?.providerSegmentsImmutable == true,
+                  payload.boundaries?.mediaTimeAnchorsPreserved == true,
+                  payload.boundaries?.speakerIdentitySeparateFromWordReview == true,
+                  let attribution = payload.attribution,
+                  attribution.providerSpeakerLabel == decision.providerSpeakerLabel,
+                  attribution.participantId == decision.participantID,
+                  attribution.providerSnapshotSha256 == decision.expectedProviderSnapshotSHA256,
+                  attribution.sampleSegmentIds == decision.samples.map(\.segmentID) else {
+                let message = "Nest returned different voice identity evidence. The protected phone review is held and no words are claimed as reviewed."
+                speakerAttributionOutbox.markHeld(
+                    decision.id,
+                    code: "ACKNOWLEDGEMENT_MISMATCH",
+                    message: message
+                )
+                errorMessage = message
+                return false
+            }
+            guard speakerAttributionOutbox.markAcknowledged(decision.id) else {
+                errorMessage = speakerAttributionOutbox.persistenceError
+                    ?? "Nest acknowledged this voice identity, but the protected phone ledger could not close it. It remains visible for safe idempotent recovery."
+                return false
+            }
+            publishOutboxCounts()
+            return true
+        } catch {
+            speakerAttributionOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Voice identity review remains protected for retry: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func publishOutboxCounts() {
+        guard let activeRoomID, !activeRoomID.isEmpty else {
+            pendingTranscriptDecisionCount = 0
+            heldTranscriptDecisionCount = 0
+            pendingSpeakerAttributionCount = 0
+            heldSpeakerAttributionCount = 0
+            return
+        }
+        let transcriptDecisions = reviewDecisionOutbox.entries.filter { $0.roomID == activeRoomID }
+        let speakerAttributions = speakerAttributionOutbox.entries.filter { $0.roomID == activeRoomID }
+        pendingTranscriptDecisionCount = transcriptDecisions.filter { $0.disposition == .pending }.count
+        heldTranscriptDecisionCount = transcriptDecisions.filter { $0.disposition == .held }.count
+        pendingSpeakerAttributionCount = speakerAttributions.filter { $0.disposition == .pending }.count
+        heldSpeakerAttributionCount = speakerAttributions.filter { $0.disposition == .held }.count
     }
 
     private func mutate(roomID: String, body: [String: Any], success: String) async {
@@ -1538,6 +1779,40 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
         library: LocalRecordingLibrary,
         expectedRecordingAssetID: String?
     ) {
+        play(
+            anchorID: segment.id,
+            startSeconds: segment.startSeconds,
+            endSeconds: segment.endSeconds,
+            recording: recording,
+            library: library,
+            expectedRecordingAssetID: expectedRecordingAssetID
+        )
+    }
+
+    func play(
+        sample: CaptureTranscriptSpeakerSample,
+        recording: LocalRecording?,
+        library: LocalRecordingLibrary,
+        expectedRecordingAssetID: String?
+    ) {
+        play(
+            anchorID: sample.segmentId,
+            startSeconds: sample.startSeconds,
+            endSeconds: sample.endSeconds,
+            recording: recording,
+            library: library,
+            expectedRecordingAssetID: expectedRecordingAssetID
+        )
+    }
+
+    private func play(
+        anchorID: String,
+        startSeconds: TimeInterval,
+        endSeconds: TimeInterval,
+        recording: LocalRecording?,
+        library: LocalRecordingLibrary,
+        expectedRecordingAssetID: String?
+    ) {
         pause(resetPosition: false)
         guard let recording,
               recording.status.isPlaybackEligible,
@@ -1556,19 +1831,19 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
             try audioSessionCoordinator.beginLocalPlayback()
             let player = try AVAudioPlayer(contentsOf: fileURL)
             player.delegate = self
-            guard player.prepareToPlay(), segment.startSeconds < player.duration else {
+            guard player.prepareToPlay(), startSeconds < player.duration else {
                 throw NSError(domain: "CaptureTranscriptPlayback", code: 1, userInfo: [NSLocalizedDescriptionKey: "This timestamp is outside the retained recording."])
             }
-            player.currentTime = max(0, segment.startSeconds)
+            player.currentTime = max(0, startSeconds)
             guard player.play() else {
                 throw NSError(domain: "CaptureTranscriptPlayback", code: 2, userInfo: [NSLocalizedDescriptionKey: "The retained recording could not begin playback."])
             }
             self.player = player
             activeRecordingID = recording.id
-            activeSegmentEnd = segment.endSeconds
+            activeSegmentEnd = endSeconds
             currentTime = player.currentTime
-            pauseAt = min(player.duration, segment.endSeconds + 2)
-            playedSegmentIDs.insert(segment.id)
+            pauseAt = min(player.duration, endSeconds + 2)
+            playedSegmentIDs.insert(anchorID)
             isPlaying = true
             errorMessage = nil
             startTimer()
@@ -1586,6 +1861,14 @@ final class CaptureTranscriptPlaybackController: NSObject, ObservableObject {
               playedSegmentIDs.contains(segment.id),
               currentTime >= max(segment.startSeconds, segment.endSeconds - 0.25),
               currentTime <= segment.endSeconds + 3 else { return nil }
+        return currentTime
+    }
+
+    func confirmedPosition(for sample: CaptureTranscriptSpeakerSample, recording: LocalRecording?) -> TimeInterval? {
+        guard recording?.id == activeRecordingID,
+              playedSegmentIDs.contains(sample.segmentId),
+              currentTime >= max(sample.startSeconds, sample.endSeconds - 0.25),
+              currentTime <= sample.endSeconds + 3 else { return nil }
         return currentTime
     }
 
@@ -1727,6 +2010,18 @@ struct CaptureTranscriptReviewView: View {
                         .id("transcript-outbox-status")
                         .accessibilityIdentifier("CaptureTranscriptReviewOutboxDetailBoundary")
                     }
+                    if client.pendingSpeakerAttributionCount > 0 || client.heldSpeakerAttributionCount > 0 {
+                        reviewNotice(
+                            title: client.heldSpeakerAttributionCount > 0
+                                ? "Voice identity needs review"
+                                : "Voice identity protected on this iPhone",
+                            detail: "\(client.pendingSpeakerAttributionCount) waiting · \(client.heldSpeakerAttributionCount) held. Nest must recheck the participant, full provider voice cluster, release gate, and every playback receipt. No words are marked reviewed.",
+                            tint: client.heldSpeakerAttributionCount > 0 ? .orange : .indigo,
+                            icon: client.heldSpeakerAttributionCount > 0 ? "exclamationmark.shield.fill" : "person.wave.2.fill"
+                        )
+                        .id("speaker-attribution-outbox-status")
+                        .accessibilityIdentifier("CaptureTranscriptSpeakerOutboxDetailBoundary")
+                    }
                     if let error = client.errorMessage ?? playback.errorMessage {
                         reviewNotice(title: "Needs attention", detail: error, tint: .orange, icon: "exclamationmark.triangle.fill")
                     }
@@ -1737,6 +2032,8 @@ struct CaptureTranscriptReviewView: View {
                     } else if let desk = client.desk {
                         sourceTruth(desk)
                             .id("source-truth")
+                        speakerIdentitySection(desk)
+                            .id("speaker-identities")
                         if focusSegmentID != nil {
                             transcriptSegments(desk)
                         }
@@ -1827,26 +2124,29 @@ struct CaptureTranscriptReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if client.pendingTranscriptDecisionCount > 0 || client.heldTranscriptDecisionCount > 0 {
+                    if totalOutboxCount > 0 {
                         Button {
                             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
-                                scrollTargetSegmentID = "transcript-outbox-status"
-                                scrollProxy.scrollTo("transcript-outbox-status", anchor: .top)
+                                let target = client.heldSpeakerAttributionCount + client.pendingSpeakerAttributionCount > 0
+                                    ? "speaker-attribution-outbox-status"
+                                    : "transcript-outbox-status"
+                                scrollTargetSegmentID = target
+                                scrollProxy.scrollTo(target, anchor: .top)
                             }
                         } label: {
                             ZStack(alignment: .topTrailing) {
                                 Image(
-                                    systemName: client.heldTranscriptDecisionCount > 0
+                                    systemName: totalHeldOutboxCount > 0
                                         ? "exclamationmark.shield.fill"
                                         : "checkmark.shield.fill"
                                 )
-                                Text("\(client.pendingTranscriptDecisionCount + client.heldTranscriptDecisionCount)")
+                                Text("\(totalOutboxCount)")
                                     .font(.caption2.weight(.bold))
                                     .padding(.horizontal, 4)
                                     .padding(.vertical, 1)
                                     .foregroundStyle(.white)
                                     .background(
-                                        client.heldTranscriptDecisionCount > 0 ? Color.orange : Color.blue,
+                                        totalHeldOutboxCount > 0 ? Color.orange : Color.blue,
                                         in: Capsule()
                                     )
                                     .offset(x: 9, y: -7)
@@ -1854,17 +2154,28 @@ struct CaptureTranscriptReviewView: View {
                             .frame(minWidth: 28, minHeight: 28)
                         }
                         .accessibilityLabel(
-                            "Transcript review outbox, \(client.pendingTranscriptDecisionCount) waiting, \(client.heldTranscriptDecisionCount) held"
+                            "Protected review outbox, \(totalOutboxCount - totalHeldOutboxCount) waiting, \(totalHeldOutboxCount) held"
                         )
                         .accessibilityHint("Shows the protected decisions saved on this iPhone.")
                         .accessibilityIdentifier("CaptureTranscriptReviewOutboxBoundary")
                         .accessibilityValue(
-                            client.heldTranscriptDecisionCount > 0 ? "Held" : "Queued"
+                            totalHeldOutboxCount > 0 ? "Held" : "Queued"
                         )
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
+                        if !(client.desk?.speakerGroups ?? []).isEmpty {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = "speaker-identities"
+                                    scrollProxy.scrollTo("speaker-identities", anchor: .top)
+                                }
+                            } label: {
+                                Label("Voice identities", systemImage: "person.wave.2")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToSpeakerIdentities")
+                        }
                         if previewOnly || !client.packetNoteCandidates.isEmpty {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
@@ -1984,6 +2295,41 @@ struct CaptureTranscriptReviewView: View {
         return [focusedSegment] + desk.segments.filter { $0.id != focusSegmentID }
     }
 
+    @ViewBuilder
+    private func speakerIdentitySection(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
+        let groups = desk.speakerGroups ?? []
+        let participants = desk.participants ?? []
+        if !groups.isEmpty, let transcriptJobID = desk.transcriptJobId {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Identify voices once", systemImage: "person.wave.2.fill")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.indigo)
+                Text("Listen to one to three representative samples, then connect the provider voice to a Session participant. This changes the displayed name across matching turns; it never marks their words playback-reviewed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(groups) { group in
+                    CaptureTranscriptSpeakerGroupCard(
+                        roomID: roomID,
+                        transcriptJobID: transcriptJobID,
+                        group: group,
+                        participants: participants,
+                        recording: recording,
+                        expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                        previewOnly: previewOnly,
+                        client: client,
+                        playback: playback,
+                        library: library
+                    )
+                    .id("\(group.providerSpeakerLabel):\(group.providerSnapshotSha256)")
+                }
+            }
+            .reviewCard()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("CaptureTranscriptSpeakerIdentitySection")
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Listen before changing truth", systemImage: "waveform.and.magnifyingglass")
@@ -2057,6 +2403,17 @@ struct CaptureTranscriptReviewView: View {
         client.packetNoteCandidates.count
             + client.packetActionCandidates.count
             + client.packetGoalCandidates.count
+    }
+
+    private var totalOutboxCount: Int {
+        client.pendingTranscriptDecisionCount
+            + client.heldTranscriptDecisionCount
+            + client.pendingSpeakerAttributionCount
+            + client.heldSpeakerAttributionCount
+    }
+
+    private var totalHeldOutboxCount: Int {
+        client.heldTranscriptDecisionCount + client.heldSpeakerAttributionCount
     }
 
     private var packetCandidateSummary: String {
@@ -2898,6 +3255,257 @@ private struct CapturePacketGoalCandidateCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CapturePacketGoalCandidate_\(candidate.id)")
+    }
+}
+
+private struct CaptureTranscriptSpeakerGroupCard: View {
+    let roomID: String
+    let transcriptJobID: String
+    let group: CaptureTranscriptSpeakerGroup
+    let participants: [CaptureTranscriptParticipant]
+    let recording: LocalRecording?
+    let expectedRecordingAssetID: String?
+    let previewOnly: Bool
+    @ObservedObject var client: CaptureTranscriptCorrectionClient
+    @ObservedObject var playback: CaptureTranscriptPlaybackController
+    let library: LocalRecordingLibrary
+
+    @State private var selectedParticipantID = ""
+    @State private var confirmedSamplePositions: [String: TimeInterval] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Provider \(group.providerSpeakerLabel)")
+                        .font(.headline)
+                    Text("\(group.turnCount) \(group.turnCount == 1 ? "turn" : "turns") in the current provider transcript")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let attribution = group.attribution {
+                    Label(attribution.attributedLabel, systemImage: "checkmark.shield.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.green)
+                }
+            }
+
+            if group.staleAttribution {
+                Label(
+                    "The provider voice cluster changed after its last assignment. Listen again before replacing it.",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureTranscriptSpeakerStale_\(group.providerSpeakerLabel)")
+            }
+
+            if participants.isEmpty {
+                Label(
+                    "Add a named Session participant before identifying this voice.",
+                    systemImage: "person.crop.circle.badge.exclamationmark"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            } else {
+                Picker("Session participant", selection: $selectedParticipantID) {
+                    ForEach(participants) { participant in
+                        Text(participant.isCurrentActor
+                            ? "\(participant.displayLabel) · you"
+                            : participant.displayLabel
+                        )
+                        .tag(participant.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .accessibilityIdentifier("CaptureTranscriptSpeakerParticipant_\(group.providerSpeakerLabel)")
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Playback evidence")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                ForEach(group.samples) { sample in
+                    speakerSample(sample)
+                }
+            }
+
+            if let pendingAttribution {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label(
+                        pendingAttribution.disposition == .held
+                            ? "Voice identity held for review"
+                            : "Voice identity queued on this iPhone",
+                        systemImage: pendingAttribution.disposition == .held
+                            ? "exclamationmark.shield.fill"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(pendingAttribution.disposition == .held ? Color.orange : Color.indigo)
+                    Text(
+                        pendingAttribution.lastErrorMessage
+                            ?? "The participant, full provider-cluster snapshot, and playback receipts are protected until Nest acknowledges this stable request. No words are marked reviewed."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if pendingAttribution.disposition == .held {
+                        Button("Review state and retry") {
+                            Task {
+                                await client.retryHeldSpeakerAttribution(
+                                    pendingAttribution.id,
+                                    roomID: roomID
+                                )
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(client.isMutating || !AuthManager.shared.networkActionsAllowed)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("CaptureTranscriptSpeakerRetry_\(group.providerSpeakerLabel)")
+                    }
+                }
+                .padding(12)
+                .background(
+                    (pendingAttribution.disposition == .held ? Color.orange : Color.indigo)
+                        .opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .accessibilityIdentifier("CaptureTranscriptSpeakerPending_\(group.providerSpeakerLabel)")
+            } else {
+                Button {
+                    Task {
+                        _ = await client.identifyProviderSpeaker(
+                            roomID: roomID,
+                            transcriptJobID: transcriptJobID,
+                            group: group,
+                            participantID: selectedParticipantID,
+                            samplePositions: confirmedSamplePositions,
+                            previewOnly: previewOnly
+                        )
+                    }
+                } label: {
+                    Label(
+                        group.attribution == nil ? "Identify this voice" : "Update voice identity",
+                        systemImage: "person.wave.2.fill"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.indigo)
+                .disabled(
+                    previewOnly
+                        || client.isMutating
+                        || selectedParticipantID.isEmpty
+                        || confirmedSamplePositions.isEmpty
+                        || !hasExactLocalSource
+                )
+                .accessibilityHint("Saves only a provider voice to participant mapping. Transcript words remain unreviewed.")
+                .accessibilityIdentifier("CaptureTranscriptIdentifySpeaker_\(group.providerSpeakerLabel)")
+            }
+
+            Text("Voice identity and word review are separate. This mapping changes display labels only; corrections and as-heard confirmations still require their own deliberate playback decision.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureTranscriptSpeakerWordReviewBoundary_\(group.providerSpeakerLabel)")
+        }
+        .padding(14)
+        .background(Color.indigo.opacity(0.055), in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.indigo.opacity(0.16), lineWidth: 1)
+        }
+        .task {
+            if selectedParticipantID.isEmpty {
+                selectedParticipantID = pendingAttribution?.participantID
+                    ?? group.attribution?.participantId
+                    ?? participants.first(where: \.isCurrentActor)?.id
+                    ?? participants.first?.id
+                    ?? ""
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTranscriptSpeakerGroup_\(group.providerSpeakerLabel)")
+    }
+
+    @ViewBuilder
+    private func speakerSample(_ sample: CaptureTranscriptSpeakerSample) -> some View {
+        let livePosition = playback.confirmedPosition(for: sample, recording: recording)
+        let chosenPosition = confirmedSamplePositions[sample.segmentId]
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(sample.startSeconds.captureTranscriptTimestamp)–\(sample.endSeconds.captureTranscriptTimestamp)")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(.indigo)
+                    Text(sample.text)
+                        .font(.caption)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 10)
+                Button {
+                    playback.play(
+                        sample: sample,
+                        recording: recording,
+                        library: library,
+                        expectedRecordingAssetID: expectedRecordingAssetID
+                    )
+                } label: {
+                    Label("Play", systemImage: "play.fill")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!hasExactLocalSource || client.isMutating)
+                .accessibilityLabel("Play voice sample from \(sample.startSeconds.captureTranscriptTimestamp)")
+                .accessibilityIdentifier("CaptureTranscriptSpeakerPlay_\(sample.segmentId)")
+            }
+            if chosenPosition != nil {
+                Button {
+                    confirmedSamplePositions.removeValue(forKey: sample.segmentId)
+                } label: {
+                    Label("Heard sample selected", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.green)
+                .accessibilityHint("Removes this sample from the voice identity review.")
+                .accessibilityIdentifier("CaptureTranscriptSpeakerSampleSelected_\(sample.segmentId)")
+            } else if let livePosition {
+                Button {
+                    guard confirmedSamplePositions.count < 3 else { return }
+                    confirmedSamplePositions[sample.segmentId] = livePosition
+                } label: {
+                    Label("Use heard sample", systemImage: "ear.badge.checkmark")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureTranscriptSpeakerUseSample_\(sample.segmentId)")
+            } else {
+                Text("Listen through this sample before it can be used.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var pendingAttribution: PendingTranscriptSpeakerAttribution? {
+        client.pendingSpeakerAttribution(
+            roomID: roomID,
+            providerSpeakerLabel: group.providerSpeakerLabel
+        )
+    }
+
+    private var hasExactLocalSource: Bool {
+        guard let recording,
+              recording.status.isPlaybackEligible,
+              let expectedRecordingAssetID,
+              recording.recordingAssetId == expectedRecordingAssetID,
+              library.fileURL(for: recording) != nil else { return false }
+        return true
     }
 }
 

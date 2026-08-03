@@ -1992,6 +1992,41 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         app = launchProtectedOfflineApp()
         guard openOfflineReview(app) else { return }
 
+        let speakerPlay = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptSpeakerPlay_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(speakerPlay, in: app, timeout: 20, swipeAttempts: 10),
+            "The protected offline snapshot must retain a representative provider-voice sample."
+        )
+        XCTAssertTrue(speakerPlay.isEnabled)
+        speakerPlay.tap()
+        let useSpeakerSample = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptSpeakerUseSample_")
+        ).firstMatch
+        let speakerSampleReady = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"),
+            object: useSpeakerSample
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [speakerSampleReady], timeout: 20),
+            .completed,
+            "A voice sample becomes usable only after playback reaches its provider span."
+        )
+        useSpeakerSample.tap()
+        let identifySpeaker = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptIdentifySpeaker_")
+        ).firstMatch
+        XCTAssertTrue(identifySpeaker.waitForExistence(timeout: 8))
+        XCTAssertTrue(identifySpeaker.isEnabled)
+        identifySpeaker.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptSpeakerPending_")
+            ).firstMatch.waitForExistence(timeout: 8),
+            "Offline voice identity must journal its participant, full provider-cluster snapshot, and playback receipt before reconnect."
+        )
+
         let confirmationPlay = app.buttons[
             "CaptureTranscriptPlayButton_\(confirmationSegmentID)"
         ].firstMatch
@@ -2054,8 +2089,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             return
         }
         XCTAssertEqual(queuedBoundary.value as? String, "Queued")
-        XCTAssertTrue(queuedBoundary.label.contains("2 waiting"))
-        attachRuntimeScreenshot(app, name: "Offline transcript decisions protected before reconnect")
+        XCTAssertTrue(queuedBoundary.label.contains("3 waiting"))
+        attachRuntimeScreenshot(app, name: "Offline transcript and voice decisions protected before reconnect")
         app.terminate()
 
         app = launchProtectedOfflineApp()
@@ -2065,10 +2100,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ].firstMatch
         XCTAssertTrue(
             recoveredBoundary.waitForExistence(timeout: 10),
-            "Both protected transcript decisions must survive app process death."
+            "The voice identity and both transcript decisions must survive app process death."
         )
         XCTAssertEqual(recoveredBoundary.value as? String, "Queued")
-        XCTAssertTrue(recoveredBoundary.label.contains("2 waiting"))
+        XCTAssertTrue(recoveredBoundary.label.contains("3 waiting"))
 
         try await injectConcurrentTranscriptCorrection(
             credentials: credentials,

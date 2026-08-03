@@ -1060,6 +1060,7 @@ function checkTranscriptCorrectionContractSources() {
   const coachingPacketText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const nativeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptCorrectionReview.swift");
   const transcriptReviewOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptReviewDecisionOutbox.swift");
+  const transcriptSpeakerAttributionOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/TranscriptSpeakerAttributionOutbox.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const shellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
@@ -1177,6 +1178,18 @@ function checkTranscriptCorrectionContractSources() {
       && webText.includes("does not mark those words playback-reviewed")
       && nativeText.includes("CaptureTranscriptSpeakerAttribution")
       && nativeText.includes("Voice identified from Session samples")
+      && nativeText.includes("CaptureTranscriptSpeakerIdentitySection")
+      && nativeText.includes("CaptureTranscriptSpeakerWordReviewBoundary_")
+      && nativeText.includes('"operation": "attribute-provider-speaker"')
+      && nativeText.includes("payload.boundaries?.speakerIdentitySeparateFromWordReview == true")
+      && nativeText.includes("attribution.providerSnapshotSha256 == decision.expectedProviderSnapshotSHA256")
+      && nativeText.includes("attribution.sampleSegmentIds == decision.samples.map(\\.segmentID)")
+      && transcriptSpeakerAttributionOutboxText.includes("owner == Self.normalizedOwnerID(AuthManager.currentStoredOwnerID())")
+      && transcriptSpeakerAttributionOutboxText.includes("expectedProviderSnapshotSHA256")
+      && transcriptSpeakerAttributionOutboxText.includes("PendingTranscriptSpeakerSample")
+      && transcriptSpeakerAttributionOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && transcriptSpeakerAttributionOutboxText.includes("var clientRequestID: String")
+      && transcriptSpeakerAttributionOutboxText.includes("id.uuidString.lowercased()")
       && coachingPacketText.includes("acceptedSpeakerAttributionId")
       && coachingPacketText.includes("speakerAttributions: unknown = []"),
     "transcriptSpeakerAttributionSeparateReviewBoundary",

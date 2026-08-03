@@ -81,6 +81,14 @@ async function main() {
       confirmationSegmentID && correctionSegmentID && confirmationSegmentID !== correctionSegmentID,
       "The retained fixture did not provide two distinct transcript segments.",
     );
+    const seededProviderVoices = await prisma.transcriptSegment.updateMany({
+      where: { transcriptJobId: fixture.transcriptJobID },
+      data: { speakerLabel: "Speaker" },
+    });
+    assert(
+      seededProviderVoices.count >= 2,
+      "The retained fixture could not seed a provider diarization cluster for native voice review.",
+    );
     const beforeSegments = await prisma.transcriptSegment.findMany({
       where: { id: { in: [confirmationSegmentID, correctionSegmentID] } },
       orderBy: { startSeconds: "asc" },
@@ -89,10 +97,11 @@ async function main() {
     const initialDecisionState = await Promise.all([
       prisma.transcriptSegmentVerification.count({ where: { roomId: fixture.roomID } }),
       prisma.transcriptCorrection.count({ where: { roomId: fixture.roomID } }),
+      prisma.transcriptSpeakerAttribution.count({ where: { roomId: fixture.roomID } }),
     ]);
     assert(
-      initialDecisionState[0] === 0 && initialDecisionState[1] === 0,
-      "The fresh offline-review fixture must begin without transcript decisions.",
+      initialDecisionState[0] === 0 && initialDecisionState[1] === 0 && initialDecisionState[2] === 0,
+      "The fresh offline-review fixture must begin without transcript or voice-identity decisions.",
     );
 
     const stamp = `${Date.now()}-${randomBytes(4).toString("hex")}`;
@@ -135,11 +144,15 @@ async function main() {
       `Compiled Capture offline transcript operation failed (exit ${String(operation.status)}).`,
     );
 
-    const [verifications, corrections, afterSegments, tasks, goals, notes, calendarLinks] = await Promise.all([
+    const [verifications, corrections, speakerAttributions, afterSegments, tasks, goals, notes, calendarLinks] = await Promise.all([
       prisma.transcriptSegmentVerification.findMany({ where: { roomId: fixture.roomID } }),
       prisma.transcriptCorrection.findMany({
         where: { roomId: fixture.roomID },
         include: { revisions: { orderBy: { revision: "asc" } } },
+      }),
+      prisma.transcriptSpeakerAttribution.findMany({
+        where: { roomId: fixture.roomID },
+        orderBy: { reviewedAt: "asc" },
       }),
       prisma.transcriptSegment.findMany({
         where: { id: { in: [confirmationSegmentID, correctionSegmentID] } },
@@ -173,6 +186,16 @@ async function main() {
       "The concurrent canonical overlay or held phone-decision boundary is incorrect.",
     );
     assert(
+      speakerAttributions.length === 1
+        && speakerAttributions[0].status === "active"
+        && speakerAttributions[0].participantId === fixture.participantID
+        && speakerAttributions[0].providerSnapshotSha256.length === 64
+        && Array.isArray(speakerAttributions[0].sampleSegmentIdsJson)
+        && speakerAttributions[0].sampleSegmentIdsJson.length >= 1
+        && speakerAttributions[0].sampleSegmentIdsJson.length <= 3,
+      "The protected iPhone voice identity did not reconcile to one active participant-bound provider cluster.",
+    );
+    assert(
       afterSegments.every((segment, index) => segment.text === beforeSegments[index].text),
       "Transcript review must preserve immutable provider segment text.",
     );
@@ -193,6 +216,8 @@ async function main() {
       protectedOfflineShellUsed: true,
       processDeathRecovery: true,
       exactSourcePlayback: true,
+      reconciledSpeakerAttribution: speakerAttributions[0].id,
+      speakerIdentitySeparateFromWordReview: true,
       reconciledAsIsVerification: confirmation.id,
       heldStaleOverlayDecision: true,
       canonicalConcurrentCorrection: corrections[0].id,

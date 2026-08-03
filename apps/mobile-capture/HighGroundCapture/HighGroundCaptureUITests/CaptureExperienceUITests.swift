@@ -1403,6 +1403,13 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerIdentitySection"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerGroup_Speaker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSpeakerWordReviewBoundary_Speaker"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureTranscriptIdentifySpeaker_Speaker"].isEnabled,
+            "Preview voice identity must explain the workflow without claiming playback or saving a mapping."
+        )
         try app.performAccessibilityAudit(for: [
             .hitRegion,
             .sufficientElementDescription,

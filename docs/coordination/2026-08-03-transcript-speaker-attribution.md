@@ -16,6 +16,8 @@ Speaker identity is intentionally separate from transcript word review:
 
 The Nest desk labels this action `Identify a voice once`, requires an actual Session participant, protected playback, a selected sample, and an explicit recognition acknowledgement. Every mapped segment states that the displayed identity does not claim its words were playback-reviewed. The iPhone shows the same `Voice identified from Session samples` boundary when it reads the canonical Session transcript.
 
+Quipsly Capture can now perform that review, not merely display it. Its `Identify voices once` section groups the immutable provider labels, offers one to three exact local-source samples, requires the reviewer to play and explicitly select at least one sample, and maps the cluster to an actual Session participant. The phone writes the intent to a separate account-partitioned, file-protected ledger before attempting the network mutation. Stable request IDs make retries idempotent; changed provider evidence is held for review instead of overwritten. Word corrections and voice identities have separate pending and held state, and the transcript toolbar reports only decisions for the currently open Session so an older Session cannot present a misleading badge.
+
 ## Storage and concurrency boundary
 
 `TranscriptSpeakerAttribution` is an append-preserving audit model, not another correction shape. An active row binds:
@@ -61,6 +63,17 @@ The retained local Nest was migrated and operated against the real playback-back
 - The operation created no task, goal, note, Calendar event, message, delivery, publication, or other external side effect.
 
 The repeatable operator is `pnpm quipsly:retained:transcript-speaker-attribution`. It accepts only loopback Nest and PostgreSQL, reads fixed QA credentials from macOS Keychain, clears rendered sessions, and prints no credentials.
+
+The native offline operator `pnpm quipsly:retained:native-offline-transcript-review` also passed as a compiled iPhone Simulator journey:
+
+- opened the protected offline transcript snapshot and played the exact retained recording;
+- selected a provider-speaker sample, mapped that voice to the real Session participant, confirmed another segment as heard, and proposed a word correction;
+- showed all three decisions as protected locally, then terminated and relaunched the app;
+- recovered the same three decisions after process death and reconciled them after Nest returned;
+- accepted the voice mapping and as-heard verification, while correctly holding a deliberately stale word correction after a concurrent canonical edit;
+- read back exactly one active speaker attribution and one as-heard verification from PostgreSQL;
+- proved provider segments stayed immutable and voice identity did not increase the human-reviewed word count; and
+- created no note, task, goal, Calendar link, or external side effect.
 
 ## Verification evidence
 

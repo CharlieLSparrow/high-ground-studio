@@ -7913,42 +7913,44 @@ private struct CaptureLibraryView: View {
                         .accessibilityIdentifier("CaptureLibraryJournalWarning")
                 }
 
+                if model.usesPreviewData {
+                    CaptureLibraryPreviewSourceCard()
+                    NavigationLink {
+                        CaptureSourceEvidencePreviewView()
+                    } label: {
+                        Label("Review source evidence", systemImage: "checkmark.shield")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
+                    NavigationLink {
+                        CapturePacketNoteReviewPreviewView()
+                    } label: {
+                        Label("Review source-linked note", systemImage: "note.text.badge.plus")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CapturePacketNoteReviewPreviewLink")
+                    NavigationLink {
+                        CaptureTranscriptReviewView(
+                            roomID: "room-preview-coaching-ready",
+                            sessionTitle: "Leadership coaching session",
+                            recording: nil,
+                            previewOnly: true
+                        )
+                    } label: {
+                        Label("Review transcript", systemImage: "waveform.and.magnifyingglass")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("CaptureTranscriptReviewPreviewLink")
+                }
+
                 if library.recordings.isEmpty {
-                    if model.usesPreviewData {
-                        CaptureLibraryPreviewSourceCard()
-                        NavigationLink {
-                            CaptureSourceEvidencePreviewView()
-                        } label: {
-                            Label("Review source evidence", systemImage: "checkmark.shield")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
-                        NavigationLink {
-                            CapturePacketNoteReviewPreviewView()
-                        } label: {
-                            Label("Review source-linked note", systemImage: "note.text.badge.plus")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CapturePacketNoteReviewPreviewLink")
-                        NavigationLink {
-                            CaptureTranscriptReviewView(
-                                roomID: "room-preview-coaching-ready",
-                                sessionTitle: "Leadership coaching session",
-                                recording: nil,
-                                previewOnly: true
-                            )
-                        } label: {
-                            Label("Review transcript", systemImage: "waveform.and.magnifyingglass")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityIdentifier("CaptureTranscriptReviewPreviewLink")
-                    } else {
+                    if !model.usesPreviewData {
                         CaptureEmptyCard(
                             systemImage: "waveform",
                             title: "No local recordings yet",
