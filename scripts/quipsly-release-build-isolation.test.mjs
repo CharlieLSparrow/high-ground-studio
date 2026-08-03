@@ -30,6 +30,11 @@ test("release builds use isolated Next output directories", () => {
     releaseGate,
     /cleanPaths: \["apps\/(?:quipsly|web)\/\.next"\]/,
   );
+  assert.match(
+    releaseGate,
+    /--max-old-space-size=8192/,
+    "the readiness build must retain the same proven heap ceiling as the exact committed release verifier",
+  );
 });
 
 test("build output overrides stay confined to project-local generated directories", () => {

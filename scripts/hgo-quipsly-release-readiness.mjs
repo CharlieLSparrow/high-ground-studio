@@ -13,7 +13,10 @@ const productionBuildNodeOptions = [
   process.env.NODE_OPTIONS
     ?.replace(/(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s+)\d+/g, " ")
     .trim(),
-  "--max-old-space-size=4096",
+  // Keep the readiness path aligned with the exact committed release verifier.
+  // The current 160-page Nest graph compiles inside 4 GiB but can exhaust that
+  // ceiling while Next collects types and traces after compilation.
+  "--max-old-space-size=8192",
 ].filter(Boolean).join(" ");
 
 function parseJson(value) {
