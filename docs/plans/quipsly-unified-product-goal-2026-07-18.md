@@ -6807,6 +6807,12 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   `/tmp/quipsly-capture-app-store-ux-fix-rerun-20260803T035737Z-50848.xcresult`.
   Draft images remain explicitly ineligible for upload until recaptured from
   the next exact signed candidate or its TestFlight installation and approved.
+- Final visual readback also caught saturated card text refracting through the
+  floating iOS 26 tab bar. Capture now uses Apple's hard bottom scroll-edge
+  treatment on iOS 26 and later while preserving native older-system behavior;
+  the complete screenshot journey passes 1/1 at
+  `/tmp/quipsly-capture-hard-edge-rerun-20260803T040837Z-55130.xcresult`, and
+  the Account/tab-bar boundary is visually clean.
 - Build 26 remains the distributed baseline and does not contain the newest
   focus-planning or screenshot UX changes. No new build was produced; the next
   TestFlight candidate should batch a substantial product increment rather

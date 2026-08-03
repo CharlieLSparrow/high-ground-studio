@@ -52,6 +52,7 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.account)
         }
         .tint(CapturePalette.accent)
+        .modifier(CaptureBottomNavigationEdgeEffect())
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.activeCoordinatedCaptureGroupID != nil,
                audioCaptureIsActive || videoCaptureIsActive {
@@ -175,6 +176,21 @@ struct CapturePhoneShell: View {
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )
+    }
+}
+
+/// iOS 26 floats its Liquid Glass tab bar above scrolling content. Quipsly's
+/// dense text cards need the system's more opaque edge treatment so labels do
+/// not refract through the persistent navigation layer. Older systems keep
+/// their native tab-bar treatment.
+private struct CaptureBottomNavigationEdgeEffect: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.hard, for: .bottom)
+        } else {
+            content
+        }
     }
 }
 

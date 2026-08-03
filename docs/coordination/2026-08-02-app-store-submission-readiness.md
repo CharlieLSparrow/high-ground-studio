@@ -43,6 +43,16 @@ The Calendar-editor journey and the complete five-screenshot journey pass 2/2
 after the repair. The result bundle is
 `/tmp/quipsly-capture-app-store-ux-fix-rerun-20260803T035737Z-50848.xcresult`.
 
+Final visual readback found one additional navigation-layer defect: the next
+Help card's teal text refracted through the persistent iOS 26 Liquid Glass tab
+bar. Quipsly now requests the system's hard bottom scroll-edge effect on iOS
+26 and later, while iOS 17 through 25 retain their native treatment. This does
+not replace or imitate the system tab bar; it uses Apple's nearly opaque edge
+boundary for dense text under pinned controls. The complete five-screen
+journey then passed 1/1 at
+`/tmp/quipsly-capture-hard-edge-rerun-20260803T040837Z-55130.xcresult`, and
+human inspection confirmed a clean Account/tab-bar boundary.
+
 ## Exact remaining gates
 
 1. Recapture and approve all five screenshots from the next exact signed
@@ -68,6 +78,9 @@ screenshots from that exact source.
 
 ## Current platform references
 
+- Apple defines the hard scroll-edge style as a nearly opaque boundary between
+  pinned controls and scrolling content:
+  <https://developer.apple.com/documentation/swiftui/scroll-views>
 - Apple documents that `EKEventEditViewController` can let a person review and
   save one event without granting Quipsly broad Calendar access:
   <https://developer.apple.com/documentation/eventkit/accessing-calendar-using-eventkit-and-eventkitui>
