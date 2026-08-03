@@ -3516,6 +3516,7 @@ public class AgentServer: ObservableObject {
     }
 
     private nonisolated static func launchDirectProxyShortExport(requestURL: URL, logURL: URL) throws {
+        #if os(macOS)
         let scriptURL = try proxyShortExportScriptURLForAgent()
         try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: logURL.path) {
@@ -3533,6 +3534,16 @@ public class AgentServer: ObservableObject {
             try? logHandle.close()
         }
         try process.run()
+        #else
+        throw NSError(
+            domain: "QuipslyAgentServer",
+            code: 4_051,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Direct Python proxy export is available only in Quipsly Studio for Mac."
+            ]
+        )
+        #endif
     }
 
     private nonisolated static func proxyShortExportScriptURLForAgent() throws -> URL {

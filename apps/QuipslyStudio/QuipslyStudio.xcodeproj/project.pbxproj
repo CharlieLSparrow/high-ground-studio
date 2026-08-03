@@ -50,6 +50,7 @@
 		CF078A8FE82B03F059F8E163 /* QuipslyiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85155FDE1F47C53C01D2DCEC /* QuipslyiOSApp.swift */; };
 		D50913AD2A67213F6A589BFF /* AudioDetailAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */; };
 		D8CDB44DC5BA78C7AF91D5C2 /* ShortsRefinementQueuePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFC18BAF1EAC8031F92AA69 /* ShortsRefinementQueuePanel.swift */; };
+		DCA9C2C16A93A0A8F8C3807E /* CaptureSourceSyncReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */; };
 		E06430020ADD65C910243626 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F4B056B7835E61AB2A8BBB /* WorkspaceView.swift */; };
 		E4811DC6C79F82A7AFE93127 /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = 7C74C75E621A875259E7DD67 /* FirebaseVertexAI */; };
 		E79DE67798252410BE7F0A43 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A0F007038952CDBA0B3D1A7D /* FirebaseAuth */; };
@@ -58,6 +59,7 @@
 		F5F63F49AFC565DF64A4C26F /* QuipslyVideoCore in Frameworks */ = {isa = PBXBuildFile; productRef = B30D3EA8F554B06973DEF210 /* QuipslyVideoCore */; };
 		F8DDDA19C500F6E969CB665A /* QuipslyMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50573AE9640D0892E0F71F4 /* QuipslyMacApp.swift */; };
 		FD32FD477285520E74973EE5 /* ProfessionalDecisionTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFCF579A967784847F72C5E /* ProfessionalDecisionTimelineView.swift */; };
+		FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -66,6 +68,7 @@
 		1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAudioRoomController.swift; sourceTree = "<group>"; };
 		21F41F4FA2319A5D7495CF0C /* ShortCreatorQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortCreatorQuality.swift; sourceTree = "<group>"; };
 		25A7C2D5D8974C79EDE7F375 /* QuipslyiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = QuipslyiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		26275A53EB167B813F09DA50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3315ACD42976DE388399833D /* ShortsRecipeRepairProofPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsRecipeRepairProofPanel.swift; sourceTree = "<group>"; };
 		39245425D6374B5E32BFC281 /* TimelineEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineEditorView.swift; sourceTree = "<group>"; };
 		424FC79127149FCAD010AAAE /* RightSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightSidebarView.swift; sourceTree = "<group>"; };
@@ -75,7 +78,9 @@
 		6CFC18BAF1EAC8031F92AA69 /* ShortsRefinementQueuePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsRefinementQueuePanel.swift; sourceTree = "<group>"; };
 		76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRoomCommandRouter.swift; sourceTree = "<group>"; };
 		85155FDE1F47C53C01D2DCEC /* QuipslyiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuipslyiOSApp.swift; sourceTree = "<group>"; };
+		91807D671EF7E97843DCE553 /* QuipslyMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = QuipslyMac.entitlements; sourceTree = "<group>"; };
 		9579A4F5DF5D9EA12BFB67DF /* SourceAwareAudioWorkbenchPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceAwareAudioWorkbenchPanel.swift; sourceTree = "<group>"; };
+		962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSourceSyncReviewSheet.swift; sourceTree = "<group>"; };
 		9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalMediaAccess.swift; sourceTree = "<group>"; };
 		9F441C776F811BFB75CC7CC5 /* QuipslyMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QuipslyMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A50573AE9640D0892E0F71F4 /* QuipslyMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuipslyMacApp.swift; sourceTree = "<group>"; };
@@ -120,7 +125,9 @@
 			isa = PBXGroup;
 			children = (
 				511429179AF61AC9018DB385 /* EpisodeCaptureSetupView.swift */,
+				26275A53EB167B813F09DA50 /* Info.plist */,
 				1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */,
+				91807D671EF7E97843DCE553 /* QuipslyMac.entitlements */,
 				A50573AE9640D0892E0F71F4 /* QuipslyMacApp.swift */,
 			);
 			name = QuipslyMac;
@@ -170,6 +177,7 @@
 				1A26C85B53E7F56A319EB618 /* AgentServer.swift */,
 				D31732569DB6E494F1F66872 /* AudioDetailAnalysis.swift */,
 				76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */,
+				962E70862EE8723DBB2271E4 /* CaptureSourceSyncReviewSheet.swift */,
 				17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */,
 				9A460FF7FBCC077EA753487B /* ExternalMediaAccess.swift */,
 				B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */,
@@ -283,6 +291,7 @@
 				EEAE61D262D50AA2C9C25337 /* AgentServer.swift in Sources */,
 				60E095898C3519A9223E6C0F /* AudioDetailAnalysis.swift in Sources */,
 				2019552FF64725B1D459CA80 /* AudioRoomCommandRouter.swift in Sources */,
+				FF5D8CE53806ADC760CE1605 /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				C3A5B6D5E9694674D8D7613E /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */,
 				5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */,
@@ -312,6 +321,7 @@
 				150103483E1B28D556776A44 /* AgentServer.swift in Sources */,
 				D50913AD2A67213F6A589BFF /* AudioDetailAnalysis.swift in Sources */,
 				2F41D9F270FD16EBABBAA2BB /* AudioRoomCommandRouter.swift in Sources */,
+				DCA9C2C16A93A0A8F8C3807E /* CaptureSourceSyncReviewSheet.swift in Sources */,
 				BCEBABA86C6286052246204F /* Episode4CutIntelligenceBoardView.swift in Sources */,
 				8C0D12FB4B3F44C3DF18F2BB /* ExternalMediaAccess.swift in Sources */,
 				3E7A257B3B98B51EA06E6638 /* InspectorSidebarView.swift in Sources */,
@@ -418,13 +428,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/QuipslyMac/QuipslyMac.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 585GUXMY5M;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
@@ -441,7 +446,6 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highground.QuipslyMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
@@ -452,13 +456,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Sources/QuipslyMac/QuipslyMac.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 585GUXMY5M;
-				GENERATE_INFOPLIST_FILE = NO;
+				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
@@ -475,7 +474,6 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highground.QuipslyMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;

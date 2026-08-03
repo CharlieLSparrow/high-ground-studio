@@ -15,9 +15,15 @@ struct RightSidebarView: View {
     var onCutLaneWindow: ((UUID) -> Void)?
     var sourceStopCount: ((VideoLane) -> Int)?
     var onSourceStopNavigate: ((UUID, Int) -> Void)?
+    var reviewerActorID: String = ""
+    var reviewerLabel: String = ""
+    var onAuditionCaptureSync: ((Double) -> Void)?
+    var onApproveCaptureSync: ((CaptureSourceSyncApprovalInput) -> Void)?
+    var onUndoCaptureSync: ((CaptureSourceSyncUndoInput) -> Void)?
 
     @State private var isTargeted = false
     @State private var showParkedRecoverySources = false
+    @State private var syncReviewTarget: VideoLane?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -35,6 +41,19 @@ struct RightSidebarView: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isTargeted, perform: handleDrop(providers:))
         .accessibilityIdentifier("quipsly.sourceWall")
         .accessibilityLabel("Source Grove. Every synced source stays visible while Program Output decides what the edit shows.")
+        .sheet(item: $syncReviewTarget) { lane in
+            if let sequence = projectStore.activeSequence {
+                CaptureSourceSyncReviewSheet(
+                    sequence: sequence,
+                    targetLaneID: lane.id,
+                    reviewerActorID: reviewerActorID,
+                    reviewerLabel: reviewerLabel,
+                    onAudition: { onAuditionCaptureSync?($0) },
+                    onApprove: { onApproveCaptureSync?($0) },
+                    onUndo: { onUndoCaptureSync?($0) }
+                )
+            }
+        }
     }
 
     private var sidebarHeader: some View {
@@ -107,6 +126,7 @@ struct RightSidebarView: View {
             sourcePreview(lane)
             sourceIntentBar(lane)
             sourceMetricsRow(lane)
+            captureSyncReviewRow(lane)
             sourceStopControls(lane)
             sourceDecisionButtons(lane)
             missingMediaActions(lane)
@@ -121,6 +141,74 @@ struct RightSidebarView: View {
         .onTapGesture { onSelectLane?(lane.id) }
         .accessibilityIdentifier("quipsly.sourceWall.card.\(lane.id.uuidString)")
         .accessibilityLabel("Source Grove card \(lane.name). \(laneStatusText(lane)). \(playheadPresenceText(for: lane)). \(decisionState(for: lane).label) at playhead. Whole source lane remains intact.")
+    }
+
+    @ViewBuilder
+    private func captureSyncReviewRow(_ lane: VideoLane) -> some View {
+        if hasCaptureSyncPeer(lane) {
+            let active = CaptureSourceSyncReviewService.activeApproval(
+                for: lane
+            )
+            Button {
+                syncReviewTarget = lane
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: active == nil
+                        ? "waveform.path.ecg.rectangle"
+                        : "checkmark.seal.fill")
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(active == nil
+                            ? "Review assembled sync"
+                            : "Reviewed sync")
+                            .font(.caption)
+                            .fontWeight(.black)
+                        Text(active.map {
+                            String(
+                                format: "%.3fs · %@",
+                                $0.reviewedTargetOffsetSeconds,
+                                $0.reviewerLabel
+                            )
+                        } ?? "Compare cue, late drift, and assembled playback")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background((active == nil
+                    ? QuipslyStudioTheme.honey
+                    : QuipslyStudioTheme.moss).opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(
+                "quipsly.sourceWall.syncReview.\(lane.id.uuidString)"
+            )
+            .help("Review a real cue, later drift, and assembled playback before recording a reversible human alignment receipt.")
+        }
+    }
+
+    private func hasCaptureSyncPeer(_ lane: VideoLane) -> Bool {
+        guard let group = lane.metadata?.captureGroupID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !group.isEmpty,
+              lane.sourceVideo != nil,
+              let sequence = projectStore.activeSequence else {
+            return false
+        }
+        return sequence.lanes.contains { candidate in
+            candidate.id != lane.id
+                && candidate.sourceVideo != nil
+                && candidate.metadata?.captureGroupID?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased() == group
+        }
     }
 
     private func sourceSafetyStrip(_ lane: VideoLane) -> some View {

@@ -1274,7 +1274,18 @@ struct WorkspaceView: View {
                         sourceStopCount: sourceReviewBoundaryCount,
                         onSourceStopNavigate: { laneId, direction in
                             jumpToAdjacentSourceDecision(direction: direction, laneId: laneId)
-                        }
+                        },
+                        reviewerActorID: nativeAccountStore.isVerified
+                            ? nativeAccountStore.userEmail
+                            : "",
+                        reviewerLabel: nativeAccountStore.isVerified
+                            ? (nativeAccountStore.userName.isEmpty
+                                ? nativeAccountStore.userEmail
+                                : nativeAccountStore.userName)
+                            : "",
+                        onAuditionCaptureSync: auditionCaptureSync,
+                        onApproveCaptureSync: approveCaptureSync,
+                        onUndoCaptureSync: undoCaptureSync
                     )
                         .tabItem { Label("Media", systemImage: "photo.on.rectangle.angled") }
                 }
@@ -1414,7 +1425,18 @@ struct WorkspaceView: View {
                         sourceStopCount: sourceReviewBoundaryCount,
                         onSourceStopNavigate: { laneId, direction in
                             jumpToAdjacentSourceDecision(direction: direction, laneId: laneId)
-                        }
+                        },
+                        reviewerActorID: nativeAccountStore.isVerified
+                            ? nativeAccountStore.userEmail
+                            : "",
+                        reviewerLabel: nativeAccountStore.isVerified
+                            ? (nativeAccountStore.userName.isEmpty
+                                ? nativeAccountStore.userEmail
+                                : nativeAccountStore.userName)
+                            : "",
+                        onAuditionCaptureSync: auditionCaptureSync,
+                        onApproveCaptureSync: approveCaptureSync,
+                        onUndoCaptureSync: undoCaptureSync
                     )
                     .frame(minWidth: 330, idealWidth: 360, maxWidth: 388)
                 }
@@ -52924,6 +52946,79 @@ struct WorkspaceView: View {
 
         rebuildPlayer()
         scheduleAutosave(reason: "added keyframe")
+    }
+
+    private func auditionCaptureSync(at time: Double) {
+        playbackEngine.seek(to: time)
+        if !playbackEngine.isPlaying {
+            playbackEngine.play()
+        }
+        lastMediaAction = String(
+            format: "Auditioning assembled capture sources at %.3fs. No alignment receipt was created.",
+            time
+        )
+        updateAgentState()
+    }
+
+    private func approveCaptureSync(
+        _ input: CaptureSourceSyncApprovalInput
+    ) {
+        guard let sequence = projectStore.activeSequence else { return }
+        do {
+            let updated = try CaptureSourceSyncReviewService.approve(
+                input,
+                in: sequence
+            )
+            projectStore.updateSequence(
+                updated,
+                undoManager: nil,
+                actionName: "Approve Capture Sync"
+            )
+            selectedLaneId = input.targetLaneID
+            rebuildPlayer()
+            scheduleAutosave(reason: "approved capture sync")
+            lastMediaAction = String(
+                format: "Saved reviewed capture alignment at %.6fs. Original source bytes remain unchanged.",
+                input.reviewedTargetOffsetSeconds
+            )
+            errorMessage = nil
+            showErrorAlert = false
+            updateAgentState()
+        } catch {
+            lastMediaAction = "Capture sync review failed: \(error.localizedDescription)"
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
+        }
+    }
+
+    private func undoCaptureSync(
+        _ input: CaptureSourceSyncUndoInput
+    ) {
+        guard let sequence = projectStore.activeSequence else { return }
+        do {
+            let updated = try CaptureSourceSyncReviewService.undo(
+                input,
+                in: sequence
+            )
+            projectStore.updateSequence(
+                updated,
+                undoManager: nil,
+                actionName: "Undo Capture Sync"
+            )
+            selectedLaneId = input.targetLaneID
+            rebuildPlayer()
+            scheduleAutosave(reason: "undid capture sync")
+            lastMediaAction = "Undid one reviewed capture alignment and restored the prior placement. Original source bytes remain unchanged."
+            errorMessage = nil
+            showErrorAlert = false
+            updateAgentState()
+        } catch {
+            lastMediaAction = "Undo capture sync failed: \(error.localizedDescription)"
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
+        }
     }
 
     private func updateKeyframe() {

@@ -464,7 +464,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
                 URLQueryItem(name: "callbackScheme", value: "quipslymac"),
                 URLQueryItem(name: "state", value: state),
                 URLQueryItem(name: "codeChallenge", value: codeChallenge),
-                URLQueryItem(name: "deviceLabel", value: Host.current().localizedName ?? "Quipsly Studio for Mac"),
+                URLQueryItem(name: "deviceLabel", value: nativeDeviceLabel),
             ]
             guard let handoffURL = components?.url else {
                 QuipslyNativeAccountKeychain.deleteBrowserHandoff()
@@ -480,14 +480,13 @@ final class QuipslyNativeAccountStore: ObservableObject {
                     NSLocalizedDescriptionKey: "macOS could not open the Nest sign-in page.",
                 ])
             }
+            return "Finish Google sign-in in your browser. This Mac will verify the same Firebase identity automatically."
             #else
             QuipslyNativeAccountKeychain.deleteBrowserHandoff()
             throw NSError(domain: "QuipslyNativeAccount", code: 14, userInfo: [
                 NSLocalizedDescriptionKey: "Browser handoff is currently available in Quipsly Studio for Mac.",
             ])
             #endif
-
-            return "Finish Google sign-in in your browser. This Mac will verify the same Firebase identity automatically."
         }
     }
 
@@ -822,7 +821,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
             "code": handoff.code,
             "state": handoff.state,
             "codeVerifier": codeVerifier,
-            "deviceLabel": Host.current().localizedName ?? "Quipsly Studio for Mac",
+            "deviceLabel": nativeDeviceLabel,
         ])
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -853,6 +852,19 @@ final class QuipslyNativeAccountStore: ObservableObject {
             customToken: customToken,
             user: exchangeUser
         )
+    }
+
+    private var nativeDeviceLabel: String {
+        let appName = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleDisplayName"
+        ) as? String ?? "Quipsly"
+        #if os(macOS)
+        return Host.current().localizedName ?? "\(appName) on Mac"
+        #elseif os(iOS)
+        return "\(appName) on iPhone or iPad"
+        #else
+        return appName
+        #endif
     }
 
     private func signInWithCustomToken(

@@ -350,7 +350,10 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
     public var clipFocusLayout9x16: ClipFocusLayoutSettings
 
     public var duration: Double {
-        lanes.map { $0.duration }.max() ?? 0
+        lanes.compactMap { lane in
+            guard let source = lane.sourceVideo else { return nil }
+            return max(0, source.offset + max(0, source.duration))
+        }.max() ?? 0
     }
 
     public var selectedAudioSpineCandidate: AudioSpineCandidate? {
@@ -2308,6 +2311,7 @@ public struct VideoLaneMetadata: Codable, Equatable {
     public var programCrop9x16: ProgramCropAdjustment?
     public var programCropKeyframes16x9: [ProgramCropKeyframe]?
     public var programCropKeyframes9x16: [ProgramCropKeyframe]?
+    public var syncReviewHistory: [CaptureSourceSyncReviewReceipt]
 
     public init(
         sourceAssetId: String? = nil,
@@ -2335,7 +2339,8 @@ public struct VideoLaneMetadata: Codable, Equatable {
         programCrop16x9: ProgramCropAdjustment? = nil,
         programCrop9x16: ProgramCropAdjustment? = nil,
         programCropKeyframes16x9: [ProgramCropKeyframe]? = nil,
-        programCropKeyframes9x16: [ProgramCropKeyframe]? = nil
+        programCropKeyframes9x16: [ProgramCropKeyframe]? = nil,
+        syncReviewHistory: [CaptureSourceSyncReviewReceipt] = []
     ) {
         self.sourceAssetId = sourceAssetId
         self.mediaKind = mediaKind
@@ -2363,6 +2368,7 @@ public struct VideoLaneMetadata: Codable, Equatable {
         self.programCrop9x16 = programCrop9x16
         self.programCropKeyframes16x9 = programCropKeyframes16x9
         self.programCropKeyframes9x16 = programCropKeyframes9x16
+        self.syncReviewHistory = syncReviewHistory
     }
 
     enum CodingKeys: String, CodingKey {
@@ -2392,6 +2398,7 @@ public struct VideoLaneMetadata: Codable, Equatable {
         case programCrop9x16
         case programCropKeyframes16x9
         case programCropKeyframes9x16
+        case syncReviewHistory
     }
 
     public init(from decoder: Decoder) throws {
@@ -2422,7 +2429,8 @@ public struct VideoLaneMetadata: Codable, Equatable {
             programCrop16x9: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop16x9),
             programCrop9x16: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop9x16),
             programCropKeyframes16x9: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes16x9),
-            programCropKeyframes9x16: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes9x16)
+            programCropKeyframes9x16: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes9x16),
+            syncReviewHistory: try container.decodeIfPresent([CaptureSourceSyncReviewReceipt].self, forKey: .syncReviewHistory) ?? []
         )
     }
 }

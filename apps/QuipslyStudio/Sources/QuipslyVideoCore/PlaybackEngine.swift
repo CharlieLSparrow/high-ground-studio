@@ -304,7 +304,13 @@ public final class PlaybackEngine: ObservableObject {
         for (id, p) in sourcePlayers {
             let offset = sourceOffsets[id] ?? 0
             let duration = sourceDurations[id] ?? .infinity
+            let sourceEnd = offset + duration
             let mediaTime = min(max(0, sequenceTime - offset), duration)
+            let isAvailable = sequenceTime >= offset
+                && sequenceTime < sourceEnd
+            if !isAvailable {
+                p.pause()
+            }
             if cancelPending {
                 p.currentItem?.cancelPendingSeeks()
             }
@@ -314,6 +320,9 @@ public final class PlaybackEngine: ObservableObject {
             if !cancelPending,
                currentTime.isFinite,
                abs(currentTime - mediaTime) <= driftThreshold {
+                if isAvailable && isPlaying {
+                    p.play()
+                }
                 continue
             }
             p.seek(
@@ -321,6 +330,9 @@ public final class PlaybackEngine: ObservableObject {
                 toleranceBefore: tolerance,
                 toleranceAfter: tolerance
             )
+            if isAvailable && isPlaying {
+                p.play()
+            }
         }
     }
 
@@ -348,10 +360,9 @@ public final class PlaybackEngine: ObservableObject {
         if safePlayhead != playhead {
             playhead = safePlayhead
         }
+        isPlaying = true
         syncSourcePlayers(to: safePlayhead)
         player.play()
-        sourcePlayers.values.forEach { $0.play() }
-        isPlaying = true
     }
 
     public func pause() {
