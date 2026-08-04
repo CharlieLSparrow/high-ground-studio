@@ -13,6 +13,7 @@ import {
   parseAudioMasteryMeasurement,
   type AudioSignalChannelStatistics,
   type AudioSignalDiagnosis,
+  type AudioTreatmentProposal,
   type AudioLoudnessPoint,
   type AudioMasteryMeasurement,
   type AudioMasteryProfileId,
@@ -224,6 +225,43 @@ export class FfmpegAudioMasteringEngine {
       sampleRateHz: 48_000 as const,
       codec: "pcm_s24le" as const,
       originalRemainsSourceTruth: true as const,
+    };
+  }
+
+  async renderTreatmentExperiment(inputPath: string, outputPath: string, input: {
+    proposal: AudioTreatmentProposal;
+    diagnosis: AudioSignalDiagnosis;
+  }) {
+    const diagnosis = parseAudioSignalDiagnosis(input.diagnosis);
+    if (
+      input.proposal.profileId !== "dc-rumble-correction-v1"
+      || input.proposal.source.sha256 !== diagnosis.source.sha256
+      || input.proposal.sourceDiagnosisId !== diagnosis.diagnosisId
+      || input.proposal.trigger.kind !== "dc-offset"
+    ) {
+      throw new ProxyTranscodeError("audio-treatment-proposal-mismatch", "The treatment experiment is not bound to the diagnosed immutable source.");
+    }
+    await inspectBoundSource(inputPath, diagnosis.source);
+    await runProcess(this.ffmpegPath, [
+      "-hide_banner", "-nostdin", "-nostats", "-y", "-i", inputPath,
+      "-map", "0:a:0",
+      "-filter:a", "highpass=f=20:p=2:t=q:w=0.7071",
+      "-ar", "48000", "-c:a", "pcm_s24le", outputPath,
+    ], "audio-treatment-render-failed");
+    const outputStat = await stat(outputPath);
+    if (!outputStat.isFile() || outputStat.size <= 0) {
+      throw new ProxyTranscodeError("audio-treatment-output-empty", "The treatment experiment output is empty.");
+    }
+    await inspectBoundSource(inputPath, diagnosis.source);
+    return {
+      outputPath,
+      sizeBytes: outputStat.size,
+      sha256: await sha256File(outputPath),
+      contentType: "audio/wav" as const,
+      sampleRateHz: 48_000 as const,
+      codec: "pcm_s24le" as const,
+      originalRemainsSourceTruth: true as const,
+      outputIsUnpromotedExperiment: true as const,
     };
   }
 }

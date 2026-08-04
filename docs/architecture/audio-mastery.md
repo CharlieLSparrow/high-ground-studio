@@ -153,3 +153,8 @@ playhead when they need to judge the verified final output level.
 5. stem-aware podcast mastering before mixdown;
 6. the same measurement lane for coaching recordings with stricter privacy and
    no publication profile implied.
+
+The first treatment-engine contract is documented separately in
+[Audio treatment experiments](./audio-treatment-experiments.md). It qualifies
+the source-bound DC/rumble experiment and records the remaining worker, UI,
+approval, and cloud gates without weakening this mastery lane's exclusions.

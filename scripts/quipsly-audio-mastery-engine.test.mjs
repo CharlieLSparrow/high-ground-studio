@@ -7,11 +7,15 @@ import test from "node:test";
 
 import {
   assessAudioMastery,
+  buildAudioTreatmentTargetLocator,
   buildAudioSignalObservations,
   buildAudioMasteryTargetLocator,
   newAudioMasteryJob,
   newAudioMasteryProposal,
+  newAudioTreatmentProposal,
+  newAudioTreatmentJob,
   parseAudioSignalDiagnosis,
+  parseAudioTreatmentResult,
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   parseAudioMasteryMeasurement,
@@ -117,6 +121,24 @@ test("signal diagnosis parser rejects false decode and channel evidence", () => 
     ...diagnosis,
     channels: [{ ...diagnosis.channels[0], channel: 2 }],
   }), /cardinality/);
+});
+
+test("DC treatment proposals require measured source evidence", () => {
+  assert.throws(
+    () => newAudioTreatmentProposal({ proposalId: "proposal_treatment_001", createdAt: "2026-08-03T20:00:00.000Z", diagnosis: fixtureSignalDiagnosis() }),
+    /requires measured DC-offset evidence/,
+  );
+  const diagnosis = fixtureSignalDiagnosis({
+    diagnosisId: "diagnosis_treatment_001",
+    channels: [fixtureSignalStatistics({ channel: 1, dcOffset: 0.02 })],
+    observations: [{ kind: "dc-offset", severity: "attention", startSeconds: 0, endSeconds: 2, detail: "Listen before treatment.", requiresListening: true, evidence: { channel: 1, dcOffset: 0.02, thresholdAmplitude: 0.01 } }],
+  });
+  const proposal = newAudioTreatmentProposal({ proposalId: "proposal_treatment_001", createdAt: "2026-08-03T20:00:00.000Z", diagnosis });
+  assert.equal(proposal.trigger.maximumAbsoluteDcOffset, 0.02);
+  assert.deepEqual(proposal.trigger.affectedChannels, [1]);
+  assert.equal(proposal.graph.find((node) => node.id === "dc-rumble-filter").parameters.frequencyHz, 20);
+  assert.equal(proposal.graph.find((node) => node.id === "audition-output").automatic, false);
+  assert.equal(proposal.boundaries.createsVersionedExperimentOnly, true);
 });
 
 test("loudnorm parser accepts the final FFmpeg JSON object and fails malformed output", () => {
@@ -323,6 +345,65 @@ test("real FFmpeg measurement, double-pass PCM render, and independent verificat
   assert.equal(verification.passes, true);
   assert.ok(verified.integratedLufs >= -17 && verified.integratedLufs <= -15);
   assert.ok(verified.truePeakDbtp <= -1);
+});
+
+test("real FFmpeg DC and rumble experiment is source-bound, reversible, and independently diagnosable", async (context) => {
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "quipsly-audio-treatment-"));
+  context.after(() => rm(fixtureRoot, { recursive: true, force: true }));
+  const sourcePath = path.join(fixtureRoot, "dc-source.wav");
+  const outputPath = path.join(fixtureRoot, "dc-treatment-v1.wav");
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "aevalsrc=0.12+0.1*sin(2*PI*440*t):s=48000:d=3",
+    "-c:a", "pcm_s24le", sourcePath,
+  ]);
+  const sourceStat = await stat(sourcePath);
+  const sourceSha256 = await sha256File(sourcePath);
+  const source = { assetId: "asset_treatment_001", provider: "local", locator: sourcePath, generation: `sha256:${sourceSha256}`, sha256: sourceSha256, sizeBytes: sourceStat.size, contentType: "audio/wav" };
+  const engine = new FfmpegAudioMasteringEngine();
+  const sourceDiagnosis = await engine.diagnose(sourcePath, { source, diagnosisId: "diagnosis_treatment_real_001", analyzedAt: "2026-08-03T20:00:00.000Z" });
+  assert.ok(Math.abs(sourceDiagnosis.channels[0].dcOffset) >= 0.1);
+  assert.ok(sourceDiagnosis.observations.some((observation) => observation.kind === "dc-offset"));
+  const proposal = newAudioTreatmentProposal({ proposalId: "proposal_treatment_real_001", createdAt: "2026-08-03T20:00:10.000Z", diagnosis: sourceDiagnosis });
+  const job = newAudioTreatmentJob({
+    jobId: "audio_treatment_real_001",
+    projectId: "project_treatment_001",
+    requestedByEmail: "audio-treatment@example.test",
+    queuedAt: "2026-08-03T20:00:05.000Z",
+    source,
+    triggerDiagnosisId: sourceDiagnosis.diagnosisId,
+    profileId: "dc-rumble-correction-v1",
+    target: { provider: "local", locator: buildAudioTreatmentTargetLocator({ assetId: source.assetId, sourceSha256, profileId: "dc-rumble-correction-v1" }), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "audio-treatment-preview" },
+  });
+  const rendered = await engine.renderTreatmentExperiment(sourcePath, outputPath, { proposal, diagnosis: sourceDiagnosis });
+  assert.equal(rendered.outputIsUnpromotedExperiment, true);
+  const outputSource = { ...source, locator: job.target.locator, generation: `sha256:${rendered.sha256}`, sha256: rendered.sha256, sizeBytes: rendered.sizeBytes, contentType: rendered.contentType };
+  const outputDiagnosis = await engine.diagnose(outputPath, { source: outputSource, diagnosisId: "diagnosis_treatment_output_001", analyzedAt: "2026-08-03T20:00:20.000Z" });
+  const sourceMeasurement = await engine.measure(sourcePath, { source, profileId: "apple-podcasts-dialogue-v1", measurementId: "measurement_treatment_source_001", measuredAt: "2026-08-03T20:00:25.000Z" });
+  const outputMeasurement = await engine.measure(outputPath, { source: outputSource, profileId: "apple-podcasts-dialogue-v1", measurementId: "measurement_treatment_output_001", measuredAt: "2026-08-03T20:00:30.000Z" });
+  const before = Math.abs(sourceDiagnosis.channels[0].dcOffset);
+  const after = Math.abs(outputDiagnosis.channels[0].dcOffset);
+  assert.ok(after <= 0.005, `expected corrected DC <= 0.005, got ${after}`);
+  assert.ok(after <= before * 0.25, `expected at least 75% DC reduction, got ${before} -> ${after}`);
+  assert.equal(await sha256File(sourcePath), sourceSha256);
+  const durationDeltaSeconds = Math.round(Math.abs(sourceDiagnosis.durationSeconds - outputDiagnosis.durationSeconds) * 1_000_000) / 1_000_000;
+  const result = parseAudioTreatmentResult({
+    kind: "quipsly-audio-treatment-result-v1",
+    version: 1,
+    jobId: job.jobId,
+    completedAt: "2026-08-03T20:00:35.000Z",
+    source,
+    sourceMeasurement,
+    sourceDiagnosis,
+    proposal,
+    derivative: { provider: "local", locator: job.target.locator, generation: outputSource.generation, sha256: rendered.sha256, sizeBytes: rendered.sizeBytes, contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "audio-treatment-preview", measurement: outputMeasurement, diagnosis: outputDiagnosis },
+    verification: { maximumAbsoluteDcBefore: before, maximumAbsoluteDcAfter: after, requiredMaximumAbsoluteDcAfter: 0.005, requiredRelativeReduction: 0.75, durationDeltaSeconds, sourceBytesPreserved: true, completeOutputDecode: true, passes: true },
+    worker: { executionId: "execution_treatment_001", buildId: "test-build", imageDigest: null, attempt: 1 },
+    boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, promotionRequiresExplicitApproval: true },
+  }, job);
+  assert.equal(result.verification.passes, true);
+  assert.equal(result.boundaries.outputIsNotAMasteredDeliveryFile, true);
+  assert.throws(() => parseAudioTreatmentResult({ ...result, verification: { ...result.verification, maximumAbsoluteDcAfter: 0.02 } }, job), /verification is invalid/);
 });
 
 function fixtureMeasurement(overrides = {}) {
