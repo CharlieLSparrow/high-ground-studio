@@ -10,7 +10,10 @@ import type {
 
 import {
   AutomatedEditEvidenceMap,
+  automatedEditAdjacentItem,
+  automatedEditEvidenceItems,
   automatedEditEvidenceSummary,
+  automatedEditViewSpan,
 } from "./AutomatedEditEvidenceMap";
 
 const proposal: AiEditProposal = {
@@ -74,6 +77,11 @@ const signal: AiEditSignalVisualization = {
 
 describe("AutomatedEditEvidenceMap", () => {
   it("shows decoded audio, unapplied proposals, checks, and the live source clock together", () => {
+    const items = automatedEditEvidenceItems([proposal], [candidate]);
+    expect(items.map((entry) => entry.id)).toEqual([proposal.proposalId, candidate.candidateId]);
+    expect(automatedEditAdjacentItem(items, proposal.proposalId, 0, "next")?.id).toBe(candidate.candidateId);
+    expect(automatedEditViewSpan(0, 300, 150, "detail")).toEqual({ startSeconds: 142.5, endSeconds: 157.5, durationSeconds: 15 });
+
     render(<AutomatedEditEvidenceMap proposals={[proposal]} candidates={[candidate]} signal={signal} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={8.2} onSelectTime={jest.fn()} onProofReview={jest.fn()} />);
 
     expect(screen.getByRole("img", { name: /decoded waveform with automated edit evidence/i })).toBeInTheDocument();
@@ -81,6 +89,7 @@ describe("AutomatedEditEvidenceMap", () => {
     expect(screen.getByText(/1 range is bound to decoded audio/i)).toBeInTheDocument();
     expect(screen.getByText(/1 is a measured low-energy proposal/i)).toBeInTheDocument();
     expect(screen.getByText(/original unchanged · not applied/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Automated edit decision navigator" })).toHaveTextContent(/2 chronological unapplied decisions/i);
     expect(screen.getByText(/Bound capture recording recording-1 · source b{12} · profile c{12}/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Protected-source proof required" })).toBeDisabled();
     expect(screen.getByText(/will not write a proof-listen receipt from the program monitor/i)).toBeInTheDocument();
@@ -91,6 +100,9 @@ describe("AutomatedEditEvidenceMap", () => {
     const onProofReview = jest.fn();
     render(<AutomatedEditEvidenceMap proposals={[proposal]} candidates={[candidate]} signal={signal} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={0} onSelectTime={onSelectTime} onProofReview={onProofReview} />);
 
+    fireEvent.click(screen.getByRole("button", { name: /Next decision/i }));
+    expect(onSelectTime).toHaveBeenLastCalledWith(8);
+    expect(screen.getByRole("button", { name: "15 sec" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: /0:08\.0 · speaker change/i }));
     expect(onSelectTime).toHaveBeenCalledWith(8);
     expect(screen.getByLabelText("Selected automated edit evidence")).toHaveTextContent("The canonical speaker changes");
@@ -102,6 +114,15 @@ describe("AutomatedEditEvidenceMap", () => {
     render(<AutomatedEditEvidenceMap proposals={[]} candidates={[candidate]} signal={null} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={2} onSelectTime={jest.fn()} onProofReview={jest.fn()} />);
     expect(screen.getByText("Decoded waveform is not bound to this proposal set")).toBeInTheDocument();
     expect(automatedEditEvidenceSummary([], [candidate])).toEqual({ proposalCount: 0, candidateCount: 1, signalBoundCount: 0, lowEnergyProposalCount: 0 });
+  });
+
+  it("selects the first chronological decision when async proposal data arrives", () => {
+    const onSelectTime = jest.fn();
+    const { rerender } = render(<AutomatedEditEvidenceMap proposals={[]} candidates={[]} signal={signal} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={0} onSelectTime={onSelectTime} onProofReview={jest.fn()} />);
+    expect(screen.queryByLabelText("Selected automated edit evidence")).not.toBeInTheDocument();
+
+    rerender(<AutomatedEditEvidenceMap proposals={[proposal]} candidates={[candidate]} signal={signal} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={0} onSelectTime={onSelectTime} onProofReview={jest.fn()} />);
+    expect(screen.getByLabelText("Selected automated edit evidence")).toHaveTextContent("Decoded evidence found a low-energy transcript gap");
   });
 
   it("records proof only after operating the exact protected source", async () => {

@@ -59,6 +59,11 @@ async function main() {
     assert(svgTitles.some((title) => title.includes("decoded RMS -78.0 dBFS")), `Rendered map did not expose the retained low-energy window: ${svgTitles.join(" | ")}`);
     assert((await map.innerText()).includes("RMS is not LUFS"), "Rendered map lost its measurement boundary.");
 
+    const decisionNavigator = map.getByRole("region", { name: "Automated edit decision navigator", exact: true });
+    await decisionNavigator.getByText("Decision navigator", { exact: true }).waitFor();
+    await decisionNavigator.getByRole("button", { name: "Next decision →", exact: true }).click();
+    assert(await map.getByRole("button", { name: "15 sec", exact: true }).getAttribute("aria-pressed") === "true", "Decision navigation did not open the 15-second evidence view.");
+
     await map.getByRole("button", { name: /0:04\.0 · Measured range-skip proposal/i }).click();
     const selected = map.getByLabel("Selected automated edit evidence", { exact: true });
     await selected.getByText(/100% decoded coverage · strongest RMS -78\.0 dBFS/i).waitFor();
@@ -88,6 +93,8 @@ async function main() {
       decodedWaveformWindows: 3,
       measuredLowEnergyWindowVisible: true,
       reversibleRangeProposalVisible: true,
+      chronologicalDecisionNavigatorOperated: true,
+      detailEvidenceViewOperated: true,
       selectedEvidenceMovedSharedPlayhead: true,
       sourceClockScrubbed: true,
       falseProgramMonitorProofHeld: true,

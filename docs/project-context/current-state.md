@@ -2,6 +2,23 @@
 
 Date: 2026-08-04
 
+## Automated edit decision-navigation checkpoint
+
+- The source-bound automated-edit map now reconciles the first selection when
+  async analysis arrives, sorts reversible proposals and review candidates on
+  the source clock, and provides Previous/Next navigation instead of relying on
+  unordered whole-program chips.
+- Whole, 60-second, and 15-second views clip waveform and proposal geometry to
+  the visible source span. Previous/Next seeks the exact evidence range and
+  opens detail view; only twelve nearby chips render while the full bounded set
+  remains traversable.
+- The retained HGO deterministic-edit journey operated the navigator, detail
+  view, decoded low-energy range, shared editor playhead, and false-proof hold.
+  The proposal remained unapplied, source media unchanged, and the rendered
+  map had no browser exception or horizontal overflow.
+- Architecture and evidence are in
+  `docs/coordination/2026-08-04-automated-edit-audio-evidence-map.md`.
+
 ## Audio evidence navigation and live-input truth checkpoint
 
 - The shared coaching/Studio audio evidence map is now a chronological review

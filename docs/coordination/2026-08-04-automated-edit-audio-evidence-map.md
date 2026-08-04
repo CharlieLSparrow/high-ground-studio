@@ -15,6 +15,14 @@ clock as its playhead. The map shows:
 - the current source playhead and exact selected range; and
 - the immutable RecordingAsset, source SHA-256, and signal-profile binding.
 
+The map now orders proposals and checks chronologically, reconciles selection
+when analysis arrives asynchronously, and exposes Previous/Next navigation.
+Navigation seeks the exact source range and opens a centered 15-second view;
+60-second and whole-program views remain one click away. At most twelve nearby
+decision chips render at once while navigation still traverses the full bounded
+proposal set. This fixes the prior long-episode failure mode where every range
+rendered as an unordered, nearly invisible whole-program mark.
+
 Selecting a range moves the existing editor playhead but does not claim that a
 person listened, does not apply the proposal, and does not change source media.
 Proof-listen and proof-watch remain explicit operations that append durable
@@ -46,6 +54,8 @@ The rendered operation used the retained High Ground Odyssey production
 - three decoded windows: signal, -78 dBFS low energy, then signal;
 - the measured 4.0-7.0 second range-skip proposal rendered above that window;
 - selecting the proposal moved the shared editor playhead to 4.0 seconds;
+- the chronological decision navigator selected the next decision and opened
+  the 15-second evidence view;
 - direct source-clock scrubbing moved the same playhead to 8 seconds;
 - the proposal remained unapplied and source media remained unchanged; and
 - the rendered editor had no browser exception or horizontal overflow.
@@ -63,7 +73,7 @@ separate deliberate choice.
 
 ## Verification
 
-- map, client contract, deterministic analysis, server source resolver, and edit API: 26 focused tests;
+- map, client contract, deterministic analysis, server source resolver, and edit API focused tests passed;
 - retained-operation static contract: 2 tests;
 - rendered retained operation: passed;
 - isolated 166-route production build: passed;
