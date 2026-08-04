@@ -4,6 +4,12 @@ import { LoaderCircle, MessageCircle, Send } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import LocalDateTime from "@/components/LocalDateTime";
+import {
+  CHAT_PERSISTED_INCOMING_EVENT,
+  chatPersistedLiveHint,
+  dispatchChatPersistedOutgoing,
+  parseChatPersistedLiveHint,
+} from "@/lib/live-collaboration/chat-live-hint";
 
 type SessionMessage = {
   id: string;
@@ -36,6 +42,7 @@ export function CollaborationThread({
   canPost = true,
   scopeLabel = "Shared collaboration",
   scopeDescription,
+  liveHintThreadKey = null,
 }: {
   projectSlug: string;
   threadKey: string;
@@ -47,12 +54,14 @@ export function CollaborationThread({
   canPost?: boolean;
   scopeLabel?: string;
   scopeDescription?: string;
+  liveHintThreadKey?: string | null;
 }) {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<"loading" | "idle" | "sending" | "error">("loading");
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const seenLiveHintIdsRef = useRef(new Set<string>());
   const headingId = `collaboration-thread-${threadKey.replace(/[^a-z0-9_-]/gi, "-")}`;
 
   const refresh = useCallback(async (quiet = false) => {
@@ -78,6 +87,24 @@ export function CollaborationThread({
     const interval = window.setInterval(() => void refresh(true), 3_000);
     return () => window.clearInterval(interval);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!liveHintThreadKey || liveHintThreadKey !== threadKey) return;
+    const receivePersistedHint = (event: Event) => {
+      const hint = parseChatPersistedLiveHint(
+        (event as CustomEvent<unknown>).detail,
+        liveHintThreadKey,
+      );
+      if (!hint || seenLiveHintIdsRef.current.has(hint.messageId)) return;
+      seenLiveHintIdsRef.current.add(hint.messageId);
+      if (seenLiveHintIdsRef.current.size > 256) {
+        seenLiveHintIdsRef.current.delete(seenLiveHintIdsRef.current.values().next().value as string);
+      }
+      void refresh(true);
+    };
+    window.addEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
+    return () => window.removeEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
+  }, [liveHintThreadKey, refresh, threadKey]);
 
   useEffect(() => {
     const thread = scrollRef.current;
@@ -107,6 +134,10 @@ export function CollaborationThread({
       const payload = await response.json().catch(() => ({})) as ThreadResponse;
       if (!response.ok || !payload.ok || !payload.message) throw new Error(payload.error || "Message could not send.");
       setMessages((current) => current.some((message) => message.id === payload.message?.id) ? current : [...current, payload.message as SessionMessage]);
+      if (liveHintThreadKey === threadKey) {
+        const hint = chatPersistedLiveHint(threadKey, payload.message.id, payload.message.createdAt);
+        if (hint) dispatchChatPersistedOutgoing(hint);
+      }
       setDraft("");
       setStatus("idle");
     } catch (nextError) {
@@ -160,6 +191,7 @@ export function SessionThread({
   return <CollaborationThread
     projectSlug={projectSlug}
     threadKey={`session:${roomId}`}
+    liveHintThreadKey={`session:${roomId}`}
     collaborationTitle={sessionTitle}
     heading="Session thread"
     clientSurface="session-room-web"

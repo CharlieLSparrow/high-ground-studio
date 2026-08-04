@@ -4,6 +4,13 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, MessageCircle, Send } from "lucide-react";
 
 import LocalDateTime from "@/components/LocalDateTime";
+import {
+  CHAT_PERSISTED_INCOMING_EVENT,
+  chatPersistedLiveHint,
+  dispatchChatPersistedOutgoing,
+  episodeChatThreadKey,
+  parseChatPersistedLiveHint,
+} from "@/lib/live-collaboration/chat-live-hint";
 
 type Message = {
   id: string;
@@ -40,6 +47,8 @@ export default function EpisodeRoomChat({
   const [status, setStatus] = useState<"loading" | "idle" | "sending" | "error">("loading");
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const seenLiveHintIdsRef = useRef(new Set<string>());
+  const liveThreadKey = episodeChatThreadKey(episodeSlug);
 
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setStatus("loading");
@@ -66,7 +75,28 @@ export default function EpisodeRoomChat({
   }, [refresh]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (!liveThreadKey) return;
+    const receivePersistedHint = (event: Event) => {
+      const hint = parseChatPersistedLiveHint(
+        (event as CustomEvent<unknown>).detail,
+        liveThreadKey,
+      );
+      if (!hint || seenLiveHintIdsRef.current.has(hint.messageId)) return;
+      seenLiveHintIdsRef.current.add(hint.messageId);
+      if (seenLiveHintIdsRef.current.size > 256) {
+        seenLiveHintIdsRef.current.delete(seenLiveHintIdsRef.current.values().next().value as string);
+      }
+      void refresh(true);
+    };
+    window.addEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
+    return () => window.removeEventListener(CHAT_PERSISTED_INCOMING_EVENT, receivePersistedHint);
+  }, [liveThreadKey, refresh]);
+
+  useEffect(() => {
+    const thread = scrollRef.current;
+    if (thread && typeof thread.scrollTo === "function") {
+      thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
   async function send(event: FormEvent) {
@@ -98,6 +128,10 @@ export default function EpisodeRoomChat({
       setMessages((current) => current.some((message) => message.id === payload.message?.id)
         ? current
         : [...current, payload.message as Message]);
+      if (liveThreadKey) {
+        const hint = chatPersistedLiveHint(liveThreadKey, payload.message.id, payload.message.createdAt);
+        if (hint) dispatchChatPersistedOutgoing(hint);
+      }
       setDraft("");
       setPendingMessage(null);
       setStatus("idle");

@@ -6224,6 +6224,21 @@ private struct CaptureRecorderView: View {
                             }
                         }
                         .onDisappear { episodeChat.stopPolling() }
+                        .onChange(of: episodeChat.outboundLiveHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await model.providerRoom.publishChatPersistedHint(hint)
+                            }
+                        }
+                        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await episodeChat.receiveLiveHint(
+                                    hint,
+                                    session: session
+                                )
+                            }
+                        }
                     }
 
                     DisclosureGroup(isExpanded: $showsRoomDetails) {

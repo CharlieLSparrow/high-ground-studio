@@ -48,6 +48,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var isCallAudioSessionActive = false
     @Published var callAudioSessionLabel = "Call audio idle"
     @Published private(set) var latestEpisodeWatchHint: MobileEpisodeWatchLiveHint?
+    @Published private(set) var latestChatPersistedHint: MobileChatPersistedLiveHint?
 
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
@@ -57,6 +58,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private var accountObserver: NSObjectProtocol?
     private var activeCallRoomID: String?
     private var lastPublishedEpisodeWatchReceiptID: String?
+    private var lastPublishedChatMessageID: String?
+    private var activeChatThreadKeys: Set<String> = []
 
     #if canImport(LiveKit)
     private let room = Room()
@@ -115,6 +118,10 @@ final class ProviderRoomController: NSObject, ObservableObject {
         }
         activeOwnerSnapshot = expectedOwnerSnapshot
         activeCallRoomID = session.callRoomId
+        activeChatThreadKeys = Set([
+            MobileChatPersistedLiveHint.sessionThreadKey(session.callRoomId),
+            MobileChatPersistedLiveHint.episodeThreadKey(session.episodeSlug),
+        ].compactMap { $0 })
 
         do {
             try audioSessionCoordinator.providerWillConnect()
@@ -248,6 +255,29 @@ final class ProviderRoomController: NSObject, ObservableObject {
         #endif
     }
 
+    func publishChatPersistedHint(_ hint: MobileChatPersistedLiveHint) async {
+        #if canImport(LiveKit)
+        guard isConnected,
+              hint.hasValidShape,
+              activeChatThreadKeys.contains(hint.threadKey),
+              hint.messageId != lastPublishedChatMessageID,
+              let ownerSnapshot = activeOwnerSnapshot,
+              AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+              let data = try? JSONEncoder().encode(hint),
+              data.count <= 2_048 else { return }
+        do {
+            let options = DataPublishOptions(
+                topic: MobileChatPersistedLiveHint.topic,
+                reliable: true
+            )
+            try await room.localParticipant.publish(data: data, options: options)
+            lastPublishedChatMessageID = hint.messageId
+        } catch {
+            // Authenticated Nest polling remains authoritative.
+        }
+        #endif
+    }
+
     func disconnect() async {
         #if canImport(LiveKit)
         guard isConnected || isConnecting else {
@@ -375,6 +405,9 @@ final class ProviderRoomController: NSObject, ObservableObject {
         activeCallRoomID = nil
         lastPublishedEpisodeWatchReceiptID = nil
         latestEpisodeWatchHint = nil
+        lastPublishedChatMessageID = nil
+        latestChatPersistedHint = nil
+        activeChatThreadKeys = []
     }
 
     private func requestCallKitTransaction(_ transaction: CXTransaction) async throws {
@@ -597,6 +630,14 @@ extension ProviderRoomController: RoomDelegate {
         forTopic topic: String,
         encryptionType: EncryptionType
     ) {
+        if topic == MobileChatPersistedLiveHint.topic {
+            Task { @MainActor in
+                guard let hint = MobileChatPersistedLiveHint.decodeStrict(data),
+                      self.activeChatThreadKeys.contains(hint.threadKey) else { return }
+                self.latestChatPersistedHint = hint
+            }
+            return
+        }
         guard topic == "quipsly.episode-watch.authority.v1" else { return }
         Task { @MainActor in
             guard let hint = try? JSONDecoder().decode(

@@ -34,6 +34,16 @@ import {
   sessionExperienceForPurpose,
   type SessionCaptureProfile,
 } from "@/lib/session-experience";
+import {
+  CHAT_PERSISTED_LIVE_TOPIC,
+  CHAT_PERSISTED_OUTGOING_EVENT,
+  decodeChatPersistedLiveHint,
+  dispatchChatPersistedIncoming,
+  encodeChatPersistedLiveHint,
+  episodeChatThreadKey,
+  parseChatPersistedLiveHint,
+  sessionChatThreadKey,
+} from "@/lib/live-collaboration/chat-live-hint";
 
 type DeviceOption = { deviceId: string; label: string };
 type PreferredDevices = {
@@ -416,6 +426,17 @@ export function LiveSessionRoom({
         .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+          const chatThreadKeys = [
+            sessionChatThreadKey(callRoomId),
+            episodeSlug ? episodeChatThreadKey(episodeSlug) : null,
+          ].filter((threadKey): threadKey is string => Boolean(threadKey));
+          if (topic === CHAT_PERSISTED_LIVE_TOPIC) {
+            const hint = chatThreadKeys
+              .map((threadKey) => decodeChatPersistedLiveHint(payload, threadKey))
+              .find((candidate) => candidate !== null) ?? null;
+            if (hint) dispatchChatPersistedIncoming(hint);
+            return;
+          }
           if (
             topic !== EPISODE_WATCH_LIVE_TOPIC
             || !projectSlug
@@ -481,6 +502,27 @@ export function LiveSessionRoom({
       setMessage(error instanceof Error ? error.message : "The live room could not connect.");
     }
   }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearRemoteMedia, episodeSlug, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
+
+  useEffect(() => {
+    const threadKeys = new Set([
+      sessionChatThreadKey(callRoomId),
+      episodeSlug ? episodeChatThreadKey(episodeSlug) : null,
+    ].filter((threadKey): threadKey is string => Boolean(threadKey)));
+    if (!connected || !threadKeys.size) return;
+    const publishPersistedHint = (event: Event) => {
+      const hint = parseChatPersistedLiveHint((event as CustomEvent<unknown>).detail);
+      const room = roomRef.current;
+      if (!hint || !threadKeys.has(hint.threadKey) || !room || room.state === ConnectionState.Disconnected) return;
+      void room.localParticipant.publishData(
+        encodeChatPersistedLiveHint(hint),
+        { reliable: true, topic: CHAT_PERSISTED_LIVE_TOPIC },
+      ).catch(() => {
+        // PostgreSQL plus the authenticated thread poll remains the delivery authority.
+      });
+    };
+    window.addEventListener(CHAT_PERSISTED_OUTGOING_EVENT, publishPersistedHint);
+    return () => window.removeEventListener(CHAT_PERSISTED_OUTGOING_EVENT, publishPersistedHint);
+  }, [callRoomId, connected, episodeSlug]);
 
   useEffect(() => {
     const room = roomRef.current;

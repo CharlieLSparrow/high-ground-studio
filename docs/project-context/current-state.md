@@ -4,6 +4,15 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- Durable Session and Episode chat now use the active LiveKit room only as a
+  low-latency persisted-message hint. The strict packet contains no message
+  body or author identity; browser and Capture validate its exact active thread
+  and then re-read authenticated PostgreSQL state. Polling remains the delivery
+  and reconnect fallback. Episode-wide chat is now hinted browser-to-iPhone;
+  browser Session chat is hinted between active browser participants. Capture
+  does not yet expose the take-specific Session thread or Coaching Engagement
+  thread. Coaching Engagement cards now provide an explicit browser coaching-
+  room action beside the full Session workspace.
 - Coaching Engagement access is now an explicit, append-only boundary rather
   than an implied consequence of creating another Session. Coaches, support,
   Nest owners/editors, and staff can create seven-day account-bound invite

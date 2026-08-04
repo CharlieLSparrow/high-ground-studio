@@ -86,6 +86,22 @@ recording source, not an inferred side effect of joining.
 
 ## Live-operation UX repair in this slice
 
+- Session and Episode threads now keep PostgreSQL as their only message
+  authority while using the connected LiveKit room as a cross-device latency
+  hint. A successful authenticated POST emits only the exact thread key,
+  persisted message id, and server timestamp. Browser and Capture validate the
+  bounded four-field packet against the active room, then perform a fresh
+  authenticated Nest read. No body, author identity, project credential,
+  recording command, or canonical-work payload crosses the transient channel;
+  the existing poll remains the reconnect and delivery fallback.
+- The Episode Room path carries these durable-message hints between browser and
+  Quipsly Capture for its long-lived episode conversation. Browser Session
+  threads use the same contract between active browser participants. Native
+  take-specific Session chat is not yet exposed in Capture and is not claimed.
+- Coaching Engagement Session cards now expose separate `Open coaching room`
+  and `Session workspace` actions and explain that the browser can use external
+  microphones, cameras, and supported headphone outputs while another person
+  joins the same Session from browser or iPhone.
 - Microphone, camera, and output selectors remain available after joining.
 - A participant can switch live-call devices without leaving the room.
 - Device-list refresh no longer changes a connected room back to preflight or
@@ -146,13 +162,13 @@ behavior, and the absence of a surrounding Nest grant.
 
 ## Next production slices
 
-1. **Durable plus low-latency chat.** Keep PostgreSQL as authority and add a
-   LiveKit data-channel hint (or equivalent) so active rooms update immediately
-   while reconnect/poll remains deterministic.
-2. **Composable live dock.** Let participants keep call controls, Session chat,
+1. **Composable live dock.** Let participants keep call controls, Session chat,
    roster/consent, and the purpose-specific active tool visible together:
    podcast run of show/Watch, coaching shared commitments, research questions,
    or meeting agenda.
+2. **Native Session thread.** Add the take-specific `session:<callRoomId>`
+   conversation to Capture with the same protected-cache, exact-scope, durable
+   POST, live-hint, and polling behavior as the Episode thread.
 3. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
    channel mapping, sample-rate/profile readback, headphone/output confidence,
    and a short recorded confidence take. Never replace post-capture waveform,
@@ -175,8 +191,9 @@ behavior, and the absence of a surrounding Nest grant.
   dedicated 32-character `QUIPSLY_INVITATION_TOKEN_SECRET` before release.
 - iPhone can choose and return to an existing engagement, but engagement chat is
   still a Nest surface rather than a native low-latency chat sidecar.
-- Session chat currently polls durable storage; it is not yet provider-hinted
-  real-time messaging.
+- Native Capture has the long-lived Episode thread, but not the take-specific
+  Session thread or Coaching Engagement thread. Those remain authenticated Nest
+  surfaces until their private native projections are implemented.
 - Browser recording is a retained combined camera-plus-audio source or an audio
   source, not yet a multi-track ISO capture graph.
 - Requested camera resolution is not proof of delivered 4K.

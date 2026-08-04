@@ -613,6 +613,13 @@ requireIncludes(episodeChatText, "stableOwnerSnapshot()", "episode chat cache is
 requireIncludes(episodeChatText, '"clientMessageId": requestID.uuidString.lowercased()', "episode chat retries preserve one client message identity");
 requireIncludes(episodeChatText, "CaptureEpisodeChatOpenButton", "episode chat is reachable beside the primary recorder");
 requireIncludes(episodeChatText, "Recording and playback never start from chat.", "episode chat states the non-capture boundary");
+requireIncludes(episodeChatText, 'static let topic = "quipsly.chat.persisted.v1"', "episode chat shares the bounded durable-message hint topic with Nest");
+requireIncludes(episodeChatText, "Set(dictionary.keys) == allowedKeys", "episode chat rejects transient packets with undeclared content fields");
+requireIncludes(episodeChatText, "await load(session: session, forceRefresh: true, quietly: true)", "a live chat hint triggers an authenticated durable read instead of applying provider payload as chat");
+requireIncludes(providerRoomText, "activeChatThreadKeys.contains(hint.threadKey)", "the provider bridge accepts chat hints only for the active Session or exact bound Episode");
+requireIncludes(providerRoomText, "MobileChatPersistedLiveHint.decodeStrict(data)", "incoming LiveKit chat hints use the strict bounded decoder");
+requireIncludes(capturePhoneShellText, "publishChatPersistedHint(hint)", "the shipping Capture shell publishes only post-persistence chat hints");
+requireIncludes(capturePhoneShellText, "episodeChat.receiveLiveHint", "the shipping Capture shell refreshes the episode thread from received hints");
 requireIncludes(nestChatRouteText, "studioEpisodeProduction.findUnique", "episode chat validates the canonical parent episode");
 requireIncludes(nestChatRouteText, "idempotentReplay: true", "episode chat server deduplicates exact message retries");
 

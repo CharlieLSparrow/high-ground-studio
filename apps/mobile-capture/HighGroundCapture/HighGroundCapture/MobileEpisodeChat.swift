@@ -2,6 +2,63 @@ import Combine
 import CryptoKit
 import SwiftUI
 
+struct MobileChatPersistedLiveHint: Codable, Hashable {
+    static let schemaVersion = "quipsly-chat-persisted-hint.v1"
+    static let topic = "quipsly.chat.persisted.v1"
+    private static let allowedKeys: Set<String> = [
+        "schema", "threadKey", "messageId", "persistedAt",
+    ]
+
+    let schema: String
+    let threadKey: String
+    let messageId: String
+    let persistedAt: String
+
+    var hasValidShape: Bool {
+        schema == Self.schemaVersion
+            && Self.safeIdentifier(threadKey, includesColon: true)
+            && Self.safeIdentifier(messageId, includesColon: false)
+            && Self.parseDate(persistedAt) != nil
+    }
+
+    static func episodeThreadKey(_ episodeSlug: String?) -> String? {
+        let slug = episodeSlug?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = "episode:\(slug)"
+        return !slug.isEmpty && safeIdentifier(key, includesColon: true) ? key : nil
+    }
+
+    static func sessionThreadKey(_ callRoomID: String?) -> String? {
+        let roomID = callRoomID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let key = "session:\(roomID)"
+        return !roomID.isEmpty && safeIdentifier(key, includesColon: true) ? key : nil
+    }
+
+    static func decodeStrict(_ data: Data) -> Self? {
+        guard data.count >= 2, data.count <= 2_048,
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any],
+              Set(dictionary.keys) == allowedKeys,
+              let hint = try? JSONDecoder().decode(Self.self, from: data),
+              hint.hasValidShape else { return nil }
+        return hint
+    }
+
+    private static func safeIdentifier(_ value: String, includesColon: Bool) -> Bool {
+        guard !value.isEmpty, value.count <= 192 else { return false }
+        let pattern = includesColon
+            ? #"^[a-zA-Z0-9:_-]+$"#
+            : #"^[a-zA-Z0-9_-]+$"#
+        return value.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
 private struct MobileEpisodeChatCache: Codable {
     let schemaVersion: Int
     let ownerDigest: String
@@ -23,6 +80,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     @Published private(set) var protectedCacheSavedAt: Date?
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
 
     private let baseURL: URL
     private var currentContextKey: String?
@@ -31,6 +89,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     private var pendingMessageBody: String?
     private var pendingMessageID: UUID?
     private var pollingDisabledForMissingThread = false
+    private var lastReceivedLiveMessageID: String?
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -266,6 +325,16 @@ final class MobileEpisodeChatClient: ObservableObject {
             }
             pendingMessageBody = nil
             pendingMessageID = nil
+            if let threadKey = MobileChatPersistedLiveHint.episodeThreadKey(
+                context.episodeSlug
+            ) {
+                outboundLiveHint = MobileChatPersistedLiveHint(
+                    schema: MobileChatPersistedLiveHint.schemaVersion,
+                    threadKey: threadKey,
+                    messageId: message.id,
+                    persistedAt: message.createdAt
+                )
+            }
             isUsingProtectedCache = false
             statusMessage = "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             errorMessage = nil
@@ -276,6 +345,20 @@ final class MobileEpisodeChatClient: ObservableObject {
             statusMessage = "Message preserved for retry"
             return false
         }
+    }
+
+    func receiveLiveHint(
+        _ hint: MobileChatPersistedLiveHint,
+        session: MobileCaptureSession
+    ) async {
+        guard hint.hasValidShape,
+              hint.messageId != lastReceivedLiveMessageID,
+              let context = context(for: session),
+              hint.threadKey == MobileChatPersistedLiveHint.episodeThreadKey(
+                context.episodeSlug
+              ) else { return }
+        lastReceivedLiveMessageID = hint.messageId
+        await load(session: session, forceRefresh: true, quietly: true)
     }
 
     static func clearProtectedCache() {
@@ -321,6 +404,8 @@ final class MobileEpisodeChatClient: ObservableObject {
         pendingMessageBody = nil
         pendingMessageID = nil
         pollingDisabledForMissingThread = false
+        outboundLiveHint = nil
+        lastReceivedLiveMessageID = nil
     }
 
     @discardableResult
