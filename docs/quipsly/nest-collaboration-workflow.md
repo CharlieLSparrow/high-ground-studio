@@ -42,6 +42,10 @@ Key routes:
 - `/sessions/<roomId>`: the purpose-projected live Session workspace. Browser
   guests can use external microphones/cameras and a Session-only thread without
   receiving access to the surrounding Nest.
+- Podcast Sessions with a server-validated episode relationship link directly
+  to the canonical Episode Room, its long-lived episode thread, and editor.
+  Coaching, research, and team Sessions instead expose their own continuity and
+  follow-through language over the same call/evidence kernel.
 - `/api/sessions/<roomId>/invitations`: expiring, exact-email, one-time Session
   invitation ledger. Creating a link does not send it or start media.
 - `/api/sessions/<roomId>/participants/<participantId>/access`: revision-guarded
@@ -87,6 +91,11 @@ Important behavior:
   canonical participant/access state, and published or muted audio/video tracks.
   It refreshes only while the manager is open, fails to unknown, and never
   exposes provider identities, track IDs, or credentials.
+- Session workspace labels are purpose projections, not separate storage
+  systems. Session chat remains scoped to one call/take; episode chat spans the
+  manuscript-to-publishing lifecycle; Nest chat remains project-wide. Reviewed
+  notes, tasks, goals, calendar commitments, and handoffs remain canonical work
+  rather than chat side effects.
 
 ## Why this is separate from Organization membership
 

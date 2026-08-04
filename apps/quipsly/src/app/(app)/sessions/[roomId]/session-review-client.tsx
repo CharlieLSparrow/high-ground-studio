@@ -53,11 +53,15 @@ import {
   sessionNoteVisibilityLabel,
 } from "./session-notes-model";
 import {
-  SESSION_WORKSPACE_MODES,
-  sessionWorkspaceDefinition,
+  sessionWorkspaceDefinitionForPurpose,
   sessionWorkspaceHref,
+  sessionWorkspaceModesForPurpose,
   type SessionWorkspaceMode,
 } from "./session-workspace-model";
+import {
+  episodeRoomHref,
+  type SessionCollaborationContext,
+} from "./session-collaboration-model";
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 
 function humanize(value: string | null | undefined) {
@@ -1274,16 +1278,19 @@ function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
 function SessionWorkspaceNavigation({
   roomId,
   mode,
+  purpose,
 }: {
   roomId: string;
   mode: SessionWorkspaceMode;
+  purpose: string;
 }) {
-  const active = sessionWorkspaceDefinition(mode);
+  const modes = sessionWorkspaceModesForPurpose(purpose);
+  const active = sessionWorkspaceDefinitionForPurpose(mode, purpose);
   return (
     <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
       <nav aria-label="Session workspace modes">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-          {SESSION_WORKSPACE_MODES.map((definition) => {
+          {modes.map((definition) => {
             const selected = definition.id === mode;
             return (
               <Link
@@ -1329,14 +1336,30 @@ function WorkspaceEmptyState({
 function SessionCollaborationScopes({
   roomId,
   purpose,
-  project,
+  context,
 }: {
   roomId: string;
   purpose: string;
-  project: { name: string; slug: string } | null;
+  context: SessionCollaborationContext;
 }) {
   const experience = sessionExperienceForPurpose(purpose);
   const episode = experience.kind === "episode";
+  const episodeHref = episodeRoomHref(context);
+  const projectHref = context.project
+    ? `/nests/${encodeURIComponent(context.project.slug)}`
+    : null;
+  const continuityHeading = episode
+    ? context.episode
+      ? `Episode Room · ${context.episode.title}`
+      : "Episode relationship needs attention"
+    : experience.kind === "coaching"
+      ? "Coaching continuity"
+      : experience.kind === "research"
+        ? "Research continuity"
+        : "Project continuity";
+  const continuityDetail = episode && !context.episode
+    ? "This recording Session is not bound to a validated Episode Room. Quipsly will not guess from its title or send collaborators into the wrong episode. The Nest remains available while the relationship is repaired."
+    : experience.continuityDescription;
   return (
     <section className="rounded-2xl border border-sky-200 bg-sky-50/65 p-5" aria-labelledby="session-collaboration-scopes-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1356,15 +1379,24 @@ function SessionCollaborationScopes({
         </article>
         <article className="rounded-xl border border-sky-200 bg-white p-4">
           <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">{experience.continuityLabel}</p>
-          <h3 className="mt-1 font-black text-[#3d3122]">{episode ? "Episode-wide collaboration" : "Continuity beyond the call"}</h3>
-          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{experience.continuityDescription}</p>
-          {project ? <Link href={`/nests/${encodeURIComponent(project.slug)}`} className="mt-3 inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Open {project.name}</Link> : null}
+          <h3 className="mt-1 font-black text-[#3d3122]">{continuityHeading}</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{continuityDetail}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {episodeHref ? <Link href={episodeHref} className="rounded-full bg-emerald-800 px-3 py-2 text-[10px] font-black uppercase text-white">Open exact Episode Room</Link> : null}
+            {episodeHref ? <Link href={`${episodeHref}#episode-thread`} className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Episode thread</Link> : null}
+            {projectHref ? <Link href={projectHref} className="rounded-full border border-emerald-300 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Open {context.project!.name}</Link> : null}
+            {!projectHref && experience.kind === "coaching" ? <Link href="/coaching/sessions" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Coaching Sessions</Link> : null}
+          </div>
         </article>
         <article className="rounded-xl border border-sky-200 bg-white p-4">
-          <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Quipsly operating system</p>
-          <h3 className="mt-1 font-black text-[#3d3122]">Reviewed work, not chat-shaped promises</h3>
-          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Tags, notes, goals, tasks, calendar commitments, editor handoffs, and outputs remain canonical tools. Chat and transcripts can propose work, but never silently become it.</p>
-          <div className="mt-3 flex flex-wrap gap-2"><Link href={sessionWorkspaceHref(roomId, "work")} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Review work</Link><Link href="/schedule" className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Calendar</Link></div>
+          <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Canonical continuation</p>
+          <h3 className="mt-1 font-black text-[#3d3122]">{episode ? "Editor, production work, and publishing" : experience.kind === "coaching" ? "Goals, commitments, and client-safe follow-up" : experience.kind === "research" ? "Evidence, findings, and writing uses" : "Decisions, tasks, and handoffs"}</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Chat and transcripts preserve conversation and can propose next steps. Only reviewed notes, goals, tasks, calendar commitments, editor handoffs, and delivery receipts become canonical work.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href={sessionWorkspaceHref(roomId, "work")} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase text-amber-950">{episode ? "Episode work" : experience.kind === "coaching" ? "Goals & commitments" : experience.kind === "research" ? "Findings & tasks" : "Decisions & tasks"}</Link>
+            {episodeHref ? <Link href={`/nests/${encodeURIComponent(context.project!.slug)}/episode-editor?episode=${encodeURIComponent(context.episode!.slug)}`} className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Episode editor</Link> : null}
+            <Link href="/schedule" className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Calendar</Link>
+          </div>
         </article>
       </div>
     </section>
@@ -1381,6 +1413,7 @@ function SessionWorkspaceOverview({
   sessionQuickEntries,
   sessionContinuity,
   consentSnapshot,
+  purpose,
 }: {
   roomId: string;
   preparation: SessionPreparation | null;
@@ -1391,7 +1424,11 @@ function SessionWorkspaceOverview({
   sessionQuickEntries: SessionQuickEntry[];
   sessionContinuity: SessionContinuityState | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
+  purpose: string;
 }) {
+  const modeLabel = (workspaceMode: SessionWorkspaceMode) => (
+    sessionWorkspaceDefinitionForPurpose(workspaceMode, purpose).label
+  );
   const continuity = sessionContinuity?.current.summary;
   const noteQuickEntryCount = sessionQuickEntries.filter((entry) => entry.kind === "NOTE").length;
   const workQuickEntryCount = sessionQuickEntries.filter((entry) => entry.kind === "TASK" || entry.kind === "GOAL").length;
@@ -1434,7 +1471,7 @@ function SessionWorkspaceOverview({
   const lanes = [
     {
       mode: "prepare" as const,
-      title: "Prepare",
+      title: modeLabel("prepare"),
       value: preparation
         ? `${preparation.participants.length} signed-in participant${preparation.participants.length === 1 ? "" : "s"}`
         : "Preparation unavailable",
@@ -1442,19 +1479,19 @@ function SessionWorkspaceOverview({
     },
     {
       mode: "recordings" as const,
-      title: "Recordings",
+      title: modeLabel("recordings"),
       value: contentReadiness?.label || "Truth unavailable",
       detail: `${contentReadiness?.captureAssetCount ?? 0} source asset${contentReadiness?.captureAssetCount === 1 ? "" : "s"} · ${contentReadiness?.verifiedCaptureCount ?? 0} verified`,
     },
     {
       mode: "live" as const,
-      title: "Live room",
+      title: modeLabel("live"),
       value: liveRoomReadinessLabel(preparation),
       detail: preparation?.providerNextAction || "External mic, camera, headphones, participant roster, and an explicit no-hidden-recording boundary",
     },
     {
       mode: "transcript" as const,
-      title: "Transcript",
+      title: modeLabel("transcript"),
       value: substantialRecording ? "Source ready; inspect gate" : "Held by source truth",
       detail: consentSnapshot.total
         ? `${consentSnapshot.transcriptionPermitted} of ${consentSnapshot.total} standalone consent records permit transcription; Transcript enforces the complete release gate`
@@ -1462,19 +1499,19 @@ function SessionWorkspaceOverview({
     },
     {
       mode: "notes" as const,
-      title: "Notes",
+      title: modeLabel("notes"),
       value: `${sessionNotes.length} visible deliberate note${sessionNotes.length === 1 ? "" : "s"}`,
       detail: `${noteQuickEntryCount} from iPhone Capture · ${continuity?.noteCount ?? 0} actor-owned note${continuity?.noteCount === 1 ? "" : "s"} in continuity`,
     },
     {
       mode: "work" as const,
-      title: "Work",
+      title: modeLabel("work"),
       value: `${continuity?.openTaskCount ?? 0} open task${continuity?.openTaskCount === 1 ? "" : "s"} · ${continuity?.activeGoalCount ?? 0} active goal${continuity?.activeGoalCount === 1 ? "" : "s"}`,
       detail: `${workQuickEntryCount} deliberate iPhone work capture${workQuickEntryCount === 1 ? "" : "s"} · ${continuity?.plannedBlockCount ?? 0} planned focus block${continuity?.plannedBlockCount === 1 ? "" : "s"}`,
     },
     {
       mode: "outputs" as const,
-      title: "Outputs",
+      title: modeLabel("outputs"),
       value: `${attachedOutputCount} Studio attachment${attachedOutputCount === 1 ? "" : "s"}`,
       detail: `${studioHandoff?.recordings.length ?? 0} recording handoff receipt${studioHandoff?.recordings.length === 1 ? "" : "s"} available for inspection`,
     },
@@ -1530,7 +1567,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1548,6 +1585,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   sessionQuickEntries?: SessionQuickEntry[];
   captureReceipts?: SessionCaptureReceipts;
   sessionContinuity?: SessionContinuityState | null;
+  collaborationContext?: SessionCollaborationContext;
 }) {
   const [packet, setPacket] = useState<SessionReviewPacket | null>(null);
   const [loading, setLoading] = useState(mode === "transcript");
@@ -1845,7 +1883,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   const reviewLanes = packet?.packet?.reviewLanes ?? [];
   const actionableReviewLanes = reviewLanes.filter((lane) => lane.itemCount > 0);
   const emptyReviewLanes = reviewLanes.filter((lane) => lane.itemCount <= 0);
-  const activeMode = sessionWorkspaceDefinition(mode);
+  const purpose = preparation?.purpose || "COACHING";
+  const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
 
   return (
     <div className="space-y-8">
@@ -1861,12 +1900,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         {mode === "transcript" && message ? <p role="status" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{message}</p> : null}
       </section>
 
-      <SessionWorkspaceNavigation roomId={roomId} mode={mode} />
+      <SessionWorkspaceNavigation roomId={roomId} mode={mode} purpose={purpose} />
 
       {mode === "overview" || mode === "live" ? <SessionCollaborationScopes
         roomId={roomId}
-        purpose={preparation?.purpose || "COACHING"}
-        project={preparation?.project ? { name: preparation.project.name, slug: preparation.project.slug } : null}
+        purpose={purpose}
+        context={collaborationContext}
       /> : null}
 
       {mode === "overview" ? <SessionWorkspaceOverview
@@ -1879,6 +1918,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         sessionQuickEntries={sessionQuickEntries}
         sessionContinuity={sessionContinuity}
         consentSnapshot={consentSnapshot}
+        purpose={purpose}
       /> : null}
 
       {mode === "prepare" ? <>

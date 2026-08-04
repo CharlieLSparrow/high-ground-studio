@@ -1322,7 +1322,9 @@ export default function EpisodeRoomClient({
             </div>
           </section>
 
-          <EpisodeRoomChat projectSlug={projectSlug} episodeSlug={episodeSlug} canEdit={canEdit} />
+          <div id="episode-thread" className="scroll-mt-5">
+            <EpisodeRoomChat projectSlug={projectSlug} episodeSlug={episodeSlug} canEdit={canEdit} />
+          </div>
         </div>
       </div>
     </main>

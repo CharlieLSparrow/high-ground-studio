@@ -304,10 +304,10 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Prepare" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
     expect(screen.getByRole("link", { name: "Recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
-    expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
-    expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
-    expect(screen.getByRole("link", { name: "Work" })).toHaveAttribute("href", "/sessions/room-1?mode=work");
-    expect(screen.getByRole("link", { name: "Outputs" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
+    expect(screen.getByRole("link", { name: "Review transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
+    expect(screen.getByRole("link", { name: "Coaching notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
+    expect(screen.getAllByRole("link", { name: "Goals & commitments" })[0]).toHaveAttribute("href", "/sessions/room-1?mode=work");
+    expect(screen.getByRole("link", { name: "Follow-up" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
     expect(screen.getByRole("heading", { name: "Needs an honest decision" })).toBeInTheDocument();
     expect(screen.getByText("Transcription permission is incomplete")).toBeInTheDocument();
     expect(screen.getByText("0 of 1 standalone consent records permit transcription.")).toBeInTheDocument();
@@ -346,6 +346,45 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/Transcript and Outputs still enforce their own evidence gates/)).toBeInTheDocument();
   });
 
+  it("turns a validated podcast relationship into exact Episode Room, thread, and editor paths", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-episode-4"
+      sessionTitle="The Swear Jar · take 2"
+      mode="overview"
+      consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }}
+      preparation={{
+        purpose: "PODCAST",
+        status: "PLANNED",
+        provider: "livekit",
+        providerRoomId: "provider-episode-4",
+        providerCanJoin: true,
+        providerReadiness: "livekit-ready",
+        providerNextAction: "Choose and test the exact devices, then join from browser or iPhone.",
+        scheduledStart: null,
+        scheduledEnd: null,
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        participants: [],
+        allAudioReady: false,
+        allTranscriptionReady: false,
+      }}
+      collaborationContext={{
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        episode: { id: "episode-4-id", title: "The Swear Jar", slug: "episode-4" },
+        binding: "EPISODE",
+      }}
+    />);
+
+    expect(screen.getByRole("link", { name: "Run of show" })).toHaveAttribute("href", "/sessions/room-episode-4?mode=prepare");
+    expect(screen.getByRole("link", { name: "Recording room" })).toHaveAttribute("href", "/sessions/room-episode-4?mode=live");
+    expect(screen.getByRole("link", { name: "Takes" })).toHaveAttribute("href", "/sessions/room-episode-4?mode=recordings");
+    expect(screen.getByRole("link", { name: "Editor & publish" })).toHaveAttribute("href", "/sessions/room-episode-4?mode=outputs");
+    expect(screen.getByRole("heading", { name: "Episode Room · The Swear Jar" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open exact Episode Room" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4");
+    expect(screen.getByRole("link", { name: "Episode thread" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4#episode-thread");
+    expect(screen.getByRole("link", { name: "Episode editor" })).toHaveAttribute("href", "/nests/high-ground/episode-editor?episode=episode-4");
+  });
+
   it.each([
     ["prepare"],
     ["recordings"],
@@ -362,7 +401,14 @@ describe("Session review goal candidates", () => {
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
     />);
 
-    expect(screen.getByRole("link", { name: new RegExp(`^${mode}$`, "i") })).toHaveAttribute("aria-current", "page");
+    const coachingLabels = {
+      prepare: "Prepare",
+      recordings: "Recordings",
+      notes: "Coaching notes",
+      work: "Goals & commitments",
+      outputs: "Follow-up",
+    } as const;
+    expect(screen.getByRole("link", { name: coachingLabels[mode] })).toHaveAttribute("aria-current", "page");
     if (mode === "outputs") {
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       expect(fetchMock).toHaveBeenCalledWith(

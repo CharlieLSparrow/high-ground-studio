@@ -4,6 +4,18 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- The Session workspace now projects its one canonical call/evidence kernel
+  into distinct coaching, podcast, research-interview, and team-meeting
+  journeys. Navigation and runway labels describe the actual job (for example,
+  Coaching room / Goals & commitments / Follow-up versus Recording room / Takes
+  / Editor & publish) without creating duplicate records.
+- A podcast Session now opens its exact server-validated Episode Room, episode
+  thread, and editor. An absent or invalid episode relationship is shown as a
+  repair condition; Quipsly does not guess from the title. Session chat remains
+  take-specific while Episode chat remains the long-lived writing, recording,
+  editing, and publishing conversation. See
+  `docs/coordination/2026-08-04-session-purpose-collaboration-map.md`.
+
 - A canonical Session now hosts the browser LiveKit conversation client and a
   separate retained-source recorder. Browser participants can select external
   mic, camera, and output routes; the interface never equates joining a call
@@ -49,7 +61,7 @@ Date: 2026-08-04
   attention without exposing provider identities. The retained operation read
   two devices/two people before removal and host-only afterward. See
   `docs/coordination/2026-08-04-session-provider-presence.md`.
-- Full Nest Jest passes 297 suites / 1,552 runnable tests, the 172-route Nest
+- Full Nest Jest passes 298 suites / 1,560 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

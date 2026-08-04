@@ -17,6 +17,10 @@ import {
 
 import { SessionReviewClient } from "./session-review-client";
 import {
+  buildSessionCollaborationContext,
+  episodeSlugFromSessionMetadata,
+} from "./session-collaboration-model";
+import {
   parseSessionNoteView,
   type SessionNoteKind,
   type SessionNoteVisibility,
@@ -71,6 +75,7 @@ export default async function SessionReviewPage({
         status: true,
         provider: true,
         providerRoomId: true,
+        metadataJson: true,
         scheduledStart: true,
         scheduledEnd: true,
         createdByUserId: true,
@@ -226,6 +231,15 @@ export default async function SessionReviewPage({
     });
     const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
+    const boundEpisodeSlug = episodeSlugFromSessionMetadata(room.purpose, room.metadataJson);
+    const boundEpisode = visibleProject && boundEpisodeSlug ? await prisma.studioEpisodeProduction.findUnique({
+      where: { projectId_slug: { projectId: visibleProject.id, slug: boundEpisodeSlug } },
+      select: { id: true, title: true, slug: true },
+    }) : null;
+    const collaborationContext = buildSessionCollaborationContext({
+      project: visibleProject && room.project ? room.project : null,
+      episode: boundEpisode,
+    });
     const canViewProjectTeamNotes = canUseProjectTeamNotes(
       visibleProject?.role,
       session.user.isStaff === true,
@@ -367,7 +381,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
