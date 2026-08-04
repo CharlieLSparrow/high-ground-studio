@@ -2,6 +2,23 @@
 
 Date: 2026-08-04
 
+## Measured transcript contributors and playback authority checkpoint
+
+- Aggregate playback-reviewed WER now projects its eight largest segment
+  contributors with exact source range, review kind, edit/reference counts,
+  and segment rate. Aggregate WER still uses every reviewed segment, and
+  provider confidence remains separate triage evidence.
+- Protected transcript-review controls now follow decoded media readiness, not
+  the mere presence of a database playback URL. Load failure clears listening
+  progress and holds playback, correction, speaker attribution, notes, tasks,
+  goals, drafts, and new accuracy claims while retaining historical receipts.
+- A signed-in retained coach journey rendered three reviewed contributors from
+  a genuine prior QA packet, detected that its temporary WAV bytes were gone,
+  and proved the authority hold with no browser exception, overflow, mutation,
+  secret artifact, screenshot, or external side effect.
+- Architecture and evidence are in
+  `docs/coordination/quipsly-measured-transcript-contributors-2026-08-04.md`.
+
 ## Automated edit decision-navigation checkpoint
 
 - The source-bound automated-edit map now reconciles the first selection when

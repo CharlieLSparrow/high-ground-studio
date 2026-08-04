@@ -89,6 +89,10 @@ describe("TranscriptCorrectionDesk", () => {
       configurable: true,
       value: jest.fn(async () => undefined),
     });
+    Object.defineProperty(HTMLMediaElement.prototype, "readyState", {
+      configurable: true,
+      get: () => 1,
+    });
   });
 
   afterEach(() => {
@@ -183,6 +187,18 @@ describe("TranscriptCorrectionDesk", () => {
     const button = await screen.findByRole("button", { name: /correct against playback/i });
     expect(button).toBeDisabled();
     expect(screen.getByText(/prevents “I listened” from becoming a paperwork checkbox/i)).toBeInTheDocument();
+  });
+
+  it("revokes playback authority when protected source bytes fail to load", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const media = await screen.findByLabelText("Protected session recording");
+    expect(screen.getByRole("button", { name: /correct against playback/i })).toBeEnabled();
+
+    fireEvent.error(media);
+
+    expect(screen.getByRole("button", { name: /correct against playback/i })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/historical review receipts remain visible/i);
   });
 
   it("prepares protected playback through the canonical recording handoff", async () => {
@@ -514,8 +530,9 @@ describe("TranscriptCorrectionDesk", () => {
 
     expect(await screen.findByRole("heading", { name: /what quipsly heard/i })).toBeInTheDocument();
     expect(screen.getByText("85.0%", { selector: "p" })).toBeInTheDocument();
-    expect(screen.getByText(/50\.0% WER/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/50\.0% WER/i)).toHaveLength(2);
     expect(screen.getByText(/provider confidence helps prioritize listening; it is not measured accuracy/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Measured transcript error contributors" })).toHaveTextContent(/1\/2 word edits in this reviewed reference/i);
     expect(screen.getByText(/1 corrected · 0 confirmed · 0 unchecked/i)).toBeInTheDocument();
     expect(screen.getAllByText(/shure mv7i/i)).not.toHaveLength(0);
     expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();

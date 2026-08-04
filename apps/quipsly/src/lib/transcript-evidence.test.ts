@@ -186,6 +186,13 @@ describe("audio and transcript evidence", () => {
       measuredReferenceWordCount: 3,
       measuredWordErrorRate: 0.3333,
       measuredScope: "REVIEWED_SAMPLE",
+      measuredReviewSegments: [{
+        segmentId: "segment-reviewed",
+        reviewKind: "corrected",
+        wordErrorCount: 1,
+        referenceWordCount: 3,
+        wordErrorRate: 0.3333,
+      }],
       providerSpeakerClusterCount: 2,
       attributedSpeakerClusterCount: 1,
       endsBeforeRecordingBySeconds: 5,

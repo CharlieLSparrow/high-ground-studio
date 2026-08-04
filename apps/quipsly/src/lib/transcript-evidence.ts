@@ -111,6 +111,15 @@ export type AudioTranscriptEvidence = {
     measuredWordErrorCount: number;
     measuredReferenceWordCount: number;
     measuredScope: "NONE" | "REVIEWED_SAMPLE" | "COMPLETE_TRANSCRIPT";
+    measuredReviewSegments: Array<{
+      segmentId: string;
+      startSeconds: number;
+      endSeconds: number;
+      reviewKind: "corrected" | "confirmed-as-is";
+      wordErrorCount: number;
+      referenceWordCount: number;
+      wordErrorRate: number;
+    }>;
     providerSpeakerClusterCount: number;
     attributedSpeakerClusterCount: number;
     transcriptStartSeconds: number | null;
@@ -481,13 +490,23 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
     ? null
     : confidences.filter((value) => value < lowConfidenceThreshold).length;
   const reviewedSegments = segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification);
-  let measuredWordErrorCount = 0;
-  let measuredReferenceWordCount = 0;
-  for (const segment of reviewedSegments) {
+  const allMeasuredReviewSegments = reviewedSegments.map((segment) => {
     const measurement = transcriptWordEditDistance(segment.providerText, segment.text);
-    measuredWordErrorCount += measurement.errors;
-    measuredReferenceWordCount += measurement.referenceWords;
-  }
+    return {
+      segmentId: segment.id,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+      reviewKind: segment.acceptedCorrection ? "corrected" as const : "confirmed-as-is" as const,
+      wordErrorCount: measurement.errors,
+      referenceWordCount: measurement.referenceWords,
+      wordErrorRate: measurement.referenceWords ? rounded(measurement.errors / measurement.referenceWords) : 0,
+    };
+  });
+  const measuredWordErrorCount = allMeasuredReviewSegments.reduce((total, segment) => total + segment.wordErrorCount, 0);
+  const measuredReferenceWordCount = allMeasuredReviewSegments.reduce((total, segment) => total + segment.referenceWordCount, 0);
+  const measuredReviewSegments = [...allMeasuredReviewSegments]
+    .sort((left, right) => right.wordErrorRate - left.wordErrorRate || right.wordErrorCount - left.wordErrorCount || left.startSeconds - right.startSeconds)
+    .slice(0, 8);
   const measuredScope = reviewedSegments.length === 0
     ? "NONE" as const
     : reviewedSegments.length === segments.length
@@ -564,6 +583,7 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
       measuredWordErrorCount,
       measuredReferenceWordCount,
       measuredScope,
+      measuredReviewSegments,
       providerSpeakerClusterCount: Array.isArray(input.speakerGroups) ? input.speakerGroups.length : 0,
       attributedSpeakerClusterCount: Array.isArray(input.speakerGroups)
         ? input.speakerGroups.filter((group) => object(group).attribution != null).length

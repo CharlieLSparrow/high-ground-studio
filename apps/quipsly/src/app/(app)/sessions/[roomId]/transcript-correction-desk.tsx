@@ -576,6 +576,11 @@ function AudioTranscriptEvidencePanel({
       onPlayAt={onPlayAt}
     />
 
+    {transcript.measuredReviewSegments.length > 0 && <section className="mt-4 rounded-xl border border-emerald-200 bg-white p-4" aria-label="Measured transcript error contributors">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-emerald-900">Measured error contributors</p><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-emerald-950">Largest playback-reviewed segment error rates first. The aggregate WER above includes every reviewed segment; this bounded list is for diagnosis, not provider confidence.</p></div><span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-emerald-900">Top {transcript.measuredReviewSegments.length} reviewed</span></div>
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">{transcript.measuredReviewSegments.map((segment) => <button key={segment.segmentId} type="button" disabled={!playbackReady} onClick={() => void onPlayAt(segment.startSeconds)} className="min-h-11 rounded-lg border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-left text-xs font-bold leading-5 text-emerald-950 disabled:opacity-50" aria-label={`Play measured transcript segment from ${timestampForSeconds(segment.startSeconds)}`}><span className="flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-1 font-black uppercase tracking-wide"><Play size={12} fill="currentColor" aria-hidden="true" />{timestampForSeconds(segment.startSeconds)} · {humanize(segment.reviewKind)}</span><span className="font-mono font-black">{percent(segment.wordErrorRate, 1)} WER</span></span><span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-700">{segment.wordErrorCount}/{segment.referenceWordCount} word edits in this reviewed reference</span></button>)}</div>
+    </section>}
+
     {transcript.attentionSegments.length > 0 && <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
       <p className="text-xs font-black uppercase tracking-wide text-violet-900">Listen next · lowest confidence and unchecked evidence</p>
       <div className="mt-3 grid gap-2 lg:grid-cols-2">{transcript.attentionSegments.map((segment) => <button key={segment.segmentId} type="button" disabled={!playbackReady} onClick={() => void onPlayAt(segment.startSeconds)} className="min-h-11 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2 text-left text-xs font-bold leading-5 text-violet-950 disabled:opacity-50" aria-label={`Play transcript attention segment from ${timestampForSeconds(segment.startSeconds)}`}><span className="mr-2 inline-flex items-center gap-1 font-black uppercase tracking-wide"><Play size={12} fill="currentColor" aria-hidden="true" />{timestampForSeconds(segment.startSeconds)}</span>{segment.text}<span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-violet-700">{segment.reviewed ? "reviewed" : "unchecked"}{segment.minimumWordConfidence === null ? " · confidence unavailable" : ` · lowest confidence ${percent(segment.minimumWordConfidence, 0)}`}{segment.lowConfidenceWords.length ? ` · low words: ${segment.lowConfidenceWords.map((word) => word.word).join(", ")}` : ""}</span></button>)}</div>
@@ -1200,8 +1205,10 @@ export function TranscriptCorrectionDesk({
   const [message, setMessage] = useState<string | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
+  const [playbackState, setPlaybackState] = useState<"absent" | "loading" | "ready" | "error">("absent");
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
+  const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1224,6 +1231,7 @@ export function TranscriptCorrectionDesk({
     setListenedSecondBins(new Set());
     setPlaybackSeconds(0);
     lastPlaybackTimeRef.current = null;
+    setPlaybackState(desk?.playback ? ((mediaRef.current?.readyState ?? 0) >= 1 ? "ready" : "loading") : "absent");
   }, [desk?.playback?.sourceId]);
 
   useEffect(() => {
@@ -1246,7 +1254,12 @@ export function TranscriptCorrectionDesk({
 
   async function playFromTime(seconds: number) {
     const media = mediaRef.current;
-    if (!media) return;
+    if (!media || !playbackReady) {
+      setMessage(playbackState === "error"
+        ? "Protected source bytes are unavailable. Restore or re-import the original before claiming playback review."
+        : "Protected playback is still loading. Wait for the source to become ready before reviewing this timestamp.");
+      return;
+    }
     const next = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
     media.currentTime = next;
     setPlaybackSeconds(next);
@@ -1278,6 +1291,17 @@ export function TranscriptCorrectionDesk({
       for (let bin = firstSecond; bin <= second; bin += 1) next.add(bin);
       return next.size === current.size ? current : next;
     });
+  }
+
+  function playbackLoaded() {
+    setPlaybackState("ready");
+  }
+
+  function playbackFailed() {
+    lastPlaybackTimeRef.current = null;
+    setPlaybackState("error");
+    setListenedSecondBins(new Set());
+    setMessage("Protected source bytes could not be loaded. Review, correction, notes, tasks, goals, and drafts are held until the original is restored or re-imported.");
   }
 
   async function saved(nextMessage: string) {
@@ -1363,8 +1387,10 @@ export function TranscriptCorrectionDesk({
           <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
             <p className="mb-3 text-xs font-black uppercase tracking-wide text-sky-900">Protected source · {desk.playback.label}</p>
             {desk.playback.kind === "video"
-              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
+              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onLoadedMetadata={playbackLoaded} onCanPlay={playbackLoaded} onError={playbackFailed} onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+            {playbackState === "loading" ? <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-white p-3 text-xs font-bold text-sky-900">Loading and decoding protected source metadata before review controls unlock…</p> : null}
+            {playbackState === "error" ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-950">Protected source bytes are unavailable. Historical review receipts remain visible, but no new playback, correction, note, task, goal, draft, or accuracy claim can be created from this missing source.</p> : null}
           </div>
         ) : (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
@@ -1385,7 +1411,7 @@ export function TranscriptCorrectionDesk({
       {desk.evidence ? <AudioTranscriptEvidencePanel
           evidence={desk.evidence}
           segments={desk.segments}
-          playbackReady={Boolean(desk.playback)}
+          playbackReady={playbackReady}
           selectedSeconds={playbackSeconds}
           onSelectTime={setPlaybackSeconds}
           onPlayAt={playFromTime}
@@ -1396,7 +1422,7 @@ export function TranscriptCorrectionDesk({
         evaluation={desk.evaluation}
         busy={busy}
         listenedSecondBins={[...listenedSecondBins].sort((left, right) => left - right)}
-        playbackSourceId={desk.playback?.sourceId ?? null}
+        playbackSourceId={playbackReady ? desk.playback?.sourceId ?? null : null}
         onSaved={saved}
       /> : null}
 
@@ -1405,7 +1431,7 @@ export function TranscriptCorrectionDesk({
           roomId={roomId}
           groups={desk.speakerGroups ?? []}
           participants={desk.participants ?? []}
-          playbackReady={Boolean(desk.playback)}
+          playbackReady={playbackReady}
           currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
           busy={busy}
           onPlayAt={playFromTime}
@@ -1421,7 +1447,7 @@ export function TranscriptCorrectionDesk({
               roomId={roomId}
               segment={segment}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
-              playbackReady={Boolean(desk.playback)}
+              playbackReady={playbackReady}
               currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
               busy={busy}
               onPlay={() => playFrom(segment)}
