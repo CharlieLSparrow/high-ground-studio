@@ -83,6 +83,12 @@ function desk(playback: boolean) {
   };
 }
 
+async function markProtectedPlaybackReady() {
+  const media = await screen.findByLabelText("Protected session recording");
+  fireEvent.loadedMetadata(media);
+  return media as HTMLMediaElement;
+}
+
 describe("TranscriptCorrectionDesk", () => {
   beforeEach(() => {
     Object.defineProperty(HTMLMediaElement.prototype, "play", {
@@ -108,6 +114,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     expect(document.getElementById("transcript-segment-segment-1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /play transcript segment/i }));
     fireEvent.click(screen.getByRole("button", { name: /correct against playback/i }));
@@ -192,7 +199,7 @@ describe("TranscriptCorrectionDesk", () => {
   it("revokes playback authority when protected source bytes fail to load", async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
-    const media = await screen.findByLabelText("Protected session recording");
+    const media = await markProtectedPlaybackReady();
     expect(screen.getByRole("button", { name: /correct against playback/i })).toBeEnabled();
 
     fireEvent.error(media);
@@ -298,6 +305,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: /play transcript segment/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirm correct as heard/i }));
 
@@ -320,6 +328,7 @@ describe("TranscriptCorrectionDesk", () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByText(/precise word timing/i));
     const wordButton = screen.getByRole("button", { name: /play everybody.*00:04/i });
     fireEvent.click(wordButton);
@@ -337,6 +346,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: /make this my task/i }));
     fireEvent.change(screen.getByLabelText(/task title/i), { target: { value: "Prepare the opening" } });
     fireEvent.click(screen.getByRole("button", { name: /create my task/i }));
@@ -366,6 +376,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
     fireEvent.change(screen.getByLabelText(/note title/i), { target: { value: "Coaching insight" } });
     fireEvent.change(screen.getByLabelText(/^note$/i), { target: { value: "Ask what support would make the next step realistic." } });
@@ -397,6 +408,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     const { rerender } = render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: /save as session note/i }));
     expect(screen.queryByRole("option", { name: "Production note" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Project team" })).not.toBeInTheDocument();
@@ -414,6 +426,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Welcome, everybody.");
+    await markProtectedPlaybackReady();
     fireEvent.click(screen.getByRole("button", { name: /start source-linked draft/i }));
     fireEvent.change(screen.getByLabelText(/page title/i), { target: { value: "Episode opening" } });
     fireEvent.change(screen.getByLabelText(/starting thought/i), { target: { value: "This is why the story matters." } });
@@ -538,7 +551,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();
     expect(screen.getByText(/RMS dBFS is not perceptual LUFS/i)).toBeInTheDocument();
     expect(screen.getByText(/measurable signal continues after the last timed transcript word/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /audio evidence map/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /audio level evidence map/i })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: /selected time/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /play selected time/i })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /00:10 · Possible Dropout/i })).toHaveLength(2);

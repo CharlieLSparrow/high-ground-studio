@@ -4,6 +4,34 @@ export const AUDIO_SIGNAL_PROFILE_CONTRACT_VERSION = 1 as const;
 export const AUDIO_SIGNAL_PROFILE_JOB_KIND = "quipsly-audio-signal-profile-job-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_RESULT_KIND = "quipsly-audio-signal-profile-result-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_ALGORITHM = "quipsly-audio-signal-window-v1" as const;
+export const AUDIO_FREQUENCY_PROFILE_ALGORITHM = "quipsly-audio-broad-band-rms-v1" as const;
+
+export type AudioFrequencyBandId = "rumble" | "warmth" | "body" | "speech" | "presence" | "air";
+
+export type AudioFrequencyProfile = {
+  algorithm: typeof AUDIO_FREQUENCY_PROFILE_ALGORITHM;
+  completeDecode: true;
+  downmixPolicy: "ffmpeg-default-mono-v1";
+  windowDurationSeconds: number;
+  analyzedFrameCount: number;
+  bands: Array<{
+    id: AudioFrequencyBandId;
+    label: string;
+    minimumHz: number;
+    maximumHz: number;
+  }>;
+  overallBandRmsDbfs: number[];
+  windows: Array<{
+    startSeconds: number;
+    durationSeconds: number;
+    bandRmsDbfs: number[];
+  }>;
+  boundaries: {
+    broadBandsAreNotARepairSpectrogram: true;
+    measurementsAreNotEqDecisions: true;
+    stereoIsDownmixedForFrequencyOverview: true;
+  };
+};
 
 export type AudioSignalProfileWindow = {
   startSeconds: number;
@@ -46,6 +74,7 @@ export type AudioSignalProfile = {
     stereoImbalanceDb: number;
   };
   waveform: AudioSignalProfileWindow[];
+  frequencyProfile: AudioFrequencyProfile | null;
   observations: AudioSignalProfileObservation[];
 };
 
@@ -61,6 +90,12 @@ export type AudioSignalProfileJob = {
     algorithm: typeof AUDIO_SIGNAL_PROFILE_ALGORITHM;
     maximumWindows: 1_200;
     completeDecodeRequired: true;
+    frequencyAnalysis: {
+      algorithm: typeof AUDIO_FREQUENCY_PROFILE_ALGORITHM;
+      maximumBands: 6;
+      maximumWindows: 1_200;
+      completeDecodeRequired: true;
+    } | null;
   };
 };
 
@@ -83,6 +118,12 @@ export type AudioSignalProfileResult = {
     ffmpegVersion: string;
     completeDecode: true;
     maximumWindows: 1_200;
+    frequencyAnalysis: {
+      algorithm: typeof AUDIO_FREQUENCY_PROFILE_ALGORITHM;
+      maximumBands: 6;
+      maximumWindows: 1_200;
+      completeDecode: true;
+    } | null;
   };
   worker: {
     executionId: string;
@@ -109,6 +150,12 @@ export function newAudioSignalProfileJob(input: Omit<AudioSignalProfileJob, "kin
       algorithm: AUDIO_SIGNAL_PROFILE_ALGORITHM,
       maximumWindows: 1_200,
       completeDecodeRequired: true,
+      frequencyAnalysis: {
+        algorithm: AUDIO_FREQUENCY_PROFILE_ALGORITHM,
+        maximumBands: 6,
+        maximumWindows: 1_200,
+        completeDecodeRequired: true,
+      },
     },
   });
 }
@@ -116,6 +163,7 @@ export function newAudioSignalProfileJob(input: Omit<AudioSignalProfileJob, "kin
 export function parseAudioSignalProfileJob(value: unknown, expectedJobId?: string): AudioSignalProfileJob {
   const row = record(value);
   const analyzer = record(row.analyzer);
+  const frequencyAnalysis = parseFrequencyJobCapability(analyzer.frequencyAnalysis);
   const jobId = requiredId(row.jobId, "jobId");
   if (
     row.kind !== AUDIO_SIGNAL_PROFILE_JOB_KIND
@@ -137,6 +185,7 @@ export function parseAudioSignalProfileJob(value: unknown, expectedJobId?: strin
       algorithm: AUDIO_SIGNAL_PROFILE_ALGORITHM,
       maximumWindows: 1_200,
       completeDecodeRequired: true,
+      frequencyAnalysis,
     },
   };
 }
@@ -148,6 +197,7 @@ export function parseAudioSignalProfileResult(value: unknown, expectedJob?: Audi
   const source = parseSource(row.source);
   const media = record(row.media);
   const analyzer = record(row.analyzer);
+  const frequencyAnalysis = parseFrequencyResultCapability(analyzer.frequencyAnalysis);
   const worker = record(row.worker);
   const boundaries = record(row.boundaries);
   const audioSignal = parseAudioSignalProfile(row.audioSignal);
@@ -158,6 +208,8 @@ export function parseAudioSignalProfileResult(value: unknown, expectedJob?: Audi
     || analyzer.algorithm !== AUDIO_SIGNAL_PROFILE_ALGORITHM
     || analyzer.completeDecode !== true
     || analyzer.maximumWindows !== 1_200
+    || (job ? Boolean(frequencyAnalysis) !== Boolean(job.analyzer.frequencyAnalysis) : false)
+    || Boolean(audioSignal.frequencyProfile) !== Boolean(frequencyAnalysis)
     || boundaries.originalRemainsSourceTruth !== true
     || boundaries.analysisDoesNotChangeMedia !== true
     || boundaries.observationsRequireHumanInterpretation !== true
@@ -184,6 +236,7 @@ export function parseAudioSignalProfileResult(value: unknown, expectedJob?: Audi
       ffmpegVersion: requiredText(analyzer.ffmpegVersion, "analyzer.ffmpegVersion"),
       completeDecode: true,
       maximumWindows: 1_200,
+      frequencyAnalysis,
     },
     worker: {
       executionId: requiredId(worker.executionId, "worker.executionId"),
@@ -255,6 +308,9 @@ export function parseAudioSignalProfile(value: unknown): AudioSignalProfile {
   const signalStatus = row.signalStatus === "signal-present" || row.signalStatus === "attention" || row.signalStatus === "near-digital-silence"
     ? row.signalStatus
     : invalid("signalStatus");
+  const frequencyProfile = row.frequencyProfile == null
+    ? null
+    : parseAudioFrequencyProfile(row.frequencyProfile, { sampleRate, analyzedFrameCount, durationSeconds });
   return {
     schemaVersion: 1,
     algorithm: AUDIO_SIGNAL_PROFILE_ALGORITHM,
@@ -280,8 +336,108 @@ export function parseAudioSignalProfile(value: unknown): AudioSignalProfile {
       stereoImbalanceDb: positiveNumber(thresholds.stereoImbalanceDb, "thresholds.stereoImbalanceDb"),
     },
     waveform,
+    frequencyProfile,
     observations,
   };
+}
+
+export function parseAudioFrequencyProfile(
+  value: unknown,
+  expected?: { sampleRate: number; analyzedFrameCount: number; durationSeconds: number },
+): AudioFrequencyProfile {
+  const row = record(value);
+  const boundaries = record(row.boundaries);
+  const bands = array(row.bands).map((item, index) => {
+    const band = record(item);
+    const id = ["rumble", "warmth", "body", "speech", "presence", "air"].includes(String(band.id))
+      ? band.id as AudioFrequencyBandId
+      : invalid(`frequencyProfile.bands[${index}].id`);
+    const minimumHz = positiveNumber(band.minimumHz, `frequencyProfile.bands[${index}].minimumHz`);
+    const maximumHz = positiveNumber(band.maximumHz, `frequencyProfile.bands[${index}].maximumHz`);
+    if (maximumHz <= minimumHz) throw new Error(`frequencyProfile.bands[${index}] has an invalid range.`);
+    return { id, label: requiredText(band.label, `frequencyProfile.bands[${index}].label`), minimumHz, maximumHz };
+  });
+  if (bands.length < 1 || bands.length > 6 || new Set(bands.map((band) => band.id)).size !== bands.length) {
+    throw new Error("Audio frequency profile bands are invalid or unbounded.");
+  }
+  for (let index = 1; index < bands.length; index += 1) {
+    if (bands[index].minimumHz < bands[index - 1].maximumHz) throw new Error("Audio frequency profile bands overlap or are unordered.");
+  }
+  const overallBandRmsDbfs = array(row.overallBandRmsDbfs).map((entry, index) => finiteNumber(entry, `frequencyProfile.overallBandRmsDbfs[${index}]`));
+  const windows = array(row.windows).map((item, index) => {
+    const window = record(item);
+    const bandRmsDbfs = array(window.bandRmsDbfs).map((entry, bandIndex) => finiteNumber(entry, `frequencyProfile.windows[${index}].bandRmsDbfs[${bandIndex}]`));
+    if (bandRmsDbfs.length !== bands.length) throw new Error(`frequencyProfile.windows[${index}] does not cover every band.`);
+    return {
+      startSeconds: nonNegativeNumber(window.startSeconds, `frequencyProfile.windows[${index}].startSeconds`),
+      durationSeconds: positiveNumber(window.durationSeconds, `frequencyProfile.windows[${index}].durationSeconds`),
+      bandRmsDbfs,
+    };
+  });
+  const analyzedFrameCount = positiveInteger(row.analyzedFrameCount, "frequencyProfile.analyzedFrameCount");
+  const windowDurationSeconds = positiveNumber(row.windowDurationSeconds, "frequencyProfile.windowDurationSeconds");
+  if (
+    row.algorithm !== AUDIO_FREQUENCY_PROFILE_ALGORITHM
+    || row.completeDecode !== true
+    || row.downmixPolicy !== "ffmpeg-default-mono-v1"
+    || overallBandRmsDbfs.length !== bands.length
+    || windows.length < 1
+    || windows.length > 1_200
+    || boundaries.broadBandsAreNotARepairSpectrogram !== true
+    || boundaries.measurementsAreNotEqDecisions !== true
+    || boundaries.stereoIsDownmixedForFrequencyOverview !== true
+  ) throw new Error("Audio frequency profile is invalid or unbounded.");
+  if (windows[0]!.startSeconds > 0.02) throw new Error("Audio frequency profile does not begin on the source clock.");
+  for (let index = 1; index < windows.length; index += 1) {
+    const previousEnd = windows[index - 1]!.startSeconds + windows[index - 1]!.durationSeconds;
+    if (Math.abs(windows[index]!.startSeconds - previousEnd) > 0.02) throw new Error("Audio frequency profile windows are not contiguous on the source clock.");
+  }
+  const endSeconds = windows.at(-1)!.startSeconds + windows.at(-1)!.durationSeconds;
+  const durationSeconds = expected?.durationSeconds ?? endSeconds;
+  if (
+    (expected && analyzedFrameCount !== expected.analyzedFrameCount)
+    || (expected && bands.some((band) => band.maximumHz >= expected.sampleRate / 2))
+    || Math.abs(endSeconds - durationSeconds) > 0.02
+  ) throw new Error("Audio frequency profile duration or Nyquist evidence is inconsistent.");
+  return {
+    algorithm: AUDIO_FREQUENCY_PROFILE_ALGORITHM,
+    completeDecode: true,
+    downmixPolicy: "ffmpeg-default-mono-v1",
+    windowDurationSeconds,
+    analyzedFrameCount,
+    bands,
+    overallBandRmsDbfs,
+    windows,
+    boundaries: {
+      broadBandsAreNotARepairSpectrogram: true,
+      measurementsAreNotEqDecisions: true,
+      stereoIsDownmixedForFrequencyOverview: true,
+    },
+  };
+}
+
+function parseFrequencyJobCapability(value: unknown): AudioSignalProfileJob["analyzer"]["frequencyAnalysis"] {
+  if (value == null) return null;
+  const row = record(value);
+  if (
+    row.algorithm !== AUDIO_FREQUENCY_PROFILE_ALGORITHM
+    || row.maximumBands !== 6
+    || row.maximumWindows !== 1_200
+    || row.completeDecodeRequired !== true
+  ) throw new Error("Audio signal frequency job capability is invalid.");
+  return { algorithm: AUDIO_FREQUENCY_PROFILE_ALGORITHM, maximumBands: 6, maximumWindows: 1_200, completeDecodeRequired: true };
+}
+
+function parseFrequencyResultCapability(value: unknown): AudioSignalProfileResult["analyzer"]["frequencyAnalysis"] {
+  if (value == null) return null;
+  const row = record(value);
+  if (
+    row.algorithm !== AUDIO_FREQUENCY_PROFILE_ALGORITHM
+    || row.maximumBands !== 6
+    || row.maximumWindows !== 1_200
+    || row.completeDecode !== true
+  ) throw new Error("Audio signal frequency result capability is invalid.");
+  return { algorithm: AUDIO_FREQUENCY_PROFILE_ALGORITHM, maximumBands: 6, maximumWindows: 1_200, completeDecode: true };
 }
 
 function parseSource(value: unknown): AudioMasterySourceBinding {

@@ -170,7 +170,10 @@ try {
   }
   assert.equal(signal.body?.status, "completed", "Decoded signal profile did not reach canonical completion.");
   assert.equal(signal.body?.analyzer?.completeDecode, true, "Decoded signal profile is not complete-source evidence.");
+  assert.equal(signal.body?.analyzer?.frequencyAnalysis?.completeDecode, true, "Decoded signal profile has no complete-source frequency capability.");
   assert.ok(signal.body?.audioSignal?.waveform?.length > 0 && signal.body.audioSignal.waveform.length <= 1_200, "Decoded signal profile is empty or unbounded.");
+  assert.ok(signal.body?.audioSignal?.frequencyProfile?.windows?.length > 0 && signal.body.audioSignal.frequencyProfile.windows.length <= 1_200, "Broad-band frequency evidence is empty or unbounded.");
+  assert.ok(signal.body?.audioSignal?.frequencyProfile?.bands?.length > 0 && signal.body.audioSignal.frequencyProfile.bands.length <= 6, "Broad-band frequency evidence has invalid band coverage.");
   assert.ok(signal.body.audioSignal.durationSeconds + 0.02 >= review.body.coverage.endSeconds, "Transcript timing extends beyond decoded signal evidence.");
 
   const canonical = await pool.query({
@@ -224,6 +227,9 @@ try {
       analyzer: signal.body.analyzer,
       durationSeconds: signal.body.audioSignal.durationSeconds,
       waveformWindowCount: signal.body.audioSignal.waveform.length,
+      frequencyBandCount: signal.body.audioSignal.frequencyProfile.bands.length,
+      frequencyWindowCount: signal.body.audioSignal.frequencyProfile.windows.length,
+      frequencyBoundaries: signal.body.audioSignal.frequencyProfile.boundaries,
       signalStatus: signal.body.audioSignal.signalStatus,
       observationKinds: signal.body.audioSignal.observations.map((observation) => observation.kind),
       transcriptBounds: {

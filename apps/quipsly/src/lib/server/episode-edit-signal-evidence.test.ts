@@ -130,6 +130,21 @@ describe("episode edit signal evidence", () => {
       leftRmsDbfs: -24,
       rightRmsDbfs: null,
       stereoBalanceDb: null,
+      frequencyProfile: {
+        algorithm: "quipsly-audio-broad-band-rms-v1",
+        completeDecode: true,
+        downmixPolicy: "ffmpeg-default-mono-v1",
+        windowDurationSeconds: 10,
+        analyzedFrameCount: 480_000,
+        bands: [{ id: "speech", label: "Speech", minimumHz: 500, maximumHz: 2_000 }],
+        overallBandRmsDbfs: [-20],
+        windows: [{ startSeconds: 0, durationSeconds: 10, bandRmsDbfs: [-20] }],
+        boundaries: {
+          broadBandsAreNotARepairSpectrogram: true,
+          measurementsAreNotEqDecisions: true,
+          stereoIsDownmixedForFrequencyOverview: true,
+        },
+      },
       observations: [{
         kind: "possible-dropout",
         severity: "attention",
@@ -146,7 +161,18 @@ describe("episode edit signal evidence", () => {
       source: sourceBinding,
       media: { container: "mov", codec: "pcm_s16le", sampleRate: 48_000, channelCount: 1, durationSeconds: 10 },
       audioSignal: profile,
-      analyzer: { algorithm: "quipsly-audio-signal-window-v1", ffmpegVersion: "test", completeDecode: true, maximumWindows: 1_200 },
+      analyzer: {
+        algorithm: "quipsly-audio-signal-window-v1",
+        ffmpegVersion: "test",
+        completeDecode: true,
+        maximumWindows: 1_200,
+        frequencyAnalysis: {
+          algorithm: "quipsly-audio-broad-band-rms-v1",
+          maximumBands: 6,
+          maximumWindows: 1_200,
+          completeDecode: true,
+        },
+      },
       worker: { executionId: "execution-studio-001", buildId: "build-test", imageDigest: null, attempt: 1 },
       boundaries: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true, observationsRequireHumanInterpretation: true },
     };

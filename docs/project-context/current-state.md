@@ -2,6 +2,28 @@
 
 Date: 2026-08-04
 
+## Broad-band frequency evidence and full-width review checkpoint
+
+- New source-bound signal jobs declare a complete-decode six-band maximum
+  frequency capability. Old amplitude-only receipts remain readable but are
+  not reused as if frequency evidence exists.
+- Retained Episode 8 now has 1,200 six-band windows over the exact 254.630023-
+  second `Ted Lasso Be Curious.mp4` source; retained coaching has 800 five-band
+  windows over its 80-second, 8 kHz source. Both original hashes remained
+  unchanged, and the lower-bandwidth source correctly omits unavailable air.
+- The shared audio evidence map now switches between level and broad-band
+  frequency views and exposes selected-window plus whole-program absolute RMS
+  dBFS without calling the overview a repair spectrogram or an EQ decision.
+- Retained Studio operation exposed that the deep transcript desk was embedded
+  in a roughly 193-pixel media card. It now opens as an accessible full-width
+  dialog with Escape, focus return, body-scroll containment, container-safe
+  grids, and no rendered overflow or browser exception.
+- Studio provider probabilities remain visible, but a Deepgram default is no
+  longer applied to local Whisper. Provider-attention words require a supported
+  provider default or an explicit threshold authority in the receipt.
+- Architecture, research, and operated evidence are in
+  `docs/coordination/quipsly-broad-band-frequency-evidence-2026-08-04.md`.
+
 ## Measured transcript contributors and playback authority checkpoint
 
 - Aggregate playback-reviewed WER now projects its eight largest segment

@@ -14,6 +14,8 @@ function timestampForSeconds(seconds: number) {
 type SignalEvidence = NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
 type TimelineEvent = AudioTranscriptEvidence["audio"]["timelineEvents"][number];
 type ViewMode = "whole" | "minute" | "detail";
+type DisplayMode = "levels" | "frequency";
+type FrequencyProfile = NonNullable<SignalEvidence["frequencyProfile"]>;
 
 export type AudioEvidenceTranscriptWord = {
   id: string;
@@ -71,6 +73,17 @@ export function audioEvidencePointAt(signal: SignalEvidence, seconds: number) {
   const exact = signal.waveform.find((point) => seconds >= point.startSeconds && seconds < point.startSeconds + point.durationSeconds);
   if (exact) return exact;
   return signal.waveform.reduce<(typeof signal.waveform)[number] | null>((nearest, point) => {
+    if (!nearest) return point;
+    const pointCenter = point.startSeconds + point.durationSeconds / 2;
+    const nearestCenter = nearest.startSeconds + nearest.durationSeconds / 2;
+    return Math.abs(pointCenter - seconds) < Math.abs(nearestCenter - seconds) ? point : nearest;
+  }, null);
+}
+
+export function audioFrequencyWindowAt(profile: FrequencyProfile, seconds: number) {
+  const exact = profile.windows.find((point) => seconds >= point.startSeconds && seconds < point.startSeconds + point.durationSeconds);
+  if (exact) return exact;
+  return profile.windows.reduce<(typeof profile.windows)[number] | null>((nearest, point) => {
     if (!nearest) return point;
     const pointCenter = point.startSeconds + point.durationSeconds / 2;
     const nearestCenter = nearest.startSeconds + nearest.durationSeconds / 2;
@@ -166,6 +179,24 @@ function levelHeight(dbfs: number, maximumHeight: number) {
   return Math.max(1, normalized * maximumHeight);
 }
 
+function frequencyOpacity(dbfs: number) {
+  return 0.08 + ((clamp(dbfs, -96, 0) + 96) / 96) * 0.92;
+}
+
+function frequencyRangeLabel(minimumHz: number, maximumHz: number) {
+  const hz = (value: number) => value >= 1_000 ? `${Number((value / 1_000).toFixed(value % 1_000 === 0 ? 0 : 1))}k` : String(Math.round(value));
+  return `${hz(minimumHz)}–${hz(maximumHz)} Hz`;
+}
+
+const FREQUENCY_COLORS: Record<FrequencyProfile["bands"][number]["id"], string> = {
+  rumble: "#c084fc",
+  warmth: "#f472b6",
+  body: "#fb7185",
+  speech: "#fbbf24",
+  presence: "#34d399",
+  air: "#38bdf8",
+};
+
 export function AudioEvidenceMap({
   signal,
   timelineEvents,
@@ -190,6 +221,7 @@ export function AudioEvidenceMap({
   transcriptScopeLabel?: string;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("whole");
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("levels");
   const titleId = useId();
   const descriptionId = useId();
   const width = 1_000;
@@ -203,7 +235,10 @@ export function AudioEvidenceMap({
   const span = audioEvidenceViewSpan(signal.durationSeconds, selectedSeconds, viewMode);
   const x = (seconds: number) => clamp(((seconds - span.startSeconds) / span.durationSeconds) * width, 0, width);
   const visiblePoints = signal.waveform.filter((point) => point.startSeconds < span.endSeconds && point.startSeconds + point.durationSeconds > span.startSeconds);
+  const frequencyProfile = signal.frequencyProfile;
+  const visibleFrequencyWindows = frequencyProfile?.windows.filter((point) => point.startSeconds < span.endSeconds && point.startSeconds + point.durationSeconds > span.startSeconds) ?? [];
   const selectedPoint = useMemo(() => audioEvidencePointAt(signal, selectedSeconds), [selectedSeconds, signal]);
+  const selectedFrequencyWindow = useMemo(() => frequencyProfile ? audioFrequencyWindowAt(frequencyProfile, selectedSeconds) : null, [frequencyProfile, selectedSeconds]);
   const selectedWord = useMemo(() => audioEvidenceWordAt(transcriptWords, selectedSeconds), [selectedSeconds, transcriptWords]);
   const summary = useMemo(() => audioEvidenceMapSummary(signal), [signal]);
   const transcriptSummary = useMemo(() => audioEvidenceTranscriptSummary(transcriptWords, lowConfidenceThreshold), [lowConfidenceThreshold, transcriptWords]);
@@ -244,14 +279,18 @@ export function AudioEvidenceMap({
         <p className="text-xs font-black uppercase tracking-[0.14em] text-sky-200">Audio evidence map</p>
         <p className="mt-1 max-w-3xl text-[10px] font-bold leading-4 text-slate-300">Windowed RMS energy and sample peaks from the complete decode—not a sample-level waveform. Color marks measured conditions; listening decides what they mean.</p>
       </div>
-      <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1" role="group" aria-label="Audio evidence map zoom">
-        {(["whole", "minute", "detail"] as const).map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`min-h-9 rounded-md px-2 text-[9px] font-black uppercase tracking-wide ${viewMode === mode ? "bg-sky-200 text-sky-950" : "text-slate-300 hover:bg-slate-800"}`}>{mode === "whole" ? "Whole" : mode === "minute" ? "60 sec" : "15 sec"}</button>)}
+      <div className="flex flex-wrap justify-end gap-2">
+        {frequencyProfile ? <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1" role="group" aria-label="Audio evidence map display">
+          {(["levels", "frequency"] as const).map((mode) => <button key={mode} type="button" aria-pressed={displayMode === mode} onClick={() => setDisplayMode(mode)} className={`min-h-9 rounded-md px-2 text-[9px] font-black uppercase tracking-wide ${displayMode === mode ? "bg-fuchsia-200 text-fuchsia-950" : "text-slate-300 hover:bg-slate-800"}`}>{mode === "levels" ? "Level" : "Frequency"}</button>)}
+        </div> : null}
+        <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1" role="group" aria-label="Audio evidence map zoom">
+          {(["whole", "minute", "detail"] as const).map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`min-h-9 rounded-md px-2 text-[9px] font-black uppercase tracking-wide ${viewMode === mode ? "bg-sky-200 text-sky-950" : "text-slate-300 hover:bg-slate-800"}`}>{mode === "whole" ? "Whole" : mode === "minute" ? "60 sec" : "15 sec"}</button>)}
+        </div>
       </div>
     </div>
 
     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-black uppercase tracking-wide text-slate-300" aria-label="Audio evidence legend">
-      <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-sky-500 align-middle" />RMS energy</span>
-      <span><span className="mr-1 inline-block h-0.5 w-3 bg-violet-300 align-middle" />Sample peak</span>
+      {displayMode === "levels" || !frequencyProfile ? <><span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-sky-500 align-middle" />RMS energy</span><span><span className="mr-1 inline-block h-0.5 w-3 bg-violet-300 align-middle" />Sample peak</span></> : <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-fuchsia-400 align-middle" />Absolute broad-band RMS energy</span>}
       <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-slate-500 align-middle" />Near-silent window</span>
       <span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-rose-500 align-middle" />Clipping observed</span>
       <span><span className="mr-1 inline-block h-3 w-0.5 bg-amber-300 align-middle" />Capture boundary</span>
@@ -275,21 +314,21 @@ export function AudioEvidenceMap({
       </div>{attentionMoments.length > nearbyAttentionMoments.length ? <p className="mt-1 text-[8px] font-bold text-slate-500">Showing {nearbyAttentionMoments.length} review points nearest the playhead. Previous and Next traverse the full {attentionMoments.length}-point source-clock queue.</p> : null}</> : <p className="mt-2 rounded-md border border-emerald-800 bg-emerald-950/30 p-2 text-[9px] font-bold text-emerald-200">No configured signal flag, capture boundary, or unchecked provider-attention word needs navigation.</p>}
     </section>
 
-    <button type="button" onClick={selectFromMap} className="mt-3 block w-full overflow-hidden rounded-lg border border-slate-700 bg-[#111827] text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300" aria-label={`Audio evidence map from ${timestampForSeconds(span.startSeconds)} to ${timestampForSeconds(span.endSeconds)}. Select a position${playbackReady ? " to play from that time" : " for inspection"}.`}>
+    <button type="button" onClick={selectFromMap} className="mt-3 block w-full overflow-hidden rounded-lg border border-slate-700 bg-[#111827] text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300" aria-label={`${displayMode === "frequency" && frequencyProfile ? "Broad-band frequency" : "Audio level"} evidence map from ${timestampForSeconds(span.startSeconds)} to ${timestampForSeconds(span.endSeconds)}. Select a position${playbackReady ? " to play from that time" : " for inspection"}.`}>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-52 w-full" role="img" aria-labelledby={`${titleId} ${descriptionId}`} preserveAspectRatio="none">
-        <title id={titleId}>Windowed decoded audio energy, timed transcript words, and review markers</title>
-        <desc id={descriptionId}>Symmetrical bars show RMS energy. Thin violet lines show sample peaks. Gray windows crossed the near-silence threshold, red windows contained clipped frames, amber lines are capture boundaries, green marks the timed transcript end, and cyan marks the selected playback position. The lower lane shows provider-timed words and their human review state; provider confidence is triage evidence, not measured word accuracy.</desc>
+        <title id={titleId}>{displayMode === "frequency" && frequencyProfile ? "Complete-decode broad-band frequency energy" : "Windowed decoded audio energy"}, timed transcript words, and review markers</title>
+        <desc id={descriptionId}>{displayMode === "frequency" && frequencyProfile ? "Rows show absolute RMS energy in six or fewer broad frequency bands from a complete mono overview decode. This is not a high-resolution repair spectrogram or an EQ decision." : "Symmetrical bars show RMS energy. Thin violet lines show sample peaks. Gray windows crossed the near-silence threshold and red windows contained clipped frames."} Amber lines are capture boundaries, green marks the timed transcript end, and cyan marks the selected playback position. The lower lane shows provider-timed words and their human review state; provider confidence is triage evidence, not measured word accuracy.</desc>
         {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
           const gridX = fraction * width;
           const gridSeconds = span.startSeconds + fraction * span.durationSeconds;
           return <g key={fraction}><line x1={gridX} x2={gridX} y1={plotTop} y2={plotBottom} stroke="#334155" strokeDasharray="2 7" /><text x={clamp(gridX + 5, 5, width - 55)} y="13" fill="#94a3b8" fontSize="10" fontWeight="700">{timestampForSeconds(gridSeconds)}</text></g>;
         })}
-        <line x1="0" x2={width} y1={center} y2={center} stroke="#475569" />
-        {[-24, -48, -72].map((dbfs) => {
+        {displayMode === "levels" || !frequencyProfile ? <line x1="0" x2={width} y1={center} y2={center} stroke="#475569" /> : null}
+        {(displayMode === "levels" || !frequencyProfile) && [-24, -48, -72].map((dbfs) => {
           const guideHeight = levelHeight(dbfs, maximumLevelHeight);
           return <g key={dbfs} opacity="0.7"><line x1="0" x2={width} y1={center - guideHeight} y2={center - guideHeight} stroke="#475569" strokeDasharray="2 5" /><line x1="0" x2={width} y1={center + guideHeight} y2={center + guideHeight} stroke="#475569" strokeDasharray="2 5" /><text x="5" y={center - guideHeight - 2} fill="#94a3b8" fontSize="8" fontWeight="700">{dbfs} dBFS</text></g>;
         })}
-        {visiblePoints.map((point, index) => {
+        {(displayMode === "levels" || !frequencyProfile) && visiblePoints.map((point, index) => {
           const start = Math.max(point.startSeconds, span.startSeconds);
           const end = Math.min(point.startSeconds + point.durationSeconds, span.endSeconds);
           const pointX = x(start);
@@ -305,6 +344,23 @@ export function AudioEvidenceMap({
             <line x1={pointX + pointWidth / 2} x2={pointX + pointWidth / 2} y1={center - peakHeight} y2={center + peakHeight} stroke={clipped ? "#fb7185" : "#c4b5fd"} strokeWidth={Math.max(0.8, Math.min(2, pointWidth / 3))} />
           </g>;
         })}
+        {displayMode === "frequency" && frequencyProfile ? [...frequencyProfile.bands].reverse().flatMap((band, visualIndex) => {
+          const bandIndex = frequencyProfile.bands.findIndex((candidate) => candidate.id === band.id);
+          const rowHeight = (plotBottom - plotTop) / frequencyProfile.bands.length;
+          const rowTop = plotTop + visualIndex * rowHeight;
+          return [
+            <rect key={`${band.id}-background`} x="0" y={rowTop} width={width} height={rowHeight} fill={visualIndex % 2 ? "#0f172a" : "#111827"} />,
+            ...visibleFrequencyWindows.map((point, pointIndex) => {
+              const start = Math.max(point.startSeconds, span.startSeconds);
+              const end = Math.min(point.startSeconds + point.durationSeconds, span.endSeconds);
+              const pointX = x(start);
+              const pointWidth = Math.max(1, x(end) - pointX + 0.2);
+              const dbfs = point.bandRmsDbfs[bandIndex];
+              return <rect key={`${band.id}-${point.startSeconds}-${pointIndex}`} x={pointX} y={rowTop + 0.5} width={pointWidth} height={Math.max(1, rowHeight - 1)} fill={FREQUENCY_COLORS[band.id]} opacity={frequencyOpacity(dbfs)}><title>{timestampForSeconds(point.startSeconds)} · {band.label} {frequencyRangeLabel(band.minimumHz, band.maximumHz)} · {dbfs.toFixed(1)} dBFS broad-band RMS</title></rect>;
+            }),
+            <text key={`${band.id}-label`} x="6" y={rowTop + Math.min(rowHeight - 2, 11)} fill="#f8fafc" fontSize="8" fontWeight="800" paintOrder="stroke" stroke="#020617" strokeWidth="2">{band.label} · {frequencyRangeLabel(band.minimumHz, band.maximumHz)}</text>,
+          ];
+        }) : null}
         {visibleEvents.map((event, index) => <g key={`${event.kind}-${event.startSeconds}-${index}`}><line x1={x(event.startSeconds)} x2={x(event.startSeconds)} y1={plotTop - 3} y2={plotBottom + 3} stroke="#fcd34d" strokeWidth="2" /><circle cx={x(event.startSeconds)} cy={plotTop - 4} r="4" fill="#fcd34d"><title>{timestampForSeconds(event.startSeconds)} {event.kind}</title></circle></g>)}
         {visibleObservations.map((observation, index) => {
           const observationStart = Math.max(observation.startSeconds, span.startSeconds);
@@ -336,6 +392,12 @@ export function AudioEvidenceMap({
       <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-slate-200">{timestampForSeconds(summary.nearSilentDurationSeconds)}</div><div className="text-slate-400">Near-silent · {summary.nearSilentWindowCount} windows</div></div>
       <div className="col-span-2 rounded-lg bg-slate-900 p-2 sm:col-span-1"><div className={`font-mono text-sm font-black ${summary.clippingWindowCount ? "text-rose-300" : "text-emerald-300"}`}>{timestampForSeconds(summary.clippingDurationSeconds)}</div><div className="text-slate-400">Clipping span · {summary.clippingWindowCount} windows · {summary.observationCount} flags</div></div>
     </div>
+    {frequencyProfile ? <section className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3" aria-label="Broad-band frequency evidence">
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-[9px] font-black uppercase tracking-[0.14em] text-fuchsia-200">Broad-band frequency evidence</p><p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-400">Complete-decode filtered RMS after a mono overview downmix. It makes frequency balance visible across the source clock; it is not an RX-style repair spectrogram, phase measurement, speech-quality score, or automatic EQ instruction.</p></div><span className="rounded-full border border-fuchsia-700 bg-fuchsia-950/40 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-fuchsia-200">{frequencyProfile.bands.length} bands · source bound</span></div>
+      <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-1.5 text-[8px] font-bold">
+        {frequencyProfile.bands.map((band, index) => <div key={band.id} className="rounded-md bg-slate-950 p-2"><div className="font-mono text-xs font-black" style={{ color: FREQUENCY_COLORS[band.id] }}>{selectedFrequencyWindow ? selectedFrequencyWindow.bandRmsDbfs[index].toFixed(1) : "—"}</div><div className="mt-0.5 text-slate-300">{band.label}</div><div className="text-slate-500">{frequencyRangeLabel(band.minimumHz, band.maximumHz)} · overall {frequencyProfile.overallBandRmsDbfs[index].toFixed(1)}</div></div>)}
+      </div>
+    </section> : null}
     {selectedWord && <section className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3" aria-label="Selected transcript word evidence"><div className="flex flex-wrap items-baseline justify-between gap-2"><div className="font-serif text-lg font-black text-white">{selectedWord.text}</div><div className="font-mono text-[10px] font-black text-cyan-200">{timestampForSeconds(selectedWord.startSeconds)}–{timestampForSeconds(selectedWord.endSeconds)}</div></div><p className="mt-1 text-[9px] font-bold leading-4 text-slate-300">{selectedWord.confidence === null ? "Provider confidence unavailable" : `${providerLabel || "Provider"} confidence ${Math.round(selectedWord.confidence * 100)}%`} · {selectedWord.reviewState === "corrected" ? "provider word inside a playback-corrected segment; timing remains provider evidence" : selectedWord.reviewState === "confirmed" ? "provider segment confirmed against playback" : "unchecked provider word"}. Confidence prioritizes listening; only reviewed reference text measures error.</p></section>}
     <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">The display never stretches a window into sample accuracy. Zoom centers on the selected time; the exact immutable source remains the listening authority.</p>
   </section>;

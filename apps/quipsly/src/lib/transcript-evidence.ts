@@ -71,6 +71,27 @@ export type AudioTranscriptEvidence = {
         samplePeakDbfs: number;
         clippedFrameCount: number;
       }>;
+      frequencyProfile: null | {
+        algorithm: "quipsly-audio-broad-band-rms-v1";
+        completeDecode: true;
+        downmixPolicy: "ffmpeg-default-mono-v1";
+        windowDurationSeconds: number;
+        bands: Array<{
+          id: "rumble" | "warmth" | "body" | "speech" | "presence" | "air";
+          label: string;
+          minimumHz: number;
+          maximumHz: number;
+        }>;
+        overallBandRmsDbfs: number[];
+        windows: Array<{
+          startSeconds: number;
+          durationSeconds: number;
+          bandRmsDbfs: number[];
+        }>;
+        broadBandsAreNotARepairSpectrogram: true;
+        measurementsAreNotEqDecisions: true;
+        stereoIsDownmixedForFrequencyOverview: true;
+      };
       observations: Array<{
         kind: "sample-clipping" | "possible-dropout" | "near-digital-silence" | "stereo-imbalance" | "unknown";
         severity: "attention" | "warning";
@@ -158,6 +179,26 @@ type EvidenceInput = {
   segments?: AudioTranscriptEvidenceSegment[];
   speakerGroups?: Array<{ attribution?: unknown }>;
 };
+
+export function transcriptConfidenceTriagePolicy(input: {
+  provider?: unknown;
+  explicitThreshold?: unknown;
+  explicitThresholdAuthority?: unknown;
+  hasConfidenceEvidence: boolean;
+}) {
+  if (!input.hasConfidenceEvidence) {
+    return { threshold: null, authority: null } as const;
+  }
+  const explicitThreshold = confidence(input.explicitThreshold);
+  const explicitThresholdAuthority = text(input.explicitThresholdAuthority);
+  if (explicitThreshold !== null && explicitThresholdAuthority) {
+    return { threshold: explicitThreshold, authority: explicitThresholdAuthority };
+  }
+  if (text(input.provider)?.toLowerCase() === "deepgram") {
+    return { threshold: 0.65, authority: "quipsly-deepgram-default-v1" } as const;
+  }
+  return { threshold: null, authority: null } as const;
+}
 
 function object(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -369,6 +410,11 @@ export function parseAudioSignalEvidence(
       ? [{ kind, severity, startSeconds, endSeconds, detail, requiresListening: true as const }]
       : [];
   }) : [];
+  const frequencyProfile = parseAudioFrequencyEvidence(row.frequencyProfile, {
+    durationSeconds,
+    sampleRateHz,
+    maximumWindows: Math.max(1, Math.min(1_200, Math.trunc(options.maximumWaveformPoints ?? 180))),
+  });
 
   return {
     schemaVersion: 1,
@@ -399,8 +445,104 @@ export function parseAudioSignalEvidence(
       rawWaveform,
       Math.max(1, Math.min(1_200, Math.trunc(options.maximumWaveformPoints ?? 180))),
     ),
+    frequencyProfile,
     observations,
   };
+}
+
+function parseAudioFrequencyEvidence(
+  value: unknown,
+  options: { durationSeconds: number; sampleRateHz: number; maximumWindows: number },
+): NonNullable<AudioTranscriptEvidence["audio"]["signal"]>["frequencyProfile"] {
+  const row = object(value);
+  if (text(row.algorithm) !== "quipsly-audio-broad-band-rms-v1" || row.completeDecode !== true || text(row.downmixPolicy) !== "ffmpeg-default-mono-v1") return null;
+  const boundaries = object(row.boundaries);
+  if (
+    boundaries.broadBandsAreNotARepairSpectrogram !== true
+    || boundaries.measurementsAreNotEqDecisions !== true
+    || boundaries.stereoIsDownmixedForFrequencyOverview !== true
+  ) return null;
+  const bands = Array.isArray(row.bands) ? row.bands.slice(0, 7).flatMap((entry) => {
+    const band = object(entry);
+    const id = text(band.id);
+    const label = text(band.label);
+    const minimumHz = finite(band.minimumHz);
+    const maximumHz = finite(band.maximumHz);
+    return id && ["rumble", "warmth", "body", "speech", "presence", "air"].includes(id)
+      && label && minimumHz !== null && minimumHz > 0 && maximumHz !== null && maximumHz > minimumHz
+      ? [{ id: id as "rumble" | "warmth" | "body" | "speech" | "presence" | "air", label, minimumHz, maximumHz }]
+      : [];
+  }) : [];
+  if (
+    bands.length < 1
+    || bands.length > 6
+    || new Set(bands.map((band) => band.id)).size !== bands.length
+    || bands.some((band, index) => (
+      band.maximumHz >= options.sampleRateHz / 2
+      || (index > 0 && band.minimumHz < bands[index - 1]!.maximumHz)
+    ))
+  ) return null;
+  const overallBandRmsDbfs = Array.isArray(row.overallBandRmsDbfs)
+    ? row.overallBandRmsDbfs.map(signedFinite).filter((entry): entry is number => entry !== null)
+    : [];
+  if (overallBandRmsDbfs.length !== bands.length) return null;
+  const rawWindows = Array.isArray(row.windows) ? row.windows.slice(0, 1_201).flatMap((entry) => {
+    const window = object(entry);
+    const startSeconds = finite(window.startSeconds);
+    const windowDuration = finite(window.durationSeconds);
+    const bandRmsDbfs = Array.isArray(window.bandRmsDbfs)
+      ? window.bandRmsDbfs.map(signedFinite).filter((band): band is number => band !== null)
+      : [];
+    return startSeconds !== null && windowDuration !== null && windowDuration > 0 && bandRmsDbfs.length === bands.length
+      ? [{ startSeconds, durationSeconds: windowDuration, bandRmsDbfs }]
+      : [];
+  }) : [];
+  if (
+    rawWindows.length < 1
+    || rawWindows.length > 1_200
+    || rawWindows[0]!.startSeconds > 0.02
+    || rawWindows.some((window, index) => index > 0 && Math.abs(
+      window.startSeconds - (rawWindows[index - 1]!.startSeconds + rawWindows[index - 1]!.durationSeconds),
+    ) > 0.02)
+  ) return null;
+  const endSeconds = rawWindows.at(-1)!.startSeconds + rawWindows.at(-1)!.durationSeconds;
+  if (Math.abs(endSeconds - options.durationSeconds) > 0.02) return null;
+  return {
+    algorithm: "quipsly-audio-broad-band-rms-v1",
+    completeDecode: true,
+    downmixPolicy: "ffmpeg-default-mono-v1",
+    windowDurationSeconds: finite(row.windowDurationSeconds) ?? rawWindows[0].durationSeconds,
+    bands,
+    overallBandRmsDbfs,
+    windows: compactAudioFrequencyWindows(rawWindows, options.maximumWindows),
+    broadBandsAreNotARepairSpectrogram: true,
+    measurementsAreNotEqDecisions: true,
+    stereoIsDownmixedForFrequencyOverview: true,
+  };
+}
+
+export function compactAudioFrequencyWindows(
+  points: NonNullable<NonNullable<AudioTranscriptEvidence["audio"]["signal"]>["frequencyProfile"]>["windows"],
+  maximumPoints: number,
+) {
+  if (points.length <= maximumPoints) return points;
+  const groupSize = Math.ceil(points.length / maximumPoints);
+  const compacted = [];
+  for (let index = 0; index < points.length; index += groupSize) {
+    const group = points.slice(index, index + groupSize);
+    const first = group[0]!;
+    const last = group.at(-1)!;
+    const durationSeconds = group.reduce((sum, point) => sum + point.durationSeconds, 0);
+    compacted.push({
+      startSeconds: first.startSeconds,
+      durationSeconds: (last.startSeconds + last.durationSeconds) - first.startSeconds,
+      bandRmsDbfs: first.bandRmsDbfs.map((_, bandIndex) => rounded(10 * Math.log10(Math.max(1e-16, group.reduce(
+        (energy, point) => energy + (10 ** (point.bandRmsDbfs[bandIndex] / 10)) * point.durationSeconds,
+        0,
+      ) / durationSeconds)))),
+    });
+  }
+  return compacted;
 }
 
 export function compactSignalWaveform(
@@ -473,19 +615,14 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
       : (sortedConfidences[sortedConfidences.length / 2 - 1]! + sortedConfidences[sortedConfidences.length / 2]!) / 2)
     : null;
   const provider = text(input.provider);
-  const explicitThreshold = confidence(input.confidenceTriageThreshold);
-  const explicitThresholdAuthority = text(input.confidenceTriageThresholdAuthority);
-  const providerDefaultThreshold = provider?.toLowerCase() === "deepgram" ? 0.65 : null;
-  const lowConfidenceThreshold = confidences.length
-    ? explicitThreshold !== null && explicitThresholdAuthority
-      ? explicitThreshold
-      : providerDefaultThreshold
-    : null;
-  const lowConfidenceThresholdAuthority = lowConfidenceThreshold === null
-    ? null
-    : explicitThreshold !== null && explicitThresholdAuthority
-      ? explicitThresholdAuthority
-      : "quipsly-deepgram-default-v1";
+  const triagePolicy = transcriptConfidenceTriagePolicy({
+    provider,
+    explicitThreshold: input.confidenceTriageThreshold,
+    explicitThresholdAuthority: input.confidenceTriageThresholdAuthority,
+    hasConfidenceEvidence: confidences.length > 0,
+  });
+  const lowConfidenceThreshold = triagePolicy.threshold;
+  const lowConfidenceThresholdAuthority = triagePolicy.authority;
   const lowConfidenceWordCount = lowConfidenceThreshold === null
     ? null
     : confidences.filter((value) => value < lowConfidenceThreshold).length;

@@ -97,6 +97,28 @@ describe("audio and transcript evidence", () => {
             { startSeconds: 4, durationSeconds: 4, rmsDbfs: -80, samplePeakDbfs: -75, clippedFrameCount: 0 },
             { startSeconds: 8, durationSeconds: 4, rmsDbfs: -18, samplePeakDbfs: -0.4, clippedFrameCount: 0 },
           ],
+          frequencyProfile: {
+            algorithm: "quipsly-audio-broad-band-rms-v1",
+            completeDecode: true,
+            downmixPolicy: "ffmpeg-default-mono-v1",
+            windowDurationSeconds: 4,
+            analyzedFrameCount: 576_000,
+            bands: [
+              { id: "rumble", label: "Rumble", minimumHz: 20, maximumHz: 80 },
+              { id: "speech", label: "Speech", minimumHz: 500, maximumHz: 2_000 },
+            ],
+            overallBandRmsDbfs: [-42, -20],
+            windows: [
+              { startSeconds: 0, durationSeconds: 4, bandRmsDbfs: [-45, -18] },
+              { startSeconds: 4, durationSeconds: 4, bandRmsDbfs: [-90, -84] },
+              { startSeconds: 8, durationSeconds: 4, bandRmsDbfs: [-39, -17] },
+            ],
+            boundaries: {
+              broadBandsAreNotARepairSpectrogram: true,
+              measurementsAreNotEqDecisions: true,
+              stereoIsDownmixedForFrequencyOverview: true,
+            },
+          },
           observations: [{
             kind: "possible-dropout",
             severity: "attention",
@@ -170,6 +192,12 @@ describe("audio and transcript evidence", () => {
     expect(evidence.audio.signal?.observations[0]).toMatchObject({
       kind: "possible-dropout",
       requiresListening: true,
+    });
+    expect(evidence.audio.signal?.frequencyProfile).toMatchObject({
+      algorithm: "quipsly-audio-broad-band-rms-v1",
+      completeDecode: true,
+      broadBandsAreNotARepairSpectrogram: true,
+      bands: [{ id: "rumble" }, { id: "speech" }],
     });
     expect(evidence.transcript).toMatchObject({
       provider: "deepgram",

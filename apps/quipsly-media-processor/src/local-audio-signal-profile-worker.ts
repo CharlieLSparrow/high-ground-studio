@@ -29,7 +29,7 @@ export interface LocalAudioSignalProfileStore {
 }
 
 export interface LocalAudioSignalProfiler {
-  analyze(inputPath: string): Promise<Awaited<ReturnType<FfmpegAudioSignalProfiler["analyze"]>>>;
+  analyze(inputPath: string, options?: { frequencyAnalysis?: boolean }): Promise<Awaited<ReturnType<FfmpegAudioSignalProfiler["analyze"]>>>;
 }
 
 export type LocalAudioSignalProfileWorkerOptions = {
@@ -81,7 +81,7 @@ export async function runOneLocalAudioSignalProfileJob(
     const sourcePath = await authorizedSource(root, job.source.locator);
     const before = await inspectSource(sourcePath);
     assertSource(job, before);
-    const profile = await profiler.analyze(sourcePath);
+    const profile = await profiler.analyze(sourcePath, { frequencyAnalysis: Boolean(job.analyzer.frequencyAnalysis) });
     const after = await inspectSource(sourcePath);
     assertSource(job, after);
     if (before.sha256 !== after.sha256 || before.sizeBytes !== after.sizeBytes) {
@@ -100,6 +100,12 @@ export async function runOneLocalAudioSignalProfileJob(
         ffmpegVersion: profile.ffmpegVersion,
         completeDecode: true,
         maximumWindows: 1_200,
+        frequencyAnalysis: job.analyzer.frequencyAnalysis ? {
+          algorithm: job.analyzer.frequencyAnalysis.algorithm,
+          maximumBands: 6,
+          maximumWindows: 1_200,
+          completeDecode: true,
+        } : null,
       },
       worker: {
         executionId: claim.executionId,

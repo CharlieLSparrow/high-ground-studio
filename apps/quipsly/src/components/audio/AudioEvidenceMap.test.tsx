@@ -11,6 +11,7 @@ import {
   audioEvidenceTranscriptSummary,
   audioEvidenceViewSpan,
   audioEvidenceWordAt,
+  audioFrequencyWindowAt,
   type AudioEvidenceTranscriptWord,
 } from "./AudioEvidenceMap";
 
@@ -45,6 +46,30 @@ const signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> = {
     { startSeconds: 60, durationSeconds: 30, rmsDbfs: -18, samplePeakDbfs: -0.2, clippedFrameCount: 4 },
     { startSeconds: 90, durationSeconds: 30, rmsDbfs: -26, samplePeakDbfs: -4, clippedFrameCount: 0 },
   ],
+  frequencyProfile: {
+    algorithm: "quipsly-audio-broad-band-rms-v1",
+    completeDecode: true,
+    downmixPolicy: "ffmpeg-default-mono-v1",
+    windowDurationSeconds: 30,
+    bands: [
+      { id: "rumble", label: "Rumble", minimumHz: 20, maximumHz: 80 },
+      { id: "warmth", label: "Warmth", minimumHz: 80, maximumHz: 250 },
+      { id: "body", label: "Body", minimumHz: 250, maximumHz: 500 },
+      { id: "speech", label: "Speech", minimumHz: 500, maximumHz: 2_000 },
+      { id: "presence", label: "Presence", minimumHz: 2_000, maximumHz: 6_000 },
+      { id: "air", label: "Air", minimumHz: 6_000, maximumHz: 20_000 },
+    ],
+    overallBandRmsDbfs: [-44, -28, -25, -20, -31, -48],
+    windows: [
+      { startSeconds: 0, durationSeconds: 30, bandRmsDbfs: [-46, -24, -22, -18, -30, -48] },
+      { startSeconds: 30, durationSeconds: 30, bandRmsDbfs: [-90, -88, -86, -84, -90, -96] },
+      { startSeconds: 60, durationSeconds: 30, bandRmsDbfs: [-42, -27, -23, -17, -26, -38] },
+      { startSeconds: 90, durationSeconds: 30, bandRmsDbfs: [-48, -31, -28, -23, -34, -50] },
+    ],
+    broadBandsAreNotARepairSpectrogram: true,
+    measurementsAreNotEqDecisions: true,
+    stereoIsDownmixedForFrequencyOverview: true,
+  },
   observations: [{
     kind: "possible-dropout",
     severity: "attention",
@@ -70,6 +95,7 @@ describe("AudioEvidenceMap", () => {
 
   it("reports selected window evidence without calling it sample-level waveform data", () => {
     expect(audioEvidencePointAt(signal, 42)).toEqual(expect.objectContaining({ startSeconds: 30, rmsDbfs: -80 }));
+    expect(audioFrequencyWindowAt(signal.frequencyProfile!, 42)).toEqual(expect.objectContaining({ startSeconds: 30, bandRmsDbfs: [-90, -88, -86, -84, -90, -96] }));
     expect(audioEvidenceMapSummary(signal)).toEqual({
       nearSilentWindowCount: 1,
       nearSilentDurationSeconds: 30,
@@ -103,6 +129,12 @@ describe("AudioEvidenceMap", () => {
     expect(screen.getByText(/Deepgram confidence 42%/i)).toBeInTheDocument();
     expect(screen.getByText(/only reviewed reference text measures error/i)).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Audio evidence review navigator" })).toHaveTextContent("3 source-clock review points");
+    expect(screen.getByRole("region", { name: "Broad-band frequency evidence" })).toHaveTextContent(/not an RX-style repair spectrogram/i);
+    expect(screen.getByRole("group", { name: "Audio evidence map display" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Frequency" }));
+    expect(screen.getByRole("button", { name: /Broad-band frequency evidence map/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /complete-decode broad-band frequency energy/i })).toBeInTheDocument();
 
     const moments = audioEvidenceAttentionMoments(signal, [{ kind: "interruption", startSeconds: 75, detail: "Route lost", routeName: "MV7i", routePortType: "USB" }], transcriptWords, 0.65);
     expect(moments.map((moment) => [moment.category, moment.startSeconds])).toEqual([

@@ -29,6 +29,12 @@ export type PublicAudioSignalProfileStatus = {
     algorithm: "quipsly-audio-signal-window-v1";
     completeDecode: true;
     maximumWindows: 1_200;
+    frequencyAnalysis: null | {
+      algorithm: "quipsly-audio-broad-band-rms-v1";
+      completeDecode: true;
+      maximumBands: 6;
+      maximumWindows: 1_200;
+    };
   };
   error: string | null;
   updatedAt: string | null;
@@ -56,7 +62,13 @@ export async function queueAudioSignalProfile(input: {
   if (existing) {
     try {
       const current = parseAudioSignalProfileJob(existing.inputJson, existing.id);
-      if (current.source.sha256 === evidence.sha256 && current.source.generation === evidence.generation && current.source.sizeBytes === evidence.sizeBytes && existing.status !== "failed") {
+      if (
+        current.source.sha256 === evidence.sha256
+        && current.source.generation === evidence.generation
+        && current.source.sizeBytes === evidence.sizeBytes
+        && current.analyzer.frequencyAnalysis
+        && existing.status !== "failed"
+      ) {
         return toPublicAudioSignalProfileStatus(existing);
       }
     } catch {
@@ -161,7 +173,17 @@ export function toPublicAudioSignalProfileStatus(job: any): PublicAudioSignalPro
     status: integrityFailure ? "failed" : declaredStatus,
     media: result ? result.media : null,
     audioSignal: result ? result.audioSignal : null,
-    analyzer: result ? { algorithm: result.analyzer.algorithm, completeDecode: true, maximumWindows: 1_200 } : null,
+    analyzer: result ? {
+      algorithm: result.analyzer.algorithm,
+      completeDecode: true,
+      maximumWindows: 1_200,
+      frequencyAnalysis: result.analyzer.frequencyAnalysis ? {
+        algorithm: result.analyzer.frequencyAnalysis.algorithm,
+        completeDecode: true,
+        maximumBands: 6,
+        maximumWindows: 1_200,
+      } : null,
+    } : null,
     error: integrityFailure ? "Audio signal evidence failed integrity validation." : typeof job.error === "string" ? job.error : null,
     updatedAt: job.updatedAt?.toISOString?.() ?? null,
     boundaries: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true, observationsRequireHumanInterpretation: true },

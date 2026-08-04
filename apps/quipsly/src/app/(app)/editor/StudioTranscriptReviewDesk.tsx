@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
-import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import { transcriptConfidenceTriagePolicy, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 type ReviewCorrection = {
   id: string;
@@ -100,6 +101,8 @@ export function StudioTranscriptReviewDesk({
 }) {
   const playerRef = useRef<HTMLMediaElement | null>(null);
   const playbackActiveRef = useRef(false);
+  const openButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [desk, setDesk] = useState<ReviewDesk | null>(null);
   const [segments, setSegments] = useState<ReviewSegment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -111,6 +114,26 @@ export function StudioTranscriptReviewDesk({
   const [status, setStatus] = useState("Loading transcript review evidence…");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusFrame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      playerRef.current?.pause();
+      playbackActiveRef.current = false;
+      window.requestAnimationFrame(() => openButtonRef.current?.focus());
+    };
+  }, [expanded]);
 
   const selected = useMemo(
     () => segments.find((segment) => segment.id === selectedId) ?? null,
@@ -131,6 +154,10 @@ export function StudioTranscriptReviewDesk({
           : "unchecked" as const,
     }))
   )).sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds || left.id.localeCompare(right.id)), [segments]);
+  const confidenceTriagePolicy = useMemo(() => transcriptConfidenceTriagePolicy({
+    provider: desk?.provider,
+    hasConfidenceEvidence: transcriptWords.some((word) => word.confidence !== null),
+  }), [desk?.provider, transcriptWords]);
 
   const selectSegment = useCallback((segment: ReviewSegment, play = false) => {
     playbackActiveRef.current = false;
@@ -273,7 +300,26 @@ export function StudioTranscriptReviewDesk({
   const reviewedLoaded = segments.filter((segment) => segment.acceptedCorrection || segment.confirmedAsIs).length;
 
   return (
-    <section aria-label="Playback-verified transcript correction desk" className="mt-3 rounded-xl border border-cyan-300 bg-white p-3 text-[#3d3122] shadow-sm">
+    <>
+      <section aria-label="Studio transcript and audio review summary" className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-200">Transcript + audio evidence</p>
+            <p className="mt-1 text-[10px] font-bold leading-4 text-slate-300">{desk ? `${desk.coverage.segmentCount} timed segments · ${desk.coverage.wordCount} words` : status}</p>
+            <p className="mt-1 text-[9px] font-bold leading-4 text-slate-500">{audioSignal?.frequencyProfile ? `${audioSignal.frequencyProfile.bands.length}-band complete-decode frequency map ready` : audioSignal ? "Complete-decode level map ready" : "Decoded audio map not ready"} · protected playback review</p>
+          </div>
+          <span className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${desk && audioSignal ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>{desk && audioSignal ? "Ready" : isLoading ? "Loading" : "Attention"}</span>
+        </div>
+        <button ref={openButtonRef} type="button" onClick={() => setExpanded(true)} className="mt-2 w-full rounded-md bg-cyan-200 px-3 py-2 text-[10px] font-black text-cyan-950 hover:bg-cyan-100">Open transcript and audio desk</button>
+      </section>
+      {expanded && createPortal(
+        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-5" role="dialog" aria-modal="true" aria-labelledby="studio-transcript-audio-dialog-title">
+          <div className="max-h-[96vh] w-full max-w-7xl overflow-y-auto rounded-2xl border border-slate-700 bg-[#fffdf7] p-3 shadow-2xl sm:p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-cyan-800">Immutable source review</p><h2 id="studio-transcript-audio-dialog-title" className="mt-1 text-xl font-black text-[#3d3122]">Transcript and audio evidence desk</h2></div>
+              <button ref={closeButtonRef} type="button" onClick={() => setExpanded(false)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-900 hover:bg-slate-100">Close</button>
+            </div>
+    <section aria-label="Playback-verified transcript correction desk" className="rounded-xl border border-cyan-300 bg-white p-3 text-[#3d3122] shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-800">Source-bound review desk</div>
@@ -321,7 +367,7 @@ export function StudioTranscriptReviewDesk({
           playbackReady={Boolean(desk?.playback)}
           selectedSeconds={playbackPosition ?? selected?.startSeconds ?? 0}
           transcriptWords={transcriptWords}
-          lowConfidenceThreshold={0.65}
+          lowConfidenceThreshold={confidenceTriagePolicy.threshold}
           providerLabel={desk?.provider ?? null}
           transcriptScopeLabel={`Loaded transcript evidence (${segments.length}/${desk?.coverage.segmentCount ?? segments.length} segments)`}
           onSelect={selectEvidenceTime}
@@ -428,5 +474,10 @@ export function StudioTranscriptReviewDesk({
       <div role="status" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold leading-4 text-slate-700">{status}</div>
       <p className="mt-2 text-[9px] font-bold leading-4 text-slate-500">Source {desk?.source.sha256.slice(0, 12) ?? "loading"} · provider segments and word clocks are immutable · corrections do not create edits, tasks, goals, publications, or deliveries.</p>
     </section>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }

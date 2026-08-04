@@ -4,8 +4,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import {
+  AUDIO_FREQUENCY_PROFILE_ALGORITHM,
   AUDIO_SIGNAL_PROFILE_ALGORITHM,
   parseAudioSignalProfile,
+  type AudioFrequencyProfile,
   type AudioSignalProfile,
 } from "@high-ground/quipsly-media-processing";
 
@@ -17,6 +19,15 @@ const THRESHOLDS = Object.freeze({
   surroundingSignalDbfs: -45,
   stereoImbalanceDb: 12,
 });
+
+const FREQUENCY_BANDS = Object.freeze([
+  { id: "rumble", label: "Rumble", minimumHz: 20, maximumHz: 80 },
+  { id: "warmth", label: "Warmth", minimumHz: 80, maximumHz: 250 },
+  { id: "body", label: "Body", minimumHz: 250, maximumHz: 500 },
+  { id: "speech", label: "Speech", minimumHz: 500, maximumHz: 2_000 },
+  { id: "presence", label: "Presence", minimumHz: 2_000, maximumHz: 6_000 },
+  { id: "air", label: "Air", minimumHz: 6_000, maximumHz: 20_000 },
+] as const);
 
 export type FfmpegAudioSignalProfile = {
   media: {
@@ -51,7 +62,7 @@ export class FfmpegAudioSignalProfiler {
     this.ffprobePath = ffprobePath;
   }
 
-  async analyze(inputPath: string): Promise<FfmpegAudioSignalProfile> {
+  async analyze(inputPath: string, options: { frequencyAnalysis?: boolean } = {}): Promise<FfmpegAudioSignalProfile> {
     const resolvedPath = path.resolve(inputPath);
     const source = await stat(resolvedPath).catch(() => null);
     if (!source?.isFile() || source.size <= 0) {
@@ -165,6 +176,9 @@ export class FfmpegAudioSignalProfiler {
     const signalStatus = samplePeakDbfs <= THRESHOLDS.nearSilenceDbfs
       ? "near-digital-silence" as const
       : observations.length ? "attention" as const : "signal-present" as const;
+    const frequencyProfile = options.frequencyAnalysis === false
+      ? null
+      : await this.analyzeFrequencyBands(resolvedPath, probe.sampleRate, framesPerWindow, decodedFrames, durationSeconds);
     const audioSignal = parseAudioSignalProfile({
       schemaVersion: 1,
       algorithm: AUDIO_SIGNAL_PROFILE_ALGORITHM,
@@ -184,6 +198,7 @@ export class FfmpegAudioSignalProfiler {
       signalStatus,
       thresholds: THRESHOLDS,
       waveform: windows,
+      frequencyProfile,
       observations,
     });
     return {
@@ -196,6 +211,101 @@ export class FfmpegAudioSignalProfiler {
       },
       audioSignal,
       ffmpegVersion,
+    };
+  }
+
+  private async analyzeFrequencyBands(
+    inputPath: string,
+    sampleRate: number,
+    framesPerWindow: number,
+    expectedFrameCount: number,
+    expectedDurationSeconds: number,
+  ): Promise<AudioFrequencyProfile> {
+    const bands = audioFrequencyBandsForSampleRate(sampleRate);
+    if (!bands.length) throw new AudioSignalProfileDecodeError("audio-frequency-sample-rate-unsupported", "The decoded sample rate cannot support a bounded frequency overview.");
+    const frameBytes = bands.length * 4;
+    const overallSumSquares = Array.from({ length: bands.length }, () => 0);
+    const windows: AudioFrequencyProfile["windows"] = [];
+    let decodedFrames = 0;
+    let windowFrameCount = 0;
+    let windowSumSquares = Array.from({ length: bands.length }, () => 0);
+    let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+    let stderr = "";
+    const decodeFailure: { value: Error | null } = { value: null };
+
+    const finishWindow = () => {
+      if (!windowFrameCount) return;
+      const startFrame = decodedFrames - windowFrameCount;
+      windows.push({
+        startSeconds: rounded(startFrame / sampleRate),
+        durationSeconds: rounded(windowFrameCount / sampleRate),
+        bandRmsDbfs: windowSumSquares.map((sum) => amplitudeDbfs(Math.sqrt(sum / windowFrameCount))),
+      });
+      windowFrameCount = 0;
+      windowSumSquares = Array.from({ length: bands.length }, () => 0);
+    };
+
+    const child = spawn(this.ffmpegPath, [
+      "-hide_banner", "-loglevel", "error", "-i", inputPath,
+      "-filter_complex", frequencyFilterGraph(bands),
+      "-map", "[frequency_out]", "-f", "f32le", "-acodec", "pcm_f32le", "pipe:1",
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => { stderr = `${stderr}${chunk}`.slice(-16_384); });
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (decodeFailure.value) return;
+      try {
+        const data = remainder.length ? Buffer.concat([remainder, chunk]) : chunk;
+        const completeBytes = data.length - (data.length % frameBytes);
+        for (let offset = 0; offset < completeBytes; offset += frameBytes) {
+          for (let bandIndex = 0; bandIndex < bands.length; bandIndex += 1) {
+            const sample = data.readFloatLE(offset + bandIndex * 4);
+            if (!Number.isFinite(sample)) throw new Error("Audio frequency decode produced a non-finite sample.");
+            const square = sample * sample;
+            overallSumSquares[bandIndex] += square;
+            windowSumSquares[bandIndex] += square;
+          }
+          decodedFrames += 1;
+          windowFrameCount += 1;
+          if (windowFrameCount >= framesPerWindow) finishWindow();
+        }
+        remainder = data.subarray(completeBytes);
+      } catch (error) {
+        decodeFailure.value = error instanceof Error ? error : new Error(String(error));
+        child.kill("SIGTERM");
+      }
+    });
+    const exitCode = await new Promise<number | null>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", resolve);
+    }).catch((error) => {
+      throw new AudioSignalProfileDecodeError("audio-frequency-ffmpeg-unavailable", errorMessage(error), true);
+    });
+    if (decodeFailure.value) throw new AudioSignalProfileDecodeError("audio-frequency-decode-invalid", decodeFailure.value.message);
+    if (exitCode !== 0) throw new AudioSignalProfileDecodeError("audio-frequency-decode-failed", `FFmpeg broad-band frequency decode failed (${exitCode}): ${stderr.trim() || "no diagnostic"}`);
+    if (remainder.length !== 0) throw new AudioSignalProfileDecodeError("audio-frequency-partial-frame", "FFmpeg broad-band frequency decode ended on a partial frame.");
+    finishWindow();
+    if (decodedFrames !== expectedFrameCount || windows.length < 1 || windows.length > 1_200) {
+      throw new AudioSignalProfileDecodeError("audio-frequency-duration-drift", "Broad-band frequency evidence does not cover the exact complete decode.");
+    }
+    const frequencyEnd = windows.at(-1)!.startSeconds + windows.at(-1)!.durationSeconds;
+    if (Math.abs(frequencyEnd - expectedDurationSeconds) > 0.02) {
+      throw new AudioSignalProfileDecodeError("audio-frequency-clock-drift", "Broad-band frequency evidence drifted from the immutable source clock.");
+    }
+    return {
+      algorithm: AUDIO_FREQUENCY_PROFILE_ALGORITHM,
+      completeDecode: true,
+      downmixPolicy: "ffmpeg-default-mono-v1",
+      windowDurationSeconds: rounded(framesPerWindow / sampleRate),
+      analyzedFrameCount: decodedFrames,
+      bands,
+      overallBandRmsDbfs: overallSumSquares.map((sum) => amplitudeDbfs(Math.sqrt(sum / decodedFrames))),
+      windows,
+      boundaries: {
+        broadBandsAreNotARepairSpectrogram: true,
+        measurementsAreNotEqDecisions: true,
+        stereoIsDownmixedForFrequencyOverview: true,
+      },
     };
   }
 
@@ -232,6 +342,26 @@ export class FfmpegAudioSignalProfiler {
     const { stdout } = await execFile(this.ffmpegPath, ["-version"], { maxBuffer: 1024 * 1024 });
     return String(stdout).split("\n")[0]?.trim() || "ffmpeg-unknown";
   }
+}
+
+export function audioFrequencyBandsForSampleRate(sampleRate: number): AudioFrequencyProfile["bands"] {
+  const safeMaximumHz = Math.floor(sampleRate * 0.475);
+  return FREQUENCY_BANDS.flatMap((band) => {
+    const maximumHz = Math.min(band.maximumHz, safeMaximumHz);
+    return maximumHz - band.minimumHz >= 40
+      ? [{ id: band.id, label: band.label, minimumHz: band.minimumHz, maximumHz }]
+      : [];
+  });
+}
+
+function frequencyFilterGraph(bands: AudioFrequencyProfile["bands"]) {
+  const filters = (input: string, band: AudioFrequencyProfile["bands"][number], output: string) =>
+    `${input}highpass=f=${band.minimumHz}:p=2:precision=f32,lowpass=f=${band.maximumHz}:p=2:precision=f32${output}`;
+  if (bands.length === 1) return filters("[0:a:0]aformat=sample_fmts=fltp:channel_layouts=mono,", bands[0], "[frequency_out]");
+  const inputs = bands.map((_, index) => `[frequency_input_${index}]`).join("");
+  const outputs = bands.map((_, index) => `[frequency_band_${index}]`).join("");
+  const bandFilters = bands.map((band, index) => filters(`[frequency_input_${index}]`, band, `[frequency_band_${index}]`)).join(";");
+  return `[0:a:0]aformat=sample_fmts=fltp:channel_layouts=mono,asplit=${bands.length}${inputs};${bandFilters};${outputs}amerge=inputs=${bands.length}[frequency_out]`;
 }
 
 function signalObservations(windows: AudioSignalProfile["waveform"], durationSeconds: number, signalPeakDbfs: number, stereoBalanceDb: number | null): AudioSignalProfile["observations"] {

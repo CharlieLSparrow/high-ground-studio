@@ -65,6 +65,14 @@ async function main() {
     await evidenceMap.getByText(/Near-silent · \d+ windows/).waitFor();
     await evidenceMap.getByText(/Clipping span · \d+ windows/).waitFor();
     await evidenceMap.getByText(/not a sample-level waveform/i).waitFor();
+    const frequencyEvidence = evidenceMap.getByRole("region", { name: "Broad-band frequency evidence", exact: true });
+    await frequencyEvidence.waitFor();
+    await frequencyEvidence.getByText(/not an RX-style repair spectrogram/i).waitFor();
+    const frequencyToggle = evidenceMap.getByRole("button", { name: "Frequency", exact: true });
+    await frequencyToggle.click();
+    assert(await frequencyToggle.getAttribute("aria-pressed") === "true", "Broad-band frequency view did not become active.");
+    await evidenceMap.getByRole("img", { name: /Complete-decode broad-band frequency energy/i }).waitFor();
+    await evidenceMap.getByRole("button", { name: /Broad-band frequency evidence map from/i }).waitFor();
 
     const nextEvidence = navigator.getByRole("button", { name: /Next evidence/ });
     const hasNavigableEvidence = await nextEvidence.isEnabled();
@@ -86,6 +94,7 @@ async function main() {
       route: `/sessions/${ROOM_ID}?mode=transcript`,
       evidenceNavigator: "passed",
       decodedSignalLabels: "passed",
+      broadBandFrequencyEvidence: "passed",
       detailNavigation: hasNavigableEvidence ? "passed" : "not-applicable-no-review-points",
       horizontalOverflow: false,
       browserExceptions: 0,

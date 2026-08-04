@@ -124,28 +124,9 @@ function matchesSelectedMedia(item: JsonRecord, selectedMediaAssetId: string) {
 }
 
 function studioParsedSignal(profile: ReturnType<typeof parseAudioSignalProfileResult>["audioSignal"]): ParsedSignal {
-  return {
-    schemaVersion: 1,
-    algorithm: profile.algorithm,
-    status: profile.signalStatus,
-    sampleRateHz: profile.sampleRate,
-    channelCount: profile.channelCount,
-    analyzedFrameCount: profile.analyzedFrameCount,
-    durationSeconds: profile.durationSeconds,
-    windowDurationSeconds: profile.windowDurationSeconds,
-    rmsDbfs: profile.rmsDbfs,
-    samplePeakDbfs: profile.samplePeakDbfs,
-    clippedFrameCount: profile.clippedFrameCount,
-    clippedFrameFraction: profile.clippedFrameFraction,
-    nearSilentFrameFraction: profile.nearSilentFrameFraction,
-    leftRmsDbfs: profile.leftRmsDbfs,
-    rightRmsDbfs: profile.rightRmsDbfs,
-    stereoBalanceDb: profile.stereoBalanceDb,
-    rmsIsNotLufs: true,
-    thresholds: profile.thresholds,
-    waveform: profile.waveform,
-    observations: profile.observations.map((observation) => ({ ...observation, requiresListening: true as const })),
-  };
+  const parsed = parseAudioSignalEvidence(profile, { maximumWaveformPoints: 1_200 });
+  if (!parsed) throw new Error("Completed Studio signal evidence could not be projected into the shared source-clock model.");
+  return parsed;
 }
 
 async function loadStudioSignalCandidates(input: {

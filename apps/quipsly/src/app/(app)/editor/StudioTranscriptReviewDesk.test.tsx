@@ -43,11 +43,29 @@ describe("StudioTranscriptReviewDesk", () => {
     Object.defineProperty(globalThis, "fetch", { configurable: true, writable: true, value: jest.fn() });
   });
 
+  it("keeps the deep desk out of the narrow media card and restores focus when it closes", async () => {
+    jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
+    const user = userEvent.setup();
+    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+
+    const opener = screen.getByRole("button", { name: /Open transcript and audio desk/i });
+    expect(screen.queryByRole("dialog", { name: /Transcript and audio evidence desk/i })).not.toBeInTheDocument();
+    await user.click(opener);
+    const dialog = screen.getByRole("dialog", { name: /Transcript and audio evidence desk/i });
+    expect(dialog).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toHaveFocus());
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
   it("shows provider word probability without presenting it as accuracy", async () => {
     jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
     render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+    await userEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
-    expect(screen.getByRole("heading", { name: /Listen, correct, or confirm/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Listen, correct, or confirm/i })).toBeInTheDocument();
     expect(screen.getByText(/provider probability, not measured accuracy/i)).toBeInTheDocument();
     expect(await screen.findByText("Curious,")).toHaveAttribute("title", expect.stringContaining("98.0%"));
     expect(screen.getByRole("button", { name: /Save reviewed correction/i })).toBeDisabled();
@@ -80,6 +98,7 @@ describe("StudioTranscriptReviewDesk", () => {
     });
     const user = userEvent.setup();
     render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+    await user.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     await user.click(await screen.findByRole("button", { name: /Review transcript segment at 0:04\.0/i }));
     expect(play).toHaveBeenCalled();
@@ -133,16 +152,19 @@ describe("StudioTranscriptReviewDesk", () => {
         { startSeconds: 0, durationSeconds: 6, rmsDbfs: -22, samplePeakDbfs: -2, clippedFrameCount: 0 },
         { startSeconds: 6, durationSeconds: 6, rmsDbfs: -26, samplePeakDbfs: -1, clippedFrameCount: 0 },
       ],
+      frequencyProfile: null,
       observations: [{ kind: "possible-dropout" as const, severity: "attention" as const, startSeconds: 6, endSeconds: 7, detail: "Listen before classifying.", requiresListening: true as const }],
     };
     render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" audioSignal={audioSignal} />);
+    fireEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     expect(await screen.findByRole("region", { name: "Audio evidence map" })).toBeInTheDocument();
     await screen.findByRole("button", { name: /Review transcript segment at 0:04\.0/i });
     expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toHaveTextContent(/Loaded transcript evidence \(1\/1 segments\) · 0\/3 words/i);
+    expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toHaveTextContent(/no cross-provider confidence threshold/i);
 
-    const map = screen.getByRole("button", { name: /Audio evidence map from/i });
+    const map = screen.getByRole("button", { name: /Audio level evidence map from/i });
     fireEvent.click(map, { clientX: 100 });
     expect(screen.getByRole("button", { name: /Confirm exactly as heard/i })).toBeDisabled();
     play.mockRestore();

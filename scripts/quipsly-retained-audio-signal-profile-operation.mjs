@@ -15,6 +15,8 @@ import {
 import { sha256File } from "../apps/quipsly-media-processor/src/transcoder.ts";
 import pg from "pg";
 
+const SOURCE_FILENAME = process.env.QUIPSLY_RETAINED_AUDIO_SIGNAL_FILENAME || "quipsly-audio-mastery-dogfood.wav";
+
 if (process.env.QUIPSLY_RETAINED_AUDIO_SIGNAL_PROFILE_OPERATION !== "1") {
   throw new Error("Set QUIPSLY_RETAINED_AUDIO_SIGNAL_PROFILE_OPERATION=1 to retain an analysis receipt in local Quipsly.");
 }
@@ -35,11 +37,12 @@ try {
       JOIN "StudioProject" p ON p.id = aa."projectId"
       JOIN "StudioVideoSource" s ON s.id = COALESCE(aa."metadataJson"->>'sourceId', '')
       WHERE p.slug = 'high-ground-odyssey'
-        AND a.filename = 'quipsly-audio-mastery-dogfood.wav'
+        AND a.filename = $1
         AND a."isProxy" = false
       ORDER BY a."createdAt" DESC
       LIMIT 1
     `,
+    values: [SOURCE_FILENAME],
   });
   const source = selected.rows[0];
   assert.ok(source, "Retained High Ground Odyssey clip source is missing.");
@@ -93,6 +96,7 @@ try {
   }
   assert.equal(processed.rows[0]?.status, "output-ready");
   const receipt = parseAudioSignalProfileResult(processed.rows[0].resultJson.receipt, job);
+  assert.ok(receipt.audioSignal.frequencyProfile, "The retained profile did not produce complete-decode broad-band frequency evidence.");
   const sourceAfter = await stat(sourcePath);
   assert.equal(sourceAfter.size, file.size, "Retained source size changed during analysis.");
   assert.equal(await sha256File(sourcePath), sha256, "Retained source hash changed during analysis.");
@@ -113,6 +117,9 @@ try {
       sampleRate: receipt.audioSignal.sampleRate,
       channelCount: receipt.audioSignal.channelCount,
       windowCount: receipt.audioSignal.waveform.length,
+      frequencyBandCount: receipt.audioSignal.frequencyProfile.bands.length,
+      frequencyWindowCount: receipt.audioSignal.frequencyProfile.windows.length,
+      frequencyAlgorithm: receipt.audioSignal.frequencyProfile.algorithm,
       signalStatus: receipt.audioSignal.signalStatus,
       observationKinds: receipt.audioSignal.observations.map((item) => item.kind),
     },

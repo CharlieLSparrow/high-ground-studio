@@ -78,7 +78,9 @@ async function latestReusableReceipt(source, binding) {
   try {
     const job = parseAudioSignalProfileJob(row.inputJson, row.id);
     if (job.source.sha256 !== binding.sha256 || job.source.generation !== binding.generation || job.source.sizeBytes !== binding.sizeBytes) return null;
-    return { job, receipt: parseAudioSignalProfileResult(record(row.resultJson).receipt, job), reused: true };
+    const receipt = parseAudioSignalProfileResult(record(row.resultJson).receipt, job);
+    if (!job.analyzer.frequencyAnalysis || !receipt.audioSignal.frequencyProfile) return null;
+    return { job, receipt, reused: true };
   } catch {
     return null;
   }
@@ -206,6 +208,8 @@ try {
       sampleRate: analyzed.receipt.audioSignal.sampleRate,
       channelCount: analyzed.receipt.audioSignal.channelCount,
       windowCount: analyzed.receipt.audioSignal.waveform.length,
+      frequencyBandCount: analyzed.receipt.audioSignal.frequencyProfile?.bands.length ?? 0,
+      frequencyWindowCount: analyzed.receipt.audioSignal.frequencyProfile?.windows.length ?? 0,
       signalStatus: analyzed.receipt.audioSignal.signalStatus,
       observationKinds: analyzed.receipt.audioSignal.observations.map((observation) => observation.kind),
     },
