@@ -524,8 +524,8 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("button", { name: /audio evidence map/i })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: /selected time/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /play selected time/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /00:10 · Possible Dropout/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /00:08 · Interruption/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /00:10 · Possible Dropout/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /00:08 · Interruption/i })).toHaveLength(2);
 
     const protectedAudio = screen.getByLabelText("Protected session recording");
     Object.defineProperty(protectedAudio, "currentTime", { configurable: true, value: 3.8, writable: true });

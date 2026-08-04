@@ -2,6 +2,32 @@
 
 Date: 2026-08-04
 
+## Audio evidence navigation and live-input truth checkpoint
+
+- The shared coaching/Studio audio evidence map is now a chronological review
+  navigator. It quantifies affected duration, shades complete measured spans,
+  shows dBFS guides, and traverses signal observations, capture boundaries,
+  and receipt-authorized provider-attention words on the immutable source
+  clock. Long transcripts render only twelve playhead-near chips while Previous
+  and Next traverse the full bounded queue.
+- Confidence triage is no longer implicitly Deepgram-only. A transcript job may
+  preserve an explicit `0..1` threshold only with a named receipt authority;
+  otherwise Quipsly uses its named Deepgram default or shows no cross-provider
+  threshold. Confidence remains triage evidence, never measured accuracy.
+- The retained coaching Session now has 11 immutable provider-timed words and
+  an 80-second WAV profile produced by the real durable worker: 800 complete-
+  decode windows, 8 kHz mono, source hash unchanged. Re-running the operation
+  reuses the exact completed receipt, and re-running the base seed preserves
+  the matching source-bound projection instead of erasing it.
+- The signed-in retained coach browser journey operates Next evidence, confirms
+  the 15-second detail view, decoded-signal labels, no horizontal overflow, no
+  browser exception, no secret artifact, and no external side effect.
+- Current hardware truth remains separate: Canon R8 video is visible; the saved
+  MOTIV Mix MV7i strip is disconnected, and browser microphone acceptance is
+  still pending a permissioned browser profile plus a live direct MV7i route.
+  Architecture and evidence are in
+  `docs/coordination/quipsly-audio-evidence-navigator-2026-08-04.md`.
+
 ## Append-only audio mastery review checkpoint
 
 - The mastering desk now tracks playback around the loudest source moment,

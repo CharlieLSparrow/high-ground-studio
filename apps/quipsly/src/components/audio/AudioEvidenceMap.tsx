@@ -31,6 +31,16 @@ export type AudioEvidenceViewSpan = {
   durationSeconds: number;
 };
 
+export type AudioEvidenceAttentionMoment = {
+  id: string;
+  category: "signal" | "capture" | "transcript";
+  startSeconds: number;
+  endSeconds: number;
+  label: string;
+  detail: string;
+  severity: "attention" | "warning";
+};
+
 const VIEW_SECONDS: Record<Exclude<ViewMode, "whole">, number> = {
   minute: 60,
   detail: 15,
@@ -69,9 +79,13 @@ export function audioEvidencePointAt(signal: SignalEvidence, seconds: number) {
 }
 
 export function audioEvidenceMapSummary(signal: SignalEvidence) {
+  const nearSilentPoints = signal.waveform.filter((point) => point.rmsDbfs <= signal.thresholds.nearSilenceDbfs);
+  const clippingPoints = signal.waveform.filter((point) => point.clippedFrameCount > 0);
   return {
-    nearSilentWindowCount: signal.waveform.filter((point) => point.rmsDbfs <= signal.thresholds.nearSilenceDbfs).length,
-    clippingWindowCount: signal.waveform.filter((point) => point.clippedFrameCount > 0).length,
+    nearSilentWindowCount: nearSilentPoints.length,
+    nearSilentDurationSeconds: nearSilentPoints.reduce((total, point) => total + point.durationSeconds, 0),
+    clippingWindowCount: clippingPoints.length,
+    clippingDurationSeconds: clippingPoints.reduce((total, point) => total + point.durationSeconds, 0),
     observationCount: signal.observations.length,
   };
 }
@@ -89,6 +103,62 @@ export function audioEvidenceTranscriptSummary(words: AudioEvidenceTranscriptWor
       ? null
       : words.filter((word) => word.confidence !== null && word.confidence < lowConfidenceThreshold).length,
   };
+}
+
+function humanizeEvidenceKind(value: string) {
+  return value.replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export function audioEvidenceAttentionMoments(
+  signal: SignalEvidence,
+  timelineEvents: TimelineEvent[],
+  transcriptWords: AudioEvidenceTranscriptWord[],
+  lowConfidenceThreshold: number | null,
+): AudioEvidenceAttentionMoment[] {
+  const signalMoments = signal.observations.map((observation, index): AudioEvidenceAttentionMoment => ({
+    id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
+    category: "signal",
+    startSeconds: observation.startSeconds,
+    endSeconds: observation.endSeconds,
+    label: humanizeEvidenceKind(observation.kind),
+    detail: observation.detail,
+    severity: observation.severity,
+  }));
+  const captureMoments = timelineEvents.map((event, index): AudioEvidenceAttentionMoment => ({
+    id: `capture-${event.kind}-${event.startSeconds}-${index}`,
+    category: "capture",
+    startSeconds: event.startSeconds,
+    endSeconds: event.startSeconds,
+    label: humanizeEvidenceKind(event.kind),
+    detail: event.detail || [event.routeName, event.routePortType].filter(Boolean).join(" · ") || "Capture boundary preserved without route detail.",
+    severity: event.kind === "interruption" ? "warning" : "attention",
+  }));
+  const transcriptMoments = lowConfidenceThreshold === null ? [] : transcriptWords
+    .filter((word) => word.reviewState === "unchecked" && word.confidence !== null && word.confidence < lowConfidenceThreshold)
+    .map((word): AudioEvidenceAttentionMoment => ({
+      id: `transcript-${word.id}`,
+      category: "transcript",
+      startSeconds: word.startSeconds,
+      endSeconds: word.endSeconds,
+      label: `Check “${word.text}”`,
+      detail: `Provider confidence ${Math.round((word.confidence as number) * 100)}%. Listen before correcting the word or its timing.`,
+      severity: "attention",
+    }));
+  return [...signalMoments, ...captureMoments, ...transcriptMoments]
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id))
+    .slice(0, 5_000);
+}
+
+export function audioEvidenceAdjacentMoment(
+  moments: AudioEvidenceAttentionMoment[],
+  selectedSeconds: number,
+  direction: "previous" | "next",
+) {
+  if (moments.length === 0) return null;
+  if (direction === "next") {
+    return moments.find((moment) => moment.startSeconds > selectedSeconds + 0.001) ?? moments[0];
+  }
+  return [...moments].reverse().find((moment) => moment.startSeconds < selectedSeconds - 0.001) ?? moments.at(-1) ?? null;
 }
 
 function levelHeight(dbfs: number, maximumHeight: number) {
@@ -137,6 +207,17 @@ export function AudioEvidenceMap({
   const selectedWord = useMemo(() => audioEvidenceWordAt(transcriptWords, selectedSeconds), [selectedSeconds, transcriptWords]);
   const summary = useMemo(() => audioEvidenceMapSummary(signal), [signal]);
   const transcriptSummary = useMemo(() => audioEvidenceTranscriptSummary(transcriptWords, lowConfidenceThreshold), [lowConfidenceThreshold, transcriptWords]);
+  const attentionMoments = useMemo(
+    () => audioEvidenceAttentionMoments(signal, timelineEvents, transcriptWords, lowConfidenceThreshold),
+    [lowConfidenceThreshold, signal, timelineEvents, transcriptWords],
+  );
+  const nearbyAttentionMoments = useMemo(() => {
+    if (attentionMoments.length <= 12) return attentionMoments;
+    const nextIndex = attentionMoments.findIndex((moment) => moment.startSeconds >= selectedSeconds);
+    const centerIndex = nextIndex < 0 ? attentionMoments.length - 1 : nextIndex;
+    const startIndex = clamp(centerIndex - 3, 0, attentionMoments.length - 12);
+    return attentionMoments.slice(startIndex, startIndex + 12);
+  }, [attentionMoments, selectedSeconds]);
   const visibleObservations = signal.observations.filter((observation) => observation.startSeconds <= span.endSeconds && observation.endSeconds >= span.startSeconds);
   const visibleEvents = timelineEvents.filter((event) => event.startSeconds >= span.startSeconds && event.startSeconds <= span.endSeconds);
   const visibleWords = transcriptWords.filter((word) => word.startSeconds < span.endSeconds && word.endSeconds > span.startSeconds);
@@ -145,6 +226,16 @@ export function AudioEvidenceMap({
     const bounds = event.currentTarget.getBoundingClientRect();
     const fraction = bounds.width > 0 ? clamp((event.clientX - bounds.left) / bounds.width, 0, 1) : 0;
     onSelect(span.startSeconds + fraction * span.durationSeconds, playbackReady);
+  }
+
+  function inspectMoment(moment: AudioEvidenceAttentionMoment) {
+    setViewMode("detail");
+    onSelect(moment.startSeconds, playbackReady);
+  }
+
+  function inspectAdjacent(direction: "previous" | "next") {
+    const moment = audioEvidenceAdjacentMoment(attentionMoments, selectedSeconds, direction);
+    if (moment) inspectMoment(moment);
   }
 
   return <section className="mt-4 rounded-xl border border-sky-200 bg-slate-950 p-3 text-white sm:p-4" aria-label="Audio evidence map">
@@ -168,6 +259,22 @@ export function AudioEvidenceMap({
       {transcriptWords.length > 0 && <><span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-slate-500 align-middle" />Timed transcript word</span><span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-blue-400 align-middle" />Playback reviewed</span><span><span className="mr-1 inline-block h-2 w-3 rounded-sm bg-violet-400 align-middle" />Provider attention</span></>}
     </div>
 
+    <section className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-2.5" aria-label="Audio evidence review navigator">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-200">Evidence navigator</p>
+          <p className="mt-0.5 text-[9px] font-bold leading-4 text-slate-400">{attentionMoments.length} source-clock review point{attentionMoments.length === 1 ? "" : "s"}: measured flags, capture boundaries, and unchecked provider-attention words.</p>
+        </div>
+        <div className="flex gap-1">
+          <button type="button" disabled={attentionMoments.length === 0} onClick={() => inspectAdjacent("previous")} className="min-h-9 rounded-md border border-slate-600 px-2.5 text-[9px] font-black text-slate-200 hover:bg-slate-800 disabled:opacity-40">← Previous</button>
+          <button type="button" disabled={attentionMoments.length === 0} onClick={() => inspectAdjacent("next")} className="min-h-9 rounded-md bg-cyan-200 px-2.5 text-[9px] font-black text-cyan-950 hover:bg-cyan-100 disabled:opacity-40">Next evidence →</button>
+        </div>
+      </div>
+      {attentionMoments.length > 0 ? <><div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" aria-label="Audio evidence review points">
+        {nearbyAttentionMoments.map((moment) => <button key={moment.id} type="button" onClick={() => inspectMoment(moment)} title={moment.detail} className={`min-h-9 shrink-0 rounded-md border px-2.5 text-left text-[9px] font-black ${moment.severity === "warning" ? "border-rose-500/70 bg-rose-950/40 text-rose-200" : moment.category === "transcript" ? "border-violet-500/70 bg-violet-950/40 text-violet-200" : moment.category === "capture" ? "border-amber-500/70 bg-amber-950/40 text-amber-200" : "border-sky-500/70 bg-sky-950/40 text-sky-200"}`}><span className="font-mono">{timestampForSeconds(moment.startSeconds)}</span> · {moment.label}</button>)}
+      </div>{attentionMoments.length > nearbyAttentionMoments.length ? <p className="mt-1 text-[8px] font-bold text-slate-500">Showing {nearbyAttentionMoments.length} review points nearest the playhead. Previous and Next traverse the full {attentionMoments.length}-point source-clock queue.</p> : null}</> : <p className="mt-2 rounded-md border border-emerald-800 bg-emerald-950/30 p-2 text-[9px] font-bold text-emerald-200">No configured signal flag, capture boundary, or unchecked provider-attention word needs navigation.</p>}
+    </section>
+
     <button type="button" onClick={selectFromMap} className="mt-3 block w-full overflow-hidden rounded-lg border border-slate-700 bg-[#111827] text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300" aria-label={`Audio evidence map from ${timestampForSeconds(span.startSeconds)} to ${timestampForSeconds(span.endSeconds)}. Select a position${playbackReady ? " to play from that time" : " for inspection"}.`}>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-52 w-full" role="img" aria-labelledby={`${titleId} ${descriptionId}`} preserveAspectRatio="none">
         <title id={titleId}>Windowed decoded audio energy, timed transcript words, and review markers</title>
@@ -178,6 +285,10 @@ export function AudioEvidenceMap({
           return <g key={fraction}><line x1={gridX} x2={gridX} y1={plotTop} y2={plotBottom} stroke="#334155" strokeDasharray="2 7" /><text x={clamp(gridX + 5, 5, width - 55)} y="13" fill="#94a3b8" fontSize="10" fontWeight="700">{timestampForSeconds(gridSeconds)}</text></g>;
         })}
         <line x1="0" x2={width} y1={center} y2={center} stroke="#475569" />
+        {[-24, -48, -72].map((dbfs) => {
+          const guideHeight = levelHeight(dbfs, maximumLevelHeight);
+          return <g key={dbfs} opacity="0.7"><line x1="0" x2={width} y1={center - guideHeight} y2={center - guideHeight} stroke="#475569" strokeDasharray="2 5" /><line x1="0" x2={width} y1={center + guideHeight} y2={center + guideHeight} stroke="#475569" strokeDasharray="2 5" /><text x="5" y={center - guideHeight - 2} fill="#94a3b8" fontSize="8" fontWeight="700">{dbfs} dBFS</text></g>;
+        })}
         {visiblePoints.map((point, index) => {
           const start = Math.max(point.startSeconds, span.startSeconds);
           const end = Math.min(point.startSeconds + point.durationSeconds, span.endSeconds);
@@ -195,7 +306,14 @@ export function AudioEvidenceMap({
           </g>;
         })}
         {visibleEvents.map((event, index) => <g key={`${event.kind}-${event.startSeconds}-${index}`}><line x1={x(event.startSeconds)} x2={x(event.startSeconds)} y1={plotTop - 3} y2={plotBottom + 3} stroke="#fcd34d" strokeWidth="2" /><circle cx={x(event.startSeconds)} cy={plotTop - 4} r="4" fill="#fcd34d"><title>{timestampForSeconds(event.startSeconds)} {event.kind}</title></circle></g>)}
-        {visibleObservations.map((observation, index) => <line key={`${observation.kind}-${observation.startSeconds}-${index}`} x1={x(observation.startSeconds)} x2={x(observation.startSeconds)} y1={plotTop} y2={plotBottom} stroke={observation.severity === "warning" ? "#fb7185" : "#fbbf24"} strokeWidth="2" strokeDasharray="5 3"><title>{timestampForSeconds(observation.startSeconds)} {observation.detail}</title></line>)}
+        {visibleObservations.map((observation, index) => {
+          const observationStart = Math.max(observation.startSeconds, span.startSeconds);
+          const observationEnd = Math.min(Math.max(observation.endSeconds, observation.startSeconds + signal.windowDurationSeconds), span.endSeconds);
+          const observationX = x(observationStart);
+          const observationWidth = Math.max(2, x(observationEnd) - observationX);
+          const tone = observation.severity === "warning" ? "#fb7185" : "#fbbf24";
+          return <g key={`${observation.kind}-${observation.startSeconds}-${index}`}><rect x={observationX} y={plotTop} width={observationWidth} height={plotBottom - plotTop} fill={tone} opacity="0.12"><title>{timestampForSeconds(observation.startSeconds)}–{timestampForSeconds(observation.endSeconds)} {observation.detail}</title></rect><line x1={observationX} x2={observationX} y1={plotTop} y2={plotBottom} stroke={tone} strokeWidth="2" strokeDasharray="5 3" /></g>;
+        })}
         {transcriptEndSeconds !== null && transcriptEndSeconds >= span.startSeconds && transcriptEndSeconds <= span.endSeconds ? <g><line x1={x(transcriptEndSeconds)} x2={x(transcriptEndSeconds)} y1={plotTop - 4} y2={plotBottom + 4} stroke="#6ee7b7" strokeWidth="2" strokeDasharray="4 3" /><text x={clamp(x(transcriptEndSeconds) + 5, 5, width - 95)} y={plotBottom + 16} fill="#a7f3d0" fontSize="9" fontWeight="800">Transcript end</text></g> : null}
         {visibleWords.map((word) => {
           const start = Math.max(word.startSeconds, span.startSeconds);
@@ -215,8 +333,8 @@ export function AudioEvidenceMap({
       <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-cyan-200">{timestampForSeconds(selectedSeconds)}</div><div className="text-slate-400">Selected time</div></div>
       <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-sky-200">{selectedPoint ? selectedPoint.rmsDbfs.toFixed(1) : "—"}</div><div className="text-slate-400">Window RMS dBFS</div></div>
       <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-violet-200">{selectedPoint ? selectedPoint.samplePeakDbfs.toFixed(1) : "—"}</div><div className="text-slate-400">Sample peak dBFS</div></div>
-      <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-slate-200">{summary.nearSilentWindowCount}</div><div className="text-slate-400">Near-silent windows</div></div>
-      <div className="col-span-2 rounded-lg bg-slate-900 p-2 sm:col-span-1"><div className={`font-mono text-sm font-black ${summary.clippingWindowCount ? "text-rose-300" : "text-emerald-300"}`}>{summary.clippingWindowCount}</div><div className="text-slate-400">Clipping windows · {summary.observationCount} flags</div></div>
+      <div className="rounded-lg bg-slate-900 p-2"><div className="font-mono text-sm font-black text-slate-200">{timestampForSeconds(summary.nearSilentDurationSeconds)}</div><div className="text-slate-400">Near-silent · {summary.nearSilentWindowCount} windows</div></div>
+      <div className="col-span-2 rounded-lg bg-slate-900 p-2 sm:col-span-1"><div className={`font-mono text-sm font-black ${summary.clippingWindowCount ? "text-rose-300" : "text-emerald-300"}`}>{timestampForSeconds(summary.clippingDurationSeconds)}</div><div className="text-slate-400">Clipping span · {summary.clippingWindowCount} windows · {summary.observationCount} flags</div></div>
     </div>
     {selectedWord && <section className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-3" aria-label="Selected transcript word evidence"><div className="flex flex-wrap items-baseline justify-between gap-2"><div className="font-serif text-lg font-black text-white">{selectedWord.text}</div><div className="font-mono text-[10px] font-black text-cyan-200">{timestampForSeconds(selectedWord.startSeconds)}–{timestampForSeconds(selectedWord.endSeconds)}</div></div><p className="mt-1 text-[9px] font-bold leading-4 text-slate-300">{selectedWord.confidence === null ? "Provider confidence unavailable" : `${providerLabel || "Provider"} confidence ${Math.round(selectedWord.confidence * 100)}%`} · {selectedWord.reviewState === "corrected" ? "provider word inside a playback-corrected segment; timing remains provider evidence" : selectedWord.reviewState === "confirmed" ? "provider segment confirmed against playback" : "unchecked provider word"}. Confidence prioritizes listening; only reviewed reference text measures error.</p></section>}
     <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">The display never stretches a window into sample accuracy. Zoom centers on the selected time; the exact immutable source remains the listening authority.</p>

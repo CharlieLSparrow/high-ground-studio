@@ -177,6 +177,7 @@ describe("audio and transcript evidence", () => {
       wordCount: 6,
       confidenceWordCount: 6,
       lowConfidenceThreshold: 0.65,
+      lowConfidenceThresholdAuthority: "quipsly-deepgram-default-v1",
       lowConfidenceWordCount: 1,
       reviewedSegmentCount: 1,
       correctedSegmentCount: 1,
@@ -219,6 +220,31 @@ describe("audio and transcript evidence", () => {
       measuredScope: "NONE",
     });
     expect(evidence.audio.formatComparison).toBe("NOT_MEASURED");
+  });
+
+  it("accepts an explicit receipt-owned confidence triage threshold without pretending it is accuracy", () => {
+    const evidence = buildAudioTranscriptEvidence({
+      provider: "retained-fixture",
+      confidenceTriageThreshold: 0.65,
+      confidenceTriageThresholdAuthority: "retained-fixture-calibration-v1",
+      segments: [{
+        id: "segment-1",
+        startSeconds: 1,
+        endSeconds: 2,
+        providerText: "repeatable",
+        text: "repeatable",
+        confidence: 0.58,
+        words: [{ word: "repeatable", punctuatedWord: "repeatable", startSeconds: 1, endSeconds: 2, confidence: 0.58 }],
+        acceptedCorrection: null,
+        acceptedVerification: null,
+      }],
+    });
+    expect(evidence.transcript).toMatchObject({
+      lowConfidenceThreshold: 0.65,
+      lowConfidenceThresholdAuthority: "retained-fixture-calibration-v1",
+      lowConfidenceWordCount: 1,
+      confidenceIsNotMeasuredAccuracy: true,
+    });
   });
 
   it("uses ordered word edit distance for substitutions, insertions, and deletions", () => {

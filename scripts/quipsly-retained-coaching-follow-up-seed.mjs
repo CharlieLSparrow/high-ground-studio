@@ -68,6 +68,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function jsonObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function loopbackHost(hostname) {
   return ["localhost", "127.0.0.1", "::1"].includes(hostname);
 }
@@ -702,6 +706,37 @@ async function main() {
         },
       },
     });
+    const existingTranscriptAsset = await prisma.recordingAsset.findUnique({
+      where: { id: TRANSCRIPT_ASSET_ID },
+      select: { localManifestJson: true },
+    });
+    const existingSourceProfile = jsonObject(jsonObject(existingTranscriptAsset?.localManifestJson).reportedSourceProfile);
+    const expectedSourceGeneration = `sha256:${RETAINED_COACHING_CONTINUITY_SOURCE.sha256}`;
+    const preservedSourceProfile = existingSourceProfile.sourceSha256 === RETAINED_COACHING_CONTINUITY_SOURCE.sha256
+      && existingSourceProfile.sourceGeneration === expectedSourceGeneration
+      && existingSourceProfile.originalPreserved === true
+      && Object.keys(jsonObject(existingSourceProfile.audioSignal)).length > 0
+      ? existingSourceProfile
+      : null;
+    const transcriptAssetManifest = {
+      source: "retained-coaching-follow-up-seed",
+      localOnly: true,
+      syntheticFixture: true,
+      processingDisposition: "RELEASED",
+      transcriptionDisposition: "RELEASED",
+      ...(preservedSourceProfile ? { reportedSourceProfile: preservedSourceProfile } : {}),
+      promotion: {
+        status: "promoted-to-studio-media",
+        mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
+        sourceId: TRANSCRIPT_SOURCE_ID,
+        playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
+        mediaKind: "audio",
+        projectId: continuityProject.id,
+        nestSlug: continuityProject.slug,
+        localOnly: true,
+        syntheticFixture: true,
+      },
+    };
     await prisma.recordingAsset.upsert({
       where: { id: TRANSCRIPT_ASSET_ID },
       update: {
@@ -719,24 +754,7 @@ async function main() {
         recordedStartedAt: new Date("2026-07-31T16:00:00.000Z"),
         recordedStoppedAt: new Date("2026-07-31T16:01:20.000Z"),
         uploadedAt: new Date("2026-07-31T16:02:05.000Z"),
-        localManifestJson: {
-          source: "retained-coaching-follow-up-seed",
-          localOnly: true,
-          syntheticFixture: true,
-          processingDisposition: "RELEASED",
-          transcriptionDisposition: "RELEASED",
-          promotion: {
-            status: "promoted-to-studio-media",
-            mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
-            sourceId: TRANSCRIPT_SOURCE_ID,
-            playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
-            mediaKind: "audio",
-            projectId: continuityProject.id,
-            nestSlug: continuityProject.slug,
-            localOnly: true,
-            syntheticFixture: true,
-          },
-        },
+        localManifestJson: transcriptAssetManifest,
         verifiedAt: new Date("2026-08-03T18:00:00.000Z"),
       },
       create: {
@@ -755,24 +773,7 @@ async function main() {
         recordedStartedAt: new Date("2026-07-31T16:00:00.000Z"),
         recordedStoppedAt: new Date("2026-07-31T16:01:20.000Z"),
         uploadedAt: new Date("2026-07-31T16:02:05.000Z"),
-        localManifestJson: {
-          source: "retained-coaching-follow-up-seed",
-          localOnly: true,
-          syntheticFixture: true,
-          processingDisposition: "RELEASED",
-          transcriptionDisposition: "RELEASED",
-          promotion: {
-            status: "promoted-to-studio-media",
-            mediaAssetId: TRANSCRIPT_MEDIA_ASSET_ID,
-            sourceId: TRANSCRIPT_SOURCE_ID,
-            playbackUrl: `/api/ingest/media/${TRANSCRIPT_SOURCE_ID}`,
-            mediaKind: "audio",
-            projectId: continuityProject.id,
-            nestSlug: continuityProject.slug,
-            localOnly: true,
-            syntheticFixture: true,
-          },
-        },
+        localManifestJson: transcriptAssetManifest,
         verifiedAt: new Date("2026-08-03T18:00:00.000Z"),
       },
     });
@@ -853,7 +854,7 @@ async function main() {
         sourceGeneration: "retained-local-fixture-v1",
         sourceSha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
         completedAt: new Date("2026-08-03T18:01:00.000Z"),
-        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true, confidenceTriageThreshold: 0.65, confidenceTriageThresholdAuthority: "retained-fixture-calibration-v1" },
       },
       create: {
         id: TRANSCRIPT_JOB_ID,
@@ -865,7 +866,7 @@ async function main() {
         sourceGeneration: "retained-local-fixture-v1",
         sourceSha256: RETAINED_COACHING_CONTINUITY_SOURCE.sha256,
         completedAt: new Date("2026-08-03T18:01:00.000Z"),
-        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
+        resultJson: { source: "retained-coaching-follow-up-seed", synthetic: true, confidenceTriageThreshold: 0.65, confidenceTriageThresholdAuthority: "retained-fixture-calibration-v1" },
       },
     });
     await prisma.transcriptSegment.upsert({
@@ -890,6 +891,59 @@ async function main() {
         metadataJson: { source: "retained-coaching-follow-up-seed", synthetic: true },
       },
     });
+    const providerWords = [
+      "I",
+      "can",
+      "name",
+      "the",
+      "smallest",
+      "repeatable",
+      "boundary",
+      "before",
+      "the",
+      "next",
+      "Session.",
+    ];
+    const providerWordDuration = (71.8 - 63.2) / providerWords.length;
+    for (const [providerWordIndex, punctuatedWord] of providerWords.entries()) {
+      const startSeconds = 63.2 + (providerWordIndex * providerWordDuration);
+      const endSeconds = providerWordIndex === providerWords.length - 1
+        ? 71.8
+        : 63.2 + ((providerWordIndex + 1) * providerWordDuration);
+      await prisma.transcriptWord.upsert({
+        where: {
+          transcriptJobId_providerWordIndex: {
+            transcriptJobId: TRANSCRIPT_JOB_ID,
+            providerWordIndex,
+          },
+        },
+        update: {
+          segmentId: TRANSCRIPT_SEGMENT_ID,
+          startSeconds,
+          endSeconds,
+          word: punctuatedWord.replace(/[.,!?]$/u, ""),
+          punctuatedWord,
+          confidence: punctuatedWord === "repeatable" ? 0.58 : 0.97,
+          speakerLabel: "Coach",
+          channel: 0,
+          metadataJson: { source: "retained-coaching-follow-up-seed", synthetic: true, immutableProviderTiming: true },
+        },
+        create: {
+          id: `retained-coaching-continuity-word-${String(providerWordIndex + 1).padStart(2, "0")}-20260804`,
+          transcriptJobId: TRANSCRIPT_JOB_ID,
+          segmentId: TRANSCRIPT_SEGMENT_ID,
+          providerWordIndex,
+          startSeconds,
+          endSeconds,
+          word: punctuatedWord.replace(/[.,!?]$/u, ""),
+          punctuatedWord,
+          confidence: punctuatedWord === "repeatable" ? 0.58 : 0.97,
+          speakerLabel: "Coach",
+          channel: 0,
+          metadataJson: { source: "retained-coaching-follow-up-seed", synthetic: true, immutableProviderTiming: true },
+        },
+      });
+    }
     await prisma.actionItem.upsert({
       where: { id: COACH_CONTINUITY_TASK_ID },
       update: {

@@ -564,6 +564,8 @@ function buildTranscriptEvidence(job: any, segments: AudioTranscriptEvidenceSegm
     providerModel: result.model ?? object(result.engine).modelIdentifier,
     language: job?.language ?? object(result.engine).localeIdentifier,
     status: job?.status,
+    confidenceTriageThreshold: result.confidenceTriageThreshold,
+    confidenceTriageThresholdAuthority: result.confidenceTriageThresholdAuthority,
     recordingDurationSeconds: job?.asset?.durationSeconds,
     sourceProfile: manifest.reportedSourceProfile,
     recordingSegments: job?.asset?.segmentsJson,

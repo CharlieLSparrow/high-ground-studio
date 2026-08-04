@@ -82,6 +82,8 @@
     "quipsly:retained:calendar-subscription": "node scripts/quipsly-retained-calendar-subscription-operation.mjs",
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
     "quipsly:retained:audio-processing": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
+    "quipsly:retained:audio-evidence-ui": "node scripts/quipsly-retained-audio-evidence-browser-smoke.mjs",
+    "quipsly:retained:coaching-audio-evidence": "QUIPSLY_RETAINED_COACHING_AUDIO_EVIDENCE_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-coaching-audio-evidence-operation.mjs",
     "test:quipsly:retained:audio-processing": "node --test scripts/quipsly-retained-audio-mastery-transparency-operation.test.mjs",
     "quipsly:retained:audio-mastery-transparency": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
     "test:quipsly:retained:audio-mastery-transparency": "node --test scripts/quipsly-retained-audio-mastery-transparency-operation.test.mjs",

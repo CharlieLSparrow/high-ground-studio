@@ -100,6 +100,7 @@ export type AudioTranscriptEvidence = {
     meanWordConfidence: number | null;
     medianWordConfidence: number | null;
     lowConfidenceThreshold: number | null;
+    lowConfidenceThresholdAuthority: string | null;
     lowConfidenceWordCount: number | null;
     confidenceIsNotMeasuredAccuracy: true;
     reviewedSegmentCount: number;
@@ -139,6 +140,8 @@ type EvidenceInput = {
   providerModel?: unknown;
   language?: unknown;
   status?: unknown;
+  confidenceTriageThreshold?: unknown;
+  confidenceTriageThresholdAuthority?: unknown;
   recordingDurationSeconds?: unknown;
   sourceProfile?: unknown;
   recordingSegments?: unknown;
@@ -461,7 +464,19 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
       : (sortedConfidences[sortedConfidences.length / 2 - 1]! + sortedConfidences[sortedConfidences.length / 2]!) / 2)
     : null;
   const provider = text(input.provider);
-  const lowConfidenceThreshold = provider?.toLowerCase() === "deepgram" && confidences.length ? 0.65 : null;
+  const explicitThreshold = confidence(input.confidenceTriageThreshold);
+  const explicitThresholdAuthority = text(input.confidenceTriageThresholdAuthority);
+  const providerDefaultThreshold = provider?.toLowerCase() === "deepgram" ? 0.65 : null;
+  const lowConfidenceThreshold = confidences.length
+    ? explicitThreshold !== null && explicitThresholdAuthority
+      ? explicitThreshold
+      : providerDefaultThreshold
+    : null;
+  const lowConfidenceThresholdAuthority = lowConfidenceThreshold === null
+    ? null
+    : explicitThreshold !== null && explicitThresholdAuthority
+      ? explicitThresholdAuthority
+      : "quipsly-deepgram-default-v1";
   const lowConfidenceWordCount = lowConfidenceThreshold === null
     ? null
     : confidences.filter((value) => value < lowConfidenceThreshold).length;
@@ -536,6 +551,7 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
       meanWordConfidence,
       medianWordConfidence,
       lowConfidenceThreshold,
+      lowConfidenceThresholdAuthority,
       lowConfidenceWordCount,
       confidenceIsNotMeasuredAccuracy: true,
       reviewedSegmentCount: reviewedSegments.length,
