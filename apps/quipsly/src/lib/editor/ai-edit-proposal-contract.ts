@@ -7,19 +7,43 @@ export type AiEditTranscriptBlock = {
   duration: number;
   text: string;
   alert?: string | null;
+  speaker?: string | null;
+};
+
+export type AiEditAudioSignalEvidence = {
+  recordingAssetId: string;
+  sourceSha256: string;
+  storageGeneration: string | null;
+  signalProfileSha256: string;
+  algorithm: string;
+  measuredStartSeconds: number;
+  measuredEndSeconds: number;
+  coverageFraction: number;
+  maximumRmsDbfs: number;
+  nearSilenceDbfs: number;
+  surroundingSignalDbfs: number;
+  classification: "measured-low-energy" | "measured-signal-present";
 };
 
 export type AiEditReviewCandidate = {
   candidateId: string;
-  kind: "retake-marker" | "repeated-language" | "transcript-timing-gap";
+  kind:
+    | "retake-marker"
+    | "repeated-language"
+    | "transcript-timing-gap"
+    | "signal-corroborated-gap"
+    | "transcript-gap-with-signal"
+    | "overlapping-speech"
+    | "speaker-change";
   sourceRange: { startSeconds: number; endSeconds: number };
   evidence: {
     blockIds: string[];
     transcriptTextSha256: string;
+    audioSignal?: AiEditAudioSignalEvidence;
   };
   rationale: string;
   confidence: "low" | "medium" | "high";
-  suggestedAction: "listen" | "review-cut";
+  suggestedAction: "listen" | "review-cut" | "review-camera";
   requiresSignalEvidence: boolean;
   changesSource: false;
 };
@@ -56,6 +80,12 @@ export type AiEditProposalSet = {
     blockCount: number;
     startSeconds: number;
     endSeconds: number;
+    signalEvidence?: {
+      recordingAssetId: string;
+      sourceSha256: string;
+      storageGeneration: string | null;
+      signalProfileSha256: string;
+    };
   };
   provider: {
     kind: "deterministic" | "google-gemini";
@@ -81,6 +111,7 @@ export function canonicalAiEditTranscript(blocks: AiEditTranscriptBlock[]) {
         durationMs: Math.round(block.duration * 1_000),
         text: block.text.trim(),
         alert: block.alert?.trim() || null,
+        speaker: block.speaker?.trim() || null,
       }))
       .sort((left, right) => left.timeMs - right.timeMs || left.id.localeCompare(right.id)),
   );

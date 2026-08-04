@@ -68,6 +68,7 @@ function sanitizeTranscriptBlock(block: TranscriptBlock) {
     text: (block.text ?? "").trim(),
     deleted: Boolean(block.deleted),
     alert: block.alert ?? null,
+    speaker: typeof block.speaker === "string" ? block.speaker.trim() || null : null,
     aiSuggested: Boolean(block.aiSuggested),
     deactivated: Boolean(block.deactivated),
   } satisfies TranscriptBlock;

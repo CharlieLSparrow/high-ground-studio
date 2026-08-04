@@ -7319,3 +7319,25 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   speaker timing, persist review decisions, operate real HGO media, and assemble
   a proof-watchable draft timeline. See
   `docs/coordination/2026-08-03-deterministic-edit-evidence.md`.
+
+## 2026-08-03 signal and speaker edit evidence checkpoint
+
+- Joined deterministic transcript gaps to one canonical, verified, immutable,
+  currently released Capture signal profile. Source-unavailable, held, and
+  ambiguous states remain explicit and never guess which waveform owns the
+  transcript.
+- Measured low energy remains listen-before-cut. Measured signal inside a word
+  gap becomes a possible missing-transcript alert. Exact signal identity,
+  coverage, strongest RMS window, and source thresholds remain visible, with
+  RMS explicitly separated from LUFS.
+- Canonical speaker labels now survive timeline hydration and transcript
+  hashing. Overlaps and real speaker transitions become review evidence without
+  inventing timing changes or camera switches.
+- Operated an isolated synthetic HGO QA source through real consent/release,
+  rendered analysis, exact-time Proof-listen, explicit restart apply, and Undo.
+  The pass repaired an audio-first duration defect that had capped transcript-
+  only proof ranges at one second.
+- Next work is a reversible timeline range-edit primitive, persisted review
+  receipts, named-speaker camera mapping, and genuine physical Capture/HGO and
+  coaching media acceptance. See
+  `docs/coordination/2026-08-03-signal-and-speaker-edit-evidence.md`.

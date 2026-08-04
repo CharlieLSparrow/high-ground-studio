@@ -52,6 +52,7 @@ export type TranscriptBlock = {
   text: string;
   deleted: boolean;
   alert: string | null;
+  speaker?: string | null;
   deactivated?: boolean;
   aiSuggested?: boolean;
 };

@@ -12,6 +12,7 @@ import {
 } from "@/lib/editor/ai-edit-proposal-contract";
 import { getPrismaClient } from "@/lib/prisma";
 import { deterministicEditEvidence } from "@/lib/server/deterministic-edit-evidence";
+import { loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -27,6 +28,7 @@ type TranscriptBlock = {
   duration: number;
   text: string;
   alert?: string | null;
+  speaker?: string | null;
 };
 
 type EditSuggestion =
@@ -81,7 +83,10 @@ function parseTranscriptBlocks(value: unknown): { blocks: TranscriptBlock[]; err
     }
     ids.add(id);
     const alert = typeof source.alert === "string" ? source.alert.trim().slice(0, 160) || null : null;
-    blocks.push({ id, text, time, duration, alert });
+    const speaker = typeof (source.speaker ?? source.speakerLabel) === "string"
+      ? String(source.speaker ?? source.speakerLabel).trim().slice(0, 160) || null
+      : null;
+    blocks.push({ id, text, time, duration, alert, speaker });
   }
   return { blocks };
 }
@@ -227,14 +232,24 @@ export async function POST(request: Request) {
   if (!projectSlug || !episodeSlug || !SHA256.test(timelineFingerprintSha256)) {
     return json({ ok: false, errorCode: "SOURCE_BINDING_REQUIRED", error: "Project, episode, and exact timeline fingerprint are required.", edits: [] }, 400);
   }
+  const prisma = getPrismaClient();
   const access = await resolveEpisodeProductionAccess({
     request,
     projectSlug,
     action: "write",
-    prisma: getPrismaClient(),
+    prisma,
   });
   if (!access.allowed) {
     return json({ ok: false, errorCode: access.code, error: access.error, edits: [] }, access.status);
+  }
+  const accessProjectId = access.access.projectId;
+  if (!accessProjectId) {
+    return json({
+      ok: false,
+      errorCode: "SOURCE_PROJECT_UNRESOLVED",
+      error: "The authorized Nest could not be bound to one canonical project. The timeline is unchanged.",
+      edits: [],
+    }, 409);
   }
 
   const canonicalTranscript = canonicalAiEditTranscript(parsedTranscript.blocks);
@@ -242,7 +257,20 @@ export async function POST(request: Request) {
   const bounds = aiEditTranscriptBounds(parsedTranscript.blocks);
 
   if (analysisMode === "deterministic") {
-    const analysis = deterministicEditEvidence(parsedTranscript.blocks);
+    const signalResolution = await loadEpisodeEditSignalEvidence({
+      prisma,
+      projectId: accessProjectId,
+      projectSlug,
+      episodeSlug,
+    }).catch(() => ({
+      status: "unavailable" as const,
+      reason: "Decoded signal evidence could not be resolved, so transcript timing remains uncorroborated.",
+      evidence: null,
+      candidateCount: 0,
+    }));
+    const analysis = deterministicEditEvidence(parsedTranscript.blocks, {
+      audioSignal: signalResolution.evidence,
+    });
     const proposalSet = {
       kind: AI_EDIT_PROPOSAL_SET_KIND,
       version: AI_EDIT_PROPOSAL_SET_VERSION,
@@ -255,8 +283,16 @@ export async function POST(request: Request) {
         transcriptSha256,
         blockCount: parsedTranscript.blocks.length,
         ...bounds,
+        ...(signalResolution.evidence ? {
+          signalEvidence: {
+            recordingAssetId: signalResolution.evidence.recordingAssetId,
+            sourceSha256: signalResolution.evidence.sourceSha256,
+            storageGeneration: signalResolution.evidence.storageGeneration,
+            signalProfileSha256: signalResolution.evidence.signalProfileSha256,
+          },
+        } : {}),
       },
-      provider: { kind: "deterministic" as const, model: "quipsly-transcript-evidence-v1" },
+      provider: { kind: "deterministic" as const, model: "quipsly-source-evidence-v2" },
       proposals: analysis.proposals,
       reviewCandidates: analysis.reviewCandidates,
       boundaries: {
@@ -273,6 +309,12 @@ export async function POST(request: Request) {
       proposalSet,
       suggestionCount: analysis.proposals.length,
       reviewCandidateCount: analysis.reviewCandidates.length,
+      signalEvidence: {
+        status: signalResolution.status,
+        reason: signalResolution.reason,
+        candidateCount: signalResolution.candidateCount,
+        boundRecordingAssetId: signalResolution.evidence?.recordingAssetId ?? null,
+      },
       applied: false,
       source: "deterministic-transcript-evidence",
       nextAction: itemCount
@@ -293,7 +335,7 @@ export async function POST(request: Request) {
   }
 
   const formattedTranscript = parsedTranscript.blocks.map((block) =>
-    `[BlockID: ${block.id}] [Time: ${block.time.toFixed(2)}s - ${(block.time + block.duration).toFixed(2)}s]: ${block.text}`
+    `[BlockID: ${block.id}] [Time: ${block.time.toFixed(2)}s - ${(block.time + block.duration).toFixed(2)}s]${block.speaker ? ` [Speaker: ${block.speaker}]` : ""}: ${block.text}`
   ).join("\n");
   const prompt = `
 You are reviewing a transcript timeline and may return edit suggestions only. Do not claim to apply an edit.

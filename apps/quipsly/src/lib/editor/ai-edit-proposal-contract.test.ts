@@ -25,6 +25,10 @@ describe("AI edit proposal evidence", () => {
       { ...blocks[0], time: 4.01 },
       blocks[1],
     ]));
+    expect(canonicalAiEditTranscript(blocks)).not.toBe(canonicalAiEditTranscript([
+      { ...blocks[0], speaker: "Homer" },
+      blocks[1],
+    ]));
   });
 
   it("reports the exact proof-watch transcript bounds", () => {

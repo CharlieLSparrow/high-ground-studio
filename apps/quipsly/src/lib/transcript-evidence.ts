@@ -272,7 +272,10 @@ function audioDurationDrift(left: number, right: number | null) {
   return right !== null && Math.abs(left - right) > Math.max(0.25, right * 0.005);
 }
 
-export function parseAudioSignalEvidence(value: unknown): AudioTranscriptEvidence["audio"]["signal"] {
+export function parseAudioSignalEvidence(
+  value: unknown,
+  options: { maximumWaveformPoints?: number } = {},
+): AudioTranscriptEvidence["audio"]["signal"] {
   const row = object(value);
   if (integer(row.schemaVersion) !== 1) return null;
   const algorithm = text(row.algorithm);
@@ -380,7 +383,10 @@ export function parseAudioSignalEvidence(value: unknown): AudioTranscriptEvidenc
       surroundingSignalDbfs,
       stereoImbalanceDb,
     },
-    waveform: compactSignalWaveform(rawWaveform, 180),
+    waveform: compactSignalWaveform(
+      rawWaveform,
+      Math.max(1, Math.min(1_200, Math.trunc(options.maximumWaveformPoints ?? 180))),
+    ),
     observations,
   };
 }

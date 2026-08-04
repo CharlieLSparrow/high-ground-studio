@@ -1493,6 +1493,7 @@ function normalizeTranscriptBlock(raw: unknown): TranscriptBlock | null {
     text,
     deleted: coerceBoolean(record.deleted, false),
     alert: typeof record.alert === "string" ? record.alert : null,
+    speaker: coerceOptionalString(record.speaker ?? record.speakerLabel, undefined) ?? null,
   };
 }
 
@@ -3048,6 +3049,11 @@ function CloudEditorContent() {
   const [aiEditReviewCandidates, setAiEditReviewCandidates] = useState<AiEditReviewCandidate[]>([]);
   const [aiEditProposalBinding, setAiEditProposalBinding] = useState<AiEditProposalSet["binding"] | null>(null);
   const [aiEditGenerator, setAiEditGenerator] = useState<AiEditProposalSet["provider"] | null>(null);
+  const [aiEditSignalResolution, setAiEditSignalResolution] = useState<{
+    status: "available" | "unavailable" | "ambiguous" | "held";
+    reason: string;
+    boundRecordingAssetId: string | null;
+  } | null>(null);
   const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
   const [aiEditMessage, setAiEditMessage] = useState("");
 
@@ -3090,6 +3096,7 @@ function CloudEditorContent() {
         setAiEditReviewCandidates([]);
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
+        setAiEditSignalResolution(null);
         setAiEditMessage(data.error || "Edit suggestions are unavailable. The timeline is unchanged.");
         return;
       }
@@ -3104,6 +3111,7 @@ function CloudEditorContent() {
         setAiEditReviewCandidates([]);
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
+        setAiEditSignalResolution(null);
         setAiEditMessage("The provider response did not include a valid source-bound proposal set. The timeline is unchanged.");
         return;
       }
@@ -3113,9 +3121,24 @@ function CloudEditorContent() {
       setAiEditReviewCandidates(reviewCandidates);
       setAiEditProposalBinding(proposalSet.binding);
       setAiEditGenerator(proposalSet.provider);
+      const signalResolution = data.signalEvidence && typeof data.signalEvidence === "object"
+        ? data.signalEvidence as Record<string, unknown>
+        : null;
+      const signalStatus = signalResolution?.status;
+      setAiEditSignalResolution(
+        analysisMode === "deterministic"
+        && signalResolution
+        && (signalStatus === "available" || signalStatus === "unavailable" || signalStatus === "ambiguous" || signalStatus === "held")
+          ? {
+            status: signalStatus,
+            reason: typeof signalResolution.reason === "string" ? signalResolution.reason : "Decoded signal status is unavailable.",
+            boundRecordingAssetId: typeof signalResolution.boundRecordingAssetId === "string" ? signalResolution.boundRecordingAssetId : null,
+          }
+          : null,
+      );
       const itemCount = suggestions.length + reviewCandidates.length;
       setAiEditMessage(itemCount
-        ? `${suggestions.length} reversible proposal${suggestions.length === 1 ? "" : "s"} and ${reviewCandidates.length} listen-only candidate${reviewCandidates.length === 1 ? "" : "s"} ready. Nothing has been applied.`
+        ? `${suggestions.length} reversible proposal${suggestions.length === 1 ? "" : "s"} and ${reviewCandidates.length} review candidate${reviewCandidates.length === 1 ? "" : "s"} ready. Nothing has been applied.`
         : "No edit evidence was found. The timeline is unchanged.");
     } catch (e) {
       console.error(e);
@@ -3123,6 +3146,7 @@ function CloudEditorContent() {
       setAiEditReviewCandidates([]);
       setAiEditProposalBinding(null);
       setAiEditGenerator(null);
+      setAiEditSignalResolution(null);
       setAiEditMessage("Edit suggestions could not be loaded. The timeline is unchanged.");
     } finally {
       setIsAiAutoEditing(false);
@@ -5711,7 +5735,11 @@ function CloudEditorContent() {
   ]);
 
   // Calculate total duration in frames (30fps)
-  const totalDuration = timelineState.clips.reduce((acc, clip) => Math.max(acc, clip.startIn + clip.duration), 1);
+  const totalDuration = Math.max(
+    1,
+    timelineState.clips.reduce((acc, clip) => Math.max(acc, clip.startIn + clip.duration), 0),
+    timelineState.transcript.reduce((acc, block) => Math.max(acc, block.time + block.duration), 0),
+  );
   const durationInFrames = Math.max(1, Math.round(totalDuration * 30));
   const playbackMode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
   const playbackCockpitStats = useMemo(() => {
@@ -9757,8 +9785,13 @@ function CloudEditorContent() {
                         <p className="mt-1 text-[11px] text-gray-400">
                           {aiEditGenerator?.kind === "deterministic" ? "Local deterministic evidence" : "Disclosed AI provider proposals"} · playback remains the acceptance check.
                         </p>
+                        {aiEditGenerator?.kind === "deterministic" && aiEditSignalResolution && (
+                          <p className={`mt-1 text-[10px] font-bold ${aiEditSignalResolution.status === "available" ? "text-emerald-300" : aiEditSignalResolution.status === "held" ? "text-amber-300" : "text-gray-500"}`} title={aiEditSignalResolution.reason}>
+                            Decoded signal: {aiEditSignalResolution.status}{aiEditSignalResolution.boundRecordingAssetId ? ` · ${aiEditSignalResolution.boundRecordingAssetId.slice(0, 12)}` : ""}
+                          </p>
+                        )}
                       </div>
-                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditReviewCandidates([]); setAiEditProposalBinding(null); setAiEditGenerator(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
+                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditReviewCandidates([]); setAiEditProposalBinding(null); setAiEditGenerator(null); setAiEditSignalResolution(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
                         Dismiss all
                       </button>
                     </div>
@@ -9803,12 +9836,25 @@ function CloudEditorContent() {
                           ? "Recording retake marker"
                           : candidate.kind === "repeated-language"
                             ? "Possible repeated take"
-                            : "Transcript timing gap";
+                            : candidate.kind === "signal-corroborated-gap"
+                              ? "Measured low-energy gap"
+                              : candidate.kind === "transcript-gap-with-signal"
+                                ? "Signal inside transcript gap"
+                                : candidate.kind === "overlapping-speech"
+                                  ? "Overlapping speech timing"
+                                  : candidate.kind === "speaker-change"
+                                    ? "Speaker transition"
+                                    : "Transcript timing gap";
+                        const actionLabel = candidate.suggestedAction === "review-camera"
+                          ? "Review camera"
+                          : candidate.suggestedAction === "review-cut"
+                            ? "Listen before cut"
+                            : "Listen only";
                         return (
                           <article key={candidate.candidateId} className="rounded-xl border border-sky-900 bg-sky-950/30 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-xs font-black text-sky-200">{label}</p>
-                              <span className="rounded-full border border-sky-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-sky-300">Listen only</span>
+                              <span className="rounded-full border border-sky-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-sky-300">{actionLabel}</span>
                             </div>
                             <p className="mt-2 text-[11px] leading-5 text-gray-300">{candidate.rationale}</p>
                             <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-gray-500">
@@ -9818,6 +9864,21 @@ function CloudEditorContent() {
                               <p className="mt-2 rounded-lg border border-amber-900 bg-amber-950/30 px-2 py-1.5 text-[10px] font-bold text-amber-200">
                                 Timing evidence only—not confirmed silence. Decoded audio evidence is required before a cut proposal.
                               </p>
+                            )}
+                            {candidate.evidence.audioSignal && (
+                              <div className="mt-2 rounded-lg border border-emerald-900 bg-emerald-950/30 px-2 py-1.5 text-[10px] font-bold leading-4 text-emerald-200">
+                                <p>Decoded coverage {(candidate.evidence.audioSignal.coverageFraction * 100).toFixed(0)}% · strongest RMS window {candidate.evidence.audioSignal.maximumRmsDbfs.toFixed(1)} dBFS</p>
+                                <p className="text-emerald-400">RMS is not LUFS · signal profile {candidate.evidence.audioSignal.signalProfileSha256.slice(0, 10)}</p>
+                              </div>
+                            )}
+                            {candidate.kind === "signal-corroborated-gap" && (
+                              <p className="mt-2 text-[10px] font-bold text-amber-200">Measured low energy—not approved silence. Listen before creating any range edit.</p>
+                            )}
+                            {candidate.kind === "transcript-gap-with-signal" && (
+                              <p className="mt-2 text-[10px] font-bold text-rose-200">Signal is present. Check for missing words before editing this interval.</p>
+                            )}
+                            {candidate.kind === "speaker-change" && (
+                              <p className="mt-2 text-[10px] font-bold text-violet-200">Canonical speaker timing—not an automatic camera switch.</p>
                             )}
                             <div className="mt-3 flex justify-end gap-2">
                               <button type="button" onClick={() => dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
@@ -9906,6 +9967,11 @@ function CloudEditorContent() {
                     {(block.deactivated) && (
                       <span className="absolute -top-4 left-0 text-[10px] whitespace-nowrap z-10 opacity-70">
                         ✨ AI cut
+                      </span>
+                    )}
+                    {block.speaker && (
+                      <span className="mr-1.5 inline-flex translate-y-[-0.15em] rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 font-sans text-[10px] font-black uppercase tracking-wide text-violet-800">
+                        {block.speaker}
                       </span>
                     )}
                     {transcriptWordTimings(block).map((word) => {

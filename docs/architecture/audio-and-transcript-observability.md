@@ -72,6 +72,15 @@ It can be expected silence. When decoded signal exists after the final
 transcript word, Nest raises an exact-time listening target; it still does not
 assert which words, if any, are missing.
 
+The Episode editor now consumes this evidence through one additional source
+boundary. Exact edit analysis retains up to 1,200 validated Capture waveform
+points rather than the 180-point display projection, binds the signal profile
+and immutable recording identity into the proposal set, and requires one
+unambiguous currently released source. A covered low-energy transcript gap is
+still a listening candidate; signal above the source threshold inside a word
+gap becomes a possible-missing-transcript candidate instead of a silence cut.
+See `docs/coordination/2026-08-03-signal-and-speaker-edit-evidence.md`.
+
 ## Capture evidence
 
 Capture source-profile schema v3 now preserves the selected input data source

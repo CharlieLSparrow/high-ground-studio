@@ -83,6 +83,33 @@ This is the bridge into the next analyzer layer, which will join time-aligned
 waveform, RMS, clipping, dropout, and standards loudness evidence without
 turning provider inference into signal truth.
 
+## Decoded signal and speaker evidence
+
+The deterministic route now resolves decoded signal server-side from canonical
+episode attachments. It accepts evidence only from one unambiguous, verified,
+SHA-bound Capture recording whose current normalized media-processing gate is
+released. A held source stays held, and multiple signal-bearing sources require
+explicit source selection rather than a guessed match.
+
+Covered transcript gaps now split into three honest states:
+
+- measured low energy, when full-resolution decoded windows cover at least 85%
+  of the interval and the strongest RMS window remains at or below the source's
+  near-silence threshold;
+- measured signal present, when the strongest covered RMS window reaches the
+  source's surrounding-signal threshold; or
+- timing only, when evidence is absent, ambiguous, held, incomplete, or between
+  thresholds.
+
+Measured low energy is not approved silence and has no Apply action. Signal in
+a transcript gap is a transcription-accuracy alert because it may contain
+missing words or intentional sound. RMS dBFS is never relabeled as LUFS.
+
+Canonical speaker labels are now part of the transcript hash. Exact timing
+overlap creates a listening candidate, and a real label transition creates a
+camera-review candidate. Neither becomes a timing repair or multicamera switch
+without review and source-camera mapping.
+
 ## Non-negotiable boundaries
 
 - source bytes are never changed;
@@ -103,7 +130,9 @@ playback.
 - persisted proposal/audit ledger rather than response-lifetime state;
 - real provider run over a retained HGO transcript and media timeline;
 - decoded-signal corroboration for silence/dropout candidates plus overlap and
-  speaker-change evidence;
+  speaker-change evidence on genuine Capture media;
+- a reversible, persisted timeline range-edit primitive before measured
+  low-energy intervals can become applicable proposals;
 - automated draft timeline with before/after proof-watch and render receipts;
 - multicamera and local-device media synchronization;
 - physical-iPhone source, TestFlight, and full episode proof-watch;

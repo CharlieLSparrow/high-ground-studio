@@ -1420,6 +1420,24 @@ High Ground Studio is a monorepo with:
   corroboration, overlap and speaker timing, persisted review receipts, real
   HGO-media playback, and assembled draft edits remain open.
 
+### 2026-08-03 signal and speaker edit evidence
+
+- Deterministic edit analysis now resolves one canonical verified, SHA-bound,
+  currently released Capture signal profile server-side. Held, unavailable, and
+  multi-source ambiguous states fail closed instead of guessing a waveform.
+- Transcript gaps differentiate measured low energy from signal-present
+  possible missing words. Both remain listen/review evidence; no range edit is
+  silently created. Signal identity and exact measurement are carried with the
+  candidate, and RMS is explicitly not LUFS.
+- Speaker labels survive episode hydration and canonical hashing. Overlap and
+  speaker transitions create separate listening and camera-review candidates,
+  never inferred camera switches.
+- An isolated synthetic HGO QA source operated the real consent/release gate,
+  decoded coverage display, speaker display, proof-listen, apply, and Undo. It
+  exposed and repaired a transcript-only duration bug that capped audio-first
+  proof ranges at one second. This is not physical-iPhone or genuine HGO-media
+  proof; those gates remain open.
+
 - The earlier Stripe checkout attempt was rolled back to a non-broken state.
 - The episodes route currently uses a guarded loader in `apps/web/src/lib/source.ts`.
 - The Fumadocs source is only enabled when `ENABLE_EPISODES_FUMADOCS=1`.

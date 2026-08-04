@@ -1,9 +1,47 @@
 import {
   buildAudioTranscriptEvidence,
+  parseAudioSignalEvidence,
   transcriptWordEditDistance,
 } from "./transcript-evidence";
 
 describe("audio and transcript evidence", () => {
+  it("keeps full validated Capture waveform resolution for exact edit evidence", () => {
+    const waveform = Array.from({ length: 240 }, (_, index) => ({
+      startSeconds: index * 0.05,
+      durationSeconds: 0.05,
+      rmsDbfs: -30,
+      samplePeakDbfs: -12,
+      clippedFrameCount: 0,
+    }));
+    const profile = {
+      schemaVersion: 1,
+      algorithm: "capture-energy-v1",
+      signalStatus: "signal-present",
+      sampleRate: 48_000,
+      channelCount: 1,
+      analyzedFrameCount: 576_000,
+      durationSeconds: 12,
+      windowDurationSeconds: 0.05,
+      rmsDbfs: -30,
+      samplePeakDbfs: -12,
+      clippedFrameCount: 0,
+      clippedFrameFraction: 0,
+      nearSilentFrameFraction: 0,
+      thresholds: {
+        clippingAmplitude: 0.999,
+        nearSilenceDbfs: -72,
+        possibleDropoutMinimumSeconds: 1.25,
+        surroundingSignalDbfs: -45,
+        stereoImbalanceDb: 12,
+      },
+      waveform,
+      observations: [],
+    };
+
+    expect(parseAudioSignalEvidence(profile)?.waveform.length).toBeLessThanOrEqual(180);
+    expect(parseAudioSignalEvidence(profile, { maximumWaveformPoints: 1_200 })?.waveform).toHaveLength(240);
+  });
+
   it("measures reviewed WER separately from provider confidence and review coverage", () => {
     const evidence = buildAudioTranscriptEvidence({
       provider: "deepgram",

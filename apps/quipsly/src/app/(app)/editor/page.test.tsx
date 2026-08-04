@@ -96,7 +96,7 @@ describe("CloudEditor production truth UX", () => {
                 endSeconds: 8,
               },
               provider: deterministic
-                ? { kind: "deterministic", model: "quipsly-transcript-evidence-v1" }
+                ? { kind: "deterministic", model: "quipsly-source-evidence-v2" }
                 : { kind: "google-gemini", model: "test-model" },
               proposals: deterministic ? [] : [{
                 proposalId: "edit_proposal_test",
@@ -128,6 +128,14 @@ describe("CloudEditor production truth UX", () => {
                 noAutomaticSaveRenderOrPublish: true,
               },
             },
+            ...(deterministic ? {
+              signalEvidence: {
+                status: "unavailable",
+                reason: "No Capture recording is attached to this episode.",
+                candidateCount: 0,
+                boundRecordingAssetId: null,
+              },
+            } : {}),
           }, true, 200);
         }
         if (url === "/api/episode-production") {
@@ -204,6 +212,7 @@ describe("CloudEditor production truth UX", () => {
 
     await user.click(screen.getByRole("button", { name: "Proof-watch source" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:08/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
@@ -231,6 +240,7 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.queryByRole("alertdialog", { name: "Send this transcript for suggestions?" })).not.toBeInTheDocument();
     expect(await screen.findByText("Transcript timing gap")).toBeInTheDocument();
     expect(screen.getByText(/Timing evidence only—not confirmed silence/i)).toBeInTheDocument();
+    expect(screen.getByText(/Decoded signal: unavailable/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Apply proposal" })).not.toBeInTheDocument();
     const analysisRequest = (globalThis.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes("/api/ai-edit"));
     expect(JSON.parse(String(analysisRequest?.[1]?.body))).toEqual(expect.objectContaining({
@@ -240,6 +250,7 @@ describe("CloudEditor production truth UX", () => {
 
     await user.click(screen.getByRole("button", { name: "Proof-listen source" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:06/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
   });
 

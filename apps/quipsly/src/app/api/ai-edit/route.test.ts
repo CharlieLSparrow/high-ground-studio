@@ -3,6 +3,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -11,6 +12,7 @@ import { POST } from "./route";
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/episode-production-access", () => ({ resolveEpisodeProductionAccess: jest.fn() }));
+jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({ loadEpisodeEditSignalEvidence: jest.fn() }));
 jest.mock("@google/genai", () => ({
   GoogleGenAI: jest.fn(),
   Type: { OBJECT: "OBJECT", ARRAY: "ARRAY", STRING: "STRING", NUMBER: "NUMBER" },
@@ -19,6 +21,7 @@ jest.mock("@google/genai", () => ({
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);
 const mockedGoogle = jest.mocked(GoogleGenAI);
 const mockedAccess = jest.mocked(resolveEpisodeProductionAccess);
+const mockedSignalEvidence = jest.mocked(loadEpisodeEditSignalEvidence);
 const generateContent = jest.fn();
 
 function request(body: unknown) {
@@ -52,6 +55,12 @@ describe("AI edit suggestion boundary", () => {
       actor: { id: "user-1", email: "editor@example.test", name: "Editor", isStaff: false, source: "embedded-cookie" },
       access: { allowed: true, role: "EDITOR", source: "grant", projectId: "project-1", projectSlug: sourceBinding.projectSlug },
     } as never);
+    mockedSignalEvidence.mockResolvedValue({
+      status: "unavailable",
+      reason: "No Capture recording is attached to this episode.",
+      evidence: null,
+      candidateCount: 0,
+    });
     process.env.GEMINI_API_KEY = "configured-test-key";
     mockedGoogle.mockImplementation(() => ({ models: { generateContent } }) as never);
   });
@@ -112,7 +121,7 @@ describe("AI edit suggestion boundary", () => {
       suggestionCount: 1,
       reviewCandidateCount: 1,
       proposalSet: expect.objectContaining({
-        provider: { kind: "deterministic", model: "quipsly-transcript-evidence-v1" },
+        provider: { kind: "deterministic", model: "quipsly-source-evidence-v2" },
         proposals: [expect.objectContaining({ type: "deactivate", blockId: "restart", applied: false })],
         reviewCandidates: [expect.objectContaining({
           kind: "transcript-timing-gap",
@@ -123,6 +132,54 @@ describe("AI edit suggestion boundary", () => {
     }));
     expect(mockedGoogle).not.toHaveBeenCalled();
     expect(generateContent).not.toHaveBeenCalled();
+  });
+
+  it("binds decoded signal identity and distinguishes signal inside a transcript gap", async () => {
+    mockedSignalEvidence.mockResolvedValue({
+      status: "available",
+      reason: "One immutable source is available.",
+      candidateCount: 1,
+      evidence: {
+        recordingAssetId: "recording-1",
+        sourceSha256: "b".repeat(64),
+        storageGeneration: "generation-1",
+        signalProfileSha256: "c".repeat(64),
+        signal: {
+          algorithm: "capture-energy-v1",
+          thresholds: { nearSilenceDbfs: -72, surroundingSignalDbfs: -45 },
+          waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs: -24 }],
+        },
+      },
+    } as never);
+
+    const response = await POST(request({
+      analysisMode: "deterministic",
+      transcriptBlocks: [
+        { id: "left", time: 0, duration: 2, text: "The first complete thought.", speaker: "Charlie" },
+        { id: "right", time: 5, duration: 2, text: "The next complete thought.", speaker: "Homer" },
+      ],
+      ...sourceBinding,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.proposalSet.binding.signalEvidence).toEqual({
+      recordingAssetId: "recording-1",
+      sourceSha256: "b".repeat(64),
+      storageGeneration: "generation-1",
+      signalProfileSha256: "c".repeat(64),
+    });
+    expect(payload.proposalSet.reviewCandidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "transcript-gap-with-signal",
+        requiresSignalEvidence: false,
+        evidence: expect.objectContaining({
+          audioSignal: expect.objectContaining({ classification: "measured-signal-present" }),
+        }),
+      }),
+      expect.objectContaining({ kind: "speaker-change", suggestedAction: "review-camera" }),
+    ]));
+    expect(payload.signalEvidence).toEqual(expect.objectContaining({ status: "available", boundRecordingAssetId: "recording-1" }));
   });
 
   it("requires explicit provider disclosure acceptance and validates transcript bounds", async () => {
