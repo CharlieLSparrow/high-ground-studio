@@ -131,7 +131,10 @@ async function renderedAttribution(baseURL, password) {
 
     const audioEvidenceMap = main.getByLabel("Audio evidence map", { exact: true });
     await audioEvidenceMap.waitFor({ timeout: 20_000 });
-    assert((await audioEvidenceMap.innerText()).includes("not a sample-level waveform"), "Rendered audio evidence map overclaimed its windowed measurements.");
+    const audioEvidenceMapText = await audioEvidenceMap.innerText();
+    assert(audioEvidenceMapText.includes("not a sample-level waveform"), "Rendered audio evidence map overclaimed its windowed measurements.");
+    assert(audioEvidenceMapText.toLowerCase().includes("timed transcript word"), `Rendered audio evidence map did not expose its provider-timed transcript lane. Visible map contract: ${audioEvidenceMapText.slice(0, 1_000)}`);
+    await audioEvidenceMap.getByText(/no cross-provider confidence threshold/i).waitFor();
     const detailZoom = audioEvidenceMap.getByRole("button", { name: "15 sec", exact: true });
     await detailZoom.click();
     assert(await detailZoom.getAttribute("aria-pressed") === "true", "Audio evidence detail zoom did not become active.");
@@ -163,6 +166,11 @@ async function renderedAttribution(baseURL, password) {
     await page.waitForTimeout(150);
     const playbackPosition = await audio.evaluate((element) => element.currentTime);
     assert(Number.isFinite(playbackPosition) && playbackPosition > 0, "The rendered sample did not move protected playback to its source timestamp.");
+    const selectedWordEvidence = audioEvidenceMap.getByLabel("Selected transcript word evidence", { exact: true });
+    await selectedWordEvidence.waitFor({ timeout: 10_000 });
+    const selectedWordText = await selectedWordEvidence.innerText();
+    assert(selectedWordText.includes("unchecked provider word"), "Shared source playback did not project the unchecked transcript-word state onto the audio map.");
+    assert(/confidence \d+%/i.test(selectedWordText), "The selected transcript word did not expose its provider-specific confidence evidence.");
     await speakerCard.getByRole("checkbox", { name: /I played the selected sample and recognize this voice/ }).check();
 
     const responsePromise = page.waitForResponse((response) => (
@@ -215,6 +223,8 @@ async function renderedAttribution(baseURL, password) {
       mutationIdempotentReplay: mutation.idempotentReplay === true,
       audioEvidenceMapOperated: true,
       audioEvidenceMapPlaybackPosition: evidenceMapPlaybackPosition,
+      transcriptWordLaneOperated: true,
+      selectedTranscriptWordVisible: true,
       exactRequestReplay: true,
       playbackPosition,
       attributionId: group.attribution.id,
@@ -316,6 +326,8 @@ async function main() {
       participantLabel: PARTICIPANT_LABEL,
       audioEvidenceMapOperated: rendered.audioEvidenceMapOperated,
       audioEvidenceMapPlaybackPositionSeconds: rendered.audioEvidenceMapPlaybackPosition,
+      transcriptWordLaneOperated: rendered.transcriptWordLaneOperated,
+      selectedTranscriptWordVisible: rendered.selectedTranscriptWordVisible,
       playbackSampleOperated: true,
       playbackPositionSeconds: rendered.playbackPosition,
       exactRequestReplay: rendered.exactRequestReplay,

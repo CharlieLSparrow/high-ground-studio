@@ -6,7 +6,10 @@ import {
   AudioEvidenceMap,
   audioEvidenceMapSummary,
   audioEvidencePointAt,
+  audioEvidenceTranscriptSummary,
   audioEvidenceViewSpan,
+  audioEvidenceWordAt,
+  type AudioEvidenceTranscriptWord,
 } from "./AudioEvidenceMap";
 
 const signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> = {
@@ -50,6 +53,12 @@ const signal: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> = {
   }],
 };
 
+const transcriptWords: AudioEvidenceTranscriptWord[] = [
+  { id: "word-1", segmentId: "segment-1", text: "quiet", startSeconds: 40, endSeconds: 43, confidence: 0.42, reviewState: "unchecked" },
+  { id: "word-2", segmentId: "segment-2", text: "checked", startSeconds: 70, endSeconds: 73, confidence: 0.96, reviewState: "confirmed" },
+  { id: "word-3", segmentId: "segment-3", text: "corrected", startSeconds: 90, endSeconds: 94, confidence: 0.88, reviewState: "corrected" },
+];
+
 describe("AudioEvidenceMap", () => {
   it("keeps zoom windows bounded around the selected source time", () => {
     expect(audioEvidenceViewSpan(120, 8, "minute")).toEqual({ startSeconds: 0, endSeconds: 60, durationSeconds: 60 });
@@ -60,6 +69,9 @@ describe("AudioEvidenceMap", () => {
   it("reports selected window evidence without calling it sample-level waveform data", () => {
     expect(audioEvidencePointAt(signal, 42)).toEqual(expect.objectContaining({ startSeconds: 30, rmsDbfs: -80 }));
     expect(audioEvidenceMapSummary(signal)).toEqual({ nearSilentWindowCount: 1, clippingWindowCount: 1, observationCount: 1 });
+    expect(audioEvidenceWordAt(transcriptWords, 42)).toEqual(expect.objectContaining({ id: "word-1", text: "quiet" }));
+    expect(audioEvidenceWordAt(transcriptWords, 50)).toBeNull();
+    expect(audioEvidenceTranscriptSummary(transcriptWords, 0.65)).toEqual({ timedWordCount: 3, reviewedWordCount: 2, correctedWordCount: 1, attentionWordCount: 1 });
 
     const onSelect = jest.fn();
     render(<AudioEvidenceMap
@@ -68,6 +80,9 @@ describe("AudioEvidenceMap", () => {
       transcriptEndSeconds={100}
       playbackReady
       selectedSeconds={42}
+      transcriptWords={transcriptWords}
+      lowConfidenceThreshold={0.65}
+      providerLabel="Deepgram"
       onSelect={onSelect}
     />);
 
@@ -76,6 +91,9 @@ describe("AudioEvidenceMap", () => {
     expect(screen.getByText(/1 flags/i)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /select a position to play/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Selected transcript word evidence" })).toHaveTextContent("quiet");
+    expect(screen.getByText(/Deepgram confidence 42%/i)).toBeInTheDocument();
+    expect(screen.getByText(/only reviewed reference text measures error/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "15 sec" }));
     expect(screen.getByRole("button", { name: "15 sec" })).toHaveAttribute("aria-pressed", "true");

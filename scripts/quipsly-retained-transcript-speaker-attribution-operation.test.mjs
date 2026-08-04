@@ -20,6 +20,10 @@ test("retained speaker attribution accepts only local product boundaries and pro
 test("retained speaker attribution operates rendered playback and proves the separate word-review boundary", () => {
   assert.match(operation, /signInThroughRenderedLogin/);
   assert.match(operation, /Protected session recording/);
+  assert.match(operation, /Selected transcript word evidence/);
+  assert.match(operation, /no cross-provider confidence threshold/);
+  assert.match(operation, /unchecked provider word/);
+  assert.match(operation, /confidence \\d\+%/);
   assert.match(operation, /Apply voice identity\|Update voice identity/);
   assert.match(operation, /playbackPosition > 0/);
   assert.match(operation, /providerSegmentSnapshot\(segmentsAfter\) === providerHashBefore/);

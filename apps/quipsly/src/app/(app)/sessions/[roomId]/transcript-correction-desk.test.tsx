@@ -489,7 +489,25 @@ describe("TranscriptCorrectionDesk", () => {
       }],
       speakerGroups: [{ attribution: null }],
     });
-    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ...desk(true), evidence }) });
+    const correctedSegment = {
+      ...segment,
+      text: "Welcome, everyone.",
+      acceptedCorrection: {
+        id: "correction-1",
+        segmentId: segment.id,
+        origin: "human",
+        status: "accepted",
+        correctedText: "Welcome, everyone.",
+        correctedSpeakerLabel: null,
+        reason: "Reviewed against playback.",
+        reviewedAt: "2026-08-03T18:30:00.000Z",
+        createdAt: "2026-08-03T18:30:00.000Z",
+        updatedAt: "2026-08-03T18:30:00.000Z",
+        revisions: [{ revision: 1, operation: "accepted", createdAt: "2026-08-03T18:30:00.000Z" }],
+      },
+      acceptedVerification: null,
+    };
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ...desk(true), segments: [correctedSegment], evidence }) });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
@@ -508,5 +526,12 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByRole("button", { name: /play selected time/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /00:10 · Possible Dropout/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /00:08 · Interruption/i })).toBeInTheDocument();
+
+    const protectedAudio = screen.getByLabelText("Protected session recording");
+    Object.defineProperty(protectedAudio, "currentTime", { configurable: true, value: 3.8, writable: true });
+    fireEvent.timeUpdate(protectedAudio);
+    expect(await screen.findByRole("region", { name: "Selected transcript word evidence" })).toHaveTextContent("Welcome,");
+    expect(screen.getByText(/Deepgram confidence 90%/i)).toBeInTheDocument();
+    expect(screen.getByText(/provider word inside a playback-corrected segment; timing remains provider evidence/i)).toBeInTheDocument();
   });
 });

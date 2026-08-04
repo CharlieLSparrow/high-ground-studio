@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
-import { AudioEvidenceMap } from "./AudioEvidenceMap";
+import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "./AudioEvidenceMap";
 import { timestampForSeconds } from "./session-review-model";
 import {
   EDITABLE_SESSION_NOTE_KINDS,
@@ -227,6 +227,21 @@ function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
   ].filter(Boolean).join(" · ") || "Audio format not preserved";
 }
 
+export function transcriptWordsForAudioEvidence(segments: Segment[]): AudioEvidenceTranscriptWord[] {
+  return segments.flatMap((segment) => segment.words.flatMap((word) => {
+    if (!Number.isFinite(word.startSeconds) || !Number.isFinite(word.endSeconds) || word.startSeconds < 0 || word.endSeconds < word.startSeconds) return [];
+    return [{
+      id: word.id,
+      segmentId: segment.id,
+      text: word.punctuatedWord || word.word,
+      startSeconds: word.startSeconds,
+      endSeconds: word.endSeconds,
+      confidence: word.confidence,
+      reviewState: segment.acceptedCorrection ? "corrected" as const : segment.acceptedVerification ? "confirmed" as const : "unchecked" as const,
+    }];
+  })).sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds || left.id.localeCompare(right.id));
+}
+
 function TranscriptAccuracyCorpusPanel({
   roomId,
   evaluation,
@@ -409,15 +424,24 @@ function TranscriptAccuracyCorpusPanel({
 function AudioSignalEvidencePanel({
   audio,
   transcriptEndSeconds,
+  transcriptWords,
+  lowConfidenceThreshold,
+  providerLabel,
   playbackReady,
+  selectedSeconds,
+  onSelectTime,
   onPlayAt,
 }: {
   audio: AudioTranscriptEvidence["audio"];
   transcriptEndSeconds: number | null;
+  transcriptWords: AudioEvidenceTranscriptWord[];
+  lowConfidenceThreshold: number | null;
+  providerLabel: string | null;
   playbackReady: boolean;
+  selectedSeconds: number;
+  onSelectTime: (seconds: number) => void;
   onPlayAt: (seconds: number) => Promise<void>;
 }) {
-  const [selectedSignalSeconds, setSelectedSignalSeconds] = useState(0);
   const signal = audio.signal;
   if (!signal) return <div className="mt-4 rounded-xl border border-dashed border-sky-200 bg-white/70 p-4 text-xs font-bold leading-5 text-sky-950"><p className="font-black uppercase tracking-wide">Decoded signal scan unavailable</p><p className="mt-1">This legacy or externally imported source did not preserve a complete frame scan. Quipsly will not infer loudness, clipping, silence, or dropout from transcript confidence.</p></div>;
 
@@ -449,25 +473,28 @@ function AudioSignalEvidencePanel({
       timelineEvents={audio.timelineEvents}
       transcriptEndSeconds={transcriptEndSeconds}
       playbackReady={playbackReady}
-      selectedSeconds={selectedSignalSeconds}
+      selectedSeconds={selectedSeconds}
+      transcriptWords={transcriptWords}
+      lowConfidenceThreshold={lowConfidenceThreshold}
+      providerLabel={providerLabel}
       onSelect={(seconds, play) => {
-        setSelectedSignalSeconds(seconds);
+        onSelectTime(seconds);
         if (play) void onPlayAt(seconds);
       }}
     /> : null}
     <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
-      <label htmlFor="audio-signal-time" className="text-xs font-black text-sky-950">Selected time {timestampForSeconds(selectedSignalSeconds)}</label>
+      <label htmlFor="audio-signal-time" className="text-xs font-black text-sky-950">Selected time {timestampForSeconds(selectedSeconds)}</label>
       <input
         id="audio-signal-time"
         type="range"
         min={0}
         max={Math.max(signal.durationSeconds, 0.01)}
         step={0.1}
-        value={selectedSignalSeconds}
-        onChange={(event) => setSelectedSignalSeconds(Number(event.currentTarget.value))}
+        value={Math.min(selectedSeconds, signal.durationSeconds)}
+        onChange={(event) => onSelectTime(Number(event.currentTarget.value))}
         className="min-w-48 flex-1 accent-sky-700"
       />
-      <button type="button" disabled={!playbackReady} onClick={() => void onPlayAt(selectedSignalSeconds)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-sky-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Play className="size-4" aria-hidden="true" />Play selected time</button>
+      <button type="button" disabled={!playbackReady} onClick={() => void onPlayAt(selectedSeconds)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-sky-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Play className="size-4" aria-hidden="true" />Play selected time</button>
     </div>
 
     {tailPeak !== null ? <p className={`mt-3 rounded-lg border p-3 text-xs font-bold leading-5 ${tailHasSignal ? "border-violet-200 bg-violet-50 text-violet-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}>{tailHasSignal ? `Measurable signal continues after the last timed transcript word (tail peak ${tailPeak.toFixed(1)} dBFS). Listen before treating the transcript as complete.` : `The overview scan found only near-silence after the last timed transcript word (tail peak ${tailPeak.toFixed(1)} dBFS). This is an observation, not proof that no speech exists.`}</p> : null}
@@ -481,14 +508,21 @@ function AudioSignalEvidencePanel({
 
 function AudioTranscriptEvidencePanel({
   evidence,
+  segments,
   playbackReady,
+  selectedSeconds,
+  onSelectTime,
   onPlayAt,
 }: {
   evidence: AudioTranscriptEvidence;
+  segments: Segment[];
   playbackReady: boolean;
+  selectedSeconds: number;
+  onSelectTime: (seconds: number) => void;
   onPlayAt: (seconds: number) => Promise<void>;
 }) {
   const { audio, transcript } = evidence;
+  const transcriptWords = useMemo(() => transcriptWordsForAudioEvidence(segments), [segments]);
   const confidenceLabel = transcript.meanWordConfidence === null
     ? "Not supplied"
     : percent(transcript.meanWordConfidence, 1);
@@ -534,7 +568,12 @@ function AudioTranscriptEvidencePanel({
     <AudioSignalEvidencePanel
       audio={audio}
       transcriptEndSeconds={transcript.transcriptEndSeconds}
+      transcriptWords={transcriptWords}
+      lowConfidenceThreshold={transcript.lowConfidenceThreshold}
+      providerLabel={transcript.provider}
       playbackReady={playbackReady}
+      selectedSeconds={selectedSeconds}
+      onSelectTime={onSelectTime}
       onPlayAt={onPlayAt}
     />
 
@@ -1161,6 +1200,7 @@ export function TranscriptCorrectionDesk({
   const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
+  const [playbackSeconds, setPlaybackSeconds] = useState(0);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
 
@@ -1183,6 +1223,7 @@ export function TranscriptCorrectionDesk({
 
   useEffect(() => {
     setListenedSecondBins(new Set());
+    setPlaybackSeconds(0);
     lastPlaybackTimeRef.current = null;
   }, [desk?.playback?.sourceId]);
 
@@ -1207,10 +1248,12 @@ export function TranscriptCorrectionDesk({
   async function playFromTime(seconds: number) {
     const media = mediaRef.current;
     if (!media) return;
-    media.currentTime = seconds;
+    const next = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+    media.currentTime = next;
+    setPlaybackSeconds(next);
     try {
       await media.play();
-      setMessage(`Playing source evidence from ${timestampForSeconds(seconds)}.`);
+      setMessage(`Playing source evidence from ${timestampForSeconds(next)}.`);
     } catch {
       setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again.");
     }
@@ -1221,10 +1264,11 @@ export function TranscriptCorrectionDesk({
   }
 
   function observePlayback(media: HTMLMediaElement, ended = false) {
-    if (!ended && (media.paused || media.seeking)) return;
     const duration = Number.isFinite(media.duration) ? media.duration : desk?.playback?.durationSeconds;
+    const currentTime = ended && duration && duration > 0 ? duration - 0.001 : media.currentTime;
+    setPlaybackSeconds(Math.max(0, currentTime));
+    if (!ended && (media.paused || media.seeking)) return;
     if (!duration || duration <= 0) return;
-    const currentTime = ended ? duration - 0.001 : media.currentTime;
     const second = Math.max(0, Math.min(Math.ceil(duration) - 1, Math.floor(currentTime)));
     const previousTime = lastPlaybackTimeRef.current;
     const contiguous = previousTime !== null && currentTime >= previousTime && currentTime - previousTime <= 1.5;
@@ -1320,8 +1364,8 @@ export function TranscriptCorrectionDesk({
           <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
             <p className="mb-3 text-xs font-black uppercase tracking-wide text-sky-900">Protected source · {desk.playback.label}</p>
             {desk.playback.kind === "video"
-              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { lastPlaybackTimeRef.current = null; }} onSeeking={() => { lastPlaybackTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { lastPlaybackTimeRef.current = null; }} onSeeking={() => { lastPlaybackTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
+              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
+              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; setPlaybackSeconds(event.currentTarget.currentTime); }} onPause={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onSeeking={(event) => { lastPlaybackTimeRef.current = null; setPlaybackSeconds(event.currentTarget.currentTime); }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
           </div>
         ) : (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
@@ -1341,7 +1385,10 @@ export function TranscriptCorrectionDesk({
 
       {desk.evidence ? <AudioTranscriptEvidencePanel
           evidence={desk.evidence}
+          segments={desk.segments}
           playbackReady={Boolean(desk.playback)}
+          selectedSeconds={playbackSeconds}
+          onSelectTime={setPlaybackSeconds}
           onPlayAt={playFromTime}
         /> : null}
 
