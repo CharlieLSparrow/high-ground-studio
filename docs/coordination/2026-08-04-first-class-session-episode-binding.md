@@ -72,7 +72,9 @@ and Capture/App Store static contracts passed 1,025/1,025.
 Do not remove the metadata fallback until deployed readback shows no legitimate
 null-relation podcast rooms and supported Capture builds all write the new key.
 Before fallback removal, add an explicit repair surface for the remaining
-unmatched rows.
+unmatched rows. That surface and its append-only receipt ledger are now
+implemented and locally operated; see
+`docs/coordination/2026-08-04-session-episode-binding-repair.md`.
 
 During the compatibility window, code rollback is safe because metadata is
 still written and retained. If a database rollback is required after code has

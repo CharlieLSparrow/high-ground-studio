@@ -4,6 +4,16 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- The “Episode relationship needs attention” state is now actionable. An
+  authorized host/producer or Nest owner/editor chooses an exact same-Nest
+  Episode; stale, unauthorized, cross-purpose, and cross-project writes fail
+  closed. Rebinding an invalid non-null relationship requires confirmation and
+  a reason. Every operation appends one idempotent before/after/version receipt,
+  and safe recent history appears in the Session without exposing actor email.
+  A disposable verified Firebase-emulator identity operated the production HTTP
+  route against local Nest/PostgreSQL, proved exact retry replay and unchanged
+  source checksum, then read back zero cleanup residue. See
+  `docs/coordination/2026-08-04-session-episode-binding-repair.md`.
 - Podcast recording Sessions now have a nullable first-class relation to their
   exact Episode production. Normal Capture Session creation resolves the exact
   same-project episode, writes the relation and a temporary compatibility slug,
@@ -71,7 +81,7 @@ Date: 2026-08-04
   attention without exposing provider identities. The retained operation read
   two devices/two people before removal and host-only afterward. See
   `docs/coordination/2026-08-04-session-provider-presence.md`.
-- Full Nest Jest passes 299 suites / 1,565 runnable tests, the 172-route Nest
+- Full Nest Jest passes 301 suites / 1,571 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

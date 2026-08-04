@@ -372,6 +372,14 @@ describe("Session review goal candidates", () => {
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
         episode: { id: "episode-4-id", title: "The Swear Jar", slug: "episode-4" },
         binding: "EPISODE",
+        episodeBindingHistory: [{
+          id: "binding-receipt-1",
+          action: "BIND",
+          previousEpisodeSlug: null,
+          nextEpisodeSlug: "episode-4",
+          reason: null,
+          createdAt: "2026-08-04T20:00:00.000Z",
+        }],
       }}
     />);
 
@@ -383,6 +391,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Open exact Episode Room" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4");
     expect(screen.getByRole("link", { name: "Episode thread" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4#episode-thread");
     expect(screen.getByRole("link", { name: "Episode editor" })).toHaveAttribute("href", "/nests/high-ground/episode-editor?episode=episode-4");
+    expect(screen.getByText("Relationship history · 1")).toBeInTheDocument();
+    expect(screen.getByText(/authorized collaborator · no external side effects/)).toBeInTheDocument();
   });
 
   it.each([

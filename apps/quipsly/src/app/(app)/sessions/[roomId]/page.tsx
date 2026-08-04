@@ -8,7 +8,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA } from "@/lib/server/mobile-capture-quick-entry";
 import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-readiness";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
-import { sessionAccessWhere } from "@/lib/server/session-access";
+import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import {
@@ -78,6 +78,18 @@ export default async function SessionReviewPage({
         providerRoomId: true,
         episodeProductionId: true,
         episodeProduction: { select: { id: true, projectId: true, title: true, slug: true } },
+        episodeBindingReceipts: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            action: true,
+            previousEpisodeSlug: true,
+            nextEpisodeSlug: true,
+            reason: true,
+            createdAt: true,
+          },
+        },
         metadataJson: true,
         scheduledStart: true,
         scheduledEnd: true,
@@ -249,9 +261,44 @@ export default async function SessionReviewPage({
     const boundEpisode = visibleProject && relationEpisode
       ? { id: relationEpisode.id, title: relationEpisode.title, slug: relationEpisode.slug }
       : legacyBoundEpisode;
+    let episodeRepair = null;
+    if (room.purpose === "PODCAST" && visibleProject && !boundEpisode) {
+      const mutationAccess = await prisma.callRoom.findFirst({
+        where: sessionMutationAccessWhere(room.id, session.user),
+        select: { id: true },
+      });
+      const candidates = mutationAccess ? await prisma.studioEpisodeProduction.findMany({
+        where: { projectId: visibleProject.id },
+        orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+        take: 100,
+        select: { id: true, slug: true, title: true, status: true, updatedAt: true },
+      }) : [];
+      episodeRepair = {
+        canRepair: Boolean(mutationAccess),
+        roomUpdatedAt: room.updatedAt.toISOString(),
+        currentEpisodeProductionId: room.episodeProductionId,
+        currentRelationshipInvalid: Boolean(room.episodeProductionId),
+        candidates: candidates.map((candidate: any) => ({
+          id: candidate.id,
+          slug: candidate.slug,
+          title: candidate.title,
+          status: candidate.status,
+          updatedAt: candidate.updatedAt.toISOString(),
+        })),
+      };
+    }
     const collaborationContext = buildSessionCollaborationContext({
       project: visibleProject && room.project ? room.project : null,
       episode: boundEpisode,
+      episodeRepair,
+      episodeBindingHistory: (room.episodeBindingReceipts || []).map((receipt: any) => ({
+        id: receipt.id,
+        action: receipt.action,
+        previousEpisodeSlug: receipt.previousEpisodeSlug,
+        nextEpisodeSlug: receipt.nextEpisodeSlug,
+        reason: receipt.reason,
+        createdAt: receipt.createdAt.toISOString(),
+      })),
     });
     const canViewProjectTeamNotes = canUseProjectTeamNotes(
       visibleProject?.role,

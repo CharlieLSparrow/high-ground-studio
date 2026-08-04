@@ -36,6 +36,7 @@ import {
 import { PriorSessionContinuityCard, PriorSessionFollowThroughCard, SessionContinuityCard } from "./session-continuity-card";
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import type { SessionContinuityState } from "./session-continuity-model";
+import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
@@ -1381,6 +1382,22 @@ function SessionCollaborationScopes({
           <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">{experience.continuityLabel}</p>
           <h3 className="mt-1 font-black text-[#3d3122]">{continuityHeading}</h3>
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{continuityDetail}</p>
+          {episode && !context.episode && context.episodeRepair ? <SessionEpisodeBindingRepair roomId={roomId} state={context.episodeRepair} /> : null}
+          {episode && (context.episodeBindingHistory?.length ?? 0) > 0 ? (
+            <details className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-emerald-950">Relationship history · {context.episodeBindingHistory!.length}</summary>
+              <ol className="mt-2 space-y-2">
+                {context.episodeBindingHistory!.map((receipt) => (
+                  <li key={receipt.id} className="text-[11px] font-semibold leading-5 text-emerald-950">
+                    <span className="font-black">{receipt.action === "REBIND" ? "Rebound" : receipt.action === "BIND" ? "Bound" : "Verified"}</span>{" "}
+                    {receipt.previousEpisodeSlug && receipt.previousEpisodeSlug !== receipt.nextEpisodeSlug ? `${receipt.previousEpisodeSlug} → ` : ""}{receipt.nextEpisodeSlug}
+                    {receipt.reason ? ` · ${receipt.reason}` : ""}
+                    <span className="block text-[10px] text-emerald-800">{receipt.createdAt.replace("T", " ").replace(".000Z", " UTC")} · authorized collaborator · no external side effects</span>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             {episodeHref ? <Link href={episodeHref} className="rounded-full bg-emerald-800 px-3 py-2 text-[10px] font-black uppercase text-white">Open exact Episode Room</Link> : null}
             {episodeHref ? <Link href={`${episodeHref}#episode-thread`} className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Episode thread</Link> : null}

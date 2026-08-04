@@ -6,6 +6,10 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
+  repairSessionEpisodeBinding,
+  SessionEpisodeBindingRepairError,
+} from "@/lib/server/session-episode-binding-repair";
+import {
   SessionEpisodeBindingError,
   callRoomEpisodeBindingWhere,
   resolveSessionEpisodeBinding,
@@ -32,6 +36,10 @@ runLocalDatabaseSmoke("first-class recording Session episode binding", () => {
   const exactRoomId = `episode-session-exact-${nonce}`;
   const legacyRoomId = `episode-session-legacy-${nonce}`;
   const conflictingRoomId = `episode-session-conflict-${nonce}`;
+  const repairRoomId = `episode-session-repair-${nonce}`;
+  const rebindRoomId = `episode-session-rebind-${nonce}`;
+  const staleRoomId = `episode-session-stale-${nonce}`;
+  const repairRequestId = randomUUID();
   let episodeAId = "";
   let episodeBId = "";
 
@@ -91,7 +99,7 @@ runLocalDatabaseSmoke("first-class recording Session episode binding", () => {
   afterAll(async () => {
     try {
       await prisma.callRoom.deleteMany({
-        where: { id: { in: [exactRoomId, legacyRoomId, conflictingRoomId] } },
+        where: { id: { in: [exactRoomId, legacyRoomId, conflictingRoomId, repairRoomId, rebindRoomId, staleRoomId] } },
       });
       await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       await prisma.user.deleteMany({ where: { id: ownerId } });
@@ -190,5 +198,147 @@ runLocalDatabaseSmoke("first-class recording Session episode binding", () => {
       purpose: "COACHING",
       episodeSlug: episodeASlug,
     })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("repairs an unbound podcast Session without changing its retained source and replays exactly once", async () => {
+    const room = await prisma.callRoom.create({
+      data: {
+        id: repairRoomId,
+        createdByUserId: ownerId,
+        projectId: projectAId,
+        purpose: "PODCAST",
+        title: "Unbound retained recording Session",
+        metadataJson: { episodeSlug: "unmatched-legacy-episode" },
+        recordingAssets: {
+          create: {
+            id: `episode-session-repair-asset-${nonce}`,
+            status: "VERIFIED",
+            fileName: "retained-source.m4a",
+            checksum: "a".repeat(64),
+          },
+        },
+      },
+    });
+    const input = {
+      prisma,
+      actor: { id: ownerId, primaryEmail: ownerEmail, isStaff: false },
+      roomId: repairRoomId,
+      episodeSlug: episodeASlug,
+      requestId: repairRequestId,
+      expectedRoomUpdatedAt: room.updatedAt.toISOString(),
+    };
+    const first = await repairSessionEpisodeBinding(input);
+    const replay = await repairSessionEpisodeBinding(input);
+    expect(first).toMatchObject({
+      idempotentReplay: false,
+      receipt: {
+        action: "BIND",
+        previousEpisodeProductionId: null,
+        nextEpisodeProductionId: episodeAId,
+        nextEpisodeSlug: episodeASlug,
+      },
+      boundaries: {
+        canonicalSessionRelationshipChanged: true,
+        immutableSourcesChanged: false,
+        recordingChanged: false,
+        externalSideEffects: false,
+      },
+    });
+    expect(replay).toMatchObject({
+      idempotentReplay: true,
+      receipt: { id: first.receipt.id },
+    });
+    const readback = await prisma.callRoom.findUnique({
+      where: { id: repairRoomId },
+      include: {
+        episodeProduction: { select: { id: true, projectId: true, slug: true } },
+        recordingAssets: { select: { id: true, status: true, checksum: true } },
+        episodeBindingReceipts: true,
+      },
+    });
+    expect(readback?.episodeProduction).toEqual({
+      id: episodeAId,
+      projectId: projectAId,
+      slug: episodeASlug,
+    });
+    expect(readback?.recordingAssets).toEqual([{
+      id: `episode-session-repair-asset-${nonce}`,
+      status: "VERIFIED",
+      checksum: "a".repeat(64),
+    }]);
+    expect(readback?.episodeBindingReceipts).toHaveLength(1);
+
+    await expect(repairSessionEpisodeBinding({
+      ...input,
+      episodeSlug: episodeBSlug,
+    })).rejects.toMatchObject({ code: "REQUEST_ID_CONFLICT" });
+  });
+
+  it("rejects unauthorized and stale repairs, then requires an explained explicit rebind", async () => {
+    const staleRoom = await prisma.callRoom.create({
+      data: {
+        id: staleRoomId,
+        createdByUserId: ownerId,
+        projectId: projectAId,
+        purpose: "PODCAST",
+        title: "Stale relationship Session",
+      },
+    });
+    await expect(repairSessionEpisodeBinding({
+      prisma,
+      actor: { id: "outsider", primaryEmail: "outsider@example.test", isStaff: false },
+      roomId: staleRoomId,
+      episodeSlug: episodeASlug,
+      requestId: randomUUID(),
+      expectedRoomUpdatedAt: staleRoom.updatedAt.toISOString(),
+    })).rejects.toMatchObject({ code: "SESSION_NOT_FOUND", status: 404 });
+
+    await prisma.callRoom.update({
+      where: { id: staleRoomId },
+      data: { title: "Changed after repair choices loaded" },
+    });
+    await expect(repairSessionEpisodeBinding({
+      prisma,
+      actor: { id: ownerId, primaryEmail: ownerEmail, isStaff: false },
+      roomId: staleRoomId,
+      episodeSlug: episodeASlug,
+      requestId: randomUUID(),
+      expectedRoomUpdatedAt: staleRoom.updatedAt.toISOString(),
+    })).rejects.toMatchObject({ code: "STALE_SESSION_VERSION" });
+
+    const rebindRoom = await prisma.callRoom.create({
+      data: {
+        id: rebindRoomId,
+        createdByUserId: ownerId,
+        projectId: projectAId,
+        episodeProductionId: episodeBId,
+        purpose: "PODCAST",
+        title: "Invalid imported relationship",
+        metadataJson: { episodeSlug: episodeBSlug },
+      },
+    });
+    const rebindInput = {
+      prisma,
+      actor: { id: ownerId, primaryEmail: ownerEmail, isStaff: false },
+      roomId: rebindRoomId,
+      episodeSlug: episodeASlug,
+      requestId: randomUUID(),
+      expectedRoomUpdatedAt: rebindRoom.updatedAt.toISOString(),
+    };
+    await expect(repairSessionEpisodeBinding(rebindInput)).rejects.toBeInstanceOf(
+      SessionEpisodeBindingRepairError,
+    );
+    await expect(repairSessionEpisodeBinding({
+      ...rebindInput,
+      requestId: randomUUID(),
+      confirmRebind: true,
+      reason: "Imported relation crossed the Nest boundary",
+    })).resolves.toMatchObject({
+      receipt: {
+        action: "REBIND",
+        previousEpisodeProductionId: episodeBId,
+        nextEpisodeProductionId: episodeAId,
+      },
+    });
   });
 });

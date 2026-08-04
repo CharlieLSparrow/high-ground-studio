@@ -193,6 +193,12 @@ enum CallRoomStatus {
   FAILED
 }
 
+enum CallRoomEpisodeBindingAction {
+  BIND
+  REBIND
+  NOOP
+}
+
 enum CaptureRoomStateAction {
   OPEN
   START_RECORDING
@@ -1646,6 +1652,7 @@ model CallRoom {
   participantAccessReceipts     CallParticipantAccessReceipt[]
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
   invitations                   CallRoomInvitation[]
+  episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
   stateReceipts                 CaptureRoomStateReceipt[]
   recordingAssets               RecordingAsset[]
@@ -1668,6 +1675,32 @@ model CallRoom {
   @@index([episodeProductionId, status, recordingStartedAt])
   @@index([nestSlug, createdAt])
   @@index([projectSlug, createdAt])
+}
+
+model CallRoomEpisodeBindingReceipt {
+  id                          String                       @id @default(cuid())
+  requestId                   String                       @unique @db.Uuid
+  roomId                      String
+  projectId                   String
+  actorUserId                 String?
+  actorEmail                  String
+  action                      CallRoomEpisodeBindingAction
+  previousEpisodeProductionId String?
+  previousEpisodeSlug         String?
+  nextEpisodeProductionId     String
+  nextEpisodeSlug             String
+  reason                      String?
+  expectedRoomUpdatedAt       DateTime
+  roomUpdatedAtBefore         DateTime
+  roomUpdatedAtAfter          DateTime
+  metadataJson                Json                         @default("{}")
+  createdAt                   DateTime                     @default(now())
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model CaptureRoomStateReceipt {

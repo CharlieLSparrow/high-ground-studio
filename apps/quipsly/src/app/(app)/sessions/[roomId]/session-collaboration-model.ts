@@ -4,6 +4,29 @@ export type SessionCollaborationContext = {
   project: { id: string; name: string; slug: string } | null;
   episode: { id: string; title: string; slug: string } | null;
   binding: "EPISODE" | "PROJECT" | "STANDALONE";
+  episodeRepair?: SessionEpisodeBindingRepairState | null;
+  episodeBindingHistory?: Array<{
+    id: string;
+    action: "BIND" | "REBIND" | "NOOP";
+    previousEpisodeSlug: string | null;
+    nextEpisodeSlug: string;
+    reason: string | null;
+    createdAt: string;
+  }>;
+};
+
+export type SessionEpisodeBindingRepairState = {
+  canRepair: boolean;
+  roomUpdatedAt: string;
+  currentEpisodeProductionId: string | null;
+  currentRelationshipInvalid: boolean;
+  candidates: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    status: string;
+    updatedAt: string;
+  }>;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -23,6 +46,8 @@ export function episodeSlugFromSessionMetadata(purpose: unknown, metadataJson: u
 export function buildSessionCollaborationContext(input: {
   project?: { id: string; name: string; slug: string } | null;
   episode?: { id: string; title: string; slug: string } | null;
+  episodeRepair?: SessionEpisodeBindingRepairState | null;
+  episodeBindingHistory?: SessionCollaborationContext["episodeBindingHistory"];
 }): SessionCollaborationContext {
   const project = input.project ?? null;
   const episode = project ? input.episode ?? null : null;
@@ -30,6 +55,8 @@ export function buildSessionCollaborationContext(input: {
     project,
     episode,
     binding: episode ? "EPISODE" : project ? "PROJECT" : "STANDALONE",
+    episodeRepair: input.episodeRepair ?? null,
+    episodeBindingHistory: input.episodeBindingHistory ?? [],
   };
 }
 
