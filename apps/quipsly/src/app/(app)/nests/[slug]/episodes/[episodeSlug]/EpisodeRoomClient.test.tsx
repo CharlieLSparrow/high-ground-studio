@@ -11,6 +11,9 @@ jest.mock("./EpisodeRoomChat", () => function EpisodeRoomChatStub() {
 jest.mock("@/components/session-thread", () => ({
   SessionThread: ({ scopeLabel }: { scopeLabel?: string }) => <section>{scopeLabel || "Session thread"}</section>,
 }));
+jest.mock("@/components/session-invitations", () => ({
+  SessionInvitations: () => <section>Session invitations</section>,
+}));
 
 const originalFetch = globalThis.fetch;
 

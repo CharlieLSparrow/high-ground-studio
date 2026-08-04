@@ -291,6 +291,50 @@ async function loadThread(
   action: "read" | "write",
 ) {
   const prisma = getPrismaClient();
+
+  // A Session participant owns access to the meeting thread without receiving
+  // access to the surrounding Nest. Resolve this scope at the CallRoom boundary
+  // first; falling through to project access would make a Session-only invite
+  // either useless or accidentally broader than intended.
+  if (scope.sessionRoomId) {
+    const sessionRoom = await prisma.callRoom.findFirst({
+      where: {
+        ...(action === "write"
+          ? sessionMutationAccessWhere(scope.sessionRoomId, actor)
+          : sessionConversationAccessWhere(scope.sessionRoomId, actor)),
+        project: { is: { slug: projectSlug } },
+      },
+      select: {
+        id: true,
+        title: true,
+        purpose: true,
+        status: true,
+        createdByUserId: true,
+        participants: {
+          where: { userId: actor.id },
+          take: 1,
+          select: { role: true },
+        },
+        project: { select: { id: true, slug: true, name: true } },
+      },
+    });
+    if (!sessionRoom?.project) {
+      return { ok: false as const, status: 404, error: "Session thread is not available." };
+    }
+    const thread = await ensureThread(sessionRoom.project.id, sessionRoom.project.name, scope.key);
+    return {
+      ok: true as const,
+      project: sessionRoom.project,
+      episode: null,
+      sessionRoom,
+      thread,
+      access: {
+        role: sessionRoom.participants[0]?.role
+          || (sessionRoom.createdByUserId === actor.id ? "HOST" : "SESSION_PARTICIPANT"),
+      },
+    };
+  }
+
   const access = await resolveStudioProjectAccess({
     projectSlug,
     email: actor.email,
@@ -327,23 +371,8 @@ async function loadThread(
     return { ok: false as const, status: 404, error: "Episode chat is not available." };
   }
 
-  const sessionRoom = scope.sessionRoomId
-    ? await prisma.callRoom.findFirst({
-        where: {
-          ...(action === "write"
-            ? sessionMutationAccessWhere(scope.sessionRoomId, actor)
-            : sessionConversationAccessWhere(scope.sessionRoomId, actor)),
-          projectId: project.id,
-        },
-        select: { id: true, title: true, purpose: true, status: true },
-      })
-    : null;
-  if (scope.sessionRoomId && !sessionRoom) {
-    return { ok: false as const, status: 404, error: "Session thread is not available." };
-  }
-
   const thread = await ensureThread(project.id, project.name, scope.key);
-  return { ok: true as const, project, episode, sessionRoom, thread, access };
+  return { ok: true as const, project, episode, sessionRoom: null, thread, access };
 }
 
 export async function GET(request: NextRequest) {

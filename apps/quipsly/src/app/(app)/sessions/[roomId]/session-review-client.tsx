@@ -8,6 +8,7 @@ import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, Tran
 
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { LiveSessionRoom } from "@/components/live-session-room";
+import { SessionInvitations } from "@/components/session-invitations";
 import { SessionThread } from "@/components/session-thread";
 import { sessionExperienceForPurpose } from "@/lib/session-experience";
 
@@ -1892,6 +1893,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
           kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
           purpose={preparation?.purpose || "COACHING"}
         />
+        <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
         {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
       </div> : null}
 

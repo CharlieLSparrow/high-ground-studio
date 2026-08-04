@@ -142,6 +142,43 @@ Legacy clients that omit a client instance retain the canonical participant
 identity. New browser clients persist a random installation-scoped identifier
 in local storage; it is not an account identifier or credential.
 
+## Session-scoped invitations and lobby
+
+A podcast guest or coaching client does not need the surrounding Nest merely
+to attend one Session. `CallRoomInvitation` is therefore a separate ledger
+from `StudioNestInvite`:
+
+- the host, coach, producer, staff member, or Nest owner/editor chooses one
+  email, display name, Session role, and 24-hour, 7-day, or 30-day expiry;
+- Nest stores only an HMAC of 256-bit random `qsinv_` token material;
+- the raw link is returned once for explicit copy or system sharing, and no
+  email, calendar invite, or message is represented as sent;
+- opening the link is read-only and reveals only a masked recipient, bounded
+  Session metadata, role, schedule, and consent-safe lobby explanation;
+- acceptance is a POST, requires the current verified Quipsly/Firebase email to
+  match exactly, atomically consumes the token, and binds one canonical
+  `CallParticipant`;
+- wrong-account inspection changes nothing, accepted links cannot replay, and
+  pending links can be revoked without claiming a connected participant was
+  removed;
+- the accepted participant can access only the Session shell, live room, and
+  `session:<callRoomId>` thread unless another explicit Nest or booking grant
+  exists.
+
+Session threads are physically stored in the Nest chat tables so they inherit
+durability and idempotent message receipts, but their authorization resolves at
+the `CallRoom` boundary before any project-access lookup. A Session participant
+cannot change the thread key to read Episode or general Nest chat.
+
+The lobby borrows Riverside's useful preflight sequence—private link, name,
+headphones, microphone/camera permissions, preview, and device menus—while
+requiring Quipsly identity for private coaching and provenance-bearing work.
+LiveKit still receives only a short-lived room-scoped participant token after
+acceptance; the invitation token never reaches LiveKit.
+
+- [Riverside guest lobby](https://support.riverside.fm/hc/en-us/articles/5252042203037-Join-a-Studio-as-a-Guest)
+- [LiveKit tokens and grants](https://docs.livekit.io/home/server/generating-tokens)
+
 ## Conversation scopes
 
 Every message must make its scope obvious:
@@ -205,6 +242,9 @@ Implemented in the browser:
 - real LiveKit room client rather than the retired console-log stub;
 - browser/iPhone device-scoped coexistence tokens;
 - a durable Session thread distinct from the Episode thread;
+- expiring, one-time, email-bound Session invitation links with a preflight
+  lobby, wrong-account refusal, pending-link revocation, and no implicit Nest
+  membership or delivery claim;
 - the selected Episode recording Session now exposes its take-specific thread
   immediately beside its embedded Live Room, while the persistent Episode
   thread remains the writing-to-publishing conversation;
@@ -233,6 +273,11 @@ Local operational proof on 2026-08-04:
 - a separate visible device operation exposed real Mac, virtual, and MOTIV Mix
   inputs/outputs, previewed the chosen setup without transmitting or recording,
   and retained the exact choice after reload.
+- a host created an invitation through the rendered live workspace; the wrong
+  signed-in account was refused without mutating the ledger; the invited client
+  accepted; the raw token disappeared; replay was refused; and the client then
+  joined the two-browser LiveKit room and completed a Session-thread round trip
+  without receiving Nest access.
 
 This proves the local browser/browser collaboration kernel and real-device
 setup UI. It is not physical iPhone interoperability, long-take source proof,
@@ -242,14 +287,17 @@ Still gated:
 
 1. approve and configure a LiveKit deployment and scoped server credentials in local,
    preview, and production environments;
-2. complete signed-in physical browser validation of OPFS recovery, long takes,
+2. add authorized delivery adapters and accepted-participant removal/kick with
+   provider reconciliation; link copy/system sharing is intentionally not
+   represented as email or calendar delivery;
+3. complete signed-in physical browser validation of OPFS recovery, long takes,
    container salvage after browser loss, external-device contention, exact
    upload/finalization, and editor playback;
-3. complete two-person browser/iPhone acceptance with device route loss,
+4. complete two-person browser/iPhone acceptance with device route loss,
    reconnect, headphones, drift, and source/editor readback;
-4. operate shared Watch with two real participants and verify control latency,
+5. operate shared Watch with two real participants and verify control latency,
    clip preparation, reconnect, exact ranges, and editor projection;
-5. finish the provider-recording outbox, per-room lock, and reconciliation
+6. finish the provider-recording outbox, per-room lock, and reconciliation
    before enabling egress START in production.
 
 ## Provider decision

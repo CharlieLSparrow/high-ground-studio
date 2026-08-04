@@ -7,6 +7,7 @@ import {
   sessionActorAccessWhere,
   sessionMutationAccessWhere,
   sessionMutationActorAccessWhere,
+  sessionInvitationAccessWhere,
 } from "./session-access";
 
 describe("canonical Session access", () => {
@@ -95,5 +96,27 @@ describe("canonical Session access", () => {
         isStaff: true,
       }),
     ).toEqual({ id: "room-1" });
+  });
+
+  it("lets hosts, coaches, and producers invite without letting ordinary guests expand the room", () => {
+    const where = sessionInvitationAccessWhere("room-1", {
+      id: "producer-1",
+      primaryEmail: "producer@example.test",
+    });
+    expect(where).toEqual(expect.objectContaining({
+      id: "room-1",
+      OR: expect.arrayContaining([
+        {
+          participants: {
+            some: {
+              userId: "producer-1",
+              role: { in: ["HOST", "COACH", "PRODUCER"] },
+            },
+          },
+        },
+      ]),
+    }));
+    expect(JSON.stringify(where)).not.toContain('"GUEST"');
+    expect(JSON.stringify(where)).not.toContain('"CLIENT"');
   });
 });

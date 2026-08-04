@@ -209,6 +209,13 @@ enum CallParticipantRole {
   OBSERVER
 }
 
+enum CallRoomInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 enum RecordingConsentStatus {
   REQUESTED
   GRANTED
@@ -613,6 +620,8 @@ model User {
   paymentRecords                  PaymentRecord[]                             @relation("PaymentRecordUser")
   callRoomsCreated                CallRoom[]                                  @relation("CallRoomCreatedBy")
   callParticipants                CallParticipant[]                           @relation("CallParticipantUser")
+  callRoomInvitationsCreated      CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
+  callRoomInvitationsAccepted     CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
   recordingConsents               RecordingConsent[]                          @relation("RecordingConsentUser")
   coachingNotesAuthored           CoachingNote[]                              @relation("CoachingNoteAuthor")
   coachingNoteRevisionsAuthored   CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
@@ -1611,6 +1620,7 @@ model CallRoom {
   createdByUser                 User?                           @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   project                       StudioProject?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   participants                  CallParticipant[]
+  invitations                   CallRoomInvitation[]
   recordingConsents             RecordingConsent[]
   stateReceipts                 CaptureRoomStateReceipt[]
   recordingAssets               RecordingAsset[]
@@ -1771,10 +1781,41 @@ model CallParticipant {
   recordingConsents             RecordingConsent[]
   recordingAssets               RecordingAsset[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
+  acceptedInvitations           CallRoomInvitation[]
 
   @@index([roomId, role])
   @@index([userId, createdAt])
   @@index([email, createdAt])
+}
+
+model CallRoomInvitation {
+  id                 String                   @id @default(cuid())
+  roomId             String
+  email              String
+  displayName        String?
+  role               CallParticipantRole      @default(GUEST)
+  status             CallRoomInvitationStatus @default(PENDING)
+  tokenHash          String?                  @unique
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  revokedAt          DateTime?
+  createdByUserId    String?
+  acceptedByUserId   String?
+  participantId      String?
+  participantCreated Boolean                  @default(false)
+  metadataJson       Json                     @default("{}")
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  room        CallRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy   User?            @relation("CallRoomInvitationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  acceptedBy  User?            @relation("CallRoomInvitationAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: SetNull)
+  participant CallParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([roomId, email])
+  @@index([roomId, status, expiresAt])
+  @@index([email, status, expiresAt])
+  @@index([participantId])
 }
 
 model RecordingConsent {

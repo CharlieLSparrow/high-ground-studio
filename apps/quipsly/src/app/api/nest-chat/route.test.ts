@@ -204,7 +204,7 @@ describe("scoped Nest chat threads", () => {
     });
   });
 
-  it("authorizes a Session thread against the meeting as well as the Nest", async () => {
+  it("authorizes a Session-only participant without granting the surrounding Nest", async () => {
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
       allowed: true,
       projectId: "project-1",
@@ -215,6 +215,13 @@ describe("scoped Nest chat threads", () => {
       title: "Private coaching follow-up",
       purpose: "COACHING",
       status: "PLANNED",
+      createdByUserId: "host-1",
+      participants: [{ role: "CLIENT" }],
+      project: {
+        id: "project-1",
+        slug: "high-ground-odyssey",
+        name: "High Ground Odyssey",
+      },
     });
     prisma.studioNestChatThread.upsert.mockResolvedValue({
       id: "thread-session-1",
@@ -238,11 +245,24 @@ describe("scoped Nest chat threads", () => {
     expect(prisma.callRoom.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: "room-1",
-        projectId: "project-1",
+        project: { is: { slug: "high-ground-odyssey" } },
         OR: expect.any(Array),
       }),
-      select: { id: true, title: true, purpose: true, status: true },
+      select: {
+        id: true,
+        title: true,
+        purpose: true,
+        status: true,
+        createdByUserId: true,
+        participants: {
+          where: { userId: "user-1" },
+          take: 1,
+          select: { role: true },
+        },
+        project: { select: { id: true, slug: true, name: true } },
+      },
     });
+    expect(resolveStudioProjectAccess).not.toHaveBeenCalled();
   });
 
   it("does not create a Session thread for a project viewer outside the meeting", async () => {

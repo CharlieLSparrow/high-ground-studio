@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
+
 export type SessionAccessActor = {
   id: string;
   email?: string | null;
@@ -98,6 +100,36 @@ export function sessionMutationActorAccessWhere(actor: SessionAccessActor) {
   };
 }
 
+/**
+ * Invitation authority is narrower than ordinary Session collaboration.
+ * A client or guest may contribute to their own Session, but cannot expand the
+ * participant list. Hosts, coaches, producers, the creator, staff, and Nest
+ * owners/editors can issue or revoke expiring Session-scoped invitations.
+ */
+export function sessionInvitationActorAccessWhere(actor: SessionAccessActor): Prisma.CallRoomWhereInput {
+  if (actor.isStaff) return {};
+  const email = normalizedEmail(actor);
+  const conditions: Prisma.CallRoomWhereInput[] = [
+    { createdByUserId: actor.id },
+    { participants: { some: { userId: actor.id, role: { in: ["HOST", "COACH", "PRODUCER"] } } } },
+    { booking: { coachUserId: actor.id } },
+  ];
+  if (email) conditions.push({
+    project: {
+      accessGrants: {
+        some: {
+          email,
+          status: "ACTIVE",
+          role: { in: [...SESSION_MUTATION_PROJECT_ROLES] },
+        },
+      },
+    },
+  });
+  return {
+    OR: conditions,
+  };
+}
+
 export function sessionAccessWhere(roomId: string, actor: SessionAccessActor) {
   return {
     id: roomId,
@@ -122,5 +154,16 @@ export function sessionConversationAccessWhere(
   return {
     id: roomId,
     ...sessionConversationActorAccessWhere(actor),
+  };
+}
+
+
+export function sessionInvitationAccessWhere(
+  roomId: string,
+  actor: SessionAccessActor,
+) {
+  return {
+    id: roomId,
+    ...sessionInvitationActorAccessWhere(actor),
   };
 }

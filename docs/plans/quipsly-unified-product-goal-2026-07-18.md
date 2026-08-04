@@ -7401,3 +7401,39 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   playback, coaching privacy acceptance, and genuine Episode Watch alignment.
   No cloud deployment, invitation, provider recording, source recording, or
   production mutation occurred in this checkpoint.
+
+## 2026-08-04 Session-only guest invitation and lobby checkpoint
+
+- Added a canonical `CallRoomInvitation` ledger and committed migration rather
+  than reusing broad Nest invitations. Each record owns normalized recipient,
+  purpose-safe Session role, expiry, HMAC-only token storage, acceptance and
+  revocation times, actor identities, participant binding, and explicit
+  whether acceptance created the participant row.
+- Hosts, coaches, producers, staff, and Nest owners/editors can create a
+  24-hour, 7-day, or 30-day link from the live workspace. Clients, ordinary
+  guests, observers, and project viewers cannot expand the participant list.
+  The UI returns the raw link once for copy/system sharing and explicitly says
+  that no email, message, calendar invite, provider join, or recording occurred.
+- Added a responsive Session lobby with masked recipient, host/session context,
+  schedule, assigned role, account-match state, account switching, and the
+  microphone/camera/headphone/consent preflight users will encounter after
+  acceptance. Opening the link is read-only; acceptance requires an explicit
+  POST by the exact verified email.
+- Fixed a deeper ownership defect found through real operation: Session chat
+  lived in Nest chat storage but resolved Nest access before Session access. A
+  Session-only invitee could therefore join LiveKit but not collaborate. A
+  `session:<callRoomId>` thread now authorizes at `CallRoom` first and never
+  grants or infers access to Episode/default Nest threads.
+- Operated the complete local host-to-client journey through rendered pages and
+  real APIs. The host created the link; a wrong signed-in account received only
+  Switch account and left the invitation pending; the exact client accepted;
+  the raw token was removed; replay showed an unavailable link; both browsers
+  joined one LiveKit room; the client message reached the host; and independent
+  PostgreSQL readback matched ACCEPTED, CLIENT, and participant identity.
+- This is local browser/browser acceptance, not delivery, physical iPhone, or
+  production-provider proof. Remaining work includes email/calendar delivery
+  adapters with receipts, explicit accepted-participant removal plus provider
+  kick/reconciliation, managed LiveKit preview, browser+iPhone operation,
+  long-take retained-source recovery/upload/editor playback, and genuine HGO
+  and coaching use. No external invitation, recording, deploy, or production
+  mutation occurred.

@@ -66,6 +66,7 @@
     "quipsly:cloud:build-source-retention": "bash scripts/release/quipsly-cloud-build-source-retention.sh",
     "quipsly:local:session-collaboration-dogfood": "node --experimental-strip-types scripts/quipsly-local-session-collaboration-dogfood.mjs",
     "quipsly:local:live-room": "QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-live-room-operation.mjs",
+    "quipsly:local:session-invitation": "QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-invitation-operation.mjs",
     "quipsly:local:calendar-cancellation-dogfood": "node --experimental-strip-types scripts/quipsly-local-calendar-cancellation-dogfood.mjs",
     "quipsly:local:calendar-reconciliation-dogfood": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-calendar-reconciliation-dogfood.mjs",
     "quipsly:local:google-calendar-push-dogfood": "QUIPSLY_LOCAL_GOOGLE_CALENDAR_PUSH_DOGFOOD=1 node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-google-calendar-push-dogfood.mjs",

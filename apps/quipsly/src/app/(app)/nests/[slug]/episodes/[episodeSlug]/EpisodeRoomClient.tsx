@@ -35,6 +35,7 @@ import {
 
 import LocalDateTime from "@/components/LocalDateTime";
 import { LiveSessionRoom } from "@/components/live-session-room";
+import { SessionInvitations } from "@/components/session-invitations";
 import { SessionThread } from "@/components/session-thread";
 import {
   episodeRoomTimelineClips,
@@ -692,6 +693,9 @@ export default function EpisodeRoomClient({
               onEpisodeWatchHint={receiveEpisodeWatchHint}
               compact
             />
+            <div className="mt-4">
+              <SessionInvitations roomId={recordingSession.id} purpose="PODCAST" />
+            </div>
             <div className="mt-4">
               <SessionThread
                 projectSlug={projectSlug}
