@@ -35,7 +35,14 @@ Date: 2026-08-04
   join-token and Session-chat denial, workspace 404, retained evidence, and
   no-effect restoration. See
   `docs/coordination/2026-08-04-session-participant-access-reconciliation.md`.
-- Full Nest Jest passes 294 suites / 1,540 runnable tests, the 173-route Nest
+- The host participant manager now projects invitation, acceptance, removal,
+  provider reconciliation, and restoration facts from the canonical append-only
+  ledgers. It also shows unexpired browser/Capture join-key leases while
+  explicitly refusing to call them current presence; provider identities and
+  credentials remain server-only. The retained two-account operation rendered
+  all five change kinds and safe device authority. See
+  `docs/coordination/2026-08-04-session-collaboration-activity.md`.
+- Full Nest Jest passes 295 suites / 1,544 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

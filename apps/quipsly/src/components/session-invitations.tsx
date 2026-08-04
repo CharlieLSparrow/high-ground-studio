@@ -4,12 +4,16 @@ import {
   CalendarClock,
   Check,
   Copy,
+  History,
+  KeyRound,
+  Laptop,
   Link2,
   LoaderCircle,
   RefreshCw,
   RotateCcw,
   Send,
   ShieldCheck,
+  Smartphone,
   UserPlus,
   UserRoundX,
 } from "lucide-react";
@@ -48,7 +52,46 @@ type InvitationPacket = {
   invitePath?: string;
   participant?: NonNullable<Invitation["participant"]>;
   provider?: { status?: string; nextAction?: string };
+  collaboration?: {
+    activity?: CollaborationActivity[];
+    joinKeyLeases?: JoinKeyLease[];
+    boundaries?: {
+      appendOnlyAccessHistory?: boolean;
+      joinKeyLeaseIsPresenceProof?: boolean;
+      providerIdentitiesExposed?: boolean;
+      credentialsExposed?: boolean;
+    };
+  };
 };
+
+type CollaborationActivity = {
+  id: string;
+  kind: string;
+  tone: "neutral" | "positive" | "warning";
+  title: string;
+  detail: string;
+  participantLabel: string;
+  actorLabel: string | null;
+  occurredAt: string;
+  providerStatus: string | null;
+};
+
+type JoinKeyLease = {
+  id: string;
+  participantId: string;
+  participantLabel: string;
+  clientKind: string;
+  deviceLabel: string;
+  issuedAt: string;
+  expiresAt: string;
+};
+
+function activityTone(tone: CollaborationActivity["tone"]) {
+  if (tone === "positive")
+    return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-sky-200 bg-sky-50 text-sky-950";
+}
 
 function rolesForPurpose(purpose: string) {
   const normalized = normalizeSessionPurpose(purpose);
@@ -104,6 +147,8 @@ export function SessionInvitations({
   const roles = useMemo(() => rolesForPurpose(purpose), [purpose]);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [activity, setActivity] = useState<CollaborationActivity[]>([]);
+  const [joinKeyLeases, setJoinKeyLeases] = useState<JoinKeyLease[]>([]);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState(roles[0]?.value || "GUEST");
@@ -144,6 +189,8 @@ export function SessionInvitations({
     }
     setAuthorized(true);
     setInvitations(packet.invitations || []);
+    setActivity(packet.collaboration?.activity || []);
+    setJoinKeyLeases(packet.collaboration?.joinKeyLeases || []);
     setStatus("idle");
   }, [roomId]);
 
@@ -190,10 +237,10 @@ export function SessionInvitations({
     ]);
     setInviteUrl(new URL(packet.invitePath, window.location.origin).toString());
     setInviteUrlInvitationId(packet.invitation.id);
+    await load();
     setMessage(
       "Session link created. Quipsly has not emailed or messaged anyone; copy or share it when you are ready.",
     );
-    setStatus("idle");
   }
 
   async function copy() {
@@ -241,8 +288,8 @@ export function SessionInvitations({
       setInviteUrl("");
       setInviteUrlInvitationId("");
     }
+    await load();
     setMessage("The pending link was revoked. It can no longer be accepted.");
-    setStatus("idle");
   }
 
   async function changeParticipantAccess(
@@ -304,6 +351,7 @@ export function SessionInvitations({
       ),
     );
     setConfirmingRemovalId("");
+    await load();
     if (action === "REMOVE") {
       setMessage(
         packet.provider?.nextAction ||
@@ -319,7 +367,6 @@ export function SessionInvitations({
           "Provider reconciliation finished and canonical Session access remains removed.",
       );
     }
-    setStatus("idle");
   }
 
   if (authorized === false) return null;
@@ -580,6 +627,121 @@ export function SessionInvitations({
             </p>
           </section>
         </div>
+        <section
+          className="mt-5 rounded-2xl border border-[#d8c7a7] bg-[#f8f3e8] p-4"
+          aria-labelledby="session-access-activity-title"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p
+                id="session-access-activity-title"
+                className="flex items-center gap-2 text-sm font-black text-[#3d3122]"
+              >
+                <History size={17} className="text-violet-700" />
+                Access activity
+              </p>
+              <p className="mt-1 max-w-3xl text-[11px] font-semibold leading-5 text-[#765f40]">
+                A readable history of invitations and participant access. This
+                is separate from the episode or coaching transcript, chat, and
+                media timeline so administrative changes cannot rewrite the
+                creative record.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={status === "loading"}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full border border-[#d8c7a7] bg-white px-3 text-[10px] font-black text-[#5b472f] disabled:opacity-50"
+            >
+              <RefreshCw
+                size={13}
+                className={status === "loading" ? "animate-spin" : ""}
+              />
+              Refresh history
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.56fr)]">
+            <div>
+              {activity.length ? (
+                <ol className="space-y-2">
+                  {activity.map((item) => (
+                    <li
+                      key={item.id}
+                      className={`rounded-xl border p-3 ${activityTone(item.tone)}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-black">{item.title}</p>
+                          <p className="mt-0.5 text-[10px] font-bold opacity-80">
+                            {item.participantLabel}
+                            {item.actorLabel ? ` · by ${item.actorLabel}` : ""}
+                            {` · ${new Date(item.occurredAt).toLocaleString()}`}
+                          </p>
+                        </div>
+                        {item.providerStatus ? (
+                          <span className="rounded-full border border-current/20 bg-white/70 px-2 py-1 text-[9px] font-black uppercase tracking-wide">
+                            Provider {item.providerStatus.toLowerCase()}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-[11px] font-semibold leading-5">
+                        {item.detail}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="rounded-xl border border-dashed border-[#d8c7a7] bg-white/70 p-4 text-xs font-semibold leading-5 text-[#765f40]">
+                  Invitation and access changes will appear here. Quipsly does
+                  not infer activity that it has not recorded.
+                </p>
+              )}
+            </div>
+
+            <aside className="rounded-xl border border-violet-200 bg-white p-3">
+              <p className="flex items-center gap-2 text-xs font-black text-violet-950">
+                <KeyRound size={15} />
+                Unexpired join keys
+              </p>
+              <p className="mt-1 text-[10px] font-semibold leading-4 text-violet-900">
+                A join key means Quipsly recently prepared short-lived call
+                authority for a device. It is not proof that the device is
+                currently connected. Credentials and provider identities are
+                never displayed here.
+              </p>
+              {joinKeyLeases.length ? (
+                <ul className="mt-3 space-y-2">
+                  {joinKeyLeases.map((lease) => (
+                    <li
+                      key={lease.id}
+                      className="rounded-lg border border-violet-100 bg-violet-50 p-2"
+                    >
+                      <p className="flex items-center gap-2 text-[11px] font-black text-violet-950">
+                        {lease.clientKind.toLowerCase() === "ios" ? (
+                          <Smartphone size={13} />
+                        ) : (
+                          <Laptop size={13} />
+                        )}
+                        {lease.deviceLabel}
+                      </p>
+                      <p className="mt-1 text-[10px] font-semibold text-violet-800">
+                        {lease.participantLabel} · expires{" "}
+                        {new Date(lease.expiresAt).toLocaleString()}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 rounded-lg border border-dashed border-violet-200 bg-violet-50/50 p-3 text-[10px] font-semibold leading-4 text-violet-900">
+                  No unexpired join keys. This does not determine whether a
+                  previously connected device is still visible to the media
+                  provider.
+                </p>
+              )}
+            </aside>
+          </div>
+        </section>
       </div>
     </details>
   );

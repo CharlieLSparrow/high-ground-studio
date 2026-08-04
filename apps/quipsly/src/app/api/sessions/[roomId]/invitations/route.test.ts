@@ -7,7 +7,9 @@ import { DELETE, GET, POST } from "./route";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
-jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
 
 const now = new Date("2026-08-04T18:00:00.000Z");
 const expiresAt = new Date("2026-08-11T18:00:00.000Z");
@@ -19,6 +21,8 @@ const prisma = {
     upsert: jest.fn(),
     updateMany: jest.fn(),
   },
+  callParticipantAccessReceipt: { findMany: jest.fn() },
+  callParticipantProviderGrantReceipt: { findMany: jest.fn() },
 };
 
 function request(method: string, body?: unknown) {
@@ -53,18 +57,22 @@ describe("Session invitation API", () => {
     });
     prisma.callParticipant.findFirst.mockResolvedValue(null);
     prisma.callRoomInvitation.findMany.mockResolvedValue([]);
+    prisma.callParticipantAccessReceipt.findMany.mockResolvedValue([]);
+    prisma.callParticipantProviderGrantReceipt.findMany.mockResolvedValue([]);
     prisma.callRoomInvitation.updateMany.mockResolvedValue({ count: 1 });
-    prisma.callRoomInvitation.upsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => ({
-      id: "invite-1",
-      email: create.email,
-      displayName: create.displayName,
-      role: create.role,
-      status: "PENDING",
-      expiresAt: create.expiresAt || expiresAt,
-      acceptedAt: null,
-      revokedAt: null,
-      createdAt: now,
-    }));
+    prisma.callRoomInvitation.upsert.mockImplementation(
+      async ({ create }: { create: Record<string, unknown> }) => ({
+        id: "invite-1",
+        email: create.email,
+        displayName: create.displayName,
+        role: create.role,
+        status: "PENDING",
+        expiresAt: create.expiresAt || expiresAt,
+        acceptedAt: null,
+        revokedAt: null,
+        createdAt: now,
+      }),
+    );
   });
 
   afterAll(() => {
@@ -82,21 +90,105 @@ describe("Session invitation API", () => {
         grantsNestAccess: false,
         emailSent: false,
       },
+      collaboration: {
+        activity: [],
+        joinKeyLeases: [],
+        boundaries: {
+          appendOnlyAccessHistory: true,
+          joinKeyLeaseIsPresenceProof: false,
+          providerIdentitiesExposed: false,
+          credentialsExposed: false,
+        },
+      },
     });
   });
 
+  it("projects access history and safe join-key leases without provider identities or credentials", async () => {
+    prisma.callRoomInvitation.findMany.mockResolvedValue([
+      {
+        id: "invite-1",
+        email: "guest@example.test",
+        displayName: "Guest",
+        role: "GUEST",
+        status: "ACCEPTED",
+        expiresAt,
+        acceptedAt: new Date("2026-08-04T17:00:00.000Z"),
+        revokedAt: null,
+        createdAt: new Date("2026-08-04T16:00:00.000Z"),
+        participantCreated: true,
+        participant: {
+          id: "participant-1",
+          accessStatus: "REMOVED",
+          accessRevision: 1,
+          providerAccessStatus: "CONVERGED",
+          providerAccessErrorCode: null,
+        },
+        createdBy: { name: "Host", primaryEmail: "host@example.test" },
+        acceptedBy: { name: "Guest", primaryEmail: "guest@example.test" },
+      },
+    ]);
+    prisma.callParticipantAccessReceipt.findMany.mockResolvedValue([
+      {
+        id: "receipt-1",
+        action: "PROVIDER_RECONCILE",
+        providerStatus: "CONVERGED",
+        createdAt: new Date("2026-08-04T17:30:00.000Z"),
+        actor: { name: "Host", primaryEmail: "host@example.test" },
+        participant: { displayName: "Guest", email: "guest@example.test" },
+      },
+    ]);
+    prisma.callParticipantProviderGrantReceipt.findMany.mockResolvedValue([
+      {
+        id: "lease-1",
+        participantId: "participant-1",
+        clientInstanceId: "web-device",
+        clientKind: "web",
+        deviceLabel: "Quipsly Web · MacIntel",
+        issuedAt: new Date(Date.now() - 60_000),
+        expiresAt: new Date(Date.now() + 600_000),
+        participant: { displayName: "Guest", email: "guest@example.test" },
+      },
+    ]);
+
+    const response = await GET(request("GET"), context);
+    const packet = await response.json();
+    expect(packet.collaboration).toMatchObject({
+      activity: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "PROVIDER_RECONCILIATION",
+          participantLabel: "Guest",
+        }),
+      ]),
+      joinKeyLeases: [
+        expect.objectContaining({
+          id: "lease-1",
+          deviceLabel: "Quipsly Web · MacIntel",
+        }),
+      ],
+    });
+    expect(JSON.stringify(packet)).not.toContain("providerIdentity");
+    expect(JSON.stringify(packet)).not.toContain("tokenJti");
+  });
+
   it("creates an expiring email-bound link while persisting only its HMAC", async () => {
-    const response = await POST(request("POST", {
-      email: " Guest@Example.Test ",
-      displayName: "Guest",
-      role: "GUEST",
-      expiresInHours: 168,
-    }), context);
+    const response = await POST(
+      request("POST", {
+        email: " Guest@Example.Test ",
+        displayName: "Guest",
+        role: "GUEST",
+        expiresInHours: 168,
+      }),
+      context,
+    );
     expect(response.status).toBe(201);
     const packet = await response.json();
     expect(packet).toMatchObject({
       ok: true,
-      invitation: { email: "guest@example.test", role: "GUEST", status: "PENDING" },
+      invitation: {
+        email: "guest@example.test",
+        role: "GUEST",
+        status: "PENDING",
+      },
       boundaries: {
         sessionScoped: true,
         grantsNestAccess: false,
@@ -107,19 +199,24 @@ describe("Session invitation API", () => {
     });
     expect(packet.invitePath).toMatch(/^\/sessions\/join\?token=qsinv_/);
     expect(JSON.stringify(packet)).not.toContain("tokenHash");
-    expect(prisma.callRoomInvitation.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: expect.objectContaining({
-        roomId: "room-1",
-        email: "guest@example.test",
-        tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    expect(prisma.callRoomInvitation.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          roomId: "room-1",
+          email: "guest@example.test",
+          tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
       }),
-    }));
+    );
     const stored = prisma.callRoomInvitation.upsert.mock.calls[0][0].create;
     expect(stored.tokenHash).not.toContain("qsinv_");
   });
 
   it("revokes only the unused link without claiming participant removal", async () => {
-    const response = await DELETE(request("DELETE", { invitationId: "invite-1" }), context);
+    const response = await DELETE(
+      request("DELETE", { invitationId: "invite-1" }),
+      context,
+    );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,

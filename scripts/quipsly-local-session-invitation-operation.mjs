@@ -594,6 +594,80 @@ try {
     "Append-only restoration receipt is missing.",
   );
 
+  const collaborationReadback = await hostManagerPage.evaluate(
+    async ({ callRoomId }) => {
+      const response = await fetch(
+        `/api/sessions/${encodeURIComponent(callRoomId)}/invitations`,
+        { cache: "no-store" },
+      );
+      return {
+        status: response.status,
+        packet: await response.json().catch(() => ({})),
+      };
+    },
+    { callRoomId: ROOM_ID },
+  );
+  assert(
+    collaborationReadback.status === 200 &&
+      collaborationReadback.packet?.ok === true,
+    "Host could not read the rendered Session collaboration activity boundary.",
+  );
+  const collaborationKinds = new Set(
+    (collaborationReadback.packet?.collaboration?.activity || []).map(
+      (item) => item.kind,
+    ),
+  );
+  for (const expectedKind of [
+    "INVITATION_CREATED",
+    "INVITATION_ACCEPTED",
+    "PARTICIPANT_REMOVED",
+    "PROVIDER_RECONCILIATION",
+    "PARTICIPANT_RESTORED",
+  ]) {
+    assert(
+      collaborationKinds.has(expectedKind),
+      `Collaboration activity omitted ${expectedKind}.`,
+    );
+  }
+  const collaborationBoundary =
+    collaborationReadback.packet?.collaboration?.boundaries;
+  assert(
+    collaborationBoundary?.appendOnlyAccessHistory === true &&
+      collaborationBoundary?.joinKeyLeaseIsPresenceProof === false &&
+      collaborationBoundary?.providerIdentitiesExposed === false &&
+      collaborationBoundary?.credentialsExposed === false,
+    "Collaboration activity safety boundaries are incomplete.",
+  );
+  assert(
+    (collaborationReadback.packet?.collaboration?.joinKeyLeases || []).length >=
+      1,
+    "Host collaboration readback omitted recent short-lived device authority.",
+  );
+  const serializedCollaboration = JSON.stringify(
+    collaborationReadback.packet?.collaboration || {},
+  );
+  for (const forbiddenField of [
+    "providerIdentity",
+    "tokenJti",
+    "accessToken",
+    "apiKey",
+    "apiSecret",
+  ]) {
+    assert(
+      !serializedCollaboration.includes(forbiddenField),
+      `Collaboration readback exposed forbidden field ${forbiddenField}.`,
+    );
+  }
+  await hostManagerPage
+    .getByText("Access activity", { exact: true })
+    .waitFor({ timeout: 20_000 });
+  await hostManagerPage
+    .getByText("Provider access reconciled", { exact: true })
+    .waitFor({ timeout: 20_000 });
+  await hostManagerPage
+    .getByText(/not proof that the device is currently connected/i)
+    .waitFor({ timeout: 20_000 });
+
   console.log(
     JSON.stringify(
       {
@@ -617,6 +691,10 @@ try {
         providerReconciliationReadback: "passed",
         immutableAccessReceipts: "passed",
         participantRestoreWithoutAutoJoin: "passed",
+        collaborationActivityProjection: "passed",
+        safeJoinKeyLeaseReadback: "passed",
+        joinKeyLeasePresenceClaimed: false,
+        providerCredentialsExposed: false,
         externalInvitationSent: false,
         retainedSourceStarted: false,
         providerRecordingStarted: false,

@@ -110,7 +110,8 @@ separate refusal path for participants whose booking or Nest authority remains.
   read back token invalidation with real project credentials.
 - Repeat browser-to-physical-iPhone removal while Capture has an active room
   connection and while it holds an unexpired but disconnected token.
-- Add a user-facing access activity projection over the append-only receipts.
+- Repeat the new user-facing access activity projection with deployed LiveKit
+  Cloud and a physical browser/iPhone pair.
 - Add production alerts for provider reconciliation states that remain
   `BLOCKED` or `FAILED`; never restore access automatically.
 - Complete the broader physical-device, real podcast, real coaching, playback,

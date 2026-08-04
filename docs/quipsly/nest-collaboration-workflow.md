@@ -79,6 +79,10 @@ Important behavior:
   presence, disconnects each, and requires provider readback before claiming
   convergence. Self-hosted tokens remain bounded by their recorded expiry;
   LiveKit Cloud can additionally revoke current participant tokens.
+- The authorized Session manager projects a human-readable access activity
+  stream from invitation and append-only access receipts. Its unexpired
+  browser/Capture join-key list is device authority, not current-presence proof,
+  and never exposes provider identities or credentials.
 
 ## Why this is separate from Organization membership
 
@@ -94,18 +98,20 @@ The access-grant model avoids forcing every collaborator into an organization to
 - No real-time presence or anchored inline comment threads tied to grants yet. Episode chat and the shared playback clock use short polling.
 - No per-document or per-block access inside a Nest yet.
 - No UI for changing an existing active grant's role; currently re-granting updates it.
-- No collaborator activity feed yet.
+- No Nest-wide collaborator activity feed yet. Session invitation and
+  participant-access activity is implemented.
 - Nest chat has a default project thread plus episode-scoped threads. It has no live websocket updates, typing presence, or GIF search yet. Pasted GIF URLs render inline in the default panel.
 
 ## Next hardening pass
 
 - Add invite emails once email infrastructure is stable.
 - Add role-change UI and audit copy.
-- Add a collaborator activity ledger.
+- Extend the existing append-only Session activity projection to Nest grant and
+  role changes without creating a second mutable access history.
 - Add workspace/org default roles without replacing per-Nest grants.
 - Add visible "shared with me" and "owned by me" filters.
 - Add read-only UI polish so `VIEWER` users see fewer edit controls instead of discovering permissions only after a blocked save.
 - Add tests or smoke coverage for owner, editor, viewer, revoked, and invited-before-account scenarios.
 - Add a safe owner-transfer story before encouraging multiple OWNER grants.
-- Add collaborator activity projections over the append-only Session access
-  receipts; do not create a second mutable participant history.
+- Add real-time provider presence as its own signal; do not infer connection
+  from an unexpired join-key lease.
