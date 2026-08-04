@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
@@ -21,6 +21,33 @@ const segment = {
     { id: "word-2", providerWordIndex: 1, startSeconds: 4.6, endSeconds: 5.2, punctuatedWord: "not", confidence: 0.82 },
     { id: "word-3", providerWordIndex: 2, startSeconds: 5.3, endSeconds: 6, punctuatedWord: "judgmental.", confidence: 0.61 },
   ],
+};
+
+const audioSignalFixture = {
+  schemaVersion: 1 as const,
+  algorithm: "quipsly-audio-signal-window-v1",
+  status: "attention" as const,
+  sampleRateHz: 48_000,
+  channelCount: 1,
+  analyzedFrameCount: 576_000,
+  durationSeconds: 12,
+  windowDurationSeconds: 6,
+  rmsDbfs: -24,
+  samplePeakDbfs: -1,
+  clippedFrameCount: 0,
+  clippedFrameFraction: 0,
+  nearSilentFrameFraction: 0.1,
+  leftRmsDbfs: -24,
+  rightRmsDbfs: null,
+  stereoBalanceDb: null,
+  rmsIsNotLufs: true as const,
+  thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
+  waveform: [
+    { startSeconds: 0, durationSeconds: 6, rmsDbfs: -22, samplePeakDbfs: -2, clippedFrameCount: 0 },
+    { startSeconds: 6, durationSeconds: 6, rmsDbfs: -26, samplePeakDbfs: -1, clippedFrameCount: 0 },
+  ],
+  frequencyProfile: null,
+  observations: [{ kind: "possible-dropout" as const, severity: "attention" as const, startSeconds: 6, endSeconds: 7, detail: "Listen before classifying.", requiresListening: true as const }],
 };
 
 function payload() {
@@ -129,33 +156,7 @@ describe("StudioTranscriptReviewDesk", () => {
   it("shares the decoded waveform, timed words, and protected player without treating a scrub as listening", async () => {
     const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
-    const audioSignal = {
-      schemaVersion: 1 as const,
-      algorithm: "quipsly-audio-signal-window-v1",
-      status: "attention" as const,
-      sampleRateHz: 48_000,
-      channelCount: 1,
-      analyzedFrameCount: 576_000,
-      durationSeconds: 12,
-      windowDurationSeconds: 6,
-      rmsDbfs: -24,
-      samplePeakDbfs: -1,
-      clippedFrameCount: 0,
-      clippedFrameFraction: 0,
-      nearSilentFrameFraction: 0.1,
-      leftRmsDbfs: -24,
-      rightRmsDbfs: null,
-      stereoBalanceDb: null,
-      rmsIsNotLufs: true as const,
-      thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
-      waveform: [
-        { startSeconds: 0, durationSeconds: 6, rmsDbfs: -22, samplePeakDbfs: -2, clippedFrameCount: 0 },
-        { startSeconds: 6, durationSeconds: 6, rmsDbfs: -26, samplePeakDbfs: -1, clippedFrameCount: 0 },
-      ],
-      frequencyProfile: null,
-      observations: [{ kind: "possible-dropout" as const, severity: "attention" as const, startSeconds: 6, endSeconds: 7, detail: "Listen before classifying.", requiresListening: true as const }],
-    };
-    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" audioSignal={audioSignal} />);
+    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" audioSignal={audioSignalFixture} />);
     fireEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     expect(await screen.findByRole("region", { name: "Audio evidence map" })).toBeInTheDocument();
@@ -167,6 +168,56 @@ describe("StudioTranscriptReviewDesk", () => {
     const map = screen.getByRole("button", { name: /Audio level evidence map from/i });
     fireEvent.click(map, { clientX: 100 });
     expect(screen.getByRole("button", { name: /Confirm exactly as heard/i })).toBeDisabled();
+    play.mockRestore();
+  });
+
+  it("explains transcript, signal, mastering, treatment, and unapplied edit evidence on one spectral clock", async () => {
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const context = {
+      setTransform: jest.fn(), fillRect: jest.fn(), drawImage: jest.fn(), putImageData: jest.fn(),
+      fillStyle: "",
+    };
+    jest.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => context as never);
+    Object.defineProperty(globalThis, "ImageData", { configurable: true, writable: true, value: class { width: number; height: number; data: Uint8ClampedArray; constructor(width: number, height: number) { this.width = width; this.height = height; this.data = new Uint8ClampedArray(width * height * 4); } } });
+    jest.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/audio-spectral-evidence/tile")) return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array(512 * 192).buffer } as Response;
+      if (url.includes("/audio-spectral-evidence?")) return { ok: true, status: 200, json: async () => ({
+        ok: true,
+        jobId: "audio-spectral-1",
+        status: "completed",
+        media: { sampleRate: 48_000, channelCount: 1, durationSeconds: 12, minimumFrequencyHz: 20, maximumFrequencyHz: 22_800 },
+        pyramid: { tileWidth: 512, tileHeight: 192, frequencyScale: "logarithmic", frequencyOrientation: "high-to-low", dynamicRangeDb: 120, upperLimitDbfs: 0, levels: [{ id: "overview", tileSpanSeconds: 300, tileCount: 1 }, { id: "browse", tileSpanSeconds: 30, tileCount: 1 }, { id: "detail", tileSpanSeconds: 5, tileCount: 3 }] },
+        error: null,
+        updatedAt: "2026-08-04T20:00:00.000Z",
+      }) } as Response;
+      return { ok: true, json: async () => payload() } as Response;
+    });
+
+    render(<StudioTranscriptReviewDesk
+      projectSlug="hgo"
+      episodeSlug="episode-8"
+      assetId="asset-1"
+      sourceId="source-1"
+      audioSignal={audioSignalFixture}
+      processingEvidenceMarkers={[
+        { id: "treatment-1", category: "treatment", startSeconds: 6, endSeconds: 7, label: "Unpromoted treatment output", detail: "Possible dropout no longer crosses the output threshold.", severity: "attention" },
+        { id: "edit-1", category: "edit", startSeconds: 7, endSeconds: 8, label: "Unapplied edit proposal", detail: "Proposal only; source unchanged.", severity: "attention" },
+      ]}
+      loudnessEvidence={{ integratedLufs: -18.2, truePeakDbtp: -1.8, targetLufs: -16, points: [{ timeSeconds: 4, momentaryLufs: -17, shortTermLufs: -18, integratedLufs: -18.2, truePeakDbtp: -1.8 }] }}
+    />);
+    await userEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
+
+    const spectral = await screen.findByRole("region", { name: "High-resolution spectral evidence" });
+    expect(await screen.findByRole("region", { name: "Shared spectral evidence navigator" })).toHaveTextContent(/One clock · 4 review points/i);
+    expect(screen.getByRole("region", { name: "Shared evidence at selected time" })).toHaveTextContent(/Mastering measurement: -18.2 integrated LUFS/i);
+    expect(screen.getByRole("region", { name: "Shared evidence at selected time" })).toHaveTextContent(/Transcript “Curious,”/i);
+    await userEvent.click(within(spectral).getByRole("button", { name: "Next evidence →" }));
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.getByRole("region", { name: "Shared evidence at selected time" })).toHaveTextContent(/Possible dropout no longer crosses the output threshold/i);
+    expect(screen.getByRole("region", { name: "Shared spectral evidence legend" })).toHaveTextContent(/Treatment/i);
+    expect(screen.getByRole("region", { name: "Shared spectral evidence legend" })).toHaveTextContent(/Edit proposal/i);
+    expect(spectral).toHaveTextContent(/No interpolation · no automatic decision/i);
     play.mockRestore();
   });
 });

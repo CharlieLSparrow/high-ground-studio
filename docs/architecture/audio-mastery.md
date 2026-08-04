@@ -141,6 +141,13 @@ STFT tiles, builds coarser levels by deterministic max pooling, and shares the
 playback clock without turning a visible pattern into an EQ decision. See
 [High-resolution audio spectral evidence](./audio-spectral-evidence.md).
 
+The source measurement is also projected onto that shared clock as integrated
+LUFS, true peak, the selected profile target, and the one-second short-term
+loudness series. Cursor readout selects the nearest measured point without
+interpolation. Source diagnosis and unpromoted treatment-output observations
+remain separately labeled; neither is allowed to masquerade as a promoted
+master or an automatic treatment decision.
+
 Source-to-preview listening defaults to loudness-matched monitor gain. Quipsly
 uses the quieter complete-decode integrated LUFS as the reference and
 attenuates only the louder browser feed with `10^(deltaLU/20)`. This is a

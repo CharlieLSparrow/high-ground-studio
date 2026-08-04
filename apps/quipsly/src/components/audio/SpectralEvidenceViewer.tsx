@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 
+import type { AudioEvidenceTranscriptWord } from "./AudioEvidenceMap";
+import {
+  adjacentSpectralMoment,
+  nearestSpectralLoudnessPoint,
+  spectralEvidenceAtTime,
+  spectralOverlayMoments,
+  spectralTranscriptSlices,
+  type SpectralEvidenceMarker,
+  type SpectralLoudnessEvidence,
+} from "./spectral-evidence-overlay";
+
 type LevelId = "overview" | "browse" | "detail";
 type SpectralStatus = {
   ok?: boolean;
@@ -23,6 +34,8 @@ type SpectralStatus = {
 
 type ViewMode = "whole" | "minute" | "detail";
 const EMPTY: SpectralStatus = { jobId: null, status: "not-queued", media: null, pyramid: null, error: null, updatedAt: null };
+const NO_WORDS: AudioEvidenceTranscriptWord[] = [];
+const NO_MARKERS: SpectralEvidenceMarker[] = [];
 
 function clock(seconds: number) {
   const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
@@ -41,13 +54,32 @@ function viewFor(mode: ViewMode, duration: number, selectedSeconds: number) {
 
 function levelFor(mode: ViewMode): LevelId { return mode === "whole" ? "overview" : mode === "minute" ? "browse" : "detail"; }
 
-export function SpectralEvidenceViewer({ projectSlug, assetId, sourceId, selectedSeconds, playbackReady, onSelect }: {
+export function SpectralEvidenceViewer({
+  projectSlug,
+  assetId,
+  sourceId,
+  selectedSeconds,
+  playbackReady,
+  onSelect,
+  transcriptWords = NO_WORDS,
+  lowConfidenceThreshold = null,
+  transcriptEndSeconds = null,
+  transcriptScopeLabel = "Timed transcript",
+  evidenceMarkers = NO_MARKERS,
+  loudnessEvidence = null,
+}: {
   projectSlug: string;
   assetId: string;
   sourceId: string;
   selectedSeconds: number;
   playbackReady: boolean;
   onSelect: (seconds: number, play: boolean) => void;
+  transcriptWords?: AudioEvidenceTranscriptWord[];
+  lowConfidenceThreshold?: number | null;
+  transcriptEndSeconds?: number | null;
+  transcriptScopeLabel?: string;
+  evidenceMarkers?: SpectralEvidenceMarker[];
+  loudnessEvidence?: SpectralLoudnessEvidence | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +139,35 @@ export function SpectralEvidenceViewer({ projectSlug, assetId, sourceId, selecte
   const duration = status.media?.durationSeconds ?? 0;
   const view = useMemo(() => viewFor(viewMode, Math.max(duration, 0.01), selectedSeconds), [duration, selectedSeconds, viewMode]);
   const currentLevel = status.pyramid?.levels.find((level) => level.id === levelFor(viewMode)) ?? null;
+  const transcriptSlices = useMemo(
+    () => spectralTranscriptSlices(transcriptWords, view.start, view.end, lowConfidenceThreshold),
+    [lowConfidenceThreshold, transcriptWords, view.end, view.start],
+  );
+  const overlayMoments = useMemo(
+    () => spectralOverlayMoments(evidenceMarkers, transcriptWords, lowConfidenceThreshold),
+    [evidenceMarkers, lowConfidenceThreshold, transcriptWords],
+  );
+  const selectedEvidence = useMemo(
+    () => spectralEvidenceAtTime(evidenceMarkers, transcriptWords, selectedSeconds),
+    [evidenceMarkers, selectedSeconds, transcriptWords],
+  );
+  const selectedLoudness = useMemo(
+    () => nearestSpectralLoudnessPoint(loudnessEvidence?.points ?? [], selectedSeconds),
+    [loudnessEvidence?.points, selectedSeconds],
+  );
+  const visibleMarkers = useMemo(
+    () => evidenceMarkers.filter((marker) => marker.startSeconds < view.end && marker.endSeconds >= view.start),
+    [evidenceMarkers, view.end, view.start],
+  );
+  const visibleLoudnessPoints = useMemo(
+    () => (loudnessEvidence?.points ?? []).filter((point) => point.timeSeconds >= view.start && point.timeSeconds <= view.end && point.shortTermLufs !== null),
+    [loudnessEvidence?.points, view.end, view.start],
+  );
+  const loudnessPath = useMemo(() => visibleLoudnessPoints.map((point, index) => {
+    const x = ((point.timeSeconds - view.start) / view.span) * 100;
+    const y = ((0 - Math.max(-60, Math.min(0, point.shortTermLufs as number))) / 60) * 32 + 3;
+    return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" "), [view.span, view.start, visibleLoudnessPoints]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -187,6 +248,13 @@ export function SpectralEvidenceViewer({ projectSlug, assetId, sourceId, selecte
     if (event.key === "Enter" || event.key === " ") onSelect(selectedSeconds, playbackReady);
     else onSelect(Math.max(view.start, Math.min(view.end, selectedSeconds + (event.key === "ArrowLeft" ? -1 : 1) * Math.max(view.span / 100, 0.1))), false);
   };
+  const inspectAdjacent = (direction: "previous" | "next") => {
+    const moment = adjacentSpectralMoment(overlayMoments, selectedSeconds, direction);
+    if (!moment) return;
+    setViewMode("detail");
+    onSelect(moment.startSeconds, false);
+  };
+  const percentWithinView = (seconds: number) => Math.max(0, Math.min(100, ((seconds - view.start) / view.span) * 100));
 
   return <section className="mt-3 rounded-xl border border-indigo-300 bg-slate-950 p-3 text-white sm:p-4" aria-label="High-resolution spectral evidence">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -197,11 +265,40 @@ export function SpectralEvidenceViewer({ projectSlug, assetId, sourceId, selecte
       <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1" role="group" aria-label="Spectral zoom">
         {(["whole", "minute", "detail"] as const).map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode} onClick={() => setViewMode(mode)} className={`rounded-md px-2 py-2 text-[10px] font-black ${viewMode === mode ? "bg-indigo-200 text-indigo-950" : "text-slate-300 hover:bg-slate-800"}`}>{mode === "whole" ? "Whole source" : mode === "minute" ? "One minute" : "Ten seconds"}</button>)}
       </div>
+      {(transcriptWords.length > 0 || evidenceMarkers.length > 0 || loudnessEvidence) ? <div role="region" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-2" aria-label="Shared spectral evidence navigator">
+        <div><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">One clock · {overlayMoments.length} review point{overlayMoments.length === 1 ? "" : "s"}</p><p className="mt-0.5 text-[8px] font-bold text-slate-400">Transcript, measured signal, capture, mastering, treatment, and edit evidence remain distinct overlays.</p></div>
+        <div className="flex gap-1"><button type="button" disabled={!overlayMoments.length} onClick={() => inspectAdjacent("previous")} className="min-h-9 rounded-md border border-slate-600 px-2 text-[9px] font-black disabled:opacity-40">← Previous</button><button type="button" disabled={!overlayMoments.length} onClick={() => inspectAdjacent("next")} className="min-h-9 rounded-md bg-cyan-200 px-2 text-[9px] font-black text-cyan-950 disabled:opacity-40">Next evidence →</button></div>
+      </div> : null}
       <div ref={shellRef} className="relative mt-3 overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
         <canvas ref={canvasRef} tabIndex={0} role="slider" aria-label={`Spectral evidence from ${clock(view.start)} to ${clock(view.end)}`} aria-valuemin={view.start} aria-valuemax={view.end} aria-valuenow={selectedSeconds} onClick={(event: MouseEvent<HTMLCanvasElement>) => chooseAtClientX(event.clientX, event.detail > 1 && playbackReady)} onDoubleClick={(event) => chooseAtClientX(event.clientX, playbackReady)} onKeyDown={onCanvasKey} className="block w-full cursor-crosshair focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          {visibleMarkers.map((marker) => <span key={marker.id} className={`absolute inset-y-0 border-l-2 ${markerTone(marker.category, marker.severity)}`} style={{ left: `${percentWithinView(marker.startSeconds)}%`, width: `${Math.max(0.2, percentWithinView(Math.max(marker.endSeconds, marker.startSeconds + 0.001)) - percentWithinView(marker.startSeconds))}%` }} />)}
+          {transcriptEndSeconds !== null && transcriptEndSeconds >= view.start && transcriptEndSeconds <= view.end ? <span className="absolute inset-y-0 border-l-2 border-emerald-300" style={{ left: `${percentWithinView(transcriptEndSeconds)}%` }} /> : null}
+          {loudnessPath ? <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-x-0 top-0 h-[35%] w-full overflow-visible"><path d={loudnessPath} fill="none" stroke="#f0abfc" strokeWidth="0.55" vectorEffect="non-scaling-stroke" /></svg> : null}
+          <div className="absolute inset-x-0 bottom-[17%] h-[9%] border-y border-white/10 bg-slate-950/35">
+            {transcriptSlices.map((slice) => <span key={slice.id} className="absolute inset-y-0" style={{ left: `${percentWithinView(slice.startSeconds)}%`, width: `${Math.max(0.15, percentWithinView(slice.endSeconds) - percentWithinView(slice.startSeconds))}%`, background: transcriptSliceBackground(slice.states) }} />)}
+          </div>
+        </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between bg-gradient-to-t from-slate-950/90 to-transparent px-2 pb-1 pt-6 font-mono text-[9px] font-black"><span>{clock(view.start)}</span><span>{clock((view.start + view.end) / 2)}</span><span>{clock(view.end)}</span></div>
         <div className="pointer-events-none absolute right-1 top-1 flex h-[72%] flex-col justify-between rounded bg-slate-950/70 px-1 py-1 text-right font-mono text-[8px] font-black text-white/80"><span>{frequency(status.media.maximumFrequencyHz)}</span><span>{frequency(Math.sqrt(status.media.minimumFrequencyHz * status.media.maximumFrequencyHz))}</span><span>{frequency(status.media.minimumFrequencyHz)}</span></div>
       </div>
+      {(transcriptWords.length > 0 || evidenceMarkers.length > 0 || loudnessEvidence) ? <div role="region" className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-black uppercase tracking-wide text-slate-300" aria-label="Shared spectral evidence legend">
+        {transcriptWords.length > 0 ? <><span><i className="mr-1 inline-block h-2 w-3 bg-slate-500" />Unchecked words</span><span><i className="mr-1 inline-block h-2 w-3 bg-blue-400" />Playback reviewed</span><span><i className="mr-1 inline-block h-2 w-3 bg-violet-400" />Provider attention</span></> : null}
+        {evidenceMarkers.some((marker) => marker.category === "signal") ? <span><i className="mr-1 inline-block h-3 border-l-2 border-rose-400" />Signal</span> : null}
+        {evidenceMarkers.some((marker) => marker.category === "capture") ? <span><i className="mr-1 inline-block h-3 border-l-2 border-amber-300" />Capture</span> : null}
+        {evidenceMarkers.some((marker) => marker.category === "mastery") ? <span><i className="mr-1 inline-block h-3 border-l-2 border-fuchsia-300" />Mastery</span> : null}
+        {evidenceMarkers.some((marker) => marker.category === "treatment") ? <span><i className="mr-1 inline-block h-3 border-l-2 border-cyan-300" />Treatment</span> : null}
+        {evidenceMarkers.some((marker) => marker.category === "edit") ? <span><i className="mr-1 inline-block h-3 border-l-2 border-emerald-300" />Edit proposal</span> : null}
+        {loudnessEvidence ? <span><i className="mr-1 inline-block h-0.5 w-3 bg-fuchsia-300 align-middle" />Short-term LUFS</span> : null}
+      </div> : null}
+      {(selectedEvidence.word || selectedEvidence.markers.length || selectedLoudness || loudnessEvidence) ? <section className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-2.5" aria-label="Shared evidence at selected time">
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-wide text-cyan-200">Evidence at {clock(selectedSeconds)}</p><span className="text-[8px] font-bold text-slate-500">No interpolation · no automatic decision</span></div>
+        <div className="mt-1 grid gap-1 text-[9px] font-bold leading-4 text-slate-300 sm:grid-cols-2">
+          <p>{selectedEvidence.word ? `Transcript “${selectedEvidence.word.text}” · ${selectedEvidence.word.reviewState}${selectedEvidence.word.confidence === null ? " · confidence unavailable" : ` · provider confidence ${Math.round(selectedEvidence.word.confidence * 100)}%`}` : `${transcriptScopeLabel}: no timed word at this cursor.`}</p>
+          <p>{selectedEvidence.markers.length ? selectedEvidence.markers.map((marker) => `${marker.label}: ${marker.detail}`).join(" · ") : "No measured signal, capture, mastering, treatment, or edit marker crosses this cursor."}</p>
+          {loudnessEvidence ? <p className="sm:col-span-2">Mastering measurement: {loudnessEvidence.integratedLufs.toFixed(1)} integrated LUFS · {loudnessEvidence.truePeakDbtp.toFixed(1)} dBTP source peak{selectedLoudness?.shortTermLufs === null || selectedLoudness?.shortTermLufs === undefined ? "" : ` · nearest measured short-term ${selectedLoudness.shortTermLufs.toFixed(1)} LUFS at ${clock(selectedLoudness.timeSeconds)}`}{loudnessEvidence.targetLufs === null ? "" : ` · selected profile target ${loudnessEvidence.targetLufs.toFixed(1)} LUFS`}.</p> : null}
+        </div>
+      </section> : null}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[9px] font-bold text-slate-400"><span>{status.media.channelCount} ch downmixed for analysis · {(status.media.sampleRate / 1_000).toFixed(1)} kHz · 20 Hz–{frequency(status.media.maximumFrequencyHz)}</span><span>{currentLevel?.tileSpanSeconds}s protected tiles · −120 to 0 dBFS display range</span></div>
       <p className="mt-2 text-[9px] font-bold leading-4 text-slate-400">Click to move the shared playhead; double-click to listen. Use ten-second detail to inspect a candidate before creating any reversible treatment experiment.</p>
     </> : <div className="mt-3 rounded-lg border border-dashed border-indigo-700 bg-slate-900 p-3"><p role="status" className="text-[10px] font-bold leading-4 text-slate-300">{status.error || message}</p><button type="button" disabled={working || ["queued", "processing", "output-ready"].includes(status.status)} onClick={() => void operate()} className="mt-3 w-full rounded-lg bg-indigo-200 px-3 py-2 text-[10px] font-black text-indigo-950 hover:bg-indigo-100 disabled:cursor-wait disabled:bg-slate-700 disabled:text-slate-300">{working ? "Analyzing the complete source…" : status.status === "failed" ? "Retry spectral analysis" : ["queued", "processing", "output-ready"].includes(status.status) ? "Spectral analysis in progress" : "Build high-resolution spectral evidence"}</button></div>}
@@ -216,3 +313,17 @@ function spectralColor(value: number): [number, number, number] {
   return stops[index].map((channel, channelIndex) => Math.round(channel + (stops[index + 1][channelIndex] - channel) * fraction)) as [number, number, number];
 }
 function frequency(value: number) { return value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}k` : `${Math.round(value)}`; }
+function markerTone(category: SpectralEvidenceMarker["category"], severity: SpectralEvidenceMarker["severity"]) {
+  if (severity === "warning") return "border-rose-400 bg-rose-500/10";
+  if (category === "capture") return "border-amber-300 bg-amber-400/10";
+  if (category === "mastery") return "border-fuchsia-300 bg-fuchsia-400/10";
+  if (category === "treatment") return "border-cyan-300 bg-cyan-400/10";
+  if (category === "edit") return "border-lime-300 bg-lime-400/10";
+  return "border-sky-300 bg-sky-400/10";
+}
+function transcriptSliceBackground(states: Array<"unchecked" | "confirmed" | "corrected" | "attention">) {
+  const colors = states.map((state) => state === "attention" ? "rgba(167,139,250,.92)" : state === "corrected" ? "rgba(103,232,249,.92)" : state === "confirmed" ? "rgba(96,165,250,.92)" : "rgba(100,116,139,.82)");
+  if (colors.length <= 1) return colors[0] ?? "rgba(100,116,139,.82)";
+  const width = 100 / colors.length;
+  return `linear-gradient(90deg, ${colors.flatMap((color, index) => [`${color} ${(index * width).toFixed(2)}%`, `${color} ${((index + 1) * width).toFixed(2)}%`]).join(", ")})`;
+}

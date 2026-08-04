@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
+import type { SpectralEvidenceMarker, SpectralLoudnessEvidence } from "@/components/audio/spectral-evidence-overlay";
 import { transcriptConfidenceTriagePolicy, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 type ReviewCorrection = {
@@ -89,6 +90,8 @@ export function StudioTranscriptReviewDesk({
   audioSignalError = null,
   isAudioSignalWorking = false,
   onRequestAudioSignal,
+  processingEvidenceMarkers = [],
+  loudnessEvidence = null,
 }: {
   projectSlug: string;
   episodeSlug: string;
@@ -99,6 +102,8 @@ export function StudioTranscriptReviewDesk({
   audioSignalError?: string | null;
   isAudioSignalWorking?: boolean;
   onRequestAudioSignal?: () => void;
+  processingEvidenceMarkers?: SpectralEvidenceMarker[];
+  loudnessEvidence?: SpectralLoudnessEvidence | null;
 }) {
   const playerRef = useRef<HTMLMediaElement | null>(null);
   const playbackActiveRef = useRef(false);
@@ -159,6 +164,18 @@ export function StudioTranscriptReviewDesk({
     provider: desk?.provider,
     hasConfidenceEvidence: transcriptWords.some((word) => word.confidence !== null),
   }), [desk?.provider, transcriptWords]);
+  const spectralEvidenceMarkers = useMemo<SpectralEvidenceMarker[]>(() => [
+    ...(audioSignal?.observations ?? []).map((observation, index) => ({
+      id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
+      category: "signal" as const,
+      startSeconds: observation.startSeconds,
+      endSeconds: observation.endSeconds,
+      label: observation.kind.replaceAll("-", " "),
+      detail: observation.detail,
+      severity: observation.severity,
+    })),
+    ...processingEvidenceMarkers,
+  ], [audioSignal?.observations, processingEvidenceMarkers]);
 
   const selectSegment = useCallback((segment: ReviewSegment, play = false) => {
     playbackActiveRef.current = false;
@@ -229,7 +246,7 @@ export function StudioTranscriptReviewDesk({
       setReason("");
     }
     setHeardSelected(false);
-    setPlaybackPosition(null);
+    setPlaybackPosition(Math.max(0, seconds));
     if (!player) return;
     player.currentTime = Math.max(0, seconds);
     if (play) void player.play().catch(() => undefined);
@@ -380,6 +397,12 @@ export function StudioTranscriptReviewDesk({
           selectedSeconds={playbackPosition ?? selected?.startSeconds ?? 0}
           playbackReady={Boolean(desk?.playback)}
           onSelect={selectEvidenceTime}
+          transcriptWords={transcriptWords}
+          lowConfidenceThreshold={confidenceTriagePolicy.threshold}
+          transcriptEndSeconds={desk?.coverage.endSeconds ?? null}
+          transcriptScopeLabel={`Loaded transcript evidence (${segments.length}/${desk?.coverage.segmentCount ?? segments.length} segments)`}
+          evidenceMarkers={spectralEvidenceMarkers}
+          loudnessEvidence={loudnessEvidence}
         /></>
       ) : (
         <section className="mt-3 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-3" aria-label="Decoded audio evidence status">

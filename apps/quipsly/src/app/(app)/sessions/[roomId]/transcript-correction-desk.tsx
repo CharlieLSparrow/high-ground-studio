@@ -6,6 +6,7 @@ import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, 
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
+import type { SpectralEvidenceMarker } from "@/components/audio/spectral-evidence-overlay";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { timestampForSeconds } from "./session-review-model";
 import {
@@ -1258,6 +1259,31 @@ export function TranscriptCorrectionDesk({
     return () => window.cancelAnimationFrame(frame);
   }, [desk]);
 
+  const spectralTranscriptWords = useMemo(
+    () => transcriptWordsForAudioEvidence(desk?.segments ?? []),
+    [desk?.segments],
+  );
+  const spectralEvidenceMarkers = useMemo<SpectralEvidenceMarker[]>(() => [
+    ...(desk?.evidence?.audio.signal?.observations ?? []).map((observation, index) => ({
+      id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
+      category: "signal" as const,
+      startSeconds: observation.startSeconds,
+      endSeconds: observation.endSeconds,
+      label: humanize(observation.kind),
+      detail: observation.detail,
+      severity: observation.severity,
+    })),
+    ...(desk?.evidence?.audio.timelineEvents ?? []).map((event, index) => ({
+      id: `capture-${event.kind}-${event.startSeconds}-${index}`,
+      category: "capture" as const,
+      startSeconds: event.startSeconds,
+      endSeconds: event.startSeconds,
+      label: humanize(event.kind),
+      detail: event.detail || [event.routeName, event.routePortType].filter(Boolean).join(" · ") || "Capture boundary preserved without route detail.",
+      severity: event.kind === "interruption" ? "warning" as const : "attention" as const,
+    })),
+  ], [desk?.evidence?.audio.signal?.observations, desk?.evidence?.audio.timelineEvents]);
+
   async function playFromTime(seconds: number) {
     const media = mediaRef.current;
     if (!media || !playbackReady) {
@@ -1433,6 +1459,11 @@ export function TranscriptCorrectionDesk({
           setPlaybackSeconds(seconds);
           if (play) void playFromTime(seconds);
         }}
+        transcriptWords={spectralTranscriptWords}
+        lowConfidenceThreshold={desk.evidence?.transcript.lowConfidenceThreshold ?? null}
+        transcriptEndSeconds={desk.evidence?.transcript.transcriptEndSeconds ?? null}
+        transcriptScopeLabel="Session timed transcript"
+        evidenceMarkers={spectralEvidenceMarkers}
       /> : null}
 
       {desk.evaluation ? <TranscriptAccuracyCorpusPanel

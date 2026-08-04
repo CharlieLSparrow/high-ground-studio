@@ -31,6 +31,7 @@ import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDia
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
+import { sourceBoundSpectralEditMarkers } from "@/components/audio/spectral-evidence-overlay";
 import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
@@ -3603,11 +3604,18 @@ function CloudEditorContent() {
       setCameraEvidenceReady(false);
       return;
     }
-    void browserSha256(timelineFingerprint).then((fingerprint) => {
-      if (!cancelled) setCameraEvidenceReady(fingerprint === aiEditProposalBinding.timelineFingerprintSha256);
+    setCameraEvidenceReady(false);
+    void Promise.all([
+      browserSha256(timelineFingerprint),
+      browserSha256(canonicalAiEditTranscript(timelineState.transcript)),
+    ]).then(([timelineSha256, transcriptSha256]) => {
+      if (!cancelled) setCameraEvidenceReady(
+        timelineSha256 === aiEditProposalBinding.timelineFingerprintSha256
+        && transcriptSha256 === aiEditProposalBinding.transcriptSha256,
+      );
     });
     return () => { cancelled = true; };
-  }, [aiEditProposalBinding, episodeSlug, resolvedProjectSlug, timelineFingerprint, timelineState.transcript.length]);
+  }, [aiEditProposalBinding, episodeSlug, resolvedProjectSlug, timelineFingerprint, timelineState.transcript]);
 
   const mapSpeakerToCamera = useCallback((speakerKey: string, speakerLabel: string, clipId: string) => {
     const existing = (timelineState.speakerCameraMappings ?? []).find((mapping) => mapping.speakerKey === speakerKey);
@@ -9789,6 +9797,49 @@ function CloudEditorContent() {
                           audioSignalError={audioSignalProfileStatus?.error ?? null}
                           isAudioSignalWorking={isAudioSignalProfileWorking}
                           onRequestAudioSignal={() => void operateAudioSignalProfile(asset)}
+                          processingEvidenceMarkers={[
+                            ...(audioMasteryStatus?.signalDiagnosis?.observations ?? []).map((observation, index) => ({
+                              id: `mastery-source-${observation.kind}-${observation.startSeconds}-${index}`,
+                              category: "mastery" as const,
+                              startSeconds: observation.startSeconds,
+                              endSeconds: observation.endSeconds,
+                              label: `Mastery source scan · ${observation.kind.replaceAll("-", " ")}`,
+                              detail: observation.detail,
+                              severity: observation.severity,
+                            })),
+                            ...(audioTreatmentStatus?.derivative?.diagnosis.observations ?? []).map((observation, index) => ({
+                              id: `treatment-output-${observation.kind}-${observation.startSeconds}-${index}`,
+                              category: "treatment" as const,
+                              startSeconds: observation.startSeconds,
+                              endSeconds: observation.endSeconds,
+                              label: `Unpromoted treatment output · ${observation.kind.replaceAll("-", " ")}`,
+                              detail: observation.detail,
+                              severity: observation.severity,
+                            })),
+                            ...sourceBoundSpectralEditMarkers({
+                              currentProjectSlug: resolvedProjectSlug,
+                              currentEpisodeSlug: episodeSlug,
+                              currentAssetId: asset.id,
+                              currentSourceId: asset.sourceId,
+                              currentSourceSha256: asset.sha256 ?? null,
+                              bindingIsCurrent: cameraEvidenceReady,
+                              binding: aiEditProposalBinding,
+                              proposals: aiEditSuggestions,
+                              reviewCandidates: aiEditReviewCandidates,
+                            }),
+                          ]}
+                          loudnessEvidence={audioMasteryStatus?.sourceMeasurement ? {
+                            integratedLufs: audioMasteryStatus.sourceMeasurement.integratedLufs,
+                            truePeakDbtp: audioMasteryStatus.sourceMeasurement.truePeakDbtp,
+                            targetLufs: audioMasteryStatus.proposal?.profile.integratedLufs ?? null,
+                            points: audioMasteryStatus.sourceMeasurement.series.map((point) => ({
+                              timeSeconds: point.timeMs / 1_000,
+                              momentaryLufs: point.momentaryLufs,
+                              shortTermLufs: point.shortTermLufs,
+                              integratedLufs: point.integratedLufs,
+                              truePeakDbtp: point.truePeakDbtp,
+                            })),
+                          } : null}
                         />
                       )}
                       <button

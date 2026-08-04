@@ -34,6 +34,11 @@ const IDENTITIES = [
     viewport: { width: 1440, height: 1000 },
   },
   {
+    role: "coach-mobile",
+    email: "quipsly-coach-retained-20260731@example.test",
+    viewport: { width: 390, height: 844 },
+  },
+  {
     role: "client",
     email: "quipsly-client-retained-20260731@example.test",
     viewport: { width: 390, height: 844 },
@@ -177,6 +182,13 @@ async function verifyCoach(page, baseURL, identity, password) {
   await spectralEvidence.waitFor({ timeout: 20_000 });
   await spectralEvidence.scrollIntoViewIfNeeded();
   await spectralEvidence.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+  const sharedNavigator = spectralEvidence.getByRole("region", { name: "Shared spectral evidence navigator", exact: true });
+  await sharedNavigator.waitFor({ timeout: 20_000 });
+  const nextSharedEvidence = sharedNavigator.getByRole("button", { name: "Next evidence →", exact: true });
+  assert(await nextSharedEvidence.isEnabled(), "Coach spectral view has no operable transcript/signal/capture review point.");
+  await nextSharedEvidence.click();
+  await spectralEvidence.getByRole("region", { name: "Shared evidence at selected time", exact: true }).waitFor({ timeout: 20_000 });
+  await spectralEvidence.getByRole("region", { name: "Shared spectral evidence legend", exact: true }).waitFor({ timeout: 20_000 });
   const spectralCanvas = spectralEvidence.getByRole("slider", { name: /Spectral evidence from/i });
   await spectralCanvas.waitFor({ timeout: 20_000 });
   const wholeLabel = await spectralCanvas.getAttribute("aria-label");
@@ -202,6 +214,7 @@ async function verifyCoach(page, baseURL, identity, password) {
     exactSourceLink: true,
     exactTaskEvidenceSource: true,
     highResolutionSpectralEvidence: "overview-browse-detail-operated",
+    sharedTranscriptSignalOverlay: "operated-and-explained",
     protectedSpectralTileResponses: spectralTileResponses.length,
     protectedPlaybackRange: "authorized",
     currentSessionMutated: false,
@@ -230,6 +243,43 @@ async function verifyNonAuthor(page, baseURL, identity, password) {
     role: identity.role,
     priorBrief: "concealed",
     protectedPlaybackRange: "not-probed",
+    currentSessionMutated: false,
+    viewport: `${identity.viewport.width}x${identity.viewport.height}`,
+  };
+}
+
+async function verifyCoachMobile(page, baseURL, identity, password) {
+  await signInThroughRenderedLogin({
+    page,
+    baseURL,
+    identity,
+    password,
+    callbackPath: `/sessions/${PRIOR_ROOM_ID}?mode=transcript`,
+  });
+  const spectralEvidence = page.getByRole("region", { name: "High-resolution spectral evidence", exact: true });
+  await spectralEvidence.waitFor({ timeout: 20_000 });
+  await spectralEvidence.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+  const navigator = spectralEvidence.getByRole("region", { name: "Shared spectral evidence navigator", exact: true });
+  await navigator.waitFor();
+  const next = navigator.getByRole("button", { name: "Next evidence →", exact: true });
+  assert(await next.isEnabled(), "Mobile coach has no keyboard/touch reachable evidence point.");
+  await next.click();
+  await spectralEvidence.getByRole("region", { name: "Shared evidence at selected time", exact: true }).waitFor();
+  await spectralEvidence.getByRole("button", { name: "Ten seconds", exact: true }).click();
+  const canvas = spectralEvidence.getByRole("slider", { name: /Spectral evidence from/i });
+  await canvas.focus();
+  const before = Number(await canvas.getAttribute("aria-valuenow"));
+  await canvas.press("ArrowRight");
+  await page.waitForFunction(({ label, prior }) => {
+    const node = [...document.querySelectorAll('canvas[role="slider"]')].find((candidate) => candidate.getAttribute("aria-label")?.startsWith(label));
+    return node && Number(node.getAttribute("aria-valuenow")) !== prior;
+  }, { label: "Spectral evidence from", prior: before });
+  await assertNoHorizontalOverflow(spectralEvidence, "mobile coach shared spectral evidence");
+  await clearRenderedSession(page, baseURL, identity.role);
+  return {
+    role: identity.role,
+    highResolutionSpectralEvidence: "mobile-overlay-keyboard-operated",
+    sharedTranscriptSignalOverlay: "operated-and-explained",
     currentSessionMutated: false,
     viewport: `${identity.viewport.width}x${identity.viewport.height}`,
   };
@@ -273,6 +323,8 @@ async function verifyIdentity(browser, baseURL, identity) {
   try {
     const result = identity.role === "coach"
       ? await verifyCoach(page, baseURL, identity, password)
+      : identity.role === "coach-mobile"
+        ? await verifyCoachMobile(page, baseURL, identity, password)
       : identity.role === "privacy-outsider"
         ? await verifyPrivacyOutsider(page, baseURL, identity, password)
         : await verifyNonAuthor(page, baseURL, identity, password);

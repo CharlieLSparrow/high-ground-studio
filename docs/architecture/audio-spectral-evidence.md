@@ -74,6 +74,37 @@ shared playhead, click-to-seek, and double-click-to-listen. The UI explains that
 a visible pattern is a listening target rather than proof of a fault or an
 instruction to process the audio.
 
+## Unified evidence overlay
+
+The spectral pixels are one witness, not the organizing data model. A bounded
+overlay projects other independently qualified evidence onto the same immutable
+source clock:
+
+- provider-timed transcript words and their unchecked, playback-confirmed,
+  corrected, or confidence-triage state;
+- complete-decode signal observations and capture-time observations, kept as
+  distinct categories;
+- source mastering diagnosis plus measured short-term loudness and the selected
+  delivery-profile target;
+- observations from an unpromoted treatment derivative;
+- unapplied automated-edit proposals and review candidates only when their
+  current proposal set is bound to this exact project, episode, Studio asset,
+  protected source, source SHA-256, and decoded-signal profile.
+
+Whole-source transcript rendering is capped at 360 deterministic bins. A bin
+retains every review state present inside it, so a corrected word cannot erase
+an attention word or vice versa. Ten-second and one-minute views retain exact
+word rectangles. Provider confidence is labeled as listening triage, never
+measured accuracy. Providers without a comparable word-confidence scale still
+produce one navigable timed-segment review point.
+
+Selecting any layer moves the shared React playhead and protected media cursor
+immediately. It deliberately clears the playback-heard state: scrubbing to a
+word or signal candidate is navigation, not proof that a person listened. The
+selected-time explanation uses only evidence that crosses the exact cursor and
+the nearest actually measured loudness point. It performs no interpolation and
+makes no automatic quality, transcript, treatment, or edit decision.
+
 ## Automation boundary
 
 This lane may automatically decode, measure, tile, verify, and surface
@@ -98,15 +129,21 @@ and coaching, moved the shared source clock, found no horizontal overflow or
 browser exceptions, and performed no external action. The retained media and
 completed receipts remain available for regression work.
 
+The unified-overlay pass subsequently operated both retained sources with the
+transcript lane, signal observations, selected-time explanation, evidence
+navigator, and loudness-ready rendering on the same clock. Coaching was also
+operated at a 390 by 844 mobile viewport with keyboard navigation. A rendered
+component acceptance proves the mastery, treatment, and unapplied-edit overlay
+categories; the retained Be Curious asset currently has no completed mastery or
+source-bound edit proposal, so the real-media browser proof does not claim
+those absent records.
+
 ## Next qualified layer
 
-1. Put transcript words, word confidence, corrections, discontinuities,
-   mastering measurements, and treatment observations over this same zoomable
-   clock.
-2. Add deterministic spectral candidate detectors with a labeled evaluation
+1. Add deterministic spectral candidate detectors with a labeled evaluation
    corpus and false-positive reporting.
-3. Add source/candidate difference views and loudness-matched A/B playback.
-4. Add channel-select and mid/side evidence without discarding the mono
+2. Add source/candidate difference views and loudness-matched A/B playback.
+3. Add channel-select and mid/side evidence without discarding the mono
    diagnostic projection.
-5. Materialize the same source-bound contract in the cloud worker without
+4. Materialize the same source-bound contract in the cloud worker without
    weakening private tile authorization or immutable generation checks.

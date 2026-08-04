@@ -89,6 +89,16 @@ async function main() {
     await spectralEvidence.waitFor({ timeout: 20_000 });
     await spectralEvidence.scrollIntoViewIfNeeded();
     await spectralEvidence.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+    const sharedNavigator = spectralEvidence.getByRole("region", { name: "Shared spectral evidence navigator", exact: true });
+    await sharedNavigator.waitFor({ timeout: 20_000 });
+    await sharedNavigator.getByText(/One clock · \d+ review point/i).waitFor();
+    const nextSharedEvidence = sharedNavigator.getByRole("button", { name: "Next evidence →", exact: true });
+    assert.equal(await nextSharedEvidence.isEnabled(), true, "Studio spectral view has no operable shared transcript/signal review point.");
+    await nextSharedEvidence.click();
+    const selectedEvidenceSummary = spectralEvidence.getByRole("region", { name: "Shared evidence at selected time", exact: true });
+    await selectedEvidenceSummary.waitFor();
+    assert.match(await selectedEvidenceSummary.innerText(), /Transcript|measured signal|Mastering measurement/i, "Studio shared spectral cursor did not explain its source-clock evidence.");
+    await spectralEvidence.getByRole("region", { name: "Shared spectral evidence legend", exact: true }).waitFor();
     const spectralCanvas = spectralEvidence.getByRole("slider", { name: /Spectral evidence from/i });
     await spectralCanvas.waitFor({ timeout: 20_000 });
     const spectralBounds = await spectralCanvas.boundingBox();
@@ -131,6 +141,8 @@ async function main() {
       spectralPyramidLevelsOperated: 3,
       protectedSpectralTileResponses: spectralTileResponses.length,
       sharedSpectralPlayheadOperated: true,
+      sharedTranscriptSignalOverlayOperated: true,
+      selectedEvidenceExplained: true,
       horizontalOverflow: false,
       browserExceptions: 0,
       credentialsPrinted: false,
