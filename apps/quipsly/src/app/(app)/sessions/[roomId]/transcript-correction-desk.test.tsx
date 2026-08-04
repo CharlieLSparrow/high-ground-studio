@@ -201,6 +201,61 @@ describe("TranscriptCorrectionDesk", () => {
     expect(await screen.findByLabelText("Protected session recording")).toBeInTheDocument();
   });
 
+  it("classifies and explicitly freezes a fully reviewed private accuracy window", async () => {
+    const evaluation = {
+      schema: "quipsly-transcript-evaluation-window-v1",
+      eligible: true,
+      canApprove: true,
+      suggestedWorkload: "podcast",
+      sourceDurationSeconds: 60,
+      sourceSha256: "a".repeat(64),
+      reviewedSegmentCount: 1,
+      totalSegmentCount: 1,
+      referenceWordCount: 2,
+      timingEvidenceWordCount: 2,
+      speakerReviewedWordCount: 2,
+      blockers: [],
+      conditions: {
+        podcast: ["normal-exchange", "overlap-or-interruption"],
+        coaching: ["coach-client-turn-taking"],
+      },
+      approvedWindows: [],
+    };
+    const readyDesk = { ...desk(true), evaluation };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => readyDesk })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: false, window: { id: "window-1" } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...readyDesk, evaluation: { ...evaluation, approvedWindows: [{ id: "window-1", workload: "podcast", conditions: ["normal-exchange"], sourceDurationSeconds: 60, referenceWordCount: 2, referenceRevisionId: "reviewed-reference-1", approvedAt: "2026-08-03T18:30:00.000Z", staleAgainstCurrentReview: false }] } }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    expect(await screen.findByText("Build accuracy truth from real listening")).toBeInTheDocument();
+    const media = screen.getByLabelText("Protected session recording");
+    Object.defineProperty(media, "paused", { configurable: true, value: false });
+    Object.defineProperty(media, "duration", { configurable: true, value: 60 });
+    for (let second = 0; second < 60; second += 1) {
+      Object.defineProperty(media, "currentTime", { configurable: true, value: second + 0.25 });
+      fireEvent.timeUpdate(media);
+    }
+    fireEvent.click(screen.getByRole("checkbox", { name: /normal exchange/i }));
+    fireEvent.click(screen.getByRole("button", { name: /add to private accuracy corpus/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      operation: "approve-evaluation-window",
+      roomId: "room-1",
+      workload: "podcast",
+      conditions: ["normal-exchange"],
+      sourcePlaybackEvidence: expect.objectContaining({
+        schema: "quipsly-complete-source-playback-v1",
+        playbackSourceId: "source-1",
+        durationSeconds: 60,
+        listenedSecondBins: Array.from({ length: 60 }, (_, index) => index),
+      }),
+    });
+    expect(await screen.findByText(/matches current review/i)).toBeInTheDocument();
+  });
+
   it("records a playback-backed reviewed-as-is decision without fabricating a correction", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

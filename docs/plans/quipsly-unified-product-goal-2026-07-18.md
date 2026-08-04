@@ -7229,3 +7229,35 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   transcript confidence. Physical-iPhone signal capture, video-contained audio
   analysis, standards-conformant LUFS/true peak, and the genuine consented
   podcast/coaching transcription corpus remain open gates.
+
+### Playback-reviewed transcription corpus checkpoint — 2026-08-03
+
+- Added an append-only `TranscriptEvaluationWindow` ledger that freezes the
+  exact media SHA/generation/range, consent-version hash, provider snapshot,
+  ordered reviewed words, source segments, playback-review receipts, workload,
+  conditions, reviewer operation ID, and approval time without rewriting
+  provider output.
+- Approval re-reads and re-hashes all evidence inside a serializable,
+  advisory-locked transaction. Exact retries return the original row; changed
+  operation-ID reuse, stale review, changed consent, changed source, and
+  concurrent conflicting evidence fail closed.
+- Whole-source playback is measured in one-second bins and frozen with the
+  window. Seeking does not count, and complete segment review alone cannot hide
+  untranscribed speech in a gap or tail.
+- Nest now exposes a private transcription lab with review, word, timing, and
+  speaker coverage; real podcast/coaching condition classification; blockers;
+  and prior-window freshness. Its public projection omits transcript/provider
+  text, reviewer identity, storage paths, and notes.
+- Local PostgreSQL proved persistence, exact replay, changed replay conflict,
+  and separate-account denial. Focused server, route, and UI suites pass, the
+  migration is current, and strict Nest TypeScript passes.
+- Real browser operation exposed and repaired a generated-schema/database
+  mismatch from a stray optional participant relation. After regeneration and
+  restart, the retained HGO source correctly rendered **0/5 reviewed** and
+  withheld approval. No agent or provider output was misrepresented as a human
+  playback review.
+- Full architecture and evidence are in
+  `docs/architecture/transcript-accuracy-corpus.md` and
+  `docs/coordination/2026-08-03-transcript-accuracy-corpus.md`. Genuine HGO and
+  coaching review, private export, provider candidate receipts, physical iPhone,
+  and production separate-account gates remain open.

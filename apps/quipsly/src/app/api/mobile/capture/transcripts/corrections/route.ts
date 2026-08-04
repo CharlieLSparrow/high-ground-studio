@@ -10,6 +10,11 @@ import {
   reviewTranscriptCorrectionProposal,
   TranscriptCorrectionError,
 } from "@/lib/server/transcript-corrections";
+import {
+  approveTranscriptEvaluationWindow,
+  readTranscriptEvaluationReadiness,
+  TranscriptEvaluationWindowError,
+} from "@/lib/server/transcript-evaluation-windows";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +58,7 @@ async function body(request: Request) {
 }
 
 function responseBody(error: unknown) {
-  if (error instanceof TranscriptCorrectionError) {
+  if (error instanceof TranscriptCorrectionError || error instanceof TranscriptEvaluationWindowError) {
     return NextResponse.json(
       { ok: false, error: error.message, errorCode: error.code },
       { status: error.status, headers: { "Cache-Control": "private, no-store" } },
@@ -95,7 +100,24 @@ export async function GET(request: Request) {
       roomId,
       actor: actorFromSession(session),
     });
-    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    let evaluation = null;
+    try {
+      evaluation = await readTranscriptEvaluationReadiness({
+        prisma: getPrismaClient() as any,
+        roomId,
+        actor: actorFromSession(session),
+      });
+    } catch (error) {
+      if (!(error instanceof TranscriptEvaluationWindowError)) throw error;
+      evaluation = {
+        schema: "quipsly-transcript-evaluation-window-v1",
+        eligible: false,
+        canApprove: false,
+        blockers: [{ code: error.code, detail: error.message }],
+        approvedWindows: [],
+      };
+    }
+    return NextResponse.json({ ...result, evaluation }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return responseBody(error);
   }
@@ -114,6 +136,19 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor = actorFromSession(session);
   try {
+    if (operation === "approve-evaluation-window") {
+      const result = await approveTranscriptEvaluationWindow({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        clientRequestId: text(input.clientRequestId),
+        workload: input.workload,
+        conditions: input.conditions,
+        reviewNote: nullableText(input.reviewNote),
+        sourcePlaybackEvidence: input.sourcePlaybackEvidence,
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (operation === "attribute-provider-speaker") {
       const result = await attributeTranscriptSpeaker({
         prisma,

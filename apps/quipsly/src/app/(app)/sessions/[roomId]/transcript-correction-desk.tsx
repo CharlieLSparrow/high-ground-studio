@@ -135,6 +135,33 @@ type Desk = {
   speakerGroups: SpeakerGroup[];
   segments: Segment[];
   evidence?: AudioTranscriptEvidence;
+  evaluation?: null | {
+    schema: string;
+    eligible: boolean;
+    canApprove: boolean;
+    suggestedWorkload?: "podcast" | "coaching";
+    sourceDurationSeconds?: number | null;
+    sourceSha256?: string | null;
+    consentVersionSha256?: string | null;
+    reviewedSegmentCount?: number;
+    totalSegmentCount?: number;
+    referenceWordCount?: number;
+    speakerReviewedWordCount?: number;
+    timingEvidenceWordCount?: number;
+    blockers: Array<{ code: string; detail: string }>;
+    conditions?: Record<"podcast" | "coaching", string[]>;
+    approvedWindows: Array<{
+      id: string;
+      workload: "podcast" | "coaching";
+      conditions: string[];
+      sourceDurationSeconds: number;
+      referenceWordCount: number;
+      referenceRevisionId: string;
+      approvedAt: string;
+      completeSourcePlayback?: boolean;
+      staleAgainstCurrentReview: boolean;
+    }>;
+  };
   boundaries: Record<string, boolean>;
 };
 
@@ -164,6 +191,113 @@ function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
 
 function signalLevelHeight(dbfs: number) {
   return Math.max(4, Math.min(100, ((dbfs + 72) / 72) * 100));
+}
+
+function TranscriptAccuracyCorpusPanel({
+  roomId,
+  evaluation,
+  busy,
+  listenedSecondBins,
+  playbackSourceId,
+  onSaved,
+}: {
+  roomId: string;
+  evaluation: NonNullable<Desk["evaluation"]>;
+  busy: boolean;
+  listenedSecondBins: number[];
+  playbackSourceId: string | null;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [workload, setWorkload] = useState<"podcast" | "coaching">(evaluation.suggestedWorkload ?? "podcast");
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [approving, setApproving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const conditions = evaluation.conditions?.[workload] ?? [];
+  const sourceDurationSeconds = evaluation.sourceDurationSeconds ?? 0;
+  const expectedPlaybackBins = Math.ceil(sourceDurationSeconds);
+  const completeSourcePlayback = expectedPlaybackBins >= 1
+    && listenedSecondBins.filter((bin) => Number.isInteger(bin) && bin >= 0 && bin < expectedPlaybackBins).length === expectedPlaybackBins;
+  const playbackCoverage = expectedPlaybackBins > 0
+    ? Math.min(1, listenedSecondBins.length / expectedPlaybackBins)
+    : 0;
+
+  useEffect(() => {
+    setWorkload(evaluation.suggestedWorkload ?? "podcast");
+    setSelectedConditions([]);
+  }, [evaluation.sourceSha256, evaluation.suggestedWorkload]);
+
+  async function approve() {
+    setApproving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "approve-evaluation-window",
+          roomId,
+          clientRequestId: requestId("evaluation-window"),
+          workload,
+          conditions: selectedConditions,
+          sourcePlaybackEvidence: {
+            schema: "quipsly-complete-source-playback-v1",
+            playbackSourceId,
+            durationSeconds: sourceDurationSeconds,
+            listenedSecondBins,
+            completedAt: new Date().toISOString(),
+          },
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "The accuracy window could not be approved.");
+      await onSaved(payload.idempotentReplay
+        ? "This exact reviewed source was already in the private accuracy corpus. Nothing was duplicated."
+        : "Added this exact playback-reviewed source to Quipsly’s private accuracy corpus.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The accuracy window could not be approved.");
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  const reviewed = evaluation.reviewedSegmentCount ?? 0;
+  const total = evaluation.totalSegmentCount ?? 0;
+  return <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-6 shadow-sm" aria-labelledby="accuracy-corpus-heading">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="max-w-3xl">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-700">Private transcription lab</p>
+        <h3 id="accuracy-corpus-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Build accuracy truth from real listening</h3>
+        <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">Approve an immutable 60–180 second source only after every segment has been checked against playback. Quipsly freezes the media hash, consent state, provider evidence, reviewed words, and listening receipts—without changing the transcript or calling another provider.</p>
+      </div>
+      <span className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide ${evaluation.eligible ? "border-emerald-200 bg-emerald-100 text-emerald-950" : "border-amber-200 bg-amber-100 text-amber-950"}`}>{evaluation.eligible ? "Ready to classify" : `${reviewed}/${total} reviewed`}</span>
+    </div>
+
+    <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reviewed segments</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{reviewed}/{total}</dd></div>
+      <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reference words</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.referenceWordCount ?? 0).toLocaleString()}</dd></div>
+      <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reviewed timed words</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.timingEvidenceWordCount ?? 0).toLocaleString()}</dd></div>
+      <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Speaker-reviewed</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.speakerReviewedWordCount ?? 0).toLocaleString()}</dd></div>
+      <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Source listened</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{percent(playbackCoverage, 0)}</dd></div>
+    </dl>
+
+    {evaluation.blockers.length > 0 ? <ul className="mt-4 space-y-2">{evaluation.blockers.map((blocker) => <li key={blocker.code} className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950"><TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" /><span>{blocker.detail}</span></li>)}</ul> : <div className="mt-5 space-y-4 rounded-xl border border-indigo-200 bg-white p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-black uppercase tracking-wide text-indigo-950">Recording workflow
+          <select value={workload} onChange={(event) => { setWorkload(event.target.value as "podcast" | "coaching"); setSelectedConditions([]); }} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+            <option value="podcast">Podcast production</option>
+            <option value="coaching">Coaching session</option>
+          </select>
+        </label>
+        <div className="rounded-lg bg-indigo-50 p-3 text-xs font-bold leading-5 text-indigo-950">Choose every condition this clip actually tests. These labels drive clean-vs-difficult WER, speaker, timing, and correction-effort scorecards later.</div>
+      </div>
+      <fieldset><legend className="text-xs font-black uppercase tracking-wide text-indigo-950">Conditions heard in this source</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{conditions.map((condition) => <label key={condition} className="flex min-h-11 items-center gap-3 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs font-bold text-indigo-950"><input type="checkbox" checked={selectedConditions.includes(condition)} onChange={(event) => setSelectedConditions((current) => event.target.checked ? [...current, condition] : current.filter((value) => value !== condition))} className="h-4 w-4" />{humanize(condition)}</label>)}</div></fieldset>
+      {!completeSourcePlayback ? <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950"><AudioLines size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Play the complete protected source in the recording controls above. Scrubbing does not count as listening; {expectedPlaybackBins - listenedSecondBins.length} second{expectedPlaybackBins - listenedSecondBins.length === 1 ? "" : "s"} remain.</p> : <p className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Complete source playback observed in this review session.</p>}
+      <button type="button" onClick={() => void approve()} disabled={busy || approving || selectedConditions.length === 0 || !completeSourcePlayback} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{approving ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}{approving ? "Freezing reviewed evidence…" : "Add to private accuracy corpus"}</button>
+      <p className="text-xs font-bold leading-5 text-indigo-800">This is an explicit approval of the exact playback-reviewed reference. It does not upload new media, rerun transcription, alter provider output, train a public model, message anyone, or publish.</p>
+    </div>}
+    {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{error}</p> : null}
+    {evaluation.approvedWindows.length > 0 ? <div className="mt-5"><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Frozen evaluation windows</p><ul className="mt-2 space-y-2">{evaluation.approvedWindows.map((window) => <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs font-bold text-[#5f4d37]"><span>{humanize(window.workload)} · {window.referenceWordCount} words · {window.conditions.map(humanize).join(", ")}</span><span className={window.staleAgainstCurrentReview ? "text-amber-800" : "text-emerald-800"}>{window.staleAgainstCurrentReview ? "Prior reviewed revision" : "Matches current review"}</span></li>)}</ul></div> : null}
+  </section>;
 }
 
 function AudioSignalEvidencePanel({
@@ -928,7 +1062,9 @@ export function TranscriptCorrectionDesk({
   const [busy, setBusy] = useState(false);
   const [preparingPlayback, setPreparingPlayback] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [listenedSecondBins, setListenedSecondBins] = useState<Set<number>>(() => new Set());
   const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const lastPlaybackTimeRef = useRef<number | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -946,6 +1082,11 @@ export function TranscriptCorrectionDesk({
   }, [roomId]);
 
   useEffect(() => { void load(false); }, [load]);
+
+  useEffect(() => {
+    setListenedSecondBins(new Set());
+    lastPlaybackTimeRef.current = null;
+  }, [desk?.playback?.sourceId]);
 
   useEffect(() => {
     if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "")) return;
@@ -979,6 +1120,23 @@ export function TranscriptCorrectionDesk({
 
   async function playFrom(segment: Segment) {
     return playFromTime(segment.startSeconds);
+  }
+
+  function observePlayback(media: HTMLMediaElement, ended = false) {
+    if (!ended && (media.paused || media.seeking)) return;
+    const duration = Number.isFinite(media.duration) ? media.duration : desk?.playback?.durationSeconds;
+    if (!duration || duration <= 0) return;
+    const currentTime = ended ? duration - 0.001 : media.currentTime;
+    const second = Math.max(0, Math.min(Math.ceil(duration) - 1, Math.floor(currentTime)));
+    const previousTime = lastPlaybackTimeRef.current;
+    const contiguous = previousTime !== null && currentTime >= previousTime && currentTime - previousTime <= 1.5;
+    const firstSecond = contiguous ? Math.floor(previousTime) : second;
+    lastPlaybackTimeRef.current = currentTime;
+    setListenedSecondBins((current) => {
+      const next = new Set(current);
+      for (let bin = firstSecond; bin <= second; bin += 1) next.add(bin);
+      return next.size === current.size ? current : next;
+    });
   }
 
   async function saved(nextMessage: string) {
@@ -1064,8 +1222,8 @@ export function TranscriptCorrectionDesk({
           <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
             <p className="mb-3 text-xs font-black uppercase tracking-wide text-sky-900">Protected source · {desk.playback.label}</p>
             {desk.playback.kind === "video"
-              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
-              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" className="w-full" aria-label="Protected session recording" />}
+              ? <video ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { lastPlaybackTimeRef.current = null; }} onSeeking={() => { lastPlaybackTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="max-h-[420px] w-full rounded-lg bg-black" aria-label="Protected session recording" />
+              : <audio ref={(node) => { mediaRef.current = node; }} src={desk.playback.url} controls preload="metadata" onPlay={(event) => { lastPlaybackTimeRef.current = event.currentTarget.currentTime; }} onPause={() => { lastPlaybackTimeRef.current = null; }} onSeeking={() => { lastPlaybackTimeRef.current = null; }} onTimeUpdate={(event) => observePlayback(event.currentTarget)} onEnded={(event) => observePlayback(event.currentTarget, true)} className="w-full" aria-label="Protected session recording" />}
           </div>
         ) : (
           <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-relaxed text-amber-950">
@@ -1088,6 +1246,15 @@ export function TranscriptCorrectionDesk({
           playbackReady={Boolean(desk.playback)}
           onPlayAt={playFromTime}
         /> : null}
+
+      {desk.evaluation ? <TranscriptAccuracyCorpusPanel
+        roomId={roomId}
+        evaluation={desk.evaluation}
+        busy={busy}
+        listenedSecondBins={[...listenedSecondBins].sort((left, right) => left - right)}
+        playbackSourceId={desk.playback?.sourceId ?? null}
+        onSaved={saved}
+      /> : null}
 
       {desk.gate.allowed && (
         <SpeakerAttributionPanel

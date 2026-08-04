@@ -653,6 +653,7 @@ model User {
   transcriptCorrectionRevisions TranscriptCorrectionRevision[]       @relation("TranscriptCorrectionRevisionActor")
   transcriptSegmentsVerified    TranscriptSegmentVerification[]      @relation("TranscriptSegmentVerificationReviewer")
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]       @relation("TranscriptSpeakerAttributionReviewer")
+  transcriptEvaluationWindows   TranscriptEvaluationWindow[]         @relation("TranscriptEvaluationWindowApprover")
   companySupportRequests        CompanySupportRequest[]
   storyDraftsCreated            StoryDraft[]                         @relation("StoryDraftCreatedBy")
   storyDraftsUpdated            StoryDraft[]                         @relation("StoryDraftUpdatedBy")
@@ -1614,6 +1615,7 @@ model CallRoom {
   transcriptCorrections         TranscriptCorrection[]
   transcriptVerifications       TranscriptSegmentVerification[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
+  transcriptEvaluationWindows   TranscriptEvaluationWindow[]
   notes                         CoachingNote[]
   outputs                       SessionOutput[]
   deliveryEvents                DeliveryEvent[]
@@ -1828,6 +1830,7 @@ model RecordingAsset {
   transcriptJobs                TranscriptJob[]
   transcriptVerifications       TranscriptSegmentVerification[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
+  transcriptEvaluationWindows   TranscriptEvaluationWindow[]
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
@@ -1884,6 +1887,7 @@ model TranscriptJob {
   words               TranscriptWord[]
   verifications       TranscriptSegmentVerification[]
   speakerAttributions TranscriptSpeakerAttribution[]
+  evaluationWindows   TranscriptEvaluationWindow[]
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
@@ -2069,6 +2073,52 @@ model TranscriptSpeakerAttribution {
   @@index([transcriptJobId, providerSpeakerLabel, status, updatedAt], map: "TranscriptSpeakerAttr_job_label_status_idx")
   @@index([participantId, createdAt], map: "TranscriptSpeakerAttr_participant_created_idx")
   @@index([recordingAssetId, createdAt], map: "TranscriptSpeakerAttr_asset_created_idx")
+}
+
+// An append-only, playback-reviewed reference window for private transcript
+// accuracy evaluation. It freezes source, consent, provider, review-receipt,
+// and human-reference evidence without changing provider transcript rows.
+// Alternative provider candidates are separate evidence and never rewrite this
+// approved reference.
+model TranscriptEvaluationWindow {
+  id                         String   @id @default(cuid())
+  roomId                     String
+  transcriptJobId            String
+  recordingAssetId           String
+  approvedByUserId           String
+  approvedByEmailSnapshot    String?
+  clientRequestId            String
+  windowKeySha256            String   @unique(map: "TranscriptEvalWindow_key_sha_key")
+  workload                   String
+  conditionsJson             Json
+  sourceStartSeconds         Float
+  sourceEndSeconds           Float
+  sourceDurationSeconds      Float
+  sourceSha256               String
+  sourceGeneration           String?
+  playbackSourceId           String
+  consentVersionSha256       String
+  referenceRevisionId        String
+  referenceContentSha256     String
+  referenceWordsJson         Json
+  sourceSegmentIdsJson       Json
+  sourceReviewReceiptsJson   Json
+  sourcePlaybackEvidenceJson Json
+  providerSnapshotJson       Json
+  reviewNote                 String?  @db.Text
+  approvedAt                 DateTime
+  createdAt                  DateTime @default(now())
+
+  room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  transcriptJob  TranscriptJob  @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict)
+  recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
+  approvedBy     User           @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([approvedByUserId, clientRequestId], map: "TranscriptEvalWindow_approver_request_key")
+  @@index([roomId, approvedAt], map: "TranscriptEvalWindow_room_approved_idx")
+  @@index([transcriptJobId, approvedAt], map: "TranscriptEvalWindow_job_approved_idx")
+  @@index([recordingAssetId, approvedAt], map: "TranscriptEvalWindow_asset_approved_idx")
+  @@index([workload, approvedAt], map: "TranscriptEvalWindow_workload_approved_idx")
 }
 
 model CoachingNote {

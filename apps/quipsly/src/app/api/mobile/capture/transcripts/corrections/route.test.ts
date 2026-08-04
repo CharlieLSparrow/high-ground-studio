@@ -1,0 +1,86 @@
+/** @jest-environment node */
+
+import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
+
+import { GET, POST } from "./route";
+
+jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn(() => ({ marker: "prisma" })) }));
+jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/transcript-corrections", () => {
+  class MockTranscriptCorrectionError extends Error {
+    constructor(message: string, public status: number, public code: string) { super(message); }
+  }
+  return {
+    attributeTranscriptSpeaker: jest.fn(),
+    confirmTranscriptSegmentAsIs: jest.fn(),
+    createTranscriptCorrection: jest.fn(),
+    readTranscriptCorrectionDesk: jest.fn(),
+    reviewTranscriptCorrectionProposal: jest.fn(),
+    TranscriptCorrectionError: MockTranscriptCorrectionError,
+  };
+});
+jest.mock("@/lib/server/transcript-evaluation-windows", () => {
+  class MockTranscriptEvaluationWindowError extends Error {
+    constructor(message: string, public code = "INVALID", public status = 400) { super(message); }
+  }
+  return {
+    approveTranscriptEvaluationWindow: jest.fn(),
+    readTranscriptEvaluationReadiness: jest.fn(),
+    TranscriptEvaluationWindowError: MockTranscriptEvaluationWindowError,
+  };
+});
+
+const session = { user: { id: "user-1", primaryEmail: "producer@example.com", isStaff: false } };
+
+describe("transcript correction and accuracy-corpus route", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("does not read private transcript state when signed out", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1"));
+    expect(response.status).toBe(401);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(readTranscriptCorrectionDesk).not.toHaveBeenCalled();
+    expect(readTranscriptEvaluationReadiness).not.toHaveBeenCalled();
+  });
+
+  it("adds private corpus readiness to the canonical correction desk", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", segments: [] } as any);
+    jest.mocked(readTranscriptEvaluationReadiness).mockResolvedValue({ eligible: false, blockers: [{ code: "REVIEW_REQUIRED", detail: "Listen first." }], approvedWindows: [] } as any);
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, evaluation: { eligible: false, blockers: [{ code: "REVIEW_REQUIRED" }] } });
+    expect(readTranscriptEvaluationReadiness).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room-1", actor: { id: "user-1", email: "producer@example.com", isStaff: false } }));
+  });
+
+  it("approves a classified evaluation window through an explicit idempotent operation", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(approveTranscriptEvaluationWindow).mockResolvedValue({ ok: true, idempotentReplay: false, window: { id: "window-1" } } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "approve-evaluation-window",
+        roomId: "room-1",
+        clientRequestId: "evaluation-window-request-1",
+        workload: "podcast",
+        conditions: ["normal-exchange"],
+        sourcePlaybackEvidence: { schema: "quipsly-complete-source-playback-v1", playbackSourceId: "source-1", durationSeconds: 60, listenedSecondBins: [0], completedAt: "2026-08-03T18:00:00.000Z" },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: false, window: { id: "window-1" } });
+    expect(approveTranscriptEvaluationWindow).toHaveBeenCalledWith(expect.objectContaining({
+      roomId: "room-1",
+      clientRequestId: "evaluation-window-request-1",
+      workload: "podcast",
+      conditions: ["normal-exchange"],
+      sourcePlaybackEvidence: expect.objectContaining({ schema: "quipsly-complete-source-playback-v1", playbackSourceId: "source-1" }),
+      actor: { id: "user-1", email: "producer@example.com", isStaff: false },
+    }));
+  });
+});
