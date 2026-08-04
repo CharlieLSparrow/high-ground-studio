@@ -37,6 +37,10 @@ import {
   newLocalAudioSignalProfileRuntime,
   runOneLocalAudioSignalProfileJob,
 } from "./local-audio-signal-profile-worker.js";
+import {
+  newLocalStudioTranscriptRuntime,
+  runOneLocalStudioTranscriptJob,
+} from "./local-studio-transcript-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -485,6 +489,14 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const studioTranscript = newLocalStudioTranscriptRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+    executable: process.env.QUIPSLY_LOCAL_WHISPER_EXECUTABLE?.trim() || "/opt/homebrew/Caskroom/miniconda/base/bin/whisper",
+    device: process.env.QUIPSLY_LOCAL_WHISPER_DEVICE?.trim() || "cpu",
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -497,9 +509,12 @@ async function main() {
       const treatmentResult = masteryResult.disposition === "idle"
         ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
         : masteryResult;
-      const result = treatmentResult.disposition === "idle"
+      const signalResult = treatmentResult.disposition === "idle"
         ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
         : treatmentResult;
+      const result = signalResult.disposition === "idle"
+        ? await runOneLocalStudioTranscriptJob(studioTranscript.store, studioTranscript.transcriber, studioTranscript.options)
+        : signalResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

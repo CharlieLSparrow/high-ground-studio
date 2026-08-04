@@ -238,6 +238,61 @@ type AudioSignalProfileClientStatus = {
   boundaries: { originalRemainsSourceTruth: true; analysisDoesNotChangeMedia: true; observationsRequireHumanInterpretation: true };
 };
 
+type StudioSourceTranscriptClientStatus = {
+  jobId: string | null;
+  transcriptJobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  provider: string | null;
+  language: string | null;
+  authorization: null | {
+    kind: "participant-consent-confirmed" | "licensed-or-permitted-source";
+    importRole: string;
+    acceptedAt: string;
+    acceptedByEmail: string;
+  };
+  coverage: null | {
+    segmentCount: number;
+    wordCount: number;
+    timedWordCount: number;
+    confidenceWordCount: number;
+    speakerLabeledWordCount: number;
+    transcriptStartSeconds: number;
+    transcriptEndSeconds: number;
+    correctionCount: number;
+    playbackVerificationCount: number;
+  };
+  segmentPreview: {
+    count: number;
+    total: number;
+    truncated: boolean;
+  };
+  segments: Array<{
+    id: string;
+    ordinal: number;
+    startSeconds: number;
+    endSeconds: number;
+    speakerLabel: string | null;
+    text: string;
+    confidence: number | null;
+  }>;
+  capabilities: null | {
+    segmentTiming: "provider";
+    wordTiming: "provider";
+    wordConfidence: "provider";
+    segmentConfidence: "unavailable";
+    speakerDiarization: "unavailable";
+    alternatives: "unavailable";
+  };
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: {
+    originalRemainsSourceTruth: true;
+    confidenceIsNotMeasuredAccuracy: true;
+    correctionsRequirePlaybackReview: true;
+    createsNoTasksGoalsOrEdits: true;
+  };
+};
+
 type AudioTreatmentClientStatus = {
   jobId: string | null;
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
@@ -3198,6 +3253,7 @@ function CloudEditorContent() {
   const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
   const [audioMasteryStatusByAsset, setAudioMasteryStatusByAsset] = useState<Record<string, AudioMasteryClientStatus>>({});
   const [audioSignalProfileStatusByAsset, setAudioSignalProfileStatusByAsset] = useState<Record<string, AudioSignalProfileClientStatus>>({});
+  const [sourceTranscriptStatusByAsset, setSourceTranscriptStatusByAsset] = useState<Record<string, StudioSourceTranscriptClientStatus>>({});
   const [audioTreatmentStatusByAsset, setAudioTreatmentStatusByAsset] = useState<Record<string, AudioTreatmentClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
   const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
@@ -4775,6 +4831,30 @@ function CloudEditorContent() {
 
   useEffect(() => {
     let canceled = false;
+    const transcriptAssets = importedMediaAssets.filter((asset) => asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/"));
+    if (!transcriptAssets.length) return () => { canceled = true; };
+    void Promise.all(transcriptAssets.map(async (asset) => {
+      const query = new URLSearchParams({ projectSlug: resolvedProjectSlug, episodeSlug, assetId: asset.id });
+      const response = await fetch(`/api/media-vault/source-transcript?${query}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean } & Partial<StudioSourceTranscriptClientStatus>) | null;
+      return response.ok && payload?.ok && payload.status ? { asset, status: payload as { ok: true } & StudioSourceTranscriptClientStatus } : null;
+    })).then((rows) => {
+      if (canceled) return;
+      setSourceTranscriptStatusByAsset((previous) => {
+        const next = { ...previous };
+        for (const row of rows) {
+          if (!row) continue;
+          next[row.asset.id] = row.status;
+          next[row.asset.sourceId] = row.status;
+        }
+        return next;
+      });
+    }).catch((error) => { if (!canceled) console.warn("Could not hydrate source transcript status.", error); });
+    return () => { canceled = true; };
+  }, [episodeSlug, importedMediaAssets, resolvedProjectSlug]);
+
+  useEffect(() => {
+    let canceled = false;
     const masteryAssets = importedMediaAssets.filter((asset) =>
       asset.kind === "audio"
       || asset.kind === "video"
@@ -5919,6 +5999,61 @@ function CloudEditorContent() {
     }
   }, [resolvedProjectSlug]);
 
+  const operateSourceTranscript = useCallback(async (asset: ImportedMediaAsset) => {
+    const jobKey = `${asset.id}:source-transcript`;
+    const referenceRoles = new Set(["reference-clip", "b-roll", "source-clip", "youtube-source-clip"]);
+    const isReference = referenceRoles.has(String(asset.importRole || "episode-media").toLowerCase());
+    const authorizationKind = isReference ? "licensed-or-permitted-source" : "participant-consent-confirmed";
+    const authorizationCopy = isReference
+      ? `Transcribe ${asset.originalName}?\n\nConfirm that Quipsly is licensed or otherwise permitted to transcribe this reference material for episode production and review. This does not publish or edit the source.`
+      : `Transcribe ${asset.originalName}?\n\nConfirm that the recorded participants consented to transcription for this episode. Quipsly will retain immutable timed provider evidence and will not create tasks, goals, edits, or publications.`;
+    if (!window.confirm(authorizationCopy)) {
+      setMediaImportStatus("Transcription was not queued because authorization was not confirmed.");
+      return;
+    }
+    const updateStatus = (status: StudioSourceTranscriptClientStatus) => setSourceTranscriptStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/source-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          assetId: asset.id,
+          sourceId: asset.sourceId,
+          ...(action === "queue" ? { authorizationKind, authorizationAccepted: true, language: "en" } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<StudioSourceTranscriptClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) throw new Error(payload?.error || `Source transcription returned HTTP ${response.status}.`);
+      const status = payload as { ok: true } & StudioSourceTranscriptClientStatus;
+      updateStatus(status);
+      return status;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Queueing immutable timed transcription for ${asset.originalName}...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 900 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed") throw new Error(status.error || "Source transcription failed.");
+        setMediaImportStatus(status.status === "output-ready"
+          ? `Re-hashing ${asset.originalName} and registering immutable timed words...`
+          : `Transcribing ${asset.originalName}; original media remains untouched...`);
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed") throw new Error("Source transcription is still processing. It can be resumed safely from this media card.");
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(`Canonical timed transcript ready for ${asset.originalName}. Confidence remains provider evidence, not measured accuracy.`);
+    } catch (error) {
+      console.warn("Could not complete source transcription.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not complete source transcription.");
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [episodeSlug, resolvedProjectSlug]);
+
   useEffect(() => {
     const selected = [syncWizardSpineAsset, syncWizardTargetAsset].filter((asset): asset is ImportedMediaAsset => Boolean(asset));
     for (const asset of selected) {
@@ -6034,6 +6169,10 @@ function CloudEditorContent() {
       await operateCollaborationProxy(asset);
       return;
     }
+    if (type === "transcript") {
+      await operateSourceTranscript(asset);
+      return;
+    }
     const jobKey = `${asset.id}:${type}`;
     setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
     setMediaImportStatus(`Saving ${mediaAnalysisJobLabel(type).toLowerCase()} job for ${asset.originalName}...`);
@@ -6048,18 +6187,14 @@ function CloudEditorContent() {
           importRole: asset.importRole ?? null,
           suggestedStatus: asset.kind === "unknown" ? "held" : "ready-to-sync",
         }
-        : type === "sync-suggestion"
-          ? {
-            currentSyncStatus: asset.sync?.status ?? "ready-to-sync",
-            anchorTimelineSeconds: asset.sync?.anchorTimelineSeconds ?? null,
-            suggestedTrackId: asset.sync?.suggestedTrackId ?? importedAssetTrackId(asset),
-            note: "Queued for deeper sync analysis. Current result is metadata-only.",
-          }
-          : {
-              note: "Use Gemini transcript assist to generate transcript suggestions.",
-            };
+        : {
+          currentSyncStatus: asset.sync?.status ?? "ready-to-sync",
+          anchorTimelineSeconds: asset.sync?.anchorTimelineSeconds ?? null,
+          suggestedTrackId: asset.sync?.suggestedTrackId ?? importedAssetTrackId(asset),
+          note: "Queued for deeper sync analysis. Current result is metadata-only.",
+        };
 
-    const status: MediaAnalysisJobStatus = type === "transcript" ? "queued" : "completed";
+    const status: MediaAnalysisJobStatus = "completed";
 
     try {
       const response = await fetch("/api/episode-production/media-analysis-jobs", {
@@ -6097,7 +6232,7 @@ function CloudEditorContent() {
         return next;
       });
     }
-  }, [episodeSlug, operateCollaborationProxy, resolvedProjectSlug]);
+  }, [episodeSlug, operateCollaborationProxy, operateSourceTranscript, resolvedProjectSlug]);
 
   const addEditorCoPilotLog = useCallback((entry: Omit<EditorCoPilotLogEntry, "id">) => {
     const id = makeId("copilot");
@@ -9398,11 +9533,14 @@ function CloudEditorContent() {
                   ?? audioMasteryStatusByAsset[asset.sourceId];
                 const audioTreatmentStatus = audioTreatmentStatusByAsset[asset.id]
                   ?? audioTreatmentStatusByAsset[asset.sourceId];
+                const sourceTranscriptStatus = sourceTranscriptStatusByAsset[asset.id]
+                  ?? sourceTranscriptStatusByAsset[asset.sourceId];
                 const proxyStatus = collaborationProxyStatus?.status
                   ?? (hasVerifiedCollaborationProxy(asset) ? "completed" : "not-queued");
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
                 const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
+                const isSourceTranscriptWorking = queueingMediaJobKeys.has(`${asset.id}:source-transcript`);
                 const hasDcTreatmentEvidence = Boolean(audioMasteryStatus?.signalDiagnosis?.channels.some((channel) => Math.abs(channel.dcOffset) >= 0.01));
                 const health = importedAssetHealth(asset);
                 const confidenceStatus = importedAssetConfidenceStatus(asset, health);
@@ -9557,6 +9695,92 @@ function CloudEditorContent() {
                         Saves suggestions only. It will not replace the episode transcript.
                       </div>
                     </button>
+                  )}
+                  {(asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/")) && (
+                    <div className="mt-2 rounded-lg border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 px-3 py-3 text-cyan-950">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black">Canonical source transcript</div>
+                          <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">
+                            Immutable source clock · timed provider words · playback-review corrections
+                          </div>
+                        </div>
+                        <span className={`shrink-0 rounded-full border px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                          sourceTranscriptStatus?.status === "completed"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : sourceTranscriptStatus?.status === "failed"
+                              ? "border-rose-200 bg-rose-50 text-rose-800"
+                              : "border-cyan-200 bg-white text-cyan-900"
+                        }`}>
+                          {sourceTranscriptStatus?.status ?? "not queued"}
+                        </span>
+                      </div>
+                      {sourceTranscriptStatus?.coverage && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
+                          <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{sourceTranscriptStatus.coverage.segmentCount}</div><div>Timed segments</div></div>
+                          <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{sourceTranscriptStatus.coverage.wordCount}</div><div>Timed words</div></div>
+                          <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{sourceTranscriptStatus.coverage.speakerLabeledWordCount}</div><div>Speaker-labeled</div></div>
+                          <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{sourceTranscriptStatus.coverage.playbackVerificationCount}</div><div>Playback checks</div></div>
+                        </div>
+                      )}
+                      {sourceTranscriptStatus?.status === "completed" && sourceTranscriptStatus.segments.length > 0 && (
+                        <div className="mt-3">
+                          {asset.kind === "video" || asset.contentType.startsWith("video/") ? (
+                            <video id={`source-transcript-player-${asset.id}`} controls preload="metadata" src={asset.playbackUrl} className="max-h-48 w-full rounded-md bg-black" />
+                          ) : (
+                            <audio id={`source-transcript-player-${asset.id}`} controls preload="metadata" src={asset.playbackUrl} className="w-full" />
+                          )}
+                          <div className="mt-2 max-h-52 space-y-1 overflow-y-auto pr-1" aria-label={`Timed transcript for ${asset.originalName}`}>
+                            {sourceTranscriptStatus.segments.map((segment) => (
+                              <button
+                                key={segment.id}
+                                type="button"
+                                onClick={() => {
+                                  const player = document.getElementById(`source-transcript-player-${asset.id}`) as HTMLMediaElement | null;
+                                  if (!player) return;
+                                  player.currentTime = segment.startSeconds;
+                                  void player.play().catch(() => undefined);
+                                }}
+                                className="grid w-full grid-cols-[4.5rem_1fr] gap-2 rounded-md border border-cyan-100 bg-white px-2 py-2 text-left hover:border-cyan-300 hover:bg-cyan-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                                title={`Play source at ${formatClock(segment.startSeconds)}`}
+                              >
+                                <span className="font-mono text-[10px] font-black text-cyan-800">{formatClock(segment.startSeconds)}</span>
+                                <span className="text-[11px] font-bold leading-4 text-[#3d3122]">
+                                  {segment.speakerLabel ? <span className="mr-1 text-cyan-800">{segment.speakerLabel}:</span> : null}
+                                  {segment.text}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                          {sourceTranscriptStatus.segmentPreview.truncated && (
+                            <div className="mt-2 rounded-md border border-cyan-200 bg-white px-2 py-2 text-[10px] font-bold leading-4 text-cyan-950">
+                              Showing the first {sourceTranscriptStatus.segmentPreview.count} of {sourceTranscriptStatus.segmentPreview.total} timed segments. The complete canonical transcript remains stored; a paged correction desk is the next review surface.
+                            </div>
+                          )}
+                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[10px] font-bold leading-4 text-amber-950">
+                            Word probability is visible evidence, not measured accuracy. This local provider does not claim speaker diarization; speaker review stays explicitly incomplete until a person verifies it against playback.
+                          </div>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void operateSourceTranscript(asset)}
+                        disabled={isSourceTranscriptWorking || sourceTranscriptStatus?.status === "completed"}
+                        className="mt-3 w-full rounded-lg border border-cyan-300 bg-white px-3 py-2 text-left font-black hover:bg-cyan-100 disabled:cursor-default disabled:bg-cyan-50"
+                      >
+                        {isSourceTranscriptWorking
+                          ? "Transcribing and verifying..."
+                          : sourceTranscriptStatus?.status === "completed"
+                            ? "Canonical timed transcript ready"
+                            : sourceTranscriptStatus?.status === "queued" || sourceTranscriptStatus?.status === "processing" || sourceTranscriptStatus?.status === "output-ready"
+                              ? "Resume source transcription"
+                              : sourceTranscriptStatus?.status === "failed" ? "Retry source transcription" : "Transcribe immutable source"}
+                        <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">
+                          Requires an explicit participant-consent or licensed-source receipt. It never changes media or silently creates edits, tasks, goals, or publications.
+                        </div>
+                      </button>
+                      {sourceTranscriptStatus?.error && <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-2 text-[10px] font-bold text-rose-900">{sourceTranscriptStatus.error}</div>}
+                    </div>
                   )}
                   {(asset.kind === "video" || asset.contentType.startsWith("video/")) && (
                     <button
@@ -10948,7 +11172,13 @@ function CloudEditorContent() {
                               <button type="button" onClick={() => void dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" disabled={Boolean(edit.evidence.audioSignal)} onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">
+                              <button
+                                type="button"
+                                aria-label={`${edit.evidence.audioSignal ? "Protected-source proof required" : edit.type === "deactivate_range" ? "Proof-listen source" : "Proof-watch source"} for proposal at ${formatClock(edit.sourceRange.startSeconds)}`}
+                                disabled={Boolean(edit.evidence.audioSignal)}
+                                onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")}
+                                className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300"
+                              >
                                 {edit.evidence.audioSignal ? "Protected-source proof required" : edit.type === "deactivate_range" ? "Proof-listen source" : "Proof-watch source"}
                               </button>
                               <button type="button" onClick={() => void applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
@@ -11012,7 +11242,13 @@ function CloudEditorContent() {
                               <button type="button" onClick={() => void dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" disabled={Boolean(candidate.evidence.audioSignal)} onClick={() => void proofWatchAiEditSuggestion(candidate, candidate.suggestedAction === "review-camera" ? "watch" : "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">
+                              <button
+                                type="button"
+                                aria-label={`${candidate.evidence.audioSignal ? "Protected-source proof required" : candidate.suggestedAction === "review-camera" ? "Proof-watch source" : "Proof-listen source"} for evidence at ${formatClock(candidate.sourceRange.startSeconds)}`}
+                                disabled={Boolean(candidate.evidence.audioSignal)}
+                                onClick={() => void proofWatchAiEditSuggestion(candidate, candidate.suggestedAction === "review-camera" ? "watch" : "listen")}
+                                className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300"
+                              >
                                 {candidate.evidence.audioSignal ? "Protected-source proof required" : candidate.suggestedAction === "review-camera" ? "Proof-watch source" : "Proof-listen source"}
                               </button>
                             </div>

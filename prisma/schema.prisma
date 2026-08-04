@@ -1866,6 +1866,9 @@ model TranscriptJob {
   id                       String              @id @default(cuid())
   roomId                   String?
   assetId                  String?
+  studioMediaAssetId       String?
+  studioProjectId          String?
+  episodeProductionId      String?
   status                   TranscriptJobStatus @default(QUEUED)
   provider                 String              @default("pending")
   language                 String?
@@ -1886,6 +1889,9 @@ model TranscriptJob {
 
   room                CallRoom?                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   asset               RecordingAsset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  studioMediaAsset    StudioMediaAsset?               @relation(fields: [studioMediaAssetId], references: [id], onDelete: Restrict)
+  studioProject       StudioProject?                  @relation(fields: [studioProjectId], references: [id], onDelete: Restrict)
+  episodeProduction   StudioEpisodeProduction?        @relation(fields: [episodeProductionId], references: [id], onDelete: Restrict)
   segments            TranscriptSegment[]
   words               TranscriptWord[]
   verifications       TranscriptSegmentVerification[]
@@ -1894,6 +1900,9 @@ model TranscriptJob {
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
+  @@index([studioMediaAssetId, status, createdAt])
+  @@index([studioProjectId, status, createdAt])
+  @@index([episodeProductionId, status, createdAt])
   @@index([status, createdAt])
 }
 
@@ -3003,6 +3012,7 @@ model StudioProject {
   quipLoreCollections QuipLoreCollection[]
 
   scrollExperiences StudioScrollExperience[]
+  transcriptJobs    TranscriptJob[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3087,6 +3097,7 @@ model StudioEpisodeProduction {
   milestones         StudioEpisodeMilestone[]
   editProposalSets   StudioEpisodeEditProposalSet[]
   editReviewReceipts StudioEpisodeEditReviewReceipt[]
+  transcriptJobs     TranscriptJob[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4513,6 +4524,7 @@ model StudioMediaAsset {
   processingJobs   StudioAssetProcessingJob[]
   sourceUnits      StudioSourceUnit[]
   workflowJobs     StudioWorkflowJob[]
+  transcriptJobs   TranscriptJob[]
 
   @@index([createdAt])
   @@index([mediaBinId])

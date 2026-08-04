@@ -1,6 +1,6 @@
 import React from "react";
 import { createHash, webcrypto } from "node:crypto";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import CloudEditor from "./page";
@@ -104,6 +104,7 @@ describe("CloudEditor production truth UX", () => {
                     sourceSha256: "a".repeat(64),
                     storageGeneration: "generation-range-test",
                     signalProfileSha256: "b".repeat(64),
+                    protectedPlaybackSourceId: "source-range-test",
                   },
                 } : {}),
               },
@@ -173,6 +174,24 @@ describe("CloudEditor production truth UX", () => {
                 candidateCount: hasMeasuredRangeFixture ? 1 : 0,
                 boundRecordingAssetId: hasMeasuredRangeFixture ? "recording-range-test" : null,
               },
+              signalVisualization: hasMeasuredRangeFixture ? {
+                recordingAssetId: "recording-range-test",
+                sourceSha256: "a".repeat(64),
+                storageGeneration: "generation-range-test",
+                signalProfileSha256: "b".repeat(64),
+                algorithm: "capture-energy-v1",
+                durationSeconds: 7,
+                nearSilenceDbfs: -72,
+                surroundingSignalDbfs: -45,
+                protectedPlayback: {
+                  sourceId: "source-range-test",
+                  url: "/api/ingest/media/source-range-test",
+                  kind: "audio",
+                  label: "Hash-bound measured fixture",
+                  durationSeconds: 7,
+                },
+                waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs: -78, samplePeakDbfs: -70, clippedFrameCount: 0 }],
+              } : null,
             } : {}),
           }, true, 200);
         }
@@ -275,10 +294,10 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByText(/Nothing has been applied/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply proposal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Proof-watch source" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Proof-watch source for proposal/i })).toBeInTheDocument();
     expect(screen.getByText(/source 00:00–00:08 · original unchanged/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Proof-watch source" }));
+    await user.click(screen.getByRole("button", { name: /Proof-watch source for proposal/i }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:08/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
@@ -317,7 +336,7 @@ describe("CloudEditor production truth UX", () => {
       providerDisclosureAccepted: false,
     }));
 
-    await user.click(screen.getByRole("button", { name: "Proof-listen source" }));
+    await user.click(screen.getByRole("button", { name: /Proof-listen source for evidence/i }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:06/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
@@ -333,6 +352,7 @@ describe("CloudEditor production truth UX", () => {
       },
     });
     const user = userEvent.setup();
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     render(<CloudEditor />);
 
     await screen.findByText(/Loaded Current Episode from transcript payload/i);
@@ -342,8 +362,13 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByText(/Decoded coverage 100% · strongest RMS window -78.0 dBFS/i)).toBeInTheDocument();
     expect(screen.getByText(/Applying creates reversible timeline metadata only/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Proof-listen source" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
+    await user.click(screen.getByRole("button", { name: "Play bound source" }));
+    const protectedSource = screen.getByLabelText("Protected automated edit source");
+    Object.defineProperty(protectedSource, "currentTime", { configurable: true, value: 2.5, writable: true });
+    fireEvent.timeUpdate(protectedSource);
+    await user.click(screen.getByRole("checkbox", { name: /I listened inside this exact source range/i }));
+    await user.click(screen.getByRole("button", { name: "Record proof-listen" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listened through the exact protected RecordingAsset/i);
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
@@ -385,6 +410,7 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByRole("region", { name: "Exact range edit decisions" })).toBeInTheDocument();
+    play.mockRestore();
   });
 
   it("keeps a new episode honestly empty instead of injecting sample media or a representative cut", async () => {
