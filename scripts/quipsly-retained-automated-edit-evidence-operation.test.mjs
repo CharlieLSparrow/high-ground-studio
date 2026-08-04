@@ -16,6 +16,8 @@ test("retained automated-edit operation proves real decoded signal, source bindi
   assert.match(operation, /decoded RMS -78\.0 dBFS/);
   assert.match(operation, /Measured range-skip proposal/);
   assert.match(operation, /Selected untouched source at 00:04/);
+  assert.match(operation, /Protected-source proof required/);
+  assert.match(operation, /falseProgramMonitorProofHeld: true/);
   assert.match(operation, /sourceMediaUnchanged: true/);
   assert.match(operation, /proposalApplied: false/);
 });

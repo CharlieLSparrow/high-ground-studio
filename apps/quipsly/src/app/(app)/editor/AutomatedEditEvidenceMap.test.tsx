@@ -79,6 +79,8 @@ describe("AutomatedEditEvidenceMap", () => {
     expect(screen.getByText(/1 is a measured low-energy proposal/i)).toBeInTheDocument();
     expect(screen.getByText(/original unchanged · not applied/i)).toBeInTheDocument();
     expect(screen.getByText(/Bound source recording-1 · source b{12} · profile c{12}/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Protected-source proof required" })).toBeDisabled();
+    expect(screen.getByText(/will not write a proof-listen receipt from the program monitor/i)).toBeInTheDocument();
   });
 
   it("moves the shared playhead to an exact evidence range and proof-watches camera evidence", () => {

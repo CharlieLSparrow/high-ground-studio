@@ -10742,8 +10742,8 @@ function CloudEditorContent() {
                               <button type="button" onClick={() => void dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
-                                {edit.type === "deactivate_range" ? "Proof-listen source" : "Proof-watch source"}
+                              <button type="button" disabled={Boolean(edit.evidence.audioSignal)} onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">
+                                {edit.evidence.audioSignal ? "Protected-source proof required" : edit.type === "deactivate_range" ? "Proof-listen source" : "Proof-watch source"}
                               </button>
                               <button type="button" onClick={() => void applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
                                 Apply proposal
@@ -10806,8 +10806,8 @@ function CloudEditorContent() {
                               <button type="button" onClick={() => void dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(candidate, candidate.suggestedAction === "review-camera" ? "watch" : "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
-                                {candidate.suggestedAction === "review-camera" ? "Proof-watch source" : "Proof-listen source"}
+                              <button type="button" disabled={Boolean(candidate.evidence.audioSignal)} onClick={() => void proofWatchAiEditSuggestion(candidate, candidate.suggestedAction === "review-camera" ? "watch" : "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">
+                                {candidate.evidence.audioSignal ? "Protected-source proof required" : candidate.suggestedAction === "review-camera" ? "Proof-watch source" : "Proof-listen source"}
                               </button>
                             </div>
                           </article>

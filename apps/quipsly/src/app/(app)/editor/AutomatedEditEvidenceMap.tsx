@@ -74,6 +74,7 @@ export function AutomatedEditEvidenceMap({
   ], [candidates, proposals]);
   const [selectedId, setSelectedId] = useState<string | null>(items[0]?.id ?? null);
   const selected = items.find((item) => item.id === selectedId) ?? null;
+  const selectedRequiresBoundAudio = Boolean(selected?.item.evidence.audioSignal);
   const start = Math.max(0, Math.min(sourceStartSeconds, sourceEndSeconds));
   const end = Math.max(start + 0.001, sourceEndSeconds);
   const duration = end - start;
@@ -173,11 +174,12 @@ export function AutomatedEditEvidenceMap({
         <div className="mt-3 rounded-lg border border-gray-700 bg-[#10151d] p-3" aria-label="Selected automated edit evidence">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div><p className="text-[10px] font-black uppercase tracking-wider text-cyan-200">{itemLabel(selected)}</p><p className="mt-1 font-mono text-[9px] text-gray-400">source {clock(selected.item.sourceRange.startSeconds)}–{clock(selected.item.sourceRange.endSeconds)}</p></div>
-            <button type="button" onClick={() => onProofReview(selected.item)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">{selected.kind === "candidate" && selected.item.suggestedAction === "review-camera" ? "Proof-watch source" : selected.kind === "proposal" && selected.item.type !== "deactivate_range" ? "Proof-watch source" : "Proof-listen source"}</button>
+            <button type="button" disabled={selectedRequiresBoundAudio} onClick={() => onProofReview(selected.item)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">{selectedRequiresBoundAudio ? "Protected-source proof required" : selected.kind === "candidate" && selected.item.suggestedAction === "review-camera" ? "Proof-watch source" : selected.kind === "proposal" && selected.item.type !== "deactivate_range" ? "Proof-watch source" : "Proof-listen source"}</button>
           </div>
           <p className="mt-2 text-[10px] font-bold leading-4 text-gray-300">{selected.item.rationale}</p>
           <p className="mt-2 text-[9px] font-black uppercase tracking-wider text-gray-500">{selected.item.confidence} confidence · original unchanged · not applied</p>
           {selected.item.evidence.audioSignal && <p className="mt-2 rounded-md border border-emerald-900 bg-emerald-950/30 px-2 py-1.5 text-[9px] font-bold text-emerald-200">{selected.item.evidence.audioSignal.classification.replaceAll("-", " ")} · {(selected.item.evidence.audioSignal.coverageFraction * 100).toFixed(0)}% decoded coverage · strongest RMS {selected.item.evidence.audioSignal.maximumRmsDbfs.toFixed(1)} dBFS</p>}
+          {selectedRequiresBoundAudio && <p className="mt-2 text-[9px] font-bold leading-4 text-amber-300">Quipsly will not write a proof-listen receipt from the program monitor. The protected player must prove it is serving this exact RecordingAsset and source hash first.</p>}
         </div>
       )}
 

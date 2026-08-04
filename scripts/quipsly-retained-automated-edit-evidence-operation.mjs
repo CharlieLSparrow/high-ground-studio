@@ -62,6 +62,9 @@ async function main() {
     await map.getByRole("button", { name: /0:04\.0 · Measured range-skip proposal/i }).click();
     const selected = map.getByLabel("Selected automated edit evidence", { exact: true });
     await selected.getByText(/100% decoded coverage · strongest RMS -78\.0 dBFS/i).waitFor();
+    const heldProof = selected.getByRole("button", { name: "Protected-source proof required", exact: true });
+    assert(await heldProof.isDisabled(), "Signal-bound evidence exposed a false program-monitor proof action.");
+    await selected.getByText(/will not write a proof-listen receipt from the program monitor/i).waitFor();
     await main.getByText(/Selected untouched source at 00:04\./).waitFor();
 
     const sourceClock = map.getByRole("button", { name: /Edit evidence source clock from .* Select an exact playback position/i });
@@ -86,6 +89,7 @@ async function main() {
       reversibleRangeProposalVisible: true,
       selectedEvidenceMovedSharedPlayhead: true,
       sourceClockScrubbed: true,
+      falseProgramMonitorProofHeld: true,
       proposalApplied: false,
       sourceMediaUnchanged: true,
       browserExceptions: 0,

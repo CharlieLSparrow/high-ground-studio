@@ -56,6 +56,11 @@ its exact audio bytes through protected editor playback. Quipsly must never call
 black/silent program-monitor playback proof that the bound RecordingAsset was
 heard.
 
+The map and its legacy proposal card now disable that false-proof path for every
+signal-bound range and explain why. This hold affects only the proof claim; the
+source-bound proposal remains visible and its reversible draft action remains a
+separate deliberate choice.
+
 ## Verification
 
 - map, client contract, deterministic analysis, server source resolver, and edit API: 26 focused tests;
