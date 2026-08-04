@@ -1947,14 +1947,20 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
       {mode === "live" ? <div className="space-y-5">
         <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
-        <LiveSessionRoom
-          callRoomId={roomId}
-          sessionTitle={sessionTitle}
-          kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
-          purpose={preparation?.purpose || "COACHING"}
-        />
         <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
-        {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
+        <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1.7fr)_minmax(21rem,0.72fr)] 2xl:items-start">
+          <LiveSessionRoom
+            callRoomId={roomId}
+            sessionTitle={sessionTitle}
+            kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
+            purpose={preparation?.purpose || "COACHING"}
+            projectSlug={collaborationContext.project?.slug || null}
+            episodeSlug={collaborationContext.episode?.slug || null}
+          />
+          <div className="min-w-0 2xl:sticky 2xl:top-4">
+            {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
+          </div>
+        </div>
       </div> : null}
 
       {mode === "recordings" ? <>

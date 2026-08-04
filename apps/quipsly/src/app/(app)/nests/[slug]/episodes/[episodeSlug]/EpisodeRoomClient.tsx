@@ -682,29 +682,31 @@ export default function EpisodeRoomClient({
             <span className="rounded-full border border-[#d8ad56]/40 px-3 py-1 text-[10px] uppercase tracking-wide text-[#d8ad56]">Same room as iPhone</span>
           </summary>
           <div className="pt-3">
-            <LiveSessionRoom
-              callRoomId={recordingSession.id}
-              sessionTitle={recordingSession.title}
-              kind="episode"
-              purpose="PODCAST"
-              projectSlug={projectSlug}
-              episodeSlug={episodeSlug}
-              episodeWatchHint={episodeWatchHint}
-              onEpisodeWatchHint={receiveEpisodeWatchHint}
-              compact
-            />
-            <div className="mt-4">
+            <div className="mb-4">
               <SessionInvitations roomId={recordingSession.id} purpose="PODCAST" />
             </div>
-            <div className="mt-4">
-              <SessionThread
-                projectSlug={projectSlug}
-                roomId={recordingSession.id}
+            <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(22rem,0.7fr)] 2xl:items-start">
+              <LiveSessionRoom
+                callRoomId={recordingSession.id}
                 sessionTitle={recordingSession.title}
-                canPost={canEdit}
-                scopeLabel="This recording Session only"
-                scopeDescription="Coordinate this take, device checks, handoffs, and immediate recording decisions here. The Episode thread below remains the long-lived conversation for writing, editing, and publishing."
+                kind="episode"
+                purpose="PODCAST"
+                projectSlug={projectSlug}
+                episodeSlug={episodeSlug}
+                episodeWatchHint={episodeWatchHint}
+                onEpisodeWatchHint={receiveEpisodeWatchHint}
+                compact
               />
+              <div className="min-w-0 2xl:sticky 2xl:top-4">
+                <SessionThread
+                  projectSlug={projectSlug}
+                  roomId={recordingSession.id}
+                  sessionTitle={recordingSession.title}
+                  canPost={canEdit}
+                  scopeLabel="This recording Session only"
+                  scopeDescription="Coordinate this take, device checks, handoffs, and immediate recording decisions here. The Episode thread below remains the long-lived conversation for writing, editing, and publishing."
+                />
+              </div>
             </div>
           </div>
         </details> : null}

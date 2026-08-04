@@ -90,6 +90,7 @@ export function BrowserSourceRecorder({
   microphoneLabel,
   cameraId,
   cameraLabel,
+  onSourceLockChange,
 }: {
   callRoomId: string;
   sessionTitle: string;
@@ -99,6 +100,7 @@ export function BrowserSourceRecorder({
   microphoneLabel: string;
   cameraId: string;
   cameraLabel: string;
+  onSourceLockChange?: (locked: boolean) => void;
 }) {
   const [status, setStatus] = useState<RecorderStatus>("checking");
   const [message, setMessage] = useState("Checking durable browser storage and consent…");
@@ -118,6 +120,7 @@ export function BrowserSourceRecorder({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [recoveryRows, setRecoveryRows] = useState<BrowserSourceCaptureLedger[]>([]);
   const [activeLedger, setActiveLedger] = useState<BrowserSourceCaptureLedger | null>(null);
+  const sourceLocked = status === "starting" || status === "recording" || status === "stopping";
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -125,6 +128,11 @@ export function BrowserSourceRecorder({
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ledgerRef = useRef<BrowserSourceCaptureLedger | null>(null);
   const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onSourceLockChange?.(sourceLocked);
+    return () => onSourceLockChange?.(false);
+  }, [onSourceLockChange, sourceLocked]);
 
   const refreshRecovery = useCallback(async () => {
     const rows = await listBrowserSourceLedgers(callRoomId).catch(() => []);

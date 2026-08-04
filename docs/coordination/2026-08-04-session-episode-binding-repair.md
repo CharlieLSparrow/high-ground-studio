@@ -113,7 +113,7 @@ identity, local Nest on port 3012, and the migrated PostgreSQL database. It:
 Exact cleanup read back 0 disposable database users, rooms, receipts,
 workspaces, and Firebase users.
 
-Complete qualification passes 301 Nest suites / 1,571 runnable tests, both
+Complete qualification passes 301 Nest suites / 1,572 runnable tests, both
 database operations with 12/12 assertions, the optimized 172-page production
 build, Prisma validation/current migration status, schema-release policy tests,
 98/98 mobile source contracts, and 1,025/1,025 Capture/App Store contracts.

@@ -81,7 +81,7 @@ Date: 2026-08-04
   attention without exposing provider identities. The retained operation read
   two devices/two people before removal and host-only afterward. See
   `docs/coordination/2026-08-04-session-provider-presence.md`.
-- Full Nest Jest passes 301 suites / 1,571 runnable tests, the 172-route Nest
+- Full Nest Jest passes 301 suites / 1,572 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This
@@ -92,6 +92,13 @@ Date: 2026-08-04
   device operation, and browser/iPhone editor playback remain deployment
   gates. The cost/environment proposal is in
   `docs/operations/quipsly-livekit-cost-and-environment-proposal.md`.
+- Browser and iPhone use one purpose-aware Session media spine. Browser device
+  controls now remain reachable after join, retain a connected status across
+  hardware refresh, and lock source identity during retained capture; Session
+  chat sits beside the live room on wide screens. Podcast continuity is the
+  exact Episode Room. Coaching still needs a first-class engagement aggregate
+  and engagement-scoped thread rather than project-wide client access. See
+  `docs/coordination/2026-08-04-unified-live-collaboration-architecture.md`.
 
 ## Broad-band frequency evidence and full-width review checkpoint
 

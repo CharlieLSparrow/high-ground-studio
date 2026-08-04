@@ -2,6 +2,15 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { LiveSessionRoom } from "./live-session-room";
 
+jest.mock("@/components/browser-source-recorder", () => ({
+  BrowserSourceRecorder: ({ onSourceLockChange }: { onSourceLockChange?: (locked: boolean) => void }) => (
+    <div>
+      <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
+      <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
+    </div>
+  ),
+}));
+
 describe("LiveSessionRoom", () => {
   const originalMediaDevices = navigator.mediaDevices;
 
@@ -109,5 +118,32 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("");
     expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeDisabled();
+  });
+
+  it("locks call device identity while a retained local source is active", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+          { kind: "videoinput", deviceId: "canon-r8", label: "Canon EOS R8" },
+          { kind: "audiooutput", deviceId: "mv7i-headphones", label: "Shure MV7i Headphones" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-5" sessionTitle="Locked source" kind="episode" />);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));
+    expect(screen.getByRole("combobox", { name: "Microphone" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Camera" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Simulate retained source stop" }));
+    expect(screen.getByRole("combobox", { name: "Microphone" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Camera" })).toBeEnabled();
   });
 });
