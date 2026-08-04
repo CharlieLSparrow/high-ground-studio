@@ -1897,6 +1897,7 @@ model TranscriptJob {
   verifications       TranscriptSegmentVerification[]
   speakerAttributions TranscriptSpeakerAttribution[]
   evaluationWindows   TranscriptEvaluationWindow[]
+  corrections         TranscriptCorrection[]
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
@@ -1959,7 +1960,7 @@ model TranscriptWord {
 // proposed until an authorized reviewer explicitly decides them.
 model TranscriptCorrection {
   id                     String    @id @default(cuid())
-  roomId                 String
+  roomId                 String?
   transcriptJobId        String
   segmentId              String
   createdByUserId        String
@@ -1982,11 +1983,12 @@ model TranscriptCorrection {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  room       CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  segment    TranscriptSegment              @relation(fields: [segmentId], references: [id], onDelete: Restrict)
-  createdBy  User                           @relation("TranscriptCorrectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  reviewedBy User?                          @relation("TranscriptCorrectionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  revisions  TranscriptCorrectionRevision[]
+  room          CallRoom?                      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transcriptJob TranscriptJob                  @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
+  segment       TranscriptSegment              @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  createdBy     User                           @relation("TranscriptCorrectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reviewedBy    User?                          @relation("TranscriptCorrectionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  revisions     TranscriptCorrectionRevision[]
 
   @@unique([createdByUserId, clientRequestId])
   @@index([roomId, status, createdAt])
@@ -2016,10 +2018,11 @@ model TranscriptCorrectionRevision {
 // as-is state without inventing a no-op correction.
 model TranscriptSegmentVerification {
   id                      String   @id @default(cuid())
-  roomId                  String
+  roomId                  String?
   transcriptJobId         String
   segmentId               String
-  recordingAssetId        String
+  recordingAssetId        String?
+  studioMediaAssetId      String?
   reviewerUserId          String
   reviewerEmailSnapshot   String?
   clientRequestId         String
@@ -2033,16 +2036,18 @@ model TranscriptSegmentVerification {
   reviewNote              String?  @db.Text
   createdAt               DateTime @default(now())
 
-  room           CallRoom          @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  transcriptJob  TranscriptJob     @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict)
-  segment        TranscriptSegment @relation(fields: [segmentId], references: [id], onDelete: Restrict)
-  recordingAsset RecordingAsset    @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
-  reviewer       User              @relation("TranscriptSegmentVerificationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  room             CallRoom?         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transcriptJob    TranscriptJob     @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict)
+  segment          TranscriptSegment @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  recordingAsset   RecordingAsset?   @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
+  studioMediaAsset StudioMediaAsset? @relation(fields: [studioMediaAssetId], references: [id], onDelete: Restrict)
+  reviewer         User              @relation("TranscriptSegmentVerificationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
 
   @@unique([reviewerUserId, clientRequestId], map: "TranscriptSegVerify_reviewer_request_key")
   @@index([roomId, createdAt], map: "TranscriptSegVerify_room_created_idx")
   @@index([transcriptJobId, segmentId, createdAt], map: "TranscriptSegVerify_job_segment_created_idx")
   @@index([recordingAssetId, createdAt], map: "TranscriptSegVerify_asset_created_idx")
+  @@index([studioMediaAssetId, createdAt], map: "TranscriptSegVerify_studio_asset_created_idx")
 }
 
 // A playback-reviewed identity overlay for one provider diarization cluster.
@@ -4515,16 +4520,17 @@ model StudioMediaAsset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects         StudioProject[]
-  mediaBin         MediaBin?                  @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips            MediaClip[]
-  mediaTags        StudioMediaTag[]
-  assetAttachments StudioAssetAttachment[]
-  variants         StudioAssetVariant[]
-  processingJobs   StudioAssetProcessingJob[]
-  sourceUnits      StudioSourceUnit[]
-  workflowJobs     StudioWorkflowJob[]
-  transcriptJobs   TranscriptJob[]
+  projects                StudioProject[]
+  mediaBin                MediaBin?                       @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips                   MediaClip[]
+  mediaTags               StudioMediaTag[]
+  assetAttachments        StudioAssetAttachment[]
+  variants                StudioAssetVariant[]
+  processingJobs          StudioAssetProcessingJob[]
+  sourceUnits             StudioSourceUnit[]
+  workflowJobs            StudioWorkflowJob[]
+  transcriptJobs          TranscriptJob[]
+  transcriptVerifications TranscriptSegmentVerification[]
 
   @@index([createdAt])
   @@index([mediaBinId])

@@ -30,6 +30,7 @@ import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
+import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
 import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
@@ -9723,44 +9724,13 @@ function CloudEditorContent() {
                           <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{sourceTranscriptStatus.coverage.playbackVerificationCount}</div><div>Playback checks</div></div>
                         </div>
                       )}
-                      {sourceTranscriptStatus?.status === "completed" && sourceTranscriptStatus.segments.length > 0 && (
-                        <div className="mt-3">
-                          {asset.kind === "video" || asset.contentType.startsWith("video/") ? (
-                            <video id={`source-transcript-player-${asset.id}`} controls preload="metadata" src={asset.playbackUrl} className="max-h-48 w-full rounded-md bg-black" />
-                          ) : (
-                            <audio id={`source-transcript-player-${asset.id}`} controls preload="metadata" src={asset.playbackUrl} className="w-full" />
-                          )}
-                          <div className="mt-2 max-h-52 space-y-1 overflow-y-auto pr-1" aria-label={`Timed transcript for ${asset.originalName}`}>
-                            {sourceTranscriptStatus.segments.map((segment) => (
-                              <button
-                                key={segment.id}
-                                type="button"
-                                onClick={() => {
-                                  const player = document.getElementById(`source-transcript-player-${asset.id}`) as HTMLMediaElement | null;
-                                  if (!player) return;
-                                  player.currentTime = segment.startSeconds;
-                                  void player.play().catch(() => undefined);
-                                }}
-                                className="grid w-full grid-cols-[4.5rem_1fr] gap-2 rounded-md border border-cyan-100 bg-white px-2 py-2 text-left hover:border-cyan-300 hover:bg-cyan-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-                                title={`Play source at ${formatClock(segment.startSeconds)}`}
-                              >
-                                <span className="font-mono text-[10px] font-black text-cyan-800">{formatClock(segment.startSeconds)}</span>
-                                <span className="text-[11px] font-bold leading-4 text-[#3d3122]">
-                                  {segment.speakerLabel ? <span className="mr-1 text-cyan-800">{segment.speakerLabel}:</span> : null}
-                                  {segment.text}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                          {sourceTranscriptStatus.segmentPreview.truncated && (
-                            <div className="mt-2 rounded-md border border-cyan-200 bg-white px-2 py-2 text-[10px] font-bold leading-4 text-cyan-950">
-                              Showing the first {sourceTranscriptStatus.segmentPreview.count} of {sourceTranscriptStatus.segmentPreview.total} timed segments. The complete canonical transcript remains stored; a paged correction desk is the next review surface.
-                            </div>
-                          )}
-                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-[10px] font-bold leading-4 text-amber-950">
-                            Word probability is visible evidence, not measured accuracy. This local provider does not claim speaker diarization; speaker review stays explicitly incomplete until a person verifies it against playback.
-                          </div>
-                        </div>
+                      {sourceTranscriptStatus?.status === "completed" && (sourceTranscriptStatus.coverage?.segmentCount ?? 0) > 0 && (
+                        <StudioTranscriptReviewDesk
+                          projectSlug={resolvedProjectSlug}
+                          episodeSlug={episodeSlug}
+                          assetId={asset.id}
+                          sourceId={asset.sourceId}
+                        />
                       )}
                       <button
                         type="button"

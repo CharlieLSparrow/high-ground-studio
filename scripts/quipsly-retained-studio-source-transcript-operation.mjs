@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 
 import pg from "pg";
@@ -90,6 +91,55 @@ try {
   assert.equal(readback.body?.capabilities?.speakerDiarization, "unavailable");
   assert.equal(readback.body?.boundaries?.confidenceIsNotMeasuredAccuracy, true);
 
+  const reviewQuery = new URLSearchParams({ projectSlug: PROJECT_SLUG, episodeSlug: EPISODE_SLUG, assetId: ASSET_ID, sourceId: SOURCE_ID, limit: "40" });
+  const signedOutReview = await request(`/api/media-vault/source-transcript/review?${reviewQuery}`);
+  assert.equal(signedOutReview.status, 401, "Signed-out transcript review did not fail closed.");
+  const outsiderReview = await request(`/api/media-vault/source-transcript/review?${reviewQuery}`, { token: outsiderToken });
+  assert.equal(outsiderReview.status, 403, "A separate ungranted account could read transcript review evidence.");
+  const review = await request(`/api/media-vault/source-transcript/review?${reviewQuery}`, { token: operatorToken });
+  assert.equal(review.status, 200, review.body?.error || "Transcript review readback failed.");
+  assert.equal(review.body?.source?.sha256, beforeSha256);
+  assert.ok(review.body?.segments?.length > 0, "The review desk did not return paged transcript evidence.");
+  assert.ok(review.body?.segments?.[0]?.words?.length > 0, "The review desk did not return provider word timing.");
+  const uncorrected = review.body.segments.find((segment) => !segment.acceptedCorrection);
+  assert.ok(uncorrected, "The retained review page has no uncorrected segment for the fail-closed operation.");
+  const evidenceBefore = await pool.query({
+    text: `
+      SELECT
+        (SELECT count(*)::integer FROM "TranscriptCorrection" WHERE "transcriptJobId"=$1) AS corrections,
+        (SELECT count(*)::integer FROM "TranscriptSegmentVerification" WHERE "transcriptJobId"=$1) AS verifications
+    `,
+    values: [readback.body.transcriptJobId],
+  });
+  const refusedReview = await request("/api/media-vault/source-transcript/review", {
+    token: operatorToken,
+    method: "POST",
+    body: {
+      action: "confirm-as-is",
+      projectSlug: PROJECT_SLUG,
+      episodeSlug: EPISODE_SLUG,
+      assetId: ASSET_ID,
+      sourceId: SOURCE_ID,
+      segmentId: uncorrected.id,
+      clientRequestId: randomUUID(),
+      expectedText: uncorrected.providerText,
+      expectedSpeakerLabel: uncorrected.providerSpeakerLabel,
+      confirmedAgainstPlayback: false,
+      playbackPositionSeconds: uncorrected.startSeconds,
+    },
+  });
+  assert.equal(refusedReview.status, 409, "A review write succeeded without playback confirmation.");
+  assert.equal(refusedReview.body?.code, "PLAYBACK_NOT_CONFIRMED");
+  const evidenceAfter = await pool.query({
+    text: `
+      SELECT
+        (SELECT count(*)::integer FROM "TranscriptCorrection" WHERE "transcriptJobId"=$1) AS corrections,
+        (SELECT count(*)::integer FROM "TranscriptSegmentVerification" WHERE "transcriptJobId"=$1) AS verifications
+    `,
+    values: [readback.body.transcriptJobId],
+  });
+  assert.deepEqual(evidenceAfter.rows[0], evidenceBefore.rows[0], "A refused review attempt changed durable evidence.");
+
   const canonical = await pool.query({
     text: `
       SELECT tj.id, tj.status, tj.provider, tj."studioMediaAssetId", tj."studioProjectId", tj."episodeProductionId",
@@ -127,6 +177,15 @@ try {
       firstSegment: readback.body.segments[0],
     },
     privacy: { signedOutStatus: signedOut.status, outsiderStatus: outsider.status },
+    review: {
+      pageCount: review.body.page.count,
+      hasMore: review.body.page.hasMore,
+      firstSegmentWordCount: review.body.segments[0].words.length,
+      playbackRequiredStatus: refusedReview.status,
+      refusedWriteChangedEvidence: false,
+      signedOutStatus: signedOutReview.status,
+      outsiderStatus: outsiderReview.status,
+    },
     boundaries: readback.body.boundaries,
   }, null, 2)}\n`);
 } finally {

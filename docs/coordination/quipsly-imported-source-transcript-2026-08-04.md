@@ -56,7 +56,7 @@ The first real worker run exposed two bugs that unit fixtures did not:
 1. A PostgreSQL retry-release query reused one parameter with incompatible timestamp and text types. The query now applies explicit types.
 2. Whisper placed one timed word fractionally outside its segment. Quipsly now expands that segment deterministically to the provider word envelope while preserving the raw response and raw word times.
 
-The editor status endpoint also exposed a transparency defect: it returned only the first 80 segments and derived its correction total from that partial list. The API now computes the correction count over the complete transcript, returns up to 240 review segments, and declares when a preview is truncated.
+The editor status endpoint also exposed a transparency defect: it returned only the first 80 segments and derived its correction total from that partial list. The API now computes the correction count over the complete transcript, returns one explicitly bounded preview segment, and delegates review text to the paged correction desk.
 
 ## Accuracy finding
 

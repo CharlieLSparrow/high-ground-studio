@@ -83,7 +83,7 @@ export async function queueStudioSourceTranscript(input: {
   language?: string | null;
 }) {
   if (!input.authorizationAccepted) throw new Error("Explicit transcription authorization is required.");
-  const context = await loadContext(input);
+  const context = await loadStudioSourceTranscriptContext(input);
   const expectedAuthorization = authorizationKindForRole(context.importRole);
   if (input.authorizationKind !== expectedAuthorization) {
     throw new Error(expectedAuthorization === "participant-consent-confirmed"
@@ -212,7 +212,7 @@ export async function reconcileStudioSourceTranscript(input: {
   assetId: string;
   sourceId: string;
 }) {
-  const context = await loadContext(input);
+  const context = await loadStudioSourceTranscriptContext(input);
   const row = await input.prisma.studioAssetProcessingJob.findFirst({
     where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
@@ -335,7 +335,7 @@ export async function reconcileStudioSourceTranscript(input: {
   return toPublicStudioSourceTranscriptStatus(input.prisma, updated);
 }
 
-async function loadContext(input: { prisma: any; projectSlug: string; episodeSlug: string; assetId: string; sourceId: string }) {
+export async function loadStudioSourceTranscriptContext(input: { prisma: any; projectSlug: string; episodeSlug: string; assetId: string; sourceId: string }) {
   const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true, slug: true } });
   if (!project) throw new Error("Nest not found for source transcription.");
   const production = await input.prisma.studioEpisodeProduction.findUnique({
@@ -378,7 +378,7 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
   const transcript = contract ? await prisma.transcriptJob.findUnique({
     where: { id: contract.transcriptJobId },
     include: {
-      segments: { orderBy: [{ startSeconds: "asc" }, { id: "asc" }], take: 240 },
+      segments: { orderBy: [{ startSeconds: "asc" }, { id: "asc" }], take: 1 },
       _count: { select: { segments: true, words: true, verifications: true } },
     },
   }) : null;
