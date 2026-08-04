@@ -9,6 +9,11 @@ test("retained audio-processing operation proves mastery and treatment evidence 
   assert.match(operation, /selectedSeconds > 7 && selectedSeconds < 9\.5/);
   assert.match(operation, /masteredAfterPlay\.currentTime > selectedSeconds/);
   assert.match(operation, /sourceAfterSwitch\.currentTime >= masteredAfterPlay\.currentTime - 0\.2/);
+  assert.match(operation, /AUDIO_MASTER_REVIEW_INCOMPLETE/);
+  assert.match(operation, /Approval became available without complete playback evidence/);
+  assert.match(operation, /reviewCountAfter === reviewCountBefore/);
+  assert.match(operation, /proveSignedOutReviewDenial/);
+  assert.match(operation, /proveOutsiderReviewDenial/);
   assert.match(operation, /Treatment loudness-change map from/);
   assert.match(operation, /treatmentSelectedSeconds > 4 && treatmentSelectedSeconds < 6/);
   assert.match(operation, /treatmentAfterPlay\.currentTime > treatmentSelectedSeconds/);

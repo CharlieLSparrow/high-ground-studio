@@ -16,10 +16,13 @@ const { PrismaClient } = requireFromQuipsly("@prisma/client");
 const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
 
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-product";
+const COACHING_KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 const OPERATOR_EMAIL = "quipsly-media-ms8ct81g@example.test";
+const OUTSIDER_EMAIL = "quipsly-followup-outsider-retained-20260731@example.test";
 const PROJECT_SLUG = "high-ground-odyssey";
 const EPISODE_SLUG = "episode-4-part-2";
 const ASSET_ID = "cmse192a8000e8jxldysq5b1u";
+const SOURCE_ID = "cmse1929v000d8jxlwao4837y";
 const JOB_ID = "audio_mastery_9cafe8cc6c684e90bcb07ca008bfd48c";
 const ASSET_FILENAME = "quipsly-audio-mastery-dogfood.wav";
 const TREATMENT_ASSET_ID = "cmsecf2px0007q7xlyooqnys0";
@@ -81,6 +84,78 @@ async function processingSnapshot(prisma, { jobId, assetId, filename, type }) {
   assert(row.project.accessGrants.length === 1, "Retained media operator lost its explicit HGO project grant.");
   assert(row.asset.filename === filename, `Retained ${type} filename changed.`);
   return JSON.stringify(stable(row));
+}
+
+async function jsonRequest(url, options = {}) {
+  const response = await fetch(url, options);
+  const responseText = await response.text();
+  let body = null;
+  try { body = responseText ? JSON.parse(responseText) : null; } catch {}
+  return { response, status: response.status, body, responseText };
+}
+
+function sessionCookie(setCookie) {
+  return String(setCookie || "").split(";")[0].trim();
+}
+
+function reviewPayload(clientRequestId) {
+  return {
+    projectSlug: PROJECT_SLUG,
+    assetId: ASSET_ID,
+    sourceId: SOURCE_ID,
+    jobId: JOB_ID,
+    clientRequestId,
+    decision: "approved",
+    playbackEvidence: {
+      schema: "quipsly-audio-mastery-playback-review-v1",
+      sourceListenedSecondBins: [],
+      masteredListenedSecondBins: [],
+      monitorModes: [],
+      completedAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function proveSignedOutReviewDenial(baseURL) {
+  const denied = await jsonRequest(`${baseURL}/api/media-vault/audio-mastery/review`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(reviewPayload(`retained-signed-out-${Date.now()}`)),
+  });
+  assert([401, 403].includes(denied.status), `Signed-out mastery review returned HTTP ${denied.status}.`);
+  assert(!denied.responseText.includes(ASSET_FILENAME), "Signed-out mastery review disclosed the protected filename.");
+  return denied.status;
+}
+
+async function proveOutsiderReviewDenial(baseURL, password) {
+  const auth = await jsonRequest(
+    "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: OUTSIDER_EMAIL, password, returnSecureToken: true }),
+    },
+  );
+  assert(auth.status === 200 && auth.body?.idToken, "Retained outsider could not sign in to local Firebase.");
+  const exchange = await jsonRequest(`${baseURL}/api/auth/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken: auth.body.idToken }),
+  });
+  const cookie = sessionCookie(exchange.response.headers.get("set-cookie"));
+  assert(exchange.status === 200 && cookie, "Retained outsider could not establish a Nest session.");
+  try {
+    const denied = await jsonRequest(`${baseURL}/api/media-vault/audio-mastery/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify(reviewPayload(`retained-outsider-${Date.now()}`)),
+    });
+    assert([403, 404].includes(denied.status), `Outsider mastery review returned HTTP ${denied.status}.`);
+    assert(!denied.responseText.includes(ASSET_FILENAME), "Outsider mastery review disclosed the protected filename.");
+    return denied.status;
+  } finally {
+    await fetch(`${baseURL}/api/auth/session`, { method: "DELETE", headers: { cookie } }).catch(() => {});
+  }
 }
 
 async function operateRenderedDesk(baseURL, password) {
@@ -167,6 +242,21 @@ async function operateRenderedDesk(baseURL, password) {
     assert(!sourceAfterSwitch.paused, "A/B switch did not preserve active playback.");
     await desk.getByRole("button", { name: "Pause", exact: true }).click();
 
+    checkpoint("proving playback-tracked review hold");
+    const reviewRegion = desk.getByRole("region", { name: "Mastering decision review" });
+    await reviewRegion.getByText("Playback-tracked decision", { exact: true }).waitFor();
+    await reviewRegion.getByText(/cannot prove audibility or attention/i).waitFor();
+    assert(await reviewRegion.getByRole("button", { name: /Approve as heard/i }).isDisabled(), "Approval became available without complete playback evidence.");
+    const incomplete = await page.evaluate(async (payload) => {
+      const response = await fetch("/api/media-vault/audio-mastery/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: await response.json() };
+    }, reviewPayload(`retained-incomplete-${Date.now()}`));
+    assert(incomplete.status === 409 && incomplete.body?.code === "AUDIO_MASTER_REVIEW_INCOMPLETE", `Incomplete listening evidence did not fail closed: HTTP ${incomplete.status}.`);
+
     await assertNoHorizontalOverflow(desk, "audio mastery audition dialog");
     await desk.getByRole("button", { name: "Close", exact: true }).click();
 
@@ -233,6 +323,9 @@ async function operateRenderedDesk(baseURL, password) {
       masteredReadyState: readyState[1],
       synchronizedPlaybackAdvanced: true,
       switchPreservedPlayback: true,
+      incompleteApprovalStatus: incomplete.status,
+      incompleteApprovalCode: incomplete.body.code,
+      approvalHeldWithoutListening: true,
       treatmentMapOperated: true,
       treatmentSelectedSeconds,
       treatmentSourceReadyState: treatmentReadyState[0],
@@ -257,7 +350,9 @@ async function main() {
   );
   const databaseURL = requireLocalDatabase(process.env.DATABASE_URL || "");
   const password = readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: OPERATOR_EMAIL });
+  const outsiderPassword = readRetainedQAPassword({ service: COACHING_KEYCHAIN_SERVICE, account: OUTSIDER_EMAIL });
   assert(password, "Retained media operator Keychain credential is unavailable.");
+  assert(outsiderPassword, "Retained outsider Keychain credential is unavailable.");
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseURL, max: 2 }), log: ["error"] });
 
   try {
@@ -266,13 +361,18 @@ async function main() {
       processingSnapshot(prisma, { jobId: JOB_ID, assetId: ASSET_ID, filename: ASSET_FILENAME, type: "audio-mastery" }),
       processingSnapshot(prisma, { jobId: TREATMENT_JOB_ID, assetId: TREATMENT_ASSET_ID, filename: TREATMENT_ASSET_FILENAME, type: "audio-treatment" }),
     ]);
+    const reviewCountBefore = await prisma.studioAudioMasterReviewReceipt.count({ where: { masteryJobId: JOB_ID } });
+    const signedOutStatus = await proveSignedOutReviewDenial(baseURL);
+    const outsiderStatus = await proveOutsiderReviewDenial(baseURL, outsiderPassword);
     const rendered = await operateRenderedDesk(baseURL, password);
     checkpoint("reading immutable boundary after operation");
     const after = await Promise.all([
       processingSnapshot(prisma, { jobId: JOB_ID, assetId: ASSET_ID, filename: ASSET_FILENAME, type: "audio-mastery" }),
       processingSnapshot(prisma, { jobId: TREATMENT_JOB_ID, assetId: TREATMENT_ASSET_ID, filename: TREATMENT_ASSET_FILENAME, type: "audio-treatment" }),
     ]);
+    const reviewCountAfter = await prisma.studioAudioMasterReviewReceipt.count({ where: { masteryJobId: JOB_ID } });
     assert(after[0] === before[0] && after[1] === before[1], "Auditioning the evidence mutated an immutable asset or processing receipt.");
+    assert(reviewCountAfter === reviewCountBefore, "A denied or incomplete mastery decision left database residue.");
     console.log(JSON.stringify({
       ok: true,
       localOnly: true,
@@ -286,6 +386,9 @@ async function main() {
       treatmentJobId: TREATMENT_JOB_ID,
       deliveryAndShapeDeltaSeparated: true,
       sourceAndReceiptUnchanged: true,
+      signedOutReviewStatus: signedOutStatus,
+      outsiderReviewStatus: outsiderStatus,
+      incompleteReviewLeftNoReceipt: true,
       credentialsPrinted: false,
       screenshotsCaptured: false,
       externalSideEffects: false,

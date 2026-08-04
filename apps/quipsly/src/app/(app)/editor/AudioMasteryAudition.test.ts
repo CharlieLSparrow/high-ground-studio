@@ -2,6 +2,7 @@ import {
   audioMasteryAuditionGains,
   audioMasteryReviewMoments,
 } from "./AudioMasteryAudition";
+import { audioMasteryReviewCoverage, parseAudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 import type { AudioMasteryMeasurement } from "./AudioMasteryAudition";
 import {
   audioProcessingDeltaSeries,
@@ -75,6 +76,37 @@ describe("audio mastery audition monitor gain", () => {
       masteredAdjustmentDb: 0,
       referenceLufs: null,
     });
+  });
+});
+
+describe("audio mastery playback decision evidence", () => {
+  it("requires the recommended neighborhoods in both versions and both monitor modes for approval", () => {
+    const source = measurement([
+      { timeMs: 1_000, momentaryLufs: -20, shortTermLufs: -22, integratedLufs: -22, truePeakDbtp: -5 },
+      { timeMs: 5_000, momentaryLufs: -31, shortTermLufs: -34, integratedLufs: -25, truePeakDbtp: -8 },
+      { timeMs: 9_000, momentaryLufs: -12, shortTermLufs: -16, integratedLufs: -20, truePeakDbtp: -0.7 },
+    ]);
+    const mastered = measurement([
+      { timeMs: 1_000, momentaryLufs: -17, shortTermLufs: -18, integratedLufs: -18, truePeakDbtp: -3 },
+      { timeMs: 5_000, momentaryLufs: -21, shortTermLufs: -22, integratedLufs: -17, truePeakDbtp: -2 },
+      { timeMs: 9_000, momentaryLufs: -14, shortTermLufs: -15, integratedLufs: -16, truePeakDbtp: -1.5 },
+    ]);
+    const incomplete = audioMasteryReviewCoverage(source, mastered, { sourceListenedSecondBins: [0, 1, 2], masteredListenedSecondBins: [0, 1, 2], monitorModes: ["matched"] });
+    expect(incomplete.approvalReady).toBe(false);
+    const completeBins = [0, 1, 2, 4, 5, 6, 8, 9, 10];
+    const complete = audioMasteryReviewCoverage(source, mastered, { sourceListenedSecondBins: completeBins, masteredListenedSecondBins: completeBins, monitorModes: ["matched", "delivery"] });
+    expect(complete).toMatchObject({ sourceComplete: true, masteredComplete: true, matchedMonitorObserved: true, deliveryMonitorObserved: true, approvalReady: true });
+  });
+
+  it("rejects out-of-range or unbounded playback bins", () => {
+    expect(() => parseAudioMasteryPlaybackReviewEvidence({ schema: "quipsly-audio-mastery-playback-review-v1", sourceListenedSecondBins: [99], masteredListenedSecondBins: [], monitorModes: [], completedAt: "2026-08-04T19:00:00.000Z" }, 12, 12)).toThrow(/invalid or unbounded/i);
+  });
+
+  it("requires a recent, bounded client completion time", () => {
+    const evidence = { schema: "quipsly-audio-mastery-playback-review-v1", sourceListenedSecondBins: [], masteredListenedSecondBins: [], monitorModes: [] };
+    expect(() => parseAudioMasteryPlaybackReviewEvidence({ ...evidence, completedAt: new Date(Date.now() - 25 * 60 * 60_000).toISOString() }, 12, 12)).toThrow(/recent completion time/i);
+    expect(() => parseAudioMasteryPlaybackReviewEvidence({ ...evidence, completedAt: new Date(Date.now() + 6 * 60_000).toISOString() }, 12, 12)).toThrow(/recent completion time/i);
+    expect(parseAudioMasteryPlaybackReviewEvidence({ ...evidence, completedAt: new Date().toISOString() }, 12, 12).completedAt).toMatch(/Z$/);
   });
 });
 

@@ -2,6 +2,30 @@
 
 Date: 2026-08-04
 
+## Append-only audio mastery review checkpoint
+
+- The mastering desk now tracks playback around the loudest source moment,
+  quietest sustained passage, and largest processing shift in both the
+  immutable source and verified preview. Approval also requires both
+  level-matched and unity delivery monitoring; rejection requires preview
+  playback plus a note.
+- Decisions are append-only receipts bound to the exact Nest, asset, source
+  generation/SHA, completed mastery job, preview SHA, actor, delivery profile,
+  bounded player evidence, and idempotent client request. A later decision
+  never erases prior review history.
+- Approval does not promote, replace, publish, edit, or mutate media. The
+  receipt explicitly states that browser-tracked player progress is evidence,
+  not proof that audio was audible or that a person paid attention.
+- A retained Episode 4 operation exercised the protected source and preview in
+  the rendered desk. Signed-out review returned 401, a separate account
+  returned 403, incomplete approval returned 409, no receipt residue was left,
+  and source/preview processing receipts remained byte-bound and unchanged.
+- Strict shared-media and Nest TypeScript pass; full Nest Jest passes 277
+  suites / 1,463 runnable tests; and the optimized 170-page production build
+  passes with an 8 GB Node build heap.
+- Architecture and operated evidence are in
+  `docs/coordination/quipsly-append-only-audio-mastery-review-2026-08-04.md`.
+
 ## Unified audio and transcript trust-surface checkpoint
 
 - Imported Studio media now shows complete-decode RMS and sample-peak windows,

@@ -16,6 +16,7 @@ import {
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
+import { readAudioMasterReviewSummary } from "@/lib/server/audio-mastery-review";
 
 const JOB_TYPE = "audio-mastery";
 
@@ -43,6 +44,11 @@ export type PublicAudioMasteryStatus = {
     playbackUrl: string | null;
     verification: ReturnType<typeof publicAssessment>;
     measured: ReturnType<typeof publicMeasurement>;
+  };
+  review: {
+    latest: null | { id: string; jobId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
+    approvalCount: number;
+    rejectionCount: number;
   };
   error: string | null;
   updatedAt: string | null;
@@ -133,7 +139,11 @@ export async function readAudioMasteryStatus(input: { prisma: any; projectSlug: 
     where: { projectId: project.id, assetId: input.assetId, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
   });
-  return job ? toPublicAudioMasteryStatus(job) : emptyStatus();
+  if (!job) return emptyStatus();
+  return {
+    ...toPublicAudioMasteryStatus(job),
+    review: await readAudioMasterReviewSummary({ prisma: input.prisma, jobId: job.id }),
+  };
 }
 
 export async function reconcileAudioMastery(input: {
@@ -262,6 +272,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
       verification: publicAssessment(result.derivative.verification),
       measured: publicMeasurement(result.derivative.verificationMeasurement),
     } : null,
+    review: { latest: null, approvalCount: 0, rejectionCount: 0 },
     error: integrityFailure
       ? "Audio mastery evidence failed integrity validation."
       : typeof job.error === "string" ? job.error : null,
@@ -328,6 +339,7 @@ function emptyStatus(): PublicAudioMasteryStatus {
     signalDiagnosis: null,
     proposal: null,
     derivative: null,
+    review: { latest: null, approvalCount: 0, rejectionCount: 0 },
     error: null,
     updatedAt: null,
     boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedPreview: true, explicitApprovalStillRequired: true },

@@ -43,6 +43,7 @@ import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-sourc
 import { parseAudioSignalEvidence } from "@/lib/transcript-evidence";
 import { projectSharedWatchTimeline } from "@/lib/episode-production/shared-watch-timeline";
 import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
+import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 import {
   captureGroupEditorFocusPlan,
   normalizeCaptureGroupFocusId,
@@ -222,6 +223,11 @@ type AudioMasteryClientStatus = {
     playbackUrl: string | null;
     verification: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
     measured: AudioMasteryMeasurement;
+  };
+  review: {
+    latest: null | { id: string; jobId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
+    approvalCount: number;
+    rejectionCount: number;
   };
   error: string | null;
   updatedAt: string | null;
@@ -6129,6 +6135,44 @@ function CloudEditorContent() {
     }
   }, [resolvedProjectSlug]);
 
+  const operateAudioMasteryReview = useCallback(async (
+    asset: ImportedMediaAsset,
+    decision: "approved" | "rejected",
+    playbackEvidence: AudioMasteryPlaybackReviewEvidence,
+    note: string | null,
+  ) => {
+    const current = audioMasteryStatusByAsset[asset.id] ?? audioMasteryStatusByAsset[asset.sourceId];
+    if (!current?.jobId) throw new Error("The verified mastering job is unavailable. Refresh before reviewing it.");
+    const jobKey = `${asset.id}:audio-mastery-review`;
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    try {
+      const response = await fetch("/api/media-vault/audio-mastery/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectSlug: resolvedProjectSlug,
+          assetId: asset.id,
+          sourceId: asset.sourceId,
+          jobId: current.jobId,
+          clientRequestId: crypto.randomUUID(),
+          decision,
+          playbackEvidence,
+          note,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; review?: AudioMasteryClientStatus["review"] } | null;
+      if (!response.ok || !payload?.ok || !payload.review) throw new Error(payload?.error || `Mastering review returned HTTP ${response.status}.`);
+      setAudioMasteryStatusByAsset((previous) => {
+        const existing = previous[asset.id] ?? previous[asset.sourceId] ?? current;
+        const next = { ...existing, review: payload.review! };
+        return { ...previous, [asset.id]: next, [asset.sourceId]: next };
+      });
+      setMediaImportStatus(`${decision === "approved" ? "Approved" : "Rejected"} the verified mastering preview as heard. Promotion remains a separate operation.`);
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
+
   const operateAudioTreatment = useCallback(async (asset: ImportedMediaAsset) => {
     const jobKey = `${asset.id}:audio-treatment`;
     const updateStatus = (status: AudioTreatmentClientStatus) => setAudioTreatmentStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
@@ -9542,6 +9586,7 @@ function CloudEditorContent() {
                   ?? (hasVerifiedCollaborationProxy(asset) ? "completed" : "not-queued");
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
+                const isAudioMasteryReviewing = queueingMediaJobKeys.has(`${asset.id}:audio-mastery-review`);
                 const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
                 const isAudioSignalProfileWorking = queueingMediaJobKeys.has(`${asset.id}:audio-signal-profile`);
                 const isSourceTranscriptWorking = queueingMediaJobKeys.has(`${asset.id}:source-transcript`);
@@ -9821,6 +9866,9 @@ function CloudEditorContent() {
                               targetLufs={audioMasteryStatus.proposal.profile.integratedLufs}
                               maximumTruePeakDbtp={audioMasteryStatus.proposal.profile.maximumTruePeakDbtp}
                               diagnosis={audioMasteryStatus.signalDiagnosis}
+                              review={audioMasteryStatus.review}
+                              isReviewing={isAudioMasteryReviewing}
+                              onReview={(decision, evidence, note) => operateAudioMasteryReview(asset, decision, evidence, note)}
                             />
                           )}
                         </div>

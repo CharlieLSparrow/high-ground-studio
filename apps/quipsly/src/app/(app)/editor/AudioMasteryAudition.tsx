@@ -3,6 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import {
+  AUDIO_MASTERY_REVIEW_EVIDENCE_SCHEMA,
+  audioMasteryReviewCoverage,
+  audioMasteryReviewMoments as sharedAudioMasteryReviewMoments,
+  type AudioMasteryPlaybackReviewEvidence,
+  type AudioMasteryReviewMoment,
+} from "@high-ground/quipsly-media-processing";
+
 import { AudioProcessingChangeMap } from "./AudioProcessingChangeMap";
 
 export type AudioMasterySeriesPoint = {
@@ -24,14 +32,15 @@ export type AudioMasteryMeasurement = {
   series: AudioMasterySeriesPoint[];
 };
 
-export type AudioMasteryReviewMoment = {
-  id: "loudest-source" | "quietest-sustained" | "largest-shift";
-  timeSeconds: number;
-  label: string;
-  detail: string;
-};
+export type { AudioMasteryReviewMoment };
 
 export type AudioMasteryMonitorMode = "matched" | "delivery";
+
+export type AudioMasteryReviewSummary = {
+  latest: null | { id: string; jobId: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string };
+  approvalCount: number;
+  rejectionCount: number;
+};
 
 export function audioMasteryAuditionGains(
   sourceIntegratedLufs: number,
@@ -116,67 +125,11 @@ function finite(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
 
-function atTime(series: AudioMasterySeriesPoint[], timeMs: number, toleranceMs: number) {
-  let best: AudioMasterySeriesPoint | null = null;
-  let distance = Number.POSITIVE_INFINITY;
-  for (const point of series) {
-    const candidateDistance = Math.abs(point.timeMs - timeMs);
-    if (candidateDistance <= toleranceMs && candidateDistance < distance) {
-      best = point;
-      distance = candidateDistance;
-    }
-  }
-  return best;
-}
-
 export function audioMasteryReviewMoments(
   source: AudioMasteryMeasurement,
   mastered: AudioMasteryMeasurement,
 ): AudioMasteryReviewMoment[] {
-  const moments: AudioMasteryReviewMoment[] = [];
-  const loudest = source.series
-    .filter((point) => finite(point.truePeakDbtp))
-    .sort((left, right) => (right.truePeakDbtp as number) - (left.truePeakDbtp as number))[0];
-  if (loudest) {
-    moments.push({
-      id: "loudest-source",
-      timeSeconds: loudest.timeMs / 1_000,
-      label: "Loudest source moment",
-      detail: `${(loudest.truePeakDbtp as number).toFixed(1)} dBTP before mastering`,
-    });
-  }
-
-  const quietest = source.series
-    .filter((point) => finite(point.shortTermLufs) && (point.shortTermLufs as number) > -70)
-    .sort((left, right) => (left.shortTermLufs as number) - (right.shortTermLufs as number))[0];
-  if (quietest) {
-    moments.push({
-      id: "quietest-sustained",
-      timeSeconds: quietest.timeMs / 1_000,
-      label: "Quietest sustained passage",
-      detail: `${(quietest.shortTermLufs as number).toFixed(1)} LUFS over 3 seconds`,
-    });
-  }
-
-  const toleranceMs = Math.max(source.seriesResolutionMs, mastered.seriesResolutionMs);
-  const shifts = source.series.flatMap((sourcePoint) => {
-    if (!finite(sourcePoint.shortTermLufs)) return [];
-    const masteredPoint = atTime(mastered.series, sourcePoint.timeMs, toleranceMs);
-    if (!masteredPoint || !finite(masteredPoint.shortTermLufs)) return [];
-    return [{
-      sourcePoint,
-      deltaLu: (masteredPoint.shortTermLufs as number) - (sourcePoint.shortTermLufs as number),
-    }];
-  }).sort((left, right) => Math.abs(right.deltaLu) - Math.abs(left.deltaLu))[0];
-  if (shifts) {
-    moments.push({
-      id: "largest-shift",
-      timeSeconds: shifts.sourcePoint.timeMs / 1_000,
-      label: "Largest processing shift",
-      detail: `${shifts.deltaLu >= 0 ? "+" : ""}${shifts.deltaLu.toFixed(1)} LU at the same decoded moment`,
-    });
-  }
-  return moments;
+  return sharedAudioMasteryReviewMoments(source, mastered);
 }
 
 function clock(seconds: number) {
@@ -235,6 +188,9 @@ export function AudioMasteryAudition({
   targetLufs,
   maximumTruePeakDbtp,
   diagnosis,
+  review = { latest: null, approvalCount: 0, rejectionCount: 0 },
+  isReviewing = false,
+  onReview,
 }: {
   sourceUrl: string;
   masteredUrl: string;
@@ -243,6 +199,9 @@ export function AudioMasteryAudition({
   targetLufs: number;
   maximumTruePeakDbtp: number;
   diagnosis: AudioSignalDiagnosisSummary | null;
+  review?: AudioMasteryReviewSummary;
+  isReviewing?: boolean;
+  onReview?: (decision: "approved" | "rejected", evidence: AudioMasteryPlaybackReviewEvidence, note: string | null) => Promise<void>;
 }) {
   const sourceRef = useRef<HTMLAudioElement>(null);
   const masteredRef = useRef<HTMLAudioElement>(null);
@@ -251,6 +210,11 @@ export function AudioMasteryAudition({
   const [currentTime, setCurrentTime] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [monitorMode, setMonitorMode] = useState<AudioMasteryMonitorMode>("matched");
+  const [sourceListenedSecondBins, setSourceListenedSecondBins] = useState<number[]>([]);
+  const [masteredListenedSecondBins, setMasteredListenedSecondBins] = useState<number[]>([]);
+  const [observedMonitorModes, setObservedMonitorModes] = useState<AudioMasteryMonitorMode[]>([]);
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
   const duration = Math.max(source.durationSeconds, mastered.durationSeconds, 0.001);
   const moments = useMemo(() => audioMasteryReviewMoments(source, mastered), [mastered, source]);
   const auditionGains = useMemo(
@@ -258,6 +222,11 @@ export function AudioMasteryAudition({
     [mastered.integratedLufs, monitorMode, source.integratedLufs],
   );
   const activeRef = version === "source" ? sourceRef : masteredRef;
+  const reviewCoverage = useMemo(() => audioMasteryReviewCoverage(source, mastered, {
+    sourceListenedSecondBins,
+    masteredListenedSecondBins,
+    monitorModes: observedMonitorModes,
+  }), [mastered, masteredListenedSecondBins, observedMonitorModes, source, sourceListenedSecondBins]);
 
   useEffect(() => {
     if (sourceRef.current) sourceRef.current.volume = auditionGains.sourceGain;
@@ -307,6 +276,37 @@ export function AudioMasteryAudition({
     }
   };
 
+  const observePlayback = (candidate: "source" | "mastered", timeSeconds: number) => {
+    if (version !== candidate) return;
+    setCurrentTime(timeSeconds);
+    if (!playing) return;
+    const bin = Math.max(0, Math.floor(timeSeconds));
+    const update = (current: number[]) => current.includes(bin) ? current : [...current, bin].sort((left, right) => left - right);
+    if (candidate === "source") setSourceListenedSecondBins(update);
+    else setMasteredListenedSecondBins(update);
+    setObservedMonitorModes((current) => current.includes(monitorMode) ? current : [...current, monitorMode]);
+  };
+
+  const saveReview = async (decision: "approved" | "rejected") => {
+    if (!onReview) return;
+    setReviewMessage(decision === "approved" ? "Saving the playback-bound approval receipt…" : "Saving the playback-bound rejection receipt…");
+    const evidence: AudioMasteryPlaybackReviewEvidence = {
+      schema: AUDIO_MASTERY_REVIEW_EVIDENCE_SCHEMA,
+      sourceListenedSecondBins,
+      masteredListenedSecondBins,
+      monitorModes: observedMonitorModes,
+      completedAt: new Date().toISOString(),
+    };
+    try {
+      await onReview(decision, evidence, reviewNote.trim() || null);
+      setReviewMessage(decision === "approved"
+        ? "Approved as heard. The preview is still separate and unpromoted."
+        : "Rejected as heard. The preview and original remain unchanged.");
+    } catch (error) {
+      setReviewMessage(error instanceof Error ? error.message : "The mastering decision was not saved.");
+    }
+  };
+
   const passes = mastered.integratedLufs >= targetLufs - 1
     && mastered.integratedLufs <= targetLufs + 1
     && mastered.truePeakDbtp <= maximumTruePeakDbtp;
@@ -327,6 +327,7 @@ export function AudioMasteryAudition({
             <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">
               Verified preview ready. {diagnosis ? `${diagnosis.observations.length} signal candidate${diagnosis.observations.length === 1 ? "" : "s"} to review.` : "Add decoded signal evidence to this legacy preview."}
             </p>
+            {review.latest ? <p className="mt-1 text-[9px] font-black text-sky-200">Latest decision: {review.latest.decision} · {new Date(review.latest.reviewedAt).toLocaleString()}</p> : null}
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
             {passes ? "Target verified" : "Needs attention"}
@@ -405,7 +406,7 @@ export function AudioMasteryAudition({
         data-audition-version="source"
         data-monitor-gain={auditionGains.sourceGain}
         data-monitor-adjustment-db={auditionGains.sourceAdjustmentDb}
-        onTimeUpdate={(event) => version === "source" && setCurrentTime(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => observePlayback("source", event.currentTarget.currentTime)}
         onEnded={() => setPlaying(false)}
       />
       <audio
@@ -415,7 +416,7 @@ export function AudioMasteryAudition({
         data-audition-version="mastered"
         data-monitor-gain={auditionGains.masteredGain}
         data-monitor-adjustment-db={auditionGains.masteredAdjustmentDb}
-        onTimeUpdate={(event) => version === "mastered" && setCurrentTime(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => observePlayback("mastered", event.currentTarget.currentTime)}
         onEnded={() => setPlaying(false)}
       />
       <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-900 px-3 py-3">
@@ -501,6 +502,26 @@ export function AudioMasteryAudition({
           </div>
         </div>
       )}
+      {onReview ? <section className="mt-3 rounded-xl border border-fuchsia-700 bg-slate-900 p-3" aria-label="Mastering decision review">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><div className="text-xs font-black">Playback-tracked decision</div><p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-400">Approval needs about three seconds around every evidence-selected moment in both versions, plus matched-loudness and delivery-level monitoring. Rejection can happen as soon as the preview is heard, with a note explaining why. This desk records player progress; it cannot prove audibility or attention.</p></div>
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${reviewCoverage.approvalReady ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>{reviewCoverage.approvalReady ? "Approval evidence complete" : "Listening in progress"}</span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {reviewCoverage.requiredMoments.map((moment) => {
+            const sourceDone = reviewCoverage.sourceCompletedMomentIds.includes(moment.id);
+            const masterDone = reviewCoverage.masteredCompletedMomentIds.includes(moment.id);
+            return <button key={`review-${moment.id}`} type="button" onClick={() => seek(moment.timeSeconds)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left hover:border-fuchsia-300"><div className="flex items-center justify-between gap-2"><span className="font-mono text-[9px] font-black text-fuchsia-200">{clock(moment.timeSeconds)}</span><span className={`text-[8px] font-black ${sourceDone && masterDone ? "text-emerald-300" : "text-amber-300"}`}>{sourceDone ? "source ✓" : "source ○"} · {masterDone ? "preview ✓" : "preview ○"}</span></div><div className="mt-1 text-[9px] font-black">{moment.label}</div></button>;
+          })}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] font-black"><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.matchedMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>Matched loudness {reviewCoverage.matchedMonitorObserved ? "heard ✓" : "not heard"}</div><div className={`rounded-lg border px-3 py-2 ${reviewCoverage.deliveryMonitorObserved ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-400"}`}>Delivery level {reviewCoverage.deliveryMonitorObserved ? "heard ✓" : "not heard"}</div></div>
+        <label className="mt-3 block text-[9px] font-black text-slate-300">Review note
+          <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} rows={3} placeholder="Optional for approval; required to reject." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] text-white focus:border-fuchsia-300 focus:outline-none" />
+        </label>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={isReviewing || !reviewCoverage.approvalReady} onClick={() => void saveReview("approved")} className="rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Approve as heard<span className="mt-1 block text-[9px] opacity-75">Creates a receipt only; promotion stays separate.</span></button><button type="button" disabled={isReviewing || masteredListenedSecondBins.length === 0 || reviewNote.trim().length < 3} onClick={() => void saveReview("rejected")} className="rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Reject preview<span className="mt-1 block text-[9px] opacity-75">Keeps both files and records what failed.</span></button></div>
+        {reviewMessage ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{reviewMessage}</p> : null}
+        {review.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest retained decision {review.latest.id.slice(0, 12)} · {review.approvalCount} approval{review.approvalCount === 1 ? "" : "s"} · {review.rejectionCount} rejection{review.rejectionCount === 1 ? "" : "s"}. A later receipt does not erase this history.</p> : null}
+      </section> : null}
       <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">
         Both curves come from complete BS.1770 decodes at one-second display resolution. The preview is a separate 24-bit WAV and has not replaced or modified the source.
       </p>
