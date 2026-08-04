@@ -30,6 +30,16 @@ export type AudioProcessingDeltaPoint = {
   shapeDeltaLu: number;
 };
 
+export type AudioProcessingAttentionMoment = {
+  id: string;
+  category: "source-signal" | "candidate-signal" | "dynamic-shape";
+  timeSeconds: number;
+  endSeconds: number;
+  label: string;
+  detail: string;
+  severity: "attention" | "warning";
+};
+
 export type AudioProcessingViewMode = "whole" | "minute" | "detail";
 
 export type AudioProcessingViewSpan = {
@@ -122,6 +132,64 @@ export function audioProcessingSummary(points: AudioProcessingDeltaPoint[]) {
   };
 }
 
+function readableKind(value: string) {
+  return value.replaceAll("-", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export function audioProcessingAttentionMoments(
+  points: AudioProcessingDeltaPoint[],
+  observations: AudioProcessingObservation[],
+  candidateObservations: AudioProcessingObservation[] = [],
+): AudioProcessingAttentionMoment[] {
+  const dynamicMoments = [...points]
+    .filter((point) => Math.abs(point.shapeDeltaLu) > 0.000_001)
+    .sort((left, right) => Math.abs(right.shapeDeltaLu) - Math.abs(left.shapeDeltaLu) || left.timeSeconds - right.timeSeconds)
+    .reduce<AudioProcessingDeltaPoint[]>((selected, point) => {
+      if (selected.length >= 8 || selected.some((candidate) => Math.abs(candidate.timeSeconds - point.timeSeconds) < 3)) return selected;
+      return [...selected, point];
+    }, [])
+    .map((point): AudioProcessingAttentionMoment => ({
+      id: `dynamic-${point.timeSeconds}`,
+      category: "dynamic-shape",
+      timeSeconds: point.timeSeconds,
+      endSeconds: point.timeSeconds,
+      label: `Dynamics ${point.shapeDeltaLu >= 0 ? "+" : ""}${point.shapeDeltaLu.toFixed(1)} LU`,
+      detail: `The processed candidate is ${Math.abs(point.shapeDeltaLu).toFixed(1)} LU ${point.shapeDeltaLu >= 0 ? "louder" : "quieter"} here after removing the uniform program-level shift. Compare both versions at matched loudness.`,
+      severity: "attention",
+    }));
+  const signalMoments = (
+    category: "source-signal" | "candidate-signal",
+    values: AudioProcessingObservation[],
+  ) => values.map((observation, index): AudioProcessingAttentionMoment => ({
+    id: `${category}-${observation.kind}-${observation.startSeconds}-${index}`,
+    category,
+    timeSeconds: observation.startSeconds,
+    endSeconds: observation.endSeconds,
+    label: `${category === "source-signal" ? "Source" : "Candidate"} · ${readableKind(observation.kind)}`,
+    detail: observation.detail,
+    severity: observation.severity,
+  }));
+  return [
+    ...signalMoments("source-signal", observations),
+    ...signalMoments("candidate-signal", candidateObservations),
+    ...dynamicMoments,
+  ]
+    .sort((left, right) => left.timeSeconds - right.timeSeconds || left.id.localeCompare(right.id))
+    .slice(0, 200);
+}
+
+export function audioProcessingAdjacentMoment(
+  moments: AudioProcessingAttentionMoment[],
+  selectedSeconds: number,
+  direction: "previous" | "next",
+) {
+  if (moments.length === 0) return null;
+  if (direction === "next") {
+    return moments.find((moment) => moment.timeSeconds > selectedSeconds + 0.001) ?? moments[0];
+  }
+  return [...moments].reverse().find((moment) => moment.timeSeconds < selectedSeconds - 0.001) ?? moments.at(-1) ?? null;
+}
+
 export function AudioProcessingChangeMap({
   source,
   candidate,
@@ -159,6 +227,17 @@ export function AudioProcessingChangeMap({
   const span = audioProcessingViewSpan(duration, selectedSeconds, viewMode);
   const points = useMemo(() => audioProcessingDeltaSeries(source, candidate), [candidate, source]);
   const summary = useMemo(() => audioProcessingSummary(points), [points]);
+  const attentionMoments = useMemo(
+    () => audioProcessingAttentionMoments(points, observations, candidateObservations),
+    [candidateObservations, observations, points],
+  );
+  const nearbyAttentionMoments = useMemo(() => {
+    if (attentionMoments.length <= 10) return attentionMoments;
+    const nextIndex = attentionMoments.findIndex((moment) => moment.timeSeconds >= selectedSeconds);
+    const centerIndex = nextIndex < 0 ? attentionMoments.length - 1 : nextIndex;
+    const startIndex = clamp(centerIndex - 3, 0, attentionMoments.length - 10);
+    return attentionMoments.slice(startIndex, startIndex + 10);
+  }, [attentionMoments, selectedSeconds]);
   const selectedPoint = useMemo(() => audioProcessingPointAt(points, selectedSeconds), [points, selectedSeconds]);
   const visiblePoints = points.filter((point) => point.timeSeconds >= span.startSeconds && point.timeSeconds <= span.endSeconds);
   const visibleObservations = observations.filter((observation) => observation.startSeconds <= span.endSeconds && observation.endSeconds >= span.startSeconds);
@@ -173,6 +252,16 @@ export function AudioProcessingChangeMap({
     const bounds = event.currentTarget.getBoundingClientRect();
     const fraction = bounds.width > 0 ? clamp((event.clientX - bounds.left) / bounds.width, 0, 1) : 0;
     onSelect(span.startSeconds + fraction * span.durationSeconds);
+  }
+
+  function inspectMoment(moment: AudioProcessingAttentionMoment) {
+    setViewMode("detail");
+    onSelect(moment.timeSeconds);
+  }
+
+  function inspectAdjacent(direction: "previous" | "next") {
+    const moment = audioProcessingAdjacentMoment(attentionMoments, selectedSeconds, direction);
+    if (moment) inspectMoment(moment);
   }
 
   return <section className="mt-3 rounded-lg border border-sky-800 bg-[#111827] p-3" aria-label={title}>
@@ -193,6 +282,22 @@ export function AudioProcessingChangeMap({
       {candidateObservations && <span><span className="mr-1 inline-block h-3 w-0.5 bg-blue-400 align-middle" />{candidateObservationLabel}</span>}
       <span><span className="mr-1 inline-block h-3 w-0.5 bg-cyan-300 align-middle" />Selected playhead</span>
     </div>
+
+    <section className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-2.5" aria-label={`${title} review navigator`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-sky-200">Change navigator</p>
+          <p className="mt-0.5 text-[9px] font-bold leading-4 text-slate-400">{attentionMoments.length} bounded source-clock comparison point{attentionMoments.length === 1 ? "" : "s"}: strongest relative dynamic changes and deterministic signal flags.</p>
+        </div>
+        <div className="flex gap-1">
+          <button type="button" disabled={attentionMoments.length === 0} onClick={() => inspectAdjacent("previous")} className="min-h-9 rounded-md border border-slate-600 px-2.5 text-[9px] font-black text-slate-200 hover:bg-slate-800 disabled:opacity-40">← Previous</button>
+          <button type="button" disabled={attentionMoments.length === 0} onClick={() => inspectAdjacent("next")} className="min-h-9 rounded-md bg-sky-200 px-2.5 text-[9px] font-black text-sky-950 hover:bg-sky-100 disabled:opacity-40">Next change →</button>
+        </div>
+      </div>
+      {attentionMoments.length > 0 ? <><div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" aria-label={`${title} comparison points`}>
+        {nearbyAttentionMoments.map((moment) => <button key={moment.id} type="button" onClick={() => inspectMoment(moment)} title={moment.detail} className={`min-h-9 shrink-0 rounded-md border px-2.5 text-left text-[9px] font-black ${moment.severity === "warning" ? "border-rose-500/70 bg-rose-950/40 text-rose-200" : moment.category === "dynamic-shape" ? "border-fuchsia-500/70 bg-fuchsia-950/40 text-fuchsia-200" : moment.category === "candidate-signal" ? "border-blue-500/70 bg-blue-950/40 text-blue-200" : "border-amber-500/70 bg-amber-950/40 text-amber-200"}`}><span className="font-mono">{clock(moment.timeSeconds)}</span> · {moment.label}</button>)}
+      </div>{attentionMoments.length > nearbyAttentionMoments.length ? <p className="mt-1 text-[8px] font-bold text-slate-500">Showing {nearbyAttentionMoments.length} points nearest the playhead. Previous and Next traverse the full {attentionMoments.length}-point bounded comparison queue.</p> : null}</> : <p className="mt-2 rounded-md border border-emerald-800 bg-emerald-950/30 p-2 text-[9px] font-bold text-emerald-200">No measurable dynamic-shape change or deterministic signal flag needs comparison.</p>}
+    </section>
 
     <button type="button" onClick={selectFromMap} className="mt-3 block w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-950 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300" aria-label={`${title} from ${clock(span.startSeconds)} to ${clock(span.endSeconds)}. Select a position to move synchronized audition playback.`}>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full" role="img" aria-labelledby={`${titleId} ${descriptionId}`} preserveAspectRatio="none">

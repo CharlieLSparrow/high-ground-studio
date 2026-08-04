@@ -242,6 +242,13 @@ async function operateRenderedDesk(baseURL, password) {
     assert(!sourceAfterSwitch.paused, "A/B switch did not preserve active playback.");
     await desk.getByRole("button", { name: "Pause", exact: true }).click();
 
+    const changeNavigator = desk.getByRole("region", { name: "Processing change map review navigator", exact: true });
+    await changeNavigator.getByText("Change navigator", { exact: true }).waitFor();
+    await changeNavigator.getByRole("button", { name: "Next change →", exact: true }).click();
+    const navigatedSeconds = Number(await playhead.inputValue());
+    assert(Number.isFinite(navigatedSeconds), "Mastering change navigator did not preserve a finite source-clock playhead.");
+    assert(await desk.getByRole("button", { name: "15 sec", exact: true }).getAttribute("aria-pressed") === "true", "Mastering change navigator did not open the detail view.");
+
     checkpoint("proving playback-tracked review hold");
     const reviewRegion = desk.getByRole("region", { name: "Mastering decision review" });
     await reviewRegion.getByText("Playback-tracked decision", { exact: true }).waitFor();
@@ -309,6 +316,12 @@ async function operateRenderedDesk(baseURL, password) {
     assert(treatmentSourceAfterSwitch.currentTime >= treatmentAfterPlay.currentTime - 0.2, "Treatment A/B switch lost the shared source playhead.");
     assert(!treatmentSourceAfterSwitch.paused, "Treatment A/B switch did not preserve active playback.");
     await treatmentRegion.getByRole("button", { name: "Pause", exact: true }).click();
+    const treatmentChangeNavigator = treatmentRegion.getByRole("region", { name: "Treatment loudness-change map review navigator", exact: true });
+    await treatmentChangeNavigator.getByText("Change navigator", { exact: true }).waitFor();
+    await treatmentChangeNavigator.getByRole("button", { name: "Next change →", exact: true }).click();
+    const treatmentNavigatedSeconds = Number(await treatmentPlayhead.inputValue());
+    assert(Number.isFinite(treatmentNavigatedSeconds), "Treatment change navigator did not preserve a finite source-clock playhead.");
+    assert(await treatmentRegion.getByRole("button", { name: "15 sec", exact: true }).getAttribute("aria-pressed") === "true", "Treatment change navigator did not open the detail view.");
     await assertNoHorizontalOverflow(treatmentDialog, "audio treatment evidence dialog");
 
     assert(browserErrors.length === 0, `Audio processing desks raised browser exceptions: ${browserErrors.join(" | ")}`);
@@ -319,6 +332,8 @@ async function operateRenderedDesk(baseURL, password) {
       processingMapOperated: true,
       selectedSeconds,
       detailZoomOperated: true,
+      changeNavigatorOperated: true,
+      navigatedSeconds,
       sourceReadyState: readyState[0],
       masteredReadyState: readyState[1],
       synchronizedPlaybackAdvanced: true,
@@ -328,6 +343,8 @@ async function operateRenderedDesk(baseURL, password) {
       approvalHeldWithoutListening: true,
       treatmentMapOperated: true,
       treatmentSelectedSeconds,
+      treatmentChangeNavigatorOperated: true,
+      treatmentNavigatedSeconds,
       treatmentSourceReadyState: treatmentReadyState[0],
       treatmentOutputReadyState: treatmentReadyState[1],
       treatmentSignalFlagsBefore: 1,

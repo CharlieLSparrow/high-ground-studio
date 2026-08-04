@@ -6,6 +6,14 @@ The shared Nest audio evidence map now works as a source-clock review navigator,
 not merely a static waveform-like picture. The same component serves the
 coaching transcript correction desk and Studio transcript review.
 
+The mastering and treatment change maps now use the same interaction pattern.
+Their navigator combines deterministic source/candidate signal flags with up
+to eight strongest time-separated dynamic-shape changes. Previous and Next
+move the synchronized A/B playhead and open the 15-second comparison view.
+These are comparison shortcuts, not new approval gates: a dynamic-shape delta
+still says only how short-term loudness changed after subtracting the uniform
+program-level shift.
+
 It now:
 
 - quantifies the duration represented by near-silent and clipping windows;
@@ -64,6 +72,11 @@ recordable signal.
   checks horizontal overflow and browser exceptions, then clears the session.
   It reads credentials only from the dedicated local Keychain item and captures
   no screenshots, traces, passwords, tokens, or cookies.
+- Retained HGO mastering/treatment lane:
+  `pnpm quipsly:retained:audio-mastery-transparency` operates the new change
+  navigator in both desks, preserves synchronized A/B playback, verifies
+  signed-out and outsider denial, and proves that auditioning or an incomplete
+  approval does not mutate the source, processing receipt, or review ledger.
 
 ## Remaining physical gate
 

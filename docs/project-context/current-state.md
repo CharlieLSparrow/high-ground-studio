@@ -22,6 +22,11 @@ Date: 2026-08-04
 - The signed-in retained coach browser journey operates Next evidence, confirms
   the 15-second detail view, decoded-signal labels, no horizontal overflow, no
   browser exception, no secret artifact, and no external side effect.
+- Mastering and treatment change maps now expose the same fast Previous/Next
+  interaction over their strongest time-separated dynamic-shape changes and
+  deterministic source/candidate signal flags. The retained HGO browser lane
+  operated both navigators, synchronized A/B playback, outsider denial, and
+  the incomplete-approval hold without mutating source or processing receipts.
 - Current hardware truth remains separate: Canon R8 video is visible; the saved
   MOTIV Mix MV7i strip is disconnected, and browser microphone acceptance is
   still pending a permissioned browser profile plus a live direct MV7i route.
