@@ -30,6 +30,7 @@ import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
+import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -38,6 +39,7 @@ import { assembleSpeakerCameraCut, cameraClipAtTime, canonicalSpeakerKey } from 
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
+import { parseAudioSignalEvidence } from "@/lib/transcript-evidence";
 import { projectSharedWatchTimeline } from "@/lib/episode-production/shared-watch-timeline";
 import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
 import {
@@ -1065,6 +1067,19 @@ function importedAssetTimelinePercent(asset: ImportedMediaAsset, totalDuration: 
   const anchor = asset.sync?.anchorTimelineSeconds;
   if (typeof anchor !== "number" || !Number.isFinite(anchor) || totalDuration <= 0) return null;
   return Math.max(0, Math.min(100, (anchor / totalDuration) * 100));
+}
+
+function importedAssetAudioSignal(asset: ImportedMediaAsset | null) {
+  const recordingSync = asObject(asset?.sync?.recordingSync);
+  const sourceProfile = asObject(recordingSync?.reportedSourceProfile);
+  return parseAudioSignalEvidence(sourceProfile?.audioSignal, { maximumWaveformPoints: 360 });
+}
+
+function importedAssetDurationSeconds(asset: ImportedMediaAsset | null) {
+  const recordingSync = asObject(asset?.sync?.recordingSync);
+  const duration = Number(recordingSync?.durationSeconds);
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  return importedAssetAudioSignal(asset)?.durationSeconds ?? null;
 }
 
 function importedAssetSyncLabel(asset: ImportedMediaAsset) {
@@ -4486,6 +4501,18 @@ function CloudEditorContent() {
     () => reviewedSourceAlignment(syncWizardTargetAsset),
     [syncWizardTargetAsset],
   );
+  const syncWizardSpineSignal = useMemo(
+    () => importedAssetAudioSignal(syncWizardSpineAsset),
+    [syncWizardSpineAsset],
+  );
+  const syncWizardTargetSignal = useMemo(
+    () => importedAssetAudioSignal(syncWizardTargetAsset),
+    [syncWizardTargetAsset],
+  );
+  const syncWizardTargetDurationSeconds = useMemo(
+    () => importedAssetDurationSeconds(syncWizardTargetAsset),
+    [syncWizardTargetAsset],
+  );
 
   const clockProposalMatchesSpine =
     Boolean(syncWizardCaptureAlignment?.baselineRecordingAssetId)
@@ -4509,6 +4536,14 @@ function CloudEditorContent() {
         * 1_000
         / parsedSyncReviewIntervalSeconds
       : null;
+  const syncEvidenceObservationIntervalSeconds = syncWizardSavedReview?.driftReview.observationIntervalSeconds
+    ?? (syncReviewIntervalSeconds.trim() && Number.isFinite(parsedSyncReviewIntervalSeconds) && parsedSyncReviewIntervalSeconds > 0
+      ? parsedSyncReviewIntervalSeconds
+      : null);
+  const syncEvidenceResidualMilliseconds = syncWizardSavedReview?.driftReview.residualDriftMilliseconds
+    ?? (syncReviewResidualMilliseconds.trim() && Number.isFinite(parsedSyncReviewResidualMilliseconds)
+      ? parsedSyncReviewResidualMilliseconds
+      : null);
   const syncReviewEvidenceComplete =
     syncReviewWaveformConfirmed
     && syncReviewDriftConfirmed
@@ -8832,6 +8867,20 @@ function CloudEditorContent() {
                       {syncReviewEvidenceComplete ? "ready to approve" : "review incomplete"}
                     </span>
                   </div>
+
+                  {syncWizardSpineAsset && syncWizardTargetAsset && (
+                    <SourceSyncEvidenceMap
+                      spineLabel={syncWizardSpineAsset.originalName}
+                      targetLabel={syncWizardTargetAsset.originalName}
+                      targetKind={syncWizardTargetAsset.kind}
+                      anchorSeconds={syncWizardAnchorSeconds}
+                      observationIntervalSeconds={syncEvidenceObservationIntervalSeconds}
+                      residualDriftMilliseconds={syncEvidenceResidualMilliseconds}
+                      targetDurationSeconds={syncWizardTargetDurationSeconds}
+                      spineSignal={syncWizardSpineSignal}
+                      targetSignal={syncWizardTargetSignal}
+                    />
+                  )}
 
                   {syncWizardSavedReview && (
                     <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[11px] font-bold leading-5 text-emerald-950">

@@ -90,6 +90,8 @@
     "test:quipsly:retained:automated-edit-evidence": "node --test scripts/quipsly-retained-automated-edit-evidence-operation.test.mjs",
     "quipsly:retained:protected-edit-proof": "node scripts/quipsly-retained-protected-edit-proof-operation.mjs",
     "test:quipsly:retained:protected-edit-proof": "node --test scripts/quipsly-retained-protected-edit-proof-operation.test.mjs",
+    "quipsly:retained:sync-evidence-map": "node scripts/quipsly-retained-sync-evidence-map-operation.mjs",
+    "test:quipsly:retained:sync-evidence-map": "node --test scripts/quipsly-retained-sync-evidence-map-operation.test.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:retained:native-weekly-plan": "node scripts/quipsly-retained-native-weekly-plan-operation.mjs",
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",
