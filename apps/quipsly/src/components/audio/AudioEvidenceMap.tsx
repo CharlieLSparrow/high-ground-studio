@@ -4,7 +4,12 @@ import { useId, useMemo, useState, type MouseEvent } from "react";
 
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
-import { timestampForSeconds } from "./session-review-model";
+function timestampForSeconds(seconds: number) {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const minutes = Math.floor(safe / 60);
+  const remainder = Math.floor(safe % 60).toString().padStart(2, "0");
+  return `${minutes.toString().padStart(2, "0")}:${remainder}`;
+}
 
 type SignalEvidence = NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
 type TimelineEvent = AudioTranscriptEvidence["audio"]["timelineEvents"][number];
@@ -101,6 +106,7 @@ export function AudioEvidenceMap({
   transcriptWords = [],
   lowConfidenceThreshold = null,
   providerLabel = null,
+  transcriptScopeLabel = "Timed transcript",
 }: {
   signal: SignalEvidence;
   timelineEvents: TimelineEvent[];
@@ -111,6 +117,7 @@ export function AudioEvidenceMap({
   transcriptWords?: AudioEvidenceTranscriptWord[];
   lowConfidenceThreshold?: number | null;
   providerLabel?: string | null;
+  transcriptScopeLabel?: string;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("whole");
   const titleId = useId();
@@ -199,7 +206,7 @@ export function AudioEvidenceMap({
           const fill = word.reviewState === "corrected" ? "#34d399" : word.reviewState === "confirmed" ? "#60a5fa" : needsAttention ? "#a78bfa" : "#475569";
           return <rect key={word.id} x={wordX} y={transcriptTop} width={wordWidth} height={transcriptBottom - transcriptTop} rx="1" fill={fill} opacity="0.9"><title>{timestampForSeconds(word.startSeconds)} {word.text} · {word.reviewState}{word.confidence === null ? " · provider confidence unavailable" : ` · provider confidence ${Math.round(word.confidence * 100)}%`}</title></rect>;
         })}
-        {transcriptWords.length > 0 && <text x="6" y="198" fill="#94a3b8" fontSize="9" fontWeight="800">Timed transcript · {transcriptSummary.reviewedWordCount}/{transcriptSummary.timedWordCount} words in reviewed segments{transcriptSummary.attentionWordCount === null ? " · no cross-provider confidence threshold" : ` · ${transcriptSummary.attentionWordCount} provider-attention words`}</text>}
+        {transcriptWords.length > 0 && <text x="6" y="198" fill="#94a3b8" fontSize="9" fontWeight="800">{transcriptScopeLabel} · {transcriptSummary.reviewedWordCount}/{transcriptSummary.timedWordCount} words in reviewed segments{transcriptSummary.attentionWordCount === null ? " · no cross-provider confidence threshold" : ` · ${transcriptSummary.attentionWordCount} provider-attention words`}</text>}
         <line x1={x(selectedSeconds)} x2={x(selectedSeconds)} y1={plotTop - 7} y2={transcriptWords.length > 0 ? transcriptBottom + 7 : plotBottom + 7} stroke="#67e8f9" strokeWidth="2.5" />
       </svg>
     </button>

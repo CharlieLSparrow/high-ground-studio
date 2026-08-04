@@ -213,9 +213,14 @@ export async function readStudioTranscriptReviewPage(input: Coordinates & { afte
   });
   const hasMore = segments.length > limit;
   const page = segments.slice(0, limit);
-  const [correctionReceiptCount, activeCorrectionCount] = await Promise.all([
+  const [correctionReceiptCount, activeCorrectionCount, bounds] = await Promise.all([
     input.prisma.transcriptCorrection.count({ where: { transcriptJobId: evidence.job.id } }),
     input.prisma.transcriptCorrection.count({ where: { transcriptJobId: evidence.job.id, status: "accepted" } }),
+    input.prisma.transcriptSegment.aggregate({
+      where: { transcriptJobId: evidence.job.id },
+      _min: { startSeconds: true },
+      _max: { endSeconds: true },
+    }),
   ]);
   return {
     ok: true,
@@ -235,6 +240,8 @@ export async function readStudioTranscriptReviewPage(input: Coordinates & { afte
       correctionReceiptCount,
       activeCorrectionCount,
       playbackVerificationCount: evidence.job._count.verifications,
+      startSeconds: typeof bounds._min.startSeconds === "number" ? bounds._min.startSeconds : null,
+      endSeconds: typeof bounds._max.endSeconds === "number" ? bounds._max.endSeconds : null,
     },
     page: {
       count: page.length,

@@ -99,6 +99,9 @@ try {
   const review = await request(`/api/media-vault/source-transcript/review?${reviewQuery}`, { token: operatorToken });
   assert.equal(review.status, 200, review.body?.error || "Transcript review readback failed.");
   assert.equal(review.body?.source?.sha256, beforeSha256);
+  assert.equal(typeof review.body?.coverage?.startSeconds, "number", "Transcript review did not expose its exact source-clock start.");
+  assert.equal(typeof review.body?.coverage?.endSeconds, "number", "Transcript review did not expose its exact source-clock end.");
+  assert.ok(review.body.coverage.endSeconds >= review.body.coverage.startSeconds, "Transcript review bounds are reversed.");
   assert.ok(review.body?.segments?.length > 0, "The review desk did not return paged transcript evidence.");
   assert.ok(review.body?.segments?.[0]?.words?.length > 0, "The review desk did not return provider word timing.");
   const uncorrected = review.body.segments.find((segment) => !segment.acceptedCorrection);
@@ -139,6 +142,36 @@ try {
     values: [readback.body.transcriptJobId],
   });
   assert.deepEqual(evidenceAfter.rows[0], evidenceBefore.rows[0], "A refused review attempt changed durable evidence.");
+
+  const signalQuery = new URLSearchParams({ projectSlug: PROJECT_SLUG, assetId: ASSET_ID });
+  const signedOutSignal = await request(`/api/media-vault/audio-signal-profile?${signalQuery}`);
+  assert.equal(signedOutSignal.status, 401, "Signed-out decoded signal evidence did not fail closed.");
+  const outsiderSignal = await request(`/api/media-vault/audio-signal-profile?${signalQuery}`, { token: outsiderToken });
+  assert.equal(outsiderSignal.status, 403, "A separate ungranted account could read decoded signal evidence.");
+  let signal = await request(`/api/media-vault/audio-signal-profile?${signalQuery}`, { token: operatorToken });
+  assert.equal(signal.status, 200, signal.body?.error || "Decoded signal status readback failed.");
+  if (signal.body?.status !== "completed") {
+    signal = await request("/api/media-vault/audio-signal-profile", {
+      token: operatorToken,
+      method: "POST",
+      body: { action: "queue", projectSlug: PROJECT_SLUG, assetId: ASSET_ID, sourceId: SOURCE_ID },
+    });
+    assert.ok([200, 202].includes(signal.status) && signal.body?.ok, `Signal queue failed: ${signal.status} ${signal.body?.error || ""}`);
+    for (let attempt = 0; attempt < 300 && signal.body?.status !== "completed"; attempt += 1) {
+      assert.notEqual(signal.body?.status, "failed", signal.body?.error || "Decoded signal profiling failed.");
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      signal = await request("/api/media-vault/audio-signal-profile", {
+        token: operatorToken,
+        method: "POST",
+        body: { action: "reconcile", projectSlug: PROJECT_SLUG, assetId: ASSET_ID, sourceId: SOURCE_ID },
+      });
+      assert.ok([200, 202].includes(signal.status) && signal.body?.ok, `Signal reconcile failed: ${signal.status} ${signal.body?.error || ""}`);
+    }
+  }
+  assert.equal(signal.body?.status, "completed", "Decoded signal profile did not reach canonical completion.");
+  assert.equal(signal.body?.analyzer?.completeDecode, true, "Decoded signal profile is not complete-source evidence.");
+  assert.ok(signal.body?.audioSignal?.waveform?.length > 0 && signal.body.audioSignal.waveform.length <= 1_200, "Decoded signal profile is empty or unbounded.");
+  assert.ok(signal.body.audioSignal.durationSeconds + 0.02 >= review.body.coverage.endSeconds, "Transcript timing extends beyond decoded signal evidence.");
 
   const canonical = await pool.query({
     text: `
@@ -185,6 +218,20 @@ try {
       refusedWriteChangedEvidence: false,
       signedOutStatus: signedOutReview.status,
       outsiderStatus: outsiderReview.status,
+    },
+    audioTrust: {
+      status: signal.body.status,
+      analyzer: signal.body.analyzer,
+      durationSeconds: signal.body.audioSignal.durationSeconds,
+      waveformWindowCount: signal.body.audioSignal.waveform.length,
+      signalStatus: signal.body.audioSignal.signalStatus,
+      observationKinds: signal.body.audioSignal.observations.map((observation) => observation.kind),
+      transcriptBounds: {
+        startSeconds: review.body.coverage.startSeconds,
+        endSeconds: review.body.coverage.endSeconds,
+      },
+      signedOutStatus: signedOutSignal.status,
+      outsiderStatus: outsiderSignal.status,
     },
     boundaries: readback.body.boundaries,
   }, null, 2)}\n`);

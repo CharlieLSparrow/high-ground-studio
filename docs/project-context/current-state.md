@@ -1,6 +1,24 @@
 # Current State
 
-Date: 2026-08-03
+Date: 2026-08-04
+
+## Unified audio and transcript trust-surface checkpoint
+
+- Imported Studio media now shows complete-decode RMS and sample-peak windows,
+  signal observations, exact transcript bounds, timed provider words, review
+  state, and protected playback on one shared source clock. Session review uses
+  the same shared map instead of owning a route-local visualization.
+- Clicking the map seeks the protected player and selects a loaded transcript
+  segment. A seek or scrub no longer qualifies as listening: review controls
+  unlock only after active playback progresses inside the selected segment.
+- A retained Episode 8 operation bound the real `Ted Lasso Be Curious.mp4`
+  source to 1,200 complete-decode windows and 84 segments / 597 timed words.
+  Exact transcript bounds are 3.98–249.22 seconds inside a 254.630023-second
+  decode; signed-out and unrelated-account reads fail closed and source bytes
+  remain unchanged.
+- No human-listening receipt, edit, master promotion, task, goal, delivery, or
+  publication was created. Full architecture and operated evidence are in
+  `docs/coordination/quipsly-unified-audio-transcript-trust-surface-2026-08-04.md`.
 
 ## Durable episode edit-review history checkpoint
 

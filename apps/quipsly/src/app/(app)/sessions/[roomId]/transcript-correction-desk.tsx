@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
+import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
-
-import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "./AudioEvidenceMap";
 import { timestampForSeconds } from "./session-review-model";
 import {
   EDITABLE_SESSION_NOTE_KINDS,

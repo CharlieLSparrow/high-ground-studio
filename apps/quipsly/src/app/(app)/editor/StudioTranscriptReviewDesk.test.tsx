@@ -85,6 +85,7 @@ describe("StudioTranscriptReviewDesk", () => {
     expect(play).toHaveBeenCalled();
     const audio = screen.getByLabelText("Protected transcript source: Source clip");
     Object.defineProperty(audio, "currentTime", { configurable: true, value: 4.4, writable: true });
+    fireEvent.play(audio);
     fireEvent.timeUpdate(audio);
 
     const text = screen.getByRole("textbox", { name: "Reviewed transcript text" });
@@ -103,6 +104,47 @@ describe("StudioTranscriptReviewDesk", () => {
       correctedSpeakerLabel: "Ted",
     }));
     expect(await screen.findByRole("status")).toHaveTextContent(/provider words and media are unchanged/i);
+    play.mockRestore();
+  });
+
+  it("shares the decoded waveform, timed words, and protected player without treating a scrub as listening", async () => {
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
+    const audioSignal = {
+      schemaVersion: 1 as const,
+      algorithm: "quipsly-audio-signal-window-v1",
+      status: "attention" as const,
+      sampleRateHz: 48_000,
+      channelCount: 1,
+      analyzedFrameCount: 576_000,
+      durationSeconds: 12,
+      windowDurationSeconds: 6,
+      rmsDbfs: -24,
+      samplePeakDbfs: -1,
+      clippedFrameCount: 0,
+      clippedFrameFraction: 0,
+      nearSilentFrameFraction: 0.1,
+      leftRmsDbfs: -24,
+      rightRmsDbfs: null,
+      stereoBalanceDb: null,
+      rmsIsNotLufs: true as const,
+      thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
+      waveform: [
+        { startSeconds: 0, durationSeconds: 6, rmsDbfs: -22, samplePeakDbfs: -2, clippedFrameCount: 0 },
+        { startSeconds: 6, durationSeconds: 6, rmsDbfs: -26, samplePeakDbfs: -1, clippedFrameCount: 0 },
+      ],
+      observations: [{ kind: "possible-dropout" as const, severity: "attention" as const, startSeconds: 6, endSeconds: 7, detail: "Listen before classifying.", requiresListening: true as const }],
+    };
+    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" audioSignal={audioSignal} />);
+
+    expect(await screen.findByRole("region", { name: "Audio evidence map" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: /Review transcript segment at 0:04\.0/i });
+    expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /windowed decoded audio energy/i })).toHaveTextContent(/Loaded transcript evidence \(1\/1 segments\) · 0\/3 words/i);
+
+    const map = screen.getByRole("button", { name: /Audio evidence map from/i });
+    fireEvent.click(map, { clientX: 100 });
+    expect(screen.getByRole("button", { name: /Confirm exactly as heard/i })).toBeDisabled();
     play.mockRestore();
   });
 });

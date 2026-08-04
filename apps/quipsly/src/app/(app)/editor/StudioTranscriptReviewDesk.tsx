@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
+import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+
 type ReviewCorrection = {
   id: string;
   status: string;
@@ -43,7 +46,15 @@ type ReviewDesk = {
   language: string | null;
   playback: { sourceId: string; url: string; kind: "audio" | "video"; label: string; durationSeconds: number | null };
   source: { assetId: string; sourceId: string; sha256: string; generation: string };
-  coverage: { segmentCount: number; wordCount: number; correctionReceiptCount: number; activeCorrectionCount: number; playbackVerificationCount: number };
+  coverage: {
+    segmentCount: number;
+    wordCount: number;
+    correctionReceiptCount: number;
+    activeCorrectionCount: number;
+    playbackVerificationCount: number;
+    startSeconds: number | null;
+    endSeconds: number | null;
+  };
   page: { count: number; hasMore: boolean; nextAfterSegmentId: string | null };
   segments: ReviewSegment[];
 };
@@ -71,13 +82,24 @@ export function StudioTranscriptReviewDesk({
   episodeSlug,
   assetId,
   sourceId,
+  audioSignal = null,
+  audioSignalStatus = "not-queued",
+  audioSignalError = null,
+  isAudioSignalWorking = false,
+  onRequestAudioSignal,
 }: {
   projectSlug: string;
   episodeSlug: string;
   assetId: string;
   sourceId: string;
+  audioSignal?: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> | null;
+  audioSignalStatus?: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  audioSignalError?: string | null;
+  isAudioSignalWorking?: boolean;
+  onRequestAudioSignal?: () => void;
 }) {
   const playerRef = useRef<HTMLMediaElement | null>(null);
+  const playbackActiveRef = useRef(false);
   const [desk, setDesk] = useState<ReviewDesk | null>(null);
   const [segments, setSegments] = useState<ReviewSegment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,8 +116,24 @@ export function StudioTranscriptReviewDesk({
     () => segments.find((segment) => segment.id === selectedId) ?? null,
     [segments, selectedId],
   );
+  const transcriptWords = useMemo<AudioEvidenceTranscriptWord[]>(() => segments.flatMap((segment) => (
+    segment.words.map((word) => ({
+      id: word.id,
+      segmentId: segment.id,
+      text: word.punctuatedWord,
+      startSeconds: word.startSeconds,
+      endSeconds: word.endSeconds,
+      confidence: word.confidence,
+      reviewState: segment.acceptedCorrection
+        ? "corrected" as const
+        : segment.confirmedAsIs
+          ? "confirmed" as const
+          : "unchecked" as const,
+    }))
+  )).sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds || left.id.localeCompare(right.id)), [segments]);
 
   const selectSegment = useCallback((segment: ReviewSegment, play = false) => {
+    playbackActiveRef.current = false;
     setSelectedId(segment.id);
     setDraftText(segment.text);
     setDraftSpeaker(segment.speakerLabel ?? "");
@@ -146,11 +184,28 @@ export function StudioTranscriptReviewDesk({
 
   const onPlaybackTime = useCallback((position: number) => {
     setPlaybackPosition(position);
-    if (!selected) return;
+    if (!selected || !playbackActiveRef.current) return;
     if (position >= Math.max(0, selected.startSeconds - 0.5) && position <= selected.endSeconds + 1.5) {
       setHeardSelected(true);
     }
   }, [selected]);
+
+  const selectEvidenceTime = useCallback((seconds: number, play: boolean) => {
+    playbackActiveRef.current = false;
+    const player = playerRef.current;
+    const segment = segments.find((candidate) => seconds >= candidate.startSeconds && seconds <= candidate.endSeconds);
+    if (segment) {
+      setSelectedId(segment.id);
+      setDraftText(segment.text);
+      setDraftSpeaker(segment.speakerLabel ?? "");
+      setReason("");
+    }
+    setHeardSelected(false);
+    setPlaybackPosition(null);
+    if (!player) return;
+    player.currentTime = Math.max(0, seconds);
+    if (play) void player.play().catch(() => undefined);
+  }, [segments]);
 
   const operate = useCallback(async (action: "correct" | "confirm-as-is") => {
     if (!selected || playbackPosition === null || !heardSelected) return;
@@ -239,6 +294,9 @@ export function StudioTranscriptReviewDesk({
           className="mt-3 max-h-64 w-full rounded-lg bg-black"
           aria-label={`Protected transcript source: ${desk.playback.label}`}
           onTimeUpdate={(event) => onPlaybackTime(event.currentTarget.currentTime)}
+          onPlay={() => { playbackActiveRef.current = true; }}
+          onPause={() => { playbackActiveRef.current = false; }}
+          onEnded={() => { playbackActiveRef.current = false; }}
         />
       ) : desk?.playback ? (
         <audio
@@ -249,8 +307,37 @@ export function StudioTranscriptReviewDesk({
           className="mt-3 w-full"
           aria-label={`Protected transcript source: ${desk.playback.label}`}
           onTimeUpdate={(event) => onPlaybackTime(event.currentTarget.currentTime)}
+          onPlay={() => { playbackActiveRef.current = true; }}
+          onPause={() => { playbackActiveRef.current = false; }}
+          onEnded={() => { playbackActiveRef.current = false; }}
         />
       ) : null}
+
+      {audioSignal ? (
+        <AudioEvidenceMap
+          signal={audioSignal}
+          timelineEvents={[]}
+          transcriptEndSeconds={desk?.coverage.endSeconds ?? null}
+          playbackReady={Boolean(desk?.playback)}
+          selectedSeconds={playbackPosition ?? selected?.startSeconds ?? 0}
+          transcriptWords={transcriptWords}
+          lowConfidenceThreshold={0.65}
+          providerLabel={desk?.provider ?? null}
+          transcriptScopeLabel={`Loaded transcript evidence (${segments.length}/${desk?.coverage.segmentCount ?? segments.length} segments)`}
+          onSelect={selectEvidenceTime}
+        />
+      ) : (
+        <section className="mt-3 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-3" aria-label="Decoded audio evidence status">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-800">Shared source clock</div>
+              <p className="mt-1 text-[10px] font-bold leading-4 text-sky-950">The transcript is timed, but its complete-decode RMS, sample-peak, clipping, silence, and dropout lanes are not ready yet. Quipsly will not infer those conditions from transcript probability.</p>
+              {audioSignalError ? <p className="mt-2 text-[10px] font-black text-rose-900">{audioSignalError}</p> : null}
+            </div>
+            {onRequestAudioSignal ? <button type="button" disabled={isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus)} onClick={onRequestAudioSignal} className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-[10px] font-black text-sky-950 hover:bg-sky-100 disabled:cursor-wait disabled:opacity-60">{isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus) ? "Decoding exact source…" : audioSignalStatus === "failed" ? "Retry decoded audio map" : "Build decoded audio map"}</button> : null}
+          </div>
+        </section>
+      )}
 
       {desk && (
         <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[9px] font-bold sm:grid-cols-4">

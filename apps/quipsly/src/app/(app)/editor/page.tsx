@@ -1136,12 +1136,12 @@ function importedAssetTimelinePercent(asset: ImportedMediaAsset, totalDuration: 
   return Math.max(0, Math.min(100, (anchor / totalDuration) * 100));
 }
 
-function importedAssetAudioSignal(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null) {
-  const durableEvidence = parseAudioSignalEvidence(durableProfile?.audioSignal, { maximumWaveformPoints: 360 });
+function importedAssetAudioSignal(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null, maximumWaveformPoints = 360) {
+  const durableEvidence = parseAudioSignalEvidence(durableProfile?.audioSignal, { maximumWaveformPoints });
   if (durableEvidence) return durableEvidence;
   const recordingSync = asObject(asset?.sync?.recordingSync);
   const sourceProfile = asObject(recordingSync?.reportedSourceProfile);
-  return parseAudioSignalEvidence(sourceProfile?.audioSignal, { maximumWaveformPoints: 360 });
+  return parseAudioSignalEvidence(sourceProfile?.audioSignal, { maximumWaveformPoints });
 }
 
 function importedAssetDurationSeconds(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null) {
@@ -9534,6 +9534,8 @@ function CloudEditorContent() {
                   ?? audioMasteryStatusByAsset[asset.sourceId];
                 const audioTreatmentStatus = audioTreatmentStatusByAsset[asset.id]
                   ?? audioTreatmentStatusByAsset[asset.sourceId];
+                const audioSignalProfileStatus = audioSignalProfileStatusByAsset[asset.id]
+                  ?? audioSignalProfileStatusByAsset[asset.sourceId];
                 const sourceTranscriptStatus = sourceTranscriptStatusByAsset[asset.id]
                   ?? sourceTranscriptStatusByAsset[asset.sourceId];
                 const proxyStatus = collaborationProxyStatus?.status
@@ -9541,6 +9543,7 @@ function CloudEditorContent() {
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
                 const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
+                const isAudioSignalProfileWorking = queueingMediaJobKeys.has(`${asset.id}:audio-signal-profile`);
                 const isSourceTranscriptWorking = queueingMediaJobKeys.has(`${asset.id}:source-transcript`);
                 const hasDcTreatmentEvidence = Boolean(audioMasteryStatus?.signalDiagnosis?.channels.some((channel) => Math.abs(channel.dcOffset) >= 0.01));
                 const health = importedAssetHealth(asset);
@@ -9730,6 +9733,11 @@ function CloudEditorContent() {
                           episodeSlug={episodeSlug}
                           assetId={asset.id}
                           sourceId={asset.sourceId}
+                          audioSignal={importedAssetAudioSignal(asset, audioSignalProfileStatus, 1_200)}
+                          audioSignalStatus={audioSignalProfileStatus?.status ?? "not-queued"}
+                          audioSignalError={audioSignalProfileStatus?.error ?? null}
+                          isAudioSignalWorking={isAudioSignalProfileWorking}
+                          onRequestAudioSignal={() => void operateAudioSignalProfile(asset)}
                         />
                       )}
                       <button
