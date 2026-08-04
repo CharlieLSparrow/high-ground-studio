@@ -1399,6 +1399,27 @@ High Ground Studio is a monorepo with:
   a real provider run, an assembled auto-cut, and physical-device proof remain
   open. See `docs/architecture/source-bound-automated-edit-proposals.md`.
 
+### 2026-08-03 deterministic edit evidence
+
+- The Episode editor now offers local deterministic analysis separately from
+  disclosed provider analysis. It recognizes narrow explicit restart language,
+  recording retake markers, adjacent repeated openings, and bounded transcript
+  timing gaps using stable exact-source identities and evidence hashes.
+- Only explicit restart language produces a reversible exact-block proposal.
+  Markers and repetition remain listen-only. Timing gaps explicitly say they
+  are not confirmed silence and require decoded signal evidence before a cut
+  proposal can exist.
+- The same stale-binding and untouched-source proof-watch/listen contract covers
+  local and provider results. No analysis autosaves, renders, promotes,
+  publishes, or changes source bytes.
+- A dedicated database-backed High Ground QA episode was operated in the local
+  editor: one restart proposal and three listen-only candidates rendered,
+  timing evidence entered Proof-listen, the restart proposal was applied, and
+  Undo restored the source block. The pass also repaired a stale post-Undo
+  status banner. Because the fixture has no attached media, decoded waveform
+  corroboration, overlap and speaker timing, persisted review receipts, real
+  HGO-media playback, and assembled draft edits remain open.
+
 - The earlier Stripe checkout attempt was rolled back to a non-broken state.
 - The episodes route currently uses a guarded loader in `apps/web/src/lib/source.ts`.
 - The Fumadocs source is only enabled when `ENABLE_EPISODES_FUMADOCS=1`.

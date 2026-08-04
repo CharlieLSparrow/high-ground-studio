@@ -91,6 +91,40 @@ describe("AI edit suggestion boundary", () => {
     expect(mockedGoogle).not.toHaveBeenCalled();
   });
 
+  it("runs deterministic evidence without provider disclosure or configuration", async () => {
+    delete process.env.GEMINI_API_KEY;
+
+    const response = await POST(request({
+      analysisMode: "deterministic",
+      transcriptBlocks: [
+        { id: "restart", time: 0, duration: 3, text: "Let me restart that thought." },
+        { id: "next", time: 6, duration: 2, text: "Here is the clean version." },
+      ],
+      ...sourceBinding,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      ok: true,
+      applied: false,
+      source: "deterministic-transcript-evidence",
+      suggestionCount: 1,
+      reviewCandidateCount: 1,
+      proposalSet: expect.objectContaining({
+        provider: { kind: "deterministic", model: "quipsly-transcript-evidence-v1" },
+        proposals: [expect.objectContaining({ type: "deactivate", blockId: "restart", applied: false })],
+        reviewCandidates: [expect.objectContaining({
+          kind: "transcript-timing-gap",
+          requiresSignalEvidence: true,
+          changesSource: false,
+        })],
+      }),
+    }));
+    expect(mockedGoogle).not.toHaveBeenCalled();
+    expect(generateContent).not.toHaveBeenCalled();
+  });
+
   it("requires explicit provider disclosure acceptance and validates transcript bounds", async () => {
     const disclosure = await POST(request({ transcriptBlocks }));
     expect(disclosure.status).toBe(409);

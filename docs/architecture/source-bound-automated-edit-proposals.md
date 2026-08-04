@@ -47,6 +47,11 @@ an explicit statement that the original is unchanged. A reviewer can:
 Apply does not save, render, promote, or publish. Normal timeline playback and
 the existing save/render gates remain separate acceptance decisions.
 
+Undo and redo also surface explicit timeline-state feedback. In particular,
+Undo cannot leave behind an "applied" status after the editable block has been
+restored; the banner names the completed history operation and reiterates that
+source media was never changed.
+
 ## Current proposal vocabulary
 
 - `deactivate`: mark an exact transcript block inactive in the editable cut;
@@ -56,6 +61,27 @@ The vocabulary is intentionally small while the evidence spine is established.
 Upcoming deterministic analyzers should propose silence and retake candidates,
 speaker-view changes, multicamera switches, and short-form extracts using this
 same contract rather than adding unbound automation paths.
+
+## Deterministic transcript evidence
+
+The first local analyzer now runs without provider disclosure or provider
+configuration. Its deliberately narrow vocabulary is:
+
+- explicit restart language: a high-confidence, exact-block reversible cut
+  proposal that still requires source proof-watch before apply;
+- recording retake markers: high-confidence listen-only evidence;
+- adjacent repeated openings of four or more words: medium-confidence
+  listen-only evidence because repetition may be intentional; and
+- transcript timing gaps from 1.25 through 30 seconds: low-confidence
+  listen-only evidence that explicitly says timing is not proof of silence.
+
+Stable candidate identities derive from kind, ordered block identities, and
+millisecond source bounds. Each candidate hashes only its exact canonical
+transcript evidence. A timing gap sets `requiresSignalEvidence: true`; it cannot
+become a silence-cut proposal until decoded audio measurement corroborates it.
+This is the bridge into the next analyzer layer, which will join time-aligned
+waveform, RMS, clipping, dropout, and standards loudness evidence without
+turning provider inference into signal truth.
 
 ## Non-negotiable boundaries
 
@@ -68,9 +94,16 @@ same contract rather than adding unbound automation paths.
 
 ## Acceptance gates still open
 
+Local database-backed browser operation has proved deterministic analysis,
+listen-only timing evidence, exact-block apply, and undo against a dedicated
+High Ground QA episode. Because that fixture intentionally has no attached
+media, it proves state and boundary behavior—not audible or visual source
+playback.
+
 - persisted proposal/audit ledger rather than response-lifetime state;
 - real provider run over a retained HGO transcript and media timeline;
-- deterministic silence, overlap, retake, and speaker-change evidence;
+- decoded-signal corroboration for silence/dropout candidates plus overlap and
+  speaker-change evidence;
 - automated draft timeline with before/after proof-watch and render receipts;
 - multicamera and local-device media synchronization;
 - physical-iPhone source, TestFlight, and full episode proof-watch;

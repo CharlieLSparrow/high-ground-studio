@@ -43,6 +43,7 @@ import {
   canonicalAiEditTranscript,
   type AiEditProposal,
   type AiEditProposalSet,
+  type AiEditReviewCandidate,
 } from "@/lib/editor/ai-edit-proposal-contract";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
@@ -3044,11 +3045,27 @@ function CloudEditorContent() {
   const [isAiAutoEditing, setIsAiAutoEditing] = useState(false);
   const [isAiDisclosureOpen, setIsAiDisclosureOpen] = useState(false);
   const [aiEditSuggestions, setAiEditSuggestions] = useState<AiEditSuggestion[]>([]);
+  const [aiEditReviewCandidates, setAiEditReviewCandidates] = useState<AiEditReviewCandidate[]>([]);
   const [aiEditProposalBinding, setAiEditProposalBinding] = useState<AiEditProposalSet["binding"] | null>(null);
+  const [aiEditGenerator, setAiEditGenerator] = useState<AiEditProposalSet["provider"] | null>(null);
   const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
   const [aiEditMessage, setAiEditMessage] = useState("");
 
-  const handleAiAutoEdit = async () => {
+  const handleTimelineUndo = useCallback(() => {
+    undo();
+    setIsPreviewPlaying(false);
+    setAiProofWatchEndSeconds(null);
+    setAiEditMessage("Timeline undo completed. Review the restored editable timeline; source media was never changed.");
+  }, [undo]);
+
+  const handleTimelineRedo = useCallback(() => {
+    redo();
+    setIsPreviewPlaying(false);
+    setAiProofWatchEndSeconds(null);
+    setAiEditMessage("Timeline redo completed. Review the editable timeline before saving or rendering; source media was never changed.");
+  }, [redo]);
+
+  const requestEditAnalysis = async (analysisMode: "deterministic" | "provider") => {
     if (!timelineState.transcript?.length) return;
     try {
       setIsAiDisclosureOpen(false);
@@ -3060,7 +3077,8 @@ function CloudEditorContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcriptBlocks: timelineState.transcript,
-          providerDisclosureAccepted: true,
+          providerDisclosureAccepted: analysisMode === "provider",
+          analysisMode,
           projectSlug: resolvedProjectSlug,
           episodeSlug,
           timelineFingerprintSha256,
@@ -3069,7 +3087,9 @@ function CloudEditorContent() {
       const data = await res.json();
       if (!res.ok) {
         setAiEditSuggestions([]);
+        setAiEditReviewCandidates([]);
         setAiEditProposalBinding(null);
+        setAiEditGenerator(null);
         setAiEditMessage(data.error || "Edit suggestions are unavailable. The timeline is unchanged.");
         return;
       }
@@ -3081,30 +3101,49 @@ function CloudEditorContent() {
         || !Array.isArray(proposalSet.proposals)
       ) {
         setAiEditSuggestions([]);
+        setAiEditReviewCandidates([]);
         setAiEditProposalBinding(null);
+        setAiEditGenerator(null);
         setAiEditMessage("The provider response did not include a valid source-bound proposal set. The timeline is unchanged.");
         return;
       }
       const suggestions = proposalSet.proposals;
+      const reviewCandidates = Array.isArray(proposalSet.reviewCandidates) ? proposalSet.reviewCandidates : [];
       setAiEditSuggestions(suggestions);
+      setAiEditReviewCandidates(reviewCandidates);
       setAiEditProposalBinding(proposalSet.binding);
-      setAiEditMessage(suggestions.length
-        ? `${suggestions.length} proposal${suggestions.length === 1 ? "" : "s"} ready for review. Nothing has been applied.`
-        : "No valid edit suggestions were returned. The timeline is unchanged.");
+      setAiEditGenerator(proposalSet.provider);
+      const itemCount = suggestions.length + reviewCandidates.length;
+      setAiEditMessage(itemCount
+        ? `${suggestions.length} reversible proposal${suggestions.length === 1 ? "" : "s"} and ${reviewCandidates.length} listen-only candidate${reviewCandidates.length === 1 ? "" : "s"} ready. Nothing has been applied.`
+        : "No edit evidence was found. The timeline is unchanged.");
     } catch (e) {
       console.error(e);
       setAiEditSuggestions([]);
+      setAiEditReviewCandidates([]);
       setAiEditProposalBinding(null);
+      setAiEditGenerator(null);
       setAiEditMessage("Edit suggestions could not be loaded. The timeline is unchanged.");
     } finally {
       setIsAiAutoEditing(false);
     }
   };
 
+  const handleAiAutoEdit = () => requestEditAnalysis("provider");
+  const handleDeterministicEditAnalysis = () => requestEditAnalysis("deterministic");
+
   const dismissAiEditSuggestion = (index: number) => {
     setAiEditSuggestions((current) => {
       const next = current.filter((_, candidateIndex) => candidateIndex !== index);
-      if (!next.length) setAiEditProposalBinding(null);
+      if (!next.length && !aiEditReviewCandidates.length) setAiEditProposalBinding(null);
+      return next;
+    });
+  };
+
+  const dismissAiEditReviewCandidate = (index: number) => {
+    setAiEditReviewCandidates((current) => {
+      const next = current.filter((_, candidateIndex) => candidateIndex !== index);
+      if (!next.length && !aiEditSuggestions.length) setAiEditProposalBinding(null);
       return next;
     });
   };
@@ -3124,9 +3163,12 @@ function CloudEditorContent() {
       && currentTranscriptSha256 === aiEditProposalBinding.transcriptSha256;
   };
 
-  const proofWatchAiEditSuggestion = async (edit: AiEditSuggestion) => {
+  const proofWatchAiEditSuggestion = async (
+    edit: Pick<AiEditSuggestion | AiEditReviewCandidate, "sourceRange">,
+    reviewMode: "watch" | "listen" = "watch",
+  ) => {
     if (!await aiEditBindingIsCurrent()) {
-      setAiEditMessage("This proposal is stale because the transcript or timeline changed. Request a fresh analysis before proof-watching or applying it.");
+      setAiEditMessage("This edit analysis is stale because the transcript or timeline changed. Request a fresh analysis before reviewing or applying it.");
       return;
     }
     const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
@@ -3135,7 +3177,7 @@ function CloudEditorContent() {
     setCurrentTime(start);
     setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
     setIsPreviewPlaying(true);
-    setAiEditMessage(`Proof-watching untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.`);
+    setAiEditMessage(`${reviewMode === "listen" ? "Proof-listening to" : "Proof-watching"} untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.`);
   };
 
   const applyAiEditSuggestion = async (edit: AiEditSuggestion, index: number) => {
@@ -6350,7 +6392,7 @@ function CloudEditorContent() {
             </button>
             <div className="flex bg-white rounded-md border border-[#e8dcc4] overflow-hidden shadow-sm">
               <button
-                onClick={undo}
+                onClick={handleTimelineUndo}
                 disabled={!canUndo}
                 className="px-3 py-1 text-xs font-bold text-[#3d3122] hover:bg-[#fff8ec] disabled:opacity-30 disabled:hover:bg-transparent border-r border-[#e8dcc4] transition-colors"
                 title="Undo"
@@ -6358,7 +6400,7 @@ function CloudEditorContent() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
               </button>
               <button
-                onClick={redo}
+                onClick={handleTimelineRedo}
                 disabled={!canRedo}
                 className="px-3 py-1 text-xs font-bold text-[#3d3122] hover:bg-[#fff8ec] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 title="Redo"
@@ -9636,8 +9678,8 @@ function CloudEditorContent() {
 
           <div className={`w-full flex justify-center mb-8 ${realEditingMode ? "hidden" : ""}`}>
              <div className="w-full max-w-2xl bg-black rounded-2xl border-4 border-[#e8dcc4] overflow-hidden shadow-xl ring-1 ring-black/5 flex flex-col">
-                <div className="flex justify-between items-center bg-[#1b1b1b] px-4 py-2 border-b border-[#2d2d2d]">
-                   <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#2d2d2d] bg-[#1b1b1b] px-4 py-2">
+                   <div className="flex flex-wrap gap-2">
                      <button
                        onClick={() => startPlaybackMode("play-all")}
                        className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md transition-colors ${timelineState.editorMode === "play-all" ? "bg-amber-600 text-white" : "bg-[#2d2d2d] text-gray-400 hover:text-white"}`}
@@ -9651,6 +9693,15 @@ function CloudEditorContent() {
                        title="Program Monitor: Play only the active edit, skipping deleted text"
                      >
                        Program Monitor
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => void handleDeterministicEditAnalysis()}
+                       disabled={isAiAutoEditing || !timelineState.transcript?.length}
+                       className="rounded-md border border-sky-700 bg-sky-950 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-100 transition-colors hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+                       title="Analyze transcript timing, retake markers, repetition, and explicit restart language locally without sending content to an AI provider"
+                     >
+                       Analyze locally
                      </button>
                    </div>
                    <button
@@ -9698,14 +9749,16 @@ function CloudEditorContent() {
                   </div>
                 )}
 
-                {aiEditSuggestions.length > 0 && (
-                  <section aria-label="AI edit proposals" className="max-h-80 overflow-y-auto border-t border-[#2d2d2d] bg-[#111] p-4 text-white">
+                {(aiEditSuggestions.length > 0 || aiEditReviewCandidates.length > 0) && (
+                  <section aria-label="Edit evidence and proposals" className="max-h-80 overflow-y-auto border-t border-[#2d2d2d] bg-[#111] p-4 text-white">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="text-sm font-black">Review proposals</h3>
-                        <p className="mt-1 text-[11px] text-gray-400">Apply or dismiss one at a time. Playback remains the acceptance check.</p>
+                        <h3 className="text-sm font-black">Review edit evidence</h3>
+                        <p className="mt-1 text-[11px] text-gray-400">
+                          {aiEditGenerator?.kind === "deterministic" ? "Local deterministic evidence" : "Disclosed AI provider proposals"} · playback remains the acceptance check.
+                        </p>
                       </div>
-                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditProposalBinding(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
+                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditReviewCandidates([]); setAiEditProposalBinding(null); setAiEditGenerator(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
                         Dismiss all
                       </button>
                     </div>
@@ -9739,6 +9792,39 @@ function CloudEditorContent() {
                               </button>
                               <button type="button" onClick={() => void applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
                                 Apply proposal
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+
+                      {aiEditReviewCandidates.map((candidate, index) => {
+                        const label = candidate.kind === "retake-marker"
+                          ? "Recording retake marker"
+                          : candidate.kind === "repeated-language"
+                            ? "Possible repeated take"
+                            : "Transcript timing gap";
+                        return (
+                          <article key={candidate.candidateId} className="rounded-xl border border-sky-900 bg-sky-950/30 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-black text-sky-200">{label}</p>
+                              <span className="rounded-full border border-sky-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-sky-300">Listen only</span>
+                            </div>
+                            <p className="mt-2 text-[11px] leading-5 text-gray-300">{candidate.rationale}</p>
+                            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-gray-500">
+                              {candidate.confidence} confidence · source {formatClock(candidate.sourceRange.startSeconds)}–{formatClock(candidate.sourceRange.endSeconds)} · original unchanged
+                            </p>
+                            {candidate.requiresSignalEvidence && (
+                              <p className="mt-2 rounded-lg border border-amber-900 bg-amber-950/30 px-2 py-1.5 text-[10px] font-bold text-amber-200">
+                                Timing evidence only—not confirmed silence. Decoded audio evidence is required before a cut proposal.
+                              </p>
+                            )}
+                            <div className="mt-3 flex justify-end gap-2">
+                              <button type="button" onClick={() => dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
+                                Dismiss
+                              </button>
+                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(candidate, "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
+                                Proof-listen source
                               </button>
                             </div>
                           </article>

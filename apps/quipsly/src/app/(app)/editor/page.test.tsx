@@ -72,7 +72,9 @@ describe("CloudEditor production truth UX", () => {
             timelineFingerprintSha256?: string;
             projectSlug?: string;
             episodeSlug?: string;
+            analysisMode?: string;
           };
+          const deterministic = request.analysisMode === "deterministic";
           const transcriptSha256 = createHash("sha256")
             .update(canonicalAiEditTranscript(request.transcriptBlocks || []))
             .digest("hex");
@@ -89,12 +91,14 @@ describe("CloudEditor production truth UX", () => {
                 episodeSlug: request.episodeSlug,
                 timelineFingerprintSha256: request.timelineFingerprintSha256,
                 transcriptSha256,
-                blockCount: 1,
+                blockCount: request.transcriptBlocks?.length || 0,
                 startSeconds: 0,
                 endSeconds: 8,
               },
-              provider: { kind: "google-gemini", model: "test-model" },
-              proposals: [{
+              provider: deterministic
+                ? { kind: "deterministic", model: "quipsly-transcript-evidence-v1" }
+                : { kind: "google-gemini", model: "test-model" },
+              proposals: deterministic ? [] : [{
                 proposalId: "edit_proposal_test",
                 type: "deactivate",
                 blockId: "t2",
@@ -105,6 +109,17 @@ describe("CloudEditor production truth UX", () => {
                 changesSource: false,
                 applied: false,
               }],
+              reviewCandidates: deterministic ? [{
+                candidateId: "candidate_gap_test",
+                kind: "transcript-timing-gap",
+                sourceRange: { startSeconds: 2, endSeconds: 5 },
+                evidence: { blockIds: ["left", "right"], transcriptTextSha256: "d".repeat(64) },
+                rationale: "The transcript has a 3.00 second timing gap. This is not proof of silence.",
+                confidence: "low",
+                suggestedAction: "listen",
+                requiresSignalEvidence: true,
+                changesSource: false,
+              }] : [],
               boundaries: {
                 sourceMediaUnchanged: true,
                 proposalsOnly: true,
@@ -180,7 +195,7 @@ describe("CloudEditor production truth UX", () => {
 
     await user.click(screen.getByRole("button", { name: "Send for suggestions" }));
 
-    await waitFor(() => expect(screen.getByRole("region", { name: "AI edit proposals" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Edit evidence and proposals" })).toBeInTheDocument());
     expect(screen.getByText(/Nothing has been applied/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply proposal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
@@ -189,6 +204,42 @@ describe("CloudEditor production truth UX", () => {
 
     await user.click(screen.getByRole("button", { name: "Proof-watch source" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
+
+    await user.click(screen.getByRole("button", { name: "Apply proposal" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Transcript cut applied to the editable timeline/i);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/Timeline undo completed/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/source media was never changed/i);
+  });
+
+  it("analyzes timing evidence locally without opening provider disclosure", async () => {
+    mockEpisodeProduction({
+      transcriptJson: {
+        blocks: [
+          { id: "left", time: 0, duration: 2, text: "The first complete thought." },
+          { id: "right", time: 5, duration: 2, text: "The next complete thought." },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByText(/Loaded Current Episode from transcript payload/i);
+    await user.click(screen.getByRole("button", { name: "Analyze locally" }));
+
+    expect(screen.queryByRole("alertdialog", { name: "Send this transcript for suggestions?" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Transcript timing gap")).toBeInTheDocument();
+    expect(screen.getByText(/Timing evidence only—not confirmed silence/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply proposal" })).not.toBeInTheDocument();
+    const analysisRequest = (globalThis.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes("/api/ai-edit"));
+    expect(JSON.parse(String(analysisRequest?.[1]?.body))).toEqual(expect.objectContaining({
+      analysisMode: "deterministic",
+      providerDisclosureAccepted: false,
+    }));
+
+    await user.click(screen.getByRole("button", { name: "Proof-listen source" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
   });
 

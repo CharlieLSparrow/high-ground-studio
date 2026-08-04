@@ -6,6 +6,22 @@ export type AiEditTranscriptBlock = {
   time: number;
   duration: number;
   text: string;
+  alert?: string | null;
+};
+
+export type AiEditReviewCandidate = {
+  candidateId: string;
+  kind: "retake-marker" | "repeated-language" | "transcript-timing-gap";
+  sourceRange: { startSeconds: number; endSeconds: number };
+  evidence: {
+    blockIds: string[];
+    transcriptTextSha256: string;
+  };
+  rationale: string;
+  confidence: "low" | "medium" | "high";
+  suggestedAction: "listen" | "review-cut";
+  requiresSignalEvidence: boolean;
+  changesSource: false;
 };
 
 export type AiEditProposal = {
@@ -42,10 +58,11 @@ export type AiEditProposalSet = {
     endSeconds: number;
   };
   provider: {
-    kind: "google-gemini";
+    kind: "deterministic" | "google-gemini";
     model: string;
   };
   proposals: AiEditProposal[];
+  reviewCandidates: AiEditReviewCandidate[];
   boundaries: {
     sourceMediaUnchanged: true;
     proposalsOnly: true;
@@ -63,6 +80,7 @@ export function canonicalAiEditTranscript(blocks: AiEditTranscriptBlock[]) {
         timeMs: Math.round(block.time * 1_000),
         durationMs: Math.round(block.duration * 1_000),
         text: block.text.trim(),
+        alert: block.alert?.trim() || null,
       }))
       .sort((left, right) => left.timeMs - right.timeMs || left.id.localeCompare(right.id)),
   );

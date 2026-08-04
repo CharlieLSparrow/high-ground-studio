@@ -11,6 +11,7 @@ import {
   type AiEditProposal,
 } from "@/lib/editor/ai-edit-proposal-contract";
 import { getPrismaClient } from "@/lib/prisma";
+import { deterministicEditEvidence } from "@/lib/server/deterministic-edit-evidence";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -25,6 +26,7 @@ type TranscriptBlock = {
   time: number;
   duration: number;
   text: string;
+  alert?: string | null;
 };
 
 type EditSuggestion =
@@ -78,7 +80,8 @@ function parseTranscriptBlocks(value: unknown): { blocks: TranscriptBlock[]; err
       return { blocks: [], error: `Transcript text may be at most ${MAX_TRANSCRIPT_TEXT} characters per review.` };
     }
     ids.add(id);
-    blocks.push({ id, text, time, duration });
+    const alert = typeof source.alert === "string" ? source.alert.trim().slice(0, 160) || null : null;
+    blocks.push({ id, text, time, duration, alert });
   }
   return { blocks };
 }
@@ -200,7 +203,8 @@ export async function POST(request: Request) {
     return json({ ok: false, errorCode: "INVALID_JSON", error: "Provide a valid edit-review request.", edits: [] }, 400);
   }
 
-  if (body.providerDisclosureAccepted !== true) {
+  const analysisMode = body.analysisMode === "deterministic" ? "deterministic" : "provider";
+  if (analysisMode === "provider" && body.providerDisclosureAccepted !== true) {
     return json({
       ok: false,
       errorCode: "AI_PROVIDER_DISCLOSURE_REQUIRED",
@@ -231,6 +235,50 @@ export async function POST(request: Request) {
   });
   if (!access.allowed) {
     return json({ ok: false, errorCode: access.code, error: access.error, edits: [] }, access.status);
+  }
+
+  const canonicalTranscript = canonicalAiEditTranscript(parsedTranscript.blocks);
+  const transcriptSha256 = createHash("sha256").update(canonicalTranscript).digest("hex");
+  const bounds = aiEditTranscriptBounds(parsedTranscript.blocks);
+
+  if (analysisMode === "deterministic") {
+    const analysis = deterministicEditEvidence(parsedTranscript.blocks);
+    const proposalSet = {
+      kind: AI_EDIT_PROPOSAL_SET_KIND,
+      version: AI_EDIT_PROPOSAL_SET_VERSION,
+      proposalSetId: `edit_proposal_set_${randomUUID().replaceAll("-", "")}`,
+      createdAt: new Date().toISOString(),
+      binding: {
+        projectSlug,
+        episodeSlug,
+        timelineFingerprintSha256,
+        transcriptSha256,
+        blockCount: parsedTranscript.blocks.length,
+        ...bounds,
+      },
+      provider: { kind: "deterministic" as const, model: "quipsly-transcript-evidence-v1" },
+      proposals: analysis.proposals,
+      reviewCandidates: analysis.reviewCandidates,
+      boundaries: {
+        sourceMediaUnchanged: true as const,
+        proposalsOnly: true as const,
+        proofWatchBeforeApply: true as const,
+        staleBindingRejectsApply: true as const,
+        noAutomaticSaveRenderOrPublish: true as const,
+      },
+    };
+    const itemCount = analysis.proposals.length + analysis.reviewCandidates.length;
+    return json({
+      ok: true,
+      proposalSet,
+      suggestionCount: analysis.proposals.length,
+      reviewCandidateCount: analysis.reviewCandidates.length,
+      applied: false,
+      source: "deterministic-transcript-evidence",
+      nextAction: itemCount
+        ? "Proof-listen to each exact source interval before applying a proposal."
+        : "No deterministic edit evidence was found; the timeline is unchanged.",
+    }, 200);
   }
 
   const configuredKey = process.env.GEMINI_API_KEY?.trim();
@@ -293,9 +341,6 @@ ${formattedTranscript}`;
     });
     const providerPayload = response.text ? JSON.parse(response.text) : { edits: [] };
     const edits = normalizeSuggestions(providerPayload, parsedTranscript.blocks);
-    const canonicalTranscript = canonicalAiEditTranscript(parsedTranscript.blocks);
-    const transcriptSha256 = createHash("sha256").update(canonicalTranscript).digest("hex");
-    const bounds = aiEditTranscriptBounds(parsedTranscript.blocks);
     const proposals = edits.map((suggestion) => proposalFromSuggestion({ suggestion, blocks: parsedTranscript.blocks }));
     const proposalSet = {
       kind: AI_EDIT_PROPOSAL_SET_KIND,
@@ -312,6 +357,7 @@ ${formattedTranscript}`;
       },
       provider: { kind: "google-gemini" as const, model },
       proposals,
+      reviewCandidates: [],
       boundaries: {
         sourceMediaUnchanged: true as const,
         proposalsOnly: true as const,

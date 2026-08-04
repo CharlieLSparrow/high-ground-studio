@@ -7293,3 +7293,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   proof. Architecture and checkpoint evidence are in
   `docs/architecture/source-bound-automated-edit-proposals.md` and
   `docs/coordination/2026-08-03-source-bound-automated-edit-proposals.md`.
+
+## 2026-08-03 deterministic edit evidence checkpoint
+
+- Added a first-class local `Analyze locally` path that requires no provider
+  disclosure or provider configuration. It produces the same project, episode,
+  timeline-hash, transcript-hash, block-count, and exact-source-bound contract
+  as disclosed provider analysis.
+- Narrow deterministic rules identify explicit restart phrases, recording
+  retake markers, adjacent repeated openings, and transcript timing gaps.
+  Explicit restart language alone becomes a reversible exact-block proposal.
+  Markers and repetitions remain listen-only, and timing gaps explicitly remain
+  unconfirmed until decoded signal evidence corroborates silence.
+- The editor labels local versus provider generation, exposes rationale,
+  confidence, exact ranges, and original-source preservation, and performs
+  stale-checked untouched-source proof-watch/listen. It does not autosave,
+  render, promote, publish, or alter source media.
+- Operated local browser acceptance used a dedicated database-backed High
+  Ground QA episode. It rendered one reversible proposal and three listen-only
+  candidates, exercised timing-gap Proof-listen, applied and undid the explicit
+  restart cut, and verified the restored transcript. The pass also repaired a
+  stale "applied" banner after Undo. This is editor-state proof only because the
+  fixture intentionally has no attached media.
+- Next work must join candidates to waveform evidence, add overlap and canonical
+  speaker timing, persist review decisions, operate real HGO media, and assemble
+  a proof-watchable draft timeline. See
+  `docs/coordination/2026-08-03-deterministic-edit-evidence.md`.
