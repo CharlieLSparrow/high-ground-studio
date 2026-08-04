@@ -9,6 +9,12 @@ import {
   coachingEngagementAccessWhere,
   ensureCoachingEngagement,
 } from "./coaching-engagement";
+import {
+  acceptCoachingEngagementInvitation,
+  changeCoachingEngagementMemberAccess,
+  inviteCoachingEngagementMember,
+  revokeCoachingEngagementInvitation,
+} from "./coaching-engagement-membership";
 
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
@@ -26,6 +32,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
     outsider: `engagement-outsider-${nonce}`,
     editor: `engagement-editor-${nonce}`,
     viewer: `engagement-viewer-${nonce}`,
+    invitee: `engagement-invitee-${nonce}`,
+    revoked: `engagement-revoked-${nonce}`,
     workspace: `engagement-workspace-${nonce}`,
     project: `engagement-project-${nonce}`,
   };
@@ -40,6 +48,8 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       { id: ids.outsider, primaryEmail: email("outsider"), name: "Outsider" },
       { id: ids.editor, primaryEmail: email("editor"), name: "Nest editor" },
       { id: ids.viewer, primaryEmail: email("viewer"), name: "Nest viewer" },
+      { id: ids.invitee, primaryEmail: email("invitee"), name: "Invited client" },
+      { id: ids.revoked, primaryEmail: email("revoked"), name: "Revoked invitee" },
     ] });
     await prisma.studioWorkspace.create({ data: { id: ids.workspace, slug: ids.workspace, name: "Engagement privacy smoke" } });
     await prisma.studioProject.create({ data: { id: ids.project, workspaceId: ids.workspace, slug: ids.project, name: "Private coaching operations" } });
@@ -69,7 +79,7 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       if (engagementId) await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
       await prisma.studioProject.deleteMany({ where: { id: ids.project } });
       await prisma.studioWorkspace.deleteMany({ where: { id: ids.workspace } });
-      await prisma.user.deleteMany({ where: { id: { in: [ids.coach, ids.client, ids.observer, ids.outsider, ids.editor, ids.viewer] } } });
+      await prisma.user.deleteMany({ where: { id: { in: [ids.coach, ids.client, ids.observer, ids.outsider, ids.editor, ids.viewer, ids.invitee, ids.revoked] } } });
     } finally {
       await prisma.$disconnect();
     }
@@ -126,5 +136,117 @@ runLocalDatabaseSmoke("private Coaching Engagement collaboration", () => {
       select: { id: true },
     })).resolves.toBeNull();
     await expect(prisma.coachingEngagement.count({ where: { id: engagementId } })).resolves.toBe(1);
+    await expect(prisma.$transaction((tx) => ensureCoachingEngagement({
+      prisma: tx,
+      projectId: ids.project,
+      actorUserId: ids.coach,
+      clientUserId: ids.client,
+      coachUserId: ids.coach,
+      requestedEngagementId: engagementId,
+    }))).rejects.toMatchObject({ code: "MEMBERSHIP_REMOVED" });
+    await prisma.coachingEngagementMember.update({
+      where: { engagementId_userId: { engagementId, userId: ids.client } },
+      data: { status: "ACTIVE", removedAt: null, removedByUserId: null },
+    });
+  });
+
+  it("invites, accepts, removes, restores, and revokes with exact scoped receipts", async () => {
+    process.env.AUTH_SECRET = "integration-test-only-coaching-invitation-secret-1234567890";
+    const coach = { id: ids.coach, primaryEmail: email("coach") };
+    const inviteRequestId = randomUUID();
+    const invited = await inviteCoachingEngagementMember({
+      engagementId,
+      actor: coach,
+      email: email("invitee"),
+      role: "CLIENT",
+      requestId: inviteRequestId,
+      origin: "http://127.0.0.1:3012",
+      prisma,
+    });
+    expect(invited.invitationUrl).toContain("/coaching/engagements/join#token=");
+    const token = decodeURIComponent(invited.invitationUrl.split("#token=")[1]);
+    await expect(prisma.coachingEngagement.findFirst({
+      where: coachingEngagementAccessWhere(engagementId, { id: ids.invitee, primaryEmail: email("invitee") }, "read"),
+    })).resolves.toBeNull();
+    await expect(acceptCoachingEngagementInvitation({
+      token,
+      actor: { id: ids.outsider, primaryEmail: email("outsider") },
+      requestId: randomUUID(),
+      prisma,
+    })).rejects.toMatchObject({ code: "WRONG_ACCOUNT" });
+
+    const acceptRequestId = randomUUID();
+    const accepted = await acceptCoachingEngagementInvitation({
+      token,
+      actor: { id: ids.invitee, primaryEmail: email("invitee") },
+      requestId: acceptRequestId,
+      prisma,
+    });
+    expect(accepted.member).toMatchObject({ status: "ACTIVE", accessRevision: 1 });
+    const replay = await acceptCoachingEngagementInvitation({
+      token,
+      actor: { id: ids.invitee, primaryEmail: email("invitee") },
+      requestId: acceptRequestId,
+      prisma,
+    });
+    expect(replay.replayed).toBe(true);
+    await expect(prisma.studioProjectAccessGrant.findUnique({
+      where: { projectId_email: { projectId: ids.project, email: email("invitee") } },
+    })).resolves.toBeNull();
+
+    const removed = await changeCoachingEngagementMemberAccess({
+      engagementId,
+      memberId: accepted.member.id,
+      actor: coach,
+      action: "REMOVE",
+      expectedRevision: 1,
+      requestId: randomUUID(),
+      prisma,
+    });
+    expect(removed.member).toMatchObject({ status: "REMOVED", accessRevision: 2 });
+    await expect(changeCoachingEngagementMemberAccess({
+      engagementId,
+      memberId: accepted.member.id,
+      actor: coach,
+      action: "RESTORE",
+      expectedRevision: 1,
+      requestId: randomUUID(),
+      prisma,
+    })).rejects.toMatchObject({ code: "ACCESS_CHANGED" });
+    const restored = await changeCoachingEngagementMemberAccess({
+      engagementId,
+      memberId: accepted.member.id,
+      actor: coach,
+      action: "RESTORE",
+      expectedRevision: 2,
+      requestId: randomUUID(),
+      prisma,
+    });
+    expect(restored.member).toMatchObject({ status: "ACTIVE", accessRevision: 3 });
+
+    const revokedInvite = await inviteCoachingEngagementMember({
+      engagementId,
+      actor: coach,
+      email: email("revoked"),
+      role: "OBSERVER",
+      requestId: randomUUID(),
+      origin: "http://127.0.0.1:3012",
+      prisma,
+    });
+    const revokedToken = decodeURIComponent(revokedInvite.invitationUrl.split("#token=")[1]);
+    await revokeCoachingEngagementInvitation({
+      engagementId,
+      invitationId: revokedInvite.invitation.id,
+      actor: coach,
+      requestId: randomUUID(),
+      prisma,
+    });
+    await expect(acceptCoachingEngagementInvitation({
+      token: revokedToken,
+      actor: { id: ids.revoked, primaryEmail: email("revoked") },
+      requestId: randomUUID(),
+      prisma,
+    })).rejects.toMatchObject({ code: "INVITATION_UNAVAILABLE" });
+    await expect(prisma.coachingEngagementMemberReceipt.count({ where: { engagementId } })).resolves.toBe(6);
   });
 });

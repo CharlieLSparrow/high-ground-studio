@@ -47,7 +47,10 @@ describe("coaching engagement boundary", () => {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: "engagement-1", projectId: "project-1", title: "Client coaching" }),
       },
-      coachingEngagementMember: { upsert: jest.fn().mockResolvedValue({}) },
+      coachingEngagementMember: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
     } as never;
     const result = await ensureCoachingEngagement({
       prisma,
@@ -58,6 +61,37 @@ describe("coaching engagement boundary", () => {
       clientLabel: "Client",
     });
     expect(result.id).toBe("engagement-1");
-    expect((prisma as any).coachingEngagementMember.upsert).toHaveBeenCalledTimes(2);
+    expect((prisma as any).coachingEngagementMember.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("never silently reactivates a reviewed removal", async () => {
+    const prisma = {
+      coachingEngagement: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "engagement-1",
+          projectId: "project-1",
+          primaryClientUserId: "client-1",
+          primaryCoachUserId: "coach-1",
+        }),
+      },
+      coachingEngagementMember: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "member-client",
+          userId: "client-1",
+          role: "CLIENT",
+          status: "REMOVED",
+        }),
+        create: jest.fn(),
+      },
+    } as never;
+    await expect(ensureCoachingEngagement({
+      prisma,
+      projectId: "project-1",
+      actorUserId: "coach-1",
+      clientUserId: "client-1",
+      coachUserId: "coach-1",
+      requestedEngagementId: "engagement-1",
+    })).rejects.toMatchObject({ code: "MEMBERSHIP_REMOVED", status: 409 });
+    expect((prisma as any).coachingEngagementMember.create).not.toHaveBeenCalled();
   });
 });

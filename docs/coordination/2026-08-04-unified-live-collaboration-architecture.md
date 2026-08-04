@@ -27,6 +27,12 @@ Coaching continuity now has a first-class durable boundary. A
 engagement-linked work, and `engagement:<id>` conversation while keeping the
 surrounding Nest private from clients who are not Nest collaborators.
 
+The browser entry point already exists at `/sessions/<roomId>?mode=live`.
+It is the same canonical Session used by Quipsly Capture, not a parallel web
+meeting. The remaining UX work is to make that live capability obvious from
+Episode and Coaching homes and keep its shared dock visible beside the active
+purpose-specific tool instead of making people think in routes or modes.
+
 ## The intended ownership model
 
 | Boundary | Lifetime | Owns | Must not own |
@@ -126,27 +132,36 @@ side-effect-free local operation explicitly bound the two retained coaching
 Sessions for the same exact coach, client, and Nest and read them back through
 the rendered engagement page.
 
+Membership governance is now append-only and operated through the rendered
+engagement page. A manager creates a seven-day, revocable invitation capability
+for one exact Quipsly account and role. The secret is stored only as a hash and
+travels in the URL fragment, survives the normal sign-in return in tab-scoped
+storage, and never grants access before explicit acceptance. Invite, accept,
+remove, restore, and revoke decisions have idempotent request identities,
+optimistic membership revisions, decision notes, and durable receipts.
+Removal preserves authored and consent history and cannot be undone implicitly
+by creating another Session. A rendered local operation proved wrong-account
+refusal, signed-out continuation, exact-account acceptance, observer read-only
+behavior, and the absence of a surrounding Nest grant.
+
 ## Next production slices
 
-1. **Engagement membership operations.** Add explicit invite/remove/restore
-   receipts and a coach-facing member editor; keep client access independent of
-   Nest membership and prove it against a separate account on every release.
-2. **Durable plus low-latency chat.** Keep PostgreSQL as authority and add a
+1. **Durable plus low-latency chat.** Keep PostgreSQL as authority and add a
    LiveKit data-channel hint (or equivalent) so active rooms update immediately
    while reconnect/poll remains deterministic.
-3. **Composable live dock.** Let participants keep call controls, Session chat,
+2. **Composable live dock.** Let participants keep call controls, Session chat,
    roster/consent, and the purpose-specific active tool visible together:
    podcast run of show/Watch, coaching shared commitments, research questions,
    or meeting agenda.
-4. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
+3. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
    channel mapping, sample-rate/profile readback, headphone/output confidence,
    and a short recorded confidence take. Never replace post-capture waveform,
    loudness, spectral, sync, and drift analysis with a decorative meter.
-5. **Multi-source recording contract.** Represent call audio, isolated local
+4. **Multi-source recording contract.** Represent call audio, isolated local
    audio, camera video, screen/shared media, and provider safety recording as
    distinct source tracks with one Session clock and explicit alignment
    evidence.
-6. **Purpose-aware handoff.** Podcast sources flow to Episode editor and
+5. **Purpose-aware handoff.** Podcast sources flow to Episode editor and
    publishing; coaching evidence flows to reviewed private/team/client-safe
    notes and commitments; research evidence flows to annotations/citations;
    meetings flow to reviewed decisions and work.
@@ -155,9 +170,9 @@ the rendered engagement page.
 
 - Browser device selection is implemented and covered by component/type gates,
   but this slice did not repeat physical external-device capture acceptance.
-- Coaching now has engagement-wide chat and a collaboration page. Member
-  invitation/removal UI and append-only membership-change receipts are still a
-  follow-on slice.
+- Engagement membership management is implemented and operated locally, but
+  invitation delivery is deliberately manual and production requires a
+  dedicated 32-character `QUIPSLY_INVITATION_TOKEN_SECRET` before release.
 - iPhone can choose and return to an existing engagement, but engagement chat is
   still a Nest surface rather than a native low-latency chat sidecar.
 - Session chat currently polls durable storage; it is not yet provider-hinted

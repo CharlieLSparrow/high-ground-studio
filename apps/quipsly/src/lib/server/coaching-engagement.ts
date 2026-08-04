@@ -57,7 +57,7 @@ export class CoachingEngagementError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly code: "NOT_FOUND" | "AMBIGUOUS" | "PROJECT_MISMATCH" | "INVALID_PEOPLE",
+    readonly code: "NOT_FOUND" | "AMBIGUOUS" | "PROJECT_MISMATCH" | "INVALID_PEOPLE" | "MEMBERSHIP_REMOVED",
   ) {
     super(message);
     this.name = "CoachingEngagementError";
@@ -73,15 +73,26 @@ async function activateMember(input: {
   role: "CLIENT" | "COACH";
   actorUserId: string;
 }) {
-  return input.prisma.coachingEngagementMember.upsert({
+  const existing = await input.prisma.coachingEngagementMember.findUnique({
     where: { engagementId_userId: { engagementId: input.engagementId, userId: input.userId } },
-    update: {
-      role: input.role,
-      status: "ACTIVE",
-      removedAt: null,
-      removedByUserId: null,
-    },
-    create: {
+  });
+  if (existing?.status === "REMOVED") {
+    throw new CoachingEngagementError(
+      "This person was explicitly removed from the coaching engagement. Restore their membership before attaching another Session.",
+      409,
+      "MEMBERSHIP_REMOVED",
+    );
+  }
+  if (existing && existing.role !== input.role) {
+    throw new CoachingEngagementError(
+      "This person's reviewed engagement role conflicts with the requested coach/client role.",
+      409,
+      "INVALID_PEOPLE",
+    );
+  }
+  if (existing) return existing;
+  return input.prisma.coachingEngagementMember.create({
+    data: {
       engagementId: input.engagementId,
       userId: input.userId,
       role: input.role,

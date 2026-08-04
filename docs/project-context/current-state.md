@@ -4,6 +4,19 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- Coaching Engagement access is now an explicit, append-only boundary rather
+  than an implied consequence of creating another Session. Coaches, support,
+  Nest owners/editors, and staff can create seven-day account-bound invite
+  capabilities, copy the link deliberately, revoke a pending link, remove or
+  restore a member at an exact revision, and review the durable decision
+  history. Acceptance grants only the engagement, never its surrounding Nest;
+  observers remain read-only. A rendered local two-account journey proved the
+  wrong-account hold, signed-out return, exact-account acceptance, and 2/2
+  invite/accept receipts. Integration coverage additionally proved immediate
+  denial, stale-revision refusal, explicit restoration, revocation, idempotent
+  retry, and no silent reactivation during Session creation. Production release
+  requires a dedicated invitation secret; external email delivery is not
+  claimed.
 - The “Episode relationship needs attention” state is now actionable. An
   authorized host/producer or Nest owner/editor chooses an exact same-Nest
   Episode; stale, unauthorized, cross-purpose, and cross-project writes fail
@@ -96,8 +109,9 @@ Date: 2026-08-04
   controls now remain reachable after join, retain a connected status across
   hardware refresh, and lock source identity during retained capture; Session
   chat sits beside the live room on wide screens. Podcast continuity is the
-  exact Episode Room. Coaching still needs a first-class engagement aggregate
-  and engagement-scoped thread rather than project-wide client access. See
+  exact Episode Room. Coaching continuity is now a first-class engagement with
+  engagement-scoped membership, Session sequence, goals, commitments, and
+  thread rather than project-wide client access. See
   `docs/coordination/2026-08-04-unified-live-collaboration-architecture.md`.
 
 ## Broad-band frequency evidence and full-width review checkpoint
