@@ -4,6 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
+import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
 
 import { GET, POST } from "./route";
 
@@ -32,6 +33,7 @@ jest.mock("@/lib/server/transcript-evaluation-windows", () => {
     TranscriptEvaluationWindowError: MockTranscriptEvaluationWindowError,
   };
 });
+jest.mock("@/lib/server/transcript-evaluation-candidates", () => ({ readTranscriptEvaluationCandidates: jest.fn() }));
 
 const session = { user: { id: "user-1", primaryEmail: "producer@example.com", isStaff: false } };
 
@@ -51,9 +53,10 @@ describe("transcript correction and accuracy-corpus route", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", segments: [] } as any);
     jest.mocked(readTranscriptEvaluationReadiness).mockResolvedValue({ eligible: false, blockers: [{ code: "REVIEW_REQUIRED", detail: "Listen first." }], approvedWindows: [] } as any);
+    jest.mocked(readTranscriptEvaluationCandidates).mockResolvedValue({ candidates: [{ id: "candidate-1", outcome: "succeeded" }] } as any);
     const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1"));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, evaluation: { eligible: false, blockers: [{ code: "REVIEW_REQUIRED" }] } });
+    expect(await response.json()).toMatchObject({ ok: true, evaluation: { eligible: false, blockers: [{ code: "REVIEW_REQUIRED" }], candidates: [{ id: "candidate-1" }] } });
     expect(readTranscriptEvaluationReadiness).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room-1", actor: { id: "user-1", email: "producer@example.com", isStaff: false } }));
   });
 

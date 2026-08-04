@@ -2,7 +2,8 @@
 
 Date: 2026-08-03
 
-Status: local production-shaped implementation; genuine corpus collection open
+Status: local production-shaped implementation and provider evidence ledger;
+genuine corpus collection open
 
 ## Product promise
 
@@ -50,10 +51,16 @@ shows only readiness counts, classifications, dates, hashes/revisions needed
 for audit, and whether a prior window differs from the current reviewed
 reference.
 
-The evaluation CLI and future provider runner may read the private stored
-payload through a separate authorized export. Aggregate reports continue to
+The provider runner reads the private stored payload through an explicit,
+authenticated, no-store export. Aggregate reports continue to
 exclude transcript text and identity. Corpus evidence is not public training
-data and approval invokes no provider.
+data and reference approval invokes no provider.
+
+Provider attempts are separate append-only records. Each freezes the source and
+reference hashes, run key, provider/model/adapter/configuration, capability
+boundary, policy receipt, private raw response, normalized words, server-scored
+metrics, latency, cost observation, and failure evidence. Measured human
+correction effort is a later receipt; it never rewrites the candidate.
 
 ## Concurrency and replay
 
@@ -105,8 +112,6 @@ Classification never guesses from transcript text or IDs.
 - A person must playback-review and classify the retained HGO window.
 - Collect at least six windows covering every podcast condition and six covering
   every coaching condition.
-- Add an authorized private-corpus export and append-only provider candidate
-  receipt model.
 - Run pinned Deepgram, OpenAI diarized, and physical-device Apple candidates or
   retain a dated exclusion decision.
 - Measure clean/difficult WER, speaker error, timing drift, correction time, and

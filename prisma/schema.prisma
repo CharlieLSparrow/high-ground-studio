@@ -600,64 +600,67 @@ model User {
   coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
   weeklyCommitments     WeeklyCommitment[]     @relation("WeeklyCommitmentClient")
 
-  clientAppointments            Appointment[]                        @relation("AppointmentClient")
-  coachAppointments             Appointment[]                        @relation("AppointmentCoach")
-  appointmentsCreated           Appointment[]                        @relation("AppointmentCreatedBy")
-  appointmentsUpdated           Appointment[]                        @relation("AppointmentUpdatedBy")
-  coachingRequests              CoachingRequest[]                    @relation("CoachingRequestClient")
-  assignedCoachingRequests      CoachingRequest[]                    @relation("CoachingRequestCoach")
-  bookingHolds                  BookingHold[]                        @relation("BookingHoldClient")
-  coachingBookingsAsClient      CoachingBooking[]                    @relation("CoachingBookingClient")
-  coachingBookingsAsCoach       CoachingBooking[]                    @relation("CoachingBookingCoach")
-  stripeCustomerLinks           StripeCustomerLink[]                 @relation("StripeCustomerLinkUser")
-  paymentRecords                PaymentRecord[]                      @relation("PaymentRecordUser")
-  callRoomsCreated              CallRoom[]                           @relation("CallRoomCreatedBy")
-  callParticipants              CallParticipant[]                    @relation("CallParticipantUser")
-  recordingConsents             RecordingConsent[]                   @relation("RecordingConsentUser")
-  coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
-  coachingNoteRevisionsAuthored CoachingNoteRevision[]               @relation("CoachingNoteRevisionActor")
-  coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
-  sessionOutputsCreated         SessionOutput[]                      @relation("SessionOutputCreatedBy")
-  sessionOutputsReceived        SessionOutput[]                      @relation("SessionOutputRecipient")
-  sessionOutputRevisions        SessionOutputRevision[]              @relation("SessionOutputRevisionActor")
-  deliveryEventsActed           DeliveryEvent[]                      @relation("DeliveryEventActor")
-  deliveryEventsReceived        DeliveryEvent[]                      @relation("DeliveryEventRecipient")
-  documentTagsCreated           StudioDocumentTagLink[]              @relation("StudioDocumentTagCreatedBy")
-  personalWritingDocuments      StudioDocument[]                     @relation("StudioDocumentPersonalOwner")
-  actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
-  taskEvidenceAuthored          ActionItemEvidenceReceipt[]          @relation("ActionItemEvidenceActor")
-  taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
-  taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
-  calendarConnections           CalendarConnection[]                 @relation("CalendarConnectionUser")
-  calendarCollectionsOwned      CalendarCollection[]                 @relation("CalendarCollectionOwner")
-  calendarSyncReceiptsActed     CalendarSyncReceipt[]                @relation("CalendarSyncReceiptActor")
-  calendarFeedsOwned            CalendarFeed[]                       @relation("CalendarFeedOwner")
-  goalsOwned                    Goal[]                               @relation("GoalOwner")
-  goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
-  goalProgressAuthored          GoalProgressReceipt[]                @relation("GoalProgressActor")
-  actionItemTagsCreated         ActionItemTagLink[]                  @relation("ActionItemTagCreatedBy")
-  goalTagsCreated               GoalTagLink[]                        @relation("GoalTagCreatedBy")
-  callRoomTagsCreated           CallRoomTagLink[]                    @relation("CallRoomTagCreatedBy")
-  workPlanBlocks                WorkPlanBlock[]                      @relation("WorkPlanBlockOwner")
-  taskRecurrenceSeries          TaskRecurrenceSeries[]               @relation("TaskRecurrenceOwner")
-  episodeMilestonesAssigned     StudioEpisodeMilestone[]             @relation("StudioEpisodeMilestoneAssignee")
-  episodeMilestonesCreated      StudioEpisodeMilestone[]             @relation("StudioEpisodeMilestoneCreatedBy")
-  episodeMilestoneRevisions     StudioEpisodeMilestoneRevision[]     @relation("StudioEpisodeMilestoneRevisionActor")
-  sourceAnnotationsCreated      StudioSourceAnnotation[]             @relation("StudioSourceAnnotationCreatedBy")
-  sourceAnnotationRevisions     StudioSourceAnnotationRevision[]     @relation("StudioSourceAnnotationRevisionActor")
-  sourceAnnotationUsesCreated   StudioSourceAnnotationUse[]          @relation("StudioSourceAnnotationUseCreatedBy")
-  personalSourceCapturesCreated StudioPersonalSourceCaptureReceipt[] @relation("StudioPersonalSourceCaptureCreatedBy")
-  personalSourceFilingsCreated  StudioPersonalSourceFiling[]         @relation("StudioPersonalSourceFilingCreatedBy")
-  transcriptCorrectionsCreated  TranscriptCorrection[]               @relation("TranscriptCorrectionCreatedBy")
-  transcriptCorrectionsReviewed TranscriptCorrection[]               @relation("TranscriptCorrectionReviewedBy")
-  transcriptCorrectionRevisions TranscriptCorrectionRevision[]       @relation("TranscriptCorrectionRevisionActor")
-  transcriptSegmentsVerified    TranscriptSegmentVerification[]      @relation("TranscriptSegmentVerificationReviewer")
-  transcriptSpeakerAttributions TranscriptSpeakerAttribution[]       @relation("TranscriptSpeakerAttributionReviewer")
-  transcriptEvaluationWindows   TranscriptEvaluationWindow[]         @relation("TranscriptEvaluationWindowApprover")
-  companySupportRequests        CompanySupportRequest[]
-  storyDraftsCreated            StoryDraft[]                         @relation("StoryDraftCreatedBy")
-  storyDraftsUpdated            StoryDraft[]                         @relation("StoryDraftUpdatedBy")
-  storyDraftsReviewed           StoryDraft[]                         @relation("StoryDraftReviewedBy")
+  clientAppointments              Appointment[]                               @relation("AppointmentClient")
+  coachAppointments               Appointment[]                               @relation("AppointmentCoach")
+  appointmentsCreated             Appointment[]                               @relation("AppointmentCreatedBy")
+  appointmentsUpdated             Appointment[]                               @relation("AppointmentUpdatedBy")
+  coachingRequests                CoachingRequest[]                           @relation("CoachingRequestClient")
+  assignedCoachingRequests        CoachingRequest[]                           @relation("CoachingRequestCoach")
+  bookingHolds                    BookingHold[]                               @relation("BookingHoldClient")
+  coachingBookingsAsClient        CoachingBooking[]                           @relation("CoachingBookingClient")
+  coachingBookingsAsCoach         CoachingBooking[]                           @relation("CoachingBookingCoach")
+  stripeCustomerLinks             StripeCustomerLink[]                        @relation("StripeCustomerLinkUser")
+  paymentRecords                  PaymentRecord[]                             @relation("PaymentRecordUser")
+  callRoomsCreated                CallRoom[]                                  @relation("CallRoomCreatedBy")
+  callParticipants                CallParticipant[]                           @relation("CallParticipantUser")
+  recordingConsents               RecordingConsent[]                          @relation("RecordingConsentUser")
+  coachingNotesAuthored           CoachingNote[]                              @relation("CoachingNoteAuthor")
+  coachingNoteRevisionsAuthored   CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
+  coachingNoteTagsCreated         CoachingNoteTagLink[]                       @relation("CoachingNoteTagCreatedBy")
+  sessionOutputsCreated           SessionOutput[]                             @relation("SessionOutputCreatedBy")
+  sessionOutputsReceived          SessionOutput[]                             @relation("SessionOutputRecipient")
+  sessionOutputRevisions          SessionOutputRevision[]                     @relation("SessionOutputRevisionActor")
+  deliveryEventsActed             DeliveryEvent[]                             @relation("DeliveryEventActor")
+  deliveryEventsReceived          DeliveryEvent[]                             @relation("DeliveryEventRecipient")
+  documentTagsCreated             StudioDocumentTagLink[]                     @relation("StudioDocumentTagCreatedBy")
+  personalWritingDocuments        StudioDocument[]                            @relation("StudioDocumentPersonalOwner")
+  actionItemsAssigned             ActionItem[]                                @relation("ActionItemAssignedTo")
+  taskEvidenceAuthored            ActionItemEvidenceReceipt[]                 @relation("ActionItemEvidenceActor")
+  taskReminders                   TaskReminder[]                              @relation("TaskReminderOwner")
+  taskReminderRevisionsAuthored   TaskReminderRevision[]                      @relation("TaskReminderRevisionActor")
+  calendarConnections             CalendarConnection[]                        @relation("CalendarConnectionUser")
+  calendarCollectionsOwned        CalendarCollection[]                        @relation("CalendarCollectionOwner")
+  calendarSyncReceiptsActed       CalendarSyncReceipt[]                       @relation("CalendarSyncReceiptActor")
+  calendarFeedsOwned              CalendarFeed[]                              @relation("CalendarFeedOwner")
+  goalsOwned                      Goal[]                                      @relation("GoalOwner")
+  goalTaskLinksCreated            GoalTaskLink[]                              @relation("GoalTaskLinkCreatedBy")
+  goalProgressAuthored            GoalProgressReceipt[]                       @relation("GoalProgressActor")
+  actionItemTagsCreated           ActionItemTagLink[]                         @relation("ActionItemTagCreatedBy")
+  goalTagsCreated                 GoalTagLink[]                               @relation("GoalTagCreatedBy")
+  callRoomTagsCreated             CallRoomTagLink[]                           @relation("CallRoomTagCreatedBy")
+  workPlanBlocks                  WorkPlanBlock[]                             @relation("WorkPlanBlockOwner")
+  taskRecurrenceSeries            TaskRecurrenceSeries[]                      @relation("TaskRecurrenceOwner")
+  episodeMilestonesAssigned       StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneAssignee")
+  episodeMilestonesCreated        StudioEpisodeMilestone[]                    @relation("StudioEpisodeMilestoneCreatedBy")
+  episodeMilestoneRevisions       StudioEpisodeMilestoneRevision[]            @relation("StudioEpisodeMilestoneRevisionActor")
+  sourceAnnotationsCreated        StudioSourceAnnotation[]                    @relation("StudioSourceAnnotationCreatedBy")
+  sourceAnnotationRevisions       StudioSourceAnnotationRevision[]            @relation("StudioSourceAnnotationRevisionActor")
+  sourceAnnotationUsesCreated     StudioSourceAnnotationUse[]                 @relation("StudioSourceAnnotationUseCreatedBy")
+  personalSourceCapturesCreated   StudioPersonalSourceCaptureReceipt[]        @relation("StudioPersonalSourceCaptureCreatedBy")
+  personalSourceFilingsCreated    StudioPersonalSourceFiling[]                @relation("StudioPersonalSourceFilingCreatedBy")
+  transcriptCorrectionsCreated    TranscriptCorrection[]                      @relation("TranscriptCorrectionCreatedBy")
+  transcriptCorrectionsReviewed   TranscriptCorrection[]                      @relation("TranscriptCorrectionReviewedBy")
+  transcriptCorrectionRevisions   TranscriptCorrectionRevision[]              @relation("TranscriptCorrectionRevisionActor")
+  transcriptSegmentsVerified      TranscriptSegmentVerification[]             @relation("TranscriptSegmentVerificationReviewer")
+  transcriptSpeakerAttributions   TranscriptSpeakerAttribution[]              @relation("TranscriptSpeakerAttributionReviewer")
+  transcriptEvaluationWindows     TranscriptEvaluationWindow[]                @relation("TranscriptEvaluationWindowApprover")
+  transcriptEvaluationCandidates  TranscriptEvaluationCandidate[]             @relation("TranscriptEvaluationCandidateSubmitter")
+  transcriptProviderPolicies      TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
+  transcriptEvaluationCorrections TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
+  companySupportRequests          CompanySupportRequest[]
+  storyDraftsCreated              StoryDraft[]                                @relation("StoryDraftCreatedBy")
+  storyDraftsUpdated              StoryDraft[]                                @relation("StoryDraftUpdatedBy")
+  storyDraftsReviewed             StoryDraft[]                                @relation("StoryDraftReviewedBy")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -2109,16 +2112,108 @@ model TranscriptEvaluationWindow {
   approvedAt                 DateTime
   createdAt                  DateTime @default(now())
 
-  room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_room_fkey")
-  transcriptJob  TranscriptJob  @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_job_fkey")
-  recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_asset_fkey")
-  approvedBy     User           @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_approver_fkey")
+  room           CallRoom                        @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_room_fkey")
+  transcriptJob  TranscriptJob                   @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_job_fkey")
+  recordingAsset RecordingAsset                  @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_asset_fkey")
+  approvedBy     User                            @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_approver_fkey")
+  candidates     TranscriptEvaluationCandidate[]
 
   @@unique([approvedByUserId, clientRequestId], map: "TranscriptEvalWindow_approver_request_key")
   @@index([roomId, approvedAt], map: "TranscriptEvalWindow_room_approved_idx")
   @@index([transcriptJobId, approvedAt], map: "TranscriptEvalWindow_job_approved_idx")
   @@index([recordingAssetId, approvedAt], map: "TranscriptEvalWindow_asset_approved_idx")
   @@index([workload, approvedAt], map: "TranscriptEvalWindow_workload_approved_idx")
+}
+
+// A create-once snapshot of the data-handling policy in force when a private
+// transcript candidate was produced. The hash covers the complete policy JSON;
+// a later policy change creates a new receipt instead of rewriting history.
+model TranscriptProviderPolicyReceipt {
+  id                      String   @id @default(cuid())
+  receiptSha256           String   @unique(map: "TranscriptProviderPolicy_sha_key")
+  providerKey             String
+  capturedByUserId        String
+  capturedByEmailSnapshot String?
+  policyJson              Json
+  capturedAt              DateTime
+  createdAt               DateTime @default(now())
+
+  capturedBy User                            @relation("TranscriptProviderPolicyCapturer", fields: [capturedByUserId], references: [id], onDelete: Restrict, map: "TranscriptProviderPolicy_actor_fkey")
+  candidates TranscriptEvaluationCandidate[]
+
+  @@index([providerKey, capturedAt], map: "TranscriptProviderPolicy_provider_idx")
+}
+
+// One immutable provider attempt against one immutable, human-approved
+// evaluation window. runKey binds retries and cross-window runs without
+// pretending that two attempts are the same evidence. Raw provider output and
+// normalized words stay private; ordinary Session projections expose metrics.
+model TranscriptEvaluationCandidate {
+  id                       String   @id @default(cuid())
+  windowId                 String
+  policyReceiptId          String
+  submittedByUserId        String
+  submittedByEmailSnapshot String?
+  clientRequestId          String
+  runKey                   String
+  candidateKeySha256       String   @unique(map: "TranscriptEvalCandidate_key_sha_key")
+  windowKeySha256Snapshot  String
+  sourceSha256Snapshot     String
+  referenceContentSha256   String
+  providerKey              String
+  providerName             String
+  model                    String
+  adapterVersion           String
+  requestConfigSha256      String
+  requestConfigJson        Json
+  speakerAttribution       String
+  timingGranularity        String
+  outcome                  String
+  providerRequestId        String?
+  providerReceiptSha256    String?
+  rawResponseSha256        String
+  rawResponseJson          Json
+  normalizedWordsJson      Json
+  metricsJson              Json?
+  elapsedMilliseconds      Int
+  estimatedCostUsd         Float?
+  errorCode                String?
+  retryable                Boolean?
+  completedAt              DateTime
+  createdAt                DateTime @default(now())
+
+  window      TranscriptEvaluationWindow                  @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_window_fkey")
+  policy      TranscriptProviderPolicyReceipt             @relation(fields: [policyReceiptId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_policy_fkey")
+  submittedBy User                                        @relation("TranscriptEvaluationCandidateSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_actor_fkey")
+  corrections TranscriptEvaluationCorrectionObservation[]
+
+  @@unique([submittedByUserId, clientRequestId], map: "TranscriptEvalCandidate_actor_request_key")
+  @@unique([windowId, runKey], map: "TranscriptEvalCandidate_window_run_key")
+  @@index([windowId, createdAt], map: "TranscriptEvalCandidate_window_created_idx")
+  @@index([providerKey, model, createdAt], map: "TranscriptEvalCandidate_provider_model_idx")
+}
+
+// Human correction effort is measured after candidate creation and therefore
+// has its own append-only receipt. It never mutates candidate text or metrics.
+model TranscriptEvaluationCorrectionObservation {
+  id                     String   @id @default(cuid())
+  candidateId            String
+  reviewerUserId         String
+  reviewerEmailSnapshot  String?
+  clientRequestId        String
+  candidateKeySha256     String
+  referenceContentSha256 String
+  elapsedMilliseconds    Int
+  operationCount         Int
+  observationJson        Json
+  observedAt             DateTime
+  createdAt              DateTime @default(now())
+
+  candidate TranscriptEvaluationCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict, map: "TranscriptEvalCorrection_candidate_fkey")
+  reviewer  User                          @relation("TranscriptEvaluationCorrectionReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalCorrection_reviewer_fkey")
+
+  @@unique([reviewerUserId, clientRequestId], map: "TranscriptEvalCorrection_reviewer_request_key")
+  @@index([candidateId, observedAt], map: "TranscriptEvalCorrection_candidate_idx")
 }
 
 model CoachingNote {

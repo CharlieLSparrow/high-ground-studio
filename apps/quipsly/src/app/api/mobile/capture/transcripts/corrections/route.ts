@@ -15,6 +15,7 @@ import {
   readTranscriptEvaluationReadiness,
   TranscriptEvaluationWindowError,
 } from "@/lib/server/transcript-evaluation-windows";
+import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,17 @@ export async function GET(request: Request) {
         roomId,
         actor: actorFromSession(session),
       });
+      try {
+        const providerEvidence = await readTranscriptEvaluationCandidates({
+          prisma: getPrismaClient() as any,
+          roomId,
+          actor: actorFromSession(session),
+        });
+        evaluation = { ...evaluation, candidates: providerEvidence.candidates, providerEvidenceError: null };
+      } catch (providerError) {
+        console.error("[transcript-corrections] provider scorecards unavailable", providerError);
+        evaluation = { ...evaluation, candidates: [], providerEvidenceError: "Provider scorecards are temporarily unavailable." };
+      }
     } catch (error) {
       if (!(error instanceof TranscriptEvaluationWindowError)) throw error;
       evaluation = {

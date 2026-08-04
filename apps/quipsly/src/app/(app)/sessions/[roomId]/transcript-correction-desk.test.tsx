@@ -225,7 +225,7 @@ describe("TranscriptCorrectionDesk", () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => readyDesk })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, idempotentReplay: false, window: { id: "window-1" } }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...readyDesk, evaluation: { ...evaluation, approvedWindows: [{ id: "window-1", workload: "podcast", conditions: ["normal-exchange"], sourceDurationSeconds: 60, referenceWordCount: 2, referenceRevisionId: "reviewed-reference-1", approvedAt: "2026-08-03T18:30:00.000Z", staleAgainstCurrentReview: false }] } }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...readyDesk, evaluation: { ...evaluation, approvedWindows: [{ id: "window-1", workload: "podcast", conditions: ["normal-exchange"], sourceDurationSeconds: 60, referenceWordCount: 2, referenceRevisionId: "reviewed-reference-1", approvedAt: "2026-08-03T18:30:00.000Z", staleAgainstCurrentReview: false }], candidates: [{ id: "candidate-1", windowId: "window-1", runKey: "run-1", providerKey: "openai-diarized", providerName: "OpenAI diarized transcription", model: "gpt-4o-transcribe-diarize", adapterVersion: "adapter-v1", speakerAttribution: "segment", timingGranularity: "unavailable", outcome: "succeeded", elapsedMilliseconds: 2345, estimatedCostUsd: 0.004, metrics: { words: { wordErrorRate: 0.05, wordErrorCount: 1, referenceWordCount: 20 }, speakers: { speakerErrorRate: 0.02 }, timing: { p95AbsoluteStartDriftMilliseconds: null } }, errorCode: null, retryable: null, policyReceiptSha256: "f".repeat(64), correctionObservationCount: 1, completedAt: "2026-08-03T18:31:00.000Z" }] } }) });
     global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
@@ -254,6 +254,10 @@ describe("TranscriptCorrectionDesk", () => {
       }),
     });
     expect(await screen.findByText(/matches current review/i)).toBeInTheDocument();
+    expect(screen.getByText("Provider evidence scorecards")).toBeInTheDocument();
+    expect(screen.getByText("OpenAI diarized transcription")).toBeInTheDocument();
+    expect(screen.getByText("5.0%")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
   });
 
   it("records a playback-backed reviewed-as-is decision without fabricating a correction", async () => {

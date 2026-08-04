@@ -1507,3 +1507,21 @@ Interpretation:
   - many `.DS_Store` files
 
 These should be treated as cleanup candidates later, not as authoritative product code.
+
+### 2026-08-03 transcript provider evidence ledger
+
+- Human-approved accuracy windows now accept separate, append-only provider
+  attempts without changing the canonical transcript or approved reference.
+- The ledger freezes policy, source/reference, provider/model/adapter/config,
+  raw-response, normalized evidence, latency, cost, outcome, and server-computed
+  WER/speaker/timing metrics. Human correction effort is a later receipt.
+- The Session desk exposes privacy-safe scorecards and explicit unavailable
+  capability states. Raw transcript/reference/provider content remains behind a
+  protected authenticated runner export.
+- A crash-recoverable runner now supports Deepgram batch and OpenAI diarized
+  transcription, verifies source SHA-256, writes create-once private provider
+  receipts before Nest append, and resumes idempotently.
+- Local schema is 51 migrations current. Genuine podcast/coaching corpus runs,
+  scoped provider credentials/policy receipts, and physical-device Apple
+  evaluation remain open. See
+  `docs/coordination/2026-08-03-transcript-provider-evidence-ledger.md`.

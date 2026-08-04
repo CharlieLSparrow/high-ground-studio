@@ -15,6 +15,12 @@ import {
   readTranscriptEvaluationReadiness,
   TranscriptEvaluationWindowError,
 } from "./transcript-evaluation-windows";
+import {
+  appendTranscriptEvaluationCandidate,
+  appendTranscriptEvaluationCorrectionObservation,
+  exportTranscriptEvaluationRunnerInput,
+  readTranscriptEvaluationCandidates,
+} from "./transcript-evaluation-candidates";
 
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
@@ -32,6 +38,7 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
   let roomId = "";
   let assetId = "";
   let jobId = "";
+  let evaluationWindowId = "";
 
   beforeAll(async () => {
     const reviewer = await prisma.user.create({ data: { primaryEmail: `evaluation-reviewer-${nonce}@example.test`, name: "Evaluation reviewer" } });
@@ -143,7 +150,10 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
   afterAll(async () => {
     try {
       if (roomId) {
+        await prisma.transcriptEvaluationCorrectionObservation.deleteMany({ where: { candidate: { window: { roomId } } } });
+        await prisma.transcriptEvaluationCandidate.deleteMany({ where: { window: { roomId } } });
         await prisma.transcriptEvaluationWindow.deleteMany({ where: { roomId } });
+        await prisma.transcriptProviderPolicyReceipt.deleteMany({ where: { providerKey: "controlled-evaluation" } });
         await prisma.mobileCaptureFinalizationReceipt.deleteMany({ where: { roomId } });
         await prisma.callRoom.deleteMany({ where: { id: roomId } });
       }
@@ -180,6 +190,7 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
     })).rejects.toMatchObject({ code: "COMPLETE_SOURCE_PLAYBACK_REQUIRED", status: 409 });
     await expect(prisma.transcriptEvaluationWindow.count({ where: { roomId } })).resolves.toBe(0);
     const first = await approveTranscriptEvaluationWindow(input);
+    evaluationWindowId = first.window.id;
     expect(first).toMatchObject({ ok: true, idempotentReplay: false, window: { workload: "podcast", referenceWordCount: 9, staleAgainstCurrentReview: false } });
     const persisted = await prisma.transcriptEvaluationWindow.findUniqueOrThrow({ where: { id: first.window.id } });
     expect(persisted).toMatchObject({ roomId, transcriptJobId: jobId, recordingAssetId: assetId, sourceSha256, referenceWordsJson: expect.any(Array), sourceReviewReceiptsJson: expect.any(Array), sourcePlaybackEvidenceJson: expect.objectContaining({ schema: "quipsly-complete-source-playback-v1", listenedSecondBins: expect.any(Array) }) });
@@ -187,5 +198,104 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
     await expect(approveTranscriptEvaluationWindow(input)).resolves.toMatchObject({ ok: true, idempotentReplay: true, window: { id: first.window.id } });
     await expect(approveTranscriptEvaluationWindow({ ...input, conditions: ["overlap-or-interruption"] })).rejects.toMatchObject({ code: "OPERATION_ID_CONFLICT", status: 409 });
     await expect(readTranscriptEvaluationReadiness({ prisma, roomId, actor: { id: outsiderUserId, email: `evaluation-outsider-${nonce}@example.test`, isStaff: false } })).rejects.toBeInstanceOf(TranscriptEvaluationWindowError);
+  });
+
+  it("persists private provider evidence once and exposes only aggregate metrics", async () => {
+    const actor = { id: userId, email: `evaluation-reviewer-${nonce}@example.test`, isStaff: false };
+    const completedAt = new Date().toISOString();
+    const candidateInput = {
+      prisma,
+      actor,
+      windowId: evaluationWindowId,
+      clientRequestId: `candidate-${nonce}`,
+      runKey: `controlled-run-${nonce}`,
+      requestConfig: { model: "controlled-v2", diarization: "word" },
+      rawResponse: { privateTranscript: providerText, providerRequestId: `raw-${nonce}` },
+      policy: {
+        capturedAt: completedAt,
+        sourceUrl: "https://example.test/provider-policy",
+        trainingUsage: "opted-out",
+        retentionMode: "zero-data-retention",
+        retentionDays: null,
+        processingRegion: "local-test",
+      },
+      candidate: {
+        providerKey: "controlled-evaluation",
+        providerName: "Controlled evaluation provider",
+        model: "controlled-v2",
+        adapterVersion: "adapter-v1",
+        speakerAttribution: "word",
+        timingGranularity: "word",
+        completedAt,
+        elapsedMilliseconds: 1200,
+        estimatedCostUsd: 0.001,
+        outcome: "succeeded",
+        providerRequestId: `request-${nonce}`,
+        words: providerText.split(" ").map((word, index) => ({
+          text: word,
+          startSeconds: index,
+          endSeconds: index + 0.5,
+          speakerId: null,
+        })),
+        correction: null,
+      },
+    };
+
+    const first = await appendTranscriptEvaluationCandidate(candidateInput);
+    expect(first).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      candidate: {
+        providerKey: "controlled-evaluation",
+        outcome: "succeeded",
+        metrics: { words: { wordErrorRate: 0 } },
+      },
+    });
+    await expect(appendTranscriptEvaluationCandidate(candidateInput)).resolves.toMatchObject({
+      idempotentReplay: true,
+      candidate: { id: first.candidate.id },
+    });
+    await expect(appendTranscriptEvaluationCandidate({
+      ...candidateInput,
+      rawResponse: { privateTranscript: "changed evidence" },
+    })).rejects.toMatchObject({ code: "CANDIDATE_OPERATION_CONFLICT", status: 409 });
+
+    const publicProjection = await readTranscriptEvaluationCandidates({ prisma, actor, roomId });
+    expect(publicProjection).toMatchObject({ windowCount: 1, candidates: [{ id: first.candidate.id, correctionObservationCount: 0 }] });
+    expect(JSON.stringify(publicProjection)).not.toContain(providerText);
+
+    const correction = await appendTranscriptEvaluationCorrectionObservation({
+      prisma,
+      actor,
+      candidateId: first.candidate.id,
+      clientRequestId: `correction-observation-${nonce}`,
+      elapsedMilliseconds: 3400,
+      operationCount: 2,
+      observedAt: completedAt,
+      observation: { surface: "controlled-integration", privateNote: "reviewed against playback" },
+    });
+    expect(correction).toMatchObject({ ok: true, idempotentReplay: false });
+    await expect(appendTranscriptEvaluationCorrectionObservation({
+      prisma,
+      actor,
+      candidateId: first.candidate.id,
+      clientRequestId: `correction-observation-${nonce}`,
+      elapsedMilliseconds: 3400,
+      operationCount: 2,
+      observedAt: completedAt,
+      observation: { surface: "controlled-integration", privateNote: "reviewed against playback" },
+    })).resolves.toMatchObject({ idempotentReplay: true, observationId: correction.observationId });
+
+    const privateExport = await exportTranscriptEvaluationRunnerInput({ prisma, actor, roomId });
+    expect(privateExport).toMatchObject({
+      kind: "quipsly-private-transcript-evaluation-runner-input-v1",
+      windows: [{ windowId: evaluationWindowId, reference: { approvalStatus: "human-approved" } }],
+    });
+    expect(JSON.stringify(privateExport)).toContain("This");
+    await expect(readTranscriptEvaluationCandidates({
+      prisma,
+      actor: { id: outsiderUserId, email: `evaluation-outsider-${nonce}@example.test`, isStaff: false },
+      roomId,
+    })).rejects.toMatchObject({ code: "SESSION_NOT_FOUND", status: 404 });
   });
 });

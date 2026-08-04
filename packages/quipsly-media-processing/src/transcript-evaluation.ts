@@ -337,6 +337,22 @@ export function evaluateTranscriptCandidate(
   return evaluateTranscriptCandidateWithEvidence(referenceInput, candidateInput).metrics;
 }
 
+// Server-side provider runners and append-only ledgers use the same strict
+// candidate contract as the offline corpus evaluator. Keeping this parser
+// public prevents an adapter from persisting evidence that the release report
+// would later reject or reinterpret.
+export function parseTranscriptEvaluationCandidate(
+  value: unknown,
+): TranscriptEvaluationCandidate {
+  return parseCandidate(value, TRANSCRIPT_EVALUATION_VERSION);
+}
+
+export function parseTranscriptEvaluationPolicyReceipt(
+  value: unknown,
+): TranscriptEvaluationPolicyReceipt {
+  return parsePolicy(value);
+}
+
 function evaluateTranscriptCandidateWithEvidence(
   referenceInput: TranscriptEvaluationWord[],
   candidateInput: TranscriptEvaluationWord[],

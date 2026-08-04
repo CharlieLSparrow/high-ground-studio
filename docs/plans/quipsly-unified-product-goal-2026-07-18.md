@@ -7341,3 +7341,26 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   receipts, named-speaker camera mapping, and genuine physical Capture/HGO and
   coaching media acceptance. See
   `docs/coordination/2026-08-03-signal-and-speaker-edit-evidence.md`.
+
+## 2026-08-03 transcript provider evidence ledger checkpoint
+
+- Added append-only provider policy, candidate, and human correction-effort
+  receipts bound to an immutable playback-reviewed accuracy window.
+- Candidate persistence re-computes provider-policy, request-config, raw
+  response, source, reference, and candidate hashes server-side. Exact replay
+  is idempotent; changed replay and reused window/run identities conflict.
+- WER, anonymous-speaker error, and real word-timing drift are computed in the
+  trusted server boundary. OpenAI diarized segment timing remains explicitly
+  unavailable at the word level rather than being interpolated.
+- Added an authenticated no-store private runner export plus a crash-safe
+  provider runner for Deepgram batch and OpenAI diarized transcription. The
+  runner SHA-verifies protected source bytes and writes a create-once private
+  raw receipt before appending to Nest.
+- The Private transcription lab now renders separate evidence scorecards for
+  WER, speaker error, timing p95, latency, cost, failures, correction passes,
+  and policy receipt without exposing transcript text in its ordinary response.
+- The remaining release gate is real evidence: human-reviewed podcast/coaching
+  windows, account-specific policy receipts and scoped credentials, both cloud
+  provider runs, physical-iPhone Apple runs, real correction effort, and a
+  dated default-provider decision. See
+  `docs/coordination/2026-08-03-transcript-provider-evidence-ledger.md`.

@@ -161,8 +161,35 @@ type Desk = {
       completeSourcePlayback?: boolean;
       staleAgainstCurrentReview: boolean;
     }>;
+    candidates?: EvaluationCandidate[];
+    providerEvidenceError?: string | null;
   };
   boundaries: Record<string, boolean>;
+};
+
+type EvaluationCandidate = {
+  id: string;
+  windowId: string;
+  runKey: string;
+  providerKey: string;
+  providerName: string;
+  model: string;
+  adapterVersion: string;
+  speakerAttribution: "word" | "segment" | "unavailable";
+  timingGranularity: "word" | "segment" | "unavailable";
+  outcome: "succeeded" | "failed";
+  elapsedMilliseconds: number;
+  estimatedCostUsd: number | null;
+  metrics: null | {
+    words?: { wordErrorRate?: number; wordErrorCount?: number; referenceWordCount?: number };
+    speakers?: { speakerErrorRate?: number | null; speakerConfusions?: number; speakerMisses?: number };
+    timing?: { p95AbsoluteStartDriftMilliseconds?: number | null; timedWordMatches?: number };
+  };
+  errorCode: string | null;
+  retryable: boolean | null;
+  policyReceiptSha256: string;
+  correctionObservationCount: number;
+  completedAt: string;
 };
 
 function requestId(segmentId: string) {
@@ -297,6 +324,28 @@ function TranscriptAccuracyCorpusPanel({
     </div>}
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{error}</p> : null}
     {evaluation.approvedWindows.length > 0 ? <div className="mt-5"><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Frozen evaluation windows</p><ul className="mt-2 space-y-2">{evaluation.approvedWindows.map((window) => <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs font-bold text-[#5f4d37]"><span>{humanize(window.workload)} · {window.referenceWordCount} words · {window.conditions.map(humanize).join(", ")}</span><span className={window.staleAgainstCurrentReview ? "text-amber-800" : "text-emerald-800"}>{window.staleAgainstCurrentReview ? "Prior reviewed revision" : "Matches current review"}</span></li>)}</ul></div> : null}
+    {evaluation.approvedWindows.length > 0 ? <div className="mt-5 rounded-xl border border-indigo-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Provider evidence scorecards</p><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Every result is measured against the same frozen human reference. Missing speaker or word-timing evidence stays visibly unavailable; Quipsly never interpolates it.</p></div>
+        <a href={`/api/transcript-evaluation?roomId=${encodeURIComponent(roomId)}&view=runner-input`} className="inline-flex min-h-11 items-center rounded-full border border-indigo-300 bg-indigo-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-indigo-950">Export protected runner input</a>
+      </div>
+      {evaluation.providerEvidenceError ? <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-950">{evaluation.providerEvidenceError}</p> : null}
+      {(evaluation.candidates ?? []).length ? <div className="mt-4 grid gap-3 xl:grid-cols-2">{(evaluation.candidates ?? []).map((candidate) => {
+        const wordRate = candidate.metrics?.words?.wordErrorRate;
+        const speakerRate = candidate.metrics?.speakers?.speakerErrorRate;
+        const timingP95 = candidate.metrics?.timing?.p95AbsoluteStartDriftMilliseconds;
+        return <article key={candidate.id} className={`rounded-xl border p-4 ${candidate.outcome === "succeeded" ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/50"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black text-[#3d3122]">{candidate.providerName}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-[#765f40]">{candidate.model} · {candidate.adapterVersion}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${candidate.outcome === "succeeded" ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"}`}>{candidate.outcome}</span></div>
+          {candidate.outcome === "succeeded" ? <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">WER</dt><dd className="mt-1 font-black text-[#3d3122]">{typeof wordRate === "number" ? percent(wordRate, 1) : "Unavailable"}</dd></div>
+            <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Speaker error</dt><dd className="mt-1 font-black text-[#3d3122]">{candidate.speakerAttribution === "unavailable" || speakerRate == null ? "Unavailable" : percent(speakerRate, 1)}</dd></div>
+            <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Timing p95</dt><dd className="mt-1 font-black text-[#3d3122]">{candidate.timingGranularity !== "word" || timingP95 == null ? "Unavailable" : `${Math.round(timingP95)} ms`}</dd></div>
+            <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Latency</dt><dd className="mt-1 font-black text-[#3d3122]">{(candidate.elapsedMilliseconds / 1000).toFixed(1)} s</dd></div>
+          </dl> : <p className="mt-3 rounded-lg bg-white p-3 text-xs font-bold text-rose-900">{candidate.errorCode ? humanize(candidate.errorCode) : "Provider attempt failed"}{candidate.retryable === true ? " · retryable in a new run" : ""}</p>}
+          <p className="mt-3 text-[10px] font-bold leading-4 text-[#765f40]">{candidate.estimatedCostUsd === null ? "Cost not observed" : `$${candidate.estimatedCostUsd.toFixed(4)} observed`} · {candidate.correctionObservationCount} measured correction pass{candidate.correctionObservationCount === 1 ? "" : "es"} · policy receipt {candidate.policyReceiptSha256.slice(0, 10)}…</p>
+        </article>;
+      })}</div> : !evaluation.providerEvidenceError ? <p className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-4 text-xs font-bold leading-5 text-indigo-950">No alternative provider attempt has been recorded yet. The protected export gives an authorized runner exact source and reference hashes without exposing them in ordinary Session views.</p> : null}
+    </div> : null}
   </section>;
 }
 
