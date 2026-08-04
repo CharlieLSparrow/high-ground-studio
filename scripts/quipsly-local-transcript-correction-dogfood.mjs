@@ -19,6 +19,7 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "../apps/quipsly/src/lib/mobile-capture-consent-policy.js";
+import { analyzeAudioSignalFile } from "./lib/audio-signal-window-profile.mjs";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const APPLY = process.argv.includes("--apply");
@@ -175,6 +176,27 @@ async function main() {
   await copyFile(SOURCE_AUDIO, LOCAL_AUDIO);
   const copied = await stat(LOCAL_AUDIO);
   const checksum = sha256(audioBytes);
+  const decodedSignal = await analyzeAudioSignalFile(LOCAL_AUDIO);
+  const reportedSourceProfile = {
+    kind: "quipsly-local-decoded-source-profile-v1",
+    source: "quipsly-local-transcript-correction-dogfood",
+    container: decodedSignal.media.container,
+    codec: decodedSignal.media.codec,
+    audioSampleRate: decodedSignal.media.sampleRate,
+    audioChannelCount: decodedSignal.media.channelCount,
+    recordedMedia: {
+      videoTrackCount: 0,
+      audioTrackCount: 1,
+      audioSampleRate: decodedSignal.media.sampleRate,
+      audioChannelCount: decodedSignal.media.channelCount,
+      durationSeconds: decodedSignal.media.durationSeconds,
+    },
+    audioCapturePipeline: "authorized-local-source-complete-ffmpeg-decode",
+    pauseTimelinePolicy: "source-window-preserved-without-reconstruction",
+    sourceSha256: checksum,
+    immutableSource: true,
+    audioSignal: decodedSignal.audioSignal,
+  };
 
   const prisma = new PrismaClient({ adapter: new PrismaPg(DATABASE_URL), log: ["error"] });
   try {
@@ -338,14 +360,14 @@ async function main() {
     });
     await prisma.studioMediaAsset.upsert({
       where: { id: MEDIA_ASSET_ID },
-      update: { url: `/api/ingest/media/${SOURCE_ID}`, sizeBytes: BigInt(copied.size) },
+      update: { url: `/api/ingest/media/${SOURCE_ID}`, sizeBytes: BigInt(copied.size), duration: decodedSignal.media.durationSeconds },
       create: {
         id: MEDIA_ASSET_ID,
         filename: path.basename(LOCAL_AUDIO),
         url: `/api/ingest/media/${SOURCE_ID}`,
         mimeType: "audio/wav",
         sizeBytes: BigInt(copied.size),
-        duration: 60,
+        duration: decodedSignal.media.durationSeconds,
         isProxy: false,
         cloudProvider: "local-dogfood",
         isGlobal: false,
@@ -387,7 +409,7 @@ async function main() {
         fileName: path.basename(LOCAL_AUDIO),
         contentType: "audio/wav",
         byteSize: BigInt(copied.size),
-        durationSeconds: 60,
+        durationSeconds: decodedSignal.media.durationSeconds,
         storageBucket: "local-dogfood",
         storageObjectPath: "episode-4/charlie-680-740.wav",
         checksum,
@@ -395,6 +417,7 @@ async function main() {
         verifiedAt: new Date("2026-07-18T23:01:06.000Z"),
         localManifestJson: {
           source: "quipsly-local-transcript-correction-dogfood",
+          reportedSourceProfile,
           processingDisposition: "RELEASED",
           transcriptionDisposition: "RELEASED",
           promotion: {
@@ -418,7 +441,7 @@ async function main() {
         fileName: path.basename(LOCAL_AUDIO),
         contentType: "audio/wav",
         byteSize: BigInt(copied.size),
-        durationSeconds: 60,
+        durationSeconds: decodedSignal.media.durationSeconds,
         storageBucket: "local-dogfood",
         storageObjectPath: "episode-4/charlie-680-740.wav",
         checksum,
@@ -426,6 +449,7 @@ async function main() {
         verifiedAt: new Date("2026-07-18T23:01:06.000Z"),
         localManifestJson: {
           source: "quipsly-local-transcript-correction-dogfood",
+          reportedSourceProfile,
           processingDisposition: "RELEASED",
           transcriptionDisposition: "RELEASED",
           promotion: {

@@ -6,6 +6,7 @@ import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, 
 
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
+import { AudioEvidenceMap } from "./AudioEvidenceMap";
 import { timestampForSeconds } from "./session-review-model";
 import {
   EDITABLE_SESSION_NOTE_KINDS,
@@ -226,10 +227,6 @@ function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
   ].filter(Boolean).join(" · ") || "Audio format not preserved";
 }
 
-function signalLevelHeight(dbfs: number) {
-  return Math.max(4, Math.min(100, ((dbfs + 72) / 72) * 100));
-}
-
 function TranscriptAccuracyCorpusPanel({
   roomId,
   evaluation,
@@ -447,25 +444,17 @@ function AudioSignalEvidencePanel({
       <div className="rounded-lg bg-emerald-50 p-3"><dt className="font-black uppercase tracking-wide text-emerald-800">Decoded coverage</dt><dd className="mt-1 text-lg font-black text-emerald-950">{timestampForSeconds(signal.durationSeconds)}</dd><dd className="mt-1 text-[10px] font-bold text-emerald-800">{signal.analyzedFrameCount.toLocaleString()} frames · {signal.channelCount} ch</dd></div>
     </dl>
 
-    {signal.waveform.length > 0 ? <button
-      type="button"
-      disabled={!playbackReady}
-      onClick={(event) => {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        const fraction = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0;
-        const nextSeconds = Math.max(0, Math.min(signal.durationSeconds, fraction * signal.durationSeconds));
-        setSelectedSignalSeconds(nextSeconds);
-        void onPlayAt(nextSeconds);
+    {signal.waveform.length > 0 ? <AudioEvidenceMap
+      signal={signal}
+      timelineEvents={audio.timelineEvents}
+      transcriptEndSeconds={transcriptEndSeconds}
+      playbackReady={playbackReady}
+      selectedSeconds={selectedSignalSeconds}
+      onSelect={(seconds, play) => {
+        setSelectedSignalSeconds(seconds);
+        if (play) void onPlayAt(seconds);
       }}
-      className="mt-4 flex h-28 w-full items-center gap-px overflow-hidden rounded-lg border border-sky-200 bg-sky-50 px-2 py-3 disabled:opacity-50"
-      aria-label="Audio waveform overview. Select a position to play from that time."
-    >{signal.waveform.map((point, index) => <span
-      key={`${point.startSeconds}-${index}`}
-      aria-hidden="true"
-      className={`min-w-px flex-1 rounded-full ${point.clippedFrameCount > 0 ? "bg-rose-500" : point.rmsDbfs <= signal.thresholds.nearSilenceDbfs ? "bg-slate-300" : "bg-sky-600"}`}
-      style={{ height: `${signalLevelHeight(point.rmsDbfs)}%` }}
-    />)}</button> : null}
-    <div className="mt-2 flex justify-between text-[10px] font-black uppercase tracking-wide text-sky-800"><span>00:00</span><span>Select waveform to listen</span><span>{timestampForSeconds(signal.durationSeconds)}</span></div>
+    /> : null}
     <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
       <label htmlFor="audio-signal-time" className="text-xs font-black text-sky-950">Selected time {timestampForSeconds(selectedSignalSeconds)}</label>
       <input

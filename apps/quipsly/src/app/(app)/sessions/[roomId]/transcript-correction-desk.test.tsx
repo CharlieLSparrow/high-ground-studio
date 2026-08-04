@@ -503,7 +503,7 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();
     expect(screen.getByText(/RMS dBFS is not perceptual LUFS/i)).toBeInTheDocument();
     expect(screen.getByText(/measurable signal continues after the last timed transcript word/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /audio waveform overview/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /audio evidence map/i })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: /selected time/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /play selected time/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /00:10 · Possible Dropout/i })).toBeInTheDocument();

@@ -105,7 +105,7 @@ async function outsiderDenial(baseURL, password, forbiddenText) {
 
 async function renderedAttribution(baseURL, password) {
   const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, channel: "chrome" });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     colorScheme: "light",
@@ -129,6 +129,22 @@ async function renderedAttribution(baseURL, password) {
     const main = page.getByRole("main").last();
     await assertNoHorizontalOverflow(main, "retained transcript attribution desk");
 
+    const audioEvidenceMap = main.getByLabel("Audio evidence map", { exact: true });
+    await audioEvidenceMap.waitFor({ timeout: 20_000 });
+    assert((await audioEvidenceMap.innerText()).includes("not a sample-level waveform"), "Rendered audio evidence map overclaimed its windowed measurements.");
+    const detailZoom = audioEvidenceMap.getByRole("button", { name: "15 sec", exact: true });
+    await detailZoom.click();
+    assert(await detailZoom.getAttribute("aria-pressed") === "true", "Audio evidence detail zoom did not become active.");
+    const mapButton = audioEvidenceMap.getByRole("button", { name: /Audio evidence map from .* Select a position to play/ });
+    const mapBounds = await mapButton.boundingBox();
+    assert(mapBounds && mapBounds.width > 100, "Audio evidence map had no usable rendered geometry.");
+    const audio = page.getByLabel("Protected session recording");
+    await audio.waitFor();
+    await page.mouse.click(mapBounds.x + mapBounds.width * 0.72, mapBounds.y + mapBounds.height * 0.5);
+    await page.waitForTimeout(250);
+    const evidenceMapPlaybackPosition = await audio.evaluate((element) => element.currentTime);
+    assert(Number.isFinite(evidenceMapPlaybackPosition) && evidenceMapPlaybackPosition > 0, "Audio evidence map did not seek protected playback to selected source evidence.");
+
     const readAPI = (path) => page.evaluate(async (requestPath) => {
       const response = await fetch(requestPath, { cache: "no-store" });
       return { status: response.status, body: await response.json() };
@@ -144,8 +160,6 @@ async function renderedAttribution(baseURL, password) {
     await speakerCard.getByRole("combobox", { name: "Participant" }).selectOption(PARTICIPANT_ID);
     const sample = speakerCard.getByRole("button", { name: new RegExp(`^Play ${PROVIDER_SPEAKER} sample from`) }).first();
     await sample.click();
-    const audio = page.getByLabel("Protected session recording");
-    await audio.waitFor();
     await page.waitForTimeout(150);
     const playbackPosition = await audio.evaluate((element) => element.currentTime);
     assert(Number.isFinite(playbackPosition) && playbackPosition > 0, "The rendered sample did not move protected playback to its source timestamp.");
@@ -199,6 +213,8 @@ async function renderedAttribution(baseURL, password) {
     await clearRenderedSession(page, baseURL, identity.role);
     return {
       mutationIdempotentReplay: mutation.idempotentReplay === true,
+      audioEvidenceMapOperated: true,
+      audioEvidenceMapPlaybackPosition: evidenceMapPlaybackPosition,
       exactRequestReplay: true,
       playbackPosition,
       attributionId: group.attribution.id,
@@ -298,6 +314,8 @@ async function main() {
       transcriptJobId: JOB_ID,
       providerSpeakerLabel: PROVIDER_SPEAKER,
       participantLabel: PARTICIPANT_LABEL,
+      audioEvidenceMapOperated: rendered.audioEvidenceMapOperated,
+      audioEvidenceMapPlaybackPositionSeconds: rendered.audioEvidenceMapPlaybackPosition,
       playbackSampleOperated: true,
       playbackPositionSeconds: rendered.playbackPosition,
       exactRequestReplay: rendered.exactRequestReplay,
