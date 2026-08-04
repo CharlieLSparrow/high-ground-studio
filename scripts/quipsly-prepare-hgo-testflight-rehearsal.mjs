@@ -225,10 +225,16 @@ async function discover(prisma, options) {
           projectId: project.id,
           purpose: "PODCAST",
           title: options.episodeTitle,
-          metadataJson: {
-            path: ["episodeSlug"],
-            equals: options.episodeSlug,
-          },
+          OR: [
+            ...(episode?.id ? [{ episodeProductionId: episode.id }] : []),
+            {
+              episodeProductionId: null,
+              metadataJson: {
+                path: ["episodeSlug"],
+                equals: options.episodeSlug,
+              },
+            },
+          ],
         },
         include: {
           participants: true,

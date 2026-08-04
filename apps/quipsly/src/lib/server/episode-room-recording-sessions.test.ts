@@ -45,6 +45,7 @@ describe("Episode Room recording-session projection", () => {
     await expect(recordingSessionsFor(
       prisma,
       "project-1",
+      "production-1",
       "episode-4-part-2",
       actor,
       "call-room-1",
@@ -58,17 +59,27 @@ describe("Episode Room recording-session projection", () => {
     ]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        OR: expect.arrayContaining([
-          {
-            project: {
-              accessGrants: {
-                some: {
-                  email: "editor-2@example.test",
-                  status: "ACTIVE",
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              { episodeProductionId: "production-1" },
+              expect.objectContaining({ episodeProductionId: null }),
+            ]),
+          }),
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              {
+                project: {
+                  accessGrants: {
+                    some: {
+                      email: "editor-2@example.test",
+                      status: "ACTIVE",
+                    },
+                  },
                 },
               },
-            },
-          },
+            ]),
+          }),
         ]),
       }),
     }));
@@ -89,6 +100,7 @@ describe("Episode Room recording-session projection", () => {
     await expect(recordingSessionsFor(
       prisma,
       "project-1",
+      "production-1",
       "episode-4-part-2",
       actor,
       "call-room-1",
@@ -105,10 +117,16 @@ describe("Episode Room recording-session projection", () => {
         id: "call-room-1",
         projectId: "project-1",
         purpose: "PODCAST",
-        metadataJson: {
-          path: ["episodeSlug"],
-          equals: "episode-4-part-2",
-        },
+        OR: [
+          { episodeProductionId: "production-1" },
+          {
+            episodeProductionId: null,
+            metadataJson: {
+              path: ["episodeSlug"],
+              equals: "episode-4-part-2",
+            },
+          },
+        ],
       },
       select: {
         id: true,
@@ -137,6 +155,7 @@ describe("Episode Room recording-session projection", () => {
     await expect(recordingSessionsFor(
       prisma,
       "project-1",
+      "production-1",
       "episode-4-part-2",
       actor,
       "call-room-1",

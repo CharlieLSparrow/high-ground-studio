@@ -108,15 +108,43 @@ describe("mobile Session canonical project projection", () => {
 });
 
 describe("mobile Session canonical episode projection", () => {
-  it("uses the explicit CallRoom episode binding before an offering fallback", () => {
+  it("uses the first-class same-project production before metadata or offering fallbacks", () => {
     expect(canonicalMobileSessionEpisodeSlug({
       id: "room-1",
+      purpose: "PODCAST",
+      projectId: "project-1",
+      episodeProductionId: "production-4",
+      episodeProduction: { projectId: "project-1", slug: "episode-4" },
+      metadataJson: { episodeSlug: "stale-episode" },
+      booking: { offering: { slug: "podcast-offering" } },
+    })).toBe("episode-4");
+  });
+
+  it("fails a cross-project relation closed instead of trusting legacy metadata", () => {
+    expect(canonicalMobileSessionEpisodeSlug({
+      id: "room-1",
+      purpose: "PODCAST",
+      projectId: "project-1",
+      episodeProductionId: "production-other",
+      episodeProduction: { projectId: "project-2", slug: "episode-other" },
+      metadataJson: { episodeSlug: "episode-4" },
+    })).toBe("room-1");
+    expect(canonicalMobileSessionEpisodeSlug({
+      id: "room-coaching",
+      purpose: "COACHING",
+      projectId: "project-1",
+      episodeProductionId: "production-4",
+      episodeProduction: { projectId: "project-1", slug: "episode-4" },
+      metadataJson: { episodeSlug: "episode-4" },
+    })).toBe("room-coaching");
+  });
+
+  it("retains metadata, offering, and room fallbacks only for unbackfilled rows", () => {
+    expect(canonicalMobileSessionEpisodeSlug({
+      id: "room-legacy",
       metadataJson: { episodeSlug: "episode-4-part-2" },
       booking: { offering: { slug: "podcast-offering" } },
     })).toBe("episode-4-part-2");
-  });
-
-  it("retains legacy offering and room fallbacks", () => {
     expect(canonicalMobileSessionEpisodeSlug({
       id: "room-1",
       booking: { offering: { slug: "legacy-offering" } },

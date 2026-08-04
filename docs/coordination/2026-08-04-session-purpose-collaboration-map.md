@@ -39,12 +39,16 @@ them from navigation:
    editor handoffs, delivery receipts, and publication state. Chat and
    transcripts may propose work but never silently become it.
 
-For podcast Sessions, Nest resolves `metadataJson.episodeSlug` only when the
-Session purpose is `PODCAST`, then validates the slug against an accessible
-`StudioEpisodeProduction` in the same project. Only that server-validated
-relationship can produce links to the exact Episode Room, episode thread, and
-episode editor. A missing or invalid relationship fails visibly to
-“Episode relationship needs attention”; Quipsly does not guess from the title.
+For podcast Sessions, Nest now prefers nullable
+`CallRoom.episodeProductionId`. New Session creation resolves the requested
+slug through the same-project episode compound key and writes the relational
+binding plus a temporary compatibility slug. Legacy metadata is considered
+only when the relation is null; a conflicting relation never falls back to
+metadata. Only that server-validated relationship can produce links to the
+exact Episode Room, episode thread, and episode editor. A missing or invalid
+relationship fails visibly to “Episode relationship needs attention”; Quipsly
+does not guess from the title. See
+`docs/coordination/2026-08-04-first-class-session-episode-binding.md`.
 
 The Episode Room now exposes a stable `#episode-thread` destination. Its
 Session-only thread remains separate and describes its narrower scope.
@@ -66,8 +70,10 @@ and follow-up boundaries.
 
 - Focused Session, collaboration-model, workspace-language, purpose, page, and
   Episode Room suites: 60 tests passed.
-- Complete Nest regression: 298 suites and 1,560 runnable tests passed; 38
-  environment-gated suites and 110 tests remained explicitly skipped.
+- Complete Nest regression after first-class Episode binding: 299 suites and
+  1,565 runnable tests passed; 39 environment-gated suites and 115 tests
+  remained explicitly skipped. The new binding operation and production-route
+  operation also passed separately against local PostgreSQL.
 - Quipsly TypeScript passed after generated route types.
 - The optimized Nest production build compiled, typechecked, and generated all
   172 static pages. Mobile source contracts passed 98/98 and Capture/App Store
@@ -84,12 +90,13 @@ and follow-up boundaries.
 
 ## Follow-on hardening
 
-The server validation makes the current metadata binding safe to consume but
-does not make metadata the ideal long-term relationship. Promote Episode ↔
-Session binding to a nullable first-class relational key with a reversible
-backfill and compatibility read period. Then update Capture creation, Episode
-Room queries, calendar creation, imports, and migration readback before removing
-the validated metadata fallback.
+The nullable first-class Episode ↔ Session key, reversible same-project
+backfill, Capture creation write, Episode Room dual-read, and retained migration
+readback are complete. Keep the compatibility read until supported Capture
+builds all write the relation and an explicit repair surface resolves the
+remaining unmatched legacy row. Calendar and import workflows should pass an
+episode identifier through the same resolver rather than writing metadata or a
+foreign key directly.
 
 Do not add a separate CoachingRoom or PodcastRoom database aggregate. Purpose
 projections should remain views over the Session spine, with purpose-specific

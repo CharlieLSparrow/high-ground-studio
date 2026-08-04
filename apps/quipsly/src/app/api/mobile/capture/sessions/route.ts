@@ -21,6 +21,10 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { loadPriorSessionContinuityByRoomId } from "@/lib/server/session-continuity";
 import { loadPriorSessionFollowThroughByRoomId } from "@/lib/server/session-follow-through";
 import {
+  resolveSessionEpisodeBinding,
+  SessionEpisodeBindingError,
+} from "@/lib/server/session-episode-binding";
+import {
   mobileSessionNoteVisibilityWhere,
   SESSION_NOTE_VISIBLE_KINDS,
 } from "@/lib/server/session-note-access";
@@ -31,6 +35,9 @@ import {
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 const MOBILE_CAPTURE_ROOM_INCLUDE = {
+  episodeProduction: {
+    select: { id: true, projectId: true, slug: true, title: true },
+  },
   project: {
     select: {
       id: true,
@@ -486,11 +493,29 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+  let episodeBinding;
+  try {
+    episodeBinding = await resolveSessionEpisodeBinding({
+      prisma,
+      projectId: captureProjectId,
+      purpose,
+      episodeSlug: body.episodeSlug,
+    });
+  } catch (error) {
+    if (error instanceof SessionEpisodeBindingError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, code: "QUIPSLY_SESSION_EPISODE_BINDING_INVALID" },
+        { status: error.status },
+      );
+    }
+    throw error;
+  }
 
   const room = await prisma.callRoom.create({
     data: {
       createdByUserId: userId,
       projectId: captureProjectId,
+      episodeProductionId: episodeBinding.episodeProductionId,
       purpose,
       status: "PLANNED",
       provider,
@@ -522,7 +547,7 @@ export async function POST(request: Request) {
         createdByUserId: userId,
         projectId: captureProjectId,
         projectSlug: captureProjectSlug,
-        episodeSlug: text(body.episodeSlug) || null,
+        episodeSlug: episodeBinding.episodeSlug,
         quickSession: true,
         externalSideEffects: {
           calendarMutated: false,
@@ -620,6 +645,7 @@ export async function POST(request: Request) {
       session: mapped,
       boundaries: {
         appOwnedRoomCreated: true,
+        episodeBound: Boolean(episodeBinding.episodeProductionId),
         participantCreated: Boolean(hostParticipant?.id),
         consentRequested: true,
         recordingStarted: false,

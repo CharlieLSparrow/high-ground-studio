@@ -36,6 +36,7 @@ import {
   listEpisodeMilestones,
 } from "@/lib/server/episode-production-milestones";
 import { sessionActorAccessWhere } from "@/lib/server/session-access";
+import { callRoomEpisodeBindingWhere } from "@/lib/server/session-episode-binding";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -729,6 +730,7 @@ function recordingRoomAccessWhere(actor: EpisodeRoomActor) {
 export async function recordingSessionsFor(
   prisma: any,
   projectId: string,
+  episodeProductionId: string,
   episodeSlug: string,
   actor?: EpisodeRoomActor,
   boundRecordingRoomId?: string,
@@ -738,11 +740,10 @@ export async function recordingSessionsFor(
     where: {
       projectId,
       purpose: "PODCAST",
-      metadataJson: {
-        path: ["episodeSlug"],
-        equals: episodeSlug,
-      },
-      ...recordingRoomAccessWhere(actor),
+      AND: [
+        callRoomEpisodeBindingWhere({ episodeProductionId, episodeSlug }),
+        recordingRoomAccessWhere(actor),
+      ],
     },
     orderBy: [{ recordingStartedAt: "desc" }, { updatedAt: "desc" }],
     take: 20,
@@ -795,10 +796,7 @@ export async function recordingSessionsFor(
       id: boundRecordingRoomId,
       projectId,
       purpose: "PODCAST",
-      metadataJson: {
-        path: ["episodeSlug"],
-        equals: episodeSlug,
-      },
+      ...callRoomEpisodeBindingWhere({ episodeProductionId, episodeSlug }),
     },
     select: {
       id: true,
@@ -1015,6 +1013,7 @@ export async function loadEpisodeRoomDesk(
     recordingSessions: await recordingSessionsFor(
       prisma,
       production.project.id,
+      production.id,
       production.slug,
       actor,
       room.session?.recordingRoomId,
@@ -1112,6 +1111,7 @@ export async function loadEpisodeRoomRuntime(
     recordingSessions: await recordingSessionsFor(
       prisma,
       production.projectId,
+      production.id,
       production.slug,
       actor,
       room.session?.recordingRoomId,
@@ -1281,6 +1281,7 @@ export async function applyEpisodeRoomStoreCommand({
             recordingSessions: await recordingSessionsFor(
               tx,
               production.projectId,
+              production.id,
               production.slug,
               actor,
               currentRoom.session?.recordingRoomId,
@@ -1308,6 +1309,7 @@ export async function applyEpisodeRoomStoreCommand({
             recordingSessions: await recordingSessionsFor(
               tx,
               production.projectId,
+              production.id,
               production.slug,
               actor,
               currentRoom.session?.recordingRoomId,
@@ -1397,11 +1399,13 @@ export async function applyEpisodeRoomStoreCommand({
               id: input.recordingRoomId,
               projectId: production.projectId,
               purpose: "PODCAST",
-              metadataJson: {
-                path: ["episodeSlug"],
-                equals: production.slug,
-              },
-              ...recordingRoomAccessWhere(actor),
+              AND: [
+                callRoomEpisodeBindingWhere({
+                  episodeProductionId: production.id,
+                  episodeSlug: production.slug,
+                }),
+                recordingRoomAccessWhere(actor),
+              ],
             },
             select: {
               id: true,
@@ -1438,12 +1442,14 @@ export async function applyEpisodeRoomStoreCommand({
               id: currentRoom.session.recordingRoomId,
               projectId: production.projectId,
               purpose: "PODCAST",
-              metadataJson: {
-                path: ["episodeSlug"],
-                equals: production.slug,
-              },
+              AND: [
+                callRoomEpisodeBindingWhere({
+                  episodeProductionId: production.id,
+                  episodeSlug: production.slug,
+                }),
+                recordingRoomAccessWhere(actor),
+              ],
               status: "RECORDING",
-              ...recordingRoomAccessWhere(actor),
             },
             select: { id: true },
           });
@@ -1511,6 +1517,7 @@ export async function applyEpisodeRoomStoreCommand({
           recordingSessions: await recordingSessionsFor(
             tx,
             production.projectId,
+            production.id,
             production.slug,
             actor,
             nextRoom.session?.recordingRoomId,

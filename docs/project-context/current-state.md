@@ -4,6 +4,16 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- Podcast recording Sessions now have a nullable first-class relation to their
+  exact Episode production. Normal Capture Session creation resolves the exact
+  same-project episode, writes the relation and a temporary compatibility slug,
+  and rejects non-podcast, missing, or cross-project bindings. Episode Room and
+  Session projections use legacy metadata only when the relation is null, so a
+  conflicting relation fails closed rather than being masked. The local
+  migration bound 4/4 eligible retained podcast rooms with 0 cross-project
+  relations; coaching stayed unbound and one unmatched legacy podcast row stays
+  visible for repair. See
+  `docs/coordination/2026-08-04-first-class-session-episode-binding.md`.
 - The Session workspace now projects its one canonical call/evidence kernel
   into distinct coaching, podcast, research-interview, and team-meeting
   journeys. Navigation and runway labels describe the actual job (for example,
@@ -61,7 +71,7 @@ Date: 2026-08-04
   attention without exposing provider identities. The retained operation read
   two devices/two people before removal and host-only afterward. See
   `docs/coordination/2026-08-04-session-provider-presence.md`.
-- Full Nest Jest passes 298 suites / 1,560 runnable tests, the 172-route Nest
+- Full Nest Jest passes 299 suites / 1,565 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

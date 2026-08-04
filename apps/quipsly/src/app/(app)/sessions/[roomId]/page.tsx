@@ -9,6 +9,7 @@ import { MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA } from "@/lib/server/mobile-capture-q
 import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-readiness";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
+import { sessionRelationMatchesProject } from "@/lib/server/session-episode-binding";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 import {
   canUseProjectTeamNotes,
@@ -75,6 +76,8 @@ export default async function SessionReviewPage({
         status: true,
         provider: true,
         providerRoomId: true,
+        episodeProductionId: true,
+        episodeProduction: { select: { id: true, projectId: true, title: true, slug: true } },
         metadataJson: true,
         scheduledStart: true,
         scheduledEnd: true,
@@ -231,11 +234,21 @@ export default async function SessionReviewPage({
     });
     const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
-    const boundEpisodeSlug = episodeSlugFromSessionMetadata(room.purpose, room.metadataJson);
-    const boundEpisode = visibleProject && boundEpisodeSlug ? await prisma.studioEpisodeProduction.findUnique({
-      where: { projectId_slug: { projectId: visibleProject.id, slug: boundEpisodeSlug } },
+    const relationEpisode = sessionRelationMatchesProject({
+      roomProjectId: room.project?.id,
+      purpose: room.purpose,
+      episode: room.episodeProduction,
+    }) ? room.episodeProduction : null;
+    const legacyBoundEpisodeSlug = room.episodeProductionId
+      ? null
+      : episodeSlugFromSessionMetadata(room.purpose, room.metadataJson);
+    const legacyBoundEpisode = visibleProject && legacyBoundEpisodeSlug ? await prisma.studioEpisodeProduction.findUnique({
+      where: { projectId_slug: { projectId: visibleProject.id, slug: legacyBoundEpisodeSlug } },
       select: { id: true, title: true, slug: true },
     }) : null;
+    const boundEpisode = visibleProject && relationEpisode
+      ? { id: relationEpisode.id, title: relationEpisode.title, slug: relationEpisode.slug }
+      : legacyBoundEpisode;
     const collaborationContext = buildSessionCollaborationContext({
       project: visibleProject && room.project ? room.project : null,
       episode: boundEpisode,

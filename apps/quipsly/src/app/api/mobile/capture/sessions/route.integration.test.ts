@@ -19,7 +19,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { ensureStudioWorkspace } from "@/lib/studio/project-registry";
 
-import { GET, PATCH } from "./route";
+import { GET, PATCH, POST } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
@@ -42,6 +42,10 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   let staffUserId = "";
   let projectId = "";
   let roomId = "";
+  let podcastRoomId = "";
+  let episodeProductionId = "";
+  const projectSlug = `mobile-session-privacy-${nonce}`;
+  const episodeSlug = `mobile-session-episode-${nonce}`;
   const clientFollowUpId = `client-follow-up-${nonce}`;
   const clientFollowUpSha256 = "a".repeat(64);
   const noteIds = {
@@ -66,7 +70,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
     const project = await prisma.studioProject.create({
       data: {
         workspaceId: workspace.id,
-        slug: `mobile-session-privacy-${nonce}`,
+        slug: projectSlug,
         name: "Mobile Session Privacy",
       },
     });
@@ -91,6 +95,23 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
         },
       ],
     });
+    const episodeDocument = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        stableId: `mobile-session-episode-document-${nonce}`,
+        title: "Mobile Session Episode manuscript",
+      },
+    });
+    const episode = await prisma.studioEpisodeProduction.create({
+      data: {
+        projectId,
+        documentId: episodeDocument.id,
+        slug: episodeSlug,
+        title: "Mobile Session Episode",
+        boundaryLabel: "Mobile Session Episode",
+      },
+    });
+    episodeProductionId = episode.id;
     const room = await prisma.callRoom.create({
       data: {
         createdByUserId: ownerUserId,
@@ -188,6 +209,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
 
   afterAll(async () => {
     try {
+      if (podcastRoomId) await prisma.callRoom.deleteMany({ where: { id: podcastRoomId } });
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
       await prisma.user.deleteMany({
@@ -221,6 +243,61 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       ids: session.sessionNotes.map((note: { id: string }) => note.id),
     };
   }
+
+  it("creates a podcast Session with the exact same-project Episode relation", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "PODCAST",
+        title: "First-class Episode recording Session",
+        projectSlug,
+        episodeSlug,
+        provider: "planned",
+      }),
+    }));
+    expect(response.status).toBe(201);
+    const payload = await response.json();
+    expect(payload.boundaries).toMatchObject({
+      episodeBound: true,
+      recordingStarted: false,
+      providerJoined: false,
+    });
+    expect(payload.session).toMatchObject({ episodeSlug });
+    podcastRoomId = payload.session.id;
+
+    const readback = await prisma.callRoom.findUnique({
+      where: { id: podcastRoomId },
+      include: { episodeProduction: { select: { id: true, projectId: true, slug: true } } },
+    });
+    expect(readback?.episodeProduction).toEqual({
+      id: episodeProductionId,
+      projectId,
+      slug: episodeSlug,
+    });
+  });
+
+  it("rejects an Episode relationship on a coaching Session without writing a room", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const before = await prisma.callRoom.count({ where: { projectId } });
+    const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "COACHING",
+        title: "Invalid coaching Episode binding",
+        projectSlug,
+        episodeSlug,
+      }),
+    }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "QUIPSLY_SESSION_EPISODE_BINDING_INVALID",
+    });
+    expect(await prisma.callRoom.count({ where: { projectId } })).toBe(before);
+  });
 
   async function scheduleSession({
     actorId,

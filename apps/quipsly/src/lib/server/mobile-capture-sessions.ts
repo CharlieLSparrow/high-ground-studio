@@ -53,6 +53,17 @@ export function canonicalMobileSessionProject(room: any) {
 }
 
 export function canonicalMobileSessionEpisodeSlug(room: any) {
+  if (label(room?.episodeProductionId)) {
+    const projectId = label(room?.project?.id) || label(room?.projectId);
+    const episodeProjectId = label(room?.episodeProduction?.projectId);
+    const episodeSlug = label(room?.episodeProduction?.slug);
+    return label(room?.purpose)?.toUpperCase() === "PODCAST"
+      && projectId
+      && episodeProjectId === projectId
+      && episodeSlug
+      ? episodeSlug
+      : room?.id;
+  }
   const metadata = sourceJson(room?.metadataJson);
   return label(metadata.episodeSlug)
     || label(room?.booking?.offering?.slug)

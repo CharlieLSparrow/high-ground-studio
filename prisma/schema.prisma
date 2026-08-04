@@ -1619,6 +1619,7 @@ model CallRoom {
   bookingId            String?         @unique
   createdByUserId      String?
   projectId            String?
+  episodeProductionId  String?
   purpose              CallRoomPurpose @default(COACHING)
   status               CallRoomStatus  @default(PLANNED)
   provider             String          @default("planned")
@@ -1640,6 +1641,7 @@ model CallRoom {
   booking                       CoachingBooking?                      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   createdByUser                 User?                                 @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   project                       StudioProject?                        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  episodeProduction             StudioEpisodeProduction?              @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
   participants                  CallParticipant[]
   participantAccessReceipts     CallParticipantAccessReceipt[]
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
@@ -1663,6 +1665,7 @@ model CallRoom {
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])
   @@index([projectId, status, scheduledStart])
+  @@index([episodeProductionId, status, recordingStartedAt])
   @@index([nestSlug, createdAt])
   @@index([projectSlug, createdAt])
 }
@@ -3229,6 +3232,7 @@ model StudioEpisodeProduction {
   editProposalSets   StudioEpisodeEditProposalSet[]
   editReviewReceipts StudioEpisodeEditReviewReceipt[]
   transcriptJobs     TranscriptJob[]
+  recordingRooms     CallRoom[]
 
   @@unique([projectId, slug])
   @@index([documentId])
