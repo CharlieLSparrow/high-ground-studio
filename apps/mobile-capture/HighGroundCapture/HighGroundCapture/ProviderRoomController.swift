@@ -47,6 +47,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
     @Published var providerRuntimeDetail = ProviderRoomRuntime.liveKitDetail
     @Published var isCallAudioSessionActive = false
     @Published var callAudioSessionLabel = "Call audio idle"
+    @Published private(set) var latestEpisodeWatchHint: MobileEpisodeWatchLiveHint?
 
     private let callKitProvider: CXProvider
     private let callController = CXCallController()
@@ -54,6 +55,8 @@ final class ProviderRoomController: NSObject, ObservableObject {
     private var activeCallUUID: UUID?
     private var activeOwnerSnapshot: AuthManager.StableOwnerSnapshot?
     private var accountObserver: NSObjectProtocol?
+    private var activeCallRoomID: String?
+    private var lastPublishedEpisodeWatchReceiptID: String?
 
     #if canImport(LiveKit)
     private let room = Room()
@@ -111,6 +114,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             return
         }
         activeOwnerSnapshot = expectedOwnerSnapshot
+        activeCallRoomID = session.callRoomId
 
         do {
             try audioSessionCoordinator.providerWillConnect()
@@ -178,6 +182,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             await endNativeCallPresentation(reason: .failed)
             audioSessionCoordinator.providerDidDisconnect()
             activeOwnerSnapshot = nil
+            clearEpisodeWatchBridge()
             isConnected = false
             isMuted = true
             remoteParticipantCount = 0
@@ -221,6 +226,28 @@ final class ProviderRoomController: NSObject, ObservableObject {
         #endif
     }
 
+    func publishEpisodeWatchHint(_ hint: MobileEpisodeWatchLiveHint) async {
+        #if canImport(LiveKit)
+        guard isConnected,
+              hint.hasValidShape,
+              hint.callRoomId == activeCallRoomID,
+              hint.receiptId != lastPublishedEpisodeWatchReceiptID,
+              let ownerSnapshot = activeOwnerSnapshot,
+              AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot),
+              let data = try? JSONEncoder().encode(hint) else { return }
+        do {
+            let options = DataPublishOptions(
+                topic: MobileEpisodeWatchLiveHint.topic,
+                reliable: true
+            )
+            try await room.localParticipant.publish(data: data, options: options)
+            lastPublishedEpisodeWatchReceiptID = hint.receiptId
+        } catch {
+            // HTTPS room polling remains authoritative when transient room data fails.
+        }
+        #endif
+    }
+
     func disconnect() async {
         #if canImport(LiveKit)
         guard isConnected || isConnecting else {
@@ -228,6 +255,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
             await endNativeCallPresentation(reason: .remoteEnded)
             audioSessionCoordinator.providerDidDisconnect()
             activeOwnerSnapshot = nil
+            clearEpisodeWatchBridge()
             return
         }
 
@@ -240,6 +268,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         remoteParticipantCount = 0
         activeRoomName = nil
         activeOwnerSnapshot = nil
+        clearEpisodeWatchBridge()
         connectionStateLabel = "Disconnected"
         statusText = "Provider room disconnected. Local upload and transcript work can continue."
         #else
@@ -249,6 +278,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnecting = false
         isMuted = true
         activeOwnerSnapshot = nil
+        clearEpisodeWatchBridge()
         connectionStateLabel = "Disconnected"
         statusText = "Provider SDK unavailable. Local upload and transcript work can continue."
         #endif
@@ -274,6 +304,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         isConnecting = false
         if !isConnected {
             activeOwnerSnapshot = nil
+            clearEpisodeWatchBridge()
         }
         lastError = message
         statusText = message
@@ -340,6 +371,12 @@ final class ProviderRoomController: NSObject, ObservableObject {
         nativeCallPresentationLabel = "CallKit ready"
     }
 
+    private func clearEpisodeWatchBridge() {
+        activeCallRoomID = nil
+        lastPublishedEpisodeWatchReceiptID = nil
+        latestEpisodeWatchHint = nil
+    }
+
     private func requestCallKitTransaction(_ transaction: CXTransaction) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             callController.request(transaction) { error in
@@ -380,6 +417,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         try? audioSessionCoordinator.callKitDidDeactivate()
         audioSessionCoordinator.providerDidDisconnect()
         activeOwnerSnapshot = nil
+        clearEpisodeWatchBridge()
         isCallAudioSessionActive = false
         callAudioSessionLabel = "Call audio idle"
         isConnecting = false
@@ -408,6 +446,7 @@ final class ProviderRoomController: NSObject, ObservableObject {
         remoteParticipantCount = 0
         activeRoomName = nil
         activeOwnerSnapshot = nil
+        clearEpisodeWatchBridge()
         connectionStateLabel = "Needs attention"
         lastError = message
         statusText = message
@@ -438,6 +477,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.callAudioSessionLabel = "Call audio idle"
             self.connectionStateLabel = "Disconnected"
             self.activeOwnerSnapshot = nil
+            self.clearEpisodeWatchBridge()
             self.statusText = "CallKit reset the native call surface. Quipsly recording truth remains separate."
         }
     }
@@ -459,6 +499,7 @@ extension ProviderRoomController: CXProviderDelegate {
             self.isConnecting = false
             self.isMuted = true
             self.activeOwnerSnapshot = nil
+            self.clearEpisodeWatchBridge()
             self.connectionStateLabel = "Disconnected"
             self.statusText = "Native call ended. Local upload and transcript work can continue."
             action.fulfill()
@@ -529,6 +570,7 @@ extension ProviderRoomController: RoomDelegate {
                 self.audioSessionCoordinator.providerDidDisconnect()
                 await self.endNativeCallPresentation(reason: .remoteEnded)
                 self.activeOwnerSnapshot = nil
+                self.clearEpisodeWatchBridge()
                 self.statusText = "Provider room disconnected. Local recording and preserved uploads remain separate."
             default:
                 self.isConnecting = true
@@ -545,6 +587,24 @@ extension ProviderRoomController: RoomDelegate {
     nonisolated func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {
         Task { @MainActor in
             self.remoteParticipantCount = room.remoteParticipants.count
+        }
+    }
+
+    nonisolated func room(
+        _ room: Room,
+        participant: RemoteParticipant?,
+        didReceiveData data: Data,
+        forTopic topic: String,
+        encryptionType: EncryptionType
+    ) {
+        guard topic == "quipsly.episode-watch.authority.v1" else { return }
+        Task { @MainActor in
+            guard let hint = try? JSONDecoder().decode(
+                MobileEpisodeWatchLiveHint.self,
+                from: data
+            ), hint.hasValidShape else { return }
+            guard hint.callRoomId == self.activeCallRoomID else { return }
+            self.latestEpisodeWatchHint = hint
         }
     }
 }

@@ -60,6 +60,50 @@ struct MobileEpisodeWatchTimelineSync: Codable, Hashable {
     let sourceSegmentIds: [String]?
 }
 
+struct MobileEpisodeWatchReceipt: Codable, Hashable {
+    let id: String
+    let clientRequestId: String
+    let revision: Int
+    let command: String
+    let acceptedAt: String
+}
+
+struct MobileEpisodeWatchLiveHint: Codable, Hashable {
+    static let schemaVersion = "quipsly-episode-watch-hint.v1"
+    static let topic = "quipsly.episode-watch.authority.v1"
+
+    let schema: String
+    let projectSlug: String
+    let episodeSlug: String
+    let callRoomId: String
+    let revision: Int
+    let receiptId: String
+    let clientRequestId: String
+    let command: String
+    let acceptedAt: String
+    let sentAt: String
+
+    var hasValidShape: Bool {
+        schema == Self.schemaVersion
+            && revision > 0
+            && !projectSlug.isEmpty
+            && !episodeSlug.isEmpty
+            && !callRoomId.isEmpty
+            && !receiptId.isEmpty
+            && !clientRequestId.isEmpty
+            && !command.isEmpty
+            && Self.parseDate(acceptedAt) != nil
+            && Self.parseDate(sentAt) != nil
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
 struct MobileEpisodeWatchRoom: Codable, Hashable {
     let revision: Int
     let status: String
@@ -71,6 +115,7 @@ struct MobileEpisodeWatchRoom: Codable, Hashable {
     let clips: [MobileEpisodeWatchClip]
     let segments: [MobileEpisodeWatchSegment]?
     let timelineSync: MobileEpisodeWatchTimelineSync?
+    let lastCommand: MobileEpisodeWatchReceipt?
 
     var selectedClip: MobileEpisodeWatchClip? {
         clips.first { $0.id == selectedClipId }
@@ -160,6 +205,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     @Published private(set) var sharedConnectionReady = false
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var outboundLiveHint: MobileEpisodeWatchLiveHint?
 
     private let baseURL: URL
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
@@ -357,7 +403,14 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 )
             ],
             segments: segments,
-            timelineSync: timelineSync
+            timelineSync: timelineSync,
+            lastCommand: MobileEpisodeWatchReceipt(
+                id: "preview-receipt-8",
+                clientRequestId: "preview-command-8",
+                revision: 8,
+                command: "PAUSE",
+                acceptedAt: "2026-07-30T16:20:00.000Z"
+            )
         )
         displayPosition = 43.2
         statusMessage = switch previewState {
@@ -502,6 +555,19 @@ final class MobileEpisodeWatchClient: ObservableObject {
             guard context(for: session)?.key == currentContextKey else { return }
             await load(session: session, quiet: true)
         }
+    }
+
+    func receiveLiveHint(
+        _ hint: MobileEpisodeWatchLiveHint,
+        session: MobileCaptureSession
+    ) async {
+        guard hint.hasValidShape,
+              let context = context(for: session),
+              hint.projectSlug == context.projectSlug,
+              hint.episodeSlug == context.episodeSlug,
+              hint.callRoomId == session.callRoomId,
+              hint.revision > (room?.revision ?? -1) else { return }
+        await load(session: session, quiet: true)
     }
 
     func prepareSelectedClip() async {
@@ -865,6 +931,21 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 requestStartedAt: requestStartedAt
             )
             apply(nextRoom)
+            if let receipt = nextRoom.lastCommand,
+               receipt.revision == nextRoom.revision {
+                outboundLiveHint = MobileEpisodeWatchLiveHint(
+                    schema: MobileEpisodeWatchLiveHint.schemaVersion,
+                    projectSlug: context.projectSlug,
+                    episodeSlug: context.episodeSlug,
+                    callRoomId: session.callRoomId,
+                    revision: receipt.revision,
+                    receiptId: receipt.id,
+                    clientRequestId: receipt.clientRequestId,
+                    command: receipt.command,
+                    acceptedAt: receipt.acceptedAt,
+                    sentAt: Self.iso8601String(Date())
+                )
+            }
             statusMessage = commandStatusMessage(type)
             errorMessage = nil
             return true
@@ -1155,6 +1236,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private func resetForContextChange() {
         stopPlayer()
         room = nil
+        outboundLiveHint = nil
         canEdit = false
         sharedConnectionReady = false
         consecutivePollFailures = 0
@@ -1171,7 +1253,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
 
     private func context(
         for session: MobileCaptureSession
-    ) -> (key: String, episodeSlug: String, endpoint: URL)? {
+    ) -> (key: String, projectSlug: String, episodeSlug: String, endpoint: URL)? {
         guard let projectSlug = Self.safePathSlug(session.projectSlug),
               let episodeSlug = Self.safePathSlug(session.episodeSlug) else {
             return nil
@@ -1183,9 +1265,16 @@ final class MobileEpisodeWatchClient: ObservableObject {
             .appendingPathComponent("episode-room", isDirectory: false)
         return (
             key: "\(projectSlug)|\(episodeSlug)",
+            projectSlug: projectSlug,
             episodeSlug: episodeSlug,
             endpoint: endpoint
         )
+    }
+
+    private static func iso8601String(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 
     private func resolvedPlaybackURL(_ value: String) -> URL? {

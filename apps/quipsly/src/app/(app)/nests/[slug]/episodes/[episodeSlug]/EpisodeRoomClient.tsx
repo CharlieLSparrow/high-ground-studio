@@ -42,6 +42,10 @@ import {
   type EpisodeRoomClip,
   type EpisodeRoomState,
 } from "@/lib/episode-room/episode-room-contract";
+import {
+  episodeWatchLiveHintFromRoom,
+  type EpisodeWatchLiveHint,
+} from "@/lib/episode-room/episode-watch-live";
 import type {
   EpisodeRoomDeskPayload,
   EpisodeRoomImportedCandidate,
@@ -175,6 +179,7 @@ export default function EpisodeRoomClient({
   );
   const [localDuration, setLocalDuration] = useState(initialPayload.room.durationSeconds ?? 0);
   const [localPlaybackBlocked, setLocalPlaybackBlocked] = useState(false);
+  const [episodeWatchHint, setEpisodeWatchHint] = useState<EpisodeWatchLiveHint | null>(null);
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const rangeEndSentRef = useRef("");
@@ -192,6 +197,10 @@ export default function EpisodeRoomClient({
     : null;
   const sharedClockIsLive = !room.session?.recordingRoomId
     || boundRecordingSession?.status === "RECORDING";
+  const recordingSession = recordingSessions.find((session) => session.id === selectedRecordingRoomId)
+    || recordingSessions.find((session) => session.status === "RECORDING")
+    || recordingSessions[0]
+    || null;
 
   const refresh = useCallback(async (quiet = false) => {
     try {
@@ -293,12 +302,24 @@ export default function EpisodeRoomClient({
       if (typeof payload.timelineClipCount === "number") setTimelineClipCount(payload.timelineClipCount);
       setStatus("idle");
       if (options.success) setNotice(options.success);
+      if (recordingSession?.id) {
+        setEpisodeWatchHint(episodeWatchLiveHintFromRoom({
+          projectSlug,
+          episodeSlug,
+          callRoomId: recordingSession.id,
+        }, payload.room));
+      }
       return payload.room;
     }
     return null;
-  }, [canEdit, endpoint, episodeSlug, refresh]);
+  }, [canEdit, endpoint, episodeSlug, projectSlug, recordingSession?.id, refresh]);
   const sendCommandRef = useRef(sendCommand);
   sendCommandRef.current = sendCommand;
+
+  const receiveEpisodeWatchHint = useCallback((hint: EpisodeWatchLiveHint) => {
+    if (hint.revision <= roomRef.current.revision) return;
+    void refresh(true);
+  }, [refresh]);
 
   const refreshVault = useCallback(async (quiet = false) => {
     setVaultLoading(true);
@@ -561,10 +582,6 @@ export default function EpisodeRoomClient({
   const alignmentCandidates = candidates.filter(
     (candidate) => candidate.captureAlignment,
   );
-  const recordingSession = recordingSessions.find((session) => session.id === selectedRecordingRoomId)
-    || recordingSessions.find((session) => session.status === "RECORDING")
-    || recordingSessions[0]
-    || null;
   const episodeClockSeconds = sharedClockIsLive && room.session
     ? Math.max(
       0,
@@ -663,7 +680,16 @@ export default function EpisodeRoomClient({
             <span className="rounded-full border border-[#d8ad56]/40 px-3 py-1 text-[10px] uppercase tracking-wide text-[#d8ad56]">Same room as iPhone</span>
           </summary>
           <div className="pt-3">
-            <LiveSessionRoom callRoomId={recordingSession.id} sessionTitle={recordingSession.title} kind="episode" episodeSlug={episodeSlug} compact />
+            <LiveSessionRoom
+              callRoomId={recordingSession.id}
+              sessionTitle={recordingSession.title}
+              kind="episode"
+              projectSlug={projectSlug}
+              episodeSlug={episodeSlug}
+              episodeWatchHint={episodeWatchHint}
+              onEpisodeWatchHint={receiveEpisodeWatchHint}
+              compact
+            />
           </div>
         </details> : null}
 

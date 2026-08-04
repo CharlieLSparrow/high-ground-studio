@@ -21,6 +21,7 @@ const [
   episodeAccess,
   episodeStore,
   mediaRoute,
+  providerRoom,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "MobileEpisodeWatch.swift"), "utf8"),
   readFile(path.join(captureRoot, "AuthManager.swift"), "utf8"),
@@ -57,6 +58,7 @@ const [
     ),
     "utf8",
   ),
+  readFile(path.join(captureRoot, "ProviderRoomController.swift"), "utf8"),
 ]);
 
 const checks = [];
@@ -92,6 +94,25 @@ check(
       episodeStore.indexOf("export async function loadEpisodeRoomWatchRuntime"),
       episodeStore.indexOf("async function findProductionId"),
     ).includes("reconcileEpisodeCaptureProxies"),
+);
+check(
+  "LiveKit data only wakes iPhone Watch to fetch canonical Episode Room truth",
+  watch.includes("struct MobileEpisodeWatchLiveHint")
+    && watch.includes("hint.revision > (room?.revision ?? -1)")
+    && watch.includes("await load(session: session, quiet: true)")
+    && providerRoom.includes("didReceiveData data: Data")
+    && providerRoom.includes("hint.callRoomId == self.activeCallRoomID")
+    && providerRoom.includes("HTTPS room polling remains authoritative")
+    && !watch.includes("apply(hint"),
+);
+check(
+  "accepted iPhone Watch commands publish exact receipt-bound reliable hints",
+  watch.includes("receipt.revision == nextRoom.revision")
+    && watch.includes("receiptId: receipt.id")
+    && watch.includes("clientRequestId: receipt.clientRequestId")
+    && providerRoom.includes("DataPublishOptions(")
+    && providerRoom.includes("reliable: true")
+    && providerRoom.includes("hint.receiptId != lastPublishedEpisodeWatchReceiptID"),
 );
 check(
   "large Watch media downloads stream to a temporary file under stable-owner auth",

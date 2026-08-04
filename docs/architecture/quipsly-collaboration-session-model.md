@@ -129,6 +129,27 @@ The two threads may be visible near each other, but Quipsly never merges them
 implicitly. A deliberate promote/link action can later carry a Session decision
 into the Episode thread with provenance.
 
+## Shared Watch authority and realtime delivery
+
+Episode Watch is one shared transport, not a collection of loosely synchronized
+players. Any collaborator with edit permission can play, pause, seek, select a
+clip, or end a watched range. Nest first accepts that action against an expected
+Episode Room revision and writes the canonical receipt, watched source span,
+and Episode-clock alignment. Browser and iPhone players only follow that
+accepted room state.
+
+When both devices are in the Live Session, the sender also publishes a small
+reliable LiveKit data hint containing the exact project, episode, Session,
+revision, receipt, and command identifiers. Receivers validate all boundaries
+and then fetch the canonical Episode Room over authenticated HTTPS. They never
+apply a room-data payload directly. Stale, malformed, cross-episode, and
+cross-Session packets are ignored. Normal polling remains the recovery path for
+packet loss, participants outside the call, and provider outages.
+
+This produces low-latency controls without turning LiveKit into a second state
+store. Reconnect, editor assembly, audit history, and exact watched ranges stay
+deterministic even if the call plane disappears.
+
 ## Episode versus coaching behavior
 
 | Capability | Podcast Episode Session | Coaching Session |
@@ -163,6 +184,8 @@ Implemented in the browser:
   readback before and during recording;
 - canonical START/STOP receipts and resumable-v2 upload/finalization shared
   with iPhone Capture.
+- revisioned Episode Watch control from browser or iPhone, plus reliable
+  room-data wakeups that always reconcile against the canonical HTTPS room.
 
 Still gated:
 
@@ -173,8 +196,8 @@ Still gated:
    upload/finalization, and editor playback;
 3. complete two-person browser/iPhone acceptance with device route loss,
    reconnect, headphones, drift, and source/editor readback;
-4. add a deliberate bridge from Episode Watch commands to low-latency room data
-   while preserving the database receipt as authority;
+4. operate shared Watch with two real participants and verify control latency,
+   clip preparation, reconnect, exact ranges, and editor projection;
 5. finish the provider-recording outbox, per-room lock, and reconciliation
    before enabling egress START in production.
 

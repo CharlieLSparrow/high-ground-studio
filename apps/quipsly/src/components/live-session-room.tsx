@@ -25,6 +25,11 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
+import {
+  decodeEpisodeWatchLiveHint,
+  EPISODE_WATCH_LIVE_TOPIC,
+  type EpisodeWatchLiveHint,
+} from "@/lib/episode-room/episode-watch-live";
 
 type SessionKind = "coaching" | "episode";
 type DeviceOption = { deviceId: string; label: string };
@@ -91,13 +96,19 @@ export function LiveSessionRoom({
   callRoomId,
   sessionTitle,
   kind,
+  projectSlug = null,
   episodeSlug = null,
+  episodeWatchHint = null,
+  onEpisodeWatchHint,
   compact = false,
 }: {
   callRoomId: string;
   sessionTitle: string;
   kind: SessionKind;
+  projectSlug?: string | null;
   episodeSlug?: string | null;
+  episodeWatchHint?: EpisodeWatchLiveHint | null;
+  onEpisodeWatchHint?: (hint: EpisodeWatchLiveHint) => void;
   compact?: boolean;
 }) {
   const [status, setStatus] = useState<RoomStatus>("preflight");
@@ -118,6 +129,7 @@ export function LiveSessionRoom({
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
+  const lastPublishedWatchReceiptRef = useRef("");
   const preflightStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +360,20 @@ export function LiveSessionRoom({
         .on(RoomEvent.ParticipantConnected, () => updateRoster(room))
         .on(RoomEvent.ParticipantDisconnected, () => updateRoster(room))
         .on(RoomEvent.ActiveSpeakersChanged, () => updateRoster(room))
+        .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+          if (
+            topic !== EPISODE_WATCH_LIVE_TOPIC
+            || !projectSlug
+            || !episodeSlug
+            || !onEpisodeWatchHint
+          ) return;
+          const hint = decodeEpisodeWatchLiveHint(payload, {
+            projectSlug,
+            episodeSlug,
+            callRoomId,
+          });
+          if (hint) onEpisodeWatchHint(hint);
+        })
         .on(RoomEvent.Reconnecting, () => {
           setStatus("reconnecting");
           setMessage("Network changed. Quipsly is reconnecting this live conversation…");
@@ -399,7 +425,28 @@ export function LiveSessionRoom({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The live room could not connect.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearRemoteMedia, microphoneId, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearRemoteMedia, episodeSlug, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
+
+  useEffect(() => {
+    const room = roomRef.current;
+    if (
+      !connected
+      || !room
+      || !episodeWatchHint
+      || episodeWatchHint.receiptId === lastPublishedWatchReceiptRef.current
+      || episodeWatchHint.projectSlug !== projectSlug
+      || episodeWatchHint.episodeSlug !== episodeSlug
+      || episodeWatchHint.callRoomId !== callRoomId
+    ) return;
+    lastPublishedWatchReceiptRef.current = episodeWatchHint.receiptId;
+    void room.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify(episodeWatchHint)),
+      { reliable: true, topic: EPISODE_WATCH_LIVE_TOPIC },
+    ).catch(() => {
+      // This channel is only a latency hint. The durable room poll remains authoritative.
+      lastPublishedWatchReceiptRef.current = "";
+    });
+  }, [callRoomId, connected, episodeSlug, episodeWatchHint, projectSlug]);
 
   const toggleMicrophone = useCallback(async () => {
     const room = roomRef.current;

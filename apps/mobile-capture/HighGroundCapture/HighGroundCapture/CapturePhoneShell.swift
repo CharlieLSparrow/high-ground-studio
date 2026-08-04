@@ -5994,6 +5994,21 @@ private struct CaptureRecorderView: View {
                             }
                         }
                         .onDisappear { episodeWatch.stop() }
+                        .onChange(of: episodeWatch.outboundLiveHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await model.providerRoom.publishEpisodeWatchHint(hint)
+                            }
+                        }
+                        .onChange(of: model.providerRoom.latestEpisodeWatchHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await episodeWatch.receiveLiveHint(
+                                    hint,
+                                    session: session
+                                )
+                            }
+                        }
                     }
 
                     if audioCapture.captureState == .paused,
