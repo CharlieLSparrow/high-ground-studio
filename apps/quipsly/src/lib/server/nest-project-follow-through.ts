@@ -20,7 +20,7 @@ export function nestProjectTaskWhere(projectId: string, projectSlug: string, act
         { assignedUserId: actorUserId },
         { room: { OR: [
           { createdByUserId: actorUserId },
-          { participants: { some: { userId: actorUserId } } },
+          { participants: { some: { userId: actorUserId, accessStatus: "ACTIVE" } } },
           { booking: { clientUserId: actorUserId } },
           { booking: { coachUserId: actorUserId } },
         ] } },

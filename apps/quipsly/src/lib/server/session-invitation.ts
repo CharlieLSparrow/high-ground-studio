@@ -194,6 +194,13 @@ export async function acceptSessionInvitation(input: {
         ],
       },
     });
+    if (existing?.accessStatus === "REMOVED") {
+      throw new SessionInvitationError(
+        "PARTICIPANT_ACCESS_REMOVED",
+        "This participant has a removed Session access record. Ask the host to restore that record instead of accepting another invitation.",
+        409,
+      );
+    }
     const participant = existing
       ? await tx.callParticipant.update({
           where: { id: existing.id },

@@ -115,7 +115,7 @@ function actorRoomAccess(actor: TranscriptEvaluationActor, requireWrite: boolean
   return {
     OR: [
       { createdByUserId: actor.id },
-      { participants: { some: { userId: actor.id } } },
+      { participants: { some: { userId: actor.id, accessStatus: "ACTIVE" } } },
       { booking: { coachUserId: actor.id } },
       { booking: { clientUserId: actor.id } },
       ...(email ? [{ project: { accessGrants: { some: {

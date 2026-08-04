@@ -49,7 +49,7 @@ function roomAccess(userId: string) {
   return {
     OR: [
       { createdByUserId: userId },
-      { participants: { some: { userId } } },
+      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
     ],

@@ -40,6 +40,13 @@ async function body(request: Request) {
 
 function invitationRow(row: any) {
   const expired = row.status === "PENDING" && row.expiresAt.getTime() <= Date.now();
+  const participant = row.participant ? {
+    id: row.participant.id,
+    accessStatus: String(row.participant.accessStatus || "ACTIVE"),
+    accessRevision: Number(row.participant.accessRevision || 0),
+    providerAccessStatus: String(row.participant.providerAccessStatus || "NOT_REQUIRED"),
+    providerAccessErrorCode: row.participant.providerAccessErrorCode || null,
+  } : null;
   return {
     id: row.id,
     email: row.email,
@@ -51,6 +58,18 @@ function invitationRow(row: any) {
     revokedAt: row.revokedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     canRevokeLink: row.status === "PENDING" && !expired,
+    participant,
+    canRemoveParticipant: row.status === "ACCEPTED"
+      && row.participantCreated === true
+      && participant?.accessStatus === "ACTIVE",
+    canRestoreParticipant: row.status === "ACCEPTED"
+      && row.participantCreated === true
+      && participant?.accessStatus === "REMOVED"
+      && ["CONVERGED", "NOT_REQUIRED"].includes(participant.providerAccessStatus),
+    canReconcileProvider: row.status === "ACCEPTED"
+      && row.participantCreated === true
+      && participant?.accessStatus === "REMOVED"
+      && ["BLOCKED", "FAILED"].includes(participant.providerAccessStatus),
   };
 }
 
@@ -73,6 +92,17 @@ export async function GET(request: Request, context: { params: Promise<{ roomId:
   const invitations = await access.prisma.callRoomInvitation.findMany({
     where: { roomId: access.room.id },
     orderBy: { createdAt: "desc" },
+    include: {
+      participant: {
+        select: {
+          id: true,
+          accessStatus: true,
+          accessRevision: true,
+          providerAccessStatus: true,
+          providerAccessErrorCode: true,
+        },
+      },
+    },
   });
   return privateJson({
     ok: true,
@@ -105,10 +135,12 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
   }
   const currentParticipant = await access.prisma.callParticipant.findFirst({
     where: { roomId: access.room.id, email, userId: { not: null } },
-    select: { id: true },
+    select: { id: true, accessStatus: true },
   });
   if (currentParticipant) {
-    return privateJson({ ok: false, code: "ALREADY_PARTICIPANT", error: "That email is already connected to this Session." }, 409);
+    return currentParticipant.accessStatus === "REMOVED"
+      ? privateJson({ ok: false, code: "PARTICIPANT_ACCESS_REMOVED", error: "That participant was removed from this Session. Restore the existing access record instead of creating another identity." }, 409)
+      : privateJson({ ok: false, code: "ALREADY_PARTICIPANT", error: "That email is already connected to this Session." }, 409);
   }
 
   const { token, tokenHash } = createSessionInvitationToken();

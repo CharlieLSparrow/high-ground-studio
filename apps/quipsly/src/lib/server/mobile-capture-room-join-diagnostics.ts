@@ -41,7 +41,7 @@ export function captureRoomAccessWhere(callRoomId: string, user: CaptureRoomAcce
     id: callRoomId,
     OR: [
       { createdByUserId: user.id },
-      { participants: { some: { userId: user.id } } },
+      { participants: { some: { userId: user.id, accessStatus: "ACTIVE" as const } } },
       { booking: { clientUserId: user.id } },
       { booking: { coachUserId: user.id } },
     ],
@@ -64,7 +64,9 @@ function liveKitConfigured() {
 }
 
 export function resolveCaptureRoomParticipant(room: any, user: CaptureRoomAccessUser) {
-  const participant = (room?.participants || []).find((item: any) => item.userId === user.id) || null;
+  const participant = (room?.participants || []).find((item: any) =>
+    item.userId === user.id && (item.accessStatus || "ACTIVE") === "ACTIVE"
+  ) || null;
   const role = participant?.role || participantRoleForUser(room, user.id);
 
   return {

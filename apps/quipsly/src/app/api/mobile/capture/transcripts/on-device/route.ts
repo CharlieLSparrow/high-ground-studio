@@ -164,7 +164,7 @@ async function readJson(request: Request) {
 function accessibleRoomWhere(userId: string, actorEmail: string) {
   return [
     { room: { createdByUserId: userId } },
-    { room: { participants: { some: { userId } } } },
+    { room: { participants: { some: { userId, accessStatus: "ACTIVE" } } } },
     { room: { booking: { clientUserId: userId } } },
     { room: { booking: { coachUserId: userId } } },
     ...(actorEmail

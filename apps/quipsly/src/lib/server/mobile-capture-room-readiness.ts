@@ -158,7 +158,7 @@ export async function evaluateMobileCaptureRoomReadiness(args: {
   const room = await args.prisma.callRoom.findUnique({
     where: { id: args.roomId },
     include: {
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
   });

@@ -595,7 +595,7 @@ export async function GET(request: Request) {
     : {
         OR: [
           { createdByUserId: userId },
-          { participants: { some: { userId } } },
+          { participants: { some: { userId, accessStatus: "ACTIVE" } } },
           { booking: { clientUserId: userId } },
           { booking: { coachUserId: userId } },
         ],
@@ -670,7 +670,7 @@ export async function GET(request: Request) {
           callRoom: {
             include: {
               calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
-              participants: true,
+              participants: { where: { accessStatus: "ACTIVE" } },
               recordingConsents: true,
               recordingAssets: true,
               transcriptJobs: { orderBy: { createdAt: "desc" }, take: 3 },
@@ -734,7 +734,7 @@ export async function GET(request: Request) {
             },
           },
           calendarLinks: { orderBy: { createdAt: "desc" }, take: 3 },
-          participants: true,
+          participants: { where: { accessStatus: "ACTIVE" } },
           recordingConsents: true,
           recordingAssets: true,
           transcriptJobs: {
@@ -1395,7 +1395,7 @@ export async function POST(request: Request) {
                       calendarLinks: { orderBy: { createdAt: "desc" }, take: 1 },
                     },
                   },
-                  participants: true,
+                  participants: { where: { accessStatus: "ACTIVE" } },
                   calendarLinks: { orderBy: { createdAt: "desc" }, take: 1 },
                 },
               })

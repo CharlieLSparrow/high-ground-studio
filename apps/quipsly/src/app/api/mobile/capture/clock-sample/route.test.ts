@@ -79,7 +79,7 @@ describe("mobile capture clock sample", () => {
         id: "room-1",
         OR: [
           { createdByUserId: "user-1" },
-          { participants: { some: { userId: "user-1" } } },
+          { participants: { some: { userId: "user-1", accessStatus: "ACTIVE" } } },
           { booking: { clientUserId: "user-1" } },
           { booking: { coachUserId: "user-1" } },
         ],

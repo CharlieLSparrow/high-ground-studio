@@ -41,7 +41,7 @@ export function workPlanTaskAccessWhere(userId: string) {
     { assignedUserId: userId },
     { room: { OR: [
       { createdByUserId: userId },
-      { participants: { some: { userId } } },
+      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
     ] } },

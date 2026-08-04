@@ -78,7 +78,7 @@ export async function GET(request: Request) {
   const userId = session.user.id;
   const room = await prisma.callRoom.findFirst({
     where: captureRoomAccessWhere(callRoomId, session.user),
-    include: { participants: true, recordingConsents: true },
+    include: { participants: { where: { accessStatus: "ACTIVE" } }, recordingConsents: true },
   });
   if (!room) {
     return NextResponse.json({ ok: false, error: "You do not have access to this capture session." }, { status: 404 });
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
     where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
       booking: true,
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
   });

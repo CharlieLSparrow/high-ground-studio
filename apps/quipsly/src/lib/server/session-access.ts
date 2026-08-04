@@ -28,6 +28,7 @@ function sessionActorAccessConditions(
       participants: {
         some: {
           userId: actor.id,
+          accessStatus: "ACTIVE" as const,
           ...(projectGrant === "mutate"
             ? { role: { not: "OBSERVER" as const } }
             : {}),
@@ -111,7 +112,7 @@ export function sessionInvitationActorAccessWhere(actor: SessionAccessActor): Pr
   const email = normalizedEmail(actor);
   const conditions: Prisma.CallRoomWhereInput[] = [
     { createdByUserId: actor.id },
-    { participants: { some: { userId: actor.id, role: { in: ["HOST", "COACH", "PRODUCER"] } } } },
+    { participants: { some: { userId: actor.id, accessStatus: "ACTIVE", role: { in: ["HOST", "COACH", "PRODUCER"] } } } },
     { booking: { coachUserId: actor.id } },
   ];
   if (email) conditions.push({

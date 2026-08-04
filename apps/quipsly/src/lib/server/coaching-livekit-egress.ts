@@ -253,7 +253,7 @@ async function loadRoom(callRoomId: string) {
   const room = await prisma.callRoom.findUnique({
     where: { id: callRoomId },
     include: {
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
       recordingAssets: {
         orderBy: { createdAt: "desc" },

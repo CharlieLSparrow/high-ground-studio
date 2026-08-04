@@ -1,14 +1,23 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 import { SessionInvitations } from "./session-invitations";
 
 describe("SessionInvitations", () => {
   const originalFetch = globalThis.fetch;
 
-  afterEach(() => { globalThis.fetch = originalFetch; });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
 
   it("creates a Session-only link without claiming delivery", async () => {
-    globalThis.fetch = jest.fn()
+    globalThis.fetch = jest
+      .fn()
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -30,18 +39,37 @@ describe("SessionInvitations", () => {
             createdAt: "2026-08-04T12:00:00.000Z",
             canRevokeLink: true,
           },
-          invitePath: "/sessions/join?token=qsinv_test-token________________________________",
+          invitePath:
+            "/sessions/join?token=qsinv_test-token________________________________",
         }),
       }) as typeof fetch;
 
-    await act(async () => { render(<SessionInvitations roomId="room-1" purpose="PODCAST" />); });
-    await waitFor(() => expect(screen.getByText(/Expiring, email-bound invitation/i)).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "guest@example.test" } });
-    fireEvent.change(screen.getByLabelText("Name, optional"), { target: { value: "Guest" } });
-    fireEvent.click(screen.getByRole("button", { name: /Create private link/i }));
+    await act(async () => {
+      render(<SessionInvitations roomId="room-1" purpose="PODCAST" />);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Expiring, email-bound invitation/i),
+      ).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "guest@example.test" },
+    });
+    fireEvent.change(screen.getByLabelText("Name, optional"), {
+      target: { value: "Guest" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Create private link/i }),
+    );
 
-    await waitFor(() => expect(screen.getByText(/Quipsly has not emailed or messaged anyone/i)).toBeInTheDocument());
-    expect(screen.getByText(/sessions\/join\?token=qsinv_/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Quipsly has not emailed or messaged anyone/i),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/sessions\/join\?token=qsinv_/i),
+    ).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenLastCalledWith(
       "/api/sessions/room-1/invitations",
       expect.objectContaining({ method: "POST" }),
@@ -54,7 +82,104 @@ describe("SessionInvitations", () => {
       status: 404,
       json: async () => ({ ok: false, code: "NOT_FOUND" }),
     }) as typeof fetch;
-    await act(async () => { render(<SessionInvitations roomId="room-private" purpose="COACHING" />); });
-    await waitFor(() => expect(screen.queryByText(/Invite someone to this Session/i)).not.toBeInTheDocument());
+    await act(async () => {
+      render(<SessionInvitations roomId="room-private" purpose="COACHING" />);
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Invite someone to this Session/i),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("requires a second confirmation before removing accepted participant access", async () => {
+    const activeParticipant = {
+      id: "participant-1",
+      accessStatus: "ACTIVE",
+      accessRevision: 0,
+      providerAccessStatus: "NOT_REQUIRED",
+      providerAccessErrorCode: null,
+    };
+    const randomUUID = jest
+      .spyOn(crypto, "randomUUID")
+      .mockReturnValue("123e4567-e89b-42d3-a456-426614174000");
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          invitations: [
+            {
+              id: "invite-accepted",
+              email: "accepted@example.test",
+              displayName: "Accepted Guest",
+              role: "CLIENT",
+              status: "ACCEPTED",
+              expiresAt: "2026-08-11T12:00:00.000Z",
+              acceptedAt: "2026-08-04T12:00:00.000Z",
+              createdAt: "2026-08-04T11:00:00.000Z",
+              canRevokeLink: false,
+              canRemoveParticipant: true,
+              participant: activeParticipant,
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          participant: {
+            ...activeParticipant,
+            accessStatus: "REMOVED",
+            accessRevision: 1,
+            providerAccessStatus: "CONVERGED",
+          },
+          provider: {
+            status: "CONVERGED",
+            nextAction: "Provider devices are disconnected.",
+          },
+        }),
+      }) as typeof fetch;
+
+    await act(async () => {
+      render(<SessionInvitations roomId="room-1" purpose="COACHING" />);
+    });
+    const remove = await screen.findByRole("button", {
+      name: "Remove Session access",
+    });
+    fireEvent.click(remove);
+    expect(
+      screen.getByText(
+        /preserves consent history, recordings, transcript evidence, and authored work/i,
+      ),
+    ).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Provider devices are disconnected."),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Restore Session access" }),
+    ).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      "/api/sessions/room-1/participants/participant-1/access",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          action: "REMOVE",
+          requestId: "123e4567-e89b-42d3-a456-426614174000",
+          expectedRevision: 0,
+          reason: "Removed from the Session participant manager",
+        }),
+      }),
+    );
+    randomUUID.mockRestore();
   });
 });

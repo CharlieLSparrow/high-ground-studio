@@ -255,7 +255,7 @@ describe("scoped Nest chat threads", () => {
         status: true,
         createdByUserId: true,
         participants: {
-          where: { userId: "user-1" },
+          where: { userId: "user-1", accessStatus: "ACTIVE" },
           take: 1,
           select: { role: true },
         },

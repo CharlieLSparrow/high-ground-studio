@@ -195,7 +195,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
   const actorRoomVisibility = {
     OR: [
       { createdByUserId: actorUserId },
-      { participants: { some: { userId: actorUserId } } },
+      { participants: { some: { userId: actorUserId, accessStatus: "ACTIVE" as const } } },
       { booking: { is: { OR: [{ clientUserId: actorUserId }, { coachUserId: actorUserId }] } } },
     ],
   };

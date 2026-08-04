@@ -232,7 +232,7 @@ export async function assertMobileCaptureUploadReferences(input: MobileCaptureRe
               id: input.callRoomId,
               OR: [
                 { createdByUserId: input.actorUserId },
-                { participants: { some: { userId: input.actorUserId } } },
+                { participants: { some: { userId: input.actorUserId, accessStatus: "ACTIVE" } } },
                 { booking: { clientUserId: input.actorUserId } },
                 { booking: { coachUserId: input.actorUserId } },
               ],
@@ -258,6 +258,7 @@ export async function assertMobileCaptureUploadReferences(input: MobileCaptureRe
         where: {
           ...(input.participantId ? { id: input.participantId } : { userId: input.actorUserId }),
           roomId: room.id,
+          accessStatus: "ACTIVE",
           ...(!input.actorIsStaff && input.participantId ? { userId: input.actorUserId } : {}),
         },
       })
@@ -379,7 +380,7 @@ async function findOrCreateParticipant(input: MobileCaptureRecordInput, roomId: 
   }
 
   const actorParticipant = await input.prisma.callParticipant.findFirst({
-    where: { roomId, userId: input.actorUserId },
+    where: { roomId, userId: input.actorUserId, accessStatus: "ACTIVE" },
   });
   if (actorParticipant) {
     return actorParticipant;

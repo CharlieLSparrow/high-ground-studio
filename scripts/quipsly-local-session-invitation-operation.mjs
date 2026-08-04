@@ -15,6 +15,8 @@ const baseURL = requireLoopbackOrigin(
 );
 const ROOM_ID = "retained-session-invitation-20260804";
 const PROVIDER_ROOM_ID = "quipsly-retained-session-invitation-20260804";
+const WORKSPACE_SLUG = "qa-retained-session-access";
+const PROJECT_SLUG = "qa-retained-session-access";
 const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 const host = {
   role: "host",
@@ -33,38 +35,99 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(enabled, "Set QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 to authorize the retained local invitation artifact.");
+assert(
+  enabled,
+  "Set QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 to authorize the retained local invitation artifact.",
+);
 const databaseURL = new URL(
-  process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
+  process.env.DATABASE_URL ||
+    "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio",
 );
 assert(
-  ["postgres:", "postgresql:"].includes(databaseURL.protocol)
-    && ["127.0.0.1", "localhost", "[::1]"].includes(databaseURL.hostname),
+  ["postgres:", "postgresql:"].includes(databaseURL.protocol) &&
+    ["127.0.0.1", "localhost", "[::1]"].includes(databaseURL.hostname),
   "Retained Session invitation operation requires loopback PostgreSQL and refuses remote databases.",
 );
 process.env.DATABASE_URL = databaseURL.toString();
 
 const { getPrismaClient } = await import("../apps/quipsly/src/lib/prisma.ts");
 const prisma = getPrismaClient();
-const sourceRoom = await prisma.callRoom.findUnique({
-  where: { id: "retained-coaching-follow-up-20260731" },
-  select: { projectId: true, projectSlug: true, nestSlug: true },
-});
-assert(sourceRoom?.projectId, "The retained coaching Nest fixture is unavailable.");
 const users = await prisma.user.findMany({
   where: { firebaseUid: { in: [host.uid, guest.uid] } },
   select: { id: true, firebaseUid: true },
 });
 const userByUid = new Map(users.map((user) => [user.firebaseUid, user.id]));
-assert(userByUid.has(host.uid) && userByUid.has(guest.uid), "Retained host and guest identities are unavailable.");
+assert(
+  userByUid.has(host.uid) && userByUid.has(guest.uid),
+  "Retained host and guest identities are unavailable.",
+);
+
+const operationWorkspace = await prisma.studioWorkspace.upsert({
+  where: { slug: WORKSPACE_SLUG },
+  update: {
+    name: "QA Retained · Session access",
+    ownerLabel: host.email,
+    isPrivate: true,
+  },
+  create: {
+    id: "qa-retained-session-access-workspace",
+    slug: WORKSPACE_SLUG,
+    name: "QA Retained · Session access",
+    description:
+      "Private local-only participant removal and restoration acceptance evidence.",
+    ownerLabel: host.email,
+    isPrivate: true,
+  },
+});
+const operationProject = await prisma.studioProject.upsert({
+  where: {
+    workspaceId_slug: {
+      workspaceId: operationWorkspace.id,
+      slug: PROJECT_SLUG,
+    },
+  },
+  update: { name: "QA Retained · Session access", isPrivate: true },
+  create: {
+    id: "qa-retained-session-access-project",
+    workspaceId: operationWorkspace.id,
+    slug: PROJECT_SLUG,
+    name: "QA Retained · Session access",
+    description:
+      "A Session-only guest boundary with no surrounding Nest grant.",
+    sourceLabel: "quipsly-local-session-invitation-operation",
+    isPrivate: true,
+  },
+});
+await prisma.studioProjectAccessGrant.upsert({
+  where: {
+    projectId_email: { projectId: operationProject.id, email: host.email },
+  },
+  update: {
+    role: "OWNER",
+    status: "ACTIVE",
+    createdByUserId: userByUid.get(host.uid),
+    createdByEmail: host.email,
+  },
+  create: {
+    projectId: operationProject.id,
+    email: host.email,
+    role: "OWNER",
+    status: "ACTIVE",
+    createdByUserId: userByUid.get(host.uid),
+    createdByEmail: host.email,
+  },
+});
+await prisma.studioProjectAccessGrant.deleteMany({
+  where: { projectId: operationProject.id, email: guest.email },
+});
 
 await prisma.callRoom.upsert({
   where: { id: ROOM_ID },
   create: {
     id: ROOM_ID,
-    projectId: sourceRoom.projectId,
-    projectSlug: sourceRoom.projectSlug,
-    nestSlug: sourceRoom.nestSlug,
+    projectId: operationProject.id,
+    projectSlug: operationProject.slug,
+    nestSlug: operationProject.slug,
     createdByUserId: userByUid.get(host.uid),
     purpose: "COACHING",
     status: "OPEN",
@@ -72,13 +135,17 @@ await prisma.callRoom.upsert({
     providerRoomId: PROVIDER_ROOM_ID,
     title: "Retained email-bound Session invitation rehearsal",
     openedAt: new Date(),
-    metadataJson: { source: "quipsly-local-session-invitation-operation", localOnly: true, retainedTestArtifact: true },
+    metadataJson: {
+      source: "quipsly-local-session-invitation-operation",
+      localOnly: true,
+      retainedTestArtifact: true,
+    },
   },
   update: {
     createdByUserId: userByUid.get(host.uid),
-    projectId: sourceRoom.projectId,
-    projectSlug: sourceRoom.projectSlug,
-    nestSlug: sourceRoom.nestSlug,
+    projectId: operationProject.id,
+    projectSlug: operationProject.slug,
+    nestSlug: operationProject.slug,
     purpose: "COACHING",
     status: "OPEN",
     provider: "livekit",
@@ -86,6 +153,12 @@ await prisma.callRoom.upsert({
     openedAt: new Date(),
     endedAt: null,
   },
+});
+await prisma.callParticipantAccessReceipt.deleteMany({
+  where: { roomId: ROOM_ID },
+});
+await prisma.callParticipantProviderGrantReceipt.deleteMany({
+  where: { roomId: ROOM_ID },
 });
 await prisma.callRoomInvitation.deleteMany({ where: { roomId: ROOM_ID } });
 await prisma.callParticipant.deleteMany({ where: { roomId: ROOM_ID } });
@@ -111,9 +184,16 @@ const browser = await chromium.launch({
 });
 const journeys = [];
 try {
-  const hostContext = await browser.newContext({ viewport: { width: 1440, height: 1100 }, permissions: ["microphone", "camera"], reducedMotion: "reduce" });
+  const hostContext = await browser.newContext({
+    viewport: { width: 1440, height: 1100 },
+    permissions: ["microphone", "camera"],
+    reducedMotion: "reduce",
+  });
   const hostPage = await hostContext.newPage();
-  const hostPassword = readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: host.email });
+  const hostPassword = readRetainedQAPassword({
+    service: KEYCHAIN_SERVICE,
+    account: host.email,
+  });
   assert(hostPassword, "Retained host Keychain password is unavailable.");
   await signInThroughRenderedLogin({
     page: hostPage,
@@ -124,36 +204,80 @@ try {
   });
   journeys.push({ identity: host, context: hostContext, page: hostPage });
 
-  await hostPage.getByText("Invite someone to this Session", { exact: true }).click();
+  await hostPage
+    .getByText("Invite someone to this Session", { exact: true })
+    .click();
   await hostPage.getByLabel("Email", { exact: true }).fill(guest.email);
-  await hostPage.getByLabel("Name, optional", { exact: true }).fill(guest.displayName);
-  const invitationForm = hostPage.locator("form").filter({ hasText: "Expiring, email-bound invitation" });
+  await hostPage
+    .getByLabel("Name, optional", { exact: true })
+    .fill(guest.displayName);
+  const invitationForm = hostPage
+    .locator("form")
+    .filter({ hasText: "Expiring, email-bound invitation" });
   await invitationForm.locator("select").first().selectOption("CLIENT");
-  const createdResponse = hostPage.waitForResponse((response) => (
-    response.url().includes(`/api/sessions/${ROOM_ID}/invitations`)
-      && response.request().method() === "POST"
-  ));
-  await hostPage.getByRole("button", { name: "Create private link", exact: true }).click();
+  const createdResponse = hostPage.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/sessions/${ROOM_ID}/invitations`) &&
+      response.request().method() === "POST",
+  );
+  await hostPage
+    .getByRole("button", { name: "Create private link", exact: true })
+    .click();
   const invitationPacket = await (await createdResponse).json();
-  assert(invitationPacket?.ok === true && invitationPacket?.invitePath, "Rendered host invitation did not return a private link.");
-  assert(invitationPacket?.boundaries?.emailSent === false, "Invitation operation unexpectedly claimed external email delivery.");
+  assert(
+    invitationPacket?.ok === true && invitationPacket?.invitePath,
+    "Rendered host invitation did not return a private link.",
+  );
+  assert(
+    invitationPacket?.boundaries?.emailSent === false,
+    "Invitation operation unexpectedly claimed external email delivery.",
+  );
   const inviteURL = new URL(invitationPacket.invitePath, baseURL);
-  assert(inviteURL.pathname === "/sessions/join", "Invitation link did not target the canonical Session lobby.");
-  assert(inviteURL.searchParams.get("token")?.startsWith("qsinv_"), "Invitation link omitted opaque Session token material.");
+  assert(
+    inviteURL.pathname === "/sessions/join",
+    "Invitation link did not target the canonical Session lobby.",
+  );
+  assert(
+    inviteURL.searchParams.get("token")?.startsWith("qsinv_"),
+    "Invitation link omitted opaque Session token material.",
+  );
   const operatedInviteURL = inviteURL;
-  await hostPage.getByText(/Quipsly has not emailed or messaged anyone/i).waitFor({ timeout: 20_000 });
+  await hostPage
+    .getByText(/Quipsly has not emailed or messaged anyone/i)
+    .waitFor({ timeout: 20_000 });
 
   const wrongAccountPage = await hostContext.newPage();
-  await wrongAccountPage.goto(operatedInviteURL.toString(), { waitUntil: "domcontentloaded" });
-  await wrongAccountPage.getByRole("link", { name: "Switch account", exact: true }).waitFor({ timeout: 20_000 });
-  assert(await wrongAccountPage.getByRole("button", { name: "Accept and open lobby", exact: true }).count() === 0, "Wrong account was offered invitation acceptance.");
-  const stillPending = await prisma.callRoomInvitation.findFirst({ where: { roomId: ROOM_ID, email: guest.email } });
-  assert(stillPending?.status === "PENDING" && Boolean(stillPending.tokenHash), "Wrong-account inspection changed the invitation ledger.");
+  await wrongAccountPage.goto(operatedInviteURL.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await wrongAccountPage
+    .getByRole("link", { name: "Switch account", exact: true })
+    .waitFor({ timeout: 20_000 });
+  assert(
+    (await wrongAccountPage
+      .getByRole("button", { name: "Accept and open lobby", exact: true })
+      .count()) === 0,
+    "Wrong account was offered invitation acceptance.",
+  );
+  const stillPending = await prisma.callRoomInvitation.findFirst({
+    where: { roomId: ROOM_ID, email: guest.email },
+  });
+  assert(
+    stillPending?.status === "PENDING" && Boolean(stillPending.tokenHash),
+    "Wrong-account inspection changed the invitation ledger.",
+  );
   await wrongAccountPage.close();
 
-  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ["microphone", "camera"], reducedMotion: "reduce" });
+  const guestContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    permissions: ["microphone", "camera"],
+    reducedMotion: "reduce",
+  });
   const guestPage = await guestContext.newPage();
-  const guestPassword = readRetainedQAPassword({ service: KEYCHAIN_SERVICE, account: guest.email });
+  const guestPassword = readRetainedQAPassword({
+    service: KEYCHAIN_SERVICE,
+    account: guest.email,
+  });
   assert(guestPassword, "Retained guest Keychain password is unavailable.");
   await signInThroughRenderedLogin({
     page: guestPage,
@@ -163,67 +287,364 @@ try {
     callbackPath: `${operatedInviteURL.pathname}${operatedInviteURL.search}`,
   });
   journeys.push({ identity: guest, context: guestContext, page: guestPage });
-  await guestPage.getByRole("heading", { name: "Retained email-bound Session invitation rehearsal", exact: true }).waitFor({ timeout: 20_000 });
-  await guestPage.getByText(`Signed in as ${guest.email}`, { exact: true }).waitFor();
-  await guestPage.getByRole("button", { name: "Accept and open lobby", exact: true }).click();
-  await guestPage.waitForURL(new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`), { timeout: 20_000 });
+  await guestPage
+    .getByRole("heading", {
+      name: "Retained email-bound Session invitation rehearsal",
+      exact: true,
+    })
+    .waitFor({ timeout: 20_000 });
+  await guestPage
+    .getByText(`Signed in as ${guest.email}`, { exact: true })
+    .waitFor();
+  await guestPage
+    .getByRole("button", { name: "Accept and open lobby", exact: true })
+    .click();
+  await guestPage.waitForURL(
+    new RegExp(`/sessions/${ROOM_ID}\\?mode=live&joined=1$`),
+    { timeout: 20_000 },
+  );
   const replayPage = await guestContext.newPage();
-  await replayPage.goto(operatedInviteURL.toString(), { waitUntil: "domcontentloaded" });
-  await replayPage.getByRole("heading", { name: "This link cannot open a Session.", exact: true }).waitFor({ timeout: 20_000 });
-  assert(await replayPage.getByRole("button", { name: "Accept and open lobby", exact: true }).count() === 0, "Consumed invitation was offered a second acceptance.");
+  await replayPage.goto(operatedInviteURL.toString(), {
+    waitUntil: "domcontentloaded",
+  });
+  await replayPage
+    .getByRole("heading", {
+      name: "This link cannot open a Session.",
+      exact: true,
+    })
+    .waitFor({ timeout: 20_000 });
+  assert(
+    (await replayPage
+      .getByRole("button", { name: "Accept and open lobby", exact: true })
+      .count()) === 0,
+    "Consumed invitation was offered a second acceptance.",
+  );
   await replayPage.close();
 
   for (const journey of journeys) {
-    const allowMicrophone = journey.page.getByRole("button", { name: "Allow microphone", exact: true });
+    const allowMicrophone = journey.page.getByRole("button", {
+      name: "Allow microphone",
+      exact: true,
+    });
     await allowMicrophone.waitFor({ timeout: 20_000 });
     await allowMicrophone.click();
-    const join = journey.page.getByRole("button", { name: "Join live room", exact: true });
+    const join = journey.page.getByRole("button", {
+      name: "Join live room",
+      exact: true,
+    });
     await join.waitFor({ state: "visible", timeout: 20_000 });
-    for (let attempt = 0; attempt < 40 && !(await join.isEnabled()); attempt += 1) await journey.page.waitForTimeout(250);
-    assert(await join.isEnabled(), `${journey.identity.role} device setup did not become join-ready.`);
+    for (
+      let attempt = 0;
+      attempt < 40 && !(await join.isEnabled());
+      attempt += 1
+    )
+      await journey.page.waitForTimeout(250);
+    assert(
+      await join.isEnabled(),
+      `${journey.identity.role} device setup did not become join-ready.`,
+    );
     await join.click();
-    await journey.page.getByRole("button", { name: "Leave", exact: true }).waitFor({ timeout: 20_000 });
+    await journey.page
+      .getByRole("button", { name: "Leave", exact: true })
+      .waitFor({ timeout: 20_000 });
   }
   for (const journey of journeys) {
-    await journey.page.getByText("In this room · 2", { exact: true }).waitFor({ timeout: 20_000 });
+    await journey.page
+      .getByText("In this room · 2", { exact: true })
+      .waitFor({ timeout: 20_000 });
   }
 
   const receiptText = `Accepted invitation guest joined the retained Session on ${new Date().toISOString()}.`;
-  await guestPage.getByPlaceholder("Write to everyone in this Session…").fill(receiptText);
-  await guestPage.getByRole("button", { name: "Send Session message", exact: true }).click();
-  await hostPage.getByText(receiptText, { exact: true }).waitFor({ timeout: 20_000 });
+  await guestPage
+    .getByPlaceholder("Write to everyone in this Session…")
+    .fill(receiptText);
+  await guestPage
+    .getByRole("button", { name: "Send Session message", exact: true })
+    .click();
+  await hostPage
+    .getByText(receiptText, { exact: true })
+    .waitFor({ timeout: 20_000 });
 
   const [invitation, participant] = await Promise.all([
-    prisma.callRoomInvitation.findFirst({ where: { roomId: ROOM_ID, email: guest.email } }),
-    prisma.callParticipant.findFirst({ where: { roomId: ROOM_ID, userId: userByUid.get(guest.uid) } }),
+    prisma.callRoomInvitation.findFirst({
+      where: { roomId: ROOM_ID, email: guest.email },
+    }),
+    prisma.callParticipant.findFirst({
+      where: { roomId: ROOM_ID, userId: userByUid.get(guest.uid) },
+    }),
   ]);
-  assert(invitation?.status === "ACCEPTED" && !invitation.tokenHash, "Invitation ledger did not become accepted and tokenless.");
-  assert(participant?.role === "CLIENT" && participant.id === invitation.participantId, "Accepted invitation did not bind the intended participant role and identity.");
+  assert(
+    invitation?.status === "ACCEPTED" && !invitation.tokenHash,
+    "Invitation ledger did not become accepted and tokenless.",
+  );
+  assert(
+    participant?.role === "CLIENT" &&
+      participant.id === invitation.participantId,
+    "Accepted invitation did not bind the intended participant role and identity.",
+  );
 
-  console.log(JSON.stringify({
-    ok: true,
-    localOnly: true,
-    roomId: ROOM_ID,
-    inviteScope: "SESSION_ONLY",
-    emailBoundAcceptance: "passed",
-    wrongAccountDenial: "passed",
-    oneTimeTokenRemoved: true,
-    consumedLinkReplayDenial: "passed",
-    participantRole: participant.role,
-    browserToBrowserLiveKit: "passed",
-    sessionChatRoundTrip: "passed",
-    externalInvitationSent: false,
-    retainedSourceStarted: false,
-    providerRecordingStarted: false,
-    secretsPrinted: false,
-  }, null, 2));
+  const hostManagerPage = await hostContext.newPage();
+  const invitationLedgerLoaded = hostManagerPage.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/sessions/${ROOM_ID}/invitations`) &&
+      response.request().method() === "GET",
+  );
+  await hostManagerPage.goto(`${baseURL}/sessions/${ROOM_ID}?mode=live`, {
+    waitUntil: "domcontentloaded",
+  });
+  await hostManagerPage
+    .getByRole("heading", {
+      name: "Retained email-bound Session invitation rehearsal",
+      exact: true,
+    })
+    .waitFor({ timeout: 20_000 });
+  await invitationLedgerLoaded;
+  const invitationManager = hostManagerPage.getByText(
+    "Invite someone to this Session",
+    { exact: true },
+  );
+  await invitationManager.click();
+  const guestInvitation = hostManagerPage
+    .locator("article")
+    .filter({ hasText: guest.email });
+  await guestInvitation
+    .getByRole("button", { name: "Remove Session access", exact: true })
+    .waitFor({ timeout: 20_000 });
+  await guestInvitation
+    .getByRole("button", { name: "Remove Session access", exact: true })
+    .click();
+  const removalResponse = hostManagerPage.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .includes(
+          `/api/sessions/${ROOM_ID}/participants/${participant.id}/access`,
+        ) && response.request().method() === "POST",
+  );
+  await guestInvitation
+    .getByRole("button", { name: "Confirm removal", exact: true })
+    .click();
+  const removalPacket = await (await removalResponse).json();
+  assert(
+    removalPacket?.ok === true,
+    `Participant removal failed: ${removalPacket?.error || "unknown response"}`,
+  );
+  assert(
+    removalPacket?.boundaries?.canonicalAccessRemoved === true,
+    "Participant removal did not confirm the canonical authorization boundary.",
+  );
+  assert(
+    removalPacket?.boundaries?.recordingChanged === false,
+    "Participant removal unexpectedly changed recording state.",
+  );
+  assert(
+    removalPacket?.provider?.status === "CONVERGED",
+    `LiveKit removal did not converge: ${removalPacket?.provider?.status || "missing"}`,
+  );
+  const guestDisconnectSignalObserved = await guestPage
+    .getByText(
+      "The live conversation ended. Joining never started a recording.",
+      { exact: true },
+    )
+    .waitFor({ timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+
+  const guestJoinDenial = await guestPage.evaluate(
+    async ({ callRoomId }) => {
+      const response = await fetch("/api/mobile/capture/rooms/join", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callRoomId,
+          clientInstanceId: "removed-browser-device",
+          clientKind: "web",
+        }),
+      });
+      return {
+        status: response.status,
+        packet: await response.json().catch(() => ({})),
+      };
+    },
+    { callRoomId: ROOM_ID },
+  );
+  assert(
+    guestJoinDenial.status === 404 && guestJoinDenial.packet?.canJoin !== true,
+    "Removed guest was still able to mint a live-room token.",
+  );
+
+  const guestChatDenial = await guestPage.evaluate(
+    async ({ projectSlug, callRoomId }) => {
+      const url = new URL("/api/nest-chat", window.location.origin);
+      url.searchParams.set("projectSlug", projectSlug);
+      url.searchParams.set("threadKey", `session:${callRoomId}`);
+      const response = await fetch(url);
+      return {
+        status: response.status,
+        packet: await response.json().catch(() => ({})),
+      };
+    },
+    { projectSlug: operationProject.slug, callRoomId: ROOM_ID },
+  );
+  assert(
+    guestChatDenial.status === 404 && guestChatDenial.packet?.ok !== true,
+    "Removed guest could still read the Session conversation thread.",
+  );
+
+  const removedSessionResponse = await guestPage.reload({
+    waitUntil: "domcontentloaded",
+  });
+  assert(
+    removedSessionResponse?.status() === 404,
+    "Removed guest could still render the canonical Session workspace.",
+  );
+
+  const [removedParticipant, removalReceipts, providerGrantReceipts] =
+    await Promise.all([
+      prisma.callParticipant.findUnique({ where: { id: participant.id } }),
+      prisma.callParticipantAccessReceipt.findMany({
+        where: { participantId: participant.id },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.callParticipantProviderGrantReceipt.findMany({
+        where: { participantId: participant.id },
+        orderBy: { issuedAt: "asc" },
+      }),
+    ]);
+  assert(
+    removedParticipant?.accessStatus === "REMOVED",
+    "Canonical participant access was not retained as removed.",
+  );
+  assert(
+    removedParticipant?.providerAccessStatus === "CONVERGED",
+    "Provider reconciliation state was not retained as converged.",
+  );
+  assert(
+    removalReceipts.some((receipt) => receipt.action === "REMOVE"),
+    "Append-only removal receipt is missing.",
+  );
+  assert(
+    removalReceipts.some(
+      (receipt) =>
+        receipt.action === "PROVIDER_RECONCILE" &&
+        receipt.providerStatus === "CONVERGED",
+    ),
+    "Append-only provider reconciliation receipt is missing.",
+  );
+  assert(
+    providerGrantReceipts.length >= 1,
+    "Provider grant issuance receipts are missing for the removed participant.",
+  );
+
+  await guestInvitation
+    .getByRole("button", { name: "Restore Session access", exact: true })
+    .waitFor({ timeout: 20_000 });
+  const restoreResponse = hostManagerPage.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .includes(
+          `/api/sessions/${ROOM_ID}/participants/${participant.id}/access`,
+        ) && response.request().method() === "POST",
+  );
+  await guestInvitation
+    .getByRole("button", { name: "Restore Session access", exact: true })
+    .click();
+  const restorePacket = await (await restoreResponse).json();
+  assert(
+    restorePacket?.ok === true &&
+      restorePacket?.boundaries?.canonicalAccessRestored === true,
+    "Participant access was not restored through the host UI.",
+  );
+  assert(
+    restorePacket?.boundaries?.providerJoined === false &&
+      restorePacket?.boundaries?.recordingChanged === false,
+    "Restoring access unexpectedly joined media or changed recording state.",
+  );
+
+  await guestPage.reload({ waitUntil: "domcontentloaded" });
+  await guestPage
+    .getByRole("heading", {
+      name: "Retained email-bound Session invitation rehearsal",
+      exact: true,
+    })
+    .waitFor({ timeout: 20_000 });
+  await guestPage
+    .getByRole("button", { name: "Join live room", exact: true })
+    .waitFor({ timeout: 20_000 });
+  assert(
+    (await guestPage
+      .getByRole("button", { name: "Leave", exact: true })
+      .count()) === 0,
+    "Restoring access automatically rejoined the provider room.",
+  );
+  const restoredParticipant = await prisma.callParticipant.findUnique({
+    where: { id: participant.id },
+  });
+  const restoreReceipt = await prisma.callParticipantAccessReceipt.findFirst({
+    where: { participantId: participant.id, action: "RESTORE" },
+  });
+  assert(
+    restoredParticipant?.accessStatus === "ACTIVE" &&
+      restoredParticipant.accessRevision === 2,
+    "Restored participant state or revision is incorrect.",
+  );
+  assert(
+    Boolean(restoreReceipt),
+    "Append-only restoration receipt is missing.",
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        localOnly: true,
+        roomId: ROOM_ID,
+        inviteScope: "SESSION_ONLY",
+        emailBoundAcceptance: "passed",
+        wrongAccountDenial: "passed",
+        oneTimeTokenRemoved: true,
+        consumedLinkReplayDenial: "passed",
+        participantRole: participant.role,
+        browserToBrowserLiveKit: "passed",
+        sessionChatRoundTrip: "passed",
+        connectedParticipantCanonicalRemoval: "passed",
+        providerImmediateReadbackZero: true,
+        guestDisconnectSignalObserved,
+        selfHostedTokenRevocationClaimed: false,
+        removedJoinTokenDenial: "passed",
+        removedSessionChatDenial: "passed",
+        providerReconciliationReadback: "passed",
+        immutableAccessReceipts: "passed",
+        participantRestoreWithoutAutoJoin: "passed",
+        externalInvitationSent: false,
+        retainedSourceStarted: false,
+        providerRecordingStarted: false,
+        secretsPrinted: false,
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
   for (const journey of journeys) {
-    await journey.page.getByRole("button", { name: "Leave", exact: true }).click().catch(() => undefined);
-    await clearRenderedSession(journey.page, baseURL, journey.identity.role).catch(() => undefined);
+    await journey.page
+      .getByRole("button", { name: "Leave", exact: true })
+      .click()
+      .catch(() => undefined);
+    await clearRenderedSession(
+      journey.page,
+      baseURL,
+      journey.identity.role,
+    ).catch(() => undefined);
     await journey.context.close();
   }
   await browser.close();
-  await prisma.callRoom.update({ where: { id: ROOM_ID }, data: { status: "ENDED", endedAt: new Date() } }).catch(() => undefined);
+  await prisma.callRoom
+    .update({
+      where: { id: ROOM_ID },
+      data: { status: "ENDED", endedAt: new Date() },
+    })
+    .catch(() => undefined);
   await prisma.$disconnect();
 }

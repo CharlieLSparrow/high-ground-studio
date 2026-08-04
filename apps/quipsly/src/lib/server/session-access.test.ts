@@ -20,7 +20,7 @@ describe("canonical Session access", () => {
     ).toEqual({
       OR: expect.arrayContaining([
         { createdByUserId: "editor-2" },
-        { participants: { some: { userId: "editor-2" } } },
+        { participants: { some: { userId: "editor-2", accessStatus: "ACTIVE" } } },
         {
           project: {
             accessGrants: {
@@ -72,6 +72,7 @@ describe("canonical Session access", () => {
           participants: {
             some: {
               userId: "editor-2",
+              accessStatus: "ACTIVE",
               role: { not: "OBSERVER" },
             },
           },
@@ -110,6 +111,7 @@ describe("canonical Session access", () => {
           participants: {
             some: {
               userId: "producer-1",
+              accessStatus: "ACTIVE",
               role: { in: ["HOST", "COACH", "PRODUCER"] },
             },
           },

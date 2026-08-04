@@ -24,7 +24,18 @@ Date: 2026-08-04
   Nest, and does not join LiveKit or start local/provider recording. An operated
   retained-guest iPhone 17 Pro simulator pass proved the exact Session title
   and all three stopped states.
-- Full Nest Jest passes 292 suites / 1,531 runnable tests, the 172-route Nest
+- Accepted invitation evidence is now separate from current participant
+  authority. A host can remove invitation-owned Session access without deleting
+  consent, media, transcript, chat, or authored history; Quipsly records an
+  append-only revisioned receipt, denies every Nest/mobile access path, and
+  reconciles every known per-device LiveKit identity. Restoration is explicit
+  and does not auto-join media, send a message, or start recording. A two-account
+  local operation proved connected canonical removal, immediate provider-zero
+  readback,
+  join-token and Session-chat denial, workspace 404, retained evidence, and
+  no-effect restoration. See
+  `docs/coordination/2026-08-04-session-participant-access-reconciliation.md`.
+- Full Nest Jest passes 294 suites / 1,540 runnable tests, the 173-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

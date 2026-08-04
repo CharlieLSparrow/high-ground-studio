@@ -209,6 +209,25 @@ enum CallParticipantRole {
   OBSERVER
 }
 
+enum CallParticipantAccessStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum CallParticipantAccessAction {
+  REMOVE
+  RESTORE
+  PROVIDER_RECONCILE
+}
+
+enum CallParticipantProviderStatus {
+  NOT_REQUIRED
+  PENDING
+  CONVERGED
+  BLOCKED
+  FAILED
+}
+
 enum CallRoomInvitationStatus {
   PENDING
   ACCEPTED
@@ -620,6 +639,8 @@ model User {
   paymentRecords                  PaymentRecord[]                             @relation("PaymentRecordUser")
   callRoomsCreated                CallRoom[]                                  @relation("CallRoomCreatedBy")
   callParticipants                CallParticipant[]                           @relation("CallParticipantUser")
+  callParticipantAccessChanges    CallParticipant[]                           @relation("CallParticipantAccessChangedBy")
+  callParticipantAccessReceipts   CallParticipantAccessReceipt[]              @relation("CallParticipantAccessReceiptActor")
   callRoomInvitationsCreated      CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
   callRoomInvitationsAccepted     CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
   recordingConsents               RecordingConsent[]                          @relation("RecordingConsentUser")
@@ -1616,10 +1637,12 @@ model CallRoom {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
-  booking                       CoachingBooking?                @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  createdByUser                 User?                           @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  project                       StudioProject?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  booking                       CoachingBooking?                      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdByUser                 User?                                 @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  project                       StudioProject?                        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   participants                  CallParticipant[]
+  participantAccessReceipts     CallParticipantAccessReceipt[]
+  participantProviderGrants     CallParticipantProviderGrantReceipt[]
   invitations                   CallRoomInvitation[]
   recordingConsents             RecordingConsent[]
   stateReceipts                 CaptureRoomStateReceipt[]
@@ -1763,29 +1786,90 @@ model MediaVaultUploadReservation {
 }
 
 model CallParticipant {
-  id             String              @id @default(cuid())
-  roomId         String
-  userId         String?
-  displayName    String?
-  email          String?
-  role           CallParticipantRole @default(GUEST)
-  joinedAt       DateTime?
-  leftAt         DateTime?
-  deviceLabel    String?
-  connectionJson Json                @default("{}")
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  id                         String                        @id @default(cuid())
+  roomId                     String
+  userId                     String?
+  displayName                String?
+  email                      String?
+  role                       CallParticipantRole           @default(GUEST)
+  accessStatus               CallParticipantAccessStatus   @default(ACTIVE)
+  accessRevision             Int                           @default(0)
+  accessChangedAt            DateTime?
+  accessChangedByUserId      String?
+  providerAccessStatus       CallParticipantProviderStatus @default(NOT_REQUIRED)
+  providerAccessReconciledAt DateTime?
+  providerAccessErrorCode    String?
+  joinedAt                   DateTime?
+  leftAt                     DateTime?
+  deviceLabel                String?
+  connectionJson             Json                          @default("{}")
+  createdAt                  DateTime                      @default(now())
+  updatedAt                  DateTime                      @updatedAt
 
-  room                          CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user                          User?                          @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+  room                          CallRoom                              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user                          User?                                 @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+  accessChangedBy               User?                                 @relation("CallParticipantAccessChangedBy", fields: [accessChangedByUserId], references: [id], onDelete: SetNull)
+  accessReceipts                CallParticipantAccessReceipt[]
+  providerGrantReceipts         CallParticipantProviderGrantReceipt[]
   recordingConsents             RecordingConsent[]
   recordingAssets               RecordingAsset[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
   acceptedInvitations           CallRoomInvitation[]
 
   @@index([roomId, role])
+  @@index([roomId, accessStatus, role])
   @@index([userId, createdAt])
   @@index([email, createdAt])
+}
+
+model CallParticipantAccessReceipt {
+  id                    String                        @id @default(cuid())
+  requestId             String                        @unique @db.Uuid
+  roomId                String
+  participantId         String
+  actorUserId           String?
+  action                CallParticipantAccessAction
+  accessStatusBefore    CallParticipantAccessStatus
+  accessStatusAfter     CallParticipantAccessStatus
+  accessRevision        Int
+  reason                String?
+  providerStatus        CallParticipantProviderStatus
+  providerRoomId        String?
+  providerIdentityCount Int                           @default(0)
+  providerOutcomeJson   Json                          @default("{}")
+  createdAt             DateTime                      @default(now())
+
+  room        CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  actor       User?           @relation("CallParticipantAccessReceiptActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+  @@index([participantId, createdAt])
+  @@index([participantId, accessRevision, createdAt])
+  @@index([providerStatus, createdAt])
+}
+
+model CallParticipantProviderGrantReceipt {
+  id               String   @id @default(cuid())
+  roomId           String
+  participantId    String
+  tokenJti         String   @unique
+  providerIdentity String
+  providerRoomId   String
+  clientInstanceId String?
+  clientKind       String
+  deviceLabel      String?
+  issuedAt         DateTime
+  expiresAt        DateTime
+  metadataJson     Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  room        CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, expiresAt])
+  @@index([roomId, providerIdentity, expiresAt])
+  @@index([providerRoomId, expiresAt])
 }
 
 model CallRoomInvitation {

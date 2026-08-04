@@ -311,7 +311,7 @@ async function loadThread(
         status: true,
         createdByUserId: true,
         participants: {
-          where: { userId: actor.id },
+          where: { userId: actor.id, accessStatus: "ACTIVE" },
           take: 1,
           select: { role: true },
         },

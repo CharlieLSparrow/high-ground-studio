@@ -26,7 +26,7 @@ function roomAccess(userId: string, isStaff: boolean, projectIds: string[] = [])
   return isStaff ? {} : {
     OR: [
       { createdByUserId: userId },
-      { participants: { some: { userId } } },
+      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
       ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),

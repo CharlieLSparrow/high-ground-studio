@@ -31,7 +31,7 @@ function taskAccessWhere(userId: string, projectIds: string[] = []) {
     ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
     { room: { OR: [
       { createdByUserId: userId },
-      { participants: { some: { userId } } },
+      { participants: { some: { userId, accessStatus: "ACTIVE" as const } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
       ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
@@ -43,7 +43,7 @@ function taskAccessWhere(userId: string, projectIds: string[] = []) {
 function roomAccessWhere(userId: string, projectIds: string[] = []) {
   return [
     { createdByUserId: userId },
-    { participants: { some: { userId } } },
+    { participants: { some: { userId, accessStatus: "ACTIVE" as const } } },
     { booking: { clientUserId: userId } },
     { booking: { coachUserId: userId } },
     ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),

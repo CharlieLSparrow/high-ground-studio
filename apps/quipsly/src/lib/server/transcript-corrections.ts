@@ -150,7 +150,7 @@ function accessibleRoomWhere(roomId: string, actor: TranscriptCorrectionActor) {
     id: roomId,
     OR: [
       { createdByUserId: actor.id },
-      { participants: { some: { userId: actor.id } } },
+      { participants: { some: { userId: actor.id, accessStatus: "ACTIVE" } } },
       { booking: { clientUserId: actor.id } },
       { booking: { coachUserId: actor.id } },
       ...(email ? [{ project: { accessGrants: { some: { email, status: "ACTIVE" } } } }] : []),

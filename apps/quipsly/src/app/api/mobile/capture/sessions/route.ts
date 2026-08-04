@@ -59,7 +59,7 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
       calendarLinks: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   },
-  participants: true,
+  participants: { where: { accessStatus: "ACTIVE" } },
   recordingConsents: true,
   stateReceipts: {
     where: {
@@ -210,7 +210,7 @@ export async function GET(request: Request) {
     : {
         OR: [
           { createdByUserId: userId },
-          { participants: { some: { userId } } },
+          { participants: { some: { userId, accessStatus: "ACTIVE" } } },
           { booking: { clientUserId: userId } },
           { booking: { coachUserId: userId } },
           ...(actorEmail ? [{
@@ -544,7 +544,7 @@ export async function POST(request: Request) {
         },
       },
     },
-    include: { participants: true },
+    include: { participants: { where: { accessStatus: "ACTIVE" } } },
   });
 
   const hostParticipant = room.participants.find((item: any) => item.userId === userId) || room.participants[0] || null;

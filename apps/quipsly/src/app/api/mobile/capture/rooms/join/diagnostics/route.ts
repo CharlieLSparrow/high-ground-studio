@@ -61,7 +61,7 @@ async function roomJoinDiagnostics(request: Request, body: Record<string, unknow
     where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
       booking: { include: { paymentRecord: true } },
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
   });

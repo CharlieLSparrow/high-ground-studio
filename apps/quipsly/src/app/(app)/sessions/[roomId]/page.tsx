@@ -77,6 +77,7 @@ export default async function SessionReviewPage({
         updatedAt: true,
         project: { select: { id: true, name: true, slug: true } },
         participants: {
+          where: { accessStatus: "ACTIVE" },
           orderBy: { createdAt: "asc" },
           select: {
             id: true,

@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
       booking: { include: { paymentRecord: true } },
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
     },
   });
@@ -132,7 +132,9 @@ export async function POST(request: Request) {
     );
   }
 
-  let participant = room.participants.find((item: any) => item.userId === userId);
+  let participant = room.participants.find((item: any) =>
+    item.userId === userId && (item.accessStatus || "ACTIVE") === "ACTIVE"
+  );
   let participantCreated = false;
   if (!participant) {
     const role = room.booking?.coachUserId === userId ? "COACH" : room.booking?.clientUserId === userId ? "CLIENT" : "GUEST";
@@ -204,13 +206,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const providerIdentity = clientInstanceId ? `${participant.id}:${clientInstanceId}` : participant.id;
   const participantToken = createLiveKitJoinToken({
     apiKey: livekitApiKey,
     apiSecret: livekitApiSecret,
     // One canonical Quipsly participant may intentionally join from both a
     // browser and iPhone Capture. LiveKit identities must be unique per active
     // device or the later connection will evict the earlier one.
-    identity: clientInstanceId ? `${participant.id}:${clientInstanceId}` : participant.id,
+    identity: providerIdentity,
     name: participant.displayName || session.user.name || session.user.primaryEmail,
     roomName,
     metadata: {
@@ -222,6 +225,28 @@ export async function POST(request: Request) {
       deviceLabel: requestedDeviceLabel || null,
       purpose: room.purpose,
       recordingConsentStatus,
+    },
+  });
+
+  await prisma.callParticipantProviderGrantReceipt.create({
+    data: {
+      roomId: room.id,
+      participantId: participant.id,
+      tokenJti: participantToken.safeClaims.jti,
+      providerIdentity,
+      providerRoomId: roomName,
+      clientInstanceId: clientInstanceId || null,
+      clientKind,
+      deviceLabel: requestedDeviceLabel || null,
+      issuedAt: new Date(participantToken.issuedAt),
+      expiresAt: new Date(participantToken.expiresAt),
+      metadataJson: {
+        source: "mobile-capture-room-join",
+        roomScoped: true,
+        tokenPrepared: true,
+        tokenReturned: false,
+        recordingStarted: false,
+      },
     },
   });
 

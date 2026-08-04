@@ -178,7 +178,7 @@ export async function GET(request: Request) {
       : {
           OR: [
             { createdByUserId: userId },
-            { participants: { some: { userId } } },
+            { participants: { some: { userId, accessStatus: "ACTIVE" } } },
             { booking: { clientUserId: userId } },
             { booking: { coachUserId: userId } },
             ...(actorEmail
@@ -198,7 +198,7 @@ export async function GET(request: Request) {
           calendarLinks: { orderBy: { createdAt: "desc" }, take: 1 },
         },
       },
-      participants: true,
+      participants: { where: { accessStatus: "ACTIVE" } },
       recordingConsents: true,
       recordingAssets: true,
       transcriptJobs: {

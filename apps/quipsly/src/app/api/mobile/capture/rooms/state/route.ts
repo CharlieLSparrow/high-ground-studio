@@ -214,14 +214,14 @@ export async function POST(request: Request) {
               id: callRoomId,
               OR: [
                 { createdByUserId: userId },
-                { participants: { some: { userId } } },
+                { participants: { some: { userId, accessStatus: "ACTIVE" } } },
                 { booking: { clientUserId: userId } },
                 { booking: { coachUserId: userId } },
               ],
             },
         include: {
           booking: { include: { paymentRecord: true } },
-          participants: true,
+          participants: { where: { accessStatus: "ACTIVE" } },
           recordingConsents: true,
         },
       });

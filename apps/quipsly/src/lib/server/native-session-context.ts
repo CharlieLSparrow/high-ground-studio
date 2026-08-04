@@ -108,7 +108,7 @@ export async function buildNativeSessionContext(request: Request) {
           transcriptCorrections: { some: {} },
           OR: [
             { createdByUserId: actor.id },
-            { participants: { some: { userId: actor.id } } },
+            { participants: { some: { userId: actor.id, accessStatus: "ACTIVE" } } },
             { booking: { clientUserId: actor.id } },
             { booking: { coachUserId: actor.id } },
           ],

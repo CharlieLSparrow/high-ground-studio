@@ -40,7 +40,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
   const bookingIds = bookingRows.map((booking: { id: string }) => booking.id);
   const roomOr: any[] = [
     { createdByUserId: userId },
-    { participants: { some: { userId } } },
+    { participants: { some: { userId, accessStatus: "ACTIVE" } } },
   ];
   if (bookingIds.length) roomOr.push({ bookingId: { in: bookingIds } });
   const roomRows = await prisma.callRoom.findMany({ where: { OR: roomOr }, select: { id: true, bookingId: true }, take: 500 });

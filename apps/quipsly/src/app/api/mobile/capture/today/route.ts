@@ -67,7 +67,7 @@ function taskAccessWhere(userId: string) {
     { assignedUserId: userId },
     { room: { OR: [
       { createdByUserId: userId },
-      { participants: { some: { userId } } },
+      { participants: { some: { userId, accessStatus: "ACTIVE" } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
     ] } },
@@ -79,7 +79,7 @@ function roomAccessWhere(userId: string, isStaff: boolean) {
   if (isStaff) return {};
   return { OR: [
     { createdByUserId: userId },
-    { participants: { some: { userId } } },
+    { participants: { some: { userId, accessStatus: "ACTIVE" } } },
     { booking: { clientUserId: userId } },
     { booking: { coachUserId: userId } },
   ] };

@@ -66,6 +66,7 @@ function liveKitRoom(overrides: Record<string, unknown> = {}) {
 describe("mobile capture room join", () => {
   const findFirst = jest.fn();
   const createParticipant = jest.fn();
+  const createProviderGrantReceipt = jest.fn();
   const originalLiveKitUrl = process.env.LIVEKIT_URL;
   const originalLiveKitApiKey = process.env.LIVEKIT_API_KEY;
   const originalLiveKitApiSecret = process.env.LIVEKIT_API_SECRET;
@@ -86,6 +87,7 @@ describe("mobile capture room join", () => {
     mockedPrisma.mockReturnValue({
       callRoom: { findFirst },
       callParticipant: { create: createParticipant },
+      callParticipantProviderGrantReceipt: { create: createProviderGrantReceipt },
     } as never);
     mockedToken.mockReturnValue({
       token: "signed-room-token",
