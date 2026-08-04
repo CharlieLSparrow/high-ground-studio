@@ -29,6 +29,59 @@ export type AudioMasteryReviewMoment = {
   detail: string;
 };
 
+type AudioSignalStatisticsSummary = {
+  channel: number | null;
+  dcOffset: number;
+  peakDbfs: number;
+  rmsDbfs: number;
+  rmsPeakDbfs: number | null;
+  rmsTroughDbfs: number | null;
+  crestFactor: number | null;
+  flatFactor: number | null;
+  peakCount: number | null;
+  noiseFloorDbfs: number | null;
+  dynamicRangeDb: number | null;
+  zeroCrossingRate: number | null;
+  nanCount: number;
+  infCount: number;
+  denormalCount: number;
+};
+
+export type AudioSignalDiagnosisSummary = {
+  diagnosisId: string;
+  analyzedAt: string;
+  durationSeconds: number;
+  sampleRateHz: number;
+  channelCount: number;
+  overall: AudioSignalStatisticsSummary & { channel: null };
+  channels: Array<AudioSignalStatisticsSummary & { channel: number }>;
+  nearSilenceSpans: Array<{ startSeconds: number; endSeconds: number; durationSeconds: number }>;
+  observations: Array<{
+    kind: "near-full-scale" | "near-silence" | "dc-offset" | "channel-imbalance" | "invalid-samples";
+    severity: "attention" | "warning";
+    startSeconds: number;
+    endSeconds: number;
+    detail: string;
+    requiresListening: true;
+    evidence: Record<string, number>;
+  }>;
+  thresholds: {
+    nearFullScaleDbfs: -0.05;
+    nearSilenceDbfs: -55;
+    nearSilenceMinimumSeconds: 0.25;
+    dcOffsetAmplitude: 0.01;
+    channelImbalanceDb: 6;
+  };
+  analyzer: {
+    name: "ffmpeg-astats-silencedetect";
+    version: string;
+    completeDecode: true;
+    statisticsAreNotListeningJudgments: true;
+    nearSilenceIsNotAutomaticallyADropout: true;
+    noiseFloorIsAnEstimate: true;
+  };
+};
+
 function finite(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
 }
@@ -151,6 +204,7 @@ export function AudioMasteryAudition({
   mastered,
   targetLufs,
   maximumTruePeakDbtp,
+  diagnosis,
 }: {
   sourceUrl: string;
   masteredUrl: string;
@@ -158,6 +212,7 @@ export function AudioMasteryAudition({
   mastered: AudioMasteryMeasurement;
   targetLufs: number;
   maximumTruePeakDbtp: number;
+  diagnosis: AudioSignalDiagnosisSummary | null;
 }) {
   const sourceRef = useRef<HTMLAudioElement>(null);
   const masteredRef = useRef<HTMLAudioElement>(null);
@@ -229,7 +284,9 @@ export function AudioMasteryAudition({
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="text-xs font-black">Mastering audition</div>
-            <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">Verified preview ready. Compare it with the immutable source before approving any sound.</p>
+            <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">
+              Verified preview ready. {diagnosis ? `${diagnosis.observations.length} signal candidate${diagnosis.observations.length === 1 ? "" : "s"} to review.` : "Add decoded signal evidence to this legacy preview."}
+            </p>
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
             {passes ? "Target verified" : "Needs attention"}
@@ -305,6 +362,49 @@ export function AudioMasteryAudition({
         <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-fuchsia-200">{source.truePeakDbtp.toFixed(1)}</div><div className="text-slate-400">Source dBTP</div></div>
         <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-200">{mastered.truePeakDbtp.toFixed(1)}</div><div className="text-slate-400">Preview dBTP</div></div>
       </div>
+
+      <section className="mt-3 rounded-lg border border-slate-700 bg-slate-900 p-3" aria-label="Decoded signal diagnosis">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-black">Decoded signal diagnosis</div>
+            <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">Independent amplitude, channel, invalid-sample, and near-silence evidence. Every candidate still requires listening.</p>
+          </div>
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${diagnosis ? "border-sky-700 bg-sky-950 text-sky-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
+            {diagnosis ? "Complete decode" : "Evidence upgrade needed"}
+          </span>
+        </div>
+        {diagnosis ? (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[9px] font-bold sm:grid-cols-5">
+              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black">{diagnosis.overall.rmsDbfs.toFixed(1)}</div><div className="text-slate-400">RMS dBFS</div></div>
+              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black">{diagnosis.overall.peakDbfs.toFixed(1)}</div><div className="text-slate-400">Sample peak dBFS</div></div>
+              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black">{diagnosis.overall.noiseFloorDbfs === null ? "—" : diagnosis.overall.noiseFloorDbfs.toFixed(1)}</div><div className="text-slate-400">Estimated floor dBFS</div></div>
+              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black">{diagnosis.overall.dcOffset.toFixed(4)}</div><div className="text-slate-400">DC offset</div></div>
+              <div className="col-span-2 rounded-md bg-slate-950 px-2 py-2 sm:col-span-1"><div className="font-mono text-sm font-black">{diagnosis.channelCount} / {(diagnosis.sampleRateHz / 1_000).toFixed(0)}k</div><div className="text-slate-400">Channels / Hz</div></div>
+            </div>
+            {diagnosis.observations.length === 0 ? (
+              <div className="mt-3 rounded-md border border-emerald-800 bg-emerald-950/60 px-3 py-2 text-[9px] font-bold leading-4 text-emerald-200">
+                No deterministic signal-attention candidates were found. This does not certify noise, tone, intelligibility, or subjective quality.
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {diagnosis.observations.map((observation, index) => (
+                  <button key={`${observation.kind}-${observation.startSeconds}-${index}`} type="button" onClick={() => seek(observation.startSeconds)} className={`rounded-lg border px-3 py-2 text-left ${observation.severity === "warning" ? "border-rose-800 bg-rose-950/50 hover:border-rose-400" : "border-amber-800 bg-amber-950/40 hover:border-amber-400"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-[0.1em]">{observation.kind.replaceAll("-", " ")}</span>
+                      <span className="font-mono text-[9px] font-black">{clock(observation.startSeconds)}{observation.endSeconds > observation.startSeconds ? `–${clock(observation.endSeconds)}` : ""}</span>
+                    </div>
+                    <div className="mt-1 text-[9px] font-bold leading-4 text-slate-300">{observation.detail}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-[8px] font-bold leading-4 text-slate-500">FFmpeg {diagnosis.analyzer.version} · complete source decode · noise floor is an estimate · near-silence is never automatically treated as a dropout.</p>
+          </>
+        ) : (
+          <p className="mt-3 rounded-md border border-amber-800 bg-amber-950/40 px-3 py-2 text-[9px] font-bold leading-4 text-amber-200">This preview predates server-grade signal diagnosis. Upgrade it from the media card to add evidence without replacing the mastered bytes.</p>
+        )}
+      </section>
 
       <div className="mt-3"><AudioMasteryComparisonGraph source={source} mastered={mastered} targetLufs={targetLufs} /></div>
       {moments.length > 0 && (

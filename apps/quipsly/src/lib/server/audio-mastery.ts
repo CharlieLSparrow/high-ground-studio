@@ -33,6 +33,7 @@ export type PublicAudioMasteryStatus = {
     seriesResolutionMs: number;
     series: Array<{ timeMs: number; momentaryLufs: number | null; shortTermLufs: number | null; integratedLufs: number | null; truePeakDbtp: number | null }>;
   };
+  signalDiagnosis: null | ReturnType<typeof publicSignalDiagnosis>;
   proposal: null | {
     action: "no-change" | "render-loudness-master";
     assessment: ReturnType<typeof publicAssessment>;
@@ -74,7 +75,9 @@ export async function queueAudioMastery(input: {
       const current = parseAudioMasteryJob(existing.inputJson, existing.id);
       if (current.source.sha256 === evidence.sha256 && current.profileId === input.profileId && existing.status !== "failed") {
         const existingStatus = toPublicAudioMasteryStatus(existing);
-        if (existingStatus.status !== "failed") return existingStatus;
+        if (existingStatus.status !== "failed" && !(existingStatus.status === "completed" && existingStatus.signalDiagnosis === null)) {
+          return existingStatus;
+        }
       }
     } catch {
       // A legacy or malformed row does not own the new source-bound request.
@@ -242,6 +245,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
     status: integrityFailure ? "failed" : declaredStatus,
     profileId: contract?.profileId ?? null,
     sourceMeasurement: result ? publicMeasurement(result.sourceMeasurement) : null,
+    signalDiagnosis: result?.signalDiagnosis ? publicSignalDiagnosis(result.signalDiagnosis) : null,
     proposal: result ? {
       action: result.proposal.action,
       assessment: publicAssessment(result.proposal.assessment),
@@ -279,6 +283,22 @@ function publicMeasurement(value: ReturnType<typeof parseAudioMasteryResult>["so
   };
 }
 
+function publicSignalDiagnosis(value: NonNullable<ReturnType<typeof parseAudioMasteryResult>["signalDiagnosis"]>) {
+  return {
+    diagnosisId: value.diagnosisId,
+    analyzedAt: value.analyzedAt,
+    durationSeconds: value.durationSeconds,
+    sampleRateHz: value.sampleRateHz,
+    channelCount: value.channelCount,
+    overall: value.overall,
+    channels: value.channels,
+    nearSilenceSpans: value.nearSilenceSpans,
+    observations: value.observations,
+    thresholds: value.thresholds,
+    analyzer: value.analyzer,
+  };
+}
+
 function publicAssessment(value: { profileId: AudioMasteryProfileId; integratedStatus: "within-target" | "too-quiet" | "too-loud"; truePeakStatus: "within-ceiling" | "over-ceiling"; integratedDeltaLu: number; passes: boolean }) {
   return { ...value };
 }
@@ -289,6 +309,7 @@ function registrationMetadata(result: ReturnType<typeof parseAudioMasteryResult>
     sourceId,
     providerSourceId: outputPath,
     sourceMeasurement: result.sourceMeasurement,
+    signalDiagnosis: result.signalDiagnosis,
     proposal: result.proposal,
     derivative: result.derivative,
     worker: result.worker,
@@ -304,6 +325,7 @@ function emptyStatus(): PublicAudioMasteryStatus {
     status: "not-queued",
     profileId: null,
     sourceMeasurement: null,
+    signalDiagnosis: null,
     proposal: null,
     derivative: null,
     error: null,

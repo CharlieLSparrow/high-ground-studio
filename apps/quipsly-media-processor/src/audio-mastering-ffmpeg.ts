@@ -3,10 +3,16 @@ import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 
 import {
+  AUDIO_SIGNAL_DIAGNOSIS_KIND,
+  AUDIO_SIGNAL_DIAGNOSIS_VERSION,
   AUDIO_MASTERY_PROFILES,
   AUDIO_MASTERY_MEASUREMENT_KIND,
   AUDIO_MASTERY_CONTRACT_VERSION,
+  buildAudioSignalObservations,
+  parseAudioSignalDiagnosis,
   parseAudioMasteryMeasurement,
+  type AudioSignalChannelStatistics,
+  type AudioSignalDiagnosis,
   type AudioLoudnessPoint,
   type AudioMasteryMeasurement,
   type AudioMasteryProfileId,
@@ -84,6 +90,68 @@ export class FfmpegAudioMasteringEngine {
         version,
         standard: "ITU-R BS.1770 / EBU R128",
         completeDecode: true,
+      },
+    });
+  }
+
+  async diagnose(inputPath: string, input: {
+    source: AudioMasterySourceBinding;
+    diagnosisId?: string;
+    analyzedAt?: string;
+  }): Promise<AudioSignalDiagnosis> {
+    const sourceBefore = await inspectBoundSource(inputPath, input.source);
+    const [probe, version, statistics, nearSilenceSpans] = await Promise.all([
+      probeAudio(inputPath, this.ffprobePath),
+      ffmpegVersion(this.ffmpegPath),
+      measureAstats(inputPath, this.ffmpegPath),
+      measureNearSilence(inputPath, this.ffmpegPath),
+    ]);
+    const sourceAfter = await inspectBoundSource(inputPath, input.source);
+    if (sourceBefore.sha256 !== sourceAfter.sha256 || sourceBefore.sizeBytes !== sourceAfter.sizeBytes) {
+      throw new ProxyTranscodeError(
+        "audio-signal-source-drift",
+        "The immutable audio source changed while Quipsly diagnosed it.",
+      );
+    }
+    if (statistics.channels.length !== probe.channels) {
+      throw new ProxyTranscodeError(
+        "audio-signal-channel-mismatch",
+        "FFmpeg signal statistics did not cover every decoded audio channel.",
+      );
+    }
+    const observations = buildAudioSignalObservations({
+      durationSeconds: probe.durationSeconds,
+      overall: statistics.overall,
+      channels: statistics.channels,
+      nearSilenceSpans,
+    });
+    return parseAudioSignalDiagnosis({
+      kind: AUDIO_SIGNAL_DIAGNOSIS_KIND,
+      version: AUDIO_SIGNAL_DIAGNOSIS_VERSION,
+      diagnosisId: input.diagnosisId ?? `diagnosis_${randomUUID().replaceAll("-", "")}`,
+      analyzedAt: input.analyzedAt ?? new Date().toISOString(),
+      source: input.source,
+      durationSeconds: probe.durationSeconds,
+      sampleRateHz: probe.sampleRateHz,
+      channelCount: probe.channels,
+      overall: statistics.overall,
+      channels: statistics.channels,
+      nearSilenceSpans,
+      observations,
+      thresholds: {
+        nearFullScaleDbfs: -0.05,
+        nearSilenceDbfs: -55,
+        nearSilenceMinimumSeconds: 0.25,
+        dcOffsetAmplitude: 0.01,
+        channelImbalanceDb: 6,
+      },
+      analyzer: {
+        name: "ffmpeg-astats-silencedetect",
+        version,
+        completeDecode: true,
+        statisticsAreNotListeningJudgments: true,
+        nearSilenceIsNotAutomaticallyADropout: true,
+        noiseFloorIsAnEstimate: true,
       },
     });
   }
@@ -305,6 +373,124 @@ async function measureSeries(inputPath: string, ffmpegPath: string) {
     });
   });
   return [...seconds.values()].sort((left, right) => left.timeMs - right.timeMs);
+}
+
+export function parseAstatsStatistics(stderr: string): {
+  overall: AudioSignalChannelStatistics;
+  channels: AudioSignalChannelStatistics[];
+} {
+  const channels = new Map<number, Record<string, number>>();
+  let overall: Record<string, number> = {};
+  let current: Record<string, number> | null = null;
+  for (const rawLine of stderr.split(/\r?\n/)) {
+    const line = rawLine.replace(/^.*?\]\s*/, "").trim();
+    const channelMatch = /^Channel:\s*(\d+)$/.exec(line);
+    if (channelMatch) {
+      const channel = Number(channelMatch[1]);
+      current = channels.get(channel) ?? {};
+      channels.set(channel, current);
+      continue;
+    }
+    if (line === "Overall") {
+      overall = {};
+      current = overall;
+      continue;
+    }
+    const metric = /^([^:]+):\s*(.+)$/.exec(line);
+    if (!metric || !current) continue;
+    const parsed = diagnosticNumber(metric[2], metric[1]);
+    if (parsed !== null) current[metric[1]] = parsed;
+  }
+  const result = {
+    overall: statisticsFromMap(null, overall),
+    channels: [...channels.entries()].sort(([left], [right]) => left - right).map(([channel, values]) => statisticsFromMap(channel, values)),
+  };
+  if (result.channels.length === 0) {
+    throw new ProxyTranscodeError("audio-signal-statistics-invalid", "FFmpeg did not return per-channel signal statistics.");
+  }
+  return result;
+}
+
+export function parseNearSilenceSpans(stderr: string, durationSeconds: number) {
+  const spans: Array<{ startSeconds: number; endSeconds: number; durationSeconds: number }> = [];
+  let pendingStart: number | null = null;
+  for (const line of stderr.split(/\r?\n/)) {
+    const startMatch = /silence_start:\s*([-+0-9.eE]+)/.exec(line);
+    if (startMatch) {
+      pendingStart = Math.max(0, Number(startMatch[1]));
+      continue;
+    }
+    const endMatch = /silence_end:\s*([-+0-9.eE]+)\s*\|\s*silence_duration:\s*([-+0-9.eE]+)/.exec(line);
+    if (!endMatch) continue;
+    const endSeconds = Math.min(durationSeconds, Math.max(0, Number(endMatch[1])));
+    const reportedDuration = Math.max(0, Number(endMatch[2]));
+    const startSeconds = pendingStart ?? Math.max(0, endSeconds - reportedDuration);
+    if (Number.isFinite(startSeconds) && Number.isFinite(endSeconds) && endSeconds > startSeconds) {
+      spans.push({
+        startSeconds: round(startSeconds, 3),
+        endSeconds: round(endSeconds, 3),
+        durationSeconds: round(endSeconds - startSeconds, 3),
+      });
+    }
+    pendingStart = null;
+  }
+  return spans.slice(0, 2_000);
+}
+
+async function measureAstats(inputPath: string, ffmpegPath: string) {
+  const result = await runProcess(ffmpegPath, [
+    "-hide_banner", "-nostdin", "-nostats", "-i", inputPath,
+    "-map", "0:a:0", "-filter:a", "astats=metadata=0:reset=0", "-f", "null", "-",
+  ], "audio-signal-statistics-failed");
+  return parseAstatsStatistics(result.stderr);
+}
+
+async function measureNearSilence(inputPath: string, ffmpegPath: string) {
+  const result = await runProcess(ffmpegPath, [
+    "-hide_banner", "-nostdin", "-nostats", "-i", inputPath,
+    "-map", "0:a:0", "-filter:a", "silencedetect=noise=-55dB:d=0.25", "-f", "null", "-",
+  ], "audio-signal-silence-failed");
+  const duration = durationFromFfmpegInput(result.stderr);
+  return parseNearSilenceSpans(result.stderr, duration);
+}
+
+function statisticsFromMap(channel: number | null, values: Record<string, number>): AudioSignalChannelStatistics {
+  const required = (label: string) => {
+    const value = values[label];
+    if (!Number.isFinite(value)) throw new ProxyTranscodeError("audio-signal-statistics-invalid", `FFmpeg omitted ${label} signal statistics.`);
+    return value;
+  };
+  const optional = (label: string) => Number.isFinite(values[label]) ? values[label] : null;
+  return {
+    channel,
+    dcOffset: required("DC offset"),
+    peakDbfs: required("Peak level dB"),
+    rmsDbfs: required("RMS level dB"),
+    rmsPeakDbfs: optional("RMS peak dB"),
+    rmsTroughDbfs: optional("RMS trough dB"),
+    crestFactor: optional("Crest factor"),
+    flatFactor: optional("Flat factor"),
+    peakCount: optional("Peak count"),
+    noiseFloorDbfs: optional("Noise floor dB"),
+    dynamicRangeDb: optional("Dynamic range"),
+    zeroCrossingRate: optional("Zero crossings rate"),
+    nanCount: Math.max(0, Math.trunc(values["Number of NaNs"] ?? 0)),
+    infCount: Math.max(0, Math.trunc(values["Number of Infs"] ?? 0)),
+    denormalCount: Math.max(0, Math.trunc(values["Number of denormals"] ?? 0)),
+  };
+}
+
+function diagnosticNumber(value: string, label: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "-inf" && /(?:level|floor|through)/i.test(label)) return -200;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function durationFromFfmpegInput(stderr: string) {
+  const match = /Duration:\s*(\d+):(\d+):([0-9.]+)/.exec(stderr);
+  if (!match) throw new ProxyTranscodeError("audio-signal-duration-invalid", "FFmpeg did not report the decoded source duration.");
+  return Number(match[1]) * 3_600 + Number(match[2]) * 60 + Number(match[3]);
 }
 
 async function runProcess(executable: string, args: string[], code: string) {

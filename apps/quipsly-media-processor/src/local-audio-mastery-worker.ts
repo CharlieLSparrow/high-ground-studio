@@ -14,6 +14,7 @@ import {
   type AudioMasteryMeasurement,
   type AudioMasteryResult,
   type AudioMasterySourceBinding,
+  type AudioSignalDiagnosis,
 } from "@high-ground/quipsly-media-processing";
 import pg from "pg";
 
@@ -44,6 +45,11 @@ export interface LocalAudioMasteringEngine {
     measurementId?: string;
     measuredAt?: string;
   }): Promise<AudioMasteryMeasurement>;
+  diagnose?(inputPath: string, input: {
+    source: AudioMasterySourceBinding;
+    diagnosisId?: string;
+    analyzedAt?: string;
+  }): Promise<AudioSignalDiagnosis>;
   renderLoudnessMaster(inputPath: string, outputPath: string, input: {
     proposal: ReturnType<typeof newAudioMasteryProposal>;
     measurement: AudioMasteryMeasurement;
@@ -118,6 +124,13 @@ export async function runOneLocalAudioMasteryJob(
       measurementId: `measurement_${randomUUID().replaceAll("-", "")}`,
       measuredAt: options.now().toISOString(),
     });
+    const signalDiagnosis = engine.diagnose
+      ? await engine.diagnose(sourcePath, {
+        source: job.source,
+        diagnosisId: `diagnosis_${randomUUID().replaceAll("-", "")}`,
+        analyzedAt: options.now().toISOString(),
+      })
+      : null;
     const proposal = newAudioMasteryProposal({
       proposalId: `proposal_${randomUUID().replaceAll("-", "")}`,
       createdAt: options.now().toISOString(),
@@ -193,6 +206,7 @@ export async function runOneLocalAudioMasteryJob(
       completedAt: options.now().toISOString(),
       source: job.source,
       sourceMeasurement,
+      signalDiagnosis,
       proposal,
       derivative,
       worker: {

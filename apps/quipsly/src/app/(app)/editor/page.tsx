@@ -27,7 +27,7 @@ import {
 import { RemotionComposition } from "./RemotionComposition";
 import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
-import { AudioMasteryAudition, type AudioMasteryMeasurement } from "./AudioMasteryAudition";
+import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -205,6 +205,7 @@ type AudioMasteryClientStatus = {
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
   profileId: "apple-podcasts-dialogue-v1" | "ebu-r128-broadcast-v1" | null;
   sourceMeasurement: AudioMasteryMeasurement | null;
+  signalDiagnosis: AudioSignalDiagnosisSummary | null;
   proposal: null | {
     action: "no-change" | "render-loudness-master";
     assessment: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
@@ -9270,6 +9271,7 @@ function CloudEditorContent() {
                               mastered={audioMasteryStatus.derivative.measured}
                               targetLufs={audioMasteryStatus.proposal.profile.integratedLufs}
                               maximumTruePeakDbtp={audioMasteryStatus.proposal.profile.maximumTruePeakDbtp}
+                              diagnosis={audioMasteryStatus.signalDiagnosis}
                             />
                           )}
                         </div>
@@ -9277,13 +9279,15 @@ function CloudEditorContent() {
                       <button
                         type="button"
                         onClick={() => void operateAudioMastery(asset)}
-                        disabled={isAudioMasteryWorking || audioMasteryStatus?.status === "completed"}
+                        disabled={isAudioMasteryWorking || (audioMasteryStatus?.status === "completed" && audioMasteryStatus.signalDiagnosis !== null)}
                         className="mt-3 w-full rounded-lg border border-fuchsia-300 bg-white px-3 py-2 text-left font-black hover:bg-fuchsia-100 disabled:cursor-default disabled:bg-fuchsia-50"
                       >
                         {isAudioMasteryWorking
                           ? "Measuring and verifying..."
                           : audioMasteryStatus?.status === "completed"
-                            ? audioMasteryStatus.derivative ? "Verified mastering preview ready" : "Source already meets profile"
+                            ? audioMasteryStatus.signalDiagnosis === null
+                              ? "Add decoded signal diagnosis"
+                              : audioMasteryStatus.derivative ? "Verified mastering preview ready" : "Source already meets profile"
                             : audioMasteryStatus?.status === "queued" || audioMasteryStatus?.status === "processing" || audioMasteryStatus?.status === "output-ready"
                               ? "Resume audio mastery"
                               : audioMasteryStatus?.status === "failed" ? "Retry audio mastery" : "Measure and prepare mastering preview"}

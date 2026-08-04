@@ -7,9 +7,11 @@ import test from "node:test";
 
 import {
   assessAudioMastery,
+  buildAudioSignalObservations,
   buildAudioMasteryTargetLocator,
   newAudioMasteryJob,
   newAudioMasteryProposal,
+  parseAudioSignalDiagnosis,
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   parseAudioMasteryMeasurement,
@@ -80,6 +82,41 @@ test("measurement parser rejects false completeness and source or timeline drift
     ...measurement,
     series: [measurement.series[1], measurement.series[0]],
   }), /monotonic/);
+});
+
+test("signal diagnosis emits listening candidates instead of automatic repair claims", () => {
+  const observations = buildAudioSignalObservations({
+    durationSeconds: 2,
+    overall: fixtureSignalStatistics({ peakDbfs: -0.01 }),
+    channels: [
+      fixtureSignalStatistics({ channel: 1, dcOffset: 0.012, rmsDbfs: -18, nanCount: 1 }),
+      fixtureSignalStatistics({ channel: 2, rmsDbfs: -30 }),
+    ],
+    nearSilenceSpans: [{ startSeconds: 0.5, endSeconds: 1, durationSeconds: 0.5 }],
+  });
+  assert.deepEqual(observations.map((observation) => observation.kind), [
+    "near-full-scale",
+    "dc-offset",
+    "channel-imbalance",
+    "invalid-samples",
+    "near-silence",
+  ]);
+  assert.ok(observations.every((observation) => observation.requiresListening === true));
+  assert.match(observations[0].detail, /not proof/i);
+  assert.match(observations[4].detail, /pause, or a dropout/i);
+});
+
+test("signal diagnosis parser rejects false decode and channel evidence", () => {
+  const diagnosis = fixtureSignalDiagnosis();
+  assert.doesNotThrow(() => parseAudioSignalDiagnosis(diagnosis));
+  assert.throws(() => parseAudioSignalDiagnosis({
+    ...diagnosis,
+    analyzer: { ...diagnosis.analyzer, completeDecode: false },
+  }), /completeDecode/);
+  assert.throws(() => parseAudioSignalDiagnosis({
+    ...diagnosis,
+    channels: [{ ...diagnosis.channels[0], channel: 2 }],
+  }), /cardinality/);
 });
 
 test("loudnorm parser accepts the final FFmpeg JSON object and fails malformed output", () => {
@@ -229,6 +266,21 @@ test("real FFmpeg measurement, double-pass PCM render, and independent verificat
   assert.equal(measurement.channels, 1);
   assert.ok(measurement.series.length >= 5);
   assert.ok(measurement.integratedLufs < -20);
+  const diagnosis = await engine.diagnose(sourcePath, {
+    source,
+    diagnosisId: "diagnosis_real_001",
+    analyzedAt: "2026-08-03T20:00:15.000Z",
+  });
+  assert.equal(diagnosis.analyzer.completeDecode, true);
+  assert.equal(diagnosis.analyzer.statisticsAreNotListeningJudgments, true);
+  assert.equal(diagnosis.channelCount, 1);
+  assert.equal(diagnosis.channels.length, 1);
+  assert.equal(diagnosis.overall.channel, null);
+  assert.ok(diagnosis.overall.peakDbfs < -10);
+  assert.ok(diagnosis.overall.noiseFloorDbfs < -10);
+  assert.deepEqual(diagnosis.nearSilenceSpans, []);
+  assert.deepEqual(diagnosis.observations, []);
+  assert.equal(await sha256File(sourcePath), sourceSha256);
   const ebuMeasurement = await engine.measure(sourcePath, {
     source,
     profileId: "ebu-r128-broadcast-v1",
@@ -310,6 +362,61 @@ function fixtureMeasurement(overrides = {}) {
     },
     ...overrides,
   });
+}
+
+function fixtureSignalStatistics(overrides = {}) {
+  return {
+    channel: null,
+    dcOffset: 0,
+    peakDbfs: -12,
+    rmsDbfs: -20,
+    rmsPeakDbfs: -16,
+    rmsTroughDbfs: -28,
+    crestFactor: 2,
+    flatFactor: 0.5,
+    peakCount: 4,
+    noiseFloorDbfs: -48,
+    dynamicRangeDb: 10,
+    zeroCrossingRate: 0.1,
+    nanCount: 0,
+    infCount: 0,
+    denormalCount: 0,
+    ...overrides,
+  };
+}
+
+function fixtureSignalDiagnosis(overrides = {}) {
+  const source = fixtureMeasurement().source;
+  return {
+    kind: "quipsly-audio-signal-diagnosis-v1",
+    version: 1,
+    diagnosisId: "diagnosis_fixture_001",
+    analyzedAt: "2026-08-03T20:00:00.000Z",
+    source,
+    durationSeconds: 2,
+    sampleRateHz: 48_000,
+    channelCount: 1,
+    overall: fixtureSignalStatistics(),
+    channels: [fixtureSignalStatistics({ channel: 1 })],
+    nearSilenceSpans: [],
+    observations: [],
+    thresholds: {
+      nearFullScaleDbfs: -0.05,
+      nearSilenceDbfs: -55,
+      nearSilenceMinimumSeconds: 0.25,
+      dcOffsetAmplitude: 0.01,
+      channelImbalanceDb: 6,
+    },
+    analyzer: {
+      name: "ffmpeg-astats-silencedetect",
+      version: "8.1.1",
+      completeDecode: true,
+      statisticsAreNotListeningJudgments: true,
+      nearSilenceIsNotAutomaticallyADropout: true,
+      noiseFloorIsAnEstimate: true,
+    },
+    ...overrides,
+  };
 }
 
 function fixtureJob({ sourcePath = "/tmp/source.wav", sourceSha = "a".repeat(64), sourceSize = 48_000 } = {}) {

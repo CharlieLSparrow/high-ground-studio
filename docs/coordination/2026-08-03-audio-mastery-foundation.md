@@ -109,3 +109,53 @@ Checkpoint verification:
 - Quipsly TypeScript 7 typecheck: passed;
 - Quipsly production build: all 165 routes passed;
 - signed-in retained-media operation and synchronized A/B playback: passed.
+
+## Decoded signal diagnosis checkpoint
+
+The mastery receipt now carries an independent, source-bound
+`quipsly-audio-signal-diagnosis-v1` result. The media worker verifies the exact
+source size and SHA-256 before and after analysis, probes the primary audio
+stream, completely decodes it through FFmpeg `astats`, and independently
+detects sustained intervals below -55 dBFS. It retains:
+
+- overall and per-channel RMS, sample peak, estimated noise floor, DC offset,
+  dynamic range, zero-crossing, non-finite-sample, and channel evidence;
+- bounded near-silence spans with start, end, and duration;
+- explicit listening candidates for near-full-scale audio, near-silence, DC
+  offset, channel imbalance, and invalid samples;
+- analyzer disclosures that statistics are not listening judgments, estimated
+  noise floor is not a calibrated noise measurement, and near-silence is not
+  automatically a dropout.
+
+Completed legacy jobs remain readable but do not masquerade as having this
+evidence. Requesting the upgrade creates a new immutable-source-bound job. The
+existing verified WAV can be recovered without a redundant render; the new
+complete-decode diagnosis is then persisted in both the job receipt and the
+registered private variant metadata. Public status deliberately strips source
+paths, hashes, requester identity, and worker execution authority.
+
+The signed-in retained Episode 4 Part 2 operation upgraded source asset
+`cmse192a8000e8jxldysq5b1u` from job
+`audio_mastery_0da76578fbf34d34b85dc66d5fb1a225` to job
+`audio_mastery_9cafe8cc6c684e90bcb07ca008bfd48c`. Both receipts read back the
+same source SHA-256. The new receipt reported a complete mono 48 kHz decode,
+-45.78 dBFS RMS, -40.0 dBFS sample peak, an estimated -48.52 dBFS floor, zero
+non-finite samples, and zero deterministic attention candidates. The UI says
+plainly that this does not certify noise, tone, intelligibility, or subjective
+quality.
+
+Operated UX proof also covered source playback, a switch to the mastered
+preview at the selected 2.9-second processing-shift moment, and desktop layout
+readback. The 1280 by 720 audition dialog had equal client and scroll widths.
+No Quipsly application error was logged; Google Identity Services emitted its
+expected localhost FedCM token warning.
+
+Updated verification:
+
+- audio contract, worker, adversarial diagnosis, and real FFmpeg suite: 10/10;
+- focused API authorization, public-evidence privacy, fail-closed service, and
+  audition helper suites: 8/8;
+- Quipsly, media contract, and media worker strict TypeScript: passed;
+- Quipsly production build: all 165 routes passed;
+- retained browser operation, persisted receipt readback, and no-overflow
+  visual inspection: passed.

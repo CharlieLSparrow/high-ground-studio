@@ -1,3 +1,5 @@
+import { parseAudioSignalDiagnosis, type AudioSignalDiagnosis } from "./audio-signal-diagnosis.js";
+
 export const AUDIO_MASTERY_CONTRACT_VERSION = 1 as const;
 export const AUDIO_MASTERY_MEASUREMENT_KIND = "quipsly-audio-measurement-v1" as const;
 export const AUDIO_MASTERY_PROPOSAL_KIND = "quipsly-audio-mastery-proposal-v1" as const;
@@ -145,6 +147,7 @@ export type AudioMasteryResult = {
   completedAt: string;
   source: AudioMasterySourceBinding;
   sourceMeasurement: AudioMasteryMeasurement;
+  signalDiagnosis: AudioSignalDiagnosis | null;
   proposal: AudioMasteryProposal;
   derivative: null | {
     provider: "local" | "gcs";
@@ -340,6 +343,7 @@ export function parseAudioMasteryResult(value: unknown, expectedJob?: AudioMaste
   const jobId = requiredId(row.jobId, "jobId");
   const source = parseSource(row.source);
   const sourceMeasurement = parseAudioMasteryMeasurement(row.sourceMeasurement);
+  const signalDiagnosis = row.signalDiagnosis == null ? null : parseAudioSignalDiagnosis(row.signalDiagnosis);
   const proposal = parseProposal(row.proposal);
   const expectedProposal = newAudioMasteryProposal({
     proposalId: proposal.proposalId,
@@ -359,6 +363,14 @@ export function parseAudioMasteryResult(value: unknown, expectedJob?: AudioMaste
     || proposal.source.sha256 !== source.sha256
     || canonicalJson(proposal) !== canonicalJson(expectedProposal)
     || (job && (job.source.sha256 !== source.sha256 || job.source.generation !== source.generation))
+    || (signalDiagnosis && (
+      signalDiagnosis.source.sha256 !== source.sha256
+      || signalDiagnosis.source.generation !== source.generation
+      || signalDiagnosis.source.sizeBytes !== source.sizeBytes
+      || Math.abs(signalDiagnosis.durationSeconds - sourceMeasurement.durationSeconds) > 0.05
+      || signalDiagnosis.sampleRateHz !== sourceMeasurement.sampleRateHz
+      || signalDiagnosis.channelCount !== sourceMeasurement.channels
+    ))
     || boundaries.originalRemainsSourceTruth !== true
     || boundaries.outputIsUnpromotedPreview !== true
     || boundaries.promotionRequiresExplicitApproval !== true
@@ -422,6 +434,7 @@ export function parseAudioMasteryResult(value: unknown, expectedJob?: AudioMaste
     completedAt: requiredIsoDate(row.completedAt, "completedAt"),
     source,
     sourceMeasurement,
+    signalDiagnosis,
     proposal,
     derivative,
     worker: {

@@ -36,7 +36,9 @@ Primary references:
 flowchart LR
   S["Immutable source generation and SHA-256"] --> J["StudioAssetProcessingJob"]
   J --> M["Complete loudnorm plus ebur128 measurement"]
+  J --> D["Complete decoded-signal diagnosis"]
   M --> P["Source-bound proposal graph"]
+  D --> E["Listening candidates plus analyzer caveats"]
   P -->|"already passes"| N["No-change receipt"]
   P -->|"outside profile"| R["Versioned 24-bit PCM preview"]
   R --> V["Independent complete output measurement"]
@@ -56,6 +58,14 @@ profile-bound measurements, recomputed proposal graphs, proposal safety
 declarations, fully bound derived-byte receipts, and the independently
 recomputed verification result.
 
+Decoded signal evidence lives in
+`packages/quipsly-media-processing/src/audio-signal-diagnosis.ts`. It is a
+separate contract because capture-time metering and post-capture media
+diagnosis are independent witnesses: the phone reports what it observed while
+recording; the processor reports what the immutable uploaded bytes contain.
+Disagreement is retained as evidence instead of allowing one witness to erase
+the other.
+
 The FFmpeg engine lives in
 `apps/quipsly-media-processor/src/audio-mastering-ffmpeg.ts`. It runs:
 
@@ -63,8 +73,9 @@ The FFmpeg engine lives in
 2. a complete `loudnorm` measurement pass;
 3. a streaming `ebur128=metadata=1:peak=true` pass reduced to one-second
    visualization bins without retaining unbounded process output;
-4. an optional double-pass loudness-only render to 48 kHz, 24-bit PCM WAV;
-5. the same complete measurement process against the derived bytes.
+4. complete `astats` and `silencedetect` diagnosis against the source;
+5. an optional double-pass loudness-only render to 48 kHz, 24-bit PCM WAV;
+6. the same complete loudness measurement process against the derived bytes.
 
 The local recoverable worker uses `StudioAssetProcessingJob`, atomic partial
 files, exact-lease completion, safe existing-output recovery, authorized
@@ -81,6 +92,8 @@ This pass may automatically:
 - create a loudness-only 24-bit PCM preview when needed;
 - verify the output independently;
 - expose a private playback preview and measurement receipt.
+- expose deterministic signal-attention candidates with exact evidence and
+  listening jumps.
 
 This pass does not automatically:
 
@@ -88,6 +101,9 @@ This pass does not automatically:
 - denoise, gate, equalize, compress, de-ess, remove breaths, or change silence;
 - make editorial cuts;
 - treat a model opinion as measured signal truth;
+- treat near-silence as a dropout or sample-peak proximity as proof of clipped
+  waveform shape;
+- apply a repair merely because a threshold was crossed;
 - publish or export a final episode.
 
 Those capabilities should become their own observable proposal nodes with
@@ -112,6 +128,12 @@ RMS dBFS elsewhere in Capture remains correctly labeled as not LUFS. The two
 surfaces complement each other: Capture provides immediate bounded recording
 evidence, while the media worker provides standards-conformant complete-source
 measurement and mastery preparation.
+
+The audition desk adds the post-capture signal layer without pretending it is
+a spectral editor or an ear. It shows RMS dBFS, sample peak dBFS, estimated
+noise floor, DC offset, channel/sample-rate coverage, and clickable attention
+candidates. Zero candidates means only that the declared deterministic rules
+did not fire; it is never rendered as a quality certificate.
 
 ## Next qualified layers
 
