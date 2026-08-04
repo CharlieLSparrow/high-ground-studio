@@ -157,9 +157,11 @@ struct RightSidebarView: View {
                         ? "waveform.path.ecg.rectangle"
                         : "checkmark.seal.fill")
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(active == nil
-                            ? "Review assembled sync"
-                            : "Reviewed sync")
+                        Text(active.map {
+                            $0.effectiveReviewerKind == .person
+                                ? "Person-reviewed sync"
+                                : "Agent-qualified sync"
+                        } ?? "Review assembled sync")
                             .font(.caption)
                             .fontWeight(.black)
                         Text(active.map {

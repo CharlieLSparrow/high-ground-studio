@@ -2,19 +2,23 @@
 
 Date: 2026-08-03
 
-Feature commit: `8ed2643a`
+Initial feature commit: `8ed2643a`
+
+The authority/rollback v2 work described below is the current checkpoint that
+supersedes the original person-only policy.
 
 ## Product outcome
 
 Quipsly Studio can now review two immutable sources from one Capture group on
-the shared episode clock. The human review surface is available from each
+the shared episode clock. The review surface is available from each
 eligible Source Grove card and keeps the baseline source, target source,
 opening cue, later drift check, assembled playback, reviewer, and resulting
 offset together.
 
 This closes the gap between Capture's clock-based placement proposal and an
-editor placement that a human has actually reviewed. It does not turn a clock
-proposal into a sample-accurate claim.
+editor placement that a person has reviewed or an authorized software agent
+has qualified from disclosed evidence. It does not turn a clock proposal into
+a sample-accurate claim.
 
 ## Truth contract
 
@@ -23,11 +27,12 @@ A reviewed placement can be saved only when all of the following are true:
 - both lanes have stable source, asset, receipt, and file identities;
 - both lanes belong to the same exact Capture group and Episode Space;
 - the target still has the offset that was present when review began;
-- the reviewer has a verified native Quipsly identity;
+- a person reviewer has a verified native Quipsly identity, or a software
+  agent records its identity, tool version, delegation scope, and evidence;
 - a real opening waveform, word, clap, or visible cue was compared;
 - a later point was compared for drift;
 - the assembled sources were played together; and
-- the reviewer explicitly approves the placement.
+- the reviewer explicitly accepts the placement under its disclosed authority.
 
 Approval changes only reversible editor metadata. It appends an immutable
 review receipt, updates the target source offset and alignment status, rebuilds
@@ -35,8 +40,9 @@ assembled playback, and autosaves the working session. Original source bytes
 are never changed.
 
 Undo is also append-only. It restores the prior offset and alignment status
-while retaining both the approval and undo receipts. A second approval cannot
-replace an active approval without an explicit undo.
+while retaining both the approval and undo receipts. An active review can be
+superseded only by naming its exact receipt. The prior receipt remains in
+history and becomes active again if the superseding review is undone.
 
 Operation identities are idempotent. Replaying the exact same operation is a
 no-op; reusing its identity with changed evidence fails closed.
@@ -70,6 +76,14 @@ code. The slice now keeps those responsibilities at their real boundaries:
 These corrections do not broaden iOS permissions or make desktop subprocess
 features available on mobile.
 
+The authority audit also found that the macOS agent server's documented
+loopback interface was actually listening on every network interface. The
+listener now requires the IPv4 loopback endpoint and Network framework
+local-only acceptance. It also rejects cross-site browser fetch, Origin, and
+Referer evidence; the canonical CLI identifies itself with a custom
+local-control header while older local CLI tools stay compatible. Local
+processes remain inside the logged-in Mac user's trust boundary.
+
 ## Operated real-work proof
 
 The current local Mac build loaded the retained capture-backed session:
@@ -86,14 +100,24 @@ opening and the later `9.168s` checkpoint were played through the native
 shared transport and then paused. Native state reported both audition actions
 and explicitly stated that no alignment receipt was created.
 
-The reviewer account was not verified in this operated lane, so Save remained
-disabled. The durable session was read back after audition and still contained
-zero sync-review receipts. This is an intentional non-approval proof, not a
-fabricated human sign-off.
+The reviewer account was not verified in this operated lane, so the person
+review action remained disabled. The durable session was read back after
+audition and still contained zero sync-review receipts. The retained camera
+reference is video-only, so this pair does not support honest waveform
+correlation. It remains proposal-only until visual/audio evidence is sufficient;
+the agent path does not fabricate evidence or a person sign-off.
 
 ## Automated evidence
 
-- QuipslyVideoCore: 115 tests passed.
+- QuipslyVideoCore: 120 tests passed, including version-one receipt decoding.
+- Mac agent authority/static responsiveness: 3 tests passed, covering loopback,
+  browser-request rejection, canonical CLI identity, cached state response, and
+  off-request reconciliation.
+- The exact current QuipslyMac Debug build launched. `lsof` read back only
+  `127.0.0.1:8080` (not `*:8080`); a request carrying cross-site browser
+  evidence received HTTP 401; the canonical header-bearing CLI and a legacy
+  local CLI request both read `New Project`; and qualify/undo without their
+  exact confirmations each received HTTP 400 with the required confirmation.
 - New sync-review tests cover duration offsets, approval, exact replay,
   rejection of changed replay intent, stale offsets, incomplete checks,
   incomplete source evidence, cross-group evidence, append-only undo, and
@@ -112,8 +136,10 @@ fabricated human sign-off.
 
 ## Remaining gates
 
-- A verified human must compare and approve the real retained source pair;
-  operated audition alone is deliberately insufficient.
+- The real retained source pair still needs sufficient audiovisual evidence.
+  Either a verified person may review it or an authorized software agent may
+  qualify it when that evidence can be inspected and preserved. Operated
+  audition alone is deliberately insufficient.
 - The approved session must be saved, the app relaunched, the exact session
   reloaded, and the receipt plus offset read back before calling persistence
   qualified.

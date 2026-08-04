@@ -5,6 +5,32 @@ public enum CaptureSourceSyncReviewAction: String, Codable, Sendable {
     case undone
 }
 
+public enum CaptureSourceSyncReviewerKind: String, Codable, Sendable {
+    case person
+    case softwareAgent = "software-agent"
+
+    public var displayName: String {
+        switch self {
+        case .person: "Person"
+        case .softwareAgent: "Software agent"
+        }
+    }
+}
+
+public enum CaptureSourceSyncDecisionBasis: String, Codable, Sendable {
+    case audiovisualInspection = "audiovisual-inspection"
+    case measuredCorrelation = "measured-correlation"
+    case hybrid
+
+    public var displayName: String {
+        switch self {
+        case .audiovisualInspection: "Audiovisual inspection"
+        case .measuredCorrelation: "Measured correlation"
+        case .hybrid: "Measured and inspected"
+        }
+    }
+}
+
 public struct CaptureSourceSyncEvidence: Codable, Equatable, Sendable {
     public let laneID: UUID
     public let sourceVideoID: UUID
@@ -37,7 +63,11 @@ public struct CaptureSourceSyncReviewChecks: Codable, Equatable, Sendable {
     public let waveformOrVisibleCueCompared: Bool
     public let laterDriftCompared: Bool
     public let assembledPlaybackAuditioned: Bool
+    /// Kept in the wire format so version-one receipts remain readable.
     public let humanPlacementApproved: Bool
+    /// Version-two receipts name the actual reviewer rather than assuming it
+    /// was a person. Missing means the legacy human field is authoritative.
+    public let reviewerPlacementApproved: Bool?
 
     public init(
         waveformOrVisibleCueCompared: Bool,
@@ -49,13 +79,31 @@ public struct CaptureSourceSyncReviewChecks: Codable, Equatable, Sendable {
         self.laterDriftCompared = laterDriftCompared
         self.assembledPlaybackAuditioned = assembledPlaybackAuditioned
         self.humanPlacementApproved = humanPlacementApproved
+        self.reviewerPlacementApproved = nil
+    }
+
+    public init(
+        waveformOrVisibleCueCompared: Bool,
+        laterDriftCompared: Bool,
+        assembledPlaybackAuditioned: Bool,
+        reviewerPlacementApproved: Bool
+    ) {
+        self.waveformOrVisibleCueCompared = waveformOrVisibleCueCompared
+        self.laterDriftCompared = laterDriftCompared
+        self.assembledPlaybackAuditioned = assembledPlaybackAuditioned
+        humanPlacementApproved = false
+        self.reviewerPlacementApproved = reviewerPlacementApproved
+    }
+
+    public var placementApproved: Bool {
+        reviewerPlacementApproved ?? humanPlacementApproved
     }
 
     public var allConfirmed: Bool {
         waveformOrVisibleCueCompared
             && laterDriftCompared
             && assembledPlaybackAuditioned
-            && humanPlacementApproved
+            && placementApproved
     }
 }
 
@@ -68,6 +116,12 @@ public struct CaptureSourceSyncReviewReceipt: Codable, Equatable, Sendable {
     public let episodeSpaceID: String
     public let reviewerActorID: String
     public let reviewerLabel: String
+    public let reviewerKind: CaptureSourceSyncReviewerKind?
+    public let decisionBasis: CaptureSourceSyncDecisionBasis?
+    public let delegationScope: String?
+    public let reviewerToolVersion: String?
+    public let evidenceSummary: String?
+    public let supersedesReviewID: UUID?
     public let baseline: CaptureSourceSyncEvidence
     public let target: CaptureSourceSyncEvidence
     public let previousTargetOffsetSeconds: Double
@@ -94,6 +148,12 @@ public struct CaptureSourceSyncReviewReceipt: Codable, Equatable, Sendable {
         episodeSpaceID: String,
         reviewerActorID: String,
         reviewerLabel: String,
+        reviewerKind: CaptureSourceSyncReviewerKind = .person,
+        decisionBasis: CaptureSourceSyncDecisionBasis = .audiovisualInspection,
+        delegationScope: String? = nil,
+        reviewerToolVersion: String? = nil,
+        evidenceSummary: String? = nil,
+        supersedesReviewID: UUID? = nil,
         baseline: CaptureSourceSyncEvidence,
         target: CaptureSourceSyncEvidence,
         previousTargetOffsetSeconds: Double,
@@ -107,7 +167,7 @@ public struct CaptureSourceSyncReviewReceipt: Codable, Equatable, Sendable {
         notes: String?,
         reviewedAt: Date
     ) {
-        protocolVersion = 1
+        protocolVersion = 2
         self.operationID = operationID
         self.action = action
         self.approvedReviewID = approvedReviewID
@@ -115,6 +175,12 @@ public struct CaptureSourceSyncReviewReceipt: Codable, Equatable, Sendable {
         self.episodeSpaceID = episodeSpaceID
         self.reviewerActorID = reviewerActorID
         self.reviewerLabel = reviewerLabel
+        self.reviewerKind = reviewerKind
+        self.decisionBasis = decisionBasis
+        self.delegationScope = Self.cleaned(delegationScope)
+        self.reviewerToolVersion = Self.cleaned(reviewerToolVersion)
+        self.evidenceSummary = Self.cleaned(evidenceSummary)
+        self.supersedesReviewID = supersedesReviewID
         self.baseline = baseline
         self.target = target
         self.previousTargetOffsetSeconds = previousTargetOffsetSeconds
@@ -135,10 +201,24 @@ public struct CaptureSourceSyncReviewReceipt: Codable, Equatable, Sendable {
         reversible = true
         switch action {
         case .approved:
-            truth = "An authenticated human compared a real cue, checked later drift, auditioned assembled playback, and approved this reversible source placement. Original source bytes were not changed, and sample accuracy is not claimed."
+            switch reviewerKind {
+            case .person:
+                truth = "A verified person compared a real cue, checked later drift, auditioned assembled playback, and approved this reversible source placement. Original source bytes were not changed, and sample accuracy is not claimed."
+            case .softwareAgent:
+                truth = "An authorized software agent qualified this reversible source placement from disclosed cue, drift, and assembled-playback evidence. This is not labeled as human approval. Original source bytes were not changed, and sample accuracy is not claimed."
+            }
         case .undone:
-            truth = "An authenticated human undid one exact reviewed source placement. Quipsly restored the prior offset and alignment state without changing original source bytes or erasing the approval receipt."
+            truth = "An identified reviewer undid one exact reviewed source placement. Quipsly restored the prior offset and alignment state without changing original source bytes or erasing earlier receipts."
         }
+    }
+
+    public var effectiveReviewerKind: CaptureSourceSyncReviewerKind {
+        reviewerKind ?? .person
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        let cleaned = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned?.isEmpty == false ? cleaned : nil
     }
 }
 
@@ -146,6 +226,12 @@ public struct CaptureSourceSyncApprovalInput: Equatable, Sendable {
     public let operationID: UUID
     public let reviewerActorID: String
     public let reviewerLabel: String
+    public let reviewerKind: CaptureSourceSyncReviewerKind
+    public let decisionBasis: CaptureSourceSyncDecisionBasis
+    public let delegationScope: String?
+    public let reviewerToolVersion: String?
+    public let evidenceSummary: String?
+    public let supersedesReviewID: UUID?
     public let baselineLaneID: UUID
     public let targetLaneID: UUID
     public let expectedTargetOffsetSeconds: Double
@@ -161,6 +247,12 @@ public struct CaptureSourceSyncApprovalInput: Equatable, Sendable {
         operationID: UUID,
         reviewerActorID: String,
         reviewerLabel: String,
+        reviewerKind: CaptureSourceSyncReviewerKind = .person,
+        decisionBasis: CaptureSourceSyncDecisionBasis = .audiovisualInspection,
+        delegationScope: String? = nil,
+        reviewerToolVersion: String? = nil,
+        evidenceSummary: String? = nil,
+        supersedesReviewID: UUID? = nil,
         baselineLaneID: UUID,
         targetLaneID: UUID,
         expectedTargetOffsetSeconds: Double,
@@ -175,6 +267,12 @@ public struct CaptureSourceSyncApprovalInput: Equatable, Sendable {
         self.operationID = operationID
         self.reviewerActorID = reviewerActorID
         self.reviewerLabel = reviewerLabel
+        self.reviewerKind = reviewerKind
+        self.decisionBasis = decisionBasis
+        self.delegationScope = delegationScope
+        self.reviewerToolVersion = reviewerToolVersion
+        self.evidenceSummary = evidenceSummary
+        self.supersedesReviewID = supersedesReviewID
         self.baselineLaneID = baselineLaneID
         self.targetLaneID = targetLaneID
         self.expectedTargetOffsetSeconds = expectedTargetOffsetSeconds
@@ -193,6 +291,9 @@ public struct CaptureSourceSyncUndoInput: Equatable, Sendable {
     public let approvedReviewID: UUID
     public let reviewerActorID: String
     public let reviewerLabel: String
+    public let reviewerKind: CaptureSourceSyncReviewerKind
+    public let delegationScope: String?
+    public let reviewerToolVersion: String?
     public let targetLaneID: UUID
     public let expectedTargetOffsetSeconds: Double
     public let reviewedAt: Date
@@ -202,6 +303,9 @@ public struct CaptureSourceSyncUndoInput: Equatable, Sendable {
         approvedReviewID: UUID,
         reviewerActorID: String,
         reviewerLabel: String,
+        reviewerKind: CaptureSourceSyncReviewerKind = .person,
+        delegationScope: String? = nil,
+        reviewerToolVersion: String? = nil,
         targetLaneID: UUID,
         expectedTargetOffsetSeconds: Double,
         reviewedAt: Date = Date()
@@ -210,6 +314,9 @@ public struct CaptureSourceSyncUndoInput: Equatable, Sendable {
         self.approvedReviewID = approvedReviewID
         self.reviewerActorID = reviewerActorID
         self.reviewerLabel = reviewerLabel
+        self.reviewerKind = reviewerKind
+        self.delegationScope = delegationScope
+        self.reviewerToolVersion = reviewerToolVersion
         self.targetLaneID = targetLaneID
         self.expectedTargetOffsetSeconds = expectedTargetOffsetSeconds
         self.reviewedAt = reviewedAt
@@ -227,6 +334,7 @@ public enum CaptureSourceSyncReviewError: Error, Equatable, LocalizedError {
     case episodeSpaceMismatch
     case staleOffset
     case activeReviewMustBeUndone
+    case invalidAgentEvidence
     case operationIdentityConflict
     case approvedReviewMissing
 
@@ -251,7 +359,9 @@ public enum CaptureSourceSyncReviewError: Error, Equatable, LocalizedError {
         case .staleOffset:
             "The target source moved after this review opened. Refresh and compare the current placement."
         case .activeReviewMustBeUndone:
-            "Undo the current reviewed placement before approving a replacement."
+            "Undo the current placement or explicitly supersede its exact receipt before activating a replacement."
+        case .invalidAgentEvidence:
+            "Agent qualification requires a delegation scope, tool identity, decision basis, and a substantive evidence summary."
         case .operationIdentityConflict:
             "That operation identity was already used for different synchronization evidence."
         case .approvedReviewMissing:
@@ -262,6 +372,8 @@ public enum CaptureSourceSyncReviewError: Error, Equatable, LocalizedError {
 
 public enum CaptureSourceSyncReviewService {
     public static let approvedAlignmentStatus = "reviewed-alignment"
+    public static let agentQualifiedAlignmentStatus =
+        "agent-qualified-alignment"
 
     public static func activeApproval(
         for lane: VideoLane
@@ -273,9 +385,19 @@ public enum CaptureSourceSyncReviewService {
         for receipt in history {
             switch receipt.action {
             case .approved:
+                if let superseded = receipt.supersedesReviewID {
+                    approvals.removeValue(forKey: superseded)
+                }
                 approvals[receipt.approvedReviewID] = receipt
             case .undone:
                 approvals.removeValue(forKey: receipt.approvedReviewID)
+                if let restoredID = receipt.supersedesReviewID,
+                   let restored = history.first(where: {
+                       $0.action == .approved
+                           && $0.approvedReviewID == restoredID
+                   }) {
+                    approvals[restoredID] = restored
+                }
             }
         }
         return approvals.values.sorted { $0.reviewedAt < $1.reviewedAt }.last
@@ -295,6 +417,16 @@ public enum CaptureSourceSyncReviewService {
         let reviewerLabel = clean(input.reviewerLabel)
         guard !reviewerActorID.isEmpty, !reviewerLabel.isEmpty else {
             throw CaptureSourceSyncReviewError.invalidReviewer
+        }
+        let delegationScope = nonempty(input.delegationScope)
+        let reviewerToolVersion = nonempty(input.reviewerToolVersion)
+        let evidenceSummary = boundedEvidence(input.evidenceSummary)
+        if input.reviewerKind == .softwareAgent {
+            guard delegationScope != nil,
+                  reviewerToolVersion != nil,
+                  evidenceSummary?.count ?? 0 >= 24 else {
+                throw CaptureSourceSyncReviewError.invalidAgentEvidence
+            }
         }
         guard input.baselineLaneID != input.targetLaneID else {
             throw CaptureSourceSyncReviewError.sameSource
@@ -327,8 +459,13 @@ public enum CaptureSourceSyncReviewService {
         }
         let baseline = result.lanes[baselineIndex]
         let target = result.lanes[targetIndex]
-        guard activeApproval(for: target) == nil else {
-            throw CaptureSourceSyncReviewError.activeReviewMustBeUndone
+        let active = activeApproval(for: target)
+        if let active {
+            guard input.supersedesReviewID == active.approvedReviewID else {
+                throw CaptureSourceSyncReviewError.activeReviewMustBeUndone
+            }
+        } else if input.supersedesReviewID != nil {
+            throw CaptureSourceSyncReviewError.approvedReviewMissing
         }
         guard let targetSource = target.sourceVideo,
               offsetsMatch(
@@ -342,6 +479,9 @@ public enum CaptureSourceSyncReviewService {
             target: target
         )
         let previousStatus = clean(target.metadata?.alignmentStatus)
+        let resultingStatus = input.reviewerKind == .person
+            ? approvedAlignmentStatus
+            : agentQualifiedAlignmentStatus
         let receipt = CaptureSourceSyncReviewReceipt(
             operationID: input.operationID,
             action: .approved,
@@ -350,12 +490,18 @@ public enum CaptureSourceSyncReviewService {
             episodeSpaceID: evidence.episodeSpaceID,
             reviewerActorID: reviewerActorID,
             reviewerLabel: reviewerLabel,
+            reviewerKind: input.reviewerKind,
+            decisionBasis: input.decisionBasis,
+            delegationScope: delegationScope,
+            reviewerToolVersion: reviewerToolVersion,
+            evidenceSummary: evidenceSummary,
+            supersedesReviewID: input.supersedesReviewID,
             baseline: evidence.baseline,
             target: evidence.target,
             previousTargetOffsetSeconds: targetSource.offset,
             reviewedTargetOffsetSeconds: input.reviewedTargetOffsetSeconds,
             previousAlignmentStatus: previousStatus,
-            resultingAlignmentStatus: approvedAlignmentStatus,
+            resultingAlignmentStatus: resultingStatus,
             cueTimelineSeconds: input.cueTimelineSeconds,
             laterTimelineSeconds: input.laterTimelineSeconds,
             residualDriftMilliseconds: input.residualDriftMilliseconds,
@@ -369,7 +515,7 @@ public enum CaptureSourceSyncReviewService {
             result.lanes[targetIndex].metadata = VideoLaneMetadata()
         }
         result.lanes[targetIndex].metadata?.alignmentStatus =
-            approvedAlignmentStatus
+            resultingStatus
         result.lanes[targetIndex].metadata?.syncReviewHistory.append(receipt)
         return result
     }
@@ -384,6 +530,11 @@ public enum CaptureSourceSyncReviewService {
                   replay.target.laneID == input.targetLaneID,
                   replay.reviewerActorID == clean(input.reviewerActorID),
                   replay.reviewerLabel == clean(input.reviewerLabel),
+                  replay.effectiveReviewerKind == input.reviewerKind,
+                  replay.delegationScope == nonempty(input.delegationScope),
+                  replay.reviewerToolVersion == nonempty(
+                      input.reviewerToolVersion
+                  ),
                   offsetsMatch(
                       replay.previousTargetOffsetSeconds,
                       input.expectedTargetOffsetSeconds
@@ -396,6 +547,12 @@ public enum CaptureSourceSyncReviewService {
         let reviewerLabel = clean(input.reviewerLabel)
         guard !reviewerActorID.isEmpty, !reviewerLabel.isEmpty else {
             throw CaptureSourceSyncReviewError.invalidReviewer
+        }
+        if input.reviewerKind == .softwareAgent {
+            guard nonempty(input.delegationScope) != nil,
+                  nonempty(input.reviewerToolVersion) != nil else {
+                throw CaptureSourceSyncReviewError.invalidAgentEvidence
+            }
         }
         var result = sequence
         guard let targetIndex = result.lanes.firstIndex(where: {
@@ -422,6 +579,13 @@ public enum CaptureSourceSyncReviewService {
             episodeSpaceID: approval.episodeSpaceID,
             reviewerActorID: reviewerActorID,
             reviewerLabel: reviewerLabel,
+            reviewerKind: input.reviewerKind,
+            decisionBasis: approval.decisionBasis
+                ?? .audiovisualInspection,
+            delegationScope: nonempty(input.delegationScope),
+            reviewerToolVersion: nonempty(input.reviewerToolVersion),
+            evidenceSummary: "Undid exact active review \(approval.approvedReviewID.uuidString.lowercased()) and restored its recorded prior placement.",
+            supersedesReviewID: approval.supersedesReviewID,
             baseline: approval.baseline,
             target: approval.target,
             previousTargetOffsetSeconds: approval.reviewedTargetOffsetSeconds,
@@ -484,6 +648,16 @@ public enum CaptureSourceSyncReviewService {
             )
             && receipt.reviewerActorID == clean(input.reviewerActorID)
             && receipt.reviewerLabel == clean(input.reviewerLabel)
+            && receipt.effectiveReviewerKind == input.reviewerKind
+            && receipt.decisionBasis == input.decisionBasis
+            && receipt.delegationScope == nonempty(input.delegationScope)
+            && receipt.reviewerToolVersion == nonempty(
+                input.reviewerToolVersion
+            )
+            && receipt.evidenceSummary == boundedEvidence(
+                input.evidenceSummary
+            )
+            && receipt.supersedesReviewID == input.supersedesReviewID
             && receipt.checks == input.checks
             && receipt.notes == boundedNotes(input.notes)
     }
@@ -573,6 +747,12 @@ public enum CaptureSourceSyncReviewService {
         let cleaned = clean(value)
         guard !cleaned.isEmpty else { return nil }
         return String(cleaned.prefix(2_000))
+    }
+
+    private static func boundedEvidence(_ value: String?) -> String? {
+        let cleaned = clean(value)
+        guard !cleaned.isEmpty else { return nil }
+        return String(cleaned.prefix(4_000))
     }
 
     private static func offsetsMatch(

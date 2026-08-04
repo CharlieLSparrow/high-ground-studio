@@ -7126,3 +7126,47 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   genuine coaching use, TestFlight, and authorized delivery remain open. No
   cloud, deployment, production database, Apple, billing, or provider change
   occurred.
+
+### Agent-qualified reversible decisions checkpoint — 2026-08-03
+
+- Replaced the blanket “human review” model for Capture source synchronization
+  with explicit person-review and software-agent qualification authorities.
+  Agent actions now retain actor/tool identity, delegation scope, decision
+  basis, inspectable evidence, exact source revisions, old/new placement, and
+  honest non-claims about source mutation and sample accuracy.
+- Active decisions are append-only and can be superseded only by naming the
+  exact current receipt. Undo is symmetric for people and agents, restores the
+  recorded prior placement/status, and reactivates a superseded review rather
+  than deleting history. Stable operation IDs make exact retries no-ops and
+  changed retries fail closed.
+- The native review sheet and sidebar distinguish **Person-reviewed** from
+  **Agent-qualified** sync. The loopback state exposes decision evidence,
+  authority, history, exact qualification input, and an executable undo command
+  for each active receipt.
+- Audited adjacent gates and established one impact boundary: agents can perform
+  reversible internal and rebuildable-derived work with evidence and recovery;
+  consent, public/client delivery, real-person communication, money/contracts,
+  destructive retention, and credential/organization changes still require the
+  appropriate person authorization at the consequential boundary.
+- The same audit found the existing agent HTTP listener exposed on `*:8080`.
+  It is now bound to `127.0.0.1` with local-only acceptance, so LAN peers cannot
+  reach powerful editor commands. Cross-site browser request evidence is
+  rejected, and the canonical CLI sends a local-control header while legacy
+  local CLI tools remain compatible. Local processes remain inside the
+  logged-in Mac user's trust boundary.
+- The retained Canon R8 camera reference is video-only while the MV7i master is
+  audio-only. That pair cannot honestly support waveform correlation, so it
+  remains proposal-only until visual/audio evidence is sufficient; the new
+  authority path does not manufacture evidence to force progress.
+- QuipslyVideoCore passes 120 tests, including version-one receipt decoding;
+  three Mac agent authority/responsiveness contracts pass; the agent CLI
+  passes shell syntax; and the QuipslyMac Debug build passes with code signing
+  disabled. Architecture and
+  migration guidance are in
+  `docs/architecture/agent-authority-and-reversible-decisions.md`; the original
+  sync checkpoint is updated in
+  `docs/coordination/2026-08-03-native-capture-sync-review.md`.
+- Operated readback from that exact build shows only `127.0.0.1:8080`, HTTP 401
+  for cross-site browser evidence, successful canonical and legacy local state
+  reads, and fail-closed HTTP 400 responses when qualification or undo omits its
+  exact confirmation phrase.

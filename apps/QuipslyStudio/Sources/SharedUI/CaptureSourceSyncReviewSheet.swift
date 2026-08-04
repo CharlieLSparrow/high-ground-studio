@@ -24,6 +24,7 @@ struct CaptureSourceSyncReviewSheet: View {
     @State private var auditionedAssembly = false
     @State private var approvedPlacement = false
     @State private var notes = ""
+    @State private var isSuperseding = false
 
     private var targetLane: VideoLane? {
         sequence.lanes.first { $0.id == targetLaneID }
@@ -72,8 +73,8 @@ struct CaptureSourceSyncReviewSheet: View {
     private var parsedDrift: Double? { finite(residualDrift) }
 
     private var canApprove: Bool {
-        reviewerIsVerified
-            && activeApproval == nil
+            reviewerIsVerified
+            && (activeApproval == nil || isSuperseding)
             && baselineLaneID != nil
             && parsedOffset.map { $0 >= -86_400 && $0 <= 86_400 } == true
             && parsedCue.map { $0 >= 0 } == true
@@ -94,7 +95,7 @@ struct CaptureSourceSyncReviewSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     truthHeader
 
-                    if let activeApproval {
+                    if let activeApproval, !isSuperseding {
                         activeReviewCard(activeApproval)
                     } else {
                         reviewForm
@@ -138,7 +139,7 @@ struct CaptureSourceSyncReviewSheet: View {
                     .fontWeight(.bold)
                     .foregroundStyle(QuipslyStudioTheme.moss)
             } else {
-                Label("Verify your Quipsly account before recording a human sync decision.", systemImage: "person.crop.circle.badge.exclamationmark")
+                Label("Verify your Quipsly account to record a person review. Authorized agent reviews arrive with their own disclosed evidence.", systemImage: "person.crop.circle.badge.exclamationmark")
                     .font(.caption)
                     .fontWeight(.bold)
                     .foregroundStyle(QuipslyStudioTheme.clay)
@@ -155,6 +156,16 @@ struct CaptureSourceSyncReviewSheet: View {
 
     private var reviewForm: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let activeApproval, isSuperseding {
+                Label(
+                    "This review will supersede \(activeApproval.effectiveReviewerKind.displayName.lowercased()) receipt \(activeApproval.approvedReviewID.uuidString.lowercased()). The earlier receipt remains in history and returns if this review is undone.",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(QuipslyStudioTheme.honey)
+                .fixedSize(horizontal: false, vertical: true)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Text("1. Choose the episode spine")
                     .font(.headline)
@@ -244,7 +255,7 @@ struct CaptureSourceSyncReviewSheet: View {
                     .accessibilityIdentifier("quipsly.captureSync.checkDrift")
                 Toggle("I played the assembled sources, not only isolated files.", isOn: $auditionedAssembly)
                     .accessibilityIdentifier("quipsly.captureSync.checkAssembly")
-                Toggle("I approve this placement as the current human-reviewed alignment.", isOn: $approvedPlacement)
+                Toggle("I approve this placement as the current person-reviewed alignment.", isOn: $approvedPlacement)
                     .accessibilityIdentifier("quipsly.captureSync.checkApproval")
 
                 TextField("Review notes (recommended)", text: $notes, axis: .vertical)
@@ -280,7 +291,14 @@ struct CaptureSourceSyncReviewSheet: View {
         _ review: CaptureSourceSyncReviewReceipt
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Human-reviewed placement", systemImage: "checkmark.seal.fill")
+            Label(
+                review.effectiveReviewerKind == .person
+                    ? "Person-reviewed placement"
+                    : "Agent-qualified placement",
+                systemImage: review.effectiveReviewerKind == .person
+                    ? "person.crop.circle.badge.checkmark"
+                    : "cpu"
+            )
                 .font(.headline)
                 .fontWeight(.black)
                 .foregroundStyle(QuipslyStudioTheme.moss)
@@ -291,7 +309,38 @@ struct CaptureSourceSyncReviewSheet: View {
                 reviewRow("Compared", String(format: "%.2f s → %.2f s", review.cueTimelineSeconds, review.laterTimelineSeconds))
                 reviewRow("Residual drift", String(format: "%.2f ms · %.2f ppm", review.residualDriftMilliseconds, review.observedPartsPerMillion))
                 reviewRow("Reviewer", review.reviewerLabel)
+                reviewRow("Authority", review.effectiveReviewerKind.displayName)
+                reviewRow("Decision basis", (review.decisionBasis ?? .audiovisualInspection).displayName)
+                if let delegationScope = review.delegationScope {
+                    reviewRow("Delegation", delegationScope)
+                }
+                if let reviewerToolVersion = review.reviewerToolVersion {
+                    reviewRow("Reviewer tool", reviewerToolVersion)
+                }
+                if let supersedesReviewID = review.supersedesReviewID {
+                    reviewRow(
+                        "Supersedes",
+                        supersedesReviewID.uuidString.lowercased()
+                    )
+                }
                 reviewRow("Receipt", review.approvedReviewID.uuidString.lowercased())
+                reviewRow("History", "\(targetLane?.metadata?.syncReviewHistory.count ?? 0) append-only receipts")
+            }
+
+            if let evidenceSummary = review.evidenceSummary {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Evidence used")
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .foregroundStyle(.secondary)
+                    Text(evidenceSummary)
+                        .font(.subheadline)
+                        .textSelection(.enabled)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(QuipslyStudioTheme.honey.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             if let notes = review.notes {
@@ -307,6 +356,23 @@ struct CaptureSourceSyncReviewSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if reviewerIsVerified {
+                Button {
+                    operationID = UUID()
+                    isSuperseding = true
+                    seedDraft()
+                } label: {
+                    Label(
+                        review.effectiveReviewerKind == .softwareAgent
+                            ? "Review this alignment yourself"
+                            : "Create a superseding review",
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                    .fontWeight(.bold)
+                }
+                .accessibilityIdentifier("quipsly.captureSync.supersede")
+            }
 
             Button(role: .destructive) {
                 guard let targetLane,
@@ -379,6 +445,9 @@ struct CaptureSourceSyncReviewSheet: View {
                 operationID: operationID,
                 reviewerActorID: reviewerActorID,
                 reviewerLabel: reviewerLabel,
+                supersedesReviewID: isSuperseding
+                    ? activeApproval?.approvedReviewID
+                    : nil,
                 baselineLaneID: baselineLaneID,
                 targetLaneID: targetLaneID,
                 expectedTargetOffsetSeconds: targetSource.offset,
@@ -390,7 +459,7 @@ struct CaptureSourceSyncReviewSheet: View {
                     waveformOrVisibleCueCompared: comparedCue,
                     laterDriftCompared: comparedLaterDrift,
                     assembledPlaybackAuditioned: auditionedAssembly,
-                    humanPlacementApproved: approvedPlacement
+                    reviewerPlacementApproved: approvedPlacement
                 ),
                 notes: notes
             )

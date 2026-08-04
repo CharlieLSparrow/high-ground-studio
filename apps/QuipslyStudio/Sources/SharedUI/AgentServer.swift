@@ -27,6 +27,9 @@ public struct AgentCommandRequest: Identifiable {
 @MainActor
 public class AgentServer: ObservableObject {
     public static let shared = AgentServer()
+    private nonisolated static let localControlHeader =
+        "x-quipsly-agent-control"
+    private nonisolated static let localControlValue = "local-control-v1"
 
     @Published public var commandToExecute: String = ""
     @Published public var importFilePath: String? = nil
@@ -88,14 +91,19 @@ public class AgentServer: ObservableObject {
         do {
             let port = NWEndpoint.Port(integerLiteral: self.port)
             let parameters = NWParameters.tcp
-            listener = try NWListener(using: parameters, on: port)
+            parameters.acceptLocalOnly = true
+            parameters.requiredLocalEndpoint = .hostPort(
+                host: "127.0.0.1",
+                port: port
+            )
+            listener = try NWListener(using: parameters)
 
             listener?.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
 
             listener?.start(queue: .global(qos: .userInitiated))
-            print("AgentServer listening on port \(self.port)")
+            print("AgentServer listening on loopback port \(self.port)")
         } catch {
             print("Failed to start AgentServer: \(error)")
             writeStatus([
@@ -126,6 +134,33 @@ public class AgentServer: ObservableObject {
             guard request.method == "GET" else {
                 Task { @MainActor in
                     self?.sendJSON(connection, object: ["error": "method_not_allowed"], statusCode: 405, reason: "Method Not Allowed")
+                }
+                return
+            }
+            let hasLocalControlHeader =
+                request.headers[Self.localControlHeader]
+                    == Self.localControlValue
+            let fetchSite = request.headers["sec-fetch-site"]?
+                .lowercased()
+            let browserOrigin = request.headers["origin"]?.lowercased()
+            let browserReferer = request.headers["referer"]?.lowercased()
+            let hasUntrustedBrowserOrigin = [browserOrigin, browserReferer]
+                .compactMap { $0 }
+                .contains { value in
+                    !value.hasPrefix("http://127.0.0.1")
+                        && !value.hasPrefix("http://localhost")
+                }
+            let isCrossSiteBrowserRequest = fetchSite == "cross-site"
+                || hasUntrustedBrowserOrigin
+            guard request.path == "/"
+                    || request.path == "/health"
+                    || hasLocalControlHeader
+                    || !isCrossSiteBrowserRequest else {
+                Task { @MainActor in
+                    self?.sendJSON(connection, object: [
+                        "error": "cross_site_agent_control_rejected",
+                        "truth": "Browser cross-site GETs are not an editor authority channel. Use the loopback agent CLI, which sends the Quipsly local-control header.",
+                    ], statusCode: 401, reason: "Unauthorized")
                 }
                 return
             }
@@ -321,6 +356,117 @@ public class AgentServer: ObservableObject {
                         "mode": mode,
                         "action": action
                     ])
+                }
+            case "/capture_sync_qualify":
+                guard request.query["confirm"]
+                        == "activate-reversible-alignment" else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: [
+                            "error": "explicit_confirmation_required",
+                            "requiredConfirm":
+                                "activate-reversible-alignment",
+                            "truth": "Qualification changes reversible editor metadata and appends an agent-attributed receipt. It never changes source bytes or claims human approval.",
+                        ], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                let requiredKeys = [
+                    "baseline_lane_id",
+                    "target_lane_id",
+                    "expected_offset",
+                    "reviewed_offset",
+                    "cue_seconds",
+                    "later_seconds",
+                    "residual_drift_ms",
+                    "evidence_summary",
+                ]
+                let missing = requiredKeys.filter {
+                    request.query[$0]?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty != false
+                }
+                guard missing.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: [
+                            "error": "missing_agent_sync_evidence",
+                            "missing": missing,
+                        ], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                var values = request.query
+                values["reviewer_kind"] = "software-agent"
+                values["actor_id"] = request.query["actor_id"]
+                    ?? "software-agent:codex"
+                values["actor_label"] = request.query["actor_label"]
+                    ?? "Codex"
+                values["delegation_scope"] = request.query[
+                    "delegation_scope"
+                ] ?? "reversible-media-alignment"
+                values["reviewer_tool_version"] = request.query[
+                    "reviewer_tool_version"
+                ] ?? "Codex"
+                Task { @MainActor in
+                    var receipt = self?.enqueueCommand(
+                        "capture_sync_qualify",
+                        values: values
+                    ) ?? [:]
+                    receipt["status"] = "capture_sync_qualification_commanded"
+                    receipt["truth"] = "The live editor must revalidate immutable source identity, current offset, cue/drift/assembled evidence, and any superseded receipt before activation. Re-read /state for the applied receipt or exact failure."
+                    self?.sendJSON(connection, object: receipt)
+                }
+            case "/capture_sync_undo":
+                guard request.query["confirm"]
+                        == "undo-exact-reversible-alignment" else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: [
+                            "error": "explicit_confirmation_required",
+                            "requiredConfirm":
+                                "undo-exact-reversible-alignment",
+                            "truth": "Undo targets one exact active review receipt, restores its recorded prior placement, appends an agent-attributed receipt, and never changes source bytes.",
+                        ], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                let requiredKeys = [
+                    "approved_review_id",
+                    "target_lane_id",
+                    "expected_offset",
+                ]
+                let missing = requiredKeys.filter {
+                    request.query[$0]?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty != false
+                }
+                guard missing.isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: [
+                            "error": "missing_agent_sync_undo_identity",
+                            "missing": missing,
+                        ], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                var values = request.query
+                values["reviewer_kind"] = "software-agent"
+                values["actor_id"] = request.query["actor_id"]
+                    ?? "software-agent:codex"
+                values["actor_label"] = request.query["actor_label"]
+                    ?? "Codex"
+                values["delegation_scope"] = request.query[
+                    "delegation_scope"
+                ] ?? "reversible-media-alignment"
+                values["reviewer_tool_version"] = request.query[
+                    "reviewer_tool_version"
+                ] ?? "Codex"
+                Task { @MainActor in
+                    var receipt = self?.enqueueCommand(
+                        "capture_sync_undo",
+                        values: values
+                    ) ?? [:]
+                    receipt["status"] = "capture_sync_undo_commanded"
+                    receipt["truth"] = "The live editor must match the exact active receipt, target lane, and current offset before restoring the prior placement. Re-read /state for the appended undo receipt or exact failure."
+                    self?.sendJSON(connection, object: receipt)
                 }
             case "/seek":
                 let time = request.query["time"] ?? request.query["seconds"] ?? "0"
@@ -2820,11 +2966,24 @@ public class AgentServer: ObservableObject {
             // so normalize it here for local agent commands that pass file paths and lane names.
             query[item.name] = (item.value ?? "").replacingOccurrences(of: "+", with: " ")
         }
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard let separator = line.firstIndex(of: ":") else { continue }
+            let name = line[..<separator]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let value = line[line.index(after: separator)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty {
+                headers[name] = value
+            }
+        }
 
         return AgentHTTPRequest(
             method: parts[0],
             path: components?.path ?? target,
-            query: query
+            query: query,
+            headers: headers
         )
     }
 
@@ -4868,4 +5027,5 @@ private struct AgentHTTPRequest {
     let method: String
     let path: String
     let query: [String: String]
+    let headers: [String: String]
 }

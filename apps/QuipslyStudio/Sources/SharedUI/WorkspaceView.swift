@@ -45575,6 +45575,10 @@ struct WorkspaceView: View {
                 mode: request.values["mode"],
                 action: request.values["action"]
             )
+        case "capture_sync_qualify":
+            qualifyCaptureSyncFromAgent(request.values)
+        case "capture_sync_undo":
+            undoCaptureSyncFromAgent(request.values)
         case "lane_role":
             if let laneId = request.values["lane_id"],
                let role = request.values["role"] {
@@ -46214,6 +46218,9 @@ struct WorkspaceView: View {
                 "sourcePlayerCount": playbackEngine.sourcePlayers.count,
                 "maxSourcePlayerDeltaSeconds": NSNull(),
                 "samples": [],
+                "alignmentDecisionStatus": "no-sequence",
+                "alignmentReviews": [],
+                "agentUndoCommand": "No active alignment receipt is available to undo.",
                 "contract": "One sequence playhead drives Program Output, source monitors, timeline, and agent state."
             ]
         }
@@ -46243,6 +46250,56 @@ struct WorkspaceView: View {
         let passing = !playableSamples.isEmpty
             && playableSamples.count == deltas.count
             && (maxDelta ?? .infinity) <= toleranceSeconds
+        let alignmentReviews: [[String: Any]] = sourceMonitorLanes.compactMap {
+            lane in
+            guard let review = CaptureSourceSyncReviewService.activeApproval(
+                for: lane
+            ) else { return nil }
+            return [
+                "laneId": lane.id.uuidString,
+                "laneName": lane.name,
+                "reviewId": review.approvedReviewID.uuidString.lowercased(),
+                "reviewerKind": review.effectiveReviewerKind.rawValue,
+                "reviewerLabel": review.reviewerLabel,
+                "reviewerActorId": review.reviewerActorID,
+                "decisionBasis": (review.decisionBasis
+                    ?? .audiovisualInspection).rawValue,
+                "reviewedOffsetSeconds": review.reviewedTargetOffsetSeconds,
+                "cueTimelineSeconds": review.cueTimelineSeconds,
+                "laterTimelineSeconds": review.laterTimelineSeconds,
+                "residualDriftMilliseconds":
+                    review.residualDriftMilliseconds,
+                "evidenceSummary": review.evidenceSummary ?? "",
+                "delegationScope": review.delegationScope ?? "",
+                "reviewerToolVersion": review.reviewerToolVersion ?? "",
+                "supersedesReviewId": review.supersedesReviewID?
+                    .uuidString.lowercased() ?? "",
+                "receiptCount": lane.metadata?.syncReviewHistory.count ?? 0,
+                "sourceBytesMutated": review.sourceBytesMutated,
+                "sampleAccurateClaimed": review.sampleAccurateClaimed,
+                "reversible": review.reversible,
+                "agentUndoCommand": "script/agentctl.sh capture-sync-undo \(review.approvedReviewID.uuidString.lowercased()) \(lane.id.uuidString.lowercased()) \(review.reviewedTargetOffsetSeconds)",
+                "truth": review.truth,
+            ]
+        }
+        let personReviewCount = alignmentReviews.filter {
+            $0["reviewerKind"] as? String
+                == CaptureSourceSyncReviewerKind.person.rawValue
+        }.count
+        let agentReviewCount = alignmentReviews.filter {
+            $0["reviewerKind"] as? String
+                == CaptureSourceSyncReviewerKind.softwareAgent.rawValue
+        }.count
+        let alignmentDecisionStatus: String
+        if alignmentReviews.isEmpty {
+            alignmentDecisionStatus = "proposal-only"
+        } else if personReviewCount == alignmentReviews.count {
+            alignmentDecisionStatus = "person-reviewed"
+        } else if agentReviewCount == alignmentReviews.count {
+            alignmentDecisionStatus = "agent-qualified"
+        } else {
+            alignmentDecisionStatus = "mixed-review-authority"
+        }
 
         return [
             "status": passing ? "synced" : "needs_sync_attention",
@@ -46256,6 +46313,13 @@ struct WorkspaceView: View {
             "sourcePlayerCount": playbackEngine.sourcePlayers.count,
             "maxSourcePlayerDeltaSeconds": jsonNumberOrNull(maxDelta),
             "samples": samples,
+            "alignmentDecisionStatus": alignmentDecisionStatus,
+            "activeAlignmentReviewCount": alignmentReviews.count,
+            "personReviewedAlignmentCount": personReviewCount,
+            "agentQualifiedAlignmentCount": agentReviewCount,
+            "alignmentReviews": alignmentReviews,
+            "agentQualificationCommand": "script/agentctl.sh capture-sync-qualify <baseline-lane-id> <target-lane-id> <expected-offset> <reviewed-offset> <cue-seconds> <later-seconds> <residual-drift-ms> <evidence-summary> [notes] [supersedes-review-id]",
+            "agentUndoContract": "Use the exact agentUndoCommand from an active review. The editor rejects stale offsets, inactive receipts, mismatched identities, and changed retries.",
             "contract": "One sequence playhead drives Program Output, source monitors, timeline, and agent state over whole proxy-backed source lanes."
         ]
     }
@@ -52978,7 +53042,10 @@ struct WorkspaceView: View {
             rebuildPlayer()
             scheduleAutosave(reason: "approved capture sync")
             lastMediaAction = String(
-                format: "Saved reviewed capture alignment at %.6fs. Original source bytes remain unchanged.",
+                format: "%@ capture alignment at %.6fs. Original source bytes remain unchanged; this is not a sample-accuracy claim.",
+                input.reviewerKind == .person
+                    ? "Saved person-reviewed"
+                    : "Activated agent-qualified",
                 input.reviewedTargetOffsetSeconds
             )
             errorMessage = nil
@@ -52990,6 +53057,71 @@ struct WorkspaceView: View {
             showErrorAlert = true
             updateAgentState()
         }
+    }
+
+    private func qualifyCaptureSyncFromAgent(
+        _ values: [String: String]
+    ) {
+        guard values["confirm"] == "activate-reversible-alignment",
+              let baselineLaneID = values["baseline_lane_id"]
+                .flatMap(UUID.init(uuidString:)),
+              let targetLaneID = values["target_lane_id"]
+                .flatMap(UUID.init(uuidString:)),
+              let expectedOffset = Double(
+                  values["expected_offset"] ?? ""
+              ),
+              let reviewedOffset = Double(
+                  values["reviewed_offset"] ?? ""
+              ),
+              let cueSeconds = Double(values["cue_seconds"] ?? ""),
+              let laterSeconds = Double(values["later_seconds"] ?? ""),
+              let residualDrift = Double(
+                  values["residual_drift_ms"] ?? ""
+              ) else {
+            lastMediaAction = "Agent sync qualification rejected: the exact lane, timing, and reversible-activation confirmation are required."
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
+            return
+        }
+        let decisionBasis = CaptureSourceSyncDecisionBasis(
+            rawValue: values["decision_basis"] ?? "hybrid"
+        ) ?? .hybrid
+        let operationID = values["operation_id"]
+            .flatMap(UUID.init(uuidString:)) ?? UUID()
+        let supersedesReviewID = values["supersedes_review_id"]
+            .flatMap(UUID.init(uuidString:))
+        let evidenceSummary = values["evidence_summary"] ?? ""
+        approveCaptureSync(
+            CaptureSourceSyncApprovalInput(
+                operationID: operationID,
+                reviewerActorID: values["actor_id"]
+                    ?? "software-agent:codex",
+                reviewerLabel: values["actor_label"] ?? "Codex",
+                reviewerKind: .softwareAgent,
+                decisionBasis: decisionBasis,
+                delegationScope: values["delegation_scope"]
+                    ?? "reversible-media-alignment",
+                reviewerToolVersion: values["reviewer_tool_version"]
+                    ?? "Codex",
+                evidenceSummary: evidenceSummary,
+                supersedesReviewID: supersedesReviewID,
+                baselineLaneID: baselineLaneID,
+                targetLaneID: targetLaneID,
+                expectedTargetOffsetSeconds: expectedOffset,
+                reviewedTargetOffsetSeconds: reviewedOffset,
+                cueTimelineSeconds: cueSeconds,
+                laterTimelineSeconds: laterSeconds,
+                residualDriftMilliseconds: residualDrift,
+                checks: CaptureSourceSyncReviewChecks(
+                    waveformOrVisibleCueCompared: true,
+                    laterDriftCompared: true,
+                    assembledPlaybackAuditioned: true,
+                    reviewerPlacementApproved: true
+                ),
+                notes: values["notes"]
+            )
+        )
     }
 
     private func undoCaptureSync(
@@ -53009,7 +53141,7 @@ struct WorkspaceView: View {
             selectedLaneId = input.targetLaneID
             rebuildPlayer()
             scheduleAutosave(reason: "undid capture sync")
-            lastMediaAction = "Undid one reviewed capture alignment and restored the prior placement. Original source bytes remain unchanged."
+            lastMediaAction = "\(input.reviewerKind == .person ? "Person" : "Agent") undid one exact capture alignment and restored the prior placement. Original source bytes remain unchanged."
             errorMessage = nil
             showErrorAlert = false
             updateAgentState()
@@ -53019,6 +53151,43 @@ struct WorkspaceView: View {
             showErrorAlert = true
             updateAgentState()
         }
+    }
+
+    private func undoCaptureSyncFromAgent(
+        _ values: [String: String]
+    ) {
+        guard values["confirm"]
+                == "undo-exact-reversible-alignment",
+              let approvedReviewID = values["approved_review_id"]
+                .flatMap(UUID.init(uuidString:)),
+              let targetLaneID = values["target_lane_id"]
+                .flatMap(UUID.init(uuidString:)),
+              let expectedOffset = Double(
+                  values["expected_offset"] ?? ""
+              ) else {
+            lastMediaAction = "Agent sync undo rejected: the exact active receipt, target lane, current offset, and reversible-undo confirmation are required."
+            errorMessage = lastMediaAction
+            showErrorAlert = true
+            updateAgentState()
+            return
+        }
+        undoCaptureSync(
+            CaptureSourceSyncUndoInput(
+                operationID: values["operation_id"]
+                    .flatMap(UUID.init(uuidString:)) ?? UUID(),
+                approvedReviewID: approvedReviewID,
+                reviewerActorID: values["actor_id"]
+                    ?? "software-agent:codex",
+                reviewerLabel: values["actor_label"] ?? "Codex",
+                reviewerKind: .softwareAgent,
+                delegationScope: values["delegation_scope"]
+                    ?? "reversible-media-alignment",
+                reviewerToolVersion: values["reviewer_tool_version"]
+                    ?? "Codex",
+                targetLaneID: targetLaneID,
+                expectedTargetOffsetSeconds: expectedOffset
+            )
+        )
     }
 
     private func updateKeyframe() {

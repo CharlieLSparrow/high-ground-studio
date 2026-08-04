@@ -710,7 +710,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         "local-capture-audited-held"
                 case .machinePassHumanReviewRequired:
                     agentCommandStatus =
-                        "local-capture-audited-human-review-required"
+                        "local-capture-audited-evidence-review-required"
                 case nil:
                     agentCommandStatus =
                         "local-capture-audit-failed"
@@ -4449,8 +4449,15 @@ struct EpisodeCaptureSetupView: View {
 
                     Divider()
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Human review still required")
+                        Text("Evidence review still required")
                             .font(.subheadline.weight(.semibold))
+                        Text("A person or an authorized software agent may satisfy a listed item when the app can preserve inspectable evidence, reviewer identity, and a reversible receipt. Consent, publication, destructive actions, and real-world commitments remain person-authorized boundaries.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
                         ForEach(
                             Array(
                                 receipt.humanReviewRequired

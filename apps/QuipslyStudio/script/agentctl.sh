@@ -32,6 +32,8 @@ PY
 }
 
 BASE_URL="$(discover_base_url)"
+AGENT_CONTROL_HEADER="X-Quipsly-Agent-Control: local-control-v1"
+export QUIPSLY_AGENT_CONTROL_HEADER_VALUE="local-control-v1"
 
 usage() {
   cat <<'USAGE'
@@ -391,6 +393,8 @@ Usage:
   script/agentctl.sh sessions
   script/agentctl.sh playback edit set
   script/agentctl.sh playback through play
+  script/agentctl.sh capture-sync-qualify BASELINE_LANE_ID TARGET_LANE_ID EXPECTED_OFFSET REVIEWED_OFFSET CUE_SECONDS LATER_SECONDS RESIDUAL_DRIFT_MS "evidence summary" [notes] [supersedes-review-id] [audiovisual-inspection|measured-correlation|hybrid]
+  script/agentctl.sh capture-sync-undo APPROVED_REVIEW_ID TARGET_LANE_ID EXPECTED_OFFSET
   script/agentctl.sh seek 123.45
   script/agentctl.sh scrub 123.45
   script/agentctl.sh program-scroll 2.5
@@ -597,7 +601,7 @@ urlencode() {
 }
 
 get() {
-  curl --fail --silent --show-error --max-time "${QUIPSLY_AGENT_TIMEOUT:-15}" "$BASE_URL$1"
+  curl --fail --silent --show-error --max-time "${QUIPSLY_AGENT_TIMEOUT:-15}" --header "$AGENT_CONTROL_HEADER" "$BASE_URL$1"
   printf '\n'
 }
 
@@ -610,11 +614,14 @@ import sys
 import urllib.parse
 import urllib.request
 
+headers = {"X-Quipsly-Agent-Control": "local-control-v1"}
+
 base = sys.argv[1].rstrip("/")
 selector_mode = (sys.argv[2] if len(sys.argv) > 2 else "").strip().lower()
 selector_value = (sys.argv[3] if len(sys.argv) > 3 else "").strip()
 try:
-    with urllib.request.urlopen(base + "/state", timeout=2) as response:
+    request = urllib.request.Request(base + "/state", headers=headers)
+    with urllib.request.urlopen(request, timeout=2) as response:
         state = json.loads(response.read().decode("utf-8", errors="replace"))
 except Exception:
     print("")
@@ -663,10 +670,15 @@ import urllib.request
 base_url, expected, timeout = sys.argv[1], sys.argv[2], float(sys.argv[3])
 deadline = time.time() + timeout
 last = {}
+headers = {"X-Quipsly-Agent-Control": "local-control-v1"}
 
 while time.time() < deadline:
     try:
-        with urllib.request.urlopen(base_url.rstrip("/") + "/state", timeout=2) as response:
+        request = urllib.request.Request(
+            base_url.rstrip("/") + "/state",
+            headers=headers,
+        )
+        with urllib.request.urlopen(request, timeout=2) as response:
             last = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         last = {"error": str(exc)}
@@ -3319,9 +3331,11 @@ import sys
 import urllib.request
 
 base_url = sys.argv[1].rstrip("/")
+headers = {"X-Quipsly-Agent-Control": "local-control-v1"}
 
 def fetch(path):
-    with urllib.request.urlopen(base_url + path, timeout=5) as response:
+    request = urllib.request.Request(base_url + path, headers=headers)
+    with urllib.request.urlopen(request, timeout=5) as response:
         return json.loads(response.read().decode("utf-8"))
 
 payload = {
@@ -3352,10 +3366,12 @@ import urllib.error
 import urllib.request
 
 base_url = sys.argv[1].rstrip("/")
+headers = {"X-Quipsly-Agent-Control": "local-control-v1"}
 
 def fetch(path):
     try:
-        with urllib.request.urlopen(base_url + path, timeout=5) as response:
+        request = urllib.request.Request(base_url + path, headers=headers)
+        with urllib.request.urlopen(request, timeout=5) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
@@ -12759,7 +12775,7 @@ PY
     get "/delivery_readiness"
     ;;
   recovery-report)
-    curl --fail --silent --show-error "$BASE_URL/state" | python3 -c '
+    curl --fail --silent --show-error --header "$AGENT_CONTROL_HEADER" "$BASE_URL/state" | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
 report = payload.get("mediaRecoveryReport")
@@ -12773,7 +12789,7 @@ else:
 '
     ;;
   edit-target|edit-target-recommendation|next-edit-target)
-    curl --fail --silent --show-error "$BASE_URL/state" | python3 -c '
+    curl --fail --silent --show-error --header "$AGENT_CONTROL_HEADER" "$BASE_URL/state" | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
 recommendation = payload.get("editTargetRecommendation")
@@ -12840,6 +12856,41 @@ else:
       exit 2
     fi
     get "/playback?mode=$(urlencode "$mode")&action=$(urlencode "$action")"
+    ;;
+  capture-sync-qualify)
+    baseline_lane_id="${2:-}"
+    target_lane_id="${3:-}"
+    expected_offset="${4:-}"
+    reviewed_offset="${5:-}"
+    cue_seconds="${6:-}"
+    later_seconds="${7:-}"
+    residual_drift_ms="${8:-}"
+    evidence_summary="${9:-}"
+    notes="${10:-}"
+    supersedes_review_id="${11:-}"
+    decision_basis="${12:-hybrid}"
+    if [[ -z "$baseline_lane_id" || -z "$target_lane_id" || -z "$expected_offset" || -z "$reviewed_offset" || -z "$cue_seconds" || -z "$later_seconds" || -z "$residual_drift_ms" || -z "$evidence_summary" ]]; then
+      usage
+      exit 2
+    fi
+    sync_operation_id="${QUIPSLY_SYNC_OPERATION_ID:-$(uuidgen)}"
+    query="/capture_sync_qualify?baseline_lane_id=$(urlencode "$baseline_lane_id")&target_lane_id=$(urlencode "$target_lane_id")&expected_offset=$(urlencode "$expected_offset")&reviewed_offset=$(urlencode "$reviewed_offset")&cue_seconds=$(urlencode "$cue_seconds")&later_seconds=$(urlencode "$later_seconds")&residual_drift_ms=$(urlencode "$residual_drift_ms")&evidence_summary=$(urlencode "$evidence_summary")&notes=$(urlencode "$notes")&decision_basis=$(urlencode "$decision_basis")&operation_id=$(urlencode "$sync_operation_id")&actor_id=$(urlencode "software-agent:codex")&actor_label=$(urlencode "Codex")&delegation_scope=$(urlencode "reversible-media-alignment")&reviewer_tool_version=$(urlencode "Codex")&confirm=activate-reversible-alignment"
+    if [[ -n "$supersedes_review_id" ]]; then
+      query="$query&supersedes_review_id=$(urlencode "$supersedes_review_id")"
+    fi
+    get "$query"
+    ;;
+  capture-sync-undo)
+    approved_review_id="${2:-}"
+    target_lane_id="${3:-}"
+    expected_offset="${4:-}"
+    if [[ -z "$approved_review_id" || -z "$target_lane_id" || -z "$expected_offset" ]]; then
+      usage
+      exit 2
+    fi
+    sync_operation_id="${QUIPSLY_SYNC_OPERATION_ID:-$(uuidgen)}"
+    query="/capture_sync_undo?approved_review_id=$(urlencode "$approved_review_id")&target_lane_id=$(urlencode "$target_lane_id")&expected_offset=$(urlencode "$expected_offset")&operation_id=$(urlencode "$sync_operation_id")&actor_id=$(urlencode "software-agent:codex")&actor_label=$(urlencode "Codex")&delegation_scope=$(urlencode "reversible-media-alignment")&reviewer_tool_version=$(urlencode "Codex")&confirm=undo-exact-reversible-alignment"
+    get "$query"
     ;;
   seek)
     time="${2:-}"

@@ -9,6 +9,29 @@ const agentServer = await readFile(
   ),
   "utf8",
 );
+const agentctl = await readFile(
+  new URL(
+    "../apps/QuipslyStudio/script/agentctl.sh",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("Mac agent authority is enforced at the loopback and browser-request boundaries", () => {
+  assert.match(agentServer, /parameters\.acceptLocalOnly = true/);
+  assert.match(
+    agentServer,
+    /parameters\.requiredLocalEndpoint = \.hostPort\([\s\S]*host: "127\.0\.0\.1"/,
+  );
+  assert.match(agentServer, /request\.headers\["sec-fetch-site"\]/);
+  assert.match(agentServer, /fetchSite == "cross-site"/);
+  assert.match(agentServer, /hasUntrustedBrowserOrigin/);
+  assert.match(agentServer, /cross_site_agent_control_rejected/);
+  assert.match(
+    agentctl,
+    /X-Quipsly-Agent-Control: local-control-v1/,
+  );
+});
 
 test("Mac agent state returns cached bytes before optional external export reconciliation", () => {
   const stateCaseStart = agentServer.indexOf('case "/state":');

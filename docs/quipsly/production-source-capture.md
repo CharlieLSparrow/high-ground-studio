@@ -448,7 +448,8 @@ Alignment quality is explicit:
 3. Canon/HDMI time code;
 4. watched-clip command anchor;
 5. clap/sync-tone or waveform correlation;
-6. human-reviewed offset.
+6. evidence-reviewed offset, attributed to a person or authorized software
+   agent.
 
 The editor stores the selected method, confidence, offset, drift correction,
 input hashes, and reviewer. It never rewrites source bytes.
@@ -457,7 +458,7 @@ Episode Room reads alignment through the versioned
 `quipsly-capture-alignment-proposal-v1` contract. A generic source-workflow
 state such as `ready-to-sync` is not alignment evidence. For every capture
 proposal the room shows the group-relative offset, clock uncertainty, proposed
-server start, and the still-open waveform, drift, and human-approval gates. A
+server start, and the still-open waveform, drift, and evidence-review gates. A
 proposal that claims sample accuracy, omits review, or lacks a proposed start
 is downgraded to **Evidence needed** instead of being displayed as ready.
 Episode Room remains a review/readback surface; it cannot approve or lock the
@@ -472,7 +473,9 @@ authenticated reviewer records:
   hashes are valid SHA-256 values;
 - explicit opening-event waveform correlation;
 - a later comparison interval and signed residual drift measurement;
-- explicit human approval of a reversible placement;
+- explicit person review or authorized-agent qualification of a reversible
+  placement, with reviewer identity, decision basis, inspectable evidence, and
+  delegation scope;
 - the original capture-clock proposal snapshot when one exists.
 
 The receipt always says `sampleAccurateClaimed:false`,
@@ -493,7 +496,7 @@ local source ledger
   -> canonical episode source + attachment
   -> proxy + waveform + technical probe
   -> alignment proposal
-  -> human review when confidence is not exact
+  -> evidence review when confidence is not exact
   -> non-destructive timeline placement
 ```
 

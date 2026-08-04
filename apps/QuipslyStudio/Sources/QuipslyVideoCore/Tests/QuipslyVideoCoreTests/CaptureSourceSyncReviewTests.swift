@@ -245,6 +245,246 @@ final class CaptureSourceSyncReviewTests: XCTestCase {
         }
     }
 
+    func testAuthorizedAgentCanQualifyReversibleAlignmentWithEvidence() throws {
+        let approved = try CaptureSourceSyncReviewService.approve(
+            agentApprovalInput(
+                operationID: UUID(),
+                expectedOffset: 0.070_643_75,
+                reviewedOffset: 0.082
+            ),
+            in: makeSequence(targetOffset: 0.070_643_75)
+        )
+        let target = try XCTUnwrap(
+            approved.lanes.first { $0.id == targetLaneID }
+        )
+        let receipt = try XCTUnwrap(
+            CaptureSourceSyncReviewService.activeApproval(for: target)
+        )
+
+        XCTAssertEqual(
+            target.metadata?.alignmentStatus,
+            CaptureSourceSyncReviewService.agentQualifiedAlignmentStatus
+        )
+        XCTAssertEqual(receipt.effectiveReviewerKind, .softwareAgent)
+        XCTAssertEqual(receipt.decisionBasis, .hybrid)
+        XCTAssertEqual(receipt.delegationScope, "reversible-media-alignment")
+        XCTAssertEqual(receipt.reviewerToolVersion, "Codex GPT-5")
+        XCTAssertTrue(receipt.checks.placementApproved)
+        XCTAssertFalse(receipt.checks.humanPlacementApproved)
+        XCTAssertTrue(receipt.truth.contains("not labeled as human approval"))
+    }
+
+    func testVersionOnePersonReceiptStillDecodesAsPersonReviewed() throws {
+        let approved = try CaptureSourceSyncReviewService.approve(
+            approvalInput(
+                operationID: UUID(),
+                expectedOffset: 0.070_643_75,
+                reviewedOffset: 0.082
+            ),
+            in: makeSequence(targetOffset: 0.070_643_75)
+        )
+        let target = try XCTUnwrap(
+            approved.lanes.first { $0.id == targetLaneID }
+        )
+        let receipt = try XCTUnwrap(
+            CaptureSourceSyncReviewService.activeApproval(for: target)
+        )
+        let encoded = try JSONEncoder().encode(receipt)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["protocolVersion"] = 1
+        object.removeValue(forKey: "reviewerKind")
+        object.removeValue(forKey: "decisionBasis")
+        object.removeValue(forKey: "delegationScope")
+        object.removeValue(forKey: "reviewerToolVersion")
+        object.removeValue(forKey: "evidenceSummary")
+        object.removeValue(forKey: "supersedesReviewID")
+        var checks = try XCTUnwrap(object["checks"] as? [String: Any])
+        checks.removeValue(forKey: "reviewerPlacementApproved")
+        object["checks"] = checks
+
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(
+            CaptureSourceSyncReviewReceipt.self,
+            from: legacyData
+        )
+
+        XCTAssertEqual(decoded.protocolVersion, 1)
+        XCTAssertEqual(decoded.effectiveReviewerKind, .person)
+        XCTAssertEqual(decoded.decisionBasis, nil)
+        XCTAssertTrue(decoded.checks.placementApproved)
+    }
+
+    func testAgentQualificationRejectsThinOrAnonymousEvidence() {
+        let input = CaptureSourceSyncApprovalInput(
+            operationID: UUID(),
+            reviewerActorID: "software-agent:codex",
+            reviewerLabel: "Codex",
+            reviewerKind: .softwareAgent,
+            decisionBasis: .audiovisualInspection,
+            delegationScope: "reversible-media-alignment",
+            reviewerToolVersion: "Codex GPT-5",
+            evidenceSummary: "Looks fine.",
+            baselineLaneID: baselineLaneID,
+            targetLaneID: targetLaneID,
+            expectedTargetOffsetSeconds: 0.070_643_75,
+            reviewedTargetOffsetSeconds: 0.082,
+            cueTimelineSeconds: 1,
+            laterTimelineSeconds: 8,
+            residualDriftMilliseconds: 4,
+            checks: CaptureSourceSyncReviewChecks(
+                waveformOrVisibleCueCompared: true,
+                laterDriftCompared: true,
+                assembledPlaybackAuditioned: true,
+                reviewerPlacementApproved: true
+            ),
+            notes: nil
+        )
+
+        XCTAssertThrowsError(
+            try CaptureSourceSyncReviewService.approve(
+                input,
+                in: makeSequence(targetOffset: 0.070_643_75)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? CaptureSourceSyncReviewError,
+                .invalidAgentEvidence
+            )
+        }
+    }
+
+    func testPersonCanSupersedeAgentAndUndoRestoresAgentReview() throws {
+        let agentReviewID = UUID()
+        let agentApproved = try CaptureSourceSyncReviewService.approve(
+            agentApprovalInput(
+                operationID: agentReviewID,
+                expectedOffset: 0.070_643_75,
+                reviewedOffset: 0.082
+            ),
+            in: makeSequence(targetOffset: 0.070_643_75)
+        )
+        let personReviewID = UUID()
+        let personApproved = try CaptureSourceSyncReviewService.approve(
+            CaptureSourceSyncApprovalInput(
+                operationID: personReviewID,
+                reviewerActorID: "charlie@example.test",
+                reviewerLabel: "Charlie",
+                supersedesReviewID: agentReviewID,
+                baselineLaneID: baselineLaneID,
+                targetLaneID: targetLaneID,
+                expectedTargetOffsetSeconds: 0.082,
+                reviewedTargetOffsetSeconds: 0.084,
+                cueTimelineSeconds: 1,
+                laterTimelineSeconds: 8,
+                residualDriftMilliseconds: 2,
+                checks: CaptureSourceSyncReviewChecks(
+                    waveformOrVisibleCueCompared: true,
+                    laterDriftCompared: true,
+                    assembledPlaybackAuditioned: true,
+                    reviewerPlacementApproved: true
+                ),
+                notes: "Confirmed lip movement and the closing phrase."
+            ),
+            in: agentApproved
+        )
+        let personTarget = try XCTUnwrap(
+            personApproved.lanes.first { $0.id == targetLaneID }
+        )
+        XCTAssertEqual(
+            CaptureSourceSyncReviewService.activeApproval(for: personTarget)?
+                .approvedReviewID,
+            personReviewID
+        )
+        XCTAssertEqual(personTarget.metadata?.syncReviewHistory.count, 2)
+
+        let restored = try CaptureSourceSyncReviewService.undo(
+            CaptureSourceSyncUndoInput(
+                operationID: UUID(),
+                approvedReviewID: personReviewID,
+                reviewerActorID: "charlie@example.test",
+                reviewerLabel: "Charlie",
+                targetLaneID: targetLaneID,
+                expectedTargetOffsetSeconds: 0.084
+            ),
+            in: personApproved
+        )
+        let restoredTarget = try XCTUnwrap(
+            restored.lanes.first { $0.id == targetLaneID }
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(restoredTarget.sourceVideo).offset,
+            0.082,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            restoredTarget.metadata?.alignmentStatus,
+            CaptureSourceSyncReviewService.agentQualifiedAlignmentStatus
+        )
+        XCTAssertEqual(
+            CaptureSourceSyncReviewService.activeApproval(for: restoredTarget)?
+                .approvedReviewID,
+            agentReviewID
+        )
+        XCTAssertEqual(restoredTarget.metadata?.syncReviewHistory.count, 3)
+    }
+
+    func testAgentCanIdempotentlyUndoItsExactQualifiedAlignment() throws {
+        let approvedReviewID = UUID()
+        let approved = try CaptureSourceSyncReviewService.approve(
+            agentApprovalInput(
+                operationID: approvedReviewID,
+                expectedOffset: 0.070_643_75,
+                reviewedOffset: 0.082
+            ),
+            in: makeSequence(targetOffset: 0.070_643_75)
+        )
+        let undo = CaptureSourceSyncUndoInput(
+            operationID: UUID(),
+            approvedReviewID: approvedReviewID,
+            reviewerActorID: "software-agent:codex",
+            reviewerLabel: "Codex",
+            reviewerKind: .softwareAgent,
+            delegationScope: "reversible-media-alignment",
+            reviewerToolVersion: "Codex GPT-5",
+            targetLaneID: targetLaneID,
+            expectedTargetOffsetSeconds: 0.082
+        )
+
+        let undone = try CaptureSourceSyncReviewService.undo(
+            undo,
+            in: approved
+        )
+        let replayed = try CaptureSourceSyncReviewService.undo(
+            undo,
+            in: undone
+        )
+
+        XCTAssertEqual(undone, replayed)
+        let target = try XCTUnwrap(
+            undone.lanes.first { $0.id == targetLaneID }
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(target.sourceVideo).offset,
+            0.070_643_75,
+            accuracy: 0.000_001
+        )
+        XCTAssertNil(
+            CaptureSourceSyncReviewService.activeApproval(for: target)
+        )
+        let receipt = try XCTUnwrap(
+            target.metadata?.syncReviewHistory.last
+        )
+        XCTAssertEqual(receipt.action, .undone)
+        XCTAssertEqual(receipt.effectiveReviewerKind, .softwareAgent)
+        XCTAssertEqual(
+            receipt.delegationScope,
+            "reversible-media-alignment"
+        )
+        XCTAssertEqual(target.metadata?.syncReviewHistory.count, 2)
+    }
+
     func testApprovalRejectsCrossGroupAndIncompleteEvidence() {
         var crossGroup = makeSequence(targetOffset: 0.070_643_75)
         crossGroup.lanes[1].metadata?.captureGroupID = UUID()
@@ -308,6 +548,38 @@ final class CaptureSourceSyncReviewTests: XCTestCase {
                 humanPlacementApproved: true
             ),
             notes: "Compared the opening hand movement and the final phrase.",
+            reviewedAt: Date(timeIntervalSince1970: 100)
+        )
+    }
+
+    private func agentApprovalInput(
+        operationID: UUID,
+        expectedOffset: Double,
+        reviewedOffset: Double
+    ) -> CaptureSourceSyncApprovalInput {
+        CaptureSourceSyncApprovalInput(
+            operationID: operationID,
+            reviewerActorID: "software-agent:codex",
+            reviewerLabel: "Codex",
+            reviewerKind: .softwareAgent,
+            decisionBasis: .hybrid,
+            delegationScope: "reversible-media-alignment",
+            reviewerToolVersion: "Codex GPT-5",
+            evidenceSummary: "Compared the opening visible cue, inspected the later checkpoint, and auditioned the assembled immutable sources.",
+            baselineLaneID: baselineLaneID,
+            targetLaneID: targetLaneID,
+            expectedTargetOffsetSeconds: expectedOffset,
+            reviewedTargetOffsetSeconds: reviewedOffset,
+            cueTimelineSeconds: 1,
+            laterTimelineSeconds: 8,
+            residualDriftMilliseconds: 4,
+            checks: CaptureSourceSyncReviewChecks(
+                waveformOrVisibleCueCompared: true,
+                laterDriftCompared: true,
+                assembledPlaybackAuditioned: true,
+                reviewerPlacementApproved: true
+            ),
+            notes: "Agent-qualified reversible placement.",
             reviewedAt: Date(timeIntervalSince1970: 100)
         )
     }
