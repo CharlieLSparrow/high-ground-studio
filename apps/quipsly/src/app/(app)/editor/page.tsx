@@ -29,7 +29,7 @@ import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
-import { AutomatedEditEvidenceMap } from "./AutomatedEditEvidenceMap";
+import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -3697,6 +3697,7 @@ function CloudEditorContent() {
   const proofWatchAiEditSuggestion = async (
     edit: AiEditSuggestion | AiEditReviewCandidate,
     reviewMode: "watch" | "listen" = "watch",
+    boundProof?: AutomatedEditBoundProof,
   ) => {
     if (!await aiEditBindingIsCurrent()) {
       setAiEditMessage("This edit analysis is stale because the transcript or timeline changed. Request a fresh analysis before reviewing or applying it.");
@@ -3712,8 +3713,24 @@ function CloudEditorContent() {
         reviewMode,
         confidence: edit.confidence,
         itemKind: "proposalId" in edit ? edit.type : edit.kind,
+        ...(boundProof ? {
+          protectedPlayback: true,
+          recordingAssetId: boundProof.recordingAssetId,
+          protectedPlaybackSourceId: boundProof.sourceId,
+          sourceSha256: boundProof.sourceSha256,
+          signalProfileSha256: boundProof.signalProfileSha256,
+          playbackPositionSeconds: boundProof.playbackPositionSeconds,
+        } : {}),
       },
     });
+    if (boundProof) {
+      setEditorMode("play-all");
+      setIsPreviewPlaying(false);
+      setAiProofWatchEndSeconds(null);
+      setCurrentTime(boundProof.playbackPositionSeconds);
+      setAiEditMessage(`Proof-listened through the exact protected RecordingAsset at ${formatClock(boundProof.playbackPositionSeconds)}.${receipt ? " Review receipt saved." : " Playback was operated, but the durable receipt failed and is visibly flagged."}`);
+      return;
+    }
     const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
     const end = Math.min(totalDuration, edit.sourceRange.endSeconds + 1.5);
     setEditorMode("play-all");
@@ -10697,12 +10714,16 @@ function CloudEditorContent() {
                           setCurrentTime(seconds);
                           setAiEditMessage(`Selected untouched source at ${formatClock(seconds)}. Choose proof-listen or proof-watch to record a review receipt; nothing has been applied.`);
                         }}
-                        onProofReview={(item) => void proofWatchAiEditSuggestion(
+                        onPlaybackTime={setCurrentTime}
+                        onProofReview={(item, boundProof) => void proofWatchAiEditSuggestion(
                           item,
-                          ("type" in item && item.type !== "deactivate_range")
-                            || ("suggestedAction" in item && item.suggestedAction === "review-camera")
-                            ? "watch"
-                            : "listen",
+                          boundProof
+                            ? "listen"
+                            : (("type" in item && item.type !== "deactivate_range")
+                              || ("suggestedAction" in item && item.suggestedAction === "review-camera")
+                              ? "watch"
+                              : "listen"),
+                          boundProof,
                         )}
                       />
                     </div>

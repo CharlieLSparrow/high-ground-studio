@@ -46,10 +46,13 @@ describe("AI edit proposal evidence", () => {
       durationSeconds: 7,
       nearSilenceDbfs: -72,
       surroundingSignalDbfs: -45,
+      protectedPlayback: null,
       waveform: [{ startSeconds: 0, durationSeconds: 1, rmsDbfs: -24, samplePeakDbfs: -3, clippedFrameCount: 0 }],
     };
     expect(isAiEditSignalVisualization(valid)).toBe(true);
     expect(isAiEditSignalVisualization({ ...valid, sourceSha256: "not-a-source-hash" })).toBe(false);
     expect(isAiEditSignalVisualization({ ...valid, waveform: Array.from({ length: 361 }, () => valid.waveform[0]) })).toBe(false);
+    expect(isAiEditSignalVisualization({ ...valid, protectedPlayback: { sourceId: "source-1", url: "/api/ingest/media/a-different-source", kind: "audio", label: "Source", durationSeconds: 7 } })).toBe(false);
+    expect(isAiEditSignalVisualization({ ...valid, protectedPlayback: { sourceId: "source-1", url: "/api/ingest/media/source-1", kind: "audio", label: "Source", durationSeconds: 7 } })).toBe(true);
   });
 });

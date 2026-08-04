@@ -71,8 +71,8 @@ separate deliberate choice.
 
 ## Next boundary
 
-Bind proof playback to the exact RecordingAsset/source SHA named by the proposal
-set, then reject or visibly hold proof review when the editor's audible source
-does not match. After that, add sync-discontinuity and camera-cut lanes to this
-map and operate an accepted reversible edit against protected real podcast
-media before permitting any claim of automated-edit readiness.
+Exact protected-source proof playback is now implemented and operated in
+`2026-08-04-protected-source-automated-edit-proof.md`. Next, add
+sync-discontinuity and camera-cut lanes to this map and operate an accepted and
+undone reversible edit against protected real podcast media before permitting
+any claim of automated-edit readiness.

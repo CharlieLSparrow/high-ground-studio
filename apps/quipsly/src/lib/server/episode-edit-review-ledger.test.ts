@@ -237,6 +237,70 @@ describe("episode edit review ledger", () => {
     }
   });
 
+  it("accepts signal-bound proof only from the exact protected source inside its range", async () => {
+    const signalProposalSet: AiEditProposalSet = {
+      ...proposalSet,
+      proposalSetId: "edit_proposal_set_signal_proof",
+      binding: {
+        ...proposalSet.binding,
+        signalEvidence: {
+          ...proposalSet.binding.signalEvidence!,
+          protectedPlaybackSourceId: "protected-source-1",
+        },
+      },
+      proposals: [{
+        ...proposalSet.proposals[0]!,
+        proposalId: "signal-proposal-1",
+        evidence: {
+          ...proposalSet.proposals[0]!.evidence,
+          audioSignal: {
+            recordingAssetId: "recording-1",
+            sourceSha256: "c".repeat(64),
+            storageGeneration: "42",
+            signalProfileSha256: "d".repeat(64),
+            algorithm: "capture-energy-v1",
+            measuredStartSeconds: 2,
+            measuredEndSeconds: 5,
+            coverageFraction: 1,
+            maximumRmsDbfs: -78,
+            nearSilenceDbfs: -72,
+            surroundingSignalDbfs: -45,
+            classification: "measured-low-energy",
+          },
+        },
+      }],
+    };
+    const { prisma } = fakePrisma();
+    await persistEpisodeEditProposalSet({ prisma, projectId: "project-1", episodeSlug: "episode-1", actor, proposalSet: signalProposalSet });
+    const base = {
+      clientRequestId: "7d444c16-af55-4b06-b37c-04c41927d73f",
+      proposalSetId: signalProposalSet.proposalSetId,
+      action: "PROOF_LISTENED" as const,
+      subjectId: "signal-proposal-1",
+      subjectKind: "proposal" as const,
+      sourceRange: { startSeconds: 2, endSeconds: 5 },
+      proposalTimelineFingerprintSha256: "a".repeat(64),
+      timelineFingerprintBeforeSha256: "a".repeat(64),
+      evidence: {
+        protectedPlayback: true,
+        recordingAssetId: "recording-1",
+        protectedPlaybackSourceId: "protected-source-1",
+        sourceSha256: "c".repeat(64),
+        signalProfileSha256: "d".repeat(64),
+        playbackPositionSeconds: 3,
+      },
+    };
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-03T20:00:02.000Z"));
+    try {
+      await expect(appendEpisodeEditReviewReceipt({ prisma, projectId: "project-1", episodeSlug: "episode-1", actor, review: { ...base, evidence: { ...base.evidence, protectedPlaybackSourceId: "forged-source" } } }))
+        .rejects.toEqual(expect.objectContaining({ code: "EDIT_REVIEW_PROTECTED_PLAYBACK_REQUIRED", status: 409 }));
+      const receipt = await appendEpisodeEditReviewReceipt({ prisma, projectId: "project-1", episodeSlug: "episode-1", actor, review: base });
+      expect(receipt).toEqual(expect.objectContaining({ action: "PROOF_LISTENED", sourceSha256: "c".repeat(64), signalProfileSha256: "d".repeat(64) }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("records a bounded speaker-cut draft and a later reversible camera-range restore", async () => {
     const { prisma, receipts } = fakePrisma();
     await persistEpisodeEditProposalSet({ prisma, projectId: "project-1", episodeSlug: "episode-1", actor, proposalSet });

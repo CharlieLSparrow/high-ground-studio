@@ -62,6 +62,7 @@ const signal: AiEditSignalVisualization = {
   durationSeconds: 12,
   nearSilenceDbfs: -72,
   surroundingSignalDbfs: -45,
+  protectedPlayback: null,
   waveform: [
     { startSeconds: 0, durationSeconds: 4, rmsDbfs: -24, samplePeakDbfs: -8, clippedFrameCount: 0 },
     { startSeconds: 4, durationSeconds: 3, rmsDbfs: -78, samplePeakDbfs: -61, clippedFrameCount: 0 },
@@ -99,5 +100,25 @@ describe("AutomatedEditEvidenceMap", () => {
     render(<AutomatedEditEvidenceMap proposals={[]} candidates={[candidate]} signal={null} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={2} onSelectTime={jest.fn()} onProofReview={jest.fn()} />);
     expect(screen.getByText("Decoded waveform is not bound to this proposal set")).toBeInTheDocument();
     expect(automatedEditEvidenceSummary([], [candidate])).toEqual({ proposalCount: 0, candidateCount: 1, signalBoundCount: 0, lowEnergyProposalCount: 0 });
+  });
+
+  it("records proof only after operating the exact protected source", async () => {
+    const onSelectTime = jest.fn();
+    const onProofReview = jest.fn();
+    const play = jest.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    render(<AutomatedEditEvidenceMap proposals={[proposal]} candidates={[]} signal={{ ...signal, protectedPlayback: { sourceId: "source-1", url: "/api/ingest/media/source-1", kind: "audio", label: "Protected take", durationSeconds: 12 } }} sourceStartSeconds={0} sourceEndSeconds={12} currentSeconds={0} onSelectTime={onSelectTime} onProofReview={onProofReview} />);
+
+    const audio = screen.getByLabelText("Protected automated edit source");
+    expect(screen.getByText(/Exact protected source · Protected take/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Play bound source" }));
+    expect(play).toHaveBeenCalled();
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 4.4, writable: true });
+    fireEvent.timeUpdate(audio);
+    const confirmation = screen.getByRole("checkbox", { name: /I listened inside this exact source range/i });
+    expect(confirmation).toBeEnabled();
+    fireEvent.click(confirmation);
+    fireEvent.click(screen.getByRole("button", { name: "Record proof-listen" }));
+    expect(onProofReview).toHaveBeenCalledWith(proposal, expect.objectContaining({ recordingAssetId: "recording-1", sourceId: "source-1", playbackPositionSeconds: 4.4 }));
+    play.mockRestore();
   });
 });

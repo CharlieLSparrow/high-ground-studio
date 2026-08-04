@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useRef, useState, type MouseEvent } from "react";
 
 import type {
   AiEditProposal,
@@ -11,6 +11,14 @@ import type {
 type EvidenceItem =
   | { id: string; kind: "proposal"; item: AiEditProposal }
   | { id: string; kind: "candidate"; item: AiEditReviewCandidate };
+
+export type AutomatedEditBoundProof = {
+  recordingAssetId: string;
+  sourceId: string;
+  sourceSha256: string;
+  signalProfileSha256: string;
+  playbackPositionSeconds: number;
+};
 
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -57,6 +65,7 @@ export function AutomatedEditEvidenceMap({
   sourceEndSeconds,
   currentSeconds,
   onSelectTime,
+  onPlaybackTime,
   onProofReview,
 }: {
   proposals: AiEditProposal[];
@@ -66,13 +75,17 @@ export function AutomatedEditEvidenceMap({
   sourceEndSeconds: number;
   currentSeconds: number;
   onSelectTime: (seconds: number) => void;
-  onProofReview: (item: AiEditProposal | AiEditReviewCandidate) => void;
+  onPlaybackTime?: (seconds: number) => void;
+  onProofReview: (item: AiEditProposal | AiEditReviewCandidate, boundProof?: AutomatedEditBoundProof) => void;
 }) {
   const items = useMemo<EvidenceItem[]>(() => [
     ...proposals.map((item) => ({ id: item.proposalId, kind: "proposal" as const, item })),
     ...candidates.map((item) => ({ id: item.candidateId, kind: "candidate" as const, item })),
   ], [candidates, proposals]);
   const [selectedId, setSelectedId] = useState<string | null>(items[0]?.id ?? null);
+  const [playedEvidenceIds, setPlayedEvidenceIds] = useState<Set<string>>(() => new Set());
+  const [confirmedEvidenceIds, setConfirmedEvidenceIds] = useState<Set<string>>(() => new Set());
+  const protectedMediaRef = useRef<HTMLMediaElement | null>(null);
   const selected = items.find((item) => item.id === selectedId) ?? null;
   const selectedRequiresBoundAudio = Boolean(selected?.item.evidence.audioSignal);
   const start = Math.max(0, Math.min(sourceStartSeconds, sourceEndSeconds));
@@ -99,7 +112,21 @@ export function AutomatedEditEvidenceMap({
   function selectFromClock(event: MouseEvent<HTMLButtonElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const fraction = bounds.width > 0 ? clamp((event.clientX - bounds.left) / bounds.width, 0, 1) : 0;
-    onSelectTime(start + fraction * duration);
+    const seconds = start + fraction * duration;
+    if (protectedMediaRef.current) protectedMediaRef.current.currentTime = seconds;
+    onSelectTime(seconds);
+  }
+
+  async function playBoundSource(entry: EvidenceItem) {
+    const media = protectedMediaRef.current;
+    if (!media || !signal?.protectedPlayback) return;
+    media.currentTime = Math.max(0, entry.item.sourceRange.startSeconds - 0.5);
+    onSelectTime(media.currentTime);
+    try {
+      await media.play();
+    } catch {
+      // Native controls remain the fallback when browser autoplay policy holds.
+    }
   }
 
   return (
@@ -121,6 +148,7 @@ export function AutomatedEditEvidenceMap({
         <span><span className="mr-1 inline-block h-3 w-0.5 bg-cyan-300" />Playhead</span>
       </div>
       {signal && <p className="mt-2 break-all rounded-md border border-gray-800 bg-[#10151d] px-2 py-1.5 font-mono text-[8px] leading-4 text-gray-500">Bound source {signal.recordingAssetId} · source {signal.sourceSha256.slice(0, 12)} · profile {signal.signalProfileSha256.slice(0, 12)} · {signal.algorithm}</p>}
+      {signal?.protectedPlayback && <div className="mt-2 rounded-lg border border-emerald-900 bg-emerald-950/20 p-2"><p className="mb-2 text-[9px] font-black uppercase tracking-wider text-emerald-300">Exact protected source · {signal.protectedPlayback.label}</p>{signal.protectedPlayback.kind === "video" ? <video ref={(node) => { protectedMediaRef.current = node; }} src={signal.protectedPlayback.url} controls preload="metadata" className="max-h-56 w-full rounded bg-black" aria-label="Protected automated edit source" onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; (onPlaybackTime ?? onSelectTime)(current); if (selected && current >= selected.item.sourceRange.startSeconds && current < selected.item.sourceRange.endSeconds) setPlayedEvidenceIds((value) => new Set(value).add(selected.id)); }} /> : <audio ref={(node) => { protectedMediaRef.current = node; }} src={signal.protectedPlayback.url} controls preload="metadata" className="w-full" aria-label="Protected automated edit source" onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; (onPlaybackTime ?? onSelectTime)(current); if (selected && current >= selected.item.sourceRange.startSeconds && current < selected.item.sourceRange.endSeconds) setPlayedEvidenceIds((value) => new Set(value).add(selected.id)); }} />}</div>}
 
       <button
         type="button"
@@ -161,6 +189,8 @@ export function AutomatedEditEvidenceMap({
             type="button"
             onClick={() => {
               setSelectedId(entry.id);
+              setConfirmedEvidenceIds((value) => { const next = new Set(value); next.delete(entry.id); return next; });
+              if (protectedMediaRef.current) protectedMediaRef.current.currentTime = entry.item.sourceRange.startSeconds;
               onSelectTime(entry.item.sourceRange.startSeconds);
             }}
             className={`rounded-md border px-2 py-1 text-[9px] font-black ${entry.id === selectedId ? "border-cyan-300 bg-cyan-950 text-cyan-100" : "border-gray-700 bg-[#202020] text-gray-300"}`}
@@ -174,12 +204,13 @@ export function AutomatedEditEvidenceMap({
         <div className="mt-3 rounded-lg border border-gray-700 bg-[#10151d] p-3" aria-label="Selected automated edit evidence">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div><p className="text-[10px] font-black uppercase tracking-wider text-cyan-200">{itemLabel(selected)}</p><p className="mt-1 font-mono text-[9px] text-gray-400">source {clock(selected.item.sourceRange.startSeconds)}–{clock(selected.item.sourceRange.endSeconds)}</p></div>
-            <button type="button" disabled={selectedRequiresBoundAudio} onClick={() => onProofReview(selected.item)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">{selectedRequiresBoundAudio ? "Protected-source proof required" : selected.kind === "candidate" && selected.item.suggestedAction === "review-camera" ? "Proof-watch source" : selected.kind === "proposal" && selected.item.type !== "deactivate_range" ? "Proof-watch source" : "Proof-listen source"}</button>
+            {selectedRequiresBoundAudio ? <button type="button" disabled={!signal?.protectedPlayback} onClick={() => void playBoundSource(selected)} className="rounded-lg border border-emerald-700 px-3 py-1.5 text-[10px] font-black text-emerald-200 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:border-amber-800 disabled:text-amber-300">{signal?.protectedPlayback ? "Play bound source" : "Protected-source proof required"}</button> : <button type="button" onClick={() => onProofReview(selected.item)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">{selected.kind === "candidate" && selected.item.suggestedAction === "review-camera" ? "Proof-watch source" : selected.kind === "proposal" && selected.item.type !== "deactivate_range" ? "Proof-watch source" : "Proof-listen source"}</button>}
           </div>
           <p className="mt-2 text-[10px] font-bold leading-4 text-gray-300">{selected.item.rationale}</p>
           <p className="mt-2 text-[9px] font-black uppercase tracking-wider text-gray-500">{selected.item.confidence} confidence · original unchanged · not applied</p>
           {selected.item.evidence.audioSignal && <p className="mt-2 rounded-md border border-emerald-900 bg-emerald-950/30 px-2 py-1.5 text-[9px] font-bold text-emerald-200">{selected.item.evidence.audioSignal.classification.replaceAll("-", " ")} · {(selected.item.evidence.audioSignal.coverageFraction * 100).toFixed(0)}% decoded coverage · strongest RMS {selected.item.evidence.audioSignal.maximumRmsDbfs.toFixed(1)} dBFS</p>}
-          {selectedRequiresBoundAudio && <p className="mt-2 text-[9px] font-bold leading-4 text-amber-300">Quipsly will not write a proof-listen receipt from the program monitor. The protected player must prove it is serving this exact RecordingAsset and source hash first.</p>}
+          {selectedRequiresBoundAudio && !signal?.protectedPlayback && <p className="mt-2 text-[9px] font-bold leading-4 text-amber-300">Quipsly will not write a proof-listen receipt from the program monitor. The protected player must prove it is serving this exact RecordingAsset and source hash first.</p>}
+          {selectedRequiresBoundAudio && signal?.protectedPlayback && <div className="mt-2 rounded-md border border-emerald-900 bg-emerald-950/20 p-2"><label className="flex items-start gap-2 text-[9px] font-bold leading-4 text-emerald-200"><input type="checkbox" disabled={!playedEvidenceIds.has(selected.id)} checked={confirmedEvidenceIds.has(selected.id)} onChange={(event) => setConfirmedEvidenceIds((value) => { const next = new Set(value); if (event.target.checked) next.add(selected.id); else next.delete(selected.id); return next; })} className="mt-0.5" /><span>I listened inside this exact source range through the hash-bound protected player.</span></label><button type="button" disabled={!confirmedEvidenceIds.has(selected.id)} onClick={() => onProofReview(selected.item, { recordingAssetId: signal.recordingAssetId, sourceId: signal.protectedPlayback!.sourceId, sourceSha256: signal.sourceSha256, signalProfileSha256: signal.signalProfileSha256, playbackPositionSeconds: protectedMediaRef.current?.currentTime ?? selected.item.sourceRange.startSeconds })} className="mt-2 rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 disabled:cursor-not-allowed disabled:opacity-50">Record proof-listen</button></div>}
         </div>
       )}
 

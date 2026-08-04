@@ -293,6 +293,9 @@ export async function POST(request: Request) {
             sourceSha256: signalResolution.evidence.sourceSha256,
             storageGeneration: signalResolution.evidence.storageGeneration,
             signalProfileSha256: signalResolution.evidence.signalProfileSha256,
+            ...(signalResolution.evidence.protectedPlayback ? {
+              protectedPlaybackSourceId: signalResolution.evidence.protectedPlayback.sourceId,
+            } : {}),
           },
         } : {}),
       },

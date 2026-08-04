@@ -34,6 +34,13 @@ export type AiEditSignalVisualization = {
   durationSeconds: number;
   nearSilenceDbfs: number;
   surroundingSignalDbfs: number;
+  protectedPlayback: {
+    sourceId: string;
+    url: string;
+    kind: "audio" | "video";
+    label: string;
+    durationSeconds: number | null;
+  } | null;
   waveform: Array<{
     startSeconds: number;
     durationSeconds: number;
@@ -65,6 +72,25 @@ export function isAiEditSignalVisualization(value: unknown): value is AiEditSign
     && Number.isFinite(row.nearSilenceDbfs)
     && typeof row.surroundingSignalDbfs === "number"
     && Number.isFinite(row.surroundingSignalDbfs)
+    && (
+      row.protectedPlayback === null
+      || (
+        typeof row.protectedPlayback === "object"
+        && !Array.isArray(row.protectedPlayback)
+        && typeof (row.protectedPlayback as Record<string, unknown>).sourceId === "string"
+        && (row.protectedPlayback as Record<string, unknown>).sourceId !== ""
+        && (row.protectedPlayback as Record<string, unknown>).url === `/api/ingest/media/${(row.protectedPlayback as Record<string, unknown>).sourceId}`
+        && ["audio", "video"].includes(String((row.protectedPlayback as Record<string, unknown>).kind))
+        && typeof (row.protectedPlayback as Record<string, unknown>).label === "string"
+        && (
+          (row.protectedPlayback as Record<string, unknown>).durationSeconds === null
+          || (
+            typeof (row.protectedPlayback as Record<string, unknown>).durationSeconds === "number"
+            && Number.isFinite((row.protectedPlayback as Record<string, unknown>).durationSeconds)
+          )
+        )
+      )
+    )
     && Array.isArray(waveform)
     && waveform.length <= 360
     && waveform.every((point) => {
@@ -139,6 +165,7 @@ export type AiEditProposalSet = {
       sourceSha256: string;
       storageGeneration: string | null;
       signalProfileSha256: string;
+      protectedPlaybackSourceId?: string;
     };
   };
   provider: {

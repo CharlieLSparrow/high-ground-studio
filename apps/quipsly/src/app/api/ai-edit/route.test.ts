@@ -24,6 +24,7 @@ jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({
     durationSeconds: evidence.signal.durationSeconds ?? 7,
     nearSilenceDbfs: evidence.signal.thresholds?.nearSilenceDbfs ?? -72,
     surroundingSignalDbfs: evidence.signal.thresholds?.surroundingSignalDbfs ?? -45,
+    protectedPlayback: evidence.protectedPlayback ?? null,
     waveform: evidence.signal.waveform,
   })),
 }));

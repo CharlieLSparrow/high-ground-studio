@@ -109,6 +109,30 @@ describe("episode edit signal evidence", () => {
     expect(result).toEqual(expect.objectContaining({ status: "ambiguous", evidence: null, candidateCount: 2 }));
   });
 
+  it("projects protected playback only from the server promotion receipt", async () => {
+    const promoted = recording("recording-promoted", "c");
+    (promoted.localManifestJson as Record<string, unknown>).promotion = {
+      sourceId: "source-promoted",
+      playbackUrl: "/api/ingest/media/source-promoted",
+      mediaKind: "audio",
+    };
+    const result = await loadEpisodeEditSignalEvidence({
+      prisma: prisma([promoted]) as never,
+      projectId: "project-1",
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-4",
+    });
+
+    expect(result.evidence?.protectedPlayback).toEqual({
+      sourceId: "source-promoted",
+      url: "/api/ingest/media/source-promoted",
+      kind: "audio",
+      label: "Protected Capture source",
+      durationSeconds: null,
+    });
+    expect(episodeEditSignalVisualization(result.evidence!).protectedPlayback?.sourceId).toBe("source-promoted");
+  });
+
   it("does not use signal evidence while normalized media release is held", async () => {
     mockedGate.mockResolvedValue({ allowed: false, errorCode: "release-required" } as never);
     const result = await loadEpisodeEditSignalEvidence({

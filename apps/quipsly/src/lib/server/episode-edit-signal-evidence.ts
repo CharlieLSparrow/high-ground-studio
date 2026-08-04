@@ -18,6 +18,7 @@ export type BoundEpisodeAudioSignalEvidence = {
   storageGeneration: string | null;
   signalProfileSha256: string;
   signal: ParsedSignal;
+  protectedPlayback: AiEditSignalVisualization["protectedPlayback"];
 };
 
 export type EpisodeEditSignalEvidenceResolution = {
@@ -41,6 +42,7 @@ export function episodeEditSignalVisualization(
     durationSeconds: evidence.signal.durationSeconds,
     nearSilenceDbfs: evidence.signal.thresholds.nearSilenceDbfs,
     surroundingSignalDbfs: evidence.signal.thresholds.surroundingSignalDbfs,
+    protectedPlayback: evidence.protectedPlayback,
     waveform: compactSignalWaveform(evidence.signal.waveform, maximum),
   };
 }
@@ -81,12 +83,25 @@ function sourceSignal(recording: any): BoundEpisodeAudioSignalEvidence | null {
   const signalProfileSha256 = createHash("sha256")
     .update(JSON.stringify(signal))
     .digest("hex");
+  const promotion = object(manifest.promotion);
+  const sourceId = text(promotion.sourceId);
+  const playbackUrl = text(promotion.playbackUrl);
+  const protectedPlayback = sourceId && playbackUrl === `/api/ingest/media/${sourceId}`
+    ? {
+      sourceId,
+      url: playbackUrl,
+      kind: text(promotion.mediaKind) === "video" ? "video" as const : "audio" as const,
+      label: text(recording.fileName) || "Protected Capture source",
+      durationSeconds: typeof recording.durationSeconds === "number" ? recording.durationSeconds : null,
+    }
+    : null;
   return {
     recordingAssetId: text(recording.id),
     sourceSha256,
     storageGeneration: text(manifest.storageGeneration) || null,
     signalProfileSha256,
     signal,
+    protectedPlayback,
   };
 }
 

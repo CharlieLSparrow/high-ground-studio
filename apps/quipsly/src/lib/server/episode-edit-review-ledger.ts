@@ -205,6 +205,7 @@ function validateReviewInput(input: AppendEpisodeEditReviewInput) {
 
 function validateProposalSubject(
   proposalJson: Prisma.JsonValue,
+  action: EditReviewAction,
   subjectKind: EditReviewSubjectKind,
   subjectId: string,
   startSeconds: number,
@@ -249,6 +250,29 @@ function validateProposalSubject(
   ) {
     throw new EpisodeEditReviewLedgerError("The reviewed source range does not match the canonical proposal subject.", 409, "EDIT_REVIEW_SUBJECT_RANGE_CONFLICT");
   }
+  const audioSignal = subject.evidence?.audioSignal;
+  if (action === "PROOF_LISTENED" && audioSignal) {
+    const binding = proposalSet.binding.signalEvidence;
+    const playbackPositionSeconds = evidence?.playbackPositionSeconds;
+    if (
+      evidence?.protectedPlayback !== true
+      || !binding?.protectedPlaybackSourceId
+      || evidence?.recordingAssetId !== binding.recordingAssetId
+      || evidence?.protectedPlaybackSourceId !== binding.protectedPlaybackSourceId
+      || evidence?.sourceSha256 !== binding.sourceSha256
+      || evidence?.signalProfileSha256 !== binding.signalProfileSha256
+      || typeof playbackPositionSeconds !== "number"
+      || !Number.isFinite(playbackPositionSeconds)
+      || playbackPositionSeconds < subject.sourceRange.startSeconds
+      || playbackPositionSeconds >= subject.sourceRange.endSeconds
+    ) {
+      throw new EpisodeEditReviewLedgerError(
+        "Signal-bound proof-listen requires playback from the exact protected RecordingAsset inside the reviewed range.",
+        409,
+        "EDIT_REVIEW_PROTECTED_PLAYBACK_REQUIRED",
+      );
+    }
+  }
 }
 
 export async function appendEpisodeEditReviewReceipt(input: {
@@ -279,7 +303,7 @@ export async function appendEpisodeEditReviewReceipt(input: {
       if (proposal.timelineFingerprintSha256 !== input.review.proposalTimelineFingerprintSha256) {
         throw new EpisodeEditReviewLedgerError("This review action is bound to a different timeline revision.", 409, "STALE_EDIT_REVIEW_BINDING");
       }
-      validateProposalSubject(proposal.proposalJson, valid.subjectKind, valid.subjectId, valid.start, valid.end, input.review.evidence);
+      validateProposalSubject(proposal.proposalJson, input.review.action, valid.subjectKind, valid.subjectId, valid.start, valid.end, input.review.evidence);
       const existing = await tx.studioEpisodeEditReviewReceipt.findUnique({
         where: {
           episodeProductionId_actorEmail_clientRequestId: {
