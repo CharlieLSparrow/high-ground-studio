@@ -11,6 +11,17 @@ import {
   type RecordingSessionEventKind,
   type RecordingSegment,
 } from "@high-ground/quipsly-domain/recording";
+import {
+  EMPTY_AUDIO_INPUT_SUMMARY,
+  amplitudeToDbfs,
+  audioInputHealthCopy,
+  dbfsToMeterHeight,
+  formatDbfs,
+  measureAudioFrame,
+  summarizeAudioInputFrames,
+  type AudioFrameMeasurement,
+  type AudioInputPreflightSummary,
+} from "./audio-input-preflight";
 import { classifyRecorderEntryAccess, type RecorderEntryAccessState } from "./recorder-entry-access";
 
 type RecordingEventKind = RecordingSessionEventKind;
@@ -72,6 +83,15 @@ type EpisodeProductionState = {
 type RoomSaveStatus = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
 type AudioUploadStatus = "idle" | "uploading" | "uploaded" | "error" | "not-available";
 
+type ActiveAudioInputSettings = {
+  label: string;
+  sampleRate?: number;
+  channelCount?: number;
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+};
+
 type PersistedRoom = {
   exportedAt?: string;
   roomName: string;
@@ -123,6 +143,55 @@ const TRACK_PREFIX_AUDIO = "A";
 const TRACK_PREFIX_VIDEO = "V";
 const RECORDER_SEGMENT_DEFAULT_SECONDS = 8;
 const RECORDER_SEGMENT_MIN_SECONDS = 0.2;
+
+function AudioInputReadout({
+  summary,
+  settings,
+  dark = false,
+  compact = false,
+}: {
+  summary: AudioInputPreflightSummary;
+  settings: ActiveAudioInputSettings | null;
+  dark?: boolean;
+  compact?: boolean;
+}) {
+  const copy = audioInputHealthCopy(summary.status);
+  const risk = summary.status === "digital-silence" || summary.status === "too-quiet" || summary.status === "clipping-risk";
+  const healthy = summary.status === "healthy";
+  const frameClass = dark
+    ? risk
+      ? "border-rose-400/40 bg-rose-950/50 text-rose-100"
+      : healthy
+        ? "border-emerald-400/35 bg-emerald-950/40 text-emerald-100"
+        : "border-sky-400/30 bg-sky-950/40 text-sky-100"
+    : risk
+      ? "border-rose-300 bg-rose-50 text-rose-950"
+      : healthy
+        ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+        : "border-sky-200 bg-sky-50 text-sky-950";
+
+  return (
+    <div className={`rounded-2xl border ${compact ? "p-3" : "p-4"} ${frameClass}`} aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <strong className="text-xs font-black uppercase tracking-[0.16em]">{copy.label}</strong>
+        <span className="font-mono text-[10px] font-black">
+          Peak {formatDbfs(summary.peakDbfs)} · RMS {formatDbfs(summary.rmsDbfs)}
+        </span>
+      </div>
+      <p className="mt-1 text-xs font-semibold leading-5">{copy.detail}</p>
+      {settings ? (
+        <p className={`mt-2 truncate text-[10px] font-bold ${dark ? "text-white/60" : "text-current opacity-70"}`} title={settings.label}>
+          {settings.label}
+          {settings.sampleRate ? ` · ${settings.sampleRate.toLocaleString()} Hz` : ""}
+          {settings.channelCount ? ` · ${settings.channelCount} ch` : ""}
+          {summary.sampleCount ? ` · ${summary.sampleCount.toLocaleString()} samples checked` : ""}
+        </p>
+      ) : null}
+      {!compact ? <p className={`mt-2 text-[10px] font-bold ${dark ? "text-white/50" : "opacity-60"}`}>RMS dBFS is an electrical level check, not perceptual loudness or LUFS.</p> : null}
+    </div>
+  );
+}
+
 function makeId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -812,7 +881,11 @@ export default function RecorderDashboard() {
   const [micError, setMicError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [audioLevels, setAudioLevels] = useState<number[]>(new Array(18).fill(4));
+  const [audioLevels, setAudioLevels] = useState<number[]>(new Array(18).fill(0));
+  const [audioInputSummary, setAudioInputSummary] = useState<AudioInputPreflightSummary>(EMPTY_AUDIO_INPUT_SUMMARY);
+  const [activeAudioInputSettings, setActiveAudioInputSettings] = useState<ActiveAudioInputSettings | null>(null);
+  const [isCheckingAudioInput, setIsCheckingAudioInput] = useState(false);
+  const [audioRiskOverrideRequired, setAudioRiskOverrideRequired] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioMimeType, setAudioMimeType] = useState("");
@@ -858,6 +931,10 @@ export default function RecorderDashboard() {
   const animationFrameRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioInputFramesRef = useRef<Array<{ measuredAt: number; frame: AudioFrameMeasurement }>>([]);
+  const audioMeterStartedAtRef = useRef<number | null>(null);
+  const audioMeterLastPaintAtRef = useRef(0);
+  const audioCheckRunRef = useRef(0);
   const tracksRef = useRef<ImportedTrack[]>([]);
 
   useEffect(() => {
@@ -1219,6 +1296,7 @@ export default function RecorderDashboard() {
 
   useEffect(() => {
     return () => {
+      audioCheckRunRef.current += 1;
       if (timerRef.current) window.clearInterval(timerRef.current);
       if (animationFrameRef.current) window.cancelAnimationFrame(animationFrameRef.current);
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -1416,15 +1494,50 @@ export default function RecorderDashboard() {
     const analyser = analyserRef.current;
     if (!analyser) return;
 
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    setAudioLevels(
-      Array.from({ length: 18 }).map((_, index) => {
-        const value = data[index % data.length] ?? 0;
-        return Math.max(4, (value / 255) * 44);
-      }),
-    );
+    const samples = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(samples);
+    const measuredAt = performance.now();
+    const frame = measureAudioFrame(samples);
+    const startedAt = audioMeterStartedAtRef.current ?? measuredAt;
+    audioMeterStartedAtRef.current = startedAt;
+    const rollingFrames = [
+      ...audioInputFramesRef.current.filter((entry) => measuredAt - entry.measuredAt <= 2_000),
+      { measuredAt, frame },
+    ];
+    audioInputFramesRef.current = rollingFrames;
+
+    if (measuredAt - audioMeterLastPaintAtRef.current >= 80) {
+      const summary = summarizeAudioInputFrames(
+        rollingFrames.map((entry) => entry.frame),
+        Math.min(2_000, measuredAt - Math.max(startedAt, rollingFrames[0]?.measuredAt ?? startedAt)),
+      );
+      setAudioInputSummary(summary);
+      setAudioLevels((levels) => [...levels.slice(1), dbfsToMeterHeight(amplitudeToDbfs(frame.peakAmplitude))]);
+      audioMeterLastPaintAtRef.current = measuredAt;
+    }
     animationFrameRef.current = window.requestAnimationFrame(updateLevels);
+  };
+
+  const runAudioInputPreflight = async (analyser: AnalyserNode) => {
+    const runId = ++audioCheckRunRef.current;
+    const frames: AudioFrameMeasurement[] = [];
+    const startedAt = performance.now();
+    setIsCheckingAudioInput(true);
+    setAudioRiskOverrideRequired(false);
+    setAudioInputSummary({ ...EMPTY_AUDIO_INPUT_SUMMARY, status: "checking" });
+
+    while (performance.now() - startedAt < 1_200 && runId === audioCheckRunRef.current) {
+      const samples = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(samples);
+      frames.push(measureAudioFrame(samples));
+      await new Promise((resolve) => window.setTimeout(resolve, 60));
+    }
+
+    if (runId !== audioCheckRunRef.current) return null;
+    const summary = summarizeAudioInputFrames(frames, performance.now() - startedAt);
+    setAudioInputSummary(summary);
+    setIsCheckingAudioInput(false);
+    return summary;
   };
 
   const logEvent = (
@@ -1480,10 +1593,25 @@ export default function RecorderDashboard() {
     if (streamRef.current && !forceRearm) return streamRef.current;
 
     if (streamRef.current) {
+      audioCheckRunRef.current += 1;
+      setIsCheckingAudioInput(false);
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setMicReady(false);
     }
+
+    if (animationFrameRef.current) window.cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
+    analyserRef.current = null;
+    if (audioContextRef.current) await audioContextRef.current.close().catch(() => undefined);
+    audioContextRef.current = null;
+    audioInputFramesRef.current = [];
+    audioMeterStartedAtRef.current = null;
+    audioMeterLastPaintAtRef.current = 0;
+    setAudioLevels(new Array(18).fill(0));
+    setAudioInputSummary({ ...EMPTY_AUDIO_INPUT_SUMMARY, status: "requesting-access" });
+    setActiveAudioInputSettings(null);
+    setAudioRiskOverrideRequired(false);
 
     setMicError(null);
 
@@ -1502,6 +1630,18 @@ export default function RecorderDashboard() {
 
       streamRef.current = mediaStream;
       setMicReady(true);
+      setAudioInputSummary({ ...EMPTY_AUDIO_INPUT_SUMMARY, status: "checking" });
+
+      const audioTrack = mediaStream.getAudioTracks()[0];
+      const trackSettings = audioTrack?.getSettings?.() ?? {};
+      setActiveAudioInputSettings({
+        label: audioTrack?.label || devices.find((device) => device.deviceId === selectedAudioDeviceId)?.label || "Selected browser input",
+        sampleRate: trackSettings.sampleRate,
+        channelCount: trackSettings.channelCount,
+        echoCancellation: typeof trackSettings.echoCancellation === "boolean" ? trackSettings.echoCancellation : undefined,
+        noiseSuppression: typeof trackSettings.noiseSuppression === "boolean" ? trackSettings.noiseSuppression : undefined,
+        autoGainControl: typeof trackSettings.autoGainControl === "boolean" ? trackSettings.autoGainControl : undefined,
+      });
 
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioContextClass();
@@ -1509,18 +1649,26 @@ export default function RecorderDashboard() {
 
       const source = audioContext.createMediaStreamSource(mediaStream);
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 64;
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
       updateLevels();
 
-      logEvent("session", "Mic armed", "Browser capture ready. For final production, keep a local device backup rolling too.");
+      logEvent(
+        "session",
+        "Mic armed",
+        `${audioTrack?.label || "Browser input"} connected${trackSettings.sampleRate ? ` at ${trackSettings.sampleRate} Hz` : ""}${trackSettings.channelCount ? ` / ${trackSettings.channelCount} channel${trackSettings.channelCount === 1 ? "" : "s"}` : ""}. Signal verification is still required.`,
+      );
       return mediaStream;
     } catch (err) {
       console.warn("Microphone access failed.", err);
       logEvent("session", "Mic error", `Failed to arm browser mic: ${String(err)}`);
       setMicError(`Camera/mic permission denied or device busy. Please check browser settings. (${String(err)})`);
+      setAudioInputSummary(EMPTY_AUDIO_INPUT_SUMMARY);
+      setActiveAudioInputSettings(null);
+      setIsCheckingAudioInput(false);
       return null;
     }
   };
@@ -1531,9 +1679,41 @@ export default function RecorderDashboard() {
     }
   }, [selectedAudioDeviceId, echoCancellation, noiseSuppression, autoGainControl]);
 
-  const startRecording = async () => {
-    const mediaStream = await armMic(true);
+  useEffect(() => {
+    if (audioRiskOverrideRequired && audioInputSummary.status === "healthy") {
+      setAudioRiskOverrideRequired(false);
+    }
+  }, [audioInputSummary.status, audioRiskOverrideRequired]);
+
+  const startRecording = async (allowAudioRisk = false) => {
+    const mediaStream = await armMic(false);
     if (!mediaStream) return;
+
+    const analyser = analyserRef.current;
+    if (!allowAudioRisk) {
+      if (!analyser) {
+        setMicError("The input connected, but Quipsly could not inspect its signal. Re-arm the microphone before recording.");
+        return;
+      }
+      const preflight = await runAudioInputPreflight(analyser);
+      if (!preflight) return;
+      if (preflight.status !== "healthy") {
+        setAudioRiskOverrideRequired(true);
+        const copy = audioInputHealthCopy(preflight.status);
+        logEvent("session", "Recording held by audio check", `${copy.label}: ${copy.detail}`);
+        return;
+      }
+      logEvent(
+        "session",
+        "Audio signal verified",
+        `Peak ${formatDbfs(preflight.peakDbfs)} / RMS ${formatDbfs(preflight.rmsDbfs)} across ${preflight.sampleCount.toLocaleString()} inspected samples. RMS is not LUFS.`,
+      );
+    } else {
+      const copy = audioInputHealthCopy(audioInputSummary.status);
+      logEvent("session", "Audio warning overridden", `${copy.label}: recording started by explicit operator choice.`);
+    }
+
+    setAudioRiskOverrideRequired(false);
 
     await clearRecorderDB();
 
@@ -2059,6 +2239,12 @@ export default function RecorderDashboard() {
                 <div role="status" className="rounded-xl border border-amber-400/20 bg-amber-950/50 px-3 py-2 text-[10px] font-bold leading-4 text-amber-200">
                   Cloud upload paused pending consent-bound resumable-v2. Takes stay local; download or export before leaving.
                 </div>
+                <AudioInputReadout
+                  summary={isCheckingAudioInput ? { ...audioInputSummary, status: "checking" } : audioInputSummary}
+                  settings={activeAudioInputSettings}
+                  dark
+                  compact
+                />
                 {/* Audio Visualizer */}
                 <div className="flex h-8 items-end justify-center gap-[2px] opacity-80">
                   {audioLevels.map((level, index) => (
@@ -2067,7 +2253,7 @@ export default function RecorderDashboard() {
                       className={`w-1 rounded-t-sm transition-all duration-75 ${
                         isRecording ? "bg-red-500" : micReady ? "bg-emerald-400" : "bg-white/20"
                       }`}
-                      style={{ height: `${Math.max(2, level * 0.8)}px` }}
+                      style={{ height: `${level * 0.8}px` }}
                     />
                   ))}
                 </div>
@@ -2081,8 +2267,10 @@ export default function RecorderDashboard() {
                         ? "Local only"
                         : roomSaveState === "error"
                         ? "Error"
+                        : audioInputSummary.status === "healthy"
+                        ? "Signal verified"
                         : micReady
-                        ? "Ready"
+                        ? audioInputHealthCopy(audioInputSummary.status).label
                         : "Standby"}
                     </span>
                     {micError && <span className="text-[9px] text-red-400">{micError}</span>}
@@ -2093,19 +2281,23 @@ export default function RecorderDashboard() {
                     <button
                       type="button"
                       onClick={() => armMic(true)}
-                      disabled={micReady || isRecording}
+                      disabled={isRecording || isCheckingAudioInput}
                       className="rounded-full bg-white/5 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-white/80 transition-colors disabled:opacity-30"
                     >
-                      {micReady ? "Armed" : "Arm Mic"}
+                      {micReady ? "Re-arm" : "Arm Mic"}
                     </button>
                     <button
                       type="button"
-                      onClick={isRecording ? stopRecording : startRecording}
+                      onClick={isRecording ? stopRecording : () => startRecording(audioRiskOverrideRequired)}
+                      disabled={isCheckingAudioInput}
+                      aria-label={isRecording ? "Stop recording" : audioRiskOverrideRequired ? "Record anyway despite audio warning" : "Start recording"}
                       className={`flex h-14 w-14 items-center justify-center rounded-full transition-all ${
                         isRecording
                           ? "animate-pulse bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]"
-                          : "bg-white text-black shadow-xl"
-                      }`}
+                          : audioRiskOverrideRequired
+                            ? "bg-amber-300 text-black shadow-xl shadow-amber-950/30"
+                            : "bg-white text-black shadow-xl"
+                      } disabled:cursor-wait disabled:opacity-50`}
                     >
                       {isRecording ? (
                         <div className="h-5 w-5 rounded-sm bg-white" />
@@ -2185,21 +2377,30 @@ export default function RecorderDashboard() {
                     <button
                       type="button"
                       onClick={() => armMic(true)}
-                      disabled={micReady || isRecording}
+                      disabled={isRecording || isCheckingAudioInput}
                       className="rounded-full border border-[#64503a] bg-[#34271a] px-4 py-2 text-xs font-black uppercase tracking-wide text-[#ffe6b6] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {micReady ? "Mic armed" : "Arm mic"}
+                      {micReady ? "Re-arm mic" : "Arm mic"}
                     </button>
                     <button
                       type="button"
-                      onClick={isRecording ? stopRecording : startRecording}
+                      onClick={isRecording ? stopRecording : () => startRecording(audioRiskOverrideRequired)}
+                      disabled={isCheckingAudioInput}
                       className={`rounded-full px-6 py-2 text-xs font-black uppercase tracking-wide shadow-lg ${
                         isRecording
                           ? "bg-red-600 text-white shadow-red-900/40"
-                          : "bg-[#f0a83b] text-[#2b1b0b] shadow-orange-950/30"
-                      }`}
+                          : audioRiskOverrideRequired
+                            ? "bg-rose-200 text-rose-950 shadow-rose-950/30"
+                            : "bg-[#f0a83b] text-[#2b1b0b] shadow-orange-950/30"
+                      } disabled:cursor-wait disabled:opacity-60`}
                     >
-                      {isRecording ? "Stop recording" : "Start recording"}
+                      {isRecording
+                        ? "Stop recording"
+                        : isCheckingAudioInput
+                          ? "Checking input…"
+                          : audioRiskOverrideRequired
+                            ? "Record anyway"
+                            : "Start recording"}
                     </button>
                   </div>
                 </div>
@@ -2210,6 +2411,14 @@ export default function RecorderDashboard() {
 
                 <div role="status" className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-950/40 p-3 text-sm leading-6 text-amber-100">
                   <strong>Web cloud upload is paused.</strong> Resumable-v2 still needs an explicit capture-session and consent preflight here. No recording or attached file is sent; download or export local sources before leaving.
+                </div>
+
+                <div className="mt-4">
+                  <AudioInputReadout
+                    summary={isCheckingAudioInput ? { ...audioInputSummary, status: "checking" } : audioInputSummary}
+                    settings={activeAudioInputSettings}
+                    dark
+                  />
                 </div>
 
                 <div className="mt-6 flex h-20 items-end gap-1 rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -2405,6 +2614,32 @@ export default function RecorderDashboard() {
                       ))}
                     </select>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEchoCancellation(true);
+                        setNoiseSuppression(true);
+                        setAutoGainControl(true);
+                      }}
+                      disabled={isRecording}
+                      className="rounded-xl border border-[#e8d5b5] bg-white px-3 py-2 text-xs font-black text-[#684719] hover:bg-[#fff4db] disabled:opacity-50"
+                    >
+                      Call clarity
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEchoCancellation(false);
+                        setNoiseSuppression(false);
+                        setAutoGainControl(false);
+                      }}
+                      disabled={isRecording}
+                      className="rounded-xl border border-[#2f2418] bg-[#2f2418] px-3 py-2 text-xs font-black text-white hover:bg-[#46331f] disabled:opacity-50"
+                    >
+                      Studio source
+                    </button>
+                  </div>
                   <div className="space-y-2 border-t border-[#e8d5b5] pt-3">
                     <label className="flex cursor-pointer items-center gap-2">
                       <input
@@ -2435,8 +2670,23 @@ export default function RecorderDashboard() {
                     </label>
                   </div>
                   <p className="text-xs opacity-75">
-                    Disable toggles if you are in a treated room using a professional XLR microphone to capture uncompressed audio.
+                    Call clarity uses browser processing to reduce echo. Studio source requests the interface signal without browser echo, noise, or gain processing; the browser may still encode the recorded file.
                   </p>
+                  {activeAudioInputSettings ? (
+                    <div className="rounded-xl border border-[#e8d5b5] bg-white/70 p-3 text-[10px] font-bold leading-5 text-[#684f30]">
+                      <p className="font-black uppercase tracking-wide">Browser-observed path</p>
+                      <p>{activeAudioInputSettings.label}</p>
+                      <p>
+                        {activeAudioInputSettings.sampleRate ? `${activeAudioInputSettings.sampleRate.toLocaleString()} Hz` : "Sample rate unavailable"}
+                        {activeAudioInputSettings.channelCount ? ` · ${activeAudioInputSettings.channelCount} channel${activeAudioInputSettings.channelCount === 1 ? "" : "s"}` : ""}
+                      </p>
+                      <p>
+                        EC {activeAudioInputSettings.echoCancellation === undefined ? "unknown" : activeAudioInputSettings.echoCancellation ? "on" : "off"}
+                        {" · "}NS {activeAudioInputSettings.noiseSuppression === undefined ? "unknown" : activeAudioInputSettings.noiseSuppression ? "on" : "off"}
+                        {" · "}AGC {activeAudioInputSettings.autoGainControl === undefined ? "unknown" : activeAudioInputSettings.autoGainControl ? "on" : "off"}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
