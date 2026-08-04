@@ -612,12 +612,9 @@ export default function EpisodeRoomClient({
               <Link href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(initialPayload.episode.documentId)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
                 <FileText size={15} /> Write
               </Link>
-              <Link href={`/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
+              <Link href={recordingSession ? "#record" : `/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#d8ad56]/10 px-4 text-xs font-black text-[#f6d68f] hover:border-[#f6d68f]">
                 <Clock3 size={15} /> Record
               </Link>
-              {recordingSession ? <Link href={`/sessions/${encodeURIComponent(recordingSession.id)}?mode=live`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#d8ad56]/10 px-4 text-xs font-black text-[#f6d68f] hover:border-[#f6d68f]">
-                <Mic2 size={15} /> Live room
-              </Link> : null}
               <Link href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
                 <Scissors size={15} /> Edit timeline
               </Link>
@@ -660,13 +657,13 @@ export default function EpisodeRoomClient({
           canEdit={canEdit}
         />
 
-        {recordingSession ? <details className="group mt-5 rounded-[1.75rem] border border-[#30483d] bg-[#101b16] p-3 open:bg-[#f7f0e3]">
+        {recordingSession ? <details id="record" open className="group mt-5 scroll-mt-4 rounded-[1.75rem] border border-[#30483d] bg-[#101b16] p-3 open:bg-[#f7f0e3]">
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-3 text-sm font-black text-[#f4eedf] group-open:text-[#3d3122]">
             <span className="flex items-center gap-3"><Mic2 size={18} aria-hidden="true" /> Open browser mic, camera, and live participant room</span>
             <span className="rounded-full border border-[#d8ad56]/40 px-3 py-1 text-[10px] uppercase tracking-wide text-[#d8ad56]">Same room as iPhone</span>
           </summary>
           <div className="pt-3">
-            <LiveSessionRoom callRoomId={recordingSession.id} sessionTitle={recordingSession.title} kind="episode" compact />
+            <LiveSessionRoom callRoomId={recordingSession.id} sessionTitle={recordingSession.title} kind="episode" episodeSlug={episodeSlug} compact />
           </div>
         </details> : null}
 

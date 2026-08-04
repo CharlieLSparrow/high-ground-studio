@@ -125,7 +125,7 @@ test("wildcard CORS is rejected before any bucket update", () => {
   assert.doesNotMatch(commands(), /storage buckets update/);
 });
 
-test("explicit CORS keeps create-only upload headers and excludes delete", () => {
+test("explicit CORS keeps resumable upload receipts and excludes delete", () => {
   const origins = "https://nest.quipsly.com,http://127.0.0.1:3012";
   const result = run(["--apply-cors"], { QUIPSLY_CORS_ORIGINS: origins });
   assert.equal(result.status, 0, result.stderr);
@@ -139,5 +139,7 @@ test("explicit CORS keeps create-only upload headers and excludes delete", () =>
   const cors = JSON.parse(fs.readFileSync(corsLog, "utf8"));
   assert.deepEqual(cors[0].origin, origins.split(","));
   assert(cors[0].responseHeader.includes("x-goog-if-generation-match"));
+  assert(cors[0].responseHeader.includes("Content-Range"));
+  assert(cors[0].responseHeader.includes("Range"));
   assert(!cors[0].method.includes("DELETE"));
 });

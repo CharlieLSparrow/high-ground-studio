@@ -1,0 +1,121 @@
+"use client";
+
+import type { BrowserSourceCaptureLedger } from "@high-ground/quipsly-domain";
+import { createSHA256 } from "hash-wasm";
+
+const DATABASE_NAME = "QuipslyBrowserSourceVault";
+const DATABASE_VERSION = 1;
+const LEDGER_STORE = "capture-ledgers";
+const OPFS_DIRECTORY = "quipsly-browser-sources-v1";
+
+let databasePromise: Promise<IDBDatabase> | null = null;
+
+function database() {
+  if (typeof window === "undefined" || !window.indexedDB) {
+    return Promise.reject(new Error("IndexedDB is unavailable."));
+  }
+  if (databasePromise) return databasePromise;
+  databasePromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const request = window.indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(LEDGER_STORE)) {
+        const store = request.result.createObjectStore(LEDGER_STORE, { keyPath: "captureId" });
+        store.createIndex("callRoomId", "callRoomId", { unique: false });
+        store.createIndex("updatedAt", "updatedAt", { unique: false });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Browser source ledger could not open."));
+  });
+  return databasePromise;
+}
+
+function transactionRequest<T>(request: IDBRequest<T>, transaction: IDBTransaction) {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || transaction.error || new Error("Browser source ledger request failed."));
+    transaction.onerror = () => reject(transaction.error || new Error("Browser source ledger transaction failed."));
+  });
+}
+
+async function sourceDirectory(create: boolean) {
+  if (!navigator.storage?.getDirectory) throw new Error("Origin-private file storage is unavailable.");
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle(OPFS_DIRECTORY, { create });
+}
+
+export async function browserSourceVaultReadiness() {
+  if (!navigator.storage?.getDirectory || !window.indexedDB) {
+    return { available: false as const, persistent: false, quotaBytes: null, usageBytes: null };
+  }
+  try {
+    await sourceDirectory(true);
+    await database();
+    const persistent = await navigator.storage.persist?.().catch(() => false) ?? false;
+    const estimate: StorageEstimate = await navigator.storage.estimate?.().catch(() => ({})) ?? {};
+    return {
+      available: true as const,
+      persistent,
+      quotaBytes: Number.isFinite(estimate.quota) ? Number(estimate.quota) : null,
+      usageBytes: Number.isFinite(estimate.usage) ? Number(estimate.usage) : null,
+    };
+  } catch {
+    return { available: false as const, persistent: false, quotaBytes: null, usageBytes: null };
+  }
+}
+
+export async function saveBrowserSourceLedger(ledger: BrowserSourceCaptureLedger) {
+  const db = await database();
+  const transaction = db.transaction(LEDGER_STORE, "readwrite");
+  await transactionRequest(transaction.objectStore(LEDGER_STORE).put(ledger), transaction);
+  return ledger;
+}
+
+export async function listBrowserSourceLedgers(callRoomId?: string) {
+  const db = await database();
+  const transaction = db.transaction(LEDGER_STORE, "readonly");
+  const store = transaction.objectStore(LEDGER_STORE);
+  const request = callRoomId
+    ? store.index("callRoomId").getAll(IDBKeyRange.only(callRoomId))
+    : store.getAll();
+  const rows = await transactionRequest(request, transaction) as BrowserSourceCaptureLedger[];
+  return rows.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export async function createBrowserSourceFile(opfsFileName: string) {
+  const directory = await sourceDirectory(true);
+  const handle = await directory.getFileHandle(opfsFileName, { create: true });
+  const writable = await handle.createWritable({ keepExistingData: false });
+  return { handle, writable };
+}
+
+export async function loadBrowserSourceFile(opfsFileName: string) {
+  const directory = await sourceDirectory(false);
+  const handle = await directory.getFileHandle(opfsFileName);
+  return handle.getFile();
+}
+
+export async function hashBrowserSourceFile(file: File) {
+  const hasher = await createSHA256();
+  hasher.init();
+  const reader = file.stream().getReader();
+  let sizeBytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    sizeBytes += value.byteLength;
+    hasher.update(value);
+  }
+  return { sha256: hasher.digest("hex"), sizeBytes };
+}
+
+export async function downloadBrowserSource(ledger: BrowserSourceCaptureLedger) {
+  const file = await loadBrowserSourceFile(ledger.opfsFileName);
+  const url = URL.createObjectURL(file);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = ledger.fileName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}

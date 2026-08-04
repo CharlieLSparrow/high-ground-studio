@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { quarantineRoomTranscriptsForConsentChange } from "@/lib/server/capture-transcript-privacy";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { captureRoomAccessWhere } from "@/lib/server/mobile-capture-room-join-diagnostics";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -46,6 +47,80 @@ async function readJson(request: Request) {
   }
 }
 
+export async function GET(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in before reading the recording consent policy." },
+      { status: 401 },
+    );
+  }
+
+  const currentPolicy = {
+    version: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+    text: MOBILE_CAPTURE_CONSENT_TEXT,
+    sha256: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+    surface: "quipsly-capture-consent-v2",
+    presentationVersion: 1,
+  };
+  const callRoomId = new URL(request.url).searchParams.get("callRoomId")?.trim() || "";
+  if (!callRoomId) return NextResponse.json({
+    ok: true,
+    currentPolicy,
+    effects: {
+      recordingStarted: false,
+      providerJoined: false,
+      externalMutated: false,
+    },
+  }, { headers: { "Cache-Control": "private, no-store" } });
+
+  const prisma = getPrismaClient() as any;
+  const userId = session.user.id;
+  const room = await prisma.callRoom.findFirst({
+    where: captureRoomAccessWhere(callRoomId, session.user),
+    include: { participants: true, recordingConsents: true },
+  });
+  if (!room) {
+    return NextResponse.json({ ok: false, error: "You do not have access to this capture session." }, { status: 404 });
+  }
+  const registeredParticipants = room.participants.filter(
+    (item: any) => item?.role !== "OBSERVER" && Boolean(item?.userId),
+  );
+  const versions = buildMobileCaptureConsentVersions({
+    participants: registeredParticipants,
+    consents: room.recordingConsents,
+  });
+  const participant = registeredParticipants.find((item: any) => item.userId === userId) ?? null;
+  const consent = participant
+    ? room.recordingConsents
+      .filter((item: any) => item.participantId === participant.id || item.userId === userId)
+      .sort((left: any, right: any) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())[0] ?? null
+    : null;
+
+  return NextResponse.json({
+    ok: true,
+    currentPolicy,
+    session: {
+      callRoomId: room.id,
+      roomStatus: room.status,
+      participantId: participant?.id ?? null,
+      recordingConsentId: consent?.id ?? null,
+      recordingConsentStatus: consent?.status ?? "not-created",
+      allRegisteredParticipantConsentGranted: mobileCaptureAllPartiesReady(versions, "audio"),
+      allRegisteredParticipantVideoConsentGranted: mobileCaptureAllPartiesReady(versions, "video"),
+      allRegisteredParticipantTranscriptionConsentGranted: versions.length > 0 && versions.every((version) => (
+        version.status === "GRANTED"
+        && version.canTranscribe
+        && Boolean(version.consentedAt)
+        && !version.revokedAt
+        && mobileCaptureConsentHasCurrentPolicyEvidence(version)
+      )),
+      consentRequiredParticipantCount: registeredParticipants.length,
+    },
+    effects: { recordingStarted: false, providerJoined: false, externalMutated: false },
+  }, { headers: { "Cache-Control": "private, no-store" } });
+}
+
 export async function POST(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
 
@@ -73,6 +148,8 @@ export async function POST(request: Request) {
   const presentationEvidence = isObject(body.presentationEvidence)
     ? body.presentationEvidence
     : {};
+  const clientKind = text(body.clientKind).toLowerCase() === "web" ? "web" : "ios";
+  const requestedDeviceLabel = text(body.deviceLabel).slice(0, 160);
 
   if (!callRoomId) {
     return NextResponse.json(
@@ -134,17 +211,7 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const room = await prisma.callRoom.findFirst({
-    where: session.user.isStaff
-      ? { id: callRoomId }
-      : {
-          id: callRoomId,
-          OR: [
-            { createdByUserId: userId },
-            { participants: { some: { userId } } },
-            { booking: { clientUserId: userId } },
-            { booking: { coachUserId: userId } },
-          ],
-        },
+    where: captureRoomAccessWhere(callRoomId, session.user),
     include: {
       booking: true,
       participants: true,
@@ -180,7 +247,7 @@ export async function POST(request: Request) {
         displayName: session.user.name || session.user.primaryEmail || "Quipsly participant",
         email: session.user.primaryEmail,
         role,
-        deviceLabel: "Quipsly iOS Capture",
+        deviceLabel: requestedDeviceLabel || (clientKind === "web" ? "Quipsly Web" : "Quipsly iOS Capture"),
       },
     });
   }
@@ -238,8 +305,10 @@ export async function POST(request: Request) {
     declinedAt: consentState.declinedAt,
     revokedAt: consentState.revokedAt,
     metadataJson: {
-      source: "ios-capture",
-      appSurface: "HighGroundCapture",
+      source: clientKind === "web" ? "web-capture" : "ios-capture",
+      appSurface: clientKind === "web" ? "QuipslyWeb" : "QuipslyCapture",
+      clientKind,
+      deviceLabel: requestedDeviceLabel || null,
       updatedByUserId: userId,
       updatedAt: now.toISOString(),
       consentAction,

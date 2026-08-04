@@ -7026,6 +7026,7 @@ final class CaptureSessionClient: ObservableObject {
                 "action": receipt.action.rawValue,
                 "receiptId": receipt.id.uuidString.lowercased(),
                 "captureId": receipt.captureID.uuidString.lowercased(),
+                "sourceType": receipt.sourceType ?? "audio",
                 "occurredAt": ISO8601DateFormatter().string(from: receipt.occurredAt),
                 "source": "ios-capture-outbox",
             ])

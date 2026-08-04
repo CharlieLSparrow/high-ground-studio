@@ -97,6 +97,7 @@ export type MobileCaptureResumableManifest =
     startReceiptId: string | null;
     consentVersion: string | null;
     processingDisposition: "eligible" | "preservation-only";
+    uploadOrigin?: string | null;
     uploadUri: string;
     localUploadTokenSha256: string | null;
     uploadUriCreatedAt: string;
@@ -306,6 +307,7 @@ async function createUploadUri(manifest: {
   consentVersion: string | null;
   processingDisposition: "eligible" | "preservation-only";
   roomReadinessBindingVersion: 0 | 1;
+  uploadOrigin?: string | null;
   expectedSizeBytes: number;
   sha256: string;
   contentType: string;
@@ -323,6 +325,7 @@ async function createUploadUri(manifest: {
     // client for a per-object "private" ACL is both redundant and invalid on a
     // uniform-bucket-level-access media vault.
     preconditionOpts: { ifGenerationMatch: 0 },
+    ...(manifest.uploadOrigin ? { origin: manifest.uploadOrigin } : {}),
     metadata: {
       contentLength: manifest.expectedSizeBytes,
       contentType: manifest.contentType,

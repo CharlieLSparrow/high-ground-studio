@@ -2,6 +2,31 @@
 
 Date: 2026-08-04
 
+## Browser and iPhone Session recording checkpoint
+
+- A canonical Session now hosts the browser LiveKit conversation client and a
+  separate retained-source recorder. Browser participants can select external
+  mic, camera, and output routes; the interface never equates joining a call
+  with recording.
+- Browser sources flush to OPFS, retain an IndexedDB recovery ledger, enforce
+  current all-party audio/video consent, append source-typed START/STOP
+  receipts, checksum exact bytes, and hand off through origin-bound 8 MiB GCS
+  resumable chunks with persisted range progress. iPhone receipts now preserve
+  the same audio/video source type.
+- Episode Rooms embed that Session as their recording surface while keeping the
+  episode manuscript, clip/watch plan, episode thread, timeline, and publishing
+  continuity. Coaching uses the same Session kernel but projects the result
+  toward engagement continuity, shared/private notes, goals, tasks, and client
+  follow-up.
+- Full Nest Jest passes 285 suites / 1,510 runnable tests, the 172-route Nest
+  production build passes, the media-vault CORS policy generator passes 5/5,
+  and the Quipsly Capture iOS simulator build passes. This is compiled local
+  qualification, not physical browser/iPhone or cloud-provider acceptance.
+- LiveKit project/secrets, exact live-bucket CORS readback, physical external-
+  device operation, and browser/iPhone editor playback remain deployment
+  gates. The cost/environment proposal is in
+  `docs/operations/quipsly-livekit-cost-and-environment-proposal.md`.
+
 ## Broad-band frequency evidence and full-width review checkpoint
 
 - New source-bound signal jobs declare a complete-decode six-band maximum

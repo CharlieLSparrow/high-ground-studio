@@ -22,6 +22,7 @@ struct PendingCaptureRoomReceipt: Codable, Identifiable, Equatable {
     let sessionID: String
     let callRoomID: String
     let action: Action
+    var sourceType: String? = nil
     let occurredAt: Date
     var deliveryDisposition: DeliveryDisposition?
     var dispositionAt: Date?
@@ -136,6 +137,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
         sessionID: String,
         callRoomID: String,
         action: PendingCaptureRoomReceipt.Action,
+        sourceType: String? = nil,
         occurredAt: Date = Date(),
         ownerAccountID: String? = nil
     ) -> PendingCaptureRoomReceipt? {
@@ -145,6 +147,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
                 sessionID: sessionID,
                 callRoomID: callRoomID,
                 action: action,
+                sourceType: sourceType,
                 occurredAt: occurredAt,
                 ownerAccountID: ownerAccountID
             )
@@ -162,6 +165,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
         sessionID: String,
         callRoomID: String,
         action: PendingCaptureRoomReceipt.Action,
+        sourceType: String? = nil,
         occurredAt: Date = Date(),
         ownerAccountID: String? = nil
     ) throws -> PendingCaptureRoomReceipt {
@@ -171,6 +175,13 @@ final class CaptureRoomReceiptStore: ObservableObject {
         let resolvedOwnerAccountID = normalizedOwnerID(ownerAccountID)
             ?? normalizedOwnerID(inheritedStart?.ownerAccountID)
             ?? normalizedOwnerID(activeOwnerAccountID)
+        let normalizedSourceType = sourceType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let resolvedSourceType = action == .stop
+            ? inheritedStart?.sourceType ?? normalizedSourceType ?? "audio"
+            : normalizedSourceType
+        guard resolvedSourceType == "audio" || resolvedSourceType == "video" else {
+            throw ReceiptStoreError.invalidSourceType
+        }
         guard let resolvedOwnerAccountID else {
             throw ReceiptStoreError.accountIdentityUnavailable
         }
@@ -205,6 +216,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
             sessionID: sessionID,
             callRoomID: callRoomID,
             action: action,
+            sourceType: resolvedSourceType,
             occurredAt: occurredAt,
             deliveryDisposition: nil,
             dispositionAt: nil
@@ -433,6 +445,7 @@ final class CaptureRoomReceiptStore: ObservableObject {
         case ledgerUnavailable
         case ledgerQuarantined
         case boundaryIdentityMismatch
+        case invalidSourceType
 
         var errorDescription: String? {
             switch self {
@@ -444,6 +457,8 @@ final class CaptureRoomReceiptStore: ObservableObject {
                 return "The canonical receipt journal is quarantined read-only and will not be overwritten."
             case .boundaryIdentityMismatch:
                 return "The STOP boundary does not match its durable START owner, session, and room identity."
+            case .invalidSourceType:
+                return "A recording boundary must declare whether it retains audio or video."
             }
         }
     }

@@ -24,6 +24,7 @@ import {
   Track,
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 
 type SessionKind = "coaching" | "episode";
 type DeviceOption = { deviceId: string; label: string };
@@ -90,11 +91,13 @@ export function LiveSessionRoom({
   callRoomId,
   sessionTitle,
   kind,
+  episodeSlug = null,
   compact = false,
 }: {
   callRoomId: string;
   sessionTitle: string;
   kind: SessionKind;
+  episodeSlug?: string | null;
   compact?: boolean;
 }) {
   const [status, setStatus] = useState<RoomStatus>("preflight");
@@ -518,6 +521,18 @@ export function LiveSessionRoom({
             <p className="mt-2">For your MV7i: choose it as microphone and choose its headphone output here when supported. Safari may require selecting it in macOS Sound instead.</p>
           </div>
         </aside>
+      </div>
+      <div className="mt-5">
+        <BrowserSourceRecorder
+          callRoomId={callRoomId}
+          sessionTitle={sessionTitle}
+          sessionKind={kind}
+          episodeSlug={episodeSlug}
+          microphoneId={microphoneId}
+          microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+          cameraId={cameraId}
+          cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
+        />
       </div>
     </section>
   );

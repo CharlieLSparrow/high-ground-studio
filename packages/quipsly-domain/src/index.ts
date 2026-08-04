@@ -7,6 +7,7 @@ export * from "./coaching-public";
 export * from "./coaching-lifecycle";
 export * from "./coaching-meeting-spine";
 export * from "./mobile-capture-upload";
+export * from "./browser-source-capture";
 export * from "./nests";
 export * from "./generated-art";
 export * from "./art-recipes";

@@ -161,6 +161,7 @@ export async function POST(request: Request) {
   const receiptId = uuid(body.receiptId);
   const rawCaptureId = text(body.captureId);
   const captureId = uuid(body.captureId);
+  const sourceType = text(body.sourceType).toLowerCase() === "video" ? "video" : "audio";
 
   if (!rawReceiptId) {
     return NextResponse.json(
@@ -236,10 +237,13 @@ export async function POST(request: Request) {
         where: { receiptId },
       });
       if (duplicateReceipt) {
+        const receiptMetadata = jsonObject(duplicateReceipt.metadataJson);
+        const receiptSourceType = text(receiptMetadata.sourceType).toLowerCase() === "video" ? "video" : "audio";
         const requestMatches = duplicateReceipt.roomId === room.id
           && duplicateReceipt.actorUserId === userId
           && duplicateReceipt.action === action
-          && (duplicateReceipt.captureId ?? null) === (captureId || null);
+          && (duplicateReceipt.captureId ?? null) === (captureId || null)
+          && (action !== "START_RECORDING" || receiptSourceType === sourceType);
         if (!requestMatches) {
           return {
             status: 409,
@@ -252,7 +256,6 @@ export async function POST(request: Request) {
         }
 
         const { participant, consent } = participantAndConsent(room, userId);
-        const receiptMetadata = jsonObject(duplicateReceipt.metadataJson);
         const nextAction = text(receiptMetadata.nextAction)
           || "Capture room receipt was already persisted; no room state was changed.";
         if (duplicateReceipt.outcome === "REJECTED") {
@@ -307,6 +310,7 @@ export async function POST(request: Request) {
           nextAction: args.nextAction,
           participantId: participant?.id ?? null,
           recordingConsentId: consent?.id ?? null,
+          sourceType,
         };
         const receipt = await transaction.captureRoomStateReceipt.create({
           data: {
@@ -466,13 +470,14 @@ export async function POST(request: Request) {
         && (
           consent?.status !== "GRANTED"
           || consent.canRecordAudio !== true
+          || (sourceType === "video" && consent.canRecordVideo !== true)
           || !consent.consentedAt
           || consent.revokedAt
         )
       ) {
         return persistRejectedReceipt({
           errorCode: "PARTICIPANT_CONSENT_REQUIRED",
-          errorMessage: "Recording cannot be marked started until this participant has granted audio-recording consent.",
+          errorMessage: `Recording cannot be marked started until this participant has granted ${sourceType}-recording consent.`,
           nextAction: "Grant this participant's recording consent, then begin a new capture take with a new receipt.",
         });
       }
@@ -480,13 +485,13 @@ export async function POST(request: Request) {
       if (action === "START_RECORDING") {
         const allRegisteredConsentGranted = mobileCaptureAllPartiesReady(
           allPartyConsentVersions,
-          "audio",
+          sourceType,
         );
         if (!allRegisteredConsentGranted) {
           return persistRejectedReceipt({
             errorCode: "ALL_PARTICIPANT_CONSENT_REQUIRED",
-            errorMessage: "Every signed-in, non-observer participant must grant recording consent before the room is marked recording.",
-            nextAction: "Collect explicit consent from every signed-in participant, then begin a new capture take with a new receipt.",
+            errorMessage: `Every signed-in, non-observer participant must grant ${sourceType}-recording consent before the room is marked recording.`,
+            nextAction: `Collect explicit ${sourceType}-recording consent from every signed-in participant, then begin a new capture take with a new receipt.`,
           });
         }
       }
@@ -577,6 +582,7 @@ export async function POST(request: Request) {
             nextAction,
             participantId: participant.id,
             recordingConsentId: consent?.id ?? null,
+            sourceType,
             roleActionMatrixVersion: 1,
             captureOwnerUserId: roomActionAuthorization.captureOwnerUserId,
             allPartyConsentVersion,

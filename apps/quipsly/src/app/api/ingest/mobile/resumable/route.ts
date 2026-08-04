@@ -127,6 +127,28 @@ function sourceProfileJson(value: unknown) {
     : null;
 }
 
+function browserUploadOrigin(request: Request, sourceProfile: string | null) {
+  if (!sourceProfile) return null;
+  try {
+    const profile = JSON.parse(sourceProfile) as { clientKind?: unknown };
+    if (profile.clientKind !== "web") return null;
+    const rawOrigin = request.headers.get("origin")?.trim();
+    if (!rawOrigin) return null;
+    const origin = new URL(rawOrigin);
+    if (
+      !/^https?:$/.test(origin.protocol)
+      || origin.username
+      || origin.password
+      || origin.pathname !== "/"
+      || origin.search
+      || origin.hash
+    ) return null;
+    return origin.origin;
+  } catch {
+    return null;
+  }
+}
+
 function parseCreatePayload(value: unknown):
   | { ok: true; payload: CreatePayload }
   | { ok: false; error: string } {
@@ -511,6 +533,13 @@ export async function POST(request: Request) {
 
   try {
     const payload = parsed.payload;
+    const parsedSourceProfile = payload.sourceProfileJson
+      ? JSON.parse(payload.sourceProfileJson) as { clientKind?: unknown }
+      : null;
+    const uploadOrigin = browserUploadOrigin(request, payload.sourceProfileJson);
+    if (parsedSourceProfile?.clientKind === "web" && !uploadOrigin) {
+      return jsonNoStore({ ok: false, error: "Browser source uploads require an exact HTTP Origin binding." }, 400);
+    }
     const references = await assertMobileCaptureUploadReferences({
       prisma,
       actorUserId: session.user.id,
@@ -664,6 +693,7 @@ export async function POST(request: Request) {
       processingDisposition: roomReadiness.eligibleForProcessing
         ? "eligible"
         : "preservation-only",
+      uploadOrigin,
     });
     const mismatch = mobileCaptureResumableBindingMismatch(created.stored.manifest, binding);
     if (mismatch) return jsonNoStore({ ok: false, error: mismatch }, 409);

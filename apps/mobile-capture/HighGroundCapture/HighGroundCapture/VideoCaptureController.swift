@@ -361,6 +361,7 @@ final class VideoCaptureController: ObservableObject {
                 sessionID: context.sessionID,
                 callRoomID: context.callRoomID,
                 action: .start,
+                sourceType: "video",
                 ownerAccountID: ownerSnapshot.ownerAccountID
             )
             armedRecordingID = recordingID

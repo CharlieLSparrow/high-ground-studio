@@ -166,6 +166,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 sessionID: normalizedSessionID,
                 callRoomID: normalizedCallRoomID,
                 action: .start,
+                sourceType: "audio",
                 ownerAccountID: expectedOwnerSnapshot.ownerAccountID
             )
             startReceiptID = receipt.id

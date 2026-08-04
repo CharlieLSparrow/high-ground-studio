@@ -220,6 +220,7 @@ payload = [{
         "Authorization",
         "Content-Length",
         "Content-Range",
+        "Range",
         "User-Agent",
         "x-goog-if-generation-match",
         "x-goog-resumable",

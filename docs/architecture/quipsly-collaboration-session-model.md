@@ -1,6 +1,6 @@
 # Quipsly collaboration and live-session model
 
-Status: adopted architecture; browser conversation client implemented; provider configuration and browser local-master capture remain deployment gates
+Status: adopted architecture; browser conversation and retained-source clients implemented; provider configuration and physical cross-device acceptance remain deployment gates
 
 Last reviewed: 2026-08-04
 
@@ -70,12 +70,33 @@ browser supports it, otherwise Quipsly points to the system output selector.
 ### Retained-source plane
 
 Production-quality local files remain independent and immutable. iPhone
-Capture already records file-backed local sources and uploads them through the
-canonical resumable contract. The intended Mac/browser lane records the Shure
-or chosen mic locally while publishing a separately processed conversation
-copy, and records/imports a Canon source independently. Each source carries its
-own monotonic start/stop evidence and joins the Session clock before editor
-alignment.
+Capture records file-backed local sources and uploads them through the
+canonical resumable contract. The Mac/browser lane now records the selected
+mic, or selected camera plus mic, to the origin-private file system in regular
+chunks while publishing a separately processed conversation copy. It records
+the actual browser track settings and processing flags rather than claiming a
+requested resolution or unprocessed signal was achieved. A Canon USB webcam
+feed may be useful local/reference video; the camera's internal recording can
+still be imported as the higher-fidelity master.
+
+Each browser source has a durable IndexedDB ledger plus an OPFS file, unique
+capture/upload/receipt IDs, chunk byte offsets and recorder timecodes, exact
+size and streamed SHA-256, consent and participant bindings, and explicit
+local/held/uploading/verifying/verified states. START and STOP go through the
+same append-only room receipt ledger as iPhone Capture. Completed files use the
+same direct-to-vault resumable-v2 manifest and verified editor-finalization
+contract. Local deletion is intentionally absent until retention policy and a
+verified server receipt both permit it.
+
+All-party consent is not checked only once. The browser reads the current
+consent snapshot during recording and stops visibly if a participant joins,
+revokes consent, or the readback becomes unavailable. Flushed source bytes are
+preserved locally; an interrupted or held take never masquerades as verified.
+
+The standalone `/recorder` page remains a legacy episode experiment. Its
+global IndexedDB chunk store and paused upload path are not canonical and must
+be retired or migrated onto the Session recorder before it can be a release
+surface.
 
 Provider egress is optional safety/reference media. It never silently becomes
 the only master. Starting provider recording remains a separate, consent-gated,
@@ -133,13 +154,23 @@ Implemented in the browser:
 - Episode Room creation/binding of a Podcast Session and direct Live Room
   handoff;
 - explicit language that a connected conversation is not recording.
+- a separate visible retained-source recorder for studio audio or camera plus
+  audio, with headphones attestation and actual device/profile evidence;
+- OPFS media plus an IndexedDB recovery ledger, regular chunk flushing,
+  streamed checksum, manual download, retryable handoff, and no automatic
+  source deletion;
+- current-policy recording/transcription choices and all-party consent
+  readback before and during recording;
+- canonical START/STOP receipts and resumable-v2 upload/finalization shared
+  with iPhone Capture.
 
 Still gated:
 
-1. configure a LiveKit deployment and scoped server credentials in local,
+1. approve and configure a LiveKit deployment and scoped server credentials in local,
    preview, and production environments;
-2. implement the browser local-master recorder and resumable upload adapter,
-   including long-take recovery and exact source-clock receipts;
+2. complete signed-in physical browser validation of OPFS recovery, long takes,
+   container salvage after browser loss, external-device contention, exact
+   upload/finalization, and editor playback;
 3. complete two-person browser/iPhone acceptance with device route loss,
    reconnect, headphones, drift, and source/editor readback;
 4. add a deliberate bridge from Episode Watch commands to low-latency room data
@@ -156,3 +187,6 @@ source quality, audio transparency, transcription, automation, and workflow.
 Run a local LiveKit server for deterministic development and CI. Keep the
 provider behind Nest-issued tokens so self-hosting remains an operational
 option rather than an application rewrite.
+
+See `docs/operations/quipsly-livekit-cost-and-environment-proposal.md` for the
+current cost envelope and provisioning decision.
