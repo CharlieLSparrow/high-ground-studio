@@ -111,6 +111,14 @@ produce an audio-only room composite or individual/participant tracks.
 - [LiveKit egress](https://docs.livekit.io/transport/media/ingress-egress/egress/)
 - [LiveKit participant egress](https://docs.livekit.io/transport/media/ingress-egress/egress/participant/)
 
+The browser uses the same Session room and short-lived Nest token rather than a
+second web-call product. External microphone and camera permission are separate,
+the chosen route is previewed before join, and a device-scoped media identity
+allows the same Quipsly participant to stay present on iPhone and Mac. Browser
+conversation media is not yet a retained local master; that recorder remains a
+separate production gate. See
+[`quipsly-collaboration-session-model.md`](../architecture/quipsly-collaboration-session-model.md).
+
 The Canon EOS R8 is a useful call preview over USB, but Canon documents its
 UVC/UAC output as 1920x1080 at 30 fps. That stream is not the 4K production
 master. The first production workflow records 4K internally to the R8 card and

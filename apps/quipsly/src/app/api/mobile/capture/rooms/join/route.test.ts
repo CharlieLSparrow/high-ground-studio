@@ -26,6 +26,19 @@ function joinRequest(callRoomId?: string) {
   });
 }
 
+function browserJoinRequest(callRoomId: string) {
+  return new Request("http://localhost/api/mobile/capture/rooms/join", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      callRoomId,
+      clientInstanceId: "web-device-1",
+      clientKind: "web",
+      deviceLabel: "Quipsly Web · macOS",
+    }),
+  });
+}
+
 function liveKitRoom(overrides: Record<string, unknown> = {}) {
   return {
     id: "room-1",
@@ -156,6 +169,25 @@ describe("mobile capture room join", () => {
         apiSecret: "test-secret",
         identity: "participant-1",
         roomName: "provider-room-1",
+      }),
+    );
+  });
+
+  it("uses a device-scoped media identity so browser and iPhone can join as one canonical person", async () => {
+    findFirst.mockResolvedValue(liveKitRoom());
+
+    const response = await POST(browserJoinRequest("room-1"));
+
+    expect(response.status).toBe(200);
+    expect(mockedToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identity: "participant-1:web-device-1",
+        metadata: expect.objectContaining({
+          participantId: "participant-1",
+          clientInstanceId: "web-device-1",
+          clientKind: "web",
+          deviceLabel: "Quipsly Web · macOS",
+        }),
       }),
     );
   });

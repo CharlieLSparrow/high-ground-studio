@@ -15,6 +15,12 @@ An Episode Room is the canonical collaborative workspace for one episode from ou
 - one episode-scoped collaboration thread;
 - direct handoffs to Write, Record, Edit, and Publish.
 
+An Episode Room binds one or more recording Sessions. Each bound Session owns
+its Live Room, meeting-specific thread, consent, source recordings, transcript,
+and immediate outputs; the Episode keeps the longer-lived production thread and
+editorial lifecycle. See
+[`quipsly-collaboration-session-model.md`](../architecture/quipsly-collaboration-session-model.md).
+
 The room is not a media-player widget. It is the live operational view of one `StudioEpisodeProduction`.
 
 Canonical route:

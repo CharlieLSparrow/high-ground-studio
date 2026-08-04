@@ -32,6 +32,9 @@ function request(body: unknown) {
 
 const createdAt = new Date("2026-07-26T21:51:34.993Z");
 const prisma = {
+  callRoom: {
+    findFirst: jest.fn(),
+  },
   studioEpisodeProduction: {
     findUnique: jest.fn(),
   },
@@ -75,6 +78,7 @@ describe("scoped Nest chat threads", () => {
     prisma.studioNestChatMessage.findFirst.mockResolvedValue({ id: "seed-1" });
     prisma.studioNestChatMessage.findUnique.mockResolvedValue(null);
     prisma.studioNestChatMessage.findMany.mockResolvedValue([]);
+    prisma.callRoom.findFirst.mockResolvedValue(null);
     prisma.studioEpisodeProduction.findUnique.mockResolvedValue({
       id: "episode-production-1",
       slug: "episode-4-part-2",
@@ -198,6 +202,67 @@ describe("scoped Nest chat threads", () => {
       actor: { role: "VIEWER" },
       thread: { key: "episode:episode-4-part-2" },
     });
+  });
+
+  it("authorizes a Session thread against the meeting as well as the Nest", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.callRoom.findFirst.mockResolvedValue({
+      id: "room-1",
+      title: "Private coaching follow-up",
+      purpose: "COACHING",
+      status: "PLANNED",
+    });
+    prisma.studioNestChatThread.upsert.mockResolvedValue({
+      id: "thread-session-1",
+      key: "session:room-1",
+      title: "High Ground Odyssey · session room 1",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&threadKey=session%3Aroom-1",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      session: { id: "room-1", purpose: "COACHING" },
+      thread: { key: "session:room-1" },
+    });
+    expect(prisma.callRoom.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "room-1",
+        projectId: "project-1",
+        OR: expect.any(Array),
+      }),
+      select: { id: true, title: true, purpose: true, status: true },
+    });
+  });
+
+  it("does not create a Session thread for a project viewer outside the meeting", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "VIEWER",
+    } as never);
+    prisma.callRoom.findFirst.mockResolvedValue(null);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&threadKey=session%3Aprivate-room",
+    ));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: "Session thread is not available.",
+    });
+    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
   });
 
   it("uses the shared Firebase bearer-or-cookie session boundary for native chat", async () => {

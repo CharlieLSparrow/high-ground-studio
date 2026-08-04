@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  sessionConversationAccessWhere,
+  sessionMutationAccessWhere,
+} from "@/lib/server/session-access";
 
 import {
   findStudioProjectForAccess,
@@ -19,6 +23,7 @@ const CLIENT_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a
 const CLIENT_SURFACES = new Set([
   "capture-ios",
   "episode-room-web",
+  "session-room-web",
   "nest-chat-web",
 ]);
 
@@ -64,6 +69,11 @@ function normalizeEpisodeSlug(input: unknown) {
     .slice(0, MAX_THREAD_KEY_LENGTH - "episode:".length);
 }
 
+function normalizeSessionRoomId(input: unknown) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9_-]{0,119}$/.test(raw) ? raw : "";
+}
+
 function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) {
   const explicitEpisodeSlug = normalizeEpisodeSlug(episodeSlugInput);
   const key = explicitEpisodeSlug
@@ -72,9 +82,13 @@ function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) 
   const episodeSlug = key.startsWith("episode:")
     ? normalizeEpisodeSlug(key.slice("episode:".length))
     : "";
+  const sessionRoomId = key.startsWith("session:")
+    ? normalizeSessionRoomId(key.slice("session:".length))
+    : "";
   return {
-    key: episodeSlug ? `episode:${episodeSlug}` : key,
+    key: episodeSlug ? `episode:${episodeSlug}` : sessionRoomId ? `session:${sessionRoomId}` : key,
     episodeSlug: episodeSlug || null,
+    sessionRoomId: sessionRoomId || null,
   };
 }
 
@@ -176,6 +190,7 @@ async function resolveActor(request: NextRequest) {
     id: cleanString(session?.user?.id),
     email,
     name: cleanString(session?.user?.name, email),
+    isStaff: session?.user?.isStaff === true,
   };
 }
 
@@ -271,14 +286,14 @@ async function ensureThread(projectId: string, projectName: string, key: string)
 
 async function loadThread(
   projectSlug: string,
-  actorEmail: string,
+  actor: Awaited<ReturnType<typeof resolveActor>>,
   scope: ReturnType<typeof resolveThreadScope>,
   action: "read" | "write",
 ) {
   const prisma = getPrismaClient();
   const access = await resolveStudioProjectAccess({
     projectSlug,
-    email: actorEmail,
+    email: actor.email,
     action,
     prisma,
   });
@@ -312,8 +327,23 @@ async function loadThread(
     return { ok: false as const, status: 404, error: "Episode chat is not available." };
   }
 
+  const sessionRoom = scope.sessionRoomId
+    ? await prisma.callRoom.findFirst({
+        where: {
+          ...(action === "write"
+            ? sessionMutationAccessWhere(scope.sessionRoomId, actor)
+            : sessionConversationAccessWhere(scope.sessionRoomId, actor)),
+          projectId: project.id,
+        },
+        select: { id: true, title: true, purpose: true, status: true },
+      })
+    : null;
+  if (scope.sessionRoomId && !sessionRoom) {
+    return { ok: false as const, status: 404, error: "Session thread is not available." };
+  }
+
   const thread = await ensureThread(project.id, project.name, scope.key);
-  return { ok: true as const, project, episode, thread, access };
+  return { ok: true as const, project, episode, sessionRoom, thread, access };
 }
 
 export async function GET(request: NextRequest) {
@@ -333,7 +363,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email, scope, "read");
+    const loaded = await loadThread(projectSlug, actor, scope, "read");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
@@ -353,6 +383,7 @@ export async function GET(request: NextRequest) {
         name: loaded.project.name,
       },
       episode: loaded.episode,
+      session: loaded.sessionRoom,
       thread: {
         id: loaded.thread.id,
         key: loaded.thread.key,
@@ -399,7 +430,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email, scope, "write");
+    const loaded = await loadThread(projectSlug, actor, scope, "write");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
@@ -420,6 +451,10 @@ export async function POST(request: NextRequest) {
         ...(scope.episodeSlug ? {
           episodeId: loaded.episode?.id,
           episodeSlug: scope.episodeSlug,
+        } : {}),
+        ...(scope.sessionRoomId ? {
+          callRoomId: loaded.sessionRoom?.id,
+          sessionTitle: loaded.sessionRoom?.title,
         } : {}),
         ...(clientMessageId ? { clientMessageId } : {}),
       },

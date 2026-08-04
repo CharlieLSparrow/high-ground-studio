@@ -29,10 +29,20 @@ type PreparationConsentInput = {
   metadataJson?: unknown;
 };
 
+type LiveKitEnvironment = {
+  LIVEKIT_URL?: string;
+  LIVEKIT_API_KEY?: string;
+  LIVEKIT_API_SECRET?: string;
+};
+
 export type SessionPreparation = {
   purpose: string;
   status: string;
   provider: string;
+  providerRoomId: string | null;
+  providerCanJoin: boolean;
+  providerReadiness: "livekit-ready" | "livekit-needs-config" | "livekit-needs-room-id" | "local-fallback";
+  providerNextAction: string;
   scheduledStart: string | null;
   scheduledEnd: string | null;
   project: { id: string; name: string; slug: string } | null;
@@ -76,12 +86,13 @@ export function buildSessionPreparationState(room: {
   purpose?: string | null;
   status?: string | null;
   provider?: string | null;
+  providerRoomId?: string | null;
   scheduledStart?: Date | string | null;
   scheduledEnd?: Date | string | null;
   project?: { id: string; name: string; slug: string } | null;
   participants?: PreparationParticipantInput[] | null;
   recordingConsents?: PreparationConsentInput[] | null;
-}, actorUserId?: string | null): {
+}, actorUserId?: string | null, env: LiveKitEnvironment = process.env as LiveKitEnvironment): {
   preparation: SessionPreparation;
   consentSnapshot: SessionConsentSnapshot;
 } {
@@ -94,6 +105,32 @@ export function buildSessionPreparationState(room: {
   const consentByParticipantId = new Map(
     consentVersions.map((consent) => [consent.participantId, consent]),
   );
+  const provider = String(room.provider || "planned").toLowerCase();
+  const providerRoomId = String(room.providerRoomId || "").trim() || null;
+  const hasLiveKitConfig = Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET);
+  const providerState = provider === "livekit" && providerRoomId && hasLiveKitConfig
+    ? {
+        providerCanJoin: true,
+        providerReadiness: "livekit-ready" as const,
+        providerNextAction: "Choose and test the exact devices, then join from browser or iPhone.",
+      }
+    : provider === "livekit" && providerRoomId
+      ? {
+          providerCanJoin: false,
+          providerReadiness: "livekit-needs-config" as const,
+          providerNextAction: "LiveKit is selected, but this environment is missing server credentials.",
+        }
+      : provider === "livekit"
+        ? {
+            providerCanJoin: false,
+            providerReadiness: "livekit-needs-room-id" as const,
+            providerNextAction: "Prepare a provider room before anyone tries to join.",
+          }
+        : {
+            providerCanJoin: false,
+            providerReadiness: "local-fallback" as const,
+            providerNextAction: "Prepare LiveKit for a shared call, or keep this Session local-only.",
+          };
 
   return {
     consentSnapshot: {
@@ -114,7 +151,9 @@ export function buildSessionPreparationState(room: {
     preparation: {
       purpose: String(room.purpose || "COACHING"),
       status: String(room.status || "PLANNED"),
-      provider: String(room.provider || "planned"),
+      provider,
+      providerRoomId,
+      ...providerState,
       scheduledStart: iso(room.scheduledStart),
       scheduledEnd: iso(room.scheduledEnd),
       project: room.project ?? null,

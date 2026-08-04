@@ -12,6 +12,12 @@ export const SESSION_WORKSPACE_MODES = [
     description: "Review schedule, participants, consent, project context, and canonical tags before capture.",
   },
   {
+    id: "live",
+    label: "Live room",
+    eyebrow: "Talk together",
+    description: "Choose studio devices, join from browser or iPhone, and keep conversation separate from retained recording truth.",
+  },
+  {
     id: "recordings",
     label: "Recordings",
     eyebrow: "Immutable source",

@@ -17,7 +17,7 @@ const SESSION_MUTATION_PROJECT_ROLES = ["OWNER", "EDITOR"] as const;
 
 function sessionActorAccessConditions(
   actor: SessionAccessActor,
-  projectGrant: "read" | "mutate",
+  projectGrant: "read" | "collaborate" | "mutate",
 ) {
   const email = normalizedEmail(actor);
   return [
@@ -42,7 +42,7 @@ function sessionActorAccessConditions(
                 some: {
                   email,
                   status: "ACTIVE" as const,
-                  ...(projectGrant === "mutate"
+                  ...(projectGrant !== "read"
                     ? { role: { in: [...SESSION_MUTATION_PROJECT_ROLES] } }
                     : {}),
                 },
@@ -66,6 +66,21 @@ export function sessionActorAccessWhere(actor: SessionAccessActor) {
   if (actor.isStaff) return {};
   return {
     OR: sessionActorAccessConditions(actor, "read"),
+  };
+}
+
+/**
+ * Meeting-thread read boundary.
+ *
+ * A project VIEWER may inspect the Session shell, but that alone never grants
+ * access to a meeting's conversation. Registered participants (including an
+ * observer), booked coach/client, the creator, staff, and active project
+ * OWNER/EDITOR collaborators may read the Session thread.
+ */
+export function sessionConversationActorAccessWhere(actor: SessionAccessActor) {
+  if (actor.isStaff) return {};
+  return {
+    OR: sessionActorAccessConditions(actor, "collaborate"),
   };
 }
 
@@ -97,5 +112,15 @@ export function sessionMutationAccessWhere(
   return {
     id: roomId,
     ...sessionMutationActorAccessWhere(actor),
+  };
+}
+
+export function sessionConversationAccessWhere(
+  roomId: string,
+  actor: SessionAccessActor,
+) {
+  return {
+    id: roomId,
+    ...sessionConversationActorAccessWhere(actor),
   };
 }

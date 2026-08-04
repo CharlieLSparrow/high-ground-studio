@@ -29,6 +29,18 @@ collaborator to make ad hoc supply-chain decisions or silently skip a required
 binary setup step. Any new build-script dependency must be reviewed and added
 explicitly in the same dependency slice.
 
+Quipsly's production build verifies more than 170 App Router routes and can
+exceed Node's default 4 GiB heap during Next's whole-program type and trace
+passes. Its package-owned `build` command sets a 12 GiB *maximum* heap (it does
+not pre-allocate that memory) so local and CI builds use one reproducible lane:
+
+```bash
+pnpm --filter quipsly build
+```
+
+Do not work around an out-of-memory failure by skipping Next type or trace
+verification.
+
 Capture release tooling must not use or mutate Apple's system Ruby. The
 checked-in runner accepts the exact active Ruby from a version manager or the
 exact Homebrew Ruby when available, installs the locked gems into the macOS

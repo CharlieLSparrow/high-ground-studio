@@ -26,6 +26,7 @@ describe("Session preparation projection", () => {
       purpose: "COACHING",
       status: "PLANNED",
       provider: "livekit",
+      providerRoomId: "provider-room-1",
       scheduledStart: "2026-07-26T15:00:00.000Z",
       project: { id: "project-1", name: "Private coaching", slug: "private-coaching" },
       participants: [{
@@ -47,13 +48,19 @@ describe("Session preparation projection", () => {
         updatedAt: "2026-07-25T18:00:00.000Z",
         metadataJson: currentEvidence(),
       }],
-    }, "user-1");
+    }, "user-1", {
+      LIVEKIT_URL: "wss://example.livekit.cloud",
+      LIVEKIT_API_KEY: "test-key",
+      LIVEKIT_API_SECRET: "test-secret",
+    });
 
     expect(state.consentSnapshot).toEqual({ total: 1, granted: 1, transcriptionPermitted: 1 });
     expect(state.preparation).toMatchObject({
       purpose: "COACHING",
       status: "PLANNED",
       provider: "livekit",
+      providerCanJoin: true,
+      providerReadiness: "livekit-ready",
       scheduledStart: "2026-07-26T15:00:00.000Z",
       allAudioReady: true,
       allTranscriptionReady: true,
@@ -68,6 +75,19 @@ describe("Session preparation projection", () => {
           transcriptionReady: true,
         },
       }],
+    });
+  });
+
+  it("does not call a selected LiveKit room ready when server credentials are absent", () => {
+    const state = buildSessionPreparationState({
+      provider: "livekit",
+      providerRoomId: "provider-room-1",
+    }, null, {});
+
+    expect(state.preparation).toMatchObject({
+      providerCanJoin: false,
+      providerReadiness: "livekit-needs-config",
+      providerNextAction: expect.stringMatching(/missing server credentials/i),
     });
   });
 

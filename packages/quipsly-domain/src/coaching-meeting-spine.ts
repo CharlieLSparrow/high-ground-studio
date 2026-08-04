@@ -83,8 +83,8 @@ export function buildQuipslyMeetingJoinSpine(input: BuildQuipslyMeetingJoinSpine
     storageMutated: false,
     secretExposed: false,
     nextAction: input.participantCreated === true
-      ? "Participant evidence was created in Quipsly. Provider join still happens only in the native client."
-      : "Provider join still happens only in the native client. Server join returned a short-lived key and did not start recording.",
+      ? "Participant evidence was created in Quipsly. The authenticated client may now join; no recording was started."
+      : "The authenticated client may now join. The server returned a short-lived key and did not start recording.",
   };
 
   const providerJoin = {

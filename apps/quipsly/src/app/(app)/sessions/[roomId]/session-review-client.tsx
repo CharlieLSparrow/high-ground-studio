@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, Radio, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
+import { LiveSessionRoom } from "@/components/live-session-room";
+import { SessionThread } from "@/components/session-thread";
 
 import {
   candidateReviewRequest,
@@ -57,6 +59,14 @@ import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 
 function humanize(value: string | null | undefined) {
   return (value || "not set").toLowerCase().replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function liveRoomReadinessLabel(preparation: SessionPreparation | null) {
+  if (!preparation) return "Provider truth unavailable";
+  if (preparation.providerCanJoin) return "Browser + iPhone ready";
+  if (preparation.providerReadiness === "livekit-needs-config") return "LiveKit credentials needed";
+  if (preparation.providerReadiness === "livekit-needs-room-id") return "Live room not prepared";
+  return "Local-only Session";
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -1249,6 +1259,7 @@ function SessionCandidateReviewQueue({
 
 function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
   if (mode === "prepare") return <ClipboardList className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "live") return <Radio className="h-4 w-4" aria-hidden="true" />;
   if (mode === "recordings") return <Mic2 className="h-4 w-4" aria-hidden="true" />;
   if (mode === "transcript") return <MessageSquareText className="h-4 w-4" aria-hidden="true" />;
   if (mode === "notes") return <NotebookPen className="h-4 w-4" aria-hidden="true" />;
@@ -1268,7 +1279,7 @@ function SessionWorkspaceNavigation({
   return (
     <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
       <nav aria-label="Session workspace modes">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           {SESSION_WORKSPACE_MODES.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -1388,6 +1399,12 @@ function SessionWorkspaceOverview({
       detail: `${contentReadiness?.captureAssetCount ?? 0} source asset${contentReadiness?.captureAssetCount === 1 ? "" : "s"} · ${contentReadiness?.verifiedCaptureCount ?? 0} verified`,
     },
     {
+      mode: "live" as const,
+      title: "Live room",
+      value: liveRoomReadinessLabel(preparation),
+      detail: preparation?.providerNextAction || "External mic, camera, headphones, participant roster, and an explicit no-hidden-recording boundary",
+    },
+    {
       mode: "transcript" as const,
       title: "Transcript",
       value: substantialRecording ? "Source ready; inspect gate" : "Held by source truth",
@@ -1418,7 +1435,7 @@ function SessionWorkspaceOverview({
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm" aria-labelledby="session-runway-heading">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">One Session, seven focused modes</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">One Session, eight focused modes</p>
         <h2 id="session-runway-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Current runway</h2>
         <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
           Open the lane for the job in front of you. Every lane reads the same canonical Session; switching modes creates nothing and changes nothing.
@@ -1815,6 +1832,15 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         <PriorSessionContinuityCard prior={sessionContinuity?.prior ?? null} />
         {sessionTaxonomy ? <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} /> : <WorkspaceEmptyState title="No project context" detail="This Session is not connected to an accessible Nest, so Quipsly has no shared tag vocabulary or Studio destination to show." />}
       </> : null}
+
+      {mode === "live" ? <div className="space-y-5">
+        <LiveSessionRoom
+          callRoomId={roomId}
+          sessionTitle={sessionTitle}
+          kind={preparation?.purpose.toUpperCase().includes("PODCAST") || preparation?.purpose.toUpperCase().includes("EPISODE") ? "episode" : "coaching"}
+        />
+        {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
+      </div> : null}
 
       {mode === "recordings" ? <>
         <SessionRecordingImportCard roomId={roomId} preparation={preparation} />

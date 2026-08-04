@@ -69,6 +69,7 @@ export default async function SessionReviewPage({
         purpose: true,
         status: true,
         provider: true,
+        providerRoomId: true,
         scheduledStart: true,
         scheduledEnd: true,
         createdByUserId: true,

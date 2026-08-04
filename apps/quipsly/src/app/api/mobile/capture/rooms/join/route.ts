@@ -42,6 +42,11 @@ export async function POST(request: Request) {
 
   const body = await readJson(request);
   const callRoomId = text(body.callRoomId);
+  const clientInstanceId = text(body.clientInstanceId)
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .slice(0, 80);
+  const clientKind = text(body.clientKind).toLowerCase() === "web" ? "web" : "ios";
+  const requestedDeviceLabel = text(body.deviceLabel).slice(0, 160);
 
   if (!callRoomId) {
     return NextResponse.json(
@@ -138,7 +143,7 @@ export async function POST(request: Request) {
         displayName: session.user.name || session.user.primaryEmail || "Quipsly participant",
         email: session.user.primaryEmail,
         role,
-        deviceLabel: "Quipsly iOS Capture",
+        deviceLabel: requestedDeviceLabel || (clientKind === "web" ? "Quipsly Web" : "Quipsly iOS Capture"),
       },
     });
     participantCreated = true;
@@ -202,13 +207,19 @@ export async function POST(request: Request) {
   const participantToken = createLiveKitJoinToken({
     apiKey: livekitApiKey,
     apiSecret: livekitApiSecret,
-    identity: participant.id,
+    // One canonical Quipsly participant may intentionally join from both a
+    // browser and iPhone Capture. LiveKit identities must be unique per active
+    // device or the later connection will evict the earlier one.
+    identity: clientInstanceId ? `${participant.id}:${clientInstanceId}` : participant.id,
     name: participant.displayName || session.user.name || session.user.primaryEmail,
     roomName,
     metadata: {
       callRoomId: room.id,
       participantId: participant.id,
       userId,
+      clientInstanceId: clientInstanceId || null,
+      clientKind,
+      deviceLabel: requestedDeviceLabel || null,
       purpose: room.purpose,
       recordingConsentStatus,
     },
