@@ -4,44 +4,12 @@ import { Readable } from "node:stream";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaBucket } from "@/lib/server/gcs";
-import { authorizeIngestMediaSource } from "@/lib/server/mobile-capture-security";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
 import {
   authorizeConfiguredMediaVaultLocation,
   resolveAllowedLocalStudioMediaPath,
 } from "@/lib/server/studio-media-location-security";
-import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
-
-type VideoSourceRecord = {
-  id: string;
-  providerSourceId: string | null;
-  url: string | null;
-};
-type VideoSourcePrismaClient = ReturnType<typeof getPrismaClient> & {
-  studioVideoSource: {
-    findUnique: (input: {
-      where: { id: string };
-      select: { id: true; providerSourceId: true; url: true };
-    }) => Promise<VideoSourceRecord | null>;
-  };
-  studioMediaAsset: {
-    findMany: (input: {
-      where: {
-        OR: Array<{ rawAssetId: string } | { url: string }>;
-      };
-      select: {
-        isGlobal: true;
-        projects: { select: { slug: true } };
-        assetAttachments: { select: { project: { select: { slug: true } } } };
-      };
-    }) => Promise<Array<{
-      isGlobal: boolean;
-      projects: Array<{ slug: string }>;
-      assetAttachments: Array<{ project: { slug: string } }>;
-    }>>;
-  };
-};
 
 function inferContentType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -159,69 +127,8 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
 export async function GET(request: NextRequest, context: { params: Promise<{ sourceId: string }> }) {
   const { sourceId } = await context.params;
 
-  const prisma = getPrismaClient() as VideoSourcePrismaClient;
+  const prisma = getPrismaClient();
   const session = await getQuipslySessionFromRequest(request);
-  const authorization = await authorizeIngestMediaSource({
-    actor: session?.user
-      ? {
-          id: session.user.id,
-          email: session.user.primaryEmail,
-          isStaff: session.user.isStaff,
-        }
-      : null,
-    sourceId,
-    loadSource: (id) => prisma.studioVideoSource.findUnique({
-      where: { id },
-      select: { id: true, providerSourceId: true, url: true },
-    }),
-    loadScopes: async (id) => {
-      const assets = await prisma.studioMediaAsset.findMany({
-        where: {
-          OR: [
-            { rawAssetId: id },
-            { url: `/api/ingest/media/${id}` },
-          ],
-        },
-        select: {
-          isGlobal: true,
-          projects: { select: { slug: true } },
-          assetAttachments: { select: { project: { select: { slug: true } } } },
-        },
-      });
-      return assets.map((asset) => ({
-        isGlobal: asset.isGlobal,
-        projectSlugs: [
-          ...asset.projects.map((project) => project.slug),
-          ...asset.assetAttachments.map((attachment) => attachment.project.slug),
-        ],
-      }));
-    },
-    canReadProject: async (projectSlug, actorEmail) => {
-      const access = await resolveStudioProjectAccess({
-        projectSlug,
-        email: actorEmail,
-        action: "read",
-        prisma: prisma as any,
-      });
-      return access.allowed;
-    },
-  });
-
-  if (!authorization.allowed) {
-    return NextResponse.json(
-      { error: authorization.error },
-      {
-        status: authorization.status,
-        headers: {
-          "Cache-Control": "private, no-store",
-          Vary: "Authorization, Cookie",
-        },
-      },
-    );
-  }
-  // Project access and Capture processing release are independent gates. A
-  // historically attached source can remain visible as preservation evidence
-  // without being legal to play, extract, proxy, or edit.
   const releasedSource = await authorizeStudioMediaSource({
     prisma,
     actor: session?.user

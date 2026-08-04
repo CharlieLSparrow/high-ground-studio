@@ -27,6 +27,7 @@ import {
 import { RemotionComposition } from "./RemotionComposition";
 import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
+import { AudioMasteryAudition, type AudioMasteryMeasurement } from "./AudioMasteryAudition";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -203,22 +204,7 @@ type AudioMasteryClientStatus = {
   jobId: string | null;
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
   profileId: "apple-podcasts-dialogue-v1" | "ebu-r128-broadcast-v1" | null;
-  sourceMeasurement: null | {
-    measuredAt: string;
-    durationSeconds: number;
-    integratedLufs: number;
-    truePeakDbtp: number;
-    loudnessRangeLu: number;
-    thresholdLufs: number;
-    seriesResolutionMs: number;
-    series: Array<{
-      timeMs: number;
-      momentaryLufs: number | null;
-      shortTermLufs: number | null;
-      integratedLufs: number | null;
-      truePeakDbtp: number | null;
-    }>;
-  };
+  sourceMeasurement: AudioMasteryMeasurement | null;
   proposal: null | {
     action: "no-change" | "render-loudness-master";
     assessment: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
@@ -227,7 +213,7 @@ type AudioMasteryClientStatus = {
   derivative: null | {
     playbackUrl: string | null;
     verification: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
-    measured: { integratedLufs: number; truePeakDbtp: number; loudnessRangeLu: number };
+    measured: AudioMasteryMeasurement;
   };
   error: string | null;
   updatedAt: string | null;
@@ -9276,11 +9262,15 @@ function CloudEditorContent() {
                             <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.truePeakDbtp.toFixed(1)}</div><div>dBTP true peak</div></div>
                             <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.loudnessRangeLu.toFixed(1)}</div><div>LU range</div></div>
                           </div>
-                          {audioMasteryStatus.derivative && (
-                            <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-bold leading-4 text-emerald-900">
-                              Verified output: {audioMasteryStatus.derivative.measured.integratedLufs.toFixed(1)} LUFS · {audioMasteryStatus.derivative.measured.truePeakDbtp.toFixed(1)} dBTP. This is an unpromoted preview.
-                              {audioMasteryStatus.derivative.playbackUrl && <audio className="mt-2 w-full" controls preload="metadata" src={audioMasteryStatus.derivative.playbackUrl} />}
-                            </div>
+                          {audioMasteryStatus.derivative?.playbackUrl && audioMasteryStatus.proposal && (
+                            <AudioMasteryAudition
+                              sourceUrl={asset.playbackUrl}
+                              masteredUrl={audioMasteryStatus.derivative.playbackUrl}
+                              source={audioMasteryStatus.sourceMeasurement}
+                              mastered={audioMasteryStatus.derivative.measured}
+                              targetLufs={audioMasteryStatus.proposal.profile.integratedLufs}
+                              maximumTruePeakDbtp={audioMasteryStatus.proposal.profile.maximumTruePeakDbtp}
+                            />
                           )}
                         </div>
                       )}

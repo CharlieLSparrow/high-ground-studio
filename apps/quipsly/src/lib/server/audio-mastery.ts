@@ -41,7 +41,7 @@ export type PublicAudioMasteryStatus = {
   derivative: null | {
     playbackUrl: string | null;
     verification: ReturnType<typeof publicAssessment>;
-    measured: { integratedLufs: number; truePeakDbtp: number; loudnessRangeLu: number };
+    measured: ReturnType<typeof publicMeasurement>;
   };
   error: string | null;
   updatedAt: string | null;
@@ -256,11 +256,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
     derivative: result?.derivative ? {
       playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null,
       verification: publicAssessment(result.derivative.verification),
-      measured: {
-        integratedLufs: result.derivative.verificationMeasurement.integratedLufs,
-        truePeakDbtp: result.derivative.verificationMeasurement.truePeakDbtp,
-        loudnessRangeLu: result.derivative.verificationMeasurement.loudnessRangeLu,
-      },
+      measured: publicMeasurement(result.derivative.verificationMeasurement),
     } : null,
     error: integrityFailure
       ? "Audio mastery evidence failed integrity validation."

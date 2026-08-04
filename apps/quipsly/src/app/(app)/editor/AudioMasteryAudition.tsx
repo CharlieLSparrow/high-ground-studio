@@ -1,0 +1,334 @@
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+export type AudioMasterySeriesPoint = {
+  timeMs: number;
+  momentaryLufs: number | null;
+  shortTermLufs: number | null;
+  integratedLufs: number | null;
+  truePeakDbtp: number | null;
+};
+
+export type AudioMasteryMeasurement = {
+  measuredAt: string;
+  durationSeconds: number;
+  integratedLufs: number;
+  truePeakDbtp: number;
+  loudnessRangeLu: number;
+  thresholdLufs: number;
+  seriesResolutionMs: number;
+  series: AudioMasterySeriesPoint[];
+};
+
+export type AudioMasteryReviewMoment = {
+  id: "loudest-source" | "quietest-sustained" | "largest-shift";
+  timeSeconds: number;
+  label: string;
+  detail: string;
+};
+
+function finite(value: number | null): value is number {
+  return value !== null && Number.isFinite(value);
+}
+
+function atTime(series: AudioMasterySeriesPoint[], timeMs: number, toleranceMs: number) {
+  let best: AudioMasterySeriesPoint | null = null;
+  let distance = Number.POSITIVE_INFINITY;
+  for (const point of series) {
+    const candidateDistance = Math.abs(point.timeMs - timeMs);
+    if (candidateDistance <= toleranceMs && candidateDistance < distance) {
+      best = point;
+      distance = candidateDistance;
+    }
+  }
+  return best;
+}
+
+export function audioMasteryReviewMoments(
+  source: AudioMasteryMeasurement,
+  mastered: AudioMasteryMeasurement,
+): AudioMasteryReviewMoment[] {
+  const moments: AudioMasteryReviewMoment[] = [];
+  const loudest = source.series
+    .filter((point) => finite(point.truePeakDbtp))
+    .sort((left, right) => (right.truePeakDbtp as number) - (left.truePeakDbtp as number))[0];
+  if (loudest) {
+    moments.push({
+      id: "loudest-source",
+      timeSeconds: loudest.timeMs / 1_000,
+      label: "Loudest source moment",
+      detail: `${(loudest.truePeakDbtp as number).toFixed(1)} dBTP before mastering`,
+    });
+  }
+
+  const quietest = source.series
+    .filter((point) => finite(point.shortTermLufs) && (point.shortTermLufs as number) > -70)
+    .sort((left, right) => (left.shortTermLufs as number) - (right.shortTermLufs as number))[0];
+  if (quietest) {
+    moments.push({
+      id: "quietest-sustained",
+      timeSeconds: quietest.timeMs / 1_000,
+      label: "Quietest sustained passage",
+      detail: `${(quietest.shortTermLufs as number).toFixed(1)} LUFS over 3 seconds`,
+    });
+  }
+
+  const toleranceMs = Math.max(source.seriesResolutionMs, mastered.seriesResolutionMs);
+  const shifts = source.series.flatMap((sourcePoint) => {
+    if (!finite(sourcePoint.shortTermLufs)) return [];
+    const masteredPoint = atTime(mastered.series, sourcePoint.timeMs, toleranceMs);
+    if (!masteredPoint || !finite(masteredPoint.shortTermLufs)) return [];
+    return [{
+      sourcePoint,
+      deltaLu: (masteredPoint.shortTermLufs as number) - (sourcePoint.shortTermLufs as number),
+    }];
+  }).sort((left, right) => Math.abs(right.deltaLu) - Math.abs(left.deltaLu))[0];
+  if (shifts) {
+    moments.push({
+      id: "largest-shift",
+      timeSeconds: shifts.sourcePoint.timeMs / 1_000,
+      label: "Largest processing shift",
+      detail: `${shifts.deltaLu >= 0 ? "+" : ""}${shifts.deltaLu.toFixed(1)} LU at the same decoded moment`,
+    });
+  }
+  return moments;
+}
+
+function clock(seconds: number) {
+  const safe = Math.max(0, Number.isFinite(seconds) ? seconds : 0);
+  const minutes = Math.floor(safe / 60);
+  return `${minutes}:${Math.floor(safe % 60).toString().padStart(2, "0")}`;
+}
+
+function AudioMasteryComparisonGraph({ source, mastered, targetLufs }: {
+  source: AudioMasteryMeasurement;
+  mastered: AudioMasteryMeasurement;
+  targetLufs: number;
+}) {
+  const width = 720;
+  const height = 130;
+  const durationMs = Math.max(source.durationSeconds, mastered.durationSeconds) * 1_000 || 1;
+  const x = (timeMs: number) => Math.max(0, Math.min(width, (timeMs / durationMs) * width));
+  const y = (lufs: number) => Math.max(3, Math.min(height - 3, ((0 - Math.max(-60, Math.min(0, lufs))) / 60) * height));
+  const pathFor = (measurement: AudioMasteryMeasurement) => measurement.series
+    .filter((point) => finite(point.shortTermLufs))
+    .map((point, index) => `${index === 0 ? "M" : "L"}${x(point.timeMs).toFixed(1)},${y(point.shortTermLufs as number).toFixed(1)}`)
+    .join(" ");
+  const sourcePath = pathFor(source);
+  const masteredPath = pathFor(mastered);
+  const targetTop = y(targetLufs + 1);
+  const targetBottom = y(targetLufs - 1);
+  return (
+    <figure className="rounded-lg border border-slate-700 bg-[#171724] p-3" aria-label="Source and mastered loudness comparison">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full" role="img" aria-labelledby="mastery-comparison-title mastery-comparison-description">
+        <title id="mastery-comparison-title">Source and mastered short-term loudness over time</title>
+        <desc id="mastery-comparison-description">The source and verified mastered preview are measured from complete decodes. The shaded band is the selected delivery target plus or minus one loudness unit.</desc>
+        <rect x="0" width={width} y={targetTop} height={Math.max(1, targetBottom - targetTop)} fill="#14532d" opacity="0.38" />
+        {[-48, -32, targetLufs, 0].map((level) => (
+          <g key={level}>
+            <line x1="0" x2={width} y1={y(level)} y2={y(level)} stroke={level === targetLufs ? "#86efac" : "#3f3f55"} strokeDasharray={level === targetLufs ? "8 5" : "2 7"} />
+            <text x="6" y={Math.max(10, y(level) - 4)} fill={level === targetLufs ? "#bbf7d0" : "#a1a1b5"} fontSize="10" fontWeight="700">{level} LUFS</text>
+          </g>
+        ))}
+        {sourcePath && <path d={sourcePath} fill="none" stroke="#f0abfc" strokeWidth="2.1" opacity="0.78" />}
+        {masteredPath && <path d={masteredPath} fill="none" stroke="#4ade80" strokeWidth="2.3" />}
+      </svg>
+      <figcaption className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[9px] font-black uppercase tracking-[0.1em] text-slate-200">
+        <span><span className="mr-1 inline-block h-0.5 w-3 bg-fuchsia-300 align-middle" />Immutable source</span>
+        <span><span className="mr-1 inline-block h-0.5 w-3 bg-green-400 align-middle" />Verified preview</span>
+        <span><span className="mr-1 inline-block h-2 w-3 bg-green-900 align-middle" />Delivery tolerance</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+export function AudioMasteryAudition({
+  sourceUrl,
+  masteredUrl,
+  source,
+  mastered,
+  targetLufs,
+  maximumTruePeakDbtp,
+}: {
+  sourceUrl: string;
+  masteredUrl: string;
+  source: AudioMasteryMeasurement;
+  mastered: AudioMasteryMeasurement;
+  targetLufs: number;
+  maximumTruePeakDbtp: number;
+}) {
+  const sourceRef = useRef<HTMLAudioElement>(null);
+  const masteredRef = useRef<HTMLAudioElement>(null);
+  const [version, setVersion] = useState<"source" | "mastered">("mastered");
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const duration = Math.max(source.durationSeconds, mastered.durationSeconds, 0.001);
+  const moments = useMemo(() => audioMasteryReviewMoments(source, mastered), [mastered, source]);
+  const activeRef = version === "source" ? sourceRef : masteredRef;
+
+  const seek = (timeSeconds: number) => {
+    const next = Math.max(0, Math.min(duration, timeSeconds));
+    if (sourceRef.current) sourceRef.current.currentTime = next;
+    if (masteredRef.current) masteredRef.current.currentTime = next;
+    setCurrentTime(next);
+  };
+
+  const togglePlayback = async () => {
+    const active = activeRef.current;
+    if (!active) return;
+    if (active.paused) {
+      try {
+        await active.play();
+        setPlaying(true);
+      } catch {
+        setPlaying(false);
+      }
+    } else {
+      active.pause();
+      setPlaying(false);
+    }
+  };
+
+  const switchVersion = async (nextVersion: "source" | "mastered") => {
+    if (nextVersion === version) return;
+    const current = activeRef.current;
+    const next = nextVersion === "source" ? sourceRef.current : masteredRef.current;
+    const shouldContinue = Boolean(current && !current.paused);
+    const time = current?.currentTime ?? currentTime;
+    current?.pause();
+    if (next) next.currentTime = Math.max(0, Math.min(time, duration));
+    setVersion(nextVersion);
+    setCurrentTime(time);
+    if (shouldContinue && next) {
+      try {
+        await next.play();
+        setPlaying(true);
+      } catch {
+        setPlaying(false);
+      }
+    }
+  };
+
+  const passes = mastered.integratedLufs >= targetLufs - 1
+    && mastered.integratedLufs <= targetLufs + 1
+    && mastered.truePeakDbtp <= maximumTruePeakDbtp;
+
+  const closeDesk = () => {
+    sourceRef.current?.pause();
+    masteredRef.current?.pause();
+    setPlaying(false);
+    setExpanded(false);
+  };
+
+  return (
+    <>
+      <section className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3 text-white" aria-label="Audio mastery audition summary">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="text-xs font-black">Mastering audition</div>
+            <p className="mt-1 text-[9px] font-bold leading-4 text-slate-400">Verified preview ready. Compare it with the immutable source before approving any sound.</p>
+          </div>
+          <span className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
+            {passes ? "Target verified" : "Needs attention"}
+          </span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[9px] font-bold">
+          <div className="rounded-md bg-slate-900 px-2 py-2"><span className="font-mono font-black text-fuchsia-200">{source.integratedLufs.toFixed(1)}</span><br /><span className="text-slate-400">Source LUFS</span></div>
+          <div className="rounded-md bg-slate-900 px-2 py-2"><span className="font-mono font-black text-emerald-200">{mastered.integratedLufs.toFixed(1)}</span><br /><span className="text-slate-400">Preview LUFS</span></div>
+        </div>
+        <button type="button" onClick={() => setExpanded(true)} className="mt-2 w-full rounded-md bg-fuchsia-300 px-3 py-2 text-[10px] font-black text-fuchsia-950 hover:bg-fuchsia-200">
+          Open full audition desk
+        </button>
+      </section>
+      {expanded && createPortal(
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-labelledby="audio-mastery-dialog-title">
+          <div className="max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-950 p-3 shadow-2xl sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3 text-white">
+              <div>
+                <div className="text-[9px] font-black uppercase tracking-[0.16em] text-fuchsia-200">Audio mastery</div>
+                <h2 id="audio-mastery-dialog-title" className="mt-1 text-xl font-black">Source-to-master audition desk</h2>
+              </div>
+              <button type="button" onClick={closeDesk} className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black hover:bg-slate-800">Close</button>
+            </div>
+    <section className="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white sm:p-5" aria-label="Audio mastering audition desk">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-black">Audition the evidence</div>
+          <p className="mt-1 max-w-2xl text-[10px] font-bold leading-4 text-slate-300">
+            Switch versions without losing the playhead. Measurements can verify delivery readiness; only listening can decide whether this is the sound you want.
+          </p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
+          {passes ? "Delivery target verified" : "Outside delivery target"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 p-1" role="group" aria-label="Audition version">
+        {(["source", "mastered"] as const).map((candidate) => (
+          <button
+            key={candidate}
+            type="button"
+            aria-pressed={version === candidate}
+            onClick={() => void switchVersion(candidate)}
+            className={`rounded-md px-3 py-2 text-xs font-black ${version === candidate ? "bg-white text-slate-950" : "text-slate-300 hover:bg-slate-800"}`}
+          >
+            {candidate === "source" ? "Immutable source" : "Mastered preview"}
+          </button>
+        ))}
+      </div>
+
+      <audio ref={sourceRef} src={sourceUrl} preload="metadata" onTimeUpdate={(event) => version === "source" && setCurrentTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+      <audio ref={masteredRef} src={masteredUrl} preload="metadata" onTimeUpdate={(event) => version === "mastered" && setCurrentTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+      <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-900 px-3 py-3">
+        <button type="button" onClick={() => void togglePlayback()} className="min-w-20 rounded-md bg-fuchsia-300 px-3 py-2 text-xs font-black text-fuchsia-950 hover:bg-fuchsia-200">
+          {playing ? "Pause" : "Play"}
+        </button>
+        <span className="w-20 font-mono text-[10px] font-bold text-slate-300">{clock(currentTime)} / {clock(duration)}</span>
+        <input
+          aria-label="Audition playhead"
+          type="range"
+          min="0"
+          max={duration}
+          step="0.05"
+          value={Math.min(currentTime, duration)}
+          onChange={(event) => seek(Number(event.currentTarget.value))}
+          className="min-w-0 flex-1 accent-fuchsia-300"
+        />
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
+        <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-fuchsia-200">{source.integratedLufs.toFixed(1)}</div><div className="text-slate-400">Source LUFS</div></div>
+        <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-200">{mastered.integratedLufs.toFixed(1)}</div><div className="text-slate-400">Preview LUFS</div></div>
+        <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-fuchsia-200">{source.truePeakDbtp.toFixed(1)}</div><div className="text-slate-400">Source dBTP</div></div>
+        <div className="rounded-lg bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-200">{mastered.truePeakDbtp.toFixed(1)}</div><div className="text-slate-400">Preview dBTP</div></div>
+      </div>
+
+      <div className="mt-3"><AudioMasteryComparisonGraph source={source} mastered={mastered} targetLufs={targetLufs} /></div>
+      {moments.length > 0 && (
+        <div className="mt-3">
+          <div className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">Listen at the moments that explain the pass</div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            {moments.map((moment) => (
+              <button key={moment.id} type="button" onClick={() => seek(moment.timeSeconds)} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-left hover:border-fuchsia-300 hover:bg-slate-800">
+                <div className="font-mono text-[10px] font-black text-fuchsia-200">{clock(moment.timeSeconds)}</div>
+                <div className="mt-1 text-[10px] font-black">{moment.label}</div>
+                <div className="mt-1 text-[9px] font-bold leading-4 text-slate-400">{moment.detail}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">
+        Both curves come from complete BS.1770 decodes at one-second display resolution. The preview is a separate 24-bit WAV and has not replaced or modified the source.
+      </p>
+    </section>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}

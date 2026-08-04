@@ -58,6 +58,46 @@ function sourceIdFromPlaybackUrl(value: unknown) {
   return match ? decodeURIComponent(match[1]) : "";
 }
 
+async function sourceLinkedStudioAssets(prisma: any, sourceId: string) {
+  const select = {
+    id: true,
+    isGlobal: true,
+    isProxy: true,
+    rawAssetId: true,
+    url: true,
+    projects: { select: { slug: true } },
+    assetAttachments: {
+      select: {
+        metadataJson: true,
+        project: { select: { slug: true } },
+      },
+    },
+  } as const;
+  const directAssets = await prisma.studioMediaAsset.findMany({
+    where: {
+      OR: [
+        { rawAssetId: sourceId },
+        { url: `/api/ingest/media/${sourceId}` },
+      ],
+    },
+    select,
+  });
+  let variantAssets: any[] = [];
+  try {
+    const variants = await prisma.studioAssetVariant.findMany({
+      where: { url: `/api/ingest/media/${sourceId}` },
+      select: { asset: { select } },
+    });
+    variantAssets = variants.map((variant: any) => variant.asset);
+  } catch {
+    // Variant-backed playback is additive. Older schemas fail closed for the
+    // derivative while ordinary raw media authorization remains available.
+  }
+  return [...new Map(
+    [...directAssets, ...variantAssets].map((asset: any) => [asset.id, asset]),
+  ).values()];
+}
+
 async function loadLinkedRecordingAssetIds(
   prisma: any,
   source: StudioSourceRecord,
@@ -131,21 +171,7 @@ async function loadLinkedRecordingAssetIds(
 
   // Older promotion code wrote the RecordingAsset binding on the attachment
   // rather than a relational column on StudioVideoSource.
-  const linkedStudioAssets = await prisma.studioMediaAsset.findMany({
-    where: {
-      OR: [
-        { rawAssetId: source.id },
-        { url: `/api/ingest/media/${source.id}` },
-      ],
-    },
-    select: {
-      id: true,
-      isProxy: true,
-      rawAssetId: true,
-      url: true,
-      assetAttachments: { select: { metadataJson: true } },
-    },
-  });
+  const linkedStudioAssets = await sourceLinkedStudioAssets(prisma, source.id);
   for (const asset of linkedStudioAssets) {
     for (const attachment of asset.assetAttachments ?? []) {
       const metadata = objectValue(attachment.metadataJson);
@@ -199,6 +225,30 @@ async function loadLinkedRecordingAssetIds(
         }
       }
     }
+
+    // A registered variant (audio master, collaboration proxy, transcript
+    // audition render) inherits authorization and Capture-release state from
+    // the owning asset's original playback source. The derivative may never
+    // become an unscoped, independently readable source.
+    const owningSourceId = sourceIdFromPlaybackUrl(asset.url);
+    if (owningSourceId && owningSourceId !== source.id) {
+      const owningSource = await prisma.studioVideoSource.findUnique({
+        where: { id: owningSourceId },
+        select: {
+          id: true,
+          provider: true,
+          providerSourceId: true,
+          url: true,
+          title: true,
+        },
+      });
+      if (owningSource) {
+        const owningLineage = await loadLinkedRecordingAssetIds(prisma, owningSource, nextVisitedSourceIds);
+        if (owningLineage.held) return owningLineage;
+        owningLineage.recordingAssetIds.forEach((id: string) => recordingAssetIds.add(id));
+        captureLineageDetected ||= owningLineage.captureLineageDetected;
+      }
+    }
   }
 
   return { recordingAssetIds, held: null, captureLineageDetected };
@@ -230,19 +280,7 @@ export async function authorizeStudioMediaSource(input: {
       },
     }),
     loadScopes: async (sourceId) => {
-      const assets = await input.prisma.studioMediaAsset.findMany({
-        where: {
-          OR: [
-            { rawAssetId: sourceId },
-            { url: `/api/ingest/media/${sourceId}` },
-          ],
-        },
-        select: {
-          isGlobal: true,
-          projects: { select: { slug: true } },
-          assetAttachments: { select: { project: { select: { slug: true } } } },
-        },
-      });
+      const assets = await sourceLinkedStudioAssets(input.prisma, sourceId);
       return assets.map((asset: any) => ({
         isGlobal: asset.isGlobal,
         projectSlugs: [

@@ -57,3 +57,55 @@ This is local Nest qualification. It did not run a production migration,
 deploy a cloud revision, create a GCS mastering job, promote a derivative,
 change a production source, publish, send a message, or touch TestFlight.
 Cloud outbox/worker qualification and explicit approval/promotion are next.
+
+## Audition and transparency checkpoint
+
+The editor now treats delivery compliance and sound preference as separate
+questions. A completed mastering result exposes the verification decode's full
+one-second measurement series to authorized project members, then opens a
+focused source-to-master audition desk with:
+
+- transport-synchronized source/master switching at the same playhead;
+- overlaid three-second short-term loudness curves and the profile tolerance;
+- source and preview integrated LUFS and true-peak evidence;
+- direct listening jumps to the loudest source moment, quietest sustained
+  passage, and largest aligned processing shift;
+- explicit language that measurements prove delivery readiness, not that a
+  reviewer will prefer the sound;
+- an unpromoted 24-bit WAV derivative while the immutable source remains truth.
+
+The operated browser pass uncovered a real authorization defect: registered
+`StudioAssetVariant` playback inherited neither the owning asset's project
+scope nor its Capture processing lineage. The protected media route therefore
+returned 404 for the mastered bytes even though the verification receipt was
+valid. Variant sources now inherit the owning original's project authorization
+and recursively inherit any Capture release or hold. Outsiders still receive a
+non-disclosing 404.
+
+The repaired retained Episode 4 Part 2 proof loaded both media elements to
+browser `readyState=4`. Playback advanced from 3.62 seconds on the immutable
+source to 4.67 seconds after switching to the mastered preview, without
+resetting the playhead. The full-width desk had no horizontal overflow at a
+1280 by 720 viewport and produced no browser error logs.
+
+Current standards and product research informed this boundary:
+
+- Apple Podcasts asks for approximately -16 dB LKFS, plus or minus one, no
+  more than -1 dBFS true peak, measured using ITU-R BS.1770-5:
+  <https://podcasters.apple.com/support/893-audio-requirements>
+- EBU R128 version 5.0 retains -23 LUFS programme loudness plus Loudness Range
+  and Maximum True Peak descriptors: <https://tech.ebu.ch/publications/r128>
+- ITU-R BS.1770-5 remains the measurement basis:
+  <https://www.itu.int/rec/R-REC-BS.1770-5-202311-I/en>
+- Descript exposes Studio Sound intensity and basic level monitoring, while
+  Adobe Audition exposes repair controls and match-loudness workflows. Quipsly's
+  differentiator is not another opaque enhancement toggle; it is an
+  auditionable, reversible, evidence-bearing processing graph.
+
+Checkpoint verification:
+
+- audio engine and real FFmpeg: 8/8;
+- focused authorization, privacy, comparison, and fail-closed tests: 10/10;
+- Quipsly TypeScript 7 typecheck: passed;
+- Quipsly production build: all 165 routes passed;
+- signed-in retained-media operation and synchronized A/B playback: passed.
