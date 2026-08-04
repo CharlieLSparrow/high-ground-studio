@@ -37,14 +37,19 @@ import {
   captureGroupEditorFocusPlan,
   normalizeCaptureGroupFocusId,
 } from "./captureGroupEditorFocus";
+import {
+  AI_EDIT_PROPOSAL_SET_KIND,
+  AI_EDIT_PROPOSAL_SET_VERSION,
+  canonicalAiEditTranscript,
+  type AiEditProposal,
+  type AiEditProposalSet,
+} from "@/lib/editor/ai-edit-proposal-contract";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
 type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "shared watch" | "empty episode" | "error";
 
-type AiEditSuggestion =
-  | { type: "deactivate"; blockId: string }
-  | { type: "add_keyframe"; timeOffset: number; x: number; y: number; scale: number };
+type AiEditSuggestion = AiEditProposal;
 
 type EpisodeProductionState = {
   ok: boolean;
@@ -2693,6 +2698,12 @@ function timelineContentFingerprint(timeline: TimelineState): string {
   });
 }
 
+async function browserSha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function splitAssetRef(raw: string) {
   const trim = raw.trim();
   if (!trim) return "";
@@ -3033,6 +3044,8 @@ function CloudEditorContent() {
   const [isAiAutoEditing, setIsAiAutoEditing] = useState(false);
   const [isAiDisclosureOpen, setIsAiDisclosureOpen] = useState(false);
   const [aiEditSuggestions, setAiEditSuggestions] = useState<AiEditSuggestion[]>([]);
+  const [aiEditProposalBinding, setAiEditProposalBinding] = useState<AiEditProposalSet["binding"] | null>(null);
+  const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
   const [aiEditMessage, setAiEditMessage] = useState("");
 
   const handleAiAutoEdit = async () => {
@@ -3041,28 +3054,47 @@ function CloudEditorContent() {
       setIsAiDisclosureOpen(false);
       setIsAiAutoEditing(true);
       setAiEditMessage("");
+      const timelineFingerprintSha256 = await browserSha256(timelineFingerprint);
       const res = await fetch("/api/ai-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcriptBlocks: timelineState.transcript,
           providerDisclosureAccepted: true,
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          timelineFingerprintSha256,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setAiEditSuggestions([]);
+        setAiEditProposalBinding(null);
         setAiEditMessage(data.error || "Edit suggestions are unavailable. The timeline is unchanged.");
         return;
       }
-      const suggestions = Array.isArray(data.edits) ? data.edits as AiEditSuggestion[] : [];
+      const proposalSet = data.proposalSet as AiEditProposalSet | undefined;
+      if (
+        !proposalSet
+        || proposalSet.kind !== AI_EDIT_PROPOSAL_SET_KIND
+        || proposalSet.version !== AI_EDIT_PROPOSAL_SET_VERSION
+        || !Array.isArray(proposalSet.proposals)
+      ) {
+        setAiEditSuggestions([]);
+        setAiEditProposalBinding(null);
+        setAiEditMessage("The provider response did not include a valid source-bound proposal set. The timeline is unchanged.");
+        return;
+      }
+      const suggestions = proposalSet.proposals;
       setAiEditSuggestions(suggestions);
+      setAiEditProposalBinding(proposalSet.binding);
       setAiEditMessage(suggestions.length
         ? `${suggestions.length} proposal${suggestions.length === 1 ? "" : "s"} ready for review. Nothing has been applied.`
         : "No valid edit suggestions were returned. The timeline is unchanged.");
     } catch (e) {
       console.error(e);
       setAiEditSuggestions([]);
+      setAiEditProposalBinding(null);
       setAiEditMessage("Edit suggestions could not be loaded. The timeline is unchanged.");
     } finally {
       setIsAiAutoEditing(false);
@@ -3070,17 +3102,59 @@ function CloudEditorContent() {
   };
 
   const dismissAiEditSuggestion = (index: number) => {
-    setAiEditSuggestions((current) => current.filter((_, candidateIndex) => candidateIndex !== index));
+    setAiEditSuggestions((current) => {
+      const next = current.filter((_, candidateIndex) => candidateIndex !== index);
+      if (!next.length) setAiEditProposalBinding(null);
+      return next;
+    });
   };
 
-  const applyAiEditSuggestion = (edit: AiEditSuggestion, index: number) => {
+  const aiEditBindingIsCurrent = async () => {
+    if (
+      !aiEditProposalBinding
+      || aiEditProposalBinding.projectSlug !== resolvedProjectSlug
+      || aiEditProposalBinding.episodeSlug !== episodeSlug
+      || aiEditProposalBinding.blockCount !== timelineState.transcript.length
+    ) return false;
+    const [currentTimelineSha256, currentTranscriptSha256] = await Promise.all([
+      browserSha256(timelineFingerprint),
+      browserSha256(canonicalAiEditTranscript(timelineState.transcript)),
+    ]);
+    return currentTimelineSha256 === aiEditProposalBinding.timelineFingerprintSha256
+      && currentTranscriptSha256 === aiEditProposalBinding.transcriptSha256;
+  };
+
+  const proofWatchAiEditSuggestion = async (edit: AiEditSuggestion) => {
+    if (!await aiEditBindingIsCurrent()) {
+      setAiEditMessage("This proposal is stale because the transcript or timeline changed. Request a fresh analysis before proof-watching or applying it.");
+      return;
+    }
+    const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
+    const end = Math.min(totalDuration, edit.sourceRange.endSeconds + 1.5);
+    setEditorMode("play-all");
+    setCurrentTime(start);
+    setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
+    setIsPreviewPlaying(true);
+    setAiEditMessage(`Proof-watching untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.`);
+  };
+
+  const applyAiEditSuggestion = async (edit: AiEditSuggestion, index: number) => {
+    if (!await aiEditBindingIsCurrent()) {
+      setAiEditMessage("This proposal is stale because the transcript or timeline changed. Request a fresh analysis before applying it.");
+      return;
+    }
     if (edit.type === "deactivate") {
-      const block = timelineState.transcript.find((candidate) => candidate.id === edit.blockId);
+      const blockId = edit.blockId;
+      if (!blockId) {
+        setAiEditMessage("That transcript proposal is incomplete, so it was not applied.");
+        return;
+      }
+      const block = timelineState.transcript.find((candidate) => candidate.id === blockId);
       if (!block) {
         setAiEditMessage("That transcript block is no longer present, so the proposal was not applied.");
         return;
       }
-      if (!block.deactivated) toggleDeleteBlock(edit.blockId);
+      if (!block.deactivated) toggleDeleteBlock(blockId);
       dismissAiEditSuggestion(index);
       setAiEditMessage("Transcript cut applied to the editable timeline. Review playback before saving or rendering.");
       return;
@@ -3089,6 +3163,10 @@ function CloudEditorContent() {
     const videoClip = timelineState.clips.find((clip) => isVideoTrackId(clip.trackId));
     if (!videoClip) {
       setAiEditMessage("No video clip is available for that reframe, so the proposal was not applied.");
+      return;
+    }
+    if (edit.timeOffset === undefined || edit.x === undefined || edit.y === undefined || edit.scale === undefined) {
+      setAiEditMessage("That reframe proposal is incomplete, so it was not applied.");
       return;
     }
     addClipKeyframe(videoClip.id, {
@@ -5621,6 +5699,12 @@ function CloudEditorContent() {
   const pausePlayback = useCallback(() => {
     setIsPreviewPlaying(false);
   }, []);
+  useEffect(() => {
+    if (aiProofWatchEndSeconds === null || currentTime < aiProofWatchEndSeconds) return;
+    setIsPreviewPlaying(false);
+    setAiProofWatchEndSeconds(null);
+    setAiEditMessage("Source proof-watch complete. The proposal is still unapplied.");
+  }, [aiProofWatchEndSeconds, currentTime]);
   const seekActiveEditBoundary = useCallback((direction: "previous" | "next") => {
     const activeBlocks = playbackCockpitStats.activeTranscriptBlocks
       .map((block) => ({
@@ -9621,7 +9705,7 @@ function CloudEditorContent() {
                         <h3 className="text-sm font-black">Review proposals</h3>
                         <p className="mt-1 text-[11px] text-gray-400">Apply or dismiss one at a time. Playback remains the acceptance check.</p>
                       </div>
-                      <button type="button" onClick={() => setAiEditSuggestions([])} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
+                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditProposalBinding(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
                         Dismiss all
                       </button>
                     </div>
@@ -9633,7 +9717,7 @@ function CloudEditorContent() {
                           : null;
                         const label = edit.type === "deactivate"
                           ? `Proposed transcript cut at ${formatClock(transcriptBlock?.time || 0)}`
-                          : `Proposed 360 reframe at ${formatClock(edit.timeOffset)}`;
+                          : `Proposed 360 reframe at ${formatClock(edit.timeOffset ?? edit.sourceRange.startSeconds)}`;
                         return (
                           <article key={`${edit.type}-${edit.type === "deactivate" ? edit.blockId : edit.timeOffset}-${index}`} className="rounded-xl border border-[#333] bg-[#1b1b1b] p-3">
                             <p className="text-xs font-black text-emerald-300">{label}</p>
@@ -9642,11 +9726,18 @@ function CloudEditorContent() {
                                 ? transcriptBlock?.text || `Block ${edit.blockId} is no longer present.`
                                 : `Yaw ${edit.x}°, pitch ${edit.y}°, field of view ${edit.scale}°.`}
                             </p>
+                            <p className="mt-2 text-[11px] leading-5 text-gray-400">{edit.rationale}</p>
+                            <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-gray-500">
+                              {edit.confidence} confidence · source {formatClock(edit.sourceRange.startSeconds)}–{formatClock(edit.sourceRange.endSeconds)} · original unchanged
+                            </p>
                             <div className="mt-3 flex justify-end gap-2">
                               <button type="button" onClick={() => dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" onClick={() => applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
+                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(edit)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
+                                Proof-watch source
+                              </button>
+                              <button type="button" onClick={() => void applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
                                 Apply proposal
                               </button>
                             </div>

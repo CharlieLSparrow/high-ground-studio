@@ -7273,3 +7273,23 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - Next audio priorities: cloud execution/outbox, explicit preview approval and
   promotion, loudness-matched A/B listening, dialogue issue proposals, stem
   consistency, and coaching-specific privacy/profile semantics.
+
+## 2026-08-03 source-bound automated edit proposal checkpoint
+
+- Replaced the editor's flat AI edit response with a source-bound proposal-set
+  contract. Each set is authorized to one canonical project and episode and
+  binds the exact timeline SHA-256, canonical transcript SHA-256, block count,
+  and transcript bounds. Every proposal carries exact source timing, hashed
+  transcript evidence, a rationale, confidence, and explicit non-application.
+- The Episode editor re-computes the timeline and transcript hashes before
+  proof-watch or apply. Changed state fails closed as stale. A current proposal
+  can play untouched source with 1.5 seconds of context, then be dismissed or
+  applied one at a time to the editable timeline. It never autosaves, renders,
+  promotes, publishes, or changes source bytes.
+- This is the trust spine for deterministic silence/retake detection,
+  speaker-view and multicamera proposals, clips, and assembled draft edits. It
+  does not yet claim a persisted audit ledger, a real provider run, an assembled
+  automatic cut, a rendered video, production deployment, or physical-iPhone
+  proof. Architecture and checkpoint evidence are in
+  `docs/architecture/source-bound-automated-edit-proposals.md` and
+  `docs/coordination/2026-08-03-source-bound-automated-edit-proposals.md`.

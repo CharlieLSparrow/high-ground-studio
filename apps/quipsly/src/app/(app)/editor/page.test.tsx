@@ -1,8 +1,10 @@
 import React from "react";
+import { createHash, webcrypto } from "node:crypto";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import CloudEditor from "./page";
+import { canonicalAiEditTranscript } from "@/lib/editor/ai-edit-proposal-contract";
 
 jest.mock("next/navigation", () => ({
   useSearchParams: jest.fn(() => new URLSearchParams()),
@@ -55,16 +57,62 @@ function mockEpisodeProduction(overrides: Record<string, unknown>) {
 describe("CloudEditor production truth UX", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: webcrypto,
+    });
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
       writable: true,
-      value: jest.fn((input: RequestInfo | URL) => {
+      value: jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.includes("/api/ai-edit")) {
+          const request = JSON.parse(String(init?.body || "{}")) as {
+            transcriptBlocks?: Array<{ id: string; time: number; duration: number; text: string }>;
+            timelineFingerprintSha256?: string;
+            projectSlug?: string;
+            episodeSlug?: string;
+          };
+          const transcriptSha256 = createHash("sha256")
+            .update(canonicalAiEditTranscript(request.transcriptBlocks || []))
+            .digest("hex");
           return response({
             ok: true,
             applied: false,
-            edits: [{ type: "deactivate", blockId: "t2" }],
+            proposalSet: {
+              kind: "quipsly-ai-edit-proposal-set-v1",
+              version: 1,
+              proposalSetId: "edit_proposal_set_test",
+              createdAt: "2026-08-03T20:00:00.000Z",
+              binding: {
+                projectSlug: request.projectSlug,
+                episodeSlug: request.episodeSlug,
+                timelineFingerprintSha256: request.timelineFingerprintSha256,
+                transcriptSha256,
+                blockCount: 1,
+                startSeconds: 0,
+                endSeconds: 8,
+              },
+              provider: { kind: "google-gemini", model: "test-model" },
+              proposals: [{
+                proposalId: "edit_proposal_test",
+                type: "deactivate",
+                blockId: "t2",
+                sourceRange: { startSeconds: 0, endSeconds: 8 },
+                evidence: { blockIds: ["t2"], transcriptTextSha256: "c".repeat(64) },
+                rationale: "This is a bounded test proposal.",
+                confidence: "medium",
+                changesSource: false,
+                applied: false,
+              }],
+              boundaries: {
+                sourceMediaUnchanged: true,
+                proposalsOnly: true,
+                proofWatchBeforeApply: true,
+                staleBindingRejectsApply: true,
+                noAutomaticSaveRenderOrPublish: true,
+              },
+            },
           }, true, 200);
         }
         if (url === "/api/episode-production") {
@@ -123,6 +171,7 @@ describe("CloudEditor production truth UX", () => {
     render(<CloudEditor />);
 
     await screen.findByRole("heading", { name: /Episode Editor/i });
+    await screen.findByText(/Loaded Current Episode from transcript payload/i);
     await user.click(screen.getByRole("button", { name: "Suggest edits" }));
 
     expect(screen.getByRole("alertdialog", { name: "Send this transcript for suggestions?" })).toBeInTheDocument();
@@ -135,6 +184,12 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByText(/Nothing has been applied/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply proposal" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Proof-watch source" })).toBeInTheDocument();
+    expect(screen.getByText(/source 00:00–00:08 · original unchanged/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Proof-watch source" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
   });
 
   it("keeps a new episode honestly empty instead of injecting sample media or a representative cut", async () => {

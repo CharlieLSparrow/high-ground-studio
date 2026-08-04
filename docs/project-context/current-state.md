@@ -1384,6 +1384,21 @@ High Ground Studio is a monorepo with:
   preserves the full accessible label. It is queued for the next batched Nest
   release rather than triggering a one-change Cloud Build.
 
+### 2026-08-03 source-bound automated edit proposals
+
+- The Episode editor's AI suggestion route now returns proposal sets bound to
+  exact project, episode, timeline SHA-256, transcript SHA-256, block count, and
+  transcript time bounds after canonical write authorization.
+- Every proposal names an exact source range, transcript evidence hash,
+  rationale, and confidence. The browser re-hashes current state before either
+  proof-watch or apply and rejects stale sets.
+- Proof-watch switches to untouched source playback with surrounding context.
+  Apply changes only the editable timeline, one proposal at a time; it does not
+  save, render, promote, publish, or change source bytes.
+- Persisted proposal history, deterministic silence/retake/speaker candidates,
+  a real provider run, an assembled auto-cut, and physical-device proof remain
+  open. See `docs/architecture/source-bound-automated-edit-proposals.md`.
+
 - The earlier Stripe checkout attempt was rolled back to a non-broken state.
 - The episodes route currently uses a guarded loader in `apps/web/src/lib/source.ts`.
 - The Fumadocs source is only enabled when `ENABLE_EPISODES_FUMADOCS=1`.

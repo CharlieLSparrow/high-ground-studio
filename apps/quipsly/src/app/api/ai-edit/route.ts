@@ -1,6 +1,17 @@
+import { createHash, randomUUID } from "node:crypto";
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 
+import {
+  AI_EDIT_PROPOSAL_SET_KIND,
+  AI_EDIT_PROPOSAL_SET_VERSION,
+  aiEditTranscriptBounds,
+  canonicalAiEditTranscript,
+  type AiEditProposal,
+} from "@/lib/editor/ai-edit-proposal-contract";
+import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 const MAX_REQUEST_BYTES = 200_000;
@@ -17,8 +28,10 @@ type TranscriptBlock = {
 };
 
 type EditSuggestion =
-  | { type: "deactivate"; blockId: string }
-  | { type: "add_keyframe"; timeOffset: number; x: number; y: number; scale: number };
+  | { type: "deactivate"; blockId: string; rationale: string; confidence: "low" | "medium" | "high" }
+  | { type: "add_keyframe"; timeOffset: number; x: number; y: number; scale: number; rationale: string; confidence: "low" | "medium" | "high" };
+
+const SHA256 = /^[0-9a-f]{64}$/;
 
 function json(body: Record<string, unknown>, status: number) {
   return NextResponse.json(body, {
@@ -75,14 +88,20 @@ function normalizeSuggestions(value: unknown, blocks: TranscriptBlock[]): EditSu
   const edits = (value as Record<string, unknown>).edits;
   if (!Array.isArray(edits)) return [];
   const blockIds = new Set(blocks.map((block) => block.id));
+  const timelineStart = Math.min(...blocks.map((block) => block.time));
   const timelineEnd = Math.max(...blocks.map((block) => block.time + block.duration));
   const normalized: EditSuggestion[] = [];
 
   for (const edit of edits.slice(0, MAX_SUGGESTIONS)) {
     if (!edit || typeof edit !== "object" || Array.isArray(edit)) continue;
     const candidate = edit as Record<string, unknown>;
+    const rationale = typeof candidate.rationale === "string" ? candidate.rationale.trim().slice(0, 500) : "";
+    const confidence = candidate.confidence === "high" || candidate.confidence === "medium" || candidate.confidence === "low"
+      ? candidate.confidence
+      : null;
+    if (!rationale || !confidence) continue;
     if (candidate.type === "deactivate" && typeof candidate.blockId === "string" && blockIds.has(candidate.blockId)) {
-      normalized.push({ type: "deactivate", blockId: candidate.blockId });
+      normalized.push({ type: "deactivate", blockId: candidate.blockId, rationale, confidence });
       continue;
     }
     if (candidate.type !== "add_keyframe") continue;
@@ -91,31 +110,80 @@ function normalizeSuggestions(value: unknown, blocks: TranscriptBlock[]): EditSu
     const y = finite(candidate.y);
     const scale = finite(candidate.scale);
     if (
-      timeOffset === null || timeOffset < 0 || timeOffset > timelineEnd ||
+      timeOffset === null || timeOffset < timelineStart || timeOffset > timelineEnd ||
       x === null || x < -180 || x > 180 ||
       y === null || y < -90 || y > 90 ||
       scale === null || scale < 10 || scale > 150
     ) continue;
-    normalized.push({ type: "add_keyframe", timeOffset, x, y, scale });
+    normalized.push({ type: "add_keyframe", timeOffset, x, y, scale, rationale, confidence });
   }
   return normalized;
+}
+
+function proposalFromSuggestion(input: {
+  suggestion: EditSuggestion;
+  blocks: TranscriptBlock[];
+}): AiEditProposal {
+  if (input.suggestion.type === "deactivate") {
+    const blockId = input.suggestion.blockId;
+    const block = input.blocks.find((candidate) => candidate.id === blockId)!;
+    const evidenceHash = createHash("sha256")
+      .update(canonicalAiEditTranscript([block]))
+      .digest("hex");
+    return {
+      proposalId: `edit_proposal_${randomUUID().replaceAll("-", "")}`,
+      type: "deactivate",
+      sourceRange: { startSeconds: block.time, endSeconds: block.time + block.duration },
+      evidence: { blockIds: [block.id], transcriptTextSha256: evidenceHash },
+      rationale: input.suggestion.rationale,
+      confidence: input.suggestion.confidence,
+      changesSource: false,
+      applied: false,
+      blockId: block.id,
+    };
+  }
+  const timeOffset = input.suggestion.timeOffset;
+  const bounds = aiEditTranscriptBounds(input.blocks);
+  const sourceRange = {
+    startSeconds: Math.max(bounds.startSeconds, timeOffset - 1.5),
+    endSeconds: Math.min(bounds.endSeconds, timeOffset + 1.5),
+  };
+  const evidenceBlocks = input.blocks.filter((block) =>
+    block.time < sourceRange.endSeconds && block.time + block.duration > sourceRange.startSeconds
+  );
+  const nearestEvidence = evidenceBlocks.length
+    ? evidenceBlocks
+    : [input.blocks.reduce((nearest, block) =>
+        Math.abs(block.time - timeOffset) < Math.abs(nearest.time - timeOffset)
+          ? block
+          : nearest
+      )];
+  const evidenceHash = createHash("sha256")
+    .update(canonicalAiEditTranscript(nearestEvidence))
+    .digest("hex");
+  return {
+    proposalId: `edit_proposal_${randomUUID().replaceAll("-", "")}`,
+    type: "add_keyframe",
+    sourceRange,
+    evidence: {
+      blockIds: nearestEvidence.map((block) => block.id),
+      transcriptTextSha256: evidenceHash,
+    },
+    rationale: input.suggestion.rationale,
+    confidence: input.suggestion.confidence,
+    changesSource: false,
+    applied: false,
+    timeOffset,
+    x: input.suggestion.x,
+    y: input.suggestion.y,
+    scale: input.suggestion.scale,
+  };
 }
 
 export async function POST(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) {
     return json({ ok: false, errorCode: "AUTH_REQUIRED", error: "Sign in before requesting edit suggestions.", edits: [] }, 401);
-  }
-
-  const configuredKey = process.env.GEMINI_API_KEY?.trim();
-  if (!configuredKey) {
-    return json({
-      ok: false,
-      errorCode: "AI_EDIT_PROVIDER_NOT_CONFIGURED",
-      error: "AI edit suggestions are unavailable because no provider is configured. No mock edits were substituted.",
-      edits: [],
-      applied: false,
-    }, 503);
   }
 
   const declaredLength = Number(request.headers.get("content-length") || "0");
@@ -147,6 +215,35 @@ export async function POST(request: Request) {
     return json({ ok: false, errorCode: "INVALID_TRANSCRIPT", error: parsedTranscript.error, edits: [] }, 400);
   }
 
+  const projectSlug = typeof body.projectSlug === "string" ? body.projectSlug.trim() : "";
+  const episodeSlug = typeof body.episodeSlug === "string" ? body.episodeSlug.trim() : "";
+  const timelineFingerprintSha256 = typeof body.timelineFingerprintSha256 === "string"
+    ? body.timelineFingerprintSha256.trim().toLowerCase()
+    : "";
+  if (!projectSlug || !episodeSlug || !SHA256.test(timelineFingerprintSha256)) {
+    return json({ ok: false, errorCode: "SOURCE_BINDING_REQUIRED", error: "Project, episode, and exact timeline fingerprint are required.", edits: [] }, 400);
+  }
+  const access = await resolveEpisodeProductionAccess({
+    request,
+    projectSlug,
+    action: "write",
+    prisma: getPrismaClient(),
+  });
+  if (!access.allowed) {
+    return json({ ok: false, errorCode: access.code, error: access.error, edits: [] }, access.status);
+  }
+
+  const configuredKey = process.env.GEMINI_API_KEY?.trim();
+  if (!configuredKey) {
+    return json({
+      ok: false,
+      errorCode: "AI_EDIT_PROVIDER_NOT_CONFIGURED",
+      error: "AI edit suggestions are unavailable because no provider is configured. No mock edits were substituted.",
+      edits: [],
+      applied: false,
+    }, 503);
+  }
+
   const formattedTranscript = parsedTranscript.blocks.map((block) =>
     `[BlockID: ${block.id}] [Time: ${block.time.toFixed(2)}s - ${(block.time + block.duration).toFixed(2)}s]: ${block.text}`
   ).join("\n");
@@ -156,14 +253,16 @@ You are reviewing a transcript timeline and may return edit suggestions only. Do
 1. Suggest "deactivate" only for filler, stumbles, or clearly off-topic material. Preserve meaning and breathing room.
 2. Suggest "add_keyframe" only for a motivated 360-camera reframe. x is yaw (-180..180), y is pitch (-90..90), and scale is field of view (10..150).
 3. Reference only the supplied block IDs and timeline range. The producer will review every suggestion before it changes the edit.
+4. Give each suggestion a concise rationale grounded in the supplied transcript and a confidence of low, medium, or high. Do not invent visual evidence from transcript text.
 
 Transcript:
 ${formattedTranscript}`;
 
   try {
     const ai = new GoogleGenAI({ apiKey: configuredKey });
+    const model = process.env.GEMINI_EDIT_MODEL?.trim() || "gemini-2.5-pro";
     const response = await ai.models.generateContent({
-      model: process.env.GEMINI_EDIT_MODEL?.trim() || "gemini-2.5-pro",
+      model,
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -181,8 +280,10 @@ ${formattedTranscript}`;
                   x: { type: Type.NUMBER },
                   y: { type: Type.NUMBER },
                   scale: { type: Type.NUMBER },
+                  rationale: { type: Type.STRING },
+                  confidence: { type: Type.STRING, enum: ["low", "medium", "high"] },
                 },
-                required: ["type"],
+                required: ["type", "rationale", "confidence"],
               },
             },
           },
@@ -192,13 +293,40 @@ ${formattedTranscript}`;
     });
     const providerPayload = response.text ? JSON.parse(response.text) : { edits: [] };
     const edits = normalizeSuggestions(providerPayload, parsedTranscript.blocks);
+    const canonicalTranscript = canonicalAiEditTranscript(parsedTranscript.blocks);
+    const transcriptSha256 = createHash("sha256").update(canonicalTranscript).digest("hex");
+    const bounds = aiEditTranscriptBounds(parsedTranscript.blocks);
+    const proposals = edits.map((suggestion) => proposalFromSuggestion({ suggestion, blocks: parsedTranscript.blocks }));
+    const proposalSet = {
+      kind: AI_EDIT_PROPOSAL_SET_KIND,
+      version: AI_EDIT_PROPOSAL_SET_VERSION,
+      proposalSetId: `edit_proposal_set_${randomUUID().replaceAll("-", "")}`,
+      createdAt: new Date().toISOString(),
+      binding: {
+        projectSlug,
+        episodeSlug,
+        timelineFingerprintSha256,
+        transcriptSha256,
+        blockCount: parsedTranscript.blocks.length,
+        ...bounds,
+      },
+      provider: { kind: "google-gemini" as const, model },
+      proposals,
+      boundaries: {
+        sourceMediaUnchanged: true as const,
+        proposalsOnly: true as const,
+        proofWatchBeforeApply: true as const,
+        staleBindingRejectsApply: true as const,
+        noAutomaticSaveRenderOrPublish: true as const,
+      },
+    };
     return json({
       ok: true,
-      edits,
-      suggestionCount: edits.length,
+      proposalSet,
+      suggestionCount: proposals.length,
       applied: false,
       source: "configured-ai-provider",
-      nextAction: edits.length
+      nextAction: proposals.length
         ? "Review each suggestion before applying it to the timeline."
         : "No valid edit suggestions were returned; the timeline is unchanged.",
     }, 200);
