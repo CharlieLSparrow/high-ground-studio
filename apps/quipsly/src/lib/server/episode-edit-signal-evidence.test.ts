@@ -2,7 +2,7 @@
 
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 
-import { loadEpisodeEditSignalEvidence } from "./episode-edit-signal-evidence";
+import { episodeEditSignalVisualization, loadEpisodeEditSignalEvidence } from "./episode-edit-signal-evidence";
 
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({
   mobileCaptureMediaProcessingGate: jest.fn(),
@@ -89,6 +89,12 @@ describe("episode edit signal evidence", () => {
         storageGeneration: "generation-a",
         signalProfileSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       }),
+    }));
+    expect(episodeEditSignalVisualization(result.evidence!, 1)).toEqual(expect.objectContaining({
+      recordingAssetId: "recording-1",
+      durationSeconds: 10,
+      nearSilenceDbfs: -72,
+      waveform: [{ startSeconds: 0, durationSeconds: 10, rmsDbfs: -24, samplePeakDbfs: -3, clippedFrameCount: 0 }],
     }));
   });
 

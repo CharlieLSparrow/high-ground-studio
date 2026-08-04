@@ -13,7 +13,20 @@ import { POST } from "./route";
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/episode-production-access", () => ({ resolveEpisodeProductionAccess: jest.fn() }));
-jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({ loadEpisodeEditSignalEvidence: jest.fn() }));
+jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({
+  loadEpisodeEditSignalEvidence: jest.fn(),
+  episodeEditSignalVisualization: jest.fn((evidence: any) => ({
+    recordingAssetId: evidence.recordingAssetId,
+    sourceSha256: evidence.sourceSha256,
+    storageGeneration: evidence.storageGeneration,
+    signalProfileSha256: evidence.signalProfileSha256,
+    algorithm: evidence.signal.algorithm,
+    durationSeconds: evidence.signal.durationSeconds ?? 7,
+    nearSilenceDbfs: evidence.signal.thresholds?.nearSilenceDbfs ?? -72,
+    surroundingSignalDbfs: evidence.signal.thresholds?.surroundingSignalDbfs ?? -45,
+    waveform: evidence.signal.waveform,
+  })),
+}));
 jest.mock("@/lib/server/episode-edit-review-ledger", () => ({
   EpisodeEditReviewLedgerError: class EpisodeEditReviewLedgerError extends Error {},
   persistEpisodeEditProposalSet: jest.fn(),
@@ -187,6 +200,10 @@ describe("AI edit suggestion boundary", () => {
       expect.objectContaining({ kind: "speaker-change", suggestedAction: "review-camera" }),
     ]));
     expect(payload.signalEvidence).toEqual(expect.objectContaining({ status: "available", boundRecordingAssetId: "recording-1" }));
+    expect(payload.signalVisualization).toEqual(expect.objectContaining({
+      recordingAssetId: "recording-1",
+      waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs: -24 }],
+    }));
   });
 
   it("creates a source-bound unapplied range proposal only for decoded low energy", async () => {

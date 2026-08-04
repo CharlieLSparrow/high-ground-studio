@@ -25,6 +25,59 @@ export type AiEditAudioSignalEvidence = {
   classification: "measured-low-energy" | "measured-signal-present";
 };
 
+export type AiEditSignalVisualization = {
+  recordingAssetId: string;
+  sourceSha256: string;
+  storageGeneration: string | null;
+  signalProfileSha256: string;
+  algorithm: string;
+  durationSeconds: number;
+  nearSilenceDbfs: number;
+  surroundingSignalDbfs: number;
+  waveform: Array<{
+    startSeconds: number;
+    durationSeconds: number;
+    rmsDbfs: number;
+    samplePeakDbfs: number;
+    clippedFrameCount: number;
+  }>;
+};
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+export function isAiEditSignalVisualization(value: unknown): value is AiEditSignalVisualization {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const waveform = row.waveform;
+  return typeof row.recordingAssetId === "string"
+    && row.recordingAssetId.length > 0
+    && typeof row.sourceSha256 === "string"
+    && SHA256.test(row.sourceSha256)
+    && (row.storageGeneration === null || typeof row.storageGeneration === "string")
+    && typeof row.signalProfileSha256 === "string"
+    && SHA256.test(row.signalProfileSha256)
+    && typeof row.algorithm === "string"
+    && row.algorithm.length > 0
+    && typeof row.durationSeconds === "number"
+    && Number.isFinite(row.durationSeconds)
+    && row.durationSeconds > 0
+    && typeof row.nearSilenceDbfs === "number"
+    && Number.isFinite(row.nearSilenceDbfs)
+    && typeof row.surroundingSignalDbfs === "number"
+    && Number.isFinite(row.surroundingSignalDbfs)
+    && Array.isArray(waveform)
+    && waveform.length <= 360
+    && waveform.every((point) => {
+      if (!point || typeof point !== "object" || Array.isArray(point)) return false;
+      const sample = point as Record<string, unknown>;
+      return [sample.startSeconds, sample.durationSeconds, sample.rmsDbfs, sample.samplePeakDbfs, sample.clippedFrameCount]
+        .every((entry) => typeof entry === "number" && Number.isFinite(entry))
+        && (sample.startSeconds as number) >= 0
+        && (sample.durationSeconds as number) > 0
+        && (sample.clippedFrameCount as number) >= 0;
+    });
+}
+
 export type AiEditReviewCandidate = {
   candidateId: string;
   kind:

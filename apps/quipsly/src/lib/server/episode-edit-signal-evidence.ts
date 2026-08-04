@@ -5,7 +5,8 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
-import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { AiEditSignalVisualization } from "@/lib/editor/ai-edit-proposal-contract";
+import { compactSignalWaveform, parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 
 type JsonRecord = Record<string, unknown>;
@@ -25,6 +26,24 @@ export type EpisodeEditSignalEvidenceResolution = {
   evidence: BoundEpisodeAudioSignalEvidence | null;
   candidateCount: number;
 };
+
+export function episodeEditSignalVisualization(
+  evidence: BoundEpisodeAudioSignalEvidence,
+  maximumWaveformPoints = 180,
+): AiEditSignalVisualization {
+  const maximum = Math.max(1, Math.min(360, Math.trunc(maximumWaveformPoints)));
+  return {
+    recordingAssetId: evidence.recordingAssetId,
+    sourceSha256: evidence.sourceSha256,
+    storageGeneration: evidence.storageGeneration,
+    signalProfileSha256: evidence.signalProfileSha256,
+    algorithm: evidence.signal.algorithm,
+    durationSeconds: evidence.signal.durationSeconds,
+    nearSilenceDbfs: evidence.signal.thresholds.nearSilenceDbfs,
+    surroundingSignalDbfs: evidence.signal.thresholds.surroundingSignalDbfs,
+    waveform: compactSignalWaveform(evidence.signal.waveform, maximum),
+  };
+}
 
 const SHA256 = /^[0-9a-f]{64}$/;
 

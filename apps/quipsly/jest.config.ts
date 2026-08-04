@@ -42,8 +42,10 @@ const config: Config = {
     '^@high-ground/quipsly-domain/retrieval$': '<rootDir>/../../packages/quipsly-domain/src/retrieval.ts',
   },
   modulePathIgnorePatterns: [
-    '<rootDir>/.next/standalone',
-    '<rootDir>/.next-release/standalone',
+    // Development, release, recovery, and one-off validation bundles all carry
+    // a copied package.json. Never let generated standalone trees enter Jest's
+    // module graph or masquerade as a second Quipsly package.
+    '<rootDir>/\\.next(?:-[^/]+)?/standalone',
   ],
 };
 

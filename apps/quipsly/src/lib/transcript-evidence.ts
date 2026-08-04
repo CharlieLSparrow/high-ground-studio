@@ -391,7 +391,7 @@ export function parseAudioSignalEvidence(
   };
 }
 
-function compactSignalWaveform(
+export function compactSignalWaveform(
   points: NonNullable<AudioTranscriptEvidence["audio"]["signal"]>["waveform"],
   maximumPoints: number,
 ) {

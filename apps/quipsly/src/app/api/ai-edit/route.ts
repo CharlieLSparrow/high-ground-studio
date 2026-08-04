@@ -12,7 +12,7 @@ import {
 } from "@/lib/editor/ai-edit-proposal-contract";
 import { getPrismaClient } from "@/lib/prisma";
 import { deterministicEditEvidence } from "@/lib/server/deterministic-edit-evidence";
-import { loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
+import { episodeEditSignalVisualization, loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
 import {
   EpisodeEditReviewLedgerError,
   persistEpisodeEditProposalSet,
@@ -338,6 +338,9 @@ export async function POST(request: Request) {
         candidateCount: signalResolution.candidateCount,
         boundRecordingAssetId: signalResolution.evidence?.recordingAssetId ?? null,
       },
+      signalVisualization: signalResolution.evidence
+        ? episodeEditSignalVisualization(signalResolution.evidence)
+        : null,
       applied: false,
       source: "deterministic-transcript-evidence",
       nextAction: itemCount

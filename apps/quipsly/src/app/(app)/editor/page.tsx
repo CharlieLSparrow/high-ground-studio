@@ -29,6 +29,7 @@ import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
+import { AutomatedEditEvidenceMap } from "./AutomatedEditEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -47,9 +48,11 @@ import {
   AI_EDIT_PROPOSAL_SET_KIND,
   AI_EDIT_PROPOSAL_SET_VERSION,
   canonicalAiEditTranscript,
+  isAiEditSignalVisualization,
   type AiEditProposal,
   type AiEditProposalSet,
   type AiEditReviewCandidate,
+  type AiEditSignalVisualization,
 } from "@/lib/editor/ai-edit-proposal-contract";
 import type {
   EditReviewAction,
@@ -3275,6 +3278,7 @@ function CloudEditorContent() {
     reason: string;
     boundRecordingAssetId: string | null;
   } | null>(null);
+  const [aiEditSignalVisualization, setAiEditSignalVisualization] = useState<AiEditSignalVisualization | null>(null);
   const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
   const [aiEditMessage, setAiEditMessage] = useState("");
   const [editReviewReceipts, setEditReviewReceipts] = useState<EpisodeEditReviewReceipt[]>([]);
@@ -3347,6 +3351,7 @@ function CloudEditorContent() {
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
         setAiEditSignalResolution(null);
+        setAiEditSignalVisualization(null);
         setAiEditMessage(data.error || "Edit suggestions are unavailable. The timeline is unchanged.");
         return;
       }
@@ -3363,6 +3368,7 @@ function CloudEditorContent() {
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
         setAiEditSignalResolution(null);
+        setAiEditSignalVisualization(null);
         setAiEditMessage("The provider response did not include a valid source-bound proposal set. The timeline is unchanged.");
         return;
       }
@@ -3388,6 +3394,11 @@ function CloudEditorContent() {
           }
           : null,
       );
+      setAiEditSignalVisualization(
+        isAiEditSignalVisualization(data.signalVisualization)
+          ? data.signalVisualization
+          : null,
+      );
       const itemCount = suggestions.length + reviewCandidates.length;
       setAiEditMessage(itemCount
         ? `${suggestions.length} reversible proposal${suggestions.length === 1 ? "" : "s"} and ${reviewCandidates.length} review candidate${reviewCandidates.length === 1 ? "" : "s"} ready. Nothing has been applied.`
@@ -3401,6 +3412,7 @@ function CloudEditorContent() {
       setAiEditProposalBinding(null);
       setAiEditGenerator(null);
       setAiEditSignalResolution(null);
+      setAiEditSignalVisualization(null);
       setAiEditMessage("Edit suggestions could not be loaded. The timeline is unchanged.");
     } finally {
       setIsAiAutoEditing(false);
@@ -10670,6 +10682,31 @@ function CloudEditorContent() {
                       </button>
                     </div>
 
+                    <div className="mt-3">
+                      <AutomatedEditEvidenceMap
+                        proposals={aiEditSuggestions}
+                        candidates={aiEditReviewCandidates}
+                        signal={aiEditSignalVisualization}
+                        sourceStartSeconds={aiEditProposalBinding?.startSeconds ?? 0}
+                        sourceEndSeconds={aiEditProposalBinding?.endSeconds ?? totalDuration}
+                        currentSeconds={currentTime}
+                        onSelectTime={(seconds) => {
+                          setEditorMode("play-all");
+                          setIsPreviewPlaying(false);
+                          setAiProofWatchEndSeconds(null);
+                          setCurrentTime(seconds);
+                          setAiEditMessage(`Selected untouched source at ${formatClock(seconds)}. Choose proof-listen or proof-watch to record a review receipt; nothing has been applied.`);
+                        }}
+                        onProofReview={(item) => void proofWatchAiEditSuggestion(
+                          item,
+                          ("type" in item && item.type !== "deactivate_range")
+                            || ("suggestedAction" in item && item.suggestedAction === "review-camera")
+                            ? "watch"
+                            : "listen",
+                        )}
+                      />
+                    </div>
+
                     <div className="mt-3 space-y-2">
                       {aiEditSuggestions.map((edit, index) => {
                         const transcriptBlock = edit.type === "deactivate"
@@ -10769,8 +10806,8 @@ function CloudEditorContent() {
                               <button type="button" onClick={() => void dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(candidate, "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
-                                Proof-listen source
+                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(candidate, candidate.suggestedAction === "review-camera" ? "watch" : "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
+                                {candidate.suggestedAction === "review-camera" ? "Proof-watch source" : "Proof-listen source"}
                               </button>
                             </div>
                           </article>

@@ -86,6 +86,8 @@
     "quipsly:retained:audio-mastery-transparency": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
     "test:quipsly:retained:audio-mastery-transparency": "node --test scripts/quipsly-retained-audio-mastery-transparency-operation.test.mjs",
     "quipsly:retained:speaker-camera-cut": "node scripts/quipsly-retained-speaker-camera-cut-operation.mjs",
+    "quipsly:retained:automated-edit-evidence": "node scripts/quipsly-retained-automated-edit-evidence-operation.mjs",
+    "test:quipsly:retained:automated-edit-evidence": "node --test scripts/quipsly-retained-automated-edit-evidence-operation.test.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:retained:native-weekly-plan": "node scripts/quipsly-retained-native-weekly-plan-operation.mjs",
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",
