@@ -183,6 +183,41 @@ type EpisodeCollaborationProxyClientStatus = {
   originalRemainsSourceTruth: true;
 };
 
+type AudioMasteryClientStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  profileId: "apple-podcasts-dialogue-v1" | "ebu-r128-broadcast-v1" | null;
+  sourceMeasurement: null | {
+    measuredAt: string;
+    durationSeconds: number;
+    integratedLufs: number;
+    truePeakDbtp: number;
+    loudnessRangeLu: number;
+    thresholdLufs: number;
+    seriesResolutionMs: number;
+    series: Array<{
+      timeMs: number;
+      momentaryLufs: number | null;
+      shortTermLufs: number | null;
+      integratedLufs: number | null;
+      truePeakDbtp: number | null;
+    }>;
+  };
+  proposal: null | {
+    action: "no-change" | "render-loudness-master";
+    assessment: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
+    profile: { id: string; label: string; integratedLufs: number; maximumTruePeakDbtp: number; renderTruePeakDbtp: number };
+  };
+  derivative: null | {
+    playbackUrl: string | null;
+    verification: { integratedStatus: string; truePeakStatus: string; integratedDeltaLu: number; passes: boolean };
+    measured: { integratedLufs: number; truePeakDbtp: number; loudnessRangeLu: number };
+  };
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedPreview: true; explicitApprovalStillRequired: true };
+};
+
 type EpisodeMediaTruth = {
   ok: boolean;
   error?: string;
@@ -2850,6 +2885,44 @@ function parseCoPilotCommand(input: string): EditorCoPilotParse {
   };
 }
 
+function AudioMasteryLoudnessGraph({ measurement }: {
+  measurement: NonNullable<AudioMasteryClientStatus["sourceMeasurement"]>;
+}) {
+  const width = 720;
+  const height = 100;
+  const points = measurement.series.filter((point) => point.shortTermLufs !== null || point.momentaryLufs !== null);
+  const durationMs = Math.max(measurement.durationSeconds * 1_000, points.at(-1)?.timeMs ?? 1);
+  const y = (lufs: number) => Math.max(2, Math.min(height - 2, ((0 - Math.max(-60, Math.min(0, lufs))) / 60) * height));
+  const x = (timeMs: number) => Math.max(0, Math.min(width, (timeMs / durationMs) * width));
+  const pathFor = (key: "shortTermLufs" | "momentaryLufs") => points
+    .filter((point) => point[key] !== null)
+    .map((point, index) => `${index === 0 ? "M" : "L"}${x(point.timeMs).toFixed(1)},${y(point[key] as number).toFixed(1)}`)
+    .join(" ");
+  const shortTermPath = pathFor("shortTermLufs");
+  const momentaryPath = pathFor("momentaryLufs");
+  return (
+    <figure className="rounded-md border border-fuchsia-200 bg-[#1d1630] p-2" aria-label="Source loudness over time">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-20 w-full" role="img" aria-labelledby="audio-mastery-chart-title audio-mastery-chart-description">
+        <title id="audio-mastery-chart-title">Source loudness over time</title>
+        <desc id="audio-mastery-chart-description">Momentary and short-term LUFS from a complete source decode. The dashed line marks the minus sixteen LUFS podcast target.</desc>
+        {[-48, -32, -16].map((level) => (
+          <g key={level}>
+            <line x1="0" x2={width} y1={y(level)} y2={y(level)} stroke={level === -16 ? "#f0abfc" : "#4c3d64"} strokeWidth={level === -16 ? 1.5 : 1} strokeDasharray={level === -16 ? "7 5" : "2 6"} />
+            <text x="6" y={y(level) - 4} fill={level === -16 ? "#f5d0fe" : "#a99abb"} fontSize="10" fontWeight="700">{level} LUFS</text>
+          </g>
+        ))}
+        {momentaryPath && <path d={momentaryPath} fill="none" stroke="#818cf8" strokeWidth="1.3" opacity="0.75" />}
+        {shortTermPath && <path d={shortTermPath} fill="none" stroke="#f0abfc" strokeWidth="2.3" />}
+      </svg>
+      <figcaption className="mt-1 grid grid-cols-2 gap-x-2 gap-y-1 text-[8px] font-bold uppercase tracking-[0.08em] text-fuchsia-100">
+        <span><span className="mr-1 inline-block h-0.5 w-2 bg-fuchsia-300 align-middle" />Short-term · 3 s</span>
+        <span><span className="mr-1 inline-block h-0.5 w-2 bg-indigo-400 align-middle" />Momentary · 400 ms</span>
+        <span className="col-span-2">1 s display bins · complete source decode</span>
+      </figcaption>
+    </figure>
+  );
+}
+
 function CloudEditorContent() {
   const [currentTime, setCurrentTime] = useState(0);
   const [viewMode, setViewMode] = useState<"timeline" | "transcript" | "reframe" | "segmenter">("timeline");
@@ -2865,6 +2938,7 @@ function CloudEditorContent() {
   const [transcriptAssistingAssetIds, setTranscriptAssistingAssetIds] = useState<Set<string>>(() => new Set());
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
   const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
+  const [audioMasteryStatusByAsset, setAudioMasteryStatusByAsset] = useState<Record<string, AudioMasteryClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
   const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
   const [restoringTimelineBackupId, setRestoringTimelineBackupId] = useState<string | null>(null);
@@ -3818,6 +3892,39 @@ function CloudEditorContent() {
     setSyncReviewResidualMilliseconds("");
     setSyncReviewNotes("");
   }, [syncWizardSpineAssetId, syncWizardTargetAssetId]);
+
+  useEffect(() => {
+    let canceled = false;
+    const masteryAssets = importedMediaAssets.filter((asset) =>
+      asset.kind === "audio"
+      || asset.kind === "video"
+      || asset.contentType.startsWith("audio/")
+      || asset.contentType.startsWith("video/"),
+    );
+    if (!masteryAssets.length) return () => { canceled = true; };
+    void Promise.all(masteryAssets.map(async (asset) => {
+      const query = new URLSearchParams({ projectSlug: resolvedProjectSlug, assetId: asset.id });
+      const response = await fetch(`/api/media-vault/audio-mastery?${query}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean } & Partial<AudioMasteryClientStatus>) | null;
+      return response.ok && payload?.ok && payload.status
+        ? { asset, status: payload as { ok: true } & AudioMasteryClientStatus }
+        : null;
+    })).then((rows) => {
+      if (canceled) return;
+      setAudioMasteryStatusByAsset((previous) => {
+        const next = { ...previous };
+        for (const row of rows) {
+          if (!row) continue;
+          next[row.asset.id] = row.status;
+          next[row.asset.sourceId] = row.status;
+        }
+        return next;
+      });
+    }).catch((error) => {
+      if (!canceled) console.warn("Could not hydrate audio mastery status.", error);
+    });
+    return () => { canceled = true; };
+  }, [importedMediaAssets, resolvedProjectSlug]);
 
   const handleSessionImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -4857,6 +4964,68 @@ function CloudEditorContent() {
       });
     }
   }, [episodeSlug, resolvedProjectSlug]);
+
+  const operateAudioMastery = useCallback(async (asset: ImportedMediaAsset) => {
+    const jobKey = `${asset.id}:audio-mastery`;
+    const updateStatus = (status: AudioMasteryClientStatus) => {
+      setAudioMasteryStatusByAsset((previous) => ({
+        ...previous,
+        [asset.id]: status,
+        [asset.sourceId]: status,
+      }));
+    };
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/audio-mastery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          projectSlug: resolvedProjectSlug,
+          assetId: asset.id,
+          sourceId: asset.sourceId,
+          profileId: "apple-podcasts-dialogue-v1",
+        }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioMasteryClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) {
+        throw new Error(payload?.error || `Audio mastery returned HTTP ${response.status}.`);
+      }
+      const status = payload as { ok: true } & AudioMasteryClientStatus;
+      updateStatus(status);
+      return status;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Measuring ${asset.originalName} against the Apple podcast dialogue profile...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed") throw new Error(status.error || "Audio mastery failed.");
+        setMediaImportStatus(
+          status.status === "output-ready"
+            ? `Independently verifying and registering the mastered preview for ${asset.originalName}...`
+            : `Decoding and measuring ${asset.originalName}; the original remains untouched...`,
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed") throw new Error("Audio mastery is still processing. Resume it safely from this media card.");
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(
+        status.derivative
+          ? `Verified mastered preview ready for ${asset.originalName}. Explicit approval is still required before promotion.`
+          : `${asset.originalName} already meets the selected loudness profile; no derivative was created.`,
+      );
+    } catch (error) {
+      console.warn("Could not complete audio mastery.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not complete audio mastery.");
+    } finally {
+      setQueueingMediaJobKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(jobKey);
+        return next;
+      });
+    }
+  }, [resolvedProjectSlug]);
 
   const queueMediaAnalysisJob = useCallback(async (asset: ImportedMediaAsset, type: MediaAnalysisJobType) => {
     if (type === "proxy-needed") {
@@ -8119,9 +8288,12 @@ function CloudEditorContent() {
                 const assetJobs = mediaAnalysisJobsByAsset.get(asset.id) ?? mediaAnalysisJobsByAsset.get(asset.sourceId) ?? [];
                 const collaborationProxyStatus = collaborationProxyStatusByAsset[asset.id]
                   ?? collaborationProxyStatusByAsset[asset.sourceId];
+                const audioMasteryStatus = audioMasteryStatusByAsset[asset.id]
+                  ?? audioMasteryStatusByAsset[asset.sourceId];
                 const proxyStatus = collaborationProxyStatus?.status
                   ?? (hasVerifiedCollaborationProxy(asset) ? "completed" : "not-queued");
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
+                const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
                 const health = importedAssetHealth(asset);
                 const confidenceStatus = importedAssetConfidenceStatus(asset, health);
                 const isSpineAsset = persistedSpineAudio?.assetId === asset.id || persistedSpineAudio?.assetId === asset.sourceId;
@@ -8306,6 +8478,54 @@ function CloudEditorContent() {
                             : "Creates an app-owned H.264/AAC review derivative with byte and fast-start verification. The source is never overwritten."}
                       </div>
                     </button>
+                  )}
+                  {(asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/")) && (
+                    <div className="mt-2 rounded-lg border border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 to-indigo-50 px-3 py-3 text-fuchsia-950">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black">Audio mastery</div>
+                          <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">
+                            Complete BS.1770/R128 decode · Apple dialogue target −16 LUFS · preview ceiling −1.5 dBTP
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-fuchsia-200 bg-white px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em]">
+                          {audioMasteryStatus?.status ?? "not measured"}
+                        </span>
+                      </div>
+                      {audioMasteryStatus?.sourceMeasurement && (
+                        <div className="mt-3">
+                          <AudioMasteryLoudnessGraph measurement={audioMasteryStatus.sourceMeasurement} />
+                          <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px] font-bold">
+                            <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.integratedLufs.toFixed(1)}</div><div>LUFS integrated</div></div>
+                            <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.truePeakDbtp.toFixed(1)}</div><div>dBTP true peak</div></div>
+                            <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.loudnessRangeLu.toFixed(1)}</div><div>LU range</div></div>
+                          </div>
+                          {audioMasteryStatus.derivative && (
+                            <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 text-[10px] font-bold leading-4 text-emerald-900">
+                              Verified output: {audioMasteryStatus.derivative.measured.integratedLufs.toFixed(1)} LUFS · {audioMasteryStatus.derivative.measured.truePeakDbtp.toFixed(1)} dBTP. This is an unpromoted preview.
+                              {audioMasteryStatus.derivative.playbackUrl && <audio className="mt-2 w-full" controls preload="metadata" src={audioMasteryStatus.derivative.playbackUrl} />}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void operateAudioMastery(asset)}
+                        disabled={isAudioMasteryWorking || audioMasteryStatus?.status === "completed"}
+                        className="mt-3 w-full rounded-lg border border-fuchsia-300 bg-white px-3 py-2 text-left font-black hover:bg-fuchsia-100 disabled:cursor-default disabled:bg-fuchsia-50"
+                      >
+                        {isAudioMasteryWorking
+                          ? "Measuring and verifying..."
+                          : audioMasteryStatus?.status === "completed"
+                            ? audioMasteryStatus.derivative ? "Verified mastering preview ready" : "Source already meets profile"
+                            : audioMasteryStatus?.status === "queued" || audioMasteryStatus?.status === "processing" || audioMasteryStatus?.status === "output-ready"
+                              ? "Resume audio mastery"
+                              : audioMasteryStatus?.status === "failed" ? "Retry audio mastery" : "Measure and prepare mastering preview"}
+                        <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">
+                          Original bytes are never changed. Denoise, EQ, de-essing, silence removal, and editorial cuts are excluded from this automatic pass.
+                        </div>
+                      </button>
+                    </div>
                   )}
                   <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2 ${realEditingMode ? "hidden" : ""}`}>
                     <div className="flex items-center justify-between gap-2">

@@ -25,6 +25,10 @@ import {
   sha256File,
   type CaptureProxyTranscoder,
 } from "./transcoder.js";
+import {
+  newLocalAudioMasteryRuntime,
+  runOneLocalAudioMasteryJob,
+} from "./local-audio-mastery-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -455,12 +459,21 @@ async function main() {
     localMediaRoot,
     now: () => new Date(),
   };
+  const audioMastery = newLocalAudioMasteryRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
   try {
     do {
-      const result = await runOneLocalEpisodeProxyJob(store, transcoder, options);
+      const proxyResult = await runOneLocalEpisodeProxyJob(store, transcoder, options);
+      const result = proxyResult.disposition === "idle"
+        ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
+        : proxyResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

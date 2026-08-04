@@ -60,7 +60,7 @@ export async function queueEpisodeCollaborationProxy(input: {
   actorEmail: string;
 }) {
   const context = await loadExactContext(input);
-  const sourceEvidence = await inspectSource(context.source.providerSourceId, context.rawAsset.mimeType);
+  const sourceEvidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.rawAsset.mimeType);
   const targetLocator = buildEpisodeCollaborationProxyTargetLocator({
     projectSlug: context.project.slug,
     episodeSlug: context.production.slug,
@@ -449,7 +449,7 @@ async function loadExactContext(input: {
   return { project, production, rawAsset, source };
 }
 
-async function inspectSource(locator: string, fallbackContentType: string | null) {
+export async function inspectImmutableStudioMediaSource(locator: string, fallbackContentType: string | null) {
   const gcs = authorizeConfiguredMediaVaultLocation(locator);
   if (gcs.kind === "rejected-gcs") throw new Error(gcs.error);
   if (gcs.kind === "gcs") {
@@ -488,7 +488,7 @@ async function inspectSource(locator: string, fallbackContentType: string | null
 }
 
 async function assertCurrentSource(job: EpisodeCollaborationProxyJob) {
-  const evidence = await inspectSource(job.source.locator, job.source.contentType);
+  const evidence = await inspectImmutableStudioMediaSource(job.source.locator, job.source.contentType);
   if (
     evidence.provider !== job.source.provider
     || evidence.locator !== job.source.locator

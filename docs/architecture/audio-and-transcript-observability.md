@@ -90,10 +90,12 @@ but enters the repair state; it is not uploaded or described as playable. A
 silent but structurally valid source remains preserved and uploadable with a
 visible warning because silence alone is not corruption.
 
-RMS dBFS is labeled explicitly as **not LUFS**. Integrated loudness requires a
-standards-conformant BS.1770/R128 implementation and remains a processing-worker
-addition; the product does not relabel the cheaper source observation as
-loudness.
+RMS dBFS is labeled explicitly as **not LUFS**. Complete-source BS.1770/R128
+measurement now exists for local Nest media in the processing worker; the
+product still does not relabel the cheaper bounded Capture observation as
+loudness. See `docs/architecture/audio-mastery.md` for the source-bound
+measurement, reversible proposal, independently verified preview, and
+non-promotion contract.
 
 ## Correction and provenance
 

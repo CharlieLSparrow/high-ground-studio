@@ -2,6 +2,28 @@
 
 Date: 2026-08-03
 
+## Audio mastery foundation checkpoint
+
+- Nest can now run a canonical, recoverable `StudioAssetProcessingJob` for one
+  immutable local audio/video source, measure complete-source LUFS, true peak,
+  and LRA, prepare a source-bound Apple podcast dialogue proposal, create a
+  versioned 48 kHz 24-bit PCM preview when needed, and independently measure it
+  before registration.
+- The Episode editor shows integrated LUFS, dBTP, loudness range, momentary and
+  short-term loudness over time, the -16 LUFS target, verified output values,
+  playable preview, and explicit source-preserved/unpromoted status. Reloading
+  hydrates the canonical result instead of losing it in component state.
+- A real signed-in Episode 4 operation imported and mastered a 12-second source:
+  -46.6 LUFS became a verified -16.0 LUFS preview while the original remained
+  source truth. Database readback retained one completed job and one
+  `audio-master-preview` variant.
+- Focused proof passes 15/15 plus three strict TypeScript projects and the full
+  164-page Nest production build. This is local
+  qualification only; cloud mastering, explicit approval/promotion, subjective
+  restoration proposals, deployment, and physical-device work remain pending.
+- Architecture and evidence are in
+  `docs/coordination/2026-08-03-audio-mastery-foundation.md`.
+
 ## Client follow-up source-readiness checkpoint
 
 - A private coaching follow-up can no longer be released after one of its

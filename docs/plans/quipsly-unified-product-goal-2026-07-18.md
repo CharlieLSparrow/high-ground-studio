@@ -7261,3 +7261,15 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   `docs/coordination/2026-08-03-transcript-accuracy-corpus.md`. Genuine HGO and
   coaching review, private export, provider candidate receipts, physical iPhone,
   and production separate-account gates remain open.
+
+## 2026-08-03 audio mastery foundation checkpoint
+
+- Added standards-conformant complete-source loudness and true-peak measurement,
+  a reversible source-bound proposal graph, a recoverable local processing job,
+  double-pass 24-bit PCM preview generation, independent output verification,
+  private variant registration, and persisted Episode-editor visualization.
+- Operated the real local Episode 4 workflow with a freshly imported source and
+  verified source preservation plus canonical reload/readback.
+- Next audio priorities: cloud execution/outbox, explicit preview approval and
+  promotion, loudness-matched A/B listening, dialogue issue proposals, stem
+  consistency, and coaching-specific privacy/profile semantics.
