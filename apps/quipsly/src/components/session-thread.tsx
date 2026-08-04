@@ -29,10 +29,16 @@ export function SessionThread({
   projectSlug,
   roomId,
   sessionTitle,
+  canPost = true,
+  scopeLabel = "This meeting only",
+  scopeDescription,
 }: {
   projectSlug: string;
   roomId: string;
   sessionTitle: string;
+  canPost?: boolean;
+  scopeLabel?: string;
+  scopeDescription?: string;
 }) {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -66,13 +72,16 @@ export function SessionThread({
   }, [refresh]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const thread = scrollRef.current;
+    if (thread && typeof thread.scrollTo === "function") {
+      thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
   async function send(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
-    if (!body || status === "sending") return;
+    if (!canPost || !body || status === "sending") return;
     setStatus("sending");
     setError("");
     try {
@@ -101,9 +110,9 @@ export function SessionThread({
   return (
     <section className="flex min-h-[30rem] flex-col overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm" aria-labelledby={`session-thread-${roomId}`}>
       <header className="border-b border-[#e5d5b7] px-5 py-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">This meeting only</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">{scopeLabel}</p>
         <h2 id={`session-thread-${roomId}`} className="mt-1 flex items-center gap-2 font-serif text-2xl font-black text-[#3d3122]"><MessageCircle size={20} aria-hidden="true" /> Session thread</h2>
-        <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Coordinate {sessionTitle} before, during, and after the call. Episode-wide production conversation stays in the Episode thread.</p>
+        <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{scopeDescription || `Coordinate ${sessionTitle} before, during, and after the call. Reviewed notes, goals, tasks, and outputs stay in their dedicated Session tools.`}</p>
       </header>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
         {status === "loading" ? <p className="flex items-center gap-2 text-sm font-semibold text-[#765f40]"><LoaderCircle size={16} className="animate-spin" /> Loading Session thread…</p> : null}
@@ -116,9 +125,10 @@ export function SessionThread({
       <form onSubmit={send} className="border-t border-[#e5d5b7] p-3">
         {error ? <p className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{error}</p> : null}
         <div className="flex items-end gap-2">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Write to everyone in this Session…" className="min-h-20 flex-1 resize-none rounded-2xl border border-[#d8c7a7] bg-white px-3 py-2 text-sm text-[#3d3122] outline-none placeholder:text-[#9a876c] focus:border-violet-500 focus:ring-4 focus:ring-violet-100" />
-          <button type="submit" disabled={!draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-violet-800 px-4 font-black text-white disabled:opacity-45" aria-label="Send Session message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} disabled={!canPost} placeholder={canPost ? "Write to everyone in this Session…" : "View-only Session thread"} className="min-h-20 flex-1 resize-none rounded-2xl border border-[#d8c7a7] bg-white px-3 py-2 text-sm text-[#3d3122] outline-none placeholder:text-[#9a876c] focus:border-violet-500 focus:ring-4 focus:ring-violet-100 disabled:bg-[#f4eee2]" />
+          <button type="submit" disabled={!canPost || !draft.trim() || status === "sending"} className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-violet-800 px-4 font-black text-white disabled:opacity-45" aria-label="Send Session message">{status === "sending" ? <LoaderCircle size={17} className="animate-spin" /> : <Send size={17} />}</button>
         </div>
+        {!canPost ? <p className="mt-2 text-xs font-bold text-[#8a7354]">You can read this recording thread, but editor access is required to post.</p> : null}
       </form>
     </section>
   );

@@ -642,6 +642,7 @@ function SessionCard({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="mb-3 flex flex-wrap gap-2">
+            <Pill label={titleCase(session.purpose || "COACHING")} tone="blue" />
             <Pill label={session.captureReadiness?.label || titleCase(session.journeySummary?.stage) || "Session"} tone={toneForSession(session)} />
             <Pill label={session.canRecordNow ? "recording allowed" : "recording off"} tone={session.canRecordNow ? "good" : "warm"} />
             <Pill label={session.providerCanJoin ? "join ready" : titleCase(session.providerReadiness) || "local fallback"} tone={session.providerCanJoin ? "good" : "blue"} />
@@ -662,9 +663,12 @@ function SessionCard({
           <p><strong>Payment:</strong> {paymentRequiredFor(session) ? titleCase(session.paymentStatus || "pending") : "Not required here"}</p>
           <p><strong>Consent:</strong> {titleCase(session.recordingConsentStatus || "not created")}</p>
           <p><strong>Transcript:</strong> {titleCase(session.latestTranscriptStatus || "not started")}</p>
-          <Link href={`/sessions/${encodeURIComponent(session.callRoomId)}`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-[#5a472f]">
-            Open session workspace
-          </Link>
+          <div className="mt-4 grid gap-2">
+            {session.providerCanJoin ? <Link href={`/sessions/${encodeURIComponent(session.callRoomId)}?mode=live`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"><Video size={15} aria-hidden="true" /> Join live room</Link> : null}
+            <Link href={`/sessions/${encodeURIComponent(session.callRoomId)}`} className={`inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide ${session.providerCanJoin ? "border border-[#d8c7a7] bg-white text-[#3d3122] hover:bg-[#fffaf0]" : "bg-[#3d3122] text-white hover:bg-[#5a472f]"}`}>
+              Open session workspace
+            </Link>
+          </div>
         </div>
       </div>
 

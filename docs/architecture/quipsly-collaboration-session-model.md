@@ -38,6 +38,34 @@ use a meeting chat as the permanent production conversation.
 The web route is `/sessions/:callRoomId?mode=live`. An Episode Room links to
 that same route for its selected recording Session and can expose the Live
 Session inline. Quipsly Capture joins the same provider room from iPhone.
+The retired `/call` experiment is no longer a second product surface: old
+room-bearing links redirect into the canonical Session, while the bare route
+explains where live work belongs.
+
+## Purpose projection, not parallel products
+
+`CallRoom.purpose` selects a small, typed experience definition for coaching,
+podcast, research interview, or internal meeting. It changes visible language,
+camera defaults, retained-source profile, surrounding continuity, and relevant
+handoffs. It does not fork transport, participant identity, consent, source
+receipts, transcript evidence, or work objects.
+
+This is the intended compositional rule:
+
+`Session kernel + purpose projection + surrounding workspace`
+
+- Podcast adds Episode manuscript, shared Watch, aligned timeline, persistent
+  Episode thread, editorial review, and publication.
+- Coaching adds repeated-session continuity, private/shared note policy,
+  reviewed goals, commitments, and client-safe follow-up.
+- Research adds source provenance, citation and annotation continuity, and
+  stricter later-use traceability.
+- Internal meetings add team decisions and reviewed work without pretending
+  that chat or model output is canonical.
+
+The Session Overview and Live modes show this three-scope map where it helps an
+operator orient. Transcript, Notes, Work, and Outputs do not repeat it, so the
+model remains understandable without turning every task into process signage.
 
 ## Two media planes
 
@@ -167,11 +195,19 @@ deterministic even if the call plane disappears.
 Implemented in the browser:
 
 - one Live Room mode in the canonical Session workspace;
+- canonical purpose-aware wording and capture defaults for coaching, podcast,
+  research interview, and internal meeting instead of string heuristics;
 - external microphone, camera, and output selection with honest permission and
   timeout states;
+- remembered device choices with a label-based fallback when a browser rotates
+  a device identifier, plus an explicit standards-based output chooser where
+  the browser exposes one;
 - real LiveKit room client rather than the retired console-log stub;
 - browser/iPhone device-scoped coexistence tokens;
 - a durable Session thread distinct from the Episode thread;
+- the selected Episode recording Session now exposes its take-specific thread
+  immediately beside its embedded Live Room, while the persistent Episode
+  thread remains the writing-to-publishing conversation;
 - Episode Room creation/binding of a Podcast Session and direct Live Room
   handoff;
 - explicit language that a connected conversation is not recording.
@@ -186,6 +222,21 @@ Implemented in the browser:
   with iPhone Capture.
 - revisioned Episode Watch control from browser or iPhone, plus reliable
   room-data wakeups that always reconcile against the canonical HTTPS room.
+
+Local operational proof on 2026-08-04:
+
+- two independent, rendered, signed-in browser contexts joined one local
+  LiveKit Session using fake media hardware;
+- both participant rosters converged to two and a Session-thread message made a
+  real database-backed round trip from coach to client;
+- neither provider recording nor retained-source recording was started;
+- a separate visible device operation exposed real Mac, virtual, and MOTIV Mix
+  inputs/outputs, previewed the chosen setup without transmitting or recording,
+  and retained the exact choice after reload.
+
+This proves the local browser/browser collaboration kernel and real-device
+setup UI. It is not physical iPhone interoperability, long-take source proof,
+or production-provider acceptance.
 
 Still gated:
 

@@ -30,9 +30,20 @@ import {
   EPISODE_WATCH_LIVE_TOPIC,
   type EpisodeWatchLiveHint,
 } from "@/lib/episode-room/episode-watch-live";
+import {
+  sessionExperienceForPurpose,
+  type SessionCaptureProfile,
+} from "@/lib/session-experience";
 
-type SessionKind = "coaching" | "episode";
 type DeviceOption = { deviceId: string; label: string };
+type PreferredDevices = {
+  microphoneId?: string;
+  microphoneLabel?: string;
+  cameraId?: string;
+  cameraLabel?: string;
+  outputId?: string;
+  outputLabel?: string;
+};
 type JoinPacket = {
   ok?: boolean;
   error?: string;
@@ -92,10 +103,37 @@ function audioOutputSupported(element: HTMLMediaElement | null) {
   return Boolean(element && "setSinkId" in element);
 }
 
+const PREFERRED_DEVICES_KEY = "quipsly-live-preferred-devices-v1";
+
+function readPreferredDevices(): PreferredDevices {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(PREFERRED_DEVICES_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function preferredDeviceId(
+  current: string,
+  options: DeviceOption[],
+  preferredId?: string,
+  preferredLabel?: string,
+) {
+  if (current && options.some((option) => option.deviceId === current)) return current;
+  if (preferredId && options.some((option) => option.deviceId === preferredId)) return preferredId;
+  if (preferredLabel) {
+    const labelMatch = options.find((option) => option.label === preferredLabel);
+    if (labelMatch) return labelMatch.deviceId;
+  }
+  return options[0]?.deviceId || "";
+}
+
 export function LiveSessionRoom({
   callRoomId,
   sessionTitle,
   kind,
+  purpose,
   projectSlug = null,
   episodeSlug = null,
   episodeWatchHint = null,
@@ -104,13 +142,18 @@ export function LiveSessionRoom({
 }: {
   callRoomId: string;
   sessionTitle: string;
-  kind: SessionKind;
+  kind: SessionCaptureProfile;
+  purpose?: string | null;
   projectSlug?: string | null;
   episodeSlug?: string | null;
   episodeWatchHint?: EpisodeWatchLiveHint | null;
   onEpisodeWatchHint?: (hint: EpisodeWatchLiveHint) => void;
   compact?: boolean;
 }) {
+  const experience = useMemo(
+    () => sessionExperienceForPurpose(purpose || (kind === "episode" ? "PODCAST" : "COACHING")),
+    [kind, purpose],
+  );
   const [status, setStatus] = useState<RoomStatus>("preflight");
   const [message, setMessage] = useState("Choose the exact mic and camera you want Quipsly to use.");
   const [microphones, setMicrophones] = useState<DeviceOption[]>([]);
@@ -119,7 +162,7 @@ export function LiveSessionRoom({
   const [microphoneId, setMicrophoneId] = useState("");
   const [cameraId, setCameraId] = useState("");
   const [outputId, setOutputId] = useState("");
-  const [cameraWanted, setCameraWanted] = useState(kind === "episode");
+  const [cameraWanted, setCameraWanted] = useState(experience.defaultCamera);
   const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [cameraMuted, setCameraMuted] = useState(false);
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
@@ -127,6 +170,7 @@ export function LiveSessionRoom({
   const [recordingConsentStatus, setRecordingConsentStatus] = useState("not checked");
   const [level, setLevel] = useState(0);
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
+  const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
   const lastPublishedWatchReceiptRef = useRef("");
@@ -209,12 +253,13 @@ export function LiveSessionRoom({
       const nextMicrophones = rawMicrophones.filter((device) => device.deviceId).map((device, index) => ({ deviceId: device.deviceId, label: readableDeviceLabel(device, index) }));
       const nextCameras = rawCameras.filter((device) => device.deviceId).map((device, index) => ({ deviceId: device.deviceId, label: readableDeviceLabel(device, index) }));
       const nextOutputs = devices.filter((device) => device.kind === "audiooutput" && device.deviceId).map((device, index) => ({ deviceId: device.deviceId, label: readableDeviceLabel(device, index) }));
+      const preferred = readPreferredDevices();
       setMicrophones(nextMicrophones);
       setCameras(nextCameras);
       setOutputs(nextOutputs);
-      setMicrophoneId((current) => current || nextMicrophones[0]?.deviceId || "");
-      setCameraId((current) => current || nextCameras[0]?.deviceId || "");
-      setOutputId((current) => current || nextOutputs[0]?.deviceId || "");
+      setMicrophoneId((current) => preferredDeviceId(current, nextMicrophones, preferred.microphoneId, preferred.microphoneLabel));
+      setCameraId((current) => preferredDeviceId(current, nextCameras, preferred.cameraId, preferred.cameraLabel));
+      setOutputId((current) => preferredDeviceId(current, nextOutputs, preferred.outputId, preferred.outputLabel));
       const microphoneNamesVisible = nextMicrophones.some((device) => !/^Microphone \d+$/.test(device.label));
       const cameraNamesVisible = nextCameras.some((device) => !/^Camera \d+$/.test(device.label));
       if (permission === "camera" && !nextCameras.length) {
@@ -464,8 +509,28 @@ export function LiveSessionRoom({
     setCameraMuted(nextMuted);
   }, [cameraId, cameraMuted]);
 
+  const chooseAudioOutput = useCallback(async () => {
+    const mediaDevices = navigator.mediaDevices as MediaDevices & {
+      selectAudioOutput?: () => Promise<MediaDeviceInfo>;
+    };
+    if (!mediaDevices.selectAudioOutput) {
+      setMessage("Choose the MV7i or other headphone output in macOS Sound settings for this browser.");
+      return;
+    }
+    try {
+      const selected = await mediaDevices.selectAudioOutput();
+      const option = { deviceId: selected.deviceId, label: readableDeviceLabel(selected, outputs.length) };
+      setOutputs((current) => current.some((item) => item.deviceId === option.deviceId) ? current : [...current, option]);
+      setOutputId(option.deviceId);
+      setMessage(`Headphone output selected: ${option.label}. Quipsly will route remote call audio there.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? `Headphone output was not changed: ${error.message}` : "Headphone output was not changed.");
+    }
+  }, [outputs.length]);
+
   useEffect(() => {
     setSupportsOutputSelection(audioOutputSupported(document.createElement("audio")));
+    setSupportsOutputPrompt(typeof (navigator.mediaDevices as MediaDevices & { selectAudioOutput?: unknown } | undefined)?.selectAudioOutput === "function");
     void refreshDevices("none");
     const changed = () => void refreshDevices("none");
     navigator.mediaDevices?.addEventListener?.("devicechange", changed);
@@ -479,6 +544,21 @@ export function LiveSessionRoom({
   }, [clearRemoteMedia, refreshDevices]);
 
   useEffect(() => {
+    const microphone = microphones.find((device) => device.deviceId === microphoneId);
+    const camera = cameras.find((device) => device.deviceId === cameraId);
+    const output = outputs.find((device) => device.deviceId === outputId);
+    if (!microphone && !camera && !output) return;
+    window.localStorage.setItem(PREFERRED_DEVICES_KEY, JSON.stringify({
+      microphoneId: microphone?.deviceId,
+      microphoneLabel: microphone?.label,
+      cameraId: camera?.deviceId,
+      cameraLabel: camera?.label,
+      outputId: output?.deviceId,
+      outputLabel: output?.label,
+    } satisfies PreferredDevices));
+  }, [cameraId, cameras, microphoneId, microphones, outputId, outputs]);
+
+  useEffect(() => {
     if (!connected || !outputId) return;
     remoteMediaRef.current?.querySelectorAll("audio").forEach((element) => void routeAudioOutput(element));
   }, [connected, outputId, routeAudioOutput]);
@@ -487,10 +567,10 @@ export function LiveSessionRoom({
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-3xl">
-          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Live Session · {kind}</p>
-          <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Talk together from any device</h2>
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-violet-800"><Radio size={14} aria-hidden="true" /> Live Session · {experience.label}</p>
+          <h2 id={`live-room-${callRoomId}`} className="mt-2 font-serif text-3xl font-black text-[#3d3122]">{experience.liveHeading}</h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">
-            Mac or PC browsers can use a studio mic and camera while iPhone Capture joins the same room. The call is for conversation; high-quality local sources remain separate and sync back to this Session.
+            {experience.liveDescription}
           </p>
         </div>
         <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${connected ? "border-emerald-300 bg-emerald-50 text-emerald-900" : status === "error" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-violet-200 bg-violet-50 text-violet-900"}`}>{statusLabel}</span>
@@ -521,6 +601,7 @@ export function LiveSessionRoom({
                 <option value="">System default</option>{outputs.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
               </select>
               {!supportsOutputSelection ? <span className="mt-1 block text-[10px] font-bold normal-case tracking-normal text-[#8a7354]">This browser uses the macOS or system output. Choose the MV7i headphones there.</span> : null}
+              {supportsOutputPrompt ? <button type="button" onClick={() => void chooseAudioOutput()} className="mt-2 min-h-9 rounded-full border border-sky-300 bg-sky-50 px-3 text-[10px] font-black normal-case tracking-normal text-sky-950">Choose headphone output…</button> : null}
             </label>
             <label className="flex min-h-12 items-center gap-3 self-end rounded-xl border border-[#d8c7a7] bg-white px-3 text-sm font-black text-[#5b472f]">
               <input type="checkbox" checked={cameraWanted} onChange={(event) => setCameraWanted(event.target.checked)} className="h-4 w-4 accent-violet-800" /> Join with camera
@@ -545,6 +626,7 @@ export function LiveSessionRoom({
               <button type="button" onClick={() => void leave()} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-rose-800 px-4 text-xs font-black uppercase tracking-wide text-white"><PhoneOff size={16} /> Leave</button>
             </>}
           </div>
+          <p className="text-[10px] font-bold text-[#8a7354]">Quipsly remembers this studio setup on this browser and falls back by device label if the browser rotates a device ID.</p>
           <p role="status" aria-live="polite" className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm font-bold leading-6 text-violet-950">{message}</p>
         </div>
 
@@ -573,7 +655,7 @@ export function LiveSessionRoom({
         <BrowserSourceRecorder
           callRoomId={callRoomId}
           sessionTitle={sessionTitle}
-          sessionKind={kind}
+          sessionKind={experience.captureProfile}
           episodeSlug={episodeSlug}
           microphoneId={microphoneId}
           microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}

@@ -29,14 +29,15 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-1" sessionTitle="Episode test" kind="episode" />);
+      render(<LiveSessionRoom callRoomId="room-1" sessionTitle="Episode test" kind="episode" purpose="PODCAST" />);
     });
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Conversation is not recording" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
-    expect(screen.getByText(/Mac or PC browsers can use a studio mic and camera while iPhone Capture joins the same room/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
+    expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
   });
 
   it("does not request media permission until the person acts", async () => {

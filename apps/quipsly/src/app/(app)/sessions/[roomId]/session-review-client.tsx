@@ -9,6 +9,7 @@ import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, Tran
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { LiveSessionRoom } from "@/components/live-session-room";
 import { SessionThread } from "@/components/session-thread";
+import { sessionExperienceForPurpose } from "@/lib/session-experience";
 
 import {
   candidateReviewRequest,
@@ -1323,6 +1324,51 @@ function WorkspaceEmptyState({
   );
 }
 
+function SessionCollaborationScopes({
+  roomId,
+  purpose,
+  project,
+}: {
+  roomId: string;
+  purpose: string;
+  project: { name: string; slug: string } | null;
+}) {
+  const experience = sessionExperienceForPurpose(purpose);
+  const episode = experience.kind === "episode";
+  return (
+    <section className="rounded-2xl border border-sky-200 bg-sky-50/65 p-5" aria-labelledby="session-collaboration-scopes-heading">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">How this workspace fits together</p>
+          <h2 id="session-collaboration-scopes-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">One call system, deliberately different workspaces</h2>
+          <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-sky-950">Browser and iPhone join the same room. Quipsly changes the surrounding tools, privacy defaults, and continuity—not the underlying media transport.</p>
+        </div>
+        <span className="rounded-full border border-sky-300 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-sky-950">{experience.label}</span>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <article className="rounded-xl border border-sky-200 bg-white p-4">
+          <p className="text-[10px] font-black uppercase tracking-wide text-violet-800">{experience.sessionScopeLabel}</p>
+          <h3 className="mt-1 font-black text-[#3d3122]">Call, take, and immediate thread</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Participants, consent, live media, retained sources, Session chat, transcript review, and this meeting’s notes stay on one auditable Session.</p>
+          <div className="mt-3 flex flex-wrap gap-2"><Link href={sessionWorkspaceHref(roomId, "live")} className="rounded-full bg-violet-800 px-3 py-2 text-[10px] font-black uppercase text-white">Open live room</Link><Link href={sessionWorkspaceHref(roomId, "recordings")} className="rounded-full border border-violet-200 px-3 py-2 text-[10px] font-black uppercase text-violet-950">Source receipts</Link></div>
+        </article>
+        <article className="rounded-xl border border-sky-200 bg-white p-4">
+          <p className="text-[10px] font-black uppercase tracking-wide text-emerald-800">{experience.continuityLabel}</p>
+          <h3 className="mt-1 font-black text-[#3d3122]">{episode ? "Episode-wide collaboration" : "Continuity beyond the call"}</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{experience.continuityDescription}</p>
+          {project ? <Link href={`/nests/${encodeURIComponent(project.slug)}`} className="mt-3 inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Open {project.name}</Link> : null}
+        </article>
+        <article className="rounded-xl border border-sky-200 bg-white p-4">
+          <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Quipsly operating system</p>
+          <h3 className="mt-1 font-black text-[#3d3122]">Reviewed work, not chat-shaped promises</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Tags, notes, goals, tasks, calendar commitments, editor handoffs, and outputs remain canonical tools. Chat and transcripts can propose work, but never silently become it.</p>
+          <div className="mt-3 flex flex-wrap gap-2"><Link href={sessionWorkspaceHref(roomId, "work")} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Review work</Link><Link href="/schedule" className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Calendar</Link></div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function SessionWorkspaceOverview({
   roomId,
   preparation,
@@ -1814,6 +1860,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
       <SessionWorkspaceNavigation roomId={roomId} mode={mode} />
 
+      {mode === "overview" || mode === "live" ? <SessionCollaborationScopes
+        roomId={roomId}
+        purpose={preparation?.purpose || "COACHING"}
+        project={preparation?.project ? { name: preparation.project.name, slug: preparation.project.slug } : null}
+      /> : null}
+
       {mode === "overview" ? <SessionWorkspaceOverview
         roomId={roomId}
         preparation={preparation}
@@ -1837,7 +1889,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         <LiveSessionRoom
           callRoomId={roomId}
           sessionTitle={sessionTitle}
-          kind={preparation?.purpose.toUpperCase().includes("PODCAST") || preparation?.purpose.toUpperCase().includes("EPISODE") ? "episode" : "coaching"}
+          kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
+          purpose={preparation?.purpose || "COACHING"}
         />
         {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
       </div> : null}

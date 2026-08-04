@@ -8,6 +8,9 @@ import EpisodeRoomClient from "./EpisodeRoomClient";
 jest.mock("./EpisodeRoomChat", () => function EpisodeRoomChatStub() {
   return <section>Episode chat</section>;
 });
+jest.mock("@/components/session-thread", () => ({
+  SessionThread: ({ scopeLabel }: { scopeLabel?: string }) => <section>{scopeLabel || "Session thread"}</section>,
+}));
 
 const originalFetch = globalThis.fetch;
 
@@ -246,6 +249,7 @@ describe("EpisodeRoomClient shared writing", () => {
     )).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Open session" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Use recording clock" })).toBeDisabled();
+    expect(screen.getByText("This recording Session only")).toBeInTheDocument();
   });
 
   it("pauses local playback controls when a bound Capture clock is stale", () => {

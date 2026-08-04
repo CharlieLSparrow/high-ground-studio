@@ -3,14 +3,24 @@ import { render, screen } from "@testing-library/react";
 
 import CallRoomPage from "./page";
 
-describe("retired prototype call room", () => {
-  it("does not present mic, signaling, recording, or guest-link controls", () => {
-    render(<CallRoomPage />);
+const redirect = jest.fn();
+jest.mock("next/navigation", () => ({ redirect: (value: string) => redirect(value) }));
 
-    expect(screen.getByRole("heading", { name: "This prototype call room is retired." })).toBeInTheDocument();
-    expect(screen.getByText(/did not join a room, request microphone access, create a guest link, start recording, or send signaling/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open Sessions" })).toHaveAttribute("href", "/coaching/sessions");
-    expect(screen.queryByRole("button", { name: /Start live call/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Share guest link/i)).not.toBeInTheDocument();
+describe("canonical live Session entry", () => {
+  beforeEach(() => redirect.mockClear());
+
+  it("explains that browser and iPhone calls belong to a saved Session", async () => {
+    render(await CallRoomPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("heading", { name: /Browser calls now live inside the work they belong to/i })).toBeInTheDocument();
+    expect(screen.getByText(/Use external studio devices/i)).toBeInTheDocument();
+    expect(screen.getByText(/Join from browser and iPhone/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Choose a Session/i })).toHaveAttribute("href", "/coaching/sessions");
+    expect(screen.queryByText(/prototype call room is retired/i)).not.toBeInTheDocument();
+  });
+
+  it("preserves old room links by sending them to the canonical live workspace", async () => {
+    await CallRoomPage({ searchParams: Promise.resolve({ room: "call-room-1" }) });
+    expect(redirect).toHaveBeenCalledWith("/sessions/call-room-1?mode=live");
   });
 });

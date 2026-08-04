@@ -35,6 +35,7 @@ import {
 
 import LocalDateTime from "@/components/LocalDateTime";
 import { LiveSessionRoom } from "@/components/live-session-room";
+import { SessionThread } from "@/components/session-thread";
 import {
   episodeRoomTimelineClips,
   episodeRoomTimelineIsCurrent,
@@ -684,12 +685,23 @@ export default function EpisodeRoomClient({
               callRoomId={recordingSession.id}
               sessionTitle={recordingSession.title}
               kind="episode"
+              purpose="PODCAST"
               projectSlug={projectSlug}
               episodeSlug={episodeSlug}
               episodeWatchHint={episodeWatchHint}
               onEpisodeWatchHint={receiveEpisodeWatchHint}
               compact
             />
+            <div className="mt-4">
+              <SessionThread
+                projectSlug={projectSlug}
+                roomId={recordingSession.id}
+                sessionTitle={recordingSession.title}
+                canPost={canEdit}
+                scopeLabel="This recording Session only"
+                scopeDescription="Coordinate this take, device checks, handoffs, and immediate recording decisions here. The Episode thread below remains the long-lived conversation for writing, editing, and publishing."
+              />
+            </div>
           </div>
         </details> : null}
 

@@ -7364,3 +7364,40 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   provider runs, physical-iPhone Apple runs, real correction effort, and a
   dated default-provider decision. See
   `docs/coordination/2026-08-03-transcript-provider-evidence-ledger.md`.
+
+## 2026-08-04 canonical browser Session Room checkpoint
+
+- Audited the existing call, retained-source, Episode Room, Coaching Session,
+  chat, and iPhone provider boundaries. The core browser capability already
+  existed, but navigation and copy hid it behind a retired `/call` prototype,
+  fragile purpose-name heuristics, and ambiguous Episode-versus-Session chat.
+- Added one typed purpose projection for coaching, podcast, research interview,
+  and internal meeting. The Session kernel still owns participant identity,
+  consent, LiveKit transport, immutable source receipts, transcript evidence,
+  notes, work, and outputs; purpose changes only experience defaults and the
+  surrounding continuity tools.
+- Browser participants can choose, preview, and remember an external mic,
+  camera, and output. A standards-based output chooser is offered where the
+  browser supports it, with honest system-routing fallback elsewhere. Preview
+  remains explicitly local and does not imply call transport or recording.
+- Episode Room now places the selected take's Session thread directly beneath
+  its embedded Live Room while preserving the persistent Episode thread for
+  writing, editing, and publishing. Coaching receives purpose-neutral Session
+  thread language and a direct Join live room action.
+- The retired `/call` implementation was removed. Legacy room query links route
+  into `/sessions/:id?mode=live`; the bare route explains the canonical model
+  rather than maintaining a second call product.
+- Operated two independent signed-in browser contexts against local PostgreSQL,
+  Firebase Auth Emulator, Nest, and LiveKit. Both joined one retained coaching
+  Session, observed a two-participant roster, and completed a real Session chat
+  round trip. The operation explicitly started neither retained-source nor
+  provider recording. Separately operated the real device UI with available
+  Mac, virtual, and MOTIV Mix devices, confirmed preview-only truth, and proved
+  the selected MOTIV input survived reload.
+- This closes the local browser/browser room-and-thread proof, not the release
+  gate. Remaining priorities are managed-provider preview configuration, guest
+  invite/join UX, physical browser+iPhone two-person operation, external-device
+  route-loss/reconnect, long-take OPFS recovery and canonical upload/editor
+  playback, coaching privacy acceptance, and genuine Episode Watch alignment.
+  No cloud deployment, invitation, provider recording, source recording, or
+  production mutation occurred in this checkpoint.
