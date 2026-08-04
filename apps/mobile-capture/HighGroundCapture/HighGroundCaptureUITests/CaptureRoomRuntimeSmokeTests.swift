@@ -278,7 +278,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     private func launchSignedInCaptureApp(
         baseURLOverride: String? = nil,
         expectProtectedOfflineShell: Bool = false,
-        initialTab: String = "today"
+        initialTab: String = "today",
+        sessionDeepLinkRoomID: String? = nil
     ) throws -> XCUIApplication {
         let credentials = try runtimeSmokeCredentials()
         let app = XCUIApplication()
@@ -292,6 +293,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         if initialTab != "today" {
             app.launchArguments.append("--capture-ui-preview-tab=\(initialTab)")
+        }
+        if let sessionDeepLinkRoomID, !sessionDeepLinkRoomID.isEmpty {
+            app.launchArguments.append(
+                "--capture-runtime-session-link=quipsly://session/\(sessionDeepLinkRoomID)?mode=live"
+            )
         }
         app.launch()
 
@@ -3817,6 +3823,49 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Library"].firstMatch.exists)
         XCTAssertTrue(app.tabBars.buttons["Account"].firstMatch.exists)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
+    }
+
+    func testAcceptedSessionLinkFocusesCanonicalRoomWithoutJoiningOrRecording() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty else {
+            throw XCTSkip("Session deep-link proof requires one exact accessible Session ID and title.")
+        }
+
+        let app = try launchSignedInCaptureApp(
+            initialTab: "record",
+            sessionDeepLinkRoomID: sessionID
+        )
+        XCTAssertTrue(
+            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 30),
+            "Capture should re-authorize and focus the exact canonical Session named by the inert app link."
+        )
+        let handoffBoundaryCopy = app.staticTexts.matching(
+            NSPredicate(
+                format: "label == %@",
+                "Session opened from the private link. Review the audio route and consent, then explicitly join the live room or start a local source."
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            handoffBoundaryCopy.waitForExistence(timeout: 15),
+            "The native handoff should explain that join and recording remain deliberate actions."
+        )
+        XCTAssertFalse(
+            app.otherElements["GlobalCaptureBanner"].exists,
+            "Opening a Session link must never start or imply local recording."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureStopButton"].exists,
+            "Opening a Session link must not create recorder state."
+        )
+        XCTAssertFalse(
+            app.buttons["ProviderLeaveRoomButton"].exists,
+            "Opening a Session link must not join provider media."
+        )
+        attachRecordingIdentity(
+            "\(sessionID)|\(sessionTitle)|focused|not-joined|not-recording",
+            name: "Accepted Session link to native canonical room"
+        )
     }
 
     func testIPhoneCreatesRetainedSessionAndReadsRecordingTruth() throws {

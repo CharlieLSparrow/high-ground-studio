@@ -150,6 +150,7 @@
     "quipsly:capture:rehearsal-preflight": "bash scripts/quipsly-hgo-rehearsal-live-preflight.sh",
     "quipsly:capture:rehearsal-preflight:test": "node --test scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
     "quipsly:capture:nest-evidence:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-nest-source-evidence-contract.sh",
+    "quipsly:capture:session-deep-link:test": "bash scripts/test-capture-session-deep-links.sh",
     "quipsly:capture:support-snapshot:test": "bash scripts/test-capture-support-snapshot.sh",
     "quipsly:capture:document-note-edits:test": "bash scripts/test-capture-document-note-edits.sh",
     "quipsly:capture:focus-block-decisions:test": "bash scripts/test-capture-focus-block-decisions.sh",

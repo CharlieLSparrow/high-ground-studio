@@ -7,6 +7,7 @@ import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, F
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
+import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import { LiveSessionRoom } from "@/components/live-session-room";
 import { SessionInvitations } from "@/components/session-invitations";
 import { SessionThread } from "@/components/session-thread";
@@ -1529,11 +1530,12 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
   notesView?: SessionNoteView;
+  joinedFromInvitation?: boolean;
   preparation?: SessionPreparation | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
@@ -1887,6 +1889,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </> : null}
 
       {mode === "live" ? <div className="space-y-5">
+        <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
         <LiveSessionRoom
           callRoomId={roomId}
           sessionTitle={sessionTitle}

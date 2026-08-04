@@ -18,11 +18,20 @@ Date: 2026-08-04
   continuity. Coaching uses the same Session kernel but projects the result
   toward engagement continuity, shared/private notes, goals, tasks, and client
   follow-up.
-- Full Nest Jest passes 285 suites / 1,510 runnable tests, the 172-route Nest
+- An accepted Session participant can now move from the browser Session into
+  the same canonical room in Quipsly Capture. The app link carries no authority:
+  Capture retains it across sign-in, re-authorizes the exact Session through
+  Nest, and does not join LiveKit or start local/provider recording. An operated
+  retained-guest iPhone 17 Pro simulator pass proved the exact Session title
+  and all three stopped states.
+- Full Nest Jest passes 292 suites / 1,531 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
-  and the Quipsly Capture iOS simulator build passes. This is compiled local
-  qualification, not physical browser/iPhone or cloud-provider acceptance.
-- LiveKit project/secrets, exact live-bucket CORS readback, physical external-
+  the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
+  iOS simulator build plus focused authenticated handoff operation pass. This
+  is compiled and operated local qualification, not physical browser/iPhone or
+  cloud-provider acceptance.
+- Associated Domains/AASA activation for HTTPS Universal Links, LiveKit
+  project/secrets, exact live-bucket CORS readback, physical external-
   device operation, and browser/iPhone editor playback remain deployment
   gates. The cost/environment proposal is in
   `docs/operations/quipsly-livekit-cost-and-environment-proposal.md`.

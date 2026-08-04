@@ -176,6 +176,36 @@ requiring Quipsly identity for private coaching and provenance-bearing work.
 LiveKit still receives only a short-lived room-scoped participant token after
 acceptance; the invitation token never reaches LiveKit.
 
+### Browser-to-Capture handoff
+
+After acceptance, the canonical browser Session exposes an **Open in Quipsly
+Capture** action. The current handoff uses the existing
+`quipsly://session/:callRoomId?mode=live` custom URL scheme and carries only a
+bounded Session identifier and display mode. Capture treats the URL as an inert
+navigation request: it retains the request across sign-in, reloads that exact
+Session through the authenticated Nest API, and focuses it only when the
+signed-in account still has access.
+
+The parser rejects unknown schemes, hosts, paths, non-ASCII or oversized room
+identifiers, encoded separators, and any query parameter whose name resembles
+an invitation or participant token. A link never accepts an invitation, grants
+membership, records consent, mints a LiveKit credential, joins conversation
+media, or starts retained-source/provider recording. Those remain separate,
+visible user actions after the authoritative Session reload.
+
+Capture can also parse the future exact-host form
+`https://nest.quipsly.com/sessions/:callRoomId?open=capture&mode=live`, but HTTPS
+opening is not enabled yet. It requires both an Associated Domains entitlement
+in the signed app and a matching `apple-app-site-association` file on the
+production website. Until that deployment contract is configured and read
+back, Quipsly must describe this as a custom app link rather than a Universal
+Link.
+
+- [Apple: defining a custom URL scheme](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
+- [Apple: responding to incoming URLs](https://developer.apple.com/documentation/swiftui/view/onopenurl%28perform%3A%29)
+- [Apple: supporting Universal Links](https://developer.apple.com/documentation/xcode/supporting-universal-links-in-your-app)
+- [Apple: supporting associated domains](https://developer.apple.com/documentation/xcode/supporting-associated-domains)
+
 - [Riverside guest lobby](https://support.riverside.fm/hc/en-us/articles/5252042203037-Join-a-Studio-as-a-Guest)
 - [LiveKit tokens and grants](https://docs.livekit.io/home/server/generating-tokens)
 
@@ -245,6 +275,9 @@ Implemented in the browser:
 - expiring, one-time, email-bound Session invitation links with a preflight
   lobby, wrong-account refusal, pending-link revocation, and no implicit Nest
   membership or delivery claim;
+- a browser-to-Capture app handoff that sends only the canonical Session ID,
+  survives native sign-in, re-authorizes through Nest, and never implicitly
+  joins or records;
 - the selected Episode recording Session now exposes its take-specific thread
   immediately beside its embedded Live Room, while the persistent Episode
   thread remains the writing-to-publishing conversation;
@@ -278,10 +311,15 @@ Local operational proof on 2026-08-04:
   accepted; the raw token disappeared; replay was refused; and the client then
   joined the two-browser LiveKit room and completed a Session-thread round trip
   without receiving Nest access.
+- the accepted retained guest launched Capture with that exact Session handoff
+  on an iPhone 17 Pro simulator; Capture re-authorized and focused the named
+  Session while provider media, local recording, and server recording all
+  remained stopped.
 
-This proves the local browser/browser collaboration kernel and real-device
-setup UI. It is not physical iPhone interoperability, long-take source proof,
-or production-provider acceptance.
+This proves the local browser/browser collaboration kernel, real-device setup
+UI, and native simulator handoff boundary. It is not physical iPhone
+interoperability, Universal Link deployment, long-take source proof, or
+production-provider acceptance.
 
 Still gated:
 

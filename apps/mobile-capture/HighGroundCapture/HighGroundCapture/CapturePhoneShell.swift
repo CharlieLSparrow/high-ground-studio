@@ -8,6 +8,7 @@ struct CapturePhoneShell: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
+    @EnvironmentObject private var deepLinkRouter: CaptureDeepLinkRouter
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
     @State private var visibleTab: CaptureRootTab
@@ -122,6 +123,14 @@ struct CapturePhoneShell: View {
         }
         .task {
             await model.load()
+            showRejectedLinkNotice()
+            await routePendingSessionLink()
+        }
+        .onChange(of: deepLinkRouter.pendingSession) { _, _ in
+            Task { await routePendingSessionLink() }
+        }
+        .onChange(of: deepLinkRouter.rejectedLinkNotice) { _, _ in
+            showRejectedLinkNotice()
         }
         .onChange(of: visibleTab) { _, tab in
             guard tab == .today, !model.usesPreviewData else { return }
@@ -145,6 +154,26 @@ struct CapturePhoneShell: View {
         .onChange(of: videoCapture.state) { _, state in
             model.reconcileVideoCaptureState(state, using: videoCapture)
         }
+    }
+
+    @MainActor
+    private func routePendingSessionLink() async {
+        guard let request = deepLinkRouter.pendingSession else { return }
+        switch await model.focusSession(from: request) {
+        case let .opened(tab):
+            visibleTab = tab
+            deepLinkRouter.consume(request)
+        case .rejected:
+            deepLinkRouter.consume(request)
+        case .retryWhenOnline:
+            break
+        }
+    }
+
+    @MainActor
+    private func showRejectedLinkNotice() {
+        guard let notice = deepLinkRouter.consumeRejectedLinkNotice() else { return }
+        model.errorMessage = notice
     }
 
     private var audioCaptureIsActive: Bool {

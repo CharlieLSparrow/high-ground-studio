@@ -7437,3 +7437,32 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   long-take retained-source recovery/upload/editor playback, and genuine HGO
   and coaching use. No external invitation, recording, deploy, or production
   mutation occurred.
+
+## 2026-08-04 browser-to-Capture Session handoff checkpoint
+
+- Added one purpose-aware **Open in Quipsly Capture** action to the canonical
+  browser Session, including the accepted-invitation arrival state. Browser and
+  iPhone are explicitly described as two clients of the same Session, not
+  separate calls or duplicated workspaces.
+- Added a defensive native link parser for the existing `quipsly` custom URL
+  scheme. It accepts one bounded ASCII Session identity and mode, rejects
+  malformed paths and credential-like query parameters, and stores no rejected
+  raw URL in user-visible state.
+- Capture retains a valid request across authentication, re-fetches the exact
+  Session from Nest, and focuses it only after current account authorization.
+  Invalid/forbidden links fail closed; transient transport errors stay
+  retryable; an active different room or recording is never displaced.
+- Opening a link deliberately does not accept an invitation, change consent,
+  mint a provider token, join LiveKit, or start local/provider recording. The
+  UI tells the participant to inspect the audio route and consent before those
+  explicit actions.
+- Operated the retained accepted guest against local Nest and PostgreSQL on an
+  iPhone 17 Pro simulator. The exact invitation Session opened and the test
+  verified no global recording banner, recorder stop state, or provider leave
+  control existed. Parser, web component, TypeScript, and simulator build gates
+  also pass.
+- Capture can parse a future exact-host HTTPS form, but Universal Links remain
+  intentionally inactive until the signed Associated Domains entitlement and
+  production AASA file are deployed and read back together. The next physical
+  gate is a two-person browser/iPhone Session with route loss, reconnect,
+  headphones, retained-source upload, and editor playback.
