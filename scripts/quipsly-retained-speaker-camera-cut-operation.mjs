@@ -73,7 +73,13 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: "light", locale: "en-US", reducedMotion: "reduce" });
   const page = await context.newPage();
   const pageErrors = [];
+  const consoleErrors = [];
+  const failedRequests = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText || "failed"}`));
 
   try {
     const callbackPath = `/editor?project=${encodeURIComponent(PROJECT_SLUG)}&episode=${encodeURIComponent(EPISODE_SLUG)}`;
@@ -160,7 +166,44 @@ async function main() {
       assert(reloadedTextLower.includes(expected), `Reloaded canonical camera cut lost: ${expected}. Camera desk: ${reloadedCameraText}`);
     }
     console.error("[speaker-camera-cut] canonical reload verified");
-    await assertNoHorizontalOverflow(reloadedMain, "retained speaker-camera cut editor");
+
+    const proofWatchResponse = page.waitForResponse((response) => {
+      if (!response.url().includes("/api/editor/edit-review") || response.request().method() !== "POST") return false;
+      try {
+        const body = response.request().postDataJSON();
+        return body?.action === "PROOF_WATCHED" && body?.subjectKind === "camera-switch";
+      } catch {
+        return false;
+      }
+    }, { timeout: 30_000 }).catch((error) => {
+      throw new Error([
+        error instanceof Error ? error.message : String(error),
+        `Camera desk before click: ${reloadedCameraText}`,
+        `Page errors: ${pageErrors.join(" | ") || "none"}`,
+        `Console errors: ${consoleErrors.join(" | ") || "none"}`,
+        `Failed requests: ${failedRequests.join(" | ") || "none"}`,
+      ].join("\n"));
+    });
+    const proofWatchButton = reloadedCameraCutSection.getByRole("button", { name: "Proof-watch cut", exact: true }).first();
+    assert(await proofWatchButton.count() === 1, `Expected a proof-watch control for an assembled camera range: ${reloadedCameraText}`);
+    await proofWatchButton.focus();
+    await page.keyboard.press("Enter");
+    const proofWatchReceipt = await proofWatchResponse;
+    const proofWatchBody = await proofWatchReceipt.json().catch(() => ({}));
+    assert(proofWatchReceipt.ok() && proofWatchBody?.receipt?.action === "PROOF_WATCHED", `Camera proof-watch receipt failed (${proofWatchReceipt.status()}): ${JSON.stringify(proofWatchBody)}`);
+    await reloadedCameraCutSection.getByText("Proof watched", { exact: true }).first().waitFor({ timeout: 20_000 });
+    await reloadedCameraCutSection.getByRole("button", { name: "Watch again", exact: true }).first().waitFor({ timeout: 20_000 });
+    assert((await reloadedCameraCutSection.innerText()).includes("Review receipt saved."), "Camera proof-watch did not expose its durable receipt status.");
+    console.error("[speaker-camera-cut] assembled cut proof-watched");
+
+    await page.reload({ waitUntil: "load" });
+    await page.getByText(/Loaded .* from saved timeline/, { exact: true }).waitFor({ timeout: 20_000 });
+    const finalMain = page.getByRole("main").last();
+    const finalCameraCutSection = finalMain.getByRole("heading", { name: "Tell Quipsly which camera belongs to each voice", exact: true }).locator("xpath=ancestor::section");
+    await finalCameraCutSection.getByText("Proof watched", { exact: true }).first().waitFor({ timeout: 20_000 });
+    assert(await finalCameraCutSection.getByRole("button", { name: "Watch again", exact: true }).count() >= 1, "Camera proof-watch state did not survive canonical reload.");
+    console.error("[speaker-camera-cut] proof-watch receipt reload verified");
+    await assertNoHorizontalOverflow(finalMain, "retained speaker-camera cut editor");
     assert(pageErrors.length === 0, `Rendered editor raised page errors: ${pageErrors.join(" | ")}`);
 
     process.stdout.write(`${JSON.stringify({
@@ -171,6 +214,7 @@ async function main() {
       cameraMappings: 2,
       cameraSwitchDecisions: 2,
       deliberateHolds: 1,
+      proofWatchedDecisions: 1,
       durableEvidence: true,
       canonicalReload: true,
       sourceMediaUnchanged: true,

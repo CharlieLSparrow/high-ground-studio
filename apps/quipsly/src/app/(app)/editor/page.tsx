@@ -1969,7 +1969,9 @@ function SpeakerCameraCutDesk({
   onMapSpeaker,
   onAnalyzeEvidence,
   onAssemble,
+  onProofWatchDecision,
   onRemoveDecision,
+  proofWatchedDecisionIds,
 }: {
   timeline: TimelineState;
   holds: CameraCutAssemblyHold[];
@@ -1979,7 +1981,9 @@ function SpeakerCameraCutDesk({
   onMapSpeaker: (speakerKey: string, speakerLabel: string, clipId: string) => void;
   onAnalyzeEvidence: () => void;
   onAssemble: () => void;
+  onProofWatchDecision: (decision: CameraSwitchDecision) => void;
   onRemoveDecision: (decision: CameraSwitchDecision) => void;
+  proofWatchedDecisionIds: Set<string>;
 }) {
   const speakers = Array.from(
     timeline.transcript.reduce((map, block) => {
@@ -2080,13 +2084,20 @@ function SpeakerCameraCutDesk({
           <div className="mt-3 max-h-60 space-y-2 overflow-y-auto pr-1">
             {decisions.length ? decisions.map((decision) => {
               const clip = videoClips.find((candidate) => candidate.id === decision.targetClipId);
+              const proofWatched = proofWatchedDecisionIds.has(decision.id);
               return (
-                <div key={decision.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div>
-                    <div className="text-xs font-black text-slate-900">{formatClock(decision.startSeconds)}–{formatClock(decision.startSeconds + decision.durationSeconds)} · {decision.speakerLabel}</div>
-                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{clip?.trackId ?? "missing source"} · {clip?.name ?? decision.targetClipId} · {decision.status} · {decision.evidence.transcriptBlockIds.length} evidence blocks</div>
+                <div key={decision.id} className={`rounded-2xl border bg-white p-3 ${proofWatched ? "border-emerald-300" : "border-slate-200"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-900"><span>{formatClock(decision.startSeconds)}–{formatClock(decision.startSeconds + decision.durationSeconds)} · {decision.speakerLabel}</span>{proofWatched ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-800">Proof watched</span> : null}</div>
+                      <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{clip?.trackId ?? "missing source"} · {clip?.name ?? decision.targetClipId} · {decision.status} · {decision.evidence.transcriptBlockIds.length} evidence blocks</div>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                      <button type="button" onClick={() => onProofWatchDecision(decision)} className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-800 hover:bg-sky-100">{proofWatched ? "Watch again" : "Proof-watch cut"}</button>
+                      <button type="button" onClick={() => onRemoveDecision(decision)} className="rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700 hover:bg-rose-50">Restore prior angle</button>
+                    </div>
                   </div>
-                  <button type="button" onClick={() => onRemoveDecision(decision)} className="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700 hover:bg-rose-50">Restore prior angle</button>
+                  <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500">Plays the assembled edit with 1.5 seconds of context and records a review receipt. It does not approve, save, render, or publish.</p>
                 </div>
               );
             }) : (
@@ -3581,6 +3592,44 @@ function CloudEditorContent() {
     removeCameraSwitchDecision(decision.id);
     setCameraCutMessage(`Restored the prior track-priority angle at ${formatClock(decision.startSeconds)}. The camera source and transcript were unchanged.`);
   }, [recordEditReviewAction, removeCameraSwitchDecision]);
+
+  const proofWatchCameraSwitchDecision = useCallback(async (decision: CameraSwitchDecision) => {
+    const currentTimelineDuration = Math.max(
+      1,
+      timelineState.clips.reduce((maximum, clip) => Math.max(maximum, clip.startIn + clip.duration), 0),
+      timelineState.transcript.reduce((maximum, block) => Math.max(maximum, block.time + block.duration), 0),
+    );
+    const start = Math.max(0, decision.startSeconds - 1.5);
+    const end = Math.min(currentTimelineDuration, decision.startSeconds + decision.durationSeconds + 1.5);
+    setEditorMode("play-edit");
+    setCurrentTime(start);
+    setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
+    setIsPreviewPlaying(true);
+    setCameraCutMessage(`Proof-watching the assembled camera decision from ${formatClock(start)} to ${formatClock(end)}. The decision remains a reversible draft while its review receipt is saved.`);
+    const receipt = await recordEditReviewAction({
+      action: "PROOF_WATCHED",
+      subjectId: decision.id,
+      subjectKind: "camera-switch",
+      sourceRange: {
+        startSeconds: decision.startSeconds,
+        endSeconds: decision.startSeconds + decision.durationSeconds,
+      },
+      proposalSetId: decision.evidence.proposalSetId,
+      proposalTimelineFingerprintSha256: decision.evidence.proposalTimelineFingerprintSha256,
+      evidence: {
+        editKind: "deterministic-speaker-camera-cut",
+        targetClipId: decision.targetClipId,
+        targetAssetId: decision.targetAssetId,
+        mappingId: decision.mappingId,
+        transcriptBlockIds: decision.evidence.transcriptBlockIds,
+        playbackMode: "assembled-edit",
+        contextBeforeSeconds: decision.startSeconds - start,
+        contextAfterSeconds: end - (decision.startSeconds + decision.durationSeconds),
+        sourceMediaUnchanged: true,
+      },
+    });
+    setCameraCutMessage(`Proof-watching the assembled camera decision from ${formatClock(start)} to ${formatClock(end)}. The decision remains a reversible draft.${receipt ? " Review receipt saved." : " Playback started, but the receipt failure remains visibly flagged."}`);
+  }, [recordEditReviewAction, setEditorMode, timelineState.clips, timelineState.transcript]);
 
   const dismissAiEditSuggestion = async (index: number) => {
     const edit = aiEditSuggestions[index];
@@ -6410,6 +6459,13 @@ function CloudEditorContent() {
     [timelineState.deactivatedRanges],
   );
   const proofListenPersistedRange = useCallback(async (range: TimelineRangeEdit) => {
+    const start = Math.max(0, range.startSeconds - 1.5);
+    const end = Math.min(totalDuration, range.startSeconds + range.durationSeconds + 1.5);
+    setEditorMode("play-all");
+    setCurrentTime(start);
+    setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
+    setIsPreviewPlaying(true);
+    setAiEditMessage(`Proof-listening to untouched source from ${formatClock(start)} to ${formatClock(end)}. The saved range decision remains active while its review receipt is saved.`);
     const receipt = await recordEditReviewAction({
       action: "PROOF_LISTENED",
       subjectId: range.proposalId ?? range.id,
@@ -6419,12 +6475,6 @@ function CloudEditorContent() {
       proposalTimelineFingerprintSha256: range.proposalTimelineFingerprintSha256,
       evidence: { persistedRangeId: range.id, decisionSource: range.source },
     });
-    const start = Math.max(0, range.startSeconds - 1.5);
-    const end = Math.min(totalDuration, range.startSeconds + range.durationSeconds + 1.5);
-    setEditorMode("play-all");
-    setCurrentTime(start);
-    setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
-    setIsPreviewPlaying(true);
     setAiEditMessage(`Proof-listening to untouched source from ${formatClock(start)} to ${formatClock(end)}. The saved range decision remains active until you restore it.${receipt ? " Review receipt saved." : " This legacy or temporarily unavailable receipt is flagged separately."}`);
   }, [recordEditReviewAction, setEditorMode, totalDuration]);
   const restorePersistedRange = useCallback(async (range: TimelineRangeEdit) => {
@@ -10329,7 +10379,9 @@ function CloudEditorContent() {
             onMapSpeaker={mapSpeakerToCamera}
             onAnalyzeEvidence={handleDeterministicEditAnalysis}
             onAssemble={() => void assembleMappedSpeakerCut()}
+            onProofWatchDecision={(decision) => void proofWatchCameraSwitchDecision(decision)}
             onRemoveDecision={(decision) => void restoreCameraSwitchDecision(decision)}
+            proofWatchedDecisionIds={new Set(editReviewReceipts.filter((receipt) => receipt.action === "PROOF_WATCHED" && receipt.subjectKind === "camera-switch" && receipt.subjectId).map((receipt) => receipt.subjectId!))}
           />
 
           <EpisodeMonitorDeck

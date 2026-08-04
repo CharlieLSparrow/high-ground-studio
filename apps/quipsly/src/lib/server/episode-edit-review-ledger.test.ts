@@ -263,6 +263,28 @@ describe("episode edit review ledger", () => {
           },
         },
       });
+      const proofWatched = await appendEpisodeEditReviewReceipt({
+        prisma,
+        projectId: "project-1",
+        episodeSlug: "episode-1",
+        actor,
+        review: {
+          clientRequestId: "7d444c16-af55-4b06-b37c-04c41927d73f",
+          proposalSetId: proposalSet.proposalSetId,
+          action: "PROOF_WATCHED",
+          subjectId: "camera-switch:map-charlie:2000",
+          subjectKind: "camera-switch",
+          sourceRange: { startSeconds: 2, endSeconds: 4 },
+          proposalTimelineFingerprintSha256: "a".repeat(64),
+          timelineFingerprintBeforeSha256: "9".repeat(64),
+          evidence: {
+            editKind: "deterministic-speaker-camera-cut",
+            targetClipId: "charlie-camera",
+            playbackMode: "assembled-edit",
+            sourceMediaUnchanged: true,
+          },
+        },
+      });
       const restored = await appendEpisodeEditReviewReceipt({
         prisma,
         projectId: "project-1",
@@ -286,8 +308,9 @@ describe("episode edit review ledger", () => {
       });
 
       expect(assembled).toEqual(expect.objectContaining({ scope: "LOCAL_DRAFT", subjectKind: "proposal-set" }));
+      expect(proofWatched).toEqual(expect.objectContaining({ action: "PROOF_WATCHED", scope: "REVIEW_ONLY", subjectKind: "camera-switch" }));
       expect(restored).toEqual(expect.objectContaining({ scope: "LOCAL_DRAFT", subjectKind: "camera-switch" }));
-      expect(receipts.filter((receipt) => receipt.action === "APPLIED_TO_DRAFT" || receipt.action === "RESTORED_TO_DRAFT")).toHaveLength(2);
+      expect(receipts.filter((receipt) => ["APPLIED_TO_DRAFT", "PROOF_WATCHED", "RESTORED_TO_DRAFT"].includes(receipt.action))).toHaveLength(3);
     } finally {
       jest.useRealTimers();
     }

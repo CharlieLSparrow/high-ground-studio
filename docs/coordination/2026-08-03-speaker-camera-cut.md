@@ -37,6 +37,14 @@ leaving audio segments continuous. Deactivated source ranges still ripple in
 active-edit mode before camera selection, so transcript cuts and camera cuts do
 not disagree about time.
 
+Each assembled camera range now has a direct **Proof-watch cut** control. It
+plays the assembled edit with 1.5 seconds of bounded context, stops at the
+review boundary, and appends a `PROOF_WATCHED` receipt bound to the exact
+camera-switch ID, source range, proposal set, timeline fingerprint, camera
+clip/asset, speaker mapping, and transcript blocks. The ledger row then shows a
+durable **Proof watched** state and can be watched again. Proof watching does
+not approve, save, render, publish, or change source media.
+
 ## Operated acceptance
 
 The retained local journey
@@ -50,14 +58,18 @@ the production APIs and UI:
 3. maps Charlie and Scott in the rendered editor;
 4. creates the durable deterministic proposal set;
 5. assembles two camera ranges while holding a 0.8-second Scott interjection;
-6. observes the exact two-decision canonical autosave request; and
+6. observes the exact two-decision canonical autosave request;
 7. reloads the episode and reads back both switch ranges and the selected
-   Charlie edit-monitor angle.
+   Charlie edit-monitor angle;
+8. proof-watches an assembled range through the rendered editor and reads back
+   its exact durable review receipt and visible reviewed state; and
+9. reloads again and proves that review evidence survives independently of the
+   reversible camera draft.
 
 The final operation retained two camera mappings, two switch decisions, one
-deliberate rapid-turn hold, proposal creation, local-draft application, and
-canonical-save receipts. Source media remained unchanged and the final browser
-run had no page errors or horizontal overflow.
+deliberate rapid-turn hold, proposal creation, local-draft application,
+canonical-save, and proof-watch receipts. Source media remained unchanged and
+the final browser run had no page errors or horizontal overflow.
 
 The first external H.264 fixtures exposed a codec-format error in the headless
 environment. They were replaced with a small CC0 WebM fixture so the retained
@@ -67,18 +79,17 @@ separate acceptance gates.
 
 ## Verification
 
-- domain, reducer, renderer, and server-ledger focused suites: 15/15 passed;
-- artifact/editor suites: 14/14 passed;
-- strict domain and Nest TypeScript: passed;
-- complete 165-route Nest production build: passed with an explicit 8 GB Node
+- focused speaker-cut, review-ledger, and review-route suites: 11/11 passed;
+- strict Nest TypeScript: passed;
+- complete 166-route Nest production build: passed with an explicit 8 GB Node
   heap after the default 4 GB build worker exhausted memory; and
-- retained rendered camera-map, evidence, assemble, autosave, reload, and
-  overflow journey: passed.
+- retained rendered camera-map, evidence, assemble, autosave, proof-watch,
+  receipt reload, and overflow journey: passed.
 
 ## Next join
 
 Run the same speaker-camera contract on genuine consented HGO Capture and Canon
-sources, add proof-watch controls directly to camera decision rows, then probe
-an exported render's streams, duration, and switch seams. In parallel, continue
-the transcription-provider corpus evaluation so speaker labels and timing have
-measured correction-cost evidence rather than assumed quality.
+sources, then probe an exported render's streams, duration, and switch seams.
+In parallel, continue the transcription-provider corpus evaluation so speaker
+labels and timing have measured correction-cost evidence rather than assumed
+quality.
