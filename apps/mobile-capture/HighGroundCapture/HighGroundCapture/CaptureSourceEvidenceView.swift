@@ -73,7 +73,21 @@ struct CaptureSourceEvidenceView: View {
             EvidenceRow(label: "App", value: appLabel(recording.sourceProfile))
             EvidenceRow(label: "Device", value: deviceLabel(recording.sourceProfile))
             EvidenceRow(label: "Audio route", value: routeLabel(recording.sourceProfile))
+            EvidenceRow(
+                label: "Input data source",
+                value: nonempty(recording.sourceProfile?.audioInputDataSourceName)
+                    ?? "Not exposed by this input"
+            )
+            EvidenceRow(
+                label: "Encoded audio",
+                value: audioFormatLabel(recording.sourceProfile)
+            )
+            EvidenceRow(
+                label: "Hardware input",
+                value: audioHardwareLabel(recording.sourceProfile)
+            )
             EvidenceRow(label: "Pipeline", value: nonempty(recording.sourceProfile?.audioCapturePipeline) ?? "Not recorded")
+            EvidenceRow(label: "Pause timeline", value: nonempty(recording.sourceProfile?.pauseTimelinePolicy) ?? "Not recorded")
             if recording.effectiveMediaKind == .video {
                 EvidenceRow(label: "Camera", value: nonempty(recording.sourceProfile?.cameraPosition)?.capitalized ?? "Not recorded")
                 EvidenceRow(label: "Recorded media", value: recording.recordedVideoProfileLabel ?? "Awaiting full decode evidence")
@@ -418,6 +432,31 @@ struct CaptureSourceEvidenceView: View {
         return nonempty(label) ?? "No captured audio route"
     }
 
+    private func audioFormatLabel(_ profile: LocalRecordingSourceProfile?) -> String {
+        guard profile?.includesAudio == true else { return "No encoded audio track claimed" }
+        let recorded = profile?.recordedMedia
+        let sampleRate = recorded?.audioSampleRate ?? profile?.audioSampleRate
+        let channels = recorded?.audioChannelCount ?? profile?.audioChannelCount
+        let trackCount = recorded?.audioTrackCount
+        let pieces = [
+            nonempty(profile?.codec)?.uppercased(),
+            sampleRate.map { "\(Int($0.rounded())) Hz" },
+            channels.map { "\($0) channel\($0 == 1 ? "" : "s")" },
+            trackCount.map { "\($0) decoded track\($0 == 1 ? "" : "s")" },
+        ].compactMap { $0 }
+        return pieces.isEmpty ? "Audio format not recorded" : pieces.joined(separator: " · ")
+    }
+
+    private func audioHardwareLabel(_ profile: LocalRecordingSourceProfile?) -> String {
+        let pieces = [
+            profile?.audioHardwareSampleRate.map { "\(Int($0.rounded())) Hz" },
+            profile?.audioHardwareInputChannelCount.map {
+                "\($0) input channel\($0 == 1 ? "" : "s")"
+            },
+        ].compactMap { $0 }
+        return pieces.isEmpty ? "Not measured by this capture build" : pieces.joined(separator: " · ")
+    }
+
     private func shortenedDigest(_ value: String?) -> String {
         guard let value = nonempty(value), value.count >= 16 else {
             return "Not verified"
@@ -496,8 +535,12 @@ struct CaptureSourceEvidencePreviewView: View {
                 previewCard(title: "Captured with", systemImage: "iphone.gen3") {
                     EvidenceRow(label: "App", value: "Quipsly Capture preview")
                     EvidenceRow(label: "Device", value: "iPhone · iOS preview")
-                    EvidenceRow(label: "Audio route", value: "Preview microphone")
+                    EvidenceRow(label: "Audio route", value: "Preview microphone · USB audio")
+                    EvidenceRow(label: "Input data source", value: "Preview mic input")
+                    EvidenceRow(label: "Encoded audio", value: "AAC-LC · 48000 Hz · 1 channel · 1 decoded track")
+                    EvidenceRow(label: "Hardware input", value: "48000 Hz · 1 input channel")
                     EvidenceRow(label: "Pipeline", value: "livekit-local-input-pcm")
+                    EvidenceRow(label: "Pause timeline", value: "silence-preserves-wall-clock")
                 }
 
                 previewCard(title: "Room boundary", systemImage: "lock.shield.fill") {

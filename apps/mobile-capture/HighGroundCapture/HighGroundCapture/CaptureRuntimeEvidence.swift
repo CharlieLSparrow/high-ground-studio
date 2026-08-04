@@ -13,12 +13,17 @@ struct CaptureRuntimeEvidence {
     let systemVersion: String
     let audioRouteName: String?
     let audioRoutePortType: String?
+    let audioInputDataSourceName: String?
+    let audioHardwareSampleRate: Double?
+    let audioHardwareInputChannelCount: Int?
 
     static func current(
         audioSession: AVAudioSession = .sharedInstance()
     ) -> CaptureRuntimeEvidence {
         let input = audioSession.currentRoute.inputs.first
             ?? audioSession.availableInputs?.first
+        let sampleRate = audioSession.sampleRate
+        let inputChannels = audioSession.inputNumberOfChannels
         return CaptureRuntimeEvidence(
             appVersion: bundleValue("CFBundleShortVersionString")
                 ?? "unknown",
@@ -28,7 +33,17 @@ struct CaptureRuntimeEvidence {
             systemName: UIDevice.current.systemName,
             systemVersion: UIDevice.current.systemVersion,
             audioRouteName: normalized(input?.portName),
-            audioRoutePortType: normalized(input?.portType.rawValue)
+            audioRoutePortType: normalized(input?.portType.rawValue),
+            audioInputDataSourceName: normalized(
+                input?.selectedDataSource?.dataSourceName
+                    ?? audioSession.inputDataSource?.dataSourceName
+            ),
+            audioHardwareSampleRate: sampleRate.isFinite && sampleRate > 0
+                ? sampleRate
+                : nil,
+            audioHardwareInputChannelCount: inputChannels > 0
+                ? inputChannels
+                : nil
         )
     }
 

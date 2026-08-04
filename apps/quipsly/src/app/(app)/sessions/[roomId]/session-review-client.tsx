@@ -496,6 +496,27 @@ function SessionSourceEvidenceCard({
     const appLabel = source.captureRuntime.appVersion
       ? `Quipsly Capture ${source.captureRuntime.appVersion}${source.captureRuntime.appBuild ? ` (${source.captureRuntime.appBuild})` : ""}`
       : "Capture build not preserved";
+    const audio = source.captureRuntime.audioFormat ?? {
+      container: null,
+      codec: null,
+      sampleRateHz: null,
+      channelCount: null,
+      hardwareSampleRateHz: null,
+      hardwareInputChannelCount: null,
+      decodedAudioTrackCount: null,
+      decodedSampleRateHz: null,
+      decodedChannelCount: null,
+      capturePipeline: null,
+      pauseTimelinePolicy: null,
+    };
+    const audioSampleRate = audio.decodedSampleRateHz ?? audio.sampleRateHz;
+    const audioChannels = audio.decodedChannelCount ?? audio.channelCount;
+    const audioFormatLabel = [
+      audio.codec?.toUpperCase(),
+      audio.container?.toUpperCase(),
+      audioSampleRate ? `${Math.round(audioSampleRate)} Hz` : null,
+      audioChannels ? `${audioChannels} ch` : null,
+    ].filter(Boolean).join(" · ") || "Audio format not preserved";
     return <article key={source.recordingAssetId} className={`rounded-xl border bg-white p-4 ${drift ? "border-rose-300" : verified ? "border-emerald-200" : "border-amber-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -507,7 +528,7 @@ function SessionSourceEvidenceCard({
       </div>
 
       <dl className="mt-4 grid gap-2 sm:grid-cols-2">
-        <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Capture runtime</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{appLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{[source.captureRuntime.deviceModel, source.captureRuntime.operatingSystem].filter(Boolean).join(" · ") || "Device/OS not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.captureRuntime.audioRoute || "No captured audio route"}</dd></div>
+        <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Capture runtime</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{appLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{[source.captureRuntime.deviceModel, source.captureRuntime.operatingSystem].filter(Boolean).join(" · ") || "Device/OS not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.captureRuntime.audioRoute || "No captured audio route"}{source.captureRuntime.audioInputDataSource ? ` · ${source.captureRuntime.audioInputDataSource}` : ""}</dd><dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">{audioFormatLabel}</dd></div>
         <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Cloud copy</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{byteSizeLabel(source.cloud.byteSize)} · generation {source.cloud.generation || "absent"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.cloud.verifiedAt ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}` : "No server verification time"}</dd></div>
       </dl>
 
@@ -527,6 +548,8 @@ function SessionSourceEvidenceCard({
           <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">SHA-256</dt><dd className="mt-1 break-all font-mono">{source.cloud.sha256 || "absent"}</dd></div>
           <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Private object</dt><dd className="mt-1 break-all font-mono">{source.cloud.bucket && source.cloud.objectPath ? `${source.cloud.bucket}/${source.cloud.objectPath}` : "absent"}</dd></div>
           <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Dispositions</dt><dd className="mt-1">{humanize(source.processingDisposition)} processing · {humanize(source.transcriptDisposition)} transcript</dd></div>
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Audio pipeline</dt><dd className="mt-1 break-words">{audio.capturePipeline || "absent"} · {audio.pauseTimelinePolicy || "pause policy absent"}</dd></div>
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Hardware input</dt><dd className="mt-1">{audio.hardwareSampleRateHz ? `${audio.hardwareSampleRateHz} Hz` : "not measured"} · {audio.hardwareInputChannelCount ? `${audio.hardwareInputChannelCount} ch` : "channels unknown"}</dd></div>
         </dl>
       </details>
       {source.status === "HELD" && source.uploadSessionId

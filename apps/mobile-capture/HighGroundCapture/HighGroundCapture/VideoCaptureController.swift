@@ -399,6 +399,15 @@ final class VideoCaptureController: ObservableObject {
                 audioRoutePortType: profile.includesAudio
                     ? runtimeEvidence.audioRoutePortType
                     : nil,
+                audioInputDataSourceName: profile.includesAudio
+                    ? runtimeEvidence.audioInputDataSourceName
+                    : nil,
+                audioHardwareSampleRate: profile.includesAudio
+                    ? runtimeEvidence.audioHardwareSampleRate
+                    : nil,
+                audioHardwareInputChannelCount: profile.includesAudio
+                    ? runtimeEvidence.audioHardwareInputChannelCount
+                    : nil,
                 monotonicStartedNanoseconds: monotonicStarted,
                 clockSamples: clockSamples.isEmpty ? nil : clockSamples
             )

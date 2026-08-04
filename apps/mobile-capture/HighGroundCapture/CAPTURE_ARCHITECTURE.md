@@ -160,6 +160,17 @@ The coordinator pins one immutable session context for the life of a recording o
 
 `AudioCaptureController` owns `AVAudioRecorder` for the audio-first v1 lane. `CaptureAudioSessionCoordinator` is the sole policy owner for the process-wide `AVAudioSession` shared by local capture, playback, CallKit, and LiveKit. CallKit owns native call presentation and the activation boundary; LiveKit owns provider-room media transport. Neither owns local-recording truth. LiveKit automatic audio-session management is disabled; its engine is enabled only after CallKit activates the process audio session and disabled again on deactivation. A failed or timed-out activation tears down the provider connection and clears the visible connected state instead of implying a usable room. The recorder writes 48 kHz / 192 kbps mono AAC into a unique file, meters input level, tracks pause/interruption/user-mark segments, finalizes the file, then registers its exact duration and byte count.
 
+The immutable source profile distinguishes requested encoder settings from the
+audio hardware state observed at the recording boundary. It preserves the
+current route name and port type, selected input data source, actual audio-
+session sample rate, input channel count, capture pipeline, and pause policy.
+Legacy recordings keep those fields absent rather than inheriting guessed
+values. The Library source-evidence sheet exposes both sides so a creator can
+see, for example, that an MV7i was selected even when the delivered AAC remains
+the canonical encoded format. Nest carries the same evidence into transcript
+review; `docs/architecture/audio-and-transcript-observability.md` defines the
+cross-surface accuracy contract.
+
 Capture state is explicit; microphone permission is a separate preflight state:
 
 ```text

@@ -5,6 +5,10 @@ import { createHash } from "node:crypto";
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock.js";
 import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
+import {
+  buildAudioTranscriptEvidence,
+  type AudioTranscriptEvidenceSegment,
+} from "@/lib/transcript-evidence";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
@@ -320,6 +324,8 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
         select: {
           id: true,
           status: true,
+          provider: true,
+          language: true,
           errorMessage: true,
           processingManifestObject: true,
           processingResultObject: true,
@@ -454,6 +460,7 @@ export async function readTranscriptCorrectionDesk(input: {
       gate: { allowed: false, error: "No recording-backed transcript is available." },
       recording: null,
       playback: null,
+      evidence: buildTranscriptEvidence(job, [], []),
       participants: [],
       speakerGroups: [],
       segments: [],
@@ -473,12 +480,55 @@ export async function readTranscriptCorrectionDesk(input: {
       gate,
       recording: recordingForPlaybackPreparation(job.asset, false),
       playback: null,
+      evidence: buildTranscriptEvidence(job, [], []),
       participants: [],
       speakerGroups: [],
       segments: [],
       boundaries: transcriptCorrectionBoundaries(),
     };
   }
+
+  const projectedSpeakerGroups = speakerGroups(job);
+  const projectedSegments = job.segments.map((segment: any) => {
+    const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;
+    const attribution = currentSpeakerAttribution(job, segment.speakerLabel);
+    const acceptedVerification = !accepted
+      && segment.verifications[0]?.providerTextSha256 === sha256(segment.text)
+      && (segment.verifications[0]?.providerSpeakerLabel ?? null) === (segment.speakerLabel ?? null)
+      ? segment.verifications[0]
+      : null;
+    const proposals = visibleTranscriptProposals(segment.corrections);
+    return {
+      id: segment.id,
+      speakerLabel: accepted?.correctedSpeakerLabel
+        ?? attribution?.participantDisplaySnapshot
+        ?? segment.speakerLabel
+        ?? null,
+      providerSpeakerLabel: segment.speakerLabel ?? null,
+      speakerAttribution: attribution ? publicSpeakerAttribution(attribution) : null,
+      startSeconds: segment.startSeconds,
+      endSeconds: segment.endSeconds,
+      text: accepted?.correctedText ?? segment.text,
+      providerText: segment.text,
+      providerTextSha256: sha256(segment.text),
+      confidence: segment.confidence ?? null,
+      words: segment.words.map((word: any) => ({
+        id: word.id,
+        providerWordIndex: word.providerWordIndex,
+        startSeconds: word.startSeconds,
+        endSeconds: word.endSeconds,
+        word: word.word,
+        punctuatedWord: word.punctuatedWord,
+        confidence: word.confidence ?? null,
+        speakerLabel: word.speakerLabel ?? null,
+        channel: word.channel ?? null,
+      })),
+      acceptedCorrection: accepted ? publicCorrection(accepted) : null,
+      acceptedVerification: acceptedVerification ? publicVerification(acceptedVerification) : null,
+      proposals: proposals.map(publicCorrection),
+      correctionHistory: segment.corrections.map(publicCorrection),
+    };
+  });
 
   return {
     ok: true,
@@ -497,49 +547,26 @@ export async function readTranscriptCorrectionDesk(input: {
       role: participant.role as string,
       isCurrentActor: participant.userId === input.actor.id,
     })),
-    speakerGroups: speakerGroups(job),
-    segments: job.segments.map((segment: any) => {
-      const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;
-      const attribution = currentSpeakerAttribution(job, segment.speakerLabel);
-      const acceptedVerification = !accepted
-        && segment.verifications[0]?.providerTextSha256 === sha256(segment.text)
-        && (segment.verifications[0]?.providerSpeakerLabel ?? null) === (segment.speakerLabel ?? null)
-        ? segment.verifications[0]
-        : null;
-      const proposals = visibleTranscriptProposals(segment.corrections);
-      return {
-        id: segment.id,
-        speakerLabel: accepted?.correctedSpeakerLabel
-          ?? attribution?.participantDisplaySnapshot
-          ?? segment.speakerLabel
-          ?? null,
-        providerSpeakerLabel: segment.speakerLabel ?? null,
-        speakerAttribution: attribution ? publicSpeakerAttribution(attribution) : null,
-        startSeconds: segment.startSeconds,
-        endSeconds: segment.endSeconds,
-        text: accepted?.correctedText ?? segment.text,
-        providerText: segment.text,
-        providerTextSha256: sha256(segment.text),
-        confidence: segment.confidence ?? null,
-        words: segment.words.map((word: any) => ({
-          id: word.id,
-          providerWordIndex: word.providerWordIndex,
-          startSeconds: word.startSeconds,
-          endSeconds: word.endSeconds,
-          word: word.word,
-          punctuatedWord: word.punctuatedWord,
-          confidence: word.confidence ?? null,
-          speakerLabel: word.speakerLabel ?? null,
-          channel: word.channel ?? null,
-        })),
-        acceptedCorrection: accepted ? publicCorrection(accepted) : null,
-        acceptedVerification: acceptedVerification ? publicVerification(acceptedVerification) : null,
-        proposals: proposals.map(publicCorrection),
-        correctionHistory: segment.corrections.map(publicCorrection),
-      };
-    }),
+    speakerGroups: projectedSpeakerGroups,
+    segments: projectedSegments,
+    evidence: buildTranscriptEvidence(job, projectedSegments, projectedSpeakerGroups),
     boundaries: transcriptCorrectionBoundaries(),
   };
+}
+
+function buildTranscriptEvidence(job: any, segments: AudioTranscriptEvidenceSegment[], groups: any[]) {
+  const result = object(job?.resultJson);
+  const manifest = object(job?.asset?.localManifestJson);
+  return buildAudioTranscriptEvidence({
+    provider: job?.provider,
+    providerModel: result.model ?? object(result.engine).modelIdentifier,
+    language: job?.language ?? object(result.engine).localeIdentifier,
+    status: job?.status,
+    recordingDurationSeconds: job?.asset?.durationSeconds,
+    sourceProfile: manifest.reportedSourceProfile,
+    segments,
+    speakerGroups: groups,
+  });
 }
 
 export function transcriptCorrectionBoundaries() {

@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
+import { buildAudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 const segment = {
   id: "segment-1",
@@ -349,5 +350,42 @@ describe("TranscriptCorrectionDesk", () => {
     });
     expect(await screen.findByRole("link", { name: "Open source-linked draft" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1&block=draft-block");
     expect(screen.getByText(/source recording and transcript remain unchanged/i)).toBeInTheDocument();
+  });
+
+  it("separates provider confidence, measured accuracy, and review coverage", async () => {
+    const evidence = buildAudioTranscriptEvidence({
+      provider: "deepgram",
+      providerModel: "nova-3",
+      language: "en-US",
+      recordingDurationSeconds: 60,
+      sourceProfile: {
+        container: "wav",
+        codec: "pcm",
+        includesAudio: true,
+        audioSampleRate: 48_000,
+        audioChannelCount: 1,
+        audioRouteName: "Shure MV7i",
+        audioRoutePortType: "USBAudio",
+        recordedMedia: { audioTrackCount: 1, audioSampleRate: 48_000, audioChannelCount: 1 },
+      },
+      segments: [{
+        ...segment,
+        text: "Welcome, everyone.",
+        acceptedCorrection: { id: "correction-1" },
+        acceptedVerification: null,
+      }],
+      speakerGroups: [{ attribution: null }],
+    });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ ...desk(true), evidence }) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+
+    expect(await screen.findByRole("heading", { name: /what quipsly heard/i })).toBeInTheDocument();
+    expect(screen.getByText("85.0%", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText(/50\.0% WER/i)).toBeInTheDocument();
+    expect(screen.getByText(/provider confidence helps prioritize listening; it is not measured accuracy/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 corrected · 0 confirmed · 0 unchecked/i)).toBeInTheDocument();
+    expect(screen.getByText(/shure mv7i/i)).toBeInTheDocument();
   });
 });

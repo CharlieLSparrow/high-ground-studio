@@ -48,6 +48,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var deviceSystemVersion: String?
     var audioRouteName: String?
     var audioRoutePortType: String?
+    var audioInputDataSourceName: String?
+    var audioHardwareSampleRate: Double?
+    var audioHardwareInputChannelCount: Int?
     var monotonicStartedNanoseconds: UInt64?
     var monotonicStoppedNanoseconds: UInt64?
     var clockSamples: [LocalRecordingClockSample]?
@@ -77,6 +80,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         deviceSystemVersion: String? = nil,
         audioRouteName: String? = nil,
         audioRoutePortType: String? = nil,
+        audioInputDataSourceName: String? = nil,
+        audioHardwareSampleRate: Double? = nil,
+        audioHardwareInputChannelCount: Int? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
         monotonicStoppedNanoseconds: UInt64? = nil,
         clockSamples: [LocalRecordingClockSample]? = nil,
@@ -105,6 +111,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.deviceSystemVersion = deviceSystemVersion
         self.audioRouteName = audioRouteName
         self.audioRoutePortType = audioRoutePortType
+        self.audioInputDataSourceName = audioInputDataSourceName
+        self.audioHardwareSampleRate = audioHardwareSampleRate
+        self.audioHardwareInputChannelCount = audioHardwareInputChannelCount
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         self.clockSamples = clockSamples

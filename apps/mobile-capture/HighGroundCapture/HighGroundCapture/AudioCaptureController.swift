@@ -897,6 +897,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 deviceSystemVersion: runtimeEvidence.systemVersion,
                 audioRouteName: runtimeEvidence.audioRouteName,
                 audioRoutePortType: runtimeEvidence.audioRoutePortType,
+                audioInputDataSourceName: runtimeEvidence.audioInputDataSourceName,
+                audioHardwareSampleRate: runtimeEvidence.audioHardwareSampleRate,
+                audioHardwareInputChannelCount: runtimeEvidence.audioHardwareInputChannelCount,
                 monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds,
                 clockSamples: captureIntent.clockSamples.isEmpty
                     ? nil

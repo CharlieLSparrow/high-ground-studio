@@ -7170,3 +7170,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   for cross-site browser evidence, successful canonical and legacy local state
   reads, and fail-closed HTTP 400 responses when qualification or undo omits its
   exact confirmation phrase.
+
+### Audio and transcript observability checkpoint — 2026-08-03
+
+- Added one deterministic evidence projection that keeps captured-audio facts,
+  provider inference, playback review coverage, and measured transcript accuracy
+  separate. Provider confidence is explicitly not WER; measured WER exists only
+  for corrected or confirmed-as-is playback-reviewed text and discloses whether
+  the reference covers a sample or the complete transcript.
+- The Nest correction desk now shows audio-format evidence, provider/model
+  evidence, confidence coverage, measured WER, review coverage, speaker
+  attribution coverage, transcript timing, and prioritized exact-time listening
+  targets. Retained legacy data renders unknowns instead of manufactured
+  precision.
+- Capture now snapshots the actual audio-session sample rate, hardware input
+  channel count, selected input data source, route, pipeline, and pause policy in
+  the immutable local source profile. The local source sheet and Nest recording
+  review expose those facts separately from requested encoder settings.
+- The untranscribed tail remains a neutral timing observation because it may be
+  silence. Waveform, loudness, clipping, silence, imbalance, and dropout
+  analysis are the next deterministic layer before Quipsly makes stronger audio
+  integrity claims.
+- Focused Nest suites pass 44/44, strict TypeScript and the production Next.js
+  build pass, and the generic iOS simulator Debug build passes with signing
+  disabled. The focused compiled iPhone source-evidence journey passes 1/1.
+  Operated local Nest readback proved the panel and its exact-time listening
+  control on a retained coaching Session. Architecture and remaining corpus
+  gates are documented in
+  `docs/architecture/audio-and-transcript-observability.md`.

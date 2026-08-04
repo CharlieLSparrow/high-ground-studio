@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, CircleAlert, FilePenLine, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, X } from "lucide-react";
+import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
+
+import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 import { timestampForSeconds } from "./session-review-model";
 import {
@@ -132,6 +134,7 @@ type Desk = {
   participants: SessionParticipant[];
   speakerGroups: SpeakerGroup[];
   segments: Segment[];
+  evidence?: AudioTranscriptEvidence;
   boundaries: Record<string, boolean>;
 };
 
@@ -142,6 +145,80 @@ function requestId(segmentId: string) {
 
 function humanize(value: string) {
   return value.replaceAll("-", " ").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function percent(value: number | null, digits = 0) {
+  return value === null ? "Not measured" : `${(value * 100).toFixed(digits)}%`;
+}
+
+function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
+  const sampleRate = evidence.decodedSampleRateHz ?? evidence.encodedSampleRateHz;
+  const channels = evidence.decodedChannelCount ?? evidence.encodedChannelCount;
+  return [
+    evidence.codec?.toUpperCase(),
+    evidence.container?.toUpperCase(),
+    sampleRate ? `${Math.round(sampleRate / 100) / 10} kHz` : null,
+    channels ? `${channels} ch` : null,
+  ].filter(Boolean).join(" · ") || "Audio format not preserved";
+}
+
+function AudioTranscriptEvidencePanel({
+  evidence,
+  playbackReady,
+  onPlayAt,
+}: {
+  evidence: AudioTranscriptEvidence;
+  playbackReady: boolean;
+  onPlayAt: (seconds: number) => Promise<void>;
+}) {
+  const { audio, transcript } = evidence;
+  const confidenceLabel = transcript.meanWordConfidence === null
+    ? "Not supplied"
+    : percent(transcript.meanWordConfidence, 1);
+  const measuredLabel = transcript.measuredWordErrorRate === null
+    ? "Not measured yet"
+    : `${percent(transcript.measuredWordErrorRate, 1)} WER`;
+  const measuredContext = transcript.measuredScope === "COMPLETE_TRANSCRIPT"
+    ? "complete playback-reviewed transcript"
+    : transcript.measuredScope === "REVIEWED_SAMPLE"
+      ? `${transcript.reviewedSegmentCount} reviewed segment sample`
+      : "requires playback-reviewed segments";
+
+  return <section aria-labelledby="audio-transcript-evidence-heading" className="rounded-2xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Audio and transcript observability</p>
+        <h3 id="audio-transcript-evidence-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">What Quipsly heard, what the model inferred, what was actually checked</h3>
+        <p className="mt-2 max-w-4xl text-sm font-semibold leading-relaxed text-sky-950">Provider confidence helps prioritize listening; it is not measured accuracy. Measured word error appears only where a reviewer created playback-backed reference text or confirmed the provider words as-is.</p>
+      </div>
+      <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${audio.formatComparison === "DRIFT" ? "border-rose-300 bg-rose-50 text-rose-900" : audio.formatComparison === "MATCH" ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-amber-300 bg-amber-50 text-amber-900"}`}>{humanize(audio.formatComparison)} audio profile</span>
+    </div>
+
+    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-xl border border-sky-200 bg-white p-4"><AudioLines className="text-sky-700" size={20} aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-sky-800">Recorded audio</p><p className="mt-1 text-lg font-black text-[#3d3122]">{audioFormat(audio)}</p><p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{[audio.inputRoute, audio.inputDataSource, audio.inputPortType].filter(Boolean).join(" · ") || "Input route was not preserved"}</p></div>
+      <div className="rounded-xl border border-violet-200 bg-white p-4"><Gauge className="text-violet-700" size={20} aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-800">Provider confidence</p><p className="mt-1 text-lg font-black text-[#3d3122]">{confidenceLabel}</p><p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{transcript.confidenceWordCount}/{transcript.wordCount} words scored{transcript.lowConfidenceWordCount === null ? "" : ` · ${transcript.lowConfidenceWordCount} below ${percent(transcript.lowConfidenceThreshold, 0)}`} · not WER</p></div>
+      <div className="rounded-xl border border-emerald-200 bg-white p-4"><ShieldCheck className="text-emerald-700" size={20} aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-emerald-800">Measured against review</p><p className="mt-1 text-lg font-black text-[#3d3122]">{measuredLabel}</p><p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{measuredContext}{transcript.measuredReferenceWordCount ? ` · ${transcript.measuredWordErrorCount}/${transcript.measuredReferenceWordCount} word edits` : ""}</p></div>
+      <div className="rounded-xl border border-amber-200 bg-white p-4"><TriangleAlert className="text-amber-700" size={20} aria-hidden="true" /><p className="mt-3 text-[10px] font-black uppercase tracking-wide text-amber-800">Review coverage</p><p className="mt-1 text-lg font-black text-[#3d3122]">{percent(transcript.reviewCoverage, 0)}</p><p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">{transcript.correctedSegmentCount} corrected · {transcript.confirmedAsIsSegmentCount} confirmed · {transcript.segmentCount - transcript.reviewedSegmentCount} unchecked</p></div>
+    </div>
+
+    <details className="mt-4 rounded-xl border border-sky-200 bg-white p-4">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-950">Inspect capture and timing details</summary>
+      <dl className="mt-4 grid gap-3 text-xs font-semibold text-[#765f40] sm:grid-cols-2 lg:grid-cols-3">
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Capture pipeline</dt><dd className="mt-1 break-words">{audio.capturePipeline || "Not preserved"}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Pause timeline</dt><dd className="mt-1 break-words">{audio.pauseTimelinePolicy || "Not preserved"}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Hardware input</dt><dd className="mt-1">{audio.hardwareSampleRateHz ? `${audio.hardwareSampleRateHz} Hz` : "Not measured"} · {audio.hardwareInputChannelCount ? `${audio.hardwareInputChannelCount} ch` : "channels unknown"}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Transcript engine</dt><dd className="mt-1">{[transcript.provider, transcript.providerModel, transcript.language].filter(Boolean).join(" · ") || "Not identified"}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Timed span</dt><dd className="mt-1">{transcript.transcriptStartSeconds === null || transcript.transcriptEndSeconds === null ? "No timed speech" : `${timestampForSeconds(transcript.transcriptStartSeconds)}–${timestampForSeconds(transcript.transcriptEndSeconds)}`}</dd></div>
+        <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Speaker clusters</dt><dd className="mt-1">{transcript.attributedSpeakerClusterCount}/{transcript.providerSpeakerClusterCount} identified</dd></div>
+      </dl>
+      {(audio.issues.length > 0 || transcript.endsBeforeRecordingBySeconds !== null) && <div className="mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">{audio.issues.map((issue) => <p key={issue}>{issue}</p>)}{transcript.endsBeforeRecordingBySeconds !== null && <p>Timed speech ends {transcript.endsBeforeRecordingBySeconds.toFixed(1)} seconds before the recording ends. That may be silence; Quipsly does not label it missing audio without signal analysis.</p>}</div>}
+    </details>
+
+    {transcript.attentionSegments.length > 0 && <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
+      <p className="text-xs font-black uppercase tracking-wide text-violet-900">Listen next · lowest confidence and unchecked evidence</p>
+      <div className="mt-3 grid gap-2 lg:grid-cols-2">{transcript.attentionSegments.map((segment) => <button key={segment.segmentId} type="button" disabled={!playbackReady} onClick={() => void onPlayAt(segment.startSeconds)} className="min-h-11 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2 text-left text-xs font-bold leading-5 text-violet-950 disabled:opacity-50" aria-label={`Play transcript attention segment from ${timestampForSeconds(segment.startSeconds)}`}><span className="mr-2 inline-flex items-center gap-1 font-black uppercase tracking-wide"><Play size={12} fill="currentColor" aria-hidden="true" />{timestampForSeconds(segment.startSeconds)}</span>{segment.text}<span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-violet-700">{segment.reviewed ? "reviewed" : "unchecked"}{segment.minimumWordConfidence === null ? " · confidence unavailable" : ` · lowest confidence ${percent(segment.minimumWordConfidence, 0)}`}{segment.lowConfidenceWords.length ? ` · low words: ${segment.lowConfidenceWords.map((word) => word.word).join(", ")}` : ""}</span></button>)}</div>
+    </div>}
+  </section>;
 }
 
 function SpeakerAttributionPanel({
@@ -913,6 +990,12 @@ export function TranscriptCorrectionDesk({
           </div>
         )}
       </div>
+
+      {desk.evidence ? <AudioTranscriptEvidencePanel
+          evidence={desk.evidence}
+          playbackReady={Boolean(desk.playback)}
+          onPlayAt={playFromTime}
+        /> : null}
 
       {desk.gate.allowed && (
         <SpeakerAttributionPanel

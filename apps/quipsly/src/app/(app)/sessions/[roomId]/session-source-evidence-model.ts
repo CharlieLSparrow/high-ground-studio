@@ -79,6 +79,20 @@ export type SessionSourceEvidence = {
       deviceModel: string | null;
       operatingSystem: string | null;
       audioRoute: string | null;
+      audioInputDataSource?: string | null;
+      audioFormat?: {
+        container: string | null;
+        codec: string | null;
+        sampleRateHz: number | null;
+        channelCount: number | null;
+        hardwareSampleRateHz: number | null;
+        hardwareInputChannelCount: number | null;
+        decodedAudioTrackCount: number | null;
+        decodedSampleRateHz: number | null;
+        decodedChannelCount: number | null;
+        capturePipeline: string | null;
+        pauseTimelinePolicy: string | null;
+      };
     };
     processingDisposition: string | null;
     transcriptDisposition: string | null;
@@ -121,6 +135,10 @@ function scalarText(value: unknown): string | null {
   return text(value);
 }
 
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function iso(value: unknown): string | null {
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
   const normalized = text(value);
@@ -144,12 +162,27 @@ function sourceRuntime(manifest: UnknownRecord) {
   const systemVersion = text(profile.deviceSystemVersion);
   const routeName = text(profile.audioRouteName);
   const routeType = text(profile.audioRoutePortType);
+  const recorded = object(profile.recordedMedia);
   return {
     appVersion: text(profile.captureAppVersion),
     appBuild: text(profile.captureAppBuild),
     deviceModel: text(profile.deviceModelIdentifier),
     operatingSystem: [systemName, systemVersion].filter(Boolean).join(" ") || null,
     audioRoute: [routeName, routeType].filter(Boolean).join(" · ") || null,
+    audioInputDataSource: text(profile.audioInputDataSourceName),
+    audioFormat: {
+      container: text(profile.container),
+      codec: text(profile.codec),
+      sampleRateHz: finiteNumber(profile.audioSampleRate),
+      channelCount: finiteNumber(profile.audioChannelCount),
+      hardwareSampleRateHz: finiteNumber(profile.audioHardwareSampleRate),
+      hardwareInputChannelCount: finiteNumber(profile.audioHardwareInputChannelCount),
+      decodedAudioTrackCount: finiteNumber(recorded.audioTrackCount),
+      decodedSampleRateHz: finiteNumber(recorded.audioSampleRate),
+      decodedChannelCount: finiteNumber(recorded.audioChannelCount),
+      capturePipeline: text(profile.audioCapturePipeline),
+      pauseTimelinePolicy: text(profile.pauseTimelinePolicy),
+    },
   };
 }
 
