@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { extname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import {
   DEEPGRAM_TRANSCRIPT_MODEL,
@@ -15,6 +18,7 @@ import {
 } from "../packages/quipsly-media-processing/src/transcript-provider-adapters.ts";
 
 const options = parseArguments(process.argv.slice(2));
+const execFileAsync = promisify(execFile);
 const policy = JSON.parse(await readFile(resolve(options.policy), "utf8"));
 validatePolicy(policy);
 const bearerToken = requiredEnvironment("QUIPSLY_BEARER_TOKEN");
@@ -40,12 +44,16 @@ for (const window of selectedWindows) {
     : null;
   let receipt = receiptPath ? await readExistingReceipt(receiptPath, window, options) : null;
   if (!receipt) {
-    const source = await downloadVerifiedSource(baseUrl, bearerToken, window);
+    const originalSource = await downloadVerifiedSource(baseUrl, bearerToken, window);
+    const source = await createDeterministicEvaluationDerivative(originalSource, window);
     if (options.dryRun) {
       results.push({
         windowId: window.windowId,
         sourceSha256: window.source.sha256,
-        sourceBytes: source.bytes.byteLength,
+        sourceBytes: originalSource.bytes.byteLength,
+        derivativeSha256: source.derivative.sha256,
+        derivativeBytes: source.bytes.byteLength,
+        derivativeDurationSeconds: source.derivative.durationSeconds,
         outcome: "validated-only",
       });
       continue;
@@ -73,6 +81,7 @@ for (const window of selectedWindows) {
   results.push({
     windowId: window.windowId,
     sourceSha256: window.source.sha256,
+    derivativeSha256: receipt.sourceDerivative.sha256,
     outcome: receipt.candidate.outcome,
     candidateId: appendResult.candidate?.id ?? null,
     idempotentReplay: appendResult.idempotentReplay === true,
@@ -132,6 +141,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
         providerRequestId,
         elapsedMilliseconds: Date.now() - startedAt,
         candidate: {
+          sourceDerivative: source.derivative,
           providerKey: "deepgram-batch",
           providerName: "Deepgram batch",
           model: `${DEEPGRAM_TRANSCRIPT_MODEL}@${requestConfig.version}+diarizer-${requestConfig.diarize_model}`,
@@ -167,6 +177,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
       providerRequestId,
       elapsedMilliseconds: Date.now() - startedAt,
       candidate: {
+        sourceDerivative: source.derivative,
         providerKey: "openai-diarized",
         providerName: "OpenAI diarized transcription",
         model: OPENAI_DIARIZED_TRANSCRIPT_MODEL,
@@ -187,6 +198,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
       providerRequestId,
       elapsedMilliseconds: Date.now() - startedAt,
       candidate: {
+        sourceDerivative: source.derivative,
         providerKey: options.provider === "deepgram" ? "deepgram-batch" : "openai-diarized",
         providerName: options.provider === "deepgram" ? "Deepgram batch" : "OpenAI diarized transcription",
         model: options.provider === "deepgram"
@@ -203,6 +215,9 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
 }
 
 function receipt({ options, requestConfig, policy, window, rawResponse, providerRequestId, elapsedMilliseconds, candidate }) {
+  const sourceDerivative = candidate.sourceDerivative;
+  const candidateWithoutDerivative = { ...candidate };
+  delete candidateWithoutDerivative.sourceDerivative;
   return {
     kind: "quipsly-private-transcript-provider-receipt-v1",
     version: 1,
@@ -211,11 +226,15 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
     windowKeySha256: window.windowKeySha256,
     sourceSha256: window.source.sha256,
     referenceContentSha256: window.reference.contentSha256,
-    requestConfig,
+    sourceDerivative,
+    requestConfig: {
+      provider: requestConfig,
+      inputMedia: sourceDerivative,
+    },
     policy,
     rawResponse,
     candidate: {
-      ...candidate,
+      ...candidateWithoutDerivative,
       adapterVersion: QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
       providerRequestId,
       completedAt: new Date().toISOString(),
@@ -238,6 +257,11 @@ async function readExistingReceipt(path, window, options) {
       || existing.windowKeySha256 !== window.windowKeySha256
       || existing.sourceSha256 !== window.source.sha256
       || existing.referenceContentSha256 !== window.reference.contentSha256
+      || !/^[a-f0-9]{64}$/.test(existing.sourceDerivative?.sha256 ?? "")
+      || existing.sourceDerivative?.originalSourceSha256 !== window.source.sha256
+      || Math.abs(Number(existing.sourceDerivative?.startSeconds) - Number(window.source.startSeconds)) > 0.01
+      || Math.abs(Number(existing.sourceDerivative?.endSeconds) - Number(window.source.endSeconds)) > 0.01
+      || JSON.stringify(existing.requestConfig?.inputMedia) !== JSON.stringify(existing.sourceDerivative)
     ) {
       throw new Error(`Existing provider receipt does not match current immutable evidence: ${path}`);
     }
@@ -249,9 +273,7 @@ async function readExistingReceipt(path, window, options) {
 }
 
 async function downloadVerifiedSource(baseUrl, token, window) {
-  if (window.source.startSeconds !== 0 || Math.abs(window.source.endSeconds - window.source.durationSeconds) > 0.01) {
-    throw new Error("This runner version accepts complete-source windows only; it will not silently ignore in/out points.");
-  }
+  validateSourceWindow(window.source);
   const response = await fetch(new URL(window.source.protectedPlaybackUrl, baseUrl), {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -262,6 +284,93 @@ async function downloadVerifiedSource(baseUrl, token, window) {
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
   const extension = contentType.includes("wav") ? "wav" : contentType.includes("mpeg") ? "mp3" : contentType.includes("mp4") ? "mp4" : "media";
   return { bytes, contentType, fileName: `${window.windowId}.${extension}` };
+}
+
+async function createDeterministicEvaluationDerivative(source, window) {
+  const range = validateSourceWindow(window.source);
+  const workingDirectory = await mkdtemp(join(tmpdir(), "quipsly-transcript-window-"));
+  const sourceExtension = extname(source.fileName) || ".media";
+  const sourcePath = join(workingDirectory, `source${sourceExtension}`);
+  const derivativePath = join(workingDirectory, "window-mono-16khz.wav");
+  try {
+    await writeFile(sourcePath, source.bytes, { flag: "wx", mode: 0o600 });
+    await execFileAsync(process.env.QUIPSLY_FFMPEG_PATH?.trim() || "ffmpeg", [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-nostdin",
+      "-i", sourcePath,
+      "-ss", range.startSeconds.toFixed(4),
+      "-t", range.durationSeconds.toFixed(4),
+      "-map", "0:a:0",
+      "-vn",
+      "-ac", "1",
+      "-ar", "16000",
+      "-c:a", "pcm_s16le",
+      "-map_metadata", "-1",
+      "-fflags", "+bitexact",
+      "-flags:a", "+bitexact",
+      derivativePath,
+    ], { maxBuffer: 8 * 1024 * 1024 });
+    const probe = await execFileAsync(process.env.QUIPSLY_FFPROBE_PATH?.trim() || "ffprobe", [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=codec_name,sample_rate,channels:format=duration",
+      "-of", "json",
+      derivativePath,
+    ], { maxBuffer: 1024 * 1024 });
+    const metadata = JSON.parse(probe.stdout);
+    const stream = metadata.streams?.[0] ?? {};
+    const durationSeconds = Number(metadata.format?.duration);
+    if (
+      stream.codec_name !== "pcm_s16le"
+      || Number(stream.sample_rate) !== 16_000
+      || Number(stream.channels) !== 1
+      || !Number.isFinite(durationSeconds)
+      || Math.abs(durationSeconds - range.durationSeconds) > 0.075
+    ) {
+      throw new Error("The deterministic evaluation derivative failed its codec, channel, sample-rate, or duration probe.");
+    }
+    const bytes = new Uint8Array(await readFile(derivativePath));
+    return {
+      bytes,
+      contentType: "audio/wav",
+      fileName: `${window.windowId}.mono-16khz.wav`,
+      derivative: {
+        schema: "quipsly-transcript-evaluation-derivative-v1",
+        originalSourceSha256: window.source.sha256,
+        startSeconds: range.startSeconds,
+        endSeconds: range.endSeconds,
+        durationSeconds: Number(durationSeconds.toFixed(4)),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        byteSize: bytes.byteLength,
+        codec: "pcm_s16le",
+        sampleRateHz: 16_000,
+        channelCount: 1,
+        ffmpegArgumentsVersion: "mono-16khz-pcm-v1",
+      },
+    };
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true });
+  }
+}
+
+function validateSourceWindow(source) {
+  const startSeconds = Number(source?.startSeconds);
+  const endSeconds = Number(source?.endSeconds);
+  const durationSeconds = Number(source?.durationSeconds);
+  if (
+    !Number.isFinite(startSeconds)
+    || !Number.isFinite(endSeconds)
+    || !Number.isFinite(durationSeconds)
+    || startSeconds < 0
+    || endSeconds <= startSeconds
+    || Math.abs((endSeconds - startSeconds) - durationSeconds) > 0.01
+    || durationSeconds < 60
+    || durationSeconds > 180
+  ) {
+    throw new Error("Runner input must contain an exact, internally consistent 60–180 second source window.");
+  }
+  return { startSeconds, endSeconds, durationSeconds };
 }
 
 async function providerBody(response, provider) {

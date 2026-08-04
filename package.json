@@ -166,6 +166,7 @@
     "quipsly:transcript:evaluate": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-transcript-evaluation.mjs",
     "quipsly:transcript:evaluate:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-transcript-evaluation.test.mjs",
     "quipsly:transcript:providers:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-transcript-provider-adapters.test.mjs",
+    "quipsly:transcript:provider-runner:test": "node --test scripts/quipsly-transcript-provider-runner.test.mjs",
     "quipsly:transcript:providers:run": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-transcript-provider-runner.mjs",
     "quipsly:media-processor:acceptance": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-capture-proxy-ffmpeg-acceptance.mjs",
     "quipsly:media-processor:cloud-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-media-processor-cloud-fixture.mjs",

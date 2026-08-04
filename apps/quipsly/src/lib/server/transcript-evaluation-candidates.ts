@@ -223,8 +223,34 @@ function buildCandidate(input: {
   return { parsed, policy, requestConfigSha256, rawResponseSha256 };
 }
 
+function validatedInputMedia(requestConfig: unknown, window: any) {
+  const inputMedia = object(object(requestConfig).inputMedia);
+  const valid = inputMedia.schema === "quipsly-transcript-evaluation-derivative-v1"
+    && text(inputMedia.originalSourceSha256) === window.sourceSha256
+    && Math.abs(Number(inputMedia.startSeconds) - Number(window.sourceStartSeconds)) <= 0.01
+    && Math.abs(Number(inputMedia.endSeconds) - Number(window.sourceEndSeconds)) <= 0.01
+    && Math.abs(Number(inputMedia.durationSeconds) - Number(window.sourceDurationSeconds)) <= 0.075
+    && SHA256.test(text(inputMedia.sha256))
+    && Number.isSafeInteger(inputMedia.byteSize)
+    && Number(inputMedia.byteSize) > 44
+    && Number(inputMedia.byteSize) <= 16_000_000
+    && inputMedia.codec === "pcm_s16le"
+    && Number(inputMedia.sampleRateHz) === 16_000
+    && Number(inputMedia.channelCount) === 1
+    && inputMedia.ffmpegArgumentsVersion === "mono-16khz-pcm-v1";
+  if (!valid) {
+    throw new TranscriptEvaluationCandidateError(
+      "Provider evidence must name the exact verified Quipsly evaluation derivative for this source window.",
+      "CANDIDATE_INPUT_MEDIA_INVALID",
+      409,
+    );
+  }
+  return inputMedia;
+}
+
 function publicCandidate(candidate: any) {
   const metrics = object(candidate.metricsJson);
+  const inputMedia = object(object(candidate.requestConfigJson).inputMedia);
   return {
     id: candidate.id as string,
     windowId: candidate.windowId as string,
@@ -234,6 +260,7 @@ function publicCandidate(candidate: any) {
     model: candidate.model as string,
     adapterVersion: candidate.adapterVersion as string,
     requestConfigSha256: candidate.requestConfigSha256 as string,
+    inputMediaSha256: SHA256.test(text(inputMedia.sha256)) ? text(inputMedia.sha256) : null,
     speakerAttribution: candidate.speakerAttribution as string,
     timingGranularity: candidate.timingGranularity as string,
     outcome: candidate.outcome as string,
@@ -287,6 +314,7 @@ export async function appendTranscriptEvaluationCandidate(input: {
     policyReceiptSha256: evidence.policy.receiptSha256,
   };
   const initial = await authorizedWindow({ prisma: input.prisma, actor: input.actor, windowId, requireWrite: true });
+  const inputMedia = validatedInputMedia(input.requestConfig, initial);
   Object.assign(snapshot, {
     windowKeySha256: initial.windowKeySha256,
     sourceSha256: initial.sourceSha256,
@@ -314,6 +342,18 @@ export async function appendTranscriptEvaluationCandidate(input: {
         || current.referenceContentSha256 !== initial.referenceContentSha256
       ) {
         throw new TranscriptEvaluationCandidateError("The approved reference changed before candidate persistence.", "CANDIDATE_REFERENCE_CHANGED", 409);
+      }
+      validatedInputMedia(input.requestConfig, current);
+      const conflictingDerivative = current.candidates.find((candidate: any) => {
+        const prior = object(object(candidate.requestConfigJson).inputMedia);
+        return SHA256.test(text(prior.sha256)) && text(prior.sha256) !== text(inputMedia.sha256);
+      });
+      if (conflictingDerivative) {
+        throw new TranscriptEvaluationCandidateError(
+          "This provider result used different audio bytes than the existing candidates for the same window.",
+          "CANDIDATE_DERIVATIVE_MISMATCH",
+          409,
+        );
       }
       const policy = await tx.transcriptProviderPolicyReceipt.upsert({
         where: { receiptSha256: evidence.policy.receiptSha256 },

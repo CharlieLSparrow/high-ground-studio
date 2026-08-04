@@ -58,7 +58,10 @@ the protected runner export. It:
 
 1. authenticates to Nest with a bearer token kept out of command arguments;
 2. downloads the protected source and verifies its SHA-256 before upload;
-3. refuses partial windows until exact derivative extraction is implemented;
+3. extracts transcript-turn-aligned 60–180 second windows into deterministic
+   mono 16 kHz PCM WAV derivatives, verifies codec/channel/rate/duration, and
+   records the original SHA, exact in/out points, derivative SHA, byte size,
+   and extraction-contract version;
 4. invokes the selected provider with a recorded configuration;
 5. writes the raw result to a create-once mode-0600 private receipt before
    asking Nest to append it; and
@@ -67,11 +70,23 @@ the protected runner export. It:
 An interrupted run reuses the private receipt and does not call the provider a
 second time. Retrying different evidence requires a new run key. `--dry-run`
 authenticates, exports, downloads, and verifies sources without provider calls
-or Nest mutation.
+or Nest mutation. It still builds and probes the derivative so corpus mistakes
+are discovered before any provider receives media. Two independent dry runs
+must produce the same derivative checksum; the executable runner test proves
+that boundary.
 
 The runner deliberately requires a dated policy JSON file. It cannot know an
 account's effective retention or training controls from public documentation,
 and does not invent them.
+
+Long-form source recordings remain immutable. A reviewer selects start and end
+transcript turns in Nest; Quipsly requires every included turn and every second
+of the selected range to be playback-reviewed. Reference word timing and the
+frozen provider snapshot are rebased to the derivative's zero point. The
+original protected recording is never replaced by the evaluation derivative.
+Nest validates the derivative receipt against the frozen source SHA and window,
+shows its checksum on each scorecard, and rejects a second provider candidate
+if it used different audio bytes for the same window.
 
 ## Reviewer UX
 
@@ -90,6 +105,9 @@ URL, or reviewer identity.
 - Quipsly and media-processing strict typechecks passed.
 - Provider adapter tests prove Deepgram word timing/speakers, OpenAI's
   non-invented word-timing boundary, and pinned request configuration.
+- The provider-runner test generates a 70-second source, extracts the same
+  5–65 second window twice, probes both outputs, and proves identical SHA-256
+  and byte length without calling a provider.
 - Local database integration proves append, exact replay, changed-replay
   conflict, server-computed zero WER, separate correction receipt, private
   export, public text exclusion, and outsider denial.
@@ -98,7 +116,8 @@ URL, or reviewer identity.
 
 ## Remaining evidence gates
 
-- Complete and classify genuine podcast and coaching references.
+- Complete and classify genuine podcast and coaching references using the new
+  transcript-aligned window selector.
 - Supply scoped provider keys and capture each account's effective policy
   receipt before uploading consented media.
 - Execute both providers on at least six podcast and six coaching windows.

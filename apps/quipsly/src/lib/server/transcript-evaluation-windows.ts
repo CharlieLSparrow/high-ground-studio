@@ -93,6 +93,8 @@ function currentVerification(segment: any) {
       verification.reviewKind === "confirmed-as-is"
       && verification.providerTextSha256 === providerTextSha256
       && (verification.providerSpeakerLabel ?? null) === (segment.speakerLabel ?? null)
+      && Number(verification.startSecondsSnapshot) === Number(segment.startSeconds)
+      && Number(verification.endSecondsSnapshot) === Number(segment.endSeconds)
     ))
     .sort((left: any, right: any) => {
       const byCreated = String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? ""));
@@ -142,9 +144,12 @@ function activeSpeakerLabels(job: any) {
   return attributions;
 }
 
-function referenceForJob(job: any) {
-  const segments = [...(Array.isArray(job?.segments) ? job.segments : [])]
+function referenceForJob(job: any, selectedSegmentIds?: ReadonlySet<string>, timeOffsetSeconds = 0) {
+  const allSegments = [...(Array.isArray(job?.segments) ? job.segments : [])]
     .sort((left, right) => Number(left.startSeconds) - Number(right.startSeconds) || String(left.id).localeCompare(String(right.id)));
+  const segments = selectedSegmentIds
+    ? allSegments.filter((segment) => selectedSegmentIds.has(text(segment.id)))
+    : allSegments;
   const attributedSpeakers = activeSpeakerLabels(job);
   const referenceWords: Array<{
     text: string;
@@ -184,8 +189,8 @@ function referenceForJob(job: any) {
       : providerWords.length > 0
         ? providerWords.map((word: any) => ({
             text: text(word.punctuatedWord) || text(word.word),
-            startSeconds: finite(word.startSeconds),
-            endSeconds: finite(word.endSeconds),
+            startSeconds: finite(word.startSeconds) === null ? null : rounded(finite(word.startSeconds)! - timeOffsetSeconds),
+            endSeconds: finite(word.endSeconds) === null ? null : rounded(finite(word.endSeconds)! - timeOffsetSeconds),
             speakerId: reviewedSpeaker,
           })).filter((word: any) => Boolean(word.text))
         : tokenize(String(segment.text ?? "")).map((word) => ({
@@ -224,14 +229,114 @@ function referenceForJob(job: any) {
   };
 }
 
-function providerSnapshot(job: any) {
+type TranscriptEvaluationRange = {
+  startSegmentId: string;
+  endSegmentId: string;
+  startSeconds: number;
+  endSeconds: number;
+  durationSeconds: number;
+  segmentIds: string[];
+};
+
+function availableSegments(job: any) {
+  return [...(Array.isArray(job?.segments) ? job.segments : [])]
+    .sort((left, right) => Number(left.startSeconds) - Number(right.startSeconds) || String(left.id).localeCompare(String(right.id)))
+    .map((segment) => ({
+      id: text(segment.id),
+      startSeconds: rounded(Number(segment.startSeconds)),
+      endSeconds: rounded(Number(segment.endSeconds)),
+      reviewed: validAcceptedCorrection(segment, currentAcceptedCorrection(segment)) || Boolean(currentVerification(segment)),
+    }))
+    .filter((segment) => segment.id && Number.isFinite(segment.startSeconds) && Number.isFinite(segment.endSeconds) && segment.endSeconds >= segment.startSeconds);
+}
+
+function selectedRange(job: any, startSegmentId: unknown, endSegmentId: unknown): TranscriptEvaluationRange {
+  const segments = availableSegments(job);
+  const sourceDurationSeconds = finite(job?.asset?.durationSeconds);
+  if (sourceDurationSeconds === null || sourceDurationSeconds < TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS) {
+    throw new TranscriptEvaluationWindowError("The protected source is too short for an accuracy window.", "SOURCE_DURATION_REQUIRED", 409);
+  }
+  const startId = text(startSegmentId);
+  const endId = text(endSegmentId);
+  const startIndex = segments.findIndex((segment) => segment.id === startId);
+  const endIndex = segments.findIndex((segment) => segment.id === endId);
+  if (startIndex < 0 || endIndex < startIndex) {
+    throw new TranscriptEvaluationWindowError("Choose a valid transcript-aligned start and end for the accuracy window.", "WINDOW_RANGE_INVALID");
+  }
+  const chosen = segments.slice(startIndex, endIndex + 1);
+  let startSeconds = chosen[0]!.startSeconds;
+  let endSeconds = chosen.at(-1)!.endSeconds;
+  const missingSeconds = Math.max(0, TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS - (endSeconds - startSeconds));
+  const growRight = Math.min(missingSeconds, Math.max(0, sourceDurationSeconds - endSeconds));
+  endSeconds = rounded(endSeconds + growRight);
+  startSeconds = rounded(Math.max(0, startSeconds - (missingSeconds - growRight)));
+
+  // Silence may safely pad a corpus window, but a padded boundary must never
+  // cut through or conceal another transcript turn. Close over every overlap
+  // and preserve all of those segment IDs in the frozen evidence snapshot.
+  let included = chosen;
+  for (;;) {
+    included = segments.filter((segment) => segment.endSeconds > startSeconds + 0.001 && segment.startSeconds < endSeconds - 0.001);
+    const nextStart = Math.min(startSeconds, ...included.map((segment) => segment.startSeconds));
+    const nextEnd = Math.max(endSeconds, ...included.map((segment) => segment.endSeconds));
+    if (Math.abs(nextStart - startSeconds) < 0.001 && Math.abs(nextEnd - endSeconds) < 0.001) break;
+    startSeconds = rounded(nextStart);
+    endSeconds = rounded(nextEnd);
+  }
+  const durationSeconds = rounded(endSeconds - startSeconds);
+  if (durationSeconds < TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS || durationSeconds > TRANSCRIPT_EVALUATION_WINDOW_MAXIMUM_SECONDS) {
+    throw new TranscriptEvaluationWindowError(
+      `Accuracy windows must be ${TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS}–${TRANSCRIPT_EVALUATION_WINDOW_MAXIMUM_SECONDS} seconds and align to transcript turns.`,
+      "WINDOW_DURATION_REQUIRED",
+      409,
+    );
+  }
+  if (included.some((segment) => !segment.reviewed)) {
+    throw new TranscriptEvaluationWindowError("Every transcript turn inside the selected window must be playback-reviewed.", "COMPLETE_PLAYBACK_REVIEW_REQUIRED", 409);
+  }
+  return {
+    startSegmentId: startId,
+    endSegmentId: endId,
+    startSeconds,
+    endSeconds,
+    durationSeconds,
+    segmentIds: included.map((segment) => segment.id),
+  };
+}
+
+function suggestedRange(job: any): TranscriptEvaluationRange | null {
+  const segments = availableSegments(job);
+  for (let startIndex = 0; startIndex < segments.length; startIndex += 1) {
+    if (!segments[startIndex]!.reviewed) continue;
+    let finalReviewedIndex = startIndex;
+    for (let endIndex = startIndex; endIndex < segments.length; endIndex += 1) {
+      if (!segments[endIndex]!.reviewed) break;
+      finalReviewedIndex = endIndex;
+      const duration = segments[endIndex]!.endSeconds - segments[startIndex]!.startSeconds;
+      if (duration > TRANSCRIPT_EVALUATION_WINDOW_MAXIMUM_SECONDS) break;
+      if (duration >= TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS) {
+        return selectedRange(job, segments[startIndex]!.id, segments[endIndex]!.id);
+      }
+    }
+    try {
+      return selectedRange(job, segments[startIndex]!.id, segments[finalReviewedIndex]!.id);
+    } catch (error) {
+      if (!(error instanceof TranscriptEvaluationWindowError)) throw error;
+    }
+  }
+  return null;
+}
+
+function providerSnapshot(job: any, selectedSegmentIds?: ReadonlySet<string>, timeOffsetSeconds = 0) {
   const result = object(job?.resultJson);
-  const words = (Array.isArray(job?.segments) ? job.segments : [])
+  const selectedSegments = (Array.isArray(job?.segments) ? job.segments : [])
+    .filter((segment: any) => !selectedSegmentIds || selectedSegmentIds.has(text(segment.id)));
+  const words = selectedSegments
     .flatMap((segment: any) => (Array.isArray(segment.words) ? segment.words : []).map((word: any) => ({
       id: text(word.id),
       text: text(word.punctuatedWord) || text(word.word),
-      startSeconds: finite(word.startSeconds),
-      endSeconds: finite(word.endSeconds),
+      startSeconds: finite(word.startSeconds) === null ? null : rounded(finite(word.startSeconds)! - timeOffsetSeconds),
+      endSeconds: finite(word.endSeconds) === null ? null : rounded(finite(word.endSeconds)! - timeOffsetSeconds),
       speakerId: text(word.speakerLabel) || null,
       channel: Number.isInteger(word.channel) ? word.channel : null,
     })))
@@ -244,11 +349,11 @@ function providerSnapshot(job: any) {
     language: text(job?.language) || text(object(result.engine).localeIdentifier) || null,
     providerRequestId: text(job?.providerRequestId) || null,
     workerBuildId: text(job?.workerBuildId) || null,
-    segmentEvidence: (Array.isArray(job?.segments) ? job.segments : []).map((segment: any) => ({
+    segmentEvidence: selectedSegments.map((segment: any) => ({
       id: text(segment.id),
       providerTextSha256: sha256(String(segment.text ?? "")),
-      startSeconds: Number(segment.startSeconds),
-      endSeconds: Number(segment.endSeconds),
+      startSeconds: rounded(Number(segment.startSeconds) - timeOffsetSeconds),
+      endSeconds: rounded(Number(segment.endSeconds) - timeOffsetSeconds),
       providerSpeakerLabel: text(segment.speakerLabel) || null,
     })),
     words,
@@ -293,33 +398,38 @@ function classification(input: { workload: unknown; conditions: unknown }) {
   return { workload, conditions: conditions as TranscriptEvaluationCondition[] };
 }
 
-function completeSourcePlaybackEvidence(value: unknown, durationSeconds: number, playbackSourceId: string) {
+function completeWindowPlaybackEvidence(value: unknown, range: TranscriptEvaluationRange, playbackSourceId: string) {
   const evidence = object(value);
-  const expectedBinCount = Math.ceil(durationSeconds);
+  const firstBin = Math.floor(range.startSeconds);
+  const finalBinExclusive = Math.ceil(range.endSeconds);
+  const expectedBins = Array.from({ length: finalBinExclusive - firstBin }, (_, index) => firstBin + index);
   const rawBins: unknown[] = Array.isArray(evidence.listenedSecondBins) ? evidence.listenedSecondBins : [];
   const bins = rawBins.length
-    ? [...new Set<number>(rawBins.filter((bin: unknown): bin is number => typeof bin === "number" && Number.isInteger(bin) && bin >= 0 && bin < expectedBinCount))].sort((left, right) => left - right)
+    ? [...new Set<number>(rawBins.filter((bin: unknown): bin is number => typeof bin === "number" && Number.isInteger(bin) && bin >= firstBin && bin < finalBinExclusive))].sort((left, right) => left - right)
     : [];
   const completedAt = text(evidence.completedAt);
   const parsedCompletedAt = Date.parse(completedAt);
-  const valid = evidence.schema === "quipsly-complete-source-playback-v1"
+  const valid = evidence.schema === "quipsly-window-playback-v1"
     && text(evidence.playbackSourceId) === playbackSourceId
-    && Math.abs(Number(evidence.durationSeconds) - durationSeconds) < 0.01
-    && bins.length === expectedBinCount
-    && bins.every((bin, index) => bin === index)
+    && Math.abs(Number(evidence.startSeconds) - range.startSeconds) < 0.01
+    && Math.abs(Number(evidence.endSeconds) - range.endSeconds) < 0.01
+    && bins.length === expectedBins.length
+    && bins.every((bin, index) => bin === expectedBins[index])
     && Number.isFinite(parsedCompletedAt)
     && parsedCompletedAt <= Date.now() + 5 * 60_000;
   if (!valid) {
     throw new TranscriptEvaluationWindowError(
-      `Play the complete ${Math.round(durationSeconds)}-second protected source before approving its accuracy reference.`,
-      "COMPLETE_SOURCE_PLAYBACK_REQUIRED",
+      `Play the complete ${Math.round(range.durationSeconds)}-second selected window before approving its accuracy reference.`,
+      "COMPLETE_WINDOW_PLAYBACK_REQUIRED",
       409,
     );
   }
   return {
-    schema: "quipsly-complete-source-playback-v1",
+    schema: "quipsly-window-playback-v1",
     playbackSourceId,
-    durationSeconds,
+    startSeconds: range.startSeconds,
+    endSeconds: range.endSeconds,
+    durationSeconds: range.durationSeconds,
     listenedSecondBins: bins,
     completedAt: new Date(parsedCompletedAt).toISOString(),
   };
@@ -341,7 +451,7 @@ function publicWindow(window: any, currentReferenceSha256: string | null) {
     referenceRevisionId: window.referenceRevisionId as string,
     referenceContentSha256: window.referenceContentSha256 as string,
     referenceWordCount: Array.isArray(window.referenceWordsJson) ? window.referenceWordsJson.length : 0,
-    completeSourcePlayback: object(window.sourcePlaybackEvidenceJson).schema === "quipsly-complete-source-playback-v1",
+    completeSourcePlayback: ["quipsly-complete-source-playback-v1", "quipsly-window-playback-v1"].includes(text(object(window.sourcePlaybackEvidenceJson).schema)),
     approvedAt: window.approvedAt instanceof Date ? window.approvedAt.toISOString() : window.approvedAt,
     staleAgainstCurrentReview: currentReferenceSha256 !== null
       && window.referenceContentSha256 !== currentReferenceSha256,
@@ -355,7 +465,11 @@ export function transcriptEvaluationReadiness(input: {
   gateAllowed: boolean;
   playback: ReturnType<typeof playbackFromAsset>;
 }) {
-  const reference = referenceForJob(input.job);
+  const segments = availableSegments(input.job);
+  const range = suggestedRange(input.job);
+  const reference = range
+    ? referenceForJob(input.job, new Set(range.segmentIds), range.startSeconds)
+    : referenceForJob(input.job);
   const duration = finite(input.job?.asset?.durationSeconds);
   const source = sourceSha256(input.job);
   const canApprove = canApproveRoom(input.room, input.actor);
@@ -363,12 +477,15 @@ export function transcriptEvaluationReadiness(input: {
   if (!input.gateAllowed) blockers.push({ code: "TRANSCRIPT_RELEASE_REQUIRED", detail: "Current source and transcription release must remain valid." });
   if (!canApprove) blockers.push({ code: "EDITOR_OR_PARTICIPANT_REQUIRED", detail: "A Session participant, coach, client, editor, owner, or staff reviewer must approve an accuracy window." });
   if (!input.playback) blockers.push({ code: "PLAYBACK_REQUIRED", detail: "Protected source playback must be available." });
-  if (duration === null || duration < TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS || duration > TRANSCRIPT_EVALUATION_WINDOW_MAXIMUM_SECONDS) {
-    blockers.push({ code: "WINDOW_DURATION_REQUIRED", detail: "This first corpus workflow accepts a complete 60–180 second source. Longer recordings need an explicit source-window selection." });
+  if (duration === null || duration < TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS) {
+    blockers.push({ code: "SOURCE_DURATION_REQUIRED", detail: `The source must contain at least ${TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS} seconds of audio.` });
+  }
+  if (!range) {
+    blockers.push({ code: "WINDOW_RANGE_REQUIRED", detail: `Choose ${TRANSCRIPT_EVALUATION_WINDOW_MINIMUM_SECONDS}–${TRANSCRIPT_EVALUATION_WINDOW_MAXIMUM_SECONDS} contiguous seconds whose transcript turns have all been playback-reviewed.` });
   }
   if (!source) blockers.push({ code: "SOURCE_SHA_REQUIRED", detail: "The transcript job and recording must agree on an immutable SHA-256." });
   if (reference.segmentIds.length === 0) blockers.push({ code: "TRANSCRIPT_SEGMENTS_REQUIRED", detail: "At least one provider segment is required." });
-  if (reference.unreviewedSegmentIds.length > 0) blockers.push({ code: "COMPLETE_PLAYBACK_REVIEW_REQUIRED", detail: `${reference.unreviewedSegmentIds.length} of ${reference.segmentIds.length} segments still need a playback-backed correction or confirmation.` });
+  if (range && reference.unreviewedSegmentIds.length > 0) blockers.push({ code: "COMPLETE_PLAYBACK_REVIEW_REQUIRED", detail: `${reference.unreviewedSegmentIds.length} of ${reference.segmentIds.length} selected segments still need a playback-backed correction or confirmation.` });
   if (!reference.referenceContentSha256 || reference.wordCount === 0) blockers.push({ code: "REFERENCE_WORDS_REQUIRED", detail: "The reviewed reference must contain words." });
   const versions = buildMobileCaptureConsentVersions({
     participants: input.room?.participants ?? [],
@@ -388,12 +505,25 @@ export function transcriptEvaluationReadiness(input: {
     referenceWordCount: reference.wordCount,
     speakerReviewedWordCount: reference.speakerReviewedWordCount,
     timingEvidenceWordCount: reference.referenceWords.filter((word) => word.startSeconds !== null && word.endSeconds !== null).length,
+    availableSegments: segments,
+    suggestedRange: range,
     blockers,
     conditions: CONDITIONS,
     suggestedWorkload: input.room?.purpose === "COACHING" ? "coaching" : "podcast",
-    approvedWindows: (input.job?.evaluationWindows ?? []).map((window: any) => publicWindow(window, reference.referenceContentSha256)),
+    approvedWindows: (input.job?.evaluationWindows ?? []).map((window: any) => {
+      const frozenSegmentIds = Array.isArray(window.sourceSegmentIdsJson)
+        ? window.sourceSegmentIdsJson.map(text).filter(Boolean)
+        : [];
+      const currentReference = referenceForJob(
+        input.job,
+        frozenSegmentIds.length ? new Set(frozenSegmentIds) : undefined,
+        Number(window.sourceStartSeconds) || 0,
+      );
+      return publicWindow(window, currentReference.referenceContentSha256);
+    }),
     boundaries: {
-      completeSourceOnlyInVersionOne: true,
+      transcriptAlignedWindows: true,
+      deterministicDerivativeRequired: true,
       playbackReviewRequired: true,
       providerTranscriptImmutable: true,
       appendOnlyWindow: true,
@@ -534,6 +664,8 @@ async function loadEvaluationEvidence(prisma: any, roomId: string, actor: Actor,
                   reviewKind: true,
                   providerTextSha256: true,
                   providerSpeakerLabel: true,
+                  startSecondsSnapshot: true,
+                  endSecondsSnapshot: true,
                   createdAt: true,
                 },
               },
@@ -579,6 +711,8 @@ export async function approveTranscriptEvaluationWindow(input: {
   clientRequestId: string;
   workload: unknown;
   conditions: unknown;
+  startSegmentId: unknown;
+  endSegmentId: unknown;
   reviewNote?: string | null;
   sourcePlaybackEvidence: unknown;
 }) {
@@ -595,13 +729,16 @@ export async function approveTranscriptEvaluationWindow(input: {
     playback: evidence.playback,
   });
   if (!readiness.eligible) throw new TranscriptEvaluationWindowError(readiness.blockers[0]?.detail || "The source is not ready for accuracy evaluation.", readiness.blockers[0]?.code || "EVALUATION_NOT_READY", 409);
-  const reference = referenceForJob(evidence.job);
-  const duration = readiness.sourceDurationSeconds!;
+  const range = selectedRange(evidence.job, input.startSegmentId, input.endSegmentId);
+  const reference = referenceForJob(evidence.job, new Set(range.segmentIds), range.startSeconds);
+  if (reference.unreviewedSegmentIds.length || !reference.referenceContentSha256 || !reference.referenceRevisionId || reference.wordCount === 0) {
+    throw new TranscriptEvaluationWindowError("The selected window does not have a complete human-reviewed reference.", "REFERENCE_WORDS_REQUIRED", 409);
+  }
   const consentVersionSha256 = readiness.consentVersionSha256!;
-  const provider = providerSnapshot(evidence.job);
-  const sourcePlaybackEvidence = completeSourcePlaybackEvidence(
+  const provider = providerSnapshot(evidence.job, new Set(range.segmentIds), range.startSeconds);
+  const sourcePlaybackEvidence = completeWindowPlaybackEvidence(
     input.sourcePlaybackEvidence,
-    duration,
+    range,
     evidence.playback!.sourceId,
   );
   const snapshot = {
@@ -612,9 +749,9 @@ export async function approveTranscriptEvaluationWindow(input: {
     recordingAssetId: evidence.job.asset.id,
     workload: selected.workload,
     conditions: selected.conditions,
-    sourceStartSeconds: 0,
-    sourceEndSeconds: duration,
-    sourceDurationSeconds: duration,
+    sourceStartSeconds: range.startSeconds,
+    sourceEndSeconds: range.endSeconds,
+    sourceDurationSeconds: range.durationSeconds,
     sourceSha256: readiness.sourceSha256!,
     sourceGeneration: text(evidence.job.sourceGeneration) || null,
     playbackSourceId: evidence.playback!.sourceId,
@@ -641,12 +778,14 @@ export async function approveTranscriptEvaluationWindow(input: {
       await acquirePrismaAdvisoryTransactionLock(tx, `transcript-evaluation-window:${evidence.job.id}`);
       const current = await loadEvaluationEvidence(tx, roomId, input.actor, true);
       const currentReadiness = transcriptEvaluationReadiness({ room: current.room, job: current.job, actor: input.actor, gateAllowed: current.gate.allowed, playback: current.playback });
-      const currentReference = referenceForJob(current.job);
+      const currentRange = selectedRange(current.job, input.startSegmentId, input.endSegmentId);
+      const currentReference = referenceForJob(current.job, new Set(currentRange.segmentIds), currentRange.startSeconds);
       const currentSnapshot = {
         ...snapshot,
         recordingAssetId: current.job.asset.id,
-        sourceDurationSeconds: currentReadiness.sourceDurationSeconds,
-        sourceEndSeconds: currentReadiness.sourceDurationSeconds,
+        sourceStartSeconds: currentRange.startSeconds,
+        sourceDurationSeconds: currentRange.durationSeconds,
+        sourceEndSeconds: currentRange.endSeconds,
         sourceSha256: currentReadiness.sourceSha256,
         sourceGeneration: text(current.job.sourceGeneration) || null,
         playbackSourceId: current.playback?.sourceId ?? null,
@@ -656,7 +795,7 @@ export async function approveTranscriptEvaluationWindow(input: {
         referenceWords: currentReference.referenceWords,
         sourceSegmentIds: currentReference.segmentIds,
         sourceReviewReceipts: currentReference.reviewReceipts,
-        providerSnapshot: providerSnapshot(current.job),
+        providerSnapshot: providerSnapshot(current.job, new Set(currentRange.segmentIds), currentRange.startSeconds),
       };
       if (!currentReadiness.eligible || sha256Value(currentSnapshot) !== windowKeySha256) {
         throw new TranscriptEvaluationWindowError("Transcript, consent, source, or review evidence changed during approval. Refresh and review again.", "EVALUATION_EVIDENCE_CHANGED", 409);
@@ -672,9 +811,9 @@ export async function approveTranscriptEvaluationWindow(input: {
           windowKeySha256,
           workload: selected.workload,
           conditionsJson: selected.conditions,
-          sourceStartSeconds: 0,
-          sourceEndSeconds: currentReadiness.sourceDurationSeconds!,
-          sourceDurationSeconds: currentReadiness.sourceDurationSeconds!,
+          sourceStartSeconds: currentRange.startSeconds,
+          sourceEndSeconds: currentRange.endSeconds,
+          sourceDurationSeconds: currentRange.durationSeconds,
           sourceSha256: currentReadiness.sourceSha256!,
           sourceGeneration: text(current.job.sourceGeneration) || null,
           playbackSourceId: current.playback!.sourceId,
@@ -686,7 +825,7 @@ export async function approveTranscriptEvaluationWindow(input: {
           sourceReviewReceiptsJson: currentReference.reviewReceipts,
           sourcePlaybackEvidenceJson: sourcePlaybackEvidence,
           providerSnapshotJson: currentSnapshot.providerSnapshot,
-          reviewNote: text(input.reviewNote) || "Approved from complete playback-reviewed transcript evidence in Nest.",
+          reviewNote: text(input.reviewNote) || "Approved from a complete playback-reviewed, transcript-aligned source window in Nest.",
           approvedAt: new Date(),
         },
       });

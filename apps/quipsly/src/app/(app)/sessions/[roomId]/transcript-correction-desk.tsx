@@ -148,6 +148,15 @@ type Desk = {
     referenceWordCount?: number;
     speakerReviewedWordCount?: number;
     timingEvidenceWordCount?: number;
+    availableSegments?: Array<{ id: string; startSeconds: number; endSeconds: number; reviewed: boolean }>;
+    suggestedRange?: null | {
+      startSegmentId: string;
+      endSegmentId: string;
+      startSeconds: number;
+      endSeconds: number;
+      durationSeconds: number;
+      segmentIds: string[];
+    };
     blockers: Array<{ code: string; detail: string }>;
     conditions?: Record<"podcast" | "coaching", string[]>;
     approvedWindows: Array<{
@@ -175,6 +184,7 @@ type EvaluationCandidate = {
   providerName: string;
   model: string;
   adapterVersion: string;
+  inputMediaSha256: string | null;
   speakerAttribution: "word" | "segment" | "unavailable";
   timingGranularity: "word" | "segment" | "unavailable";
   outcome: "succeeded" | "failed";
@@ -237,21 +247,54 @@ function TranscriptAccuracyCorpusPanel({
 }) {
   const [workload, setWorkload] = useState<"podcast" | "coaching">(evaluation.suggestedWorkload ?? "podcast");
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [startSegmentId, setStartSegmentId] = useState(evaluation.suggestedRange?.startSegmentId ?? "");
+  const [endSegmentId, setEndSegmentId] = useState(evaluation.suggestedRange?.endSegmentId ?? "");
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const conditions = evaluation.conditions?.[workload] ?? [];
-  const sourceDurationSeconds = evaluation.sourceDurationSeconds ?? 0;
-  const expectedPlaybackBins = Math.ceil(sourceDurationSeconds);
-  const completeSourcePlayback = expectedPlaybackBins >= 1
-    && listenedSecondBins.filter((bin) => Number.isInteger(bin) && bin >= 0 && bin < expectedPlaybackBins).length === expectedPlaybackBins;
+  const segments = evaluation.availableSegments ?? [];
+  const startIndex = segments.findIndex((segment) => segment.id === startSegmentId);
+  const endIndex = segments.findIndex((segment) => segment.id === endSegmentId);
+  const chosenSegments = startIndex >= 0 && endIndex >= startIndex ? segments.slice(startIndex, endIndex + 1) : [];
+  let sourceStartSeconds = chosenSegments[0]?.startSeconds ?? 0;
+  let sourceEndSeconds = chosenSegments.at(-1)?.endSeconds ?? 0;
+  if (chosenSegments.length) {
+    const missingSeconds = Math.max(0, 60 - (sourceEndSeconds - sourceStartSeconds));
+    const growRight = Math.min(missingSeconds, Math.max(0, (evaluation.sourceDurationSeconds ?? 0) - sourceEndSeconds));
+    sourceEndSeconds += growRight;
+    sourceStartSeconds = Math.max(0, sourceStartSeconds - (missingSeconds - growRight));
+    for (;;) {
+      const overlap = segments.filter((segment) => segment.endSeconds > sourceStartSeconds + 0.001 && segment.startSeconds < sourceEndSeconds - 0.001);
+      const nextStart = Math.min(sourceStartSeconds, ...overlap.map((segment) => segment.startSeconds));
+      const nextEnd = Math.max(sourceEndSeconds, ...overlap.map((segment) => segment.endSeconds));
+      if (Math.abs(nextStart - sourceStartSeconds) < 0.001 && Math.abs(nextEnd - sourceEndSeconds) < 0.001) break;
+      sourceStartSeconds = nextStart;
+      sourceEndSeconds = nextEnd;
+    }
+  }
+  const selectedSegments = chosenSegments.length
+    ? segments.filter((segment) => segment.endSeconds > sourceStartSeconds + 0.001 && segment.startSeconds < sourceEndSeconds - 0.001)
+    : [];
+  const sourceDurationSeconds = Math.max(0, sourceEndSeconds - sourceStartSeconds);
+  const firstPlaybackBin = Math.floor(sourceStartSeconds);
+  const finalPlaybackBinExclusive = Math.ceil(sourceEndSeconds);
+  const expectedPlaybackBins = Math.max(0, finalPlaybackBinExclusive - firstPlaybackBin);
+  const heardWindowBins = listenedSecondBins.filter((bin) => Number.isInteger(bin) && bin >= firstPlaybackBin && bin < finalPlaybackBinExclusive);
+  const completeSourcePlayback = expectedPlaybackBins >= 1 && heardWindowBins.length === expectedPlaybackBins;
   const playbackCoverage = expectedPlaybackBins > 0
-    ? Math.min(1, listenedSecondBins.length / expectedPlaybackBins)
+    ? Math.min(1, heardWindowBins.length / expectedPlaybackBins)
     : 0;
+  const selectedRangeValid = sourceDurationSeconds >= 60
+    && sourceDurationSeconds <= 180
+    && selectedSegments.length > 0
+    && selectedSegments.every((segment) => segment.reviewed);
 
   useEffect(() => {
     setWorkload(evaluation.suggestedWorkload ?? "podcast");
     setSelectedConditions([]);
-  }, [evaluation.sourceSha256, evaluation.suggestedWorkload]);
+    setStartSegmentId(evaluation.suggestedRange?.startSegmentId ?? "");
+    setEndSegmentId(evaluation.suggestedRange?.endSegmentId ?? "");
+  }, [evaluation.sourceSha256, evaluation.suggestedWorkload, evaluation.suggestedRange?.startSegmentId, evaluation.suggestedRange?.endSegmentId]);
 
   async function approve() {
     setApproving(true);
@@ -266,9 +309,13 @@ function TranscriptAccuracyCorpusPanel({
           clientRequestId: requestId("evaluation-window"),
           workload,
           conditions: selectedConditions,
+          startSegmentId,
+          endSegmentId,
           sourcePlaybackEvidence: {
-            schema: "quipsly-complete-source-playback-v1",
+            schema: "quipsly-window-playback-v1",
             playbackSourceId,
+            startSeconds: sourceStartSeconds,
+            endSeconds: sourceEndSeconds,
             durationSeconds: sourceDurationSeconds,
             listenedSecondBins,
             completedAt: new Date().toISOString(),
@@ -294,7 +341,7 @@ function TranscriptAccuracyCorpusPanel({
       <div className="max-w-3xl">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-700">Private transcription lab</p>
         <h3 id="accuracy-corpus-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Build accuracy truth from real listening</h3>
-        <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">Approve an immutable 60–180 second source only after every segment has been checked against playback. Quipsly freezes the media hash, consent state, provider evidence, reviewed words, and listening receipts—without changing the transcript or calling another provider.</p>
+        <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">Choose a transcript-aligned 60–180 second window after every included turn has been checked against playback. Quipsly freezes the original media hash, exact in/out points, consent state, provider evidence, reviewed words, and listening receipts—without changing the transcript or calling another provider.</p>
       </div>
       <span className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide ${evaluation.eligible ? "border-emerald-200 bg-emerald-100 text-emerald-950" : "border-amber-200 bg-amber-100 text-amber-950"}`}>{evaluation.eligible ? "Ready to classify" : `${reviewed}/${total} reviewed`}</span>
     </div>
@@ -309,6 +356,19 @@ function TranscriptAccuracyCorpusPanel({
 
     {evaluation.blockers.length > 0 ? <ul className="mt-4 space-y-2">{evaluation.blockers.map((blocker) => <li key={blocker.code} className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950"><TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" /><span>{blocker.detail}</span></li>)}</ul> : <div className="mt-5 space-y-4 rounded-xl border border-indigo-200 bg-white p-4">
       <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-black uppercase tracking-wide text-indigo-950">Window starts at transcript turn
+          <select aria-label="Window starts at transcript turn" value={startSegmentId} onChange={(event) => { const next = event.target.value; setStartSegmentId(next); const nextIndex = segments.findIndex((segment) => segment.id === next); if (endIndex < nextIndex) setEndSegmentId(next); }} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+            {segments.map((segment) => <option key={segment.id} value={segment.id}>{timestampForSeconds(segment.startSeconds)} · {segment.reviewed ? "reviewed" : "needs review"}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-black uppercase tracking-wide text-indigo-950">Window ends after transcript turn
+          <select aria-label="Window ends after transcript turn" value={endSegmentId} onChange={(event) => setEndSegmentId(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
+            {segments.map((segment, index) => <option key={segment.id} value={segment.id} disabled={index < startIndex}>{timestampForSeconds(segment.endSeconds)} · {segment.reviewed ? "reviewed" : "needs review"}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className={`rounded-lg p-3 text-xs font-bold leading-5 ${selectedRangeValid ? "bg-emerald-50 text-emerald-950" : "bg-amber-50 text-amber-950"}`}>{selectedSegments.length ? `${timestampForSeconds(sourceStartSeconds)}–${timestampForSeconds(sourceEndSeconds)} · ${Math.round(sourceDurationSeconds)} seconds · ${selectedSegments.length} transcript turns` : "Choose a start and end turn."}{selectedSegments.some((segment) => !segment.reviewed) ? " Every included turn must be reviewed first." : sourceDurationSeconds < 60 || sourceDurationSeconds > 180 ? " The selected range must be 60–180 seconds." : " The provider derivative will use these exact boundaries."}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-black uppercase tracking-wide text-indigo-950">Recording workflow
           <select value={workload} onChange={(event) => { setWorkload(event.target.value as "podcast" | "coaching"); setSelectedConditions([]); }} className="mt-1 block min-h-11 w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-[#3d3122]">
             <option value="podcast">Podcast production</option>
@@ -318,8 +378,8 @@ function TranscriptAccuracyCorpusPanel({
         <div className="rounded-lg bg-indigo-50 p-3 text-xs font-bold leading-5 text-indigo-950">Choose every condition this clip actually tests. These labels drive clean-vs-difficult WER, speaker, timing, and correction-effort scorecards later.</div>
       </div>
       <fieldset><legend className="text-xs font-black uppercase tracking-wide text-indigo-950">Conditions heard in this source</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{conditions.map((condition) => <label key={condition} className="flex min-h-11 items-center gap-3 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs font-bold text-indigo-950"><input type="checkbox" checked={selectedConditions.includes(condition)} onChange={(event) => setSelectedConditions((current) => event.target.checked ? [...current, condition] : current.filter((value) => value !== condition))} className="h-4 w-4" />{humanize(condition)}</label>)}</div></fieldset>
-      {!completeSourcePlayback ? <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950"><AudioLines size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Play the complete protected source in the recording controls above. Scrubbing does not count as listening; {expectedPlaybackBins - listenedSecondBins.length} second{expectedPlaybackBins - listenedSecondBins.length === 1 ? "" : "s"} remain.</p> : <p className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Complete source playback observed in this review session.</p>}
-      <button type="button" onClick={() => void approve()} disabled={busy || approving || selectedConditions.length === 0 || !completeSourcePlayback} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{approving ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}{approving ? "Freezing reviewed evidence…" : "Add to private accuracy corpus"}</button>
+      {!completeSourcePlayback ? <p className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950"><AudioLines size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Play the complete selected window in the recording controls above. Scrubbing does not count as listening; {Math.max(0, expectedPlaybackBins - heardWindowBins.length)} second{expectedPlaybackBins - heardWindowBins.length === 1 ? "" : "s"} remain.</p> : <p className="flex gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold leading-5 text-emerald-950"><Check size={16} className="mt-0.5 shrink-0" aria-hidden="true" />Complete selected-window playback observed in this review session.</p>}
+      <button type="button" onClick={() => void approve()} disabled={busy || approving || selectedConditions.length === 0 || !selectedRangeValid || !completeSourcePlayback} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-indigo-800 px-5 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{approving ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={15} aria-hidden="true" />}{approving ? "Freezing reviewed evidence…" : "Add to private accuracy corpus"}</button>
       <p className="text-xs font-bold leading-5 text-indigo-800">This is an explicit approval of the exact playback-reviewed reference. It does not upload new media, rerun transcription, alter provider output, train a public model, message anyone, or publish.</p>
     </div>}
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{error}</p> : null}
@@ -342,7 +402,7 @@ function TranscriptAccuracyCorpusPanel({
             <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Timing p95</dt><dd className="mt-1 font-black text-[#3d3122]">{candidate.timingGranularity !== "word" || timingP95 == null ? "Unavailable" : `${Math.round(timingP95)} ms`}</dd></div>
             <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Latency</dt><dd className="mt-1 font-black text-[#3d3122]">{(candidate.elapsedMilliseconds / 1000).toFixed(1)} s</dd></div>
           </dl> : <p className="mt-3 rounded-lg bg-white p-3 text-xs font-bold text-rose-900">{candidate.errorCode ? humanize(candidate.errorCode) : "Provider attempt failed"}{candidate.retryable === true ? " · retryable in a new run" : ""}</p>}
-          <p className="mt-3 text-[10px] font-bold leading-4 text-[#765f40]">{candidate.estimatedCostUsd === null ? "Cost not observed" : `$${candidate.estimatedCostUsd.toFixed(4)} observed`} · {candidate.correctionObservationCount} measured correction pass{candidate.correctionObservationCount === 1 ? "" : "es"} · policy receipt {candidate.policyReceiptSha256.slice(0, 10)}…</p>
+          <p className="mt-3 text-[10px] font-bold leading-4 text-[#765f40]">{candidate.estimatedCostUsd === null ? "Cost not observed" : `$${candidate.estimatedCostUsd.toFixed(4)} observed`} · {candidate.correctionObservationCount} measured correction pass{candidate.correctionObservationCount === 1 ? "" : "es"} · input {candidate.inputMediaSha256 ? `${candidate.inputMediaSha256.slice(0, 10)}…` : "legacy/unavailable"} · policy {candidate.policyReceiptSha256.slice(0, 10)}…</p>
         </article>;
       })}</div> : !evaluation.providerEvidenceError ? <p className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-4 text-xs font-bold leading-5 text-indigo-950">No alternative provider attempt has been recorded yet. The protected export gives an authorized runner exact source and reference hashes without exposing them in ordinary Session views.</p> : null}
     </div> : null}

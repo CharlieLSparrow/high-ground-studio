@@ -50,6 +50,8 @@ function evidence(): { room: any; job: any } {
         reviewKind: "confirmed-as-is",
         providerTextSha256: sha(providerText),
         providerSpeakerLabel: "Speaker 1",
+        startSecondsSnapshot: 0,
+        endSecondsSnapshot: 60,
         createdAt: reviewedAt,
       }],
     }],
@@ -86,7 +88,8 @@ describe("transcriptEvaluationReadiness", () => {
   it("fails closed when release, review, source, playback, or duration is incomplete", () => {
     const { room, job } = evidence();
     room.recordingConsents = [];
-    job.asset.durationSeconds = 181;
+    job.asset.durationSeconds = 59;
+    job.segments[0].endSeconds = 59;
     job.asset.checksum = "b".repeat(64);
     job.segments[0].verifications = [];
     const blocked = transcriptEvaluationReadiness({ room, job, actor, gateAllowed: false, playback: null });
@@ -94,11 +97,65 @@ describe("transcriptEvaluationReadiness", () => {
     expect(blocked.blockers.map((value) => value.code)).toEqual(expect.arrayContaining([
       "TRANSCRIPT_RELEASE_REQUIRED",
       "PLAYBACK_REQUIRED",
-      "WINDOW_DURATION_REQUIRED",
+      "SOURCE_DURATION_REQUIRED",
+      "WINDOW_RANGE_REQUIRED",
       "SOURCE_SHA_REQUIRED",
-      "COMPLETE_PLAYBACK_REVIEW_REQUIRED",
       "REFERENCE_WORDS_REQUIRED",
     ]));
+  });
+
+  it("suggests a transcript-aligned reviewed window inside a long-form recording", () => {
+    const { room, job } = evidence();
+    job.asset.durationSeconds = 3_600;
+    job.segments = Array.from({ length: 3 }, (_, index) => {
+      const providerText = `Reviewed turn ${index + 1}.`;
+      return {
+        id: `segment-${index + 1}`,
+        speakerLabel: "Speaker 1",
+        startSeconds: index * 40,
+        endSeconds: (index + 1) * 40,
+        text: providerText,
+        words: [{ id: `word-${index + 1}`, punctuatedWord: `turn-${index + 1}`, startSeconds: index * 40 + 1, endSeconds: index * 40 + 2, speakerLabel: "Speaker 1", channel: 0 }],
+        corrections: [],
+        verifications: [{ id: `verification-${index + 1}`, reviewKind: "confirmed-as-is", providerTextSha256: sha(providerText), providerSpeakerLabel: "Speaker 1", startSecondsSnapshot: index * 40, endSecondsSnapshot: (index + 1) * 40, createdAt: new Date("2026-08-03T18:00:00.000Z") }],
+      };
+    });
+    const ready = transcriptEvaluationReadiness({ room, job, actor, gateAllowed: true, playback });
+    expect(ready).toMatchObject({
+      eligible: true,
+      sourceDurationSeconds: 3_600,
+      suggestedRange: { startSegmentId: "segment-1", endSegmentId: "segment-2", startSeconds: 0, endSeconds: 80, durationSeconds: 80 },
+    });
+    expect(ready.availableSegments).toHaveLength(3);
+  });
+
+  it("pads reviewed speech with source silence but never swallows an unchecked turn", () => {
+    const { room, job } = evidence();
+    const reviewed = job.segments[0];
+    reviewed.startSeconds = 10;
+    reviewed.endSeconds = 20;
+    reviewed.words[0].startSeconds = 11;
+    reviewed.words[0].endSeconds = 12;
+    reviewed.words[1].startSeconds = 13;
+    reviewed.words[1].endSeconds = 14;
+    reviewed.verifications[0].startSecondsSnapshot = 10;
+    reviewed.verifications[0].endSecondsSnapshot = 20;
+    const padded = transcriptEvaluationReadiness({ room, job, actor, gateAllowed: true, playback });
+    expect(padded.suggestedRange).toMatchObject({ startSeconds: 0, endSeconds: 60, durationSeconds: 60, segmentIds: ["segment-1"] });
+
+    job.segments.push({
+      id: "unchecked-overlap",
+      speakerLabel: "Speaker 1",
+      startSeconds: 40,
+      endSeconds: 45,
+      text: "This turn has not been heard.",
+      words: [],
+      corrections: [],
+      verifications: [],
+    });
+    const blocked = transcriptEvaluationReadiness({ room, job, actor, gateAllowed: true, playback });
+    expect(blocked.suggestedRange).toBeNull();
+    expect(blocked.blockers.map((value) => value.code)).toContain("WINDOW_RANGE_REQUIRED");
   });
 
   it("projects frozen windows without transcript or provider text", () => {

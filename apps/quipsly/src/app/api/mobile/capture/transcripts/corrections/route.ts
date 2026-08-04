@@ -156,6 +156,8 @@ export async function POST(request: Request) {
         clientRequestId: text(input.clientRequestId),
         workload: input.workload,
         conditions: input.conditions,
+        startSegmentId: input.startSegmentId,
+        endSegmentId: input.endSegmentId,
         reviewNote: nullableText(input.reviewNote),
         sourcePlaybackEvidence: input.sourcePlaybackEvidence,
       });
