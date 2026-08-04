@@ -135,6 +135,14 @@ noise floor, DC offset, channel/sample-rate coverage, and clickable attention
 candidates. Zero candidates means only that the declared deterministic rules
 did not fire; it is never rendered as a quality certificate.
 
+Source-to-preview listening defaults to loudness-matched monitor gain. Quipsly
+uses the quieter complete-decode integrated LUFS as the reference and
+attenuates only the louder browser feed with `10^(deltaLU/20)`. This is a
+monitoring operation, not a render node: it cannot clip by boosting, it is
+observable on each media element, and it changes neither stored bytes nor
+evidence. Reviewers can switch to unity `Delivery level` without losing the
+playhead when they need to judge the verified final output level.
+
 ## Next qualified layers
 
 1. generation-bound GCS manifest/outbox and database-free cloud execution;

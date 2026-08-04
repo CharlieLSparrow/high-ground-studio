@@ -159,3 +159,24 @@ Updated verification:
 - Quipsly production build: all 165 routes passed;
 - retained browser operation, persisted receipt readback, and no-overflow
   visual inspection: passed.
+
+## Loudness-matched audition checkpoint
+
+The audition desk now defaults to `Matched loudness` for source-to-preview
+comparisons. It uses the quieter file's complete-decode integrated LUFS as the
+monitor reference and attenuates only the louder browser feed. It never boosts
+a feed, rewrites audio, changes the measurements, or mistakes monitor gain for
+a mastered derivative. `Delivery level` restores unity monitor gain for judging
+the verified output level and peak headroom.
+
+This prevents a central A/B-review failure: a louder version can feel better
+even when the processing is not better. On the retained Episode 4 source, the
+operated matched mode kept the immutable source at unity and monitored the
+30.59-LU-louder preview at `0.029546` linear gain (-30.59 dB). The UI exposes
+both monitor adjustments, explains the bias being controlled, and preserves
+the same transport and playhead across version and monitoring-mode switches.
+
+Focused source/master/privacy/route tests now pass 13/13, including louder
+source, louder preview, and unity-delivery cases. The gain is also reflected as
+element-level diagnostic metadata so browser acceptance can verify the actual
+feed configuration instead of trusting button copy.

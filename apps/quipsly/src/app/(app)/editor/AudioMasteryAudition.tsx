@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export type AudioMasterySeriesPoint = {
@@ -28,6 +28,34 @@ export type AudioMasteryReviewMoment = {
   label: string;
   detail: string;
 };
+
+export type AudioMasteryMonitorMode = "matched" | "delivery";
+
+export function audioMasteryAuditionGains(
+  sourceIntegratedLufs: number,
+  masteredIntegratedLufs: number,
+  mode: AudioMasteryMonitorMode,
+) {
+  if (mode === "delivery") {
+    return {
+      sourceGain: 1,
+      masteredGain: 1,
+      sourceAdjustmentDb: 0,
+      masteredAdjustmentDb: 0,
+      referenceLufs: null,
+    };
+  }
+  const referenceLufs = Math.min(sourceIntegratedLufs, masteredIntegratedLufs);
+  const sourceAdjustmentDb = Math.min(0, referenceLufs - sourceIntegratedLufs);
+  const masteredAdjustmentDb = Math.min(0, referenceLufs - masteredIntegratedLufs);
+  return {
+    sourceGain: Math.max(0, Math.min(1, 10 ** (sourceAdjustmentDb / 20))),
+    masteredGain: Math.max(0, Math.min(1, 10 ** (masteredAdjustmentDb / 20))),
+    sourceAdjustmentDb,
+    masteredAdjustmentDb,
+    referenceLufs,
+  };
+}
 
 type AudioSignalStatisticsSummary = {
   channel: number | null;
@@ -220,9 +248,19 @@ export function AudioMasteryAudition({
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [monitorMode, setMonitorMode] = useState<AudioMasteryMonitorMode>("matched");
   const duration = Math.max(source.durationSeconds, mastered.durationSeconds, 0.001);
   const moments = useMemo(() => audioMasteryReviewMoments(source, mastered), [mastered, source]);
+  const auditionGains = useMemo(
+    () => audioMasteryAuditionGains(source.integratedLufs, mastered.integratedLufs, monitorMode),
+    [mastered.integratedLufs, monitorMode, source.integratedLufs],
+  );
   const activeRef = version === "source" ? sourceRef : masteredRef;
+
+  useEffect(() => {
+    if (sourceRef.current) sourceRef.current.volume = auditionGains.sourceGain;
+    if (masteredRef.current) masteredRef.current.volume = auditionGains.masteredGain;
+  }, [auditionGains, expanded]);
 
   const seek = (timeSeconds: number) => {
     const next = Math.max(0, Math.min(duration, timeSeconds));
@@ -337,8 +375,47 @@ export function AudioMasteryAudition({
         ))}
       </div>
 
-      <audio ref={sourceRef} src={sourceUrl} preload="metadata" onTimeUpdate={(event) => version === "source" && setCurrentTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
-      <audio ref={masteredRef} src={masteredUrl} preload="metadata" onTimeUpdate={(event) => version === "mastered" && setCurrentTime(event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+      <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900 p-2">
+        <div className="grid grid-cols-2 gap-1" role="group" aria-label="Monitor level">
+          {(["matched", "delivery"] as const).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              aria-pressed={monitorMode === candidate}
+              onClick={() => setMonitorMode(candidate)}
+              className={`rounded-md px-3 py-2 text-[10px] font-black ${monitorMode === candidate ? "bg-sky-200 text-sky-950" : "text-slate-300 hover:bg-slate-800"}`}
+            >
+              {candidate === "matched" ? "Matched loudness" : "Delivery level"}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 px-1 text-[9px] font-bold leading-4 text-slate-400">
+          {monitorMode === "matched"
+            ? `Compare processing without the louder-is-better bias. Quipsly only attenuates the louder monitor feed; source ${auditionGains.sourceAdjustmentDb.toFixed(1)} dB, preview ${auditionGains.masteredAdjustmentDb.toFixed(1)} dB. Files and measurements are unchanged.`
+            : "Hear both files at unity monitor gain to judge the verified delivery level and peak headroom. Files and measurements are unchanged."}
+        </p>
+      </div>
+
+      <audio
+        ref={sourceRef}
+        src={sourceUrl}
+        preload="metadata"
+        data-audition-version="source"
+        data-monitor-gain={auditionGains.sourceGain}
+        data-monitor-adjustment-db={auditionGains.sourceAdjustmentDb}
+        onTimeUpdate={(event) => version === "source" && setCurrentTime(event.currentTarget.currentTime)}
+        onEnded={() => setPlaying(false)}
+      />
+      <audio
+        ref={masteredRef}
+        src={masteredUrl}
+        preload="metadata"
+        data-audition-version="mastered"
+        data-monitor-gain={auditionGains.masteredGain}
+        data-monitor-adjustment-db={auditionGains.masteredAdjustmentDb}
+        onTimeUpdate={(event) => version === "mastered" && setCurrentTime(event.currentTarget.currentTime)}
+        onEnded={() => setPlaying(false)}
+      />
       <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-900 px-3 py-3">
         <button type="button" onClick={() => void togglePlayback()} className="min-w-20 rounded-md bg-fuchsia-300 px-3 py-2 text-xs font-black text-fuchsia-950 hover:bg-fuchsia-200">
           {playing ? "Pause" : "Play"}
