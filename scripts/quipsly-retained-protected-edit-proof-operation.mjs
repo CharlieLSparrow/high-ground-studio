@@ -83,7 +83,7 @@ async function main() {
     const analysisBody = await analysis.json().catch(() => ({}));
     assert(analysis.ok(), `Protected edit analysis failed (${analysis.status()}): ${JSON.stringify(analysisBody)}`);
     const visualization = analysisBody?.signalVisualization;
-    assert(visualization?.recordingAssetId === RECORDING_ASSET_ID, "Analysis did not bind the Episode 4 RecordingAsset.");
+    assert(visualization?.mediaAssetKind === "capture-recording" && visualization?.mediaAssetId === RECORDING_ASSET_ID, "Analysis did not bind the Episode 4 Capture recording.");
     assert(visualization?.protectedPlayback?.sourceId === SOURCE_ID && visualization?.protectedPlayback?.url === PLAYBACK_URL, "Analysis did not bind the protected Episode 4 playback route.");
     assert(analysisBody?.proposalSet?.binding?.signalEvidence?.protectedPlaybackSourceId === SOURCE_ID, "Proposal set did not preserve the protected playback source identity.");
 
@@ -117,7 +117,7 @@ async function main() {
     assert(receipt.ok() && receiptBody?.receipt?.action === "PROOF_LISTENED", `Protected proof receipt failed (${receipt.status()}): ${JSON.stringify(receiptBody)}`);
     assert(receiptBody.receipt.sourceSha256 === visualization.sourceSha256, "Receipt source hash drifted from protected playback analysis.");
     assert(receiptBody.receipt.signalProfileSha256 === visualization.signalProfileSha256, "Receipt signal profile drifted from protected playback analysis.");
-    assert(receiptBody.receipt.evidence?.recordingAssetId === RECORDING_ASSET_ID && receiptBody.receipt.evidence?.protectedPlaybackSourceId === SOURCE_ID, "Receipt lost its exact protected source identity.");
+    assert(receiptBody.receipt.evidence?.mediaAssetKind === "capture-recording" && receiptBody.receipt.evidence?.mediaAssetId === RECORDING_ASSET_ID && receiptBody.receipt.evidence?.protectedPlaybackSourceId === SOURCE_ID, "Receipt lost its exact protected source identity.");
     await main.getByText(/Proof-listened through the exact protected RecordingAsset/).waitFor();
 
     await audio.evaluate((element) => element.pause());

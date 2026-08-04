@@ -3,16 +3,19 @@
 import { deterministicEditEvidence } from "./deterministic-edit-evidence";
 
 describe("deterministic edit evidence", () => {
-  function audioSignal(rmsDbfs: number) {
+  function audioSignal(rmsDbfs: number, observations: Array<Record<string, unknown>> = []) {
     return {
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       sourceSha256: "a".repeat(64),
       storageGeneration: "generation-1",
       signalProfileSha256: "b".repeat(64),
       signal: {
         algorithm: "capture-energy-v1",
+        durationSeconds: 10,
         thresholds: { nearSilenceDbfs: -72, surroundingSignalDbfs: -45 },
         waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs }],
+        observations,
       },
     } as never;
   }
@@ -112,6 +115,39 @@ describe("deterministic edit evidence", () => {
       }),
     ]);
     expect(result.reviewCandidates[0]?.rationale).toMatch(/untranscribed speech/i);
+  });
+
+  it("surfaces measured signal warnings as listen-only evidence without authorizing a cut", () => {
+    const result = deterministicEditEvidence([
+      { id: "closing", time: 8, duration: 2, text: "That is the end of the source." },
+    ], {
+      audioSignal: audioSignal(-24, [{
+        kind: "sample-clipping",
+        severity: "warning",
+        startSeconds: 10,
+        endSeconds: 10,
+        detail: "Clipped samples were measured at the endpoint.",
+      }]),
+    });
+
+    expect(result.proposals).toHaveLength(0);
+    expect(result.reviewCandidates).toEqual([
+      expect.objectContaining({
+        kind: "signal-attention",
+        sourceRange: { startSeconds: 9.999, endSeconds: 10 },
+        suggestedAction: "listen",
+        changesSource: false,
+        evidence: expect.objectContaining({
+          audioObservation: expect.objectContaining({
+            mediaAssetKind: "capture-recording",
+            mediaAssetId: "recording-1",
+            kind: "sample-clipping",
+            severity: "warning",
+          }),
+        }),
+      }),
+    ]);
+    expect(result.reviewCandidates[0]?.rationale).toMatch(/does not authorize repair, removal, or a cut/i);
   });
 
   it("uses canonical speaker timing for overlap and camera-transition review", () => {

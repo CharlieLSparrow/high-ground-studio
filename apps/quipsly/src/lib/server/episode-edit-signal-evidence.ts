@@ -3,17 +3,20 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import type { PrismaClient } from "@prisma/client";
+import { parseAudioSignalProfileJob, parseAudioSignalProfileResult } from "@high-ground/quipsly-media-processing";
 
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
-import type { AiEditSignalVisualization } from "@/lib/editor/ai-edit-proposal-contract";
+import type { AiEditMediaAssetKind, AiEditSignalVisualization } from "@/lib/editor/ai-edit-proposal-contract";
 import { compactSignalWaveform, parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 
 type JsonRecord = Record<string, unknown>;
 type ParsedSignal = NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
 
 export type BoundEpisodeAudioSignalEvidence = {
-  recordingAssetId: string;
+  mediaAssetKind: AiEditMediaAssetKind;
+  mediaAssetId: string;
   sourceSha256: string;
   storageGeneration: string | null;
   signalProfileSha256: string;
@@ -34,7 +37,8 @@ export function episodeEditSignalVisualization(
 ): AiEditSignalVisualization {
   const maximum = Math.max(1, Math.min(360, Math.trunc(maximumWaveformPoints)));
   return {
-    recordingAssetId: evidence.recordingAssetId,
+    mediaAssetKind: evidence.mediaAssetKind,
+    mediaAssetId: evidence.mediaAssetId,
     sourceSha256: evidence.sourceSha256,
     storageGeneration: evidence.storageGeneration,
     signalProfileSha256: evidence.signalProfileSha256,
@@ -59,7 +63,7 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function recordingAssetId(item: JsonRecord) {
+function captureRecordingAssetId(item: JsonRecord) {
   const metadata = object(item.metadata);
   const metadataSync = object(metadata.recordingSync);
   const sync = object(item.sync);
@@ -70,7 +74,7 @@ function recordingAssetId(item: JsonRecord) {
     || text(syncRecording.recordingAssetId);
 }
 
-function sourceSignal(recording: any): BoundEpisodeAudioSignalEvidence | null {
+function captureSourceSignal(recording: any): BoundEpisodeAudioSignalEvidence | null {
   if (recording?.status !== "VERIFIED") return null;
   const manifest = object(recording?.localManifestJson);
   const profile = object(manifest.reportedSourceProfile);
@@ -96,7 +100,8 @@ function sourceSignal(recording: any): BoundEpisodeAudioSignalEvidence | null {
     }
     : null;
   return {
-    recordingAssetId: text(recording.id),
+    mediaAssetKind: "capture-recording",
+    mediaAssetId: text(recording.id),
     sourceSha256,
     storageGeneration: text(manifest.storageGeneration) || null,
     signalProfileSha256,
@@ -105,17 +110,122 @@ function sourceSignal(recording: any): BoundEpisodeAudioSignalEvidence | null {
   };
 }
 
+function studioMediaCoordinates(item: JsonRecord) {
+  return {
+    assetId: text(item.id) || text(item.assetId),
+    sourceId: text(item.sourceId),
+  };
+}
+
+function matchesSelectedMedia(item: JsonRecord, selectedMediaAssetId: string) {
+  if (!selectedMediaAssetId) return true;
+  const studio = studioMediaCoordinates(item);
+  return [studio.assetId, studio.sourceId, captureRecordingAssetId(item)].includes(selectedMediaAssetId);
+}
+
+function studioParsedSignal(profile: ReturnType<typeof parseAudioSignalProfileResult>["audioSignal"]): ParsedSignal {
+  return {
+    schemaVersion: 1,
+    algorithm: profile.algorithm,
+    status: profile.signalStatus,
+    sampleRateHz: profile.sampleRate,
+    channelCount: profile.channelCount,
+    analyzedFrameCount: profile.analyzedFrameCount,
+    durationSeconds: profile.durationSeconds,
+    windowDurationSeconds: profile.windowDurationSeconds,
+    rmsDbfs: profile.rmsDbfs,
+    samplePeakDbfs: profile.samplePeakDbfs,
+    clippedFrameCount: profile.clippedFrameCount,
+    clippedFrameFraction: profile.clippedFrameFraction,
+    nearSilentFrameFraction: profile.nearSilentFrameFraction,
+    leftRmsDbfs: profile.leftRmsDbfs,
+    rightRmsDbfs: profile.rightRmsDbfs,
+    stereoBalanceDb: profile.stereoBalanceDb,
+    rmsIsNotLufs: true,
+    thresholds: profile.thresholds,
+    waveform: profile.waveform,
+    observations: profile.observations.map((observation) => ({ ...observation, requiresListening: true as const })),
+  };
+}
+
+async function loadStudioSignalCandidates(input: {
+  prisma: any;
+  projectId: string;
+  items: JsonRecord[];
+}) {
+  const coordinates = input.items.map(studioMediaCoordinates).filter((item) => item.assetId && item.sourceId);
+  if (!coordinates.length) return { evidence: [] as BoundEpisodeAudioSignalEvidence[], heldCount: 0 };
+  const assetIds = [...new Set(coordinates.map((item) => item.assetId))];
+  const sourceIds = [...new Set(coordinates.map((item) => item.sourceId))];
+  const [jobs, assets, sources] = await Promise.all([
+    input.prisma.studioAssetProcessingJob.findMany({
+      where: { projectId: input.projectId, assetId: { in: assetIds }, type: "audio-signal-profile", status: "completed" },
+      orderBy: { createdAt: "desc" },
+    }),
+    input.prisma.studioMediaAsset.findMany({
+      where: { id: { in: assetIds } },
+      include: { assetAttachments: { where: { projectId: input.projectId }, select: { metadataJson: true } } },
+    }),
+    input.prisma.studioVideoSource.findMany({
+      where: { id: { in: sourceIds } },
+      select: { id: true, url: true, providerSourceId: true },
+    }),
+  ]);
+  const jobByAsset = new Map<string, any>();
+  for (const job of jobs) if (!jobByAsset.has(job.assetId)) jobByAsset.set(job.assetId, job);
+  const assetById = new Map<string, any>(assets.map((asset: any) => [asset.id, asset]));
+  const sourceById = new Map<string, any>(sources.map((source: any) => [source.id, source]));
+  const evidence: BoundEpisodeAudioSignalEvidence[] = [];
+  let heldCount = 0;
+
+  for (const coordinate of coordinates) {
+    const jobRow = jobByAsset.get(coordinate.assetId);
+    const asset = assetById.get(coordinate.assetId);
+    const source = sourceById.get(coordinate.sourceId);
+    const attachmentNamesSource = asset?.assetAttachments?.some((attachment: any) => object(attachment.metadataJson).sourceId === coordinate.sourceId);
+    if (!jobRow || !asset || asset.isProxy || !asset.assetAttachments?.length || !source?.providerSourceId || source.url !== `/api/ingest/media/${source.id}` || (asset.url !== source.url && !attachmentNamesSource)) continue;
+    try {
+      const job = parseAudioSignalProfileJob(jobRow.inputJson, jobRow.id);
+      const result = parseAudioSignalProfileResult(object(jobRow.resultJson).receipt, job);
+      const current = await inspectImmutableStudioMediaSource(source.providerSourceId, asset.mimeType);
+      if (job.source.assetId !== asset.id || current.sha256 !== job.source.sha256 || current.generation !== job.source.generation || current.sizeBytes !== job.source.sizeBytes) {
+        heldCount += 1;
+        continue;
+      }
+      const signal = studioParsedSignal(result.audioSignal);
+      evidence.push({
+        mediaAssetKind: "studio-media",
+        mediaAssetId: asset.id,
+        sourceSha256: current.sha256,
+        storageGeneration: current.generation,
+        signalProfileSha256: createHash("sha256").update(JSON.stringify(signal)).digest("hex"),
+        signal,
+        protectedPlayback: {
+          sourceId: source.id,
+          url: source.url,
+          kind: String(asset.mimeType || "").startsWith("video/") ? "video" : "audio",
+          label: text(asset.filename) || "Protected Studio source",
+          durationSeconds: result.media.durationSeconds,
+        },
+      });
+    } catch {
+      heldCount += 1;
+    }
+  }
+  return { evidence, heldCount };
+}
+
 /**
- * Resolves decoded signal evidence only when one immutable, verified, released
- * Capture source is unambiguous for the episode. Multiple sources require an
- * explicit editor source selection; Quipsly never guesses which waveform owns
- * a transcript.
+ * Resolves decoded signal evidence from either Capture or Studio media only
+ * when one immutable source is explicit or unambiguous. Quipsly never guesses
+ * which waveform owns a transcript in a multi-source episode.
  */
 export async function loadEpisodeEditSignalEvidence(input: {
   prisma: PrismaClient;
   projectId: string;
   projectSlug: string;
   episodeSlug: string;
+  selectedMediaAssetId?: string | null;
 }): Promise<EpisodeEditSignalEvidenceResolution> {
   const prisma = input.prisma as any;
   const production = await prisma.studioEpisodeProduction.findUnique({
@@ -126,44 +236,39 @@ export async function loadEpisodeEditSignalEvidence(input: {
     return { status: "unavailable", reason: "The episode production record does not exist.", evidence: null, candidateCount: 0 };
   }
 
-  const recordingAssetIds = [...new Set(
-    canonicalEpisodeImportedMedia(production.productionJson, production.timelineJson)
-      .map(recordingAssetId)
-      .filter(Boolean),
-  )];
-  if (!recordingAssetIds.length) {
-    return { status: "unavailable", reason: "No Capture recording is attached to this episode.", evidence: null, candidateCount: 0 };
+  const selectedMediaAssetId = text(input.selectedMediaAssetId);
+  const imported = canonicalEpisodeImportedMedia(production.productionJson, production.timelineJson);
+  const selectedItems = imported.filter((item) => matchesSelectedMedia(item, selectedMediaAssetId));
+  if (selectedMediaAssetId && !selectedItems.length) {
+    return { status: "unavailable", reason: "The selected edit source is not attached to this episode.", evidence: null, candidateCount: 0 };
+  }
+  if (!selectedItems.length) {
+    return { status: "unavailable", reason: "No episode media is attached for edit evidence.", evidence: null, candidateCount: 0 };
   }
 
-  const recordings = await prisma.recordingAsset.findMany({
-    where: {
-      id: { in: recordingAssetIds },
-      room: {
-        OR: [
-          { projectId: input.projectId },
-          { projectSlug: input.projectSlug },
-          { nestSlug: input.projectSlug },
-        ],
-      },
-    },
+  const recordingAssetIds = [...new Set(selectedItems.map(captureRecordingAssetId).filter(Boolean))];
+  const recordings = recordingAssetIds.length ? await prisma.recordingAsset.findMany({
+    where: { id: { in: recordingAssetIds }, room: { OR: [{ projectId: input.projectId }, { projectSlug: input.projectSlug }, { nestSlug: input.projectSlug }] } },
+  }) : [];
+  const captureCandidates = recordings.flatMap((recording: any) => {
+    const candidate = captureSourceSignal(recording);
+    return candidate ? [{ recording, evidence: candidate }] : [];
   });
-
-  const candidates = recordings.flatMap((recording: any) => {
-    const evidence = sourceSignal(recording);
-    return evidence ? [{ recording, evidence }] : [];
-  });
-  if (!candidates.length) {
+  const studioCandidates = await loadStudioSignalCandidates({ prisma, projectId: input.projectId, items: selectedItems });
+  if (!captureCandidates.length && !studioCandidates.evidence.length) {
     return {
-      status: "unavailable",
-      reason: "Attached recordings do not have immutable decoded signal evidence yet.",
+      status: studioCandidates.heldCount ? "held" : "unavailable",
+      reason: studioCandidates.heldCount
+        ? "Attached Studio signal evidence no longer matches its immutable source receipt."
+        : "Attached media does not have immutable decoded signal evidence yet.",
       evidence: null,
-      candidateCount: 0,
+      candidateCount: studioCandidates.heldCount,
     };
   }
 
-  const released = [] as BoundEpisodeAudioSignalEvidence[];
-  let heldCount = 0;
-  for (const candidate of candidates) {
+  const released = [...studioCandidates.evidence];
+  let heldCount = studioCandidates.heldCount;
+  for (const candidate of captureCandidates) {
     const gate = await mobileCaptureMediaProcessingGate({ prisma, recordingAsset: candidate.recording })
       .catch(() => ({ allowed: false }));
     if (gate.allowed) released.push(candidate.evidence);
@@ -177,22 +282,23 @@ export async function loadEpisodeEditSignalEvidence(input: {
         ? "Decoded signal evidence exists, but normalized media processing release is still held."
         : "No released decoded signal evidence is available.",
       evidence: null,
-      candidateCount: candidates.length,
+      candidateCount: heldCount,
     };
   }
-  if (released.length > 1) {
+  const uniqueReleased = released.filter((candidate, index) => released.findIndex((other) => other.sourceSha256 === candidate.sourceSha256) === index);
+  if (uniqueReleased.length > 1) {
     return {
       status: "ambiguous",
-      reason: "Multiple released signal-bearing recordings are attached. Select the transcript's source before signal corroboration.",
+      reason: "Multiple signal-bearing media sources are attached. Select the transcript's exact source before analysis.",
       evidence: null,
-      candidateCount: released.length,
+      candidateCount: uniqueReleased.length,
     };
   }
 
   return {
     status: "available",
-    reason: "One immutable, verified, released Capture signal profile is bound to this episode.",
-    evidence: released[0]!,
+    reason: `One immutable ${uniqueReleased[0]!.mediaAssetKind === "studio-media" ? "Studio" : "Capture"} signal profile is bound to this edit analysis.`,
+    evidence: uniqueReleased[0]!,
     candidateCount: 1,
   };
 }

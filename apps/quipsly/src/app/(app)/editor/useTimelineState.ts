@@ -85,6 +85,18 @@ export function sanitizeTimelineRangeEdit(range: TimelineRangeEdit): TimelineRan
     ? range.source
     : "manual";
   const evidence = range.sourceEvidence;
+  const legacyEvidence = evidence && typeof evidence === "object"
+    ? evidence as unknown as Record<string, unknown>
+    : {};
+  const legacyRecordingAssetId = typeof legacyEvidence.recordingAssetId === "string"
+    ? legacyEvidence.recordingAssetId
+    : "";
+  const mediaAssetKind = evidence?.mediaAssetKind === "capture-recording" || evidence?.mediaAssetKind === "studio-media"
+    ? evidence.mediaAssetKind
+    : legacyRecordingAssetId ? "capture-recording" : null;
+  const mediaAssetId = typeof evidence?.mediaAssetId === "string"
+    ? evidence.mediaAssetId
+    : legacyRecordingAssetId;
   return {
     id,
     startSeconds: rawStartSeconds,
@@ -100,12 +112,14 @@ export function sanitizeTimelineRangeEdit(range: TimelineRangeEdit): TimelineRan
     createdAt: typeof range.createdAt === "string" ? range.createdAt : undefined,
     aiSuggested: Boolean(range.aiSuggested),
     sourceEvidence: evidence
-      && typeof evidence.recordingAssetId === "string"
+      && mediaAssetKind
+      && mediaAssetId
       && typeof evidence.sourceSha256 === "string"
       && typeof evidence.signalProfileSha256 === "string"
       && evidence.classification === "measured-low-energy"
       ? {
-        recordingAssetId: evidence.recordingAssetId,
+        mediaAssetKind,
+        mediaAssetId,
         sourceSha256: evidence.sourceSha256,
         storageGeneration: typeof evidence.storageGeneration === "string" ? evidence.storageGeneration : null,
         signalProfileSha256: evidence.signalProfileSha256,

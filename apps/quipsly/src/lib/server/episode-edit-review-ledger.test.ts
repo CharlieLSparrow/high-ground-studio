@@ -10,8 +10,8 @@ import {
 
 const actor = { id: "user-1", email: "editor@example.test", name: "Editor", isStaff: false, source: "embedded-cookie" as const };
 const proposalSet: AiEditProposalSet = {
-  kind: "quipsly-ai-edit-proposal-set-v1",
-  version: 1,
+  kind: "quipsly-ai-edit-proposal-set-v2",
+  version: 2,
   proposalSetId: "edit_proposal_set_test",
   createdAt: "2026-08-03T20:00:00.000Z",
   binding: {
@@ -23,7 +23,8 @@ const proposalSet: AiEditProposalSet = {
     startSeconds: 2,
     endSeconds: 5,
     signalEvidence: {
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       sourceSha256: "c".repeat(64),
       storageGeneration: "42",
       signalProfileSha256: "d".repeat(64),
@@ -254,7 +255,8 @@ describe("episode edit review ledger", () => {
         evidence: {
           ...proposalSet.proposals[0]!.evidence,
           audioSignal: {
-            recordingAssetId: "recording-1",
+            mediaAssetKind: "capture-recording",
+            mediaAssetId: "recording-1",
             sourceSha256: "c".repeat(64),
             storageGeneration: "42",
             signalProfileSha256: "d".repeat(64),
@@ -283,7 +285,8 @@ describe("episode edit review ledger", () => {
       timelineFingerprintBeforeSha256: "a".repeat(64),
       evidence: {
         protectedPlayback: true,
-        recordingAssetId: "recording-1",
+        mediaAssetKind: "capture-recording",
+        mediaAssetId: "recording-1",
         protectedPlaybackSourceId: "protected-source-1",
         sourceSha256: "c".repeat(64),
         signalProfileSha256: "d".repeat(64),

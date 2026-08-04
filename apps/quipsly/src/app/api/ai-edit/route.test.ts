@@ -16,7 +16,8 @@ jest.mock("@/lib/server/episode-production-access", () => ({ resolveEpisodeProdu
 jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({
   loadEpisodeEditSignalEvidence: jest.fn(),
   episodeEditSignalVisualization: jest.fn((evidence: any) => ({
-    recordingAssetId: evidence.recordingAssetId,
+    mediaAssetKind: evidence.mediaAssetKind,
+    mediaAssetId: evidence.mediaAssetId,
     sourceSha256: evidence.sourceSha256,
     storageGeneration: evidence.storageGeneration,
     signalProfileSha256: evidence.signalProfileSha256,
@@ -126,6 +127,7 @@ describe("AI edit suggestion boundary", () => {
 
     const response = await POST(request({
       analysisMode: "deterministic",
+      selectedMediaAssetId: "recording-1",
       transcriptBlocks: [
         { id: "restart", time: 0, duration: 3, text: "Let me restart that thought." },
         { id: "next", time: 6, duration: 2, text: "Here is the clean version." },
@@ -135,6 +137,7 @@ describe("AI edit suggestion boundary", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
+    expect(mockedSignalEvidence).toHaveBeenCalledWith(expect.objectContaining({ selectedMediaAssetId: "recording-1" }));
     expect(payload).toEqual(expect.objectContaining({
       ok: true,
       applied: false,
@@ -161,7 +164,8 @@ describe("AI edit suggestion boundary", () => {
       reason: "One immutable source is available.",
       candidateCount: 1,
       evidence: {
-        recordingAssetId: "recording-1",
+        mediaAssetKind: "capture-recording",
+        mediaAssetId: "recording-1",
         sourceSha256: "b".repeat(64),
         storageGeneration: "generation-1",
         signalProfileSha256: "c".repeat(64),
@@ -185,7 +189,8 @@ describe("AI edit suggestion boundary", () => {
 
     expect(response.status).toBe(200);
     expect(payload.proposalSet.binding.signalEvidence).toEqual({
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       sourceSha256: "b".repeat(64),
       storageGeneration: "generation-1",
       signalProfileSha256: "c".repeat(64),
@@ -200,9 +205,10 @@ describe("AI edit suggestion boundary", () => {
       }),
       expect.objectContaining({ kind: "speaker-change", suggestedAction: "review-camera" }),
     ]));
-    expect(payload.signalEvidence).toEqual(expect.objectContaining({ status: "available", boundRecordingAssetId: "recording-1" }));
+    expect(payload.signalEvidence).toEqual(expect.objectContaining({ status: "available", boundMediaAssetKind: "capture-recording", boundMediaAssetId: "recording-1" }));
     expect(payload.signalVisualization).toEqual(expect.objectContaining({
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs: -24 }],
     }));
   });
@@ -213,7 +219,8 @@ describe("AI edit suggestion boundary", () => {
       reason: "One immutable source is available.",
       candidateCount: 1,
       evidence: {
-        recordingAssetId: "recording-low-energy",
+        mediaAssetKind: "capture-recording",
+        mediaAssetId: "recording-low-energy",
         sourceSha256: "d".repeat(64),
         storageGeneration: "generation-low-energy",
         signalProfileSha256: "e".repeat(64),
@@ -244,7 +251,8 @@ describe("AI edit suggestion boundary", () => {
         applied: false,
         evidence: expect.objectContaining({
           audioSignal: expect.objectContaining({
-            recordingAssetId: "recording-low-energy",
+            mediaAssetKind: "capture-recording",
+            mediaAssetId: "recording-low-energy",
             sourceSha256: "d".repeat(64),
             signalProfileSha256: "e".repeat(64),
             classification: "measured-low-energy",
@@ -308,7 +316,7 @@ describe("AI edit suggestion boundary", () => {
       applied: false,
       suggestionCount: 2,
       proposalSet: expect.objectContaining({
-        kind: "quipsly-ai-edit-proposal-set-v1",
+        kind: "quipsly-ai-edit-proposal-set-v2",
         binding: expect.objectContaining({
           projectSlug: sourceBinding.projectSlug,
           episodeSlug: sourceBinding.episodeSlug,

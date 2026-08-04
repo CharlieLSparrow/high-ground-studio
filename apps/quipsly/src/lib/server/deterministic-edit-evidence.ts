@@ -71,7 +71,8 @@ function measuredSignalRange(
   if (!classification) return null;
 
   return {
-    recordingAssetId: evidence.recordingAssetId,
+    mediaAssetKind: evidence.mediaAssetKind,
+    mediaAssetId: evidence.mediaAssetId,
     sourceSha256: evidence.sourceSha256,
     storageGeneration: evidence.storageGeneration,
     signalProfileSha256: evidence.signalProfileSha256,
@@ -114,6 +115,42 @@ export function deterministicEditEvidence(
   const ordered = [...blocks].sort((left, right) => left.time - right.time || left.id.localeCompare(right.id));
   const proposals: AiEditProposal[] = [];
   const reviewCandidates: AiEditReviewCandidate[] = [];
+
+  if (options.audioSignal) {
+    for (const observation of options.audioSignal.signal.observations ?? []) {
+      const durationSeconds = options.audioSignal.signal.durationSeconds;
+      const startSeconds = Math.max(0, Math.min(Math.max(0, durationSeconds - 0.001), observation.startSeconds));
+      const endSeconds = Math.min(durationSeconds, Math.max(startSeconds + 0.001, observation.endSeconds));
+      const evidenceBlocks = ordered.filter((block) => block.time < endSeconds && block.time + block.duration > startSeconds);
+      reviewCandidates.push({
+        candidateId: `candidate_${stableId("signal-attention", evidenceBlocks, startSeconds, endSeconds, `${options.audioSignal.signalProfileSha256}:${observation.kind}`)}`,
+        kind: "signal-attention",
+        sourceRange: { startSeconds, endSeconds },
+        evidence: {
+          blockIds: evidenceBlocks.map((block) => block.id),
+          transcriptTextSha256: sha256(evidenceBlocks),
+          audioObservation: {
+            mediaAssetKind: options.audioSignal.mediaAssetKind,
+            mediaAssetId: options.audioSignal.mediaAssetId,
+            sourceSha256: options.audioSignal.sourceSha256,
+            storageGeneration: options.audioSignal.storageGeneration,
+            signalProfileSha256: options.audioSignal.signalProfileSha256,
+            algorithm: options.audioSignal.signal.algorithm,
+            kind: observation.kind,
+            severity: observation.severity,
+            startSeconds,
+            endSeconds,
+            detail: observation.detail,
+          },
+        },
+        rationale: `${observation.detail} This deterministic signal observation requires playback review and does not authorize repair, removal, or a cut.`,
+        confidence: observation.severity === "warning" ? "high" : "medium",
+        suggestedAction: "listen",
+        requiresSignalEvidence: false,
+        changesSource: false,
+      });
+    }
+  }
 
   for (const block of ordered) {
     const startSeconds = block.time;

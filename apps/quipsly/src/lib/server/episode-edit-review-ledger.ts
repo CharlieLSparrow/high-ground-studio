@@ -54,6 +54,16 @@ function jsonValue(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+function signalMediaIdentity(signal: unknown) {
+  const row = signal && typeof signal === "object" && !Array.isArray(signal) ? signal as Record<string, unknown> : {};
+  const legacyRecordingAssetId = clean(row.recordingAssetId, 200);
+  const mediaAssetId = clean(row.mediaAssetId, 200) || legacyRecordingAssetId;
+  const mediaAssetKind = row.mediaAssetKind === "studio-media" || row.mediaAssetKind === "capture-recording"
+    ? row.mediaAssetKind
+    : legacyRecordingAssetId ? "capture-recording" : null;
+  return { mediaAssetId: mediaAssetId || null, mediaAssetKind };
+}
+
 function isUniqueConstraint(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
@@ -86,6 +96,7 @@ export async function persistEpisodeEditProposalSet(input: {
 }) {
   const payloadSha256 = sha256(input.proposalSet);
   const signal = input.proposalSet.binding.signalEvidence;
+  const mediaIdentity = signalMediaIdentity(signal);
 
   try {
     return await input.prisma.$transaction(async (tx) => {
@@ -113,7 +124,8 @@ export async function persistEpisodeEditProposalSet(input: {
           blockCount: input.proposalSet.binding.blockCount,
           sourceStartMilliseconds: milliseconds(input.proposalSet.binding.startSeconds),
           sourceEndMilliseconds: milliseconds(input.proposalSet.binding.endSeconds),
-          recordingAssetId: signal?.recordingAssetId ?? null,
+          mediaAssetKind: mediaIdentity.mediaAssetKind,
+          mediaAssetId: mediaIdentity.mediaAssetId,
           sourceSha256: signal?.sourceSha256 ?? null,
           storageGeneration: signal?.storageGeneration ?? null,
           signalProfileSha256: signal?.signalProfileSha256 ?? null,
@@ -251,13 +263,17 @@ function validateProposalSubject(
     throw new EpisodeEditReviewLedgerError("The reviewed source range does not match the canonical proposal subject.", 409, "EDIT_REVIEW_SUBJECT_RANGE_CONFLICT");
   }
   const audioSignal = subject.evidence?.audioSignal;
-  if (action === "PROOF_LISTENED" && audioSignal) {
+  const audioObservation = subject.evidence?.audioObservation;
+  if (action === "PROOF_LISTENED" && (audioSignal || audioObservation)) {
     const binding = proposalSet.binding.signalEvidence;
+    const bindingIdentity = signalMediaIdentity(binding);
+    const evidenceIdentity = signalMediaIdentity(evidence);
     const playbackPositionSeconds = evidence?.playbackPositionSeconds;
     if (
       evidence?.protectedPlayback !== true
       || !binding?.protectedPlaybackSourceId
-      || evidence?.recordingAssetId !== binding.recordingAssetId
+      || evidenceIdentity.mediaAssetKind !== bindingIdentity.mediaAssetKind
+      || evidenceIdentity.mediaAssetId !== bindingIdentity.mediaAssetId
       || evidence?.protectedPlaybackSourceId !== binding.protectedPlaybackSourceId
       || evidence?.sourceSha256 !== binding.sourceSha256
       || evidence?.signalProfileSha256 !== binding.signalProfileSha256
@@ -267,7 +283,7 @@ function validateProposalSubject(
       || playbackPositionSeconds >= subject.sourceRange.endSeconds
     ) {
       throw new EpisodeEditReviewLedgerError(
-        "Signal-bound proof-listen requires playback from the exact protected RecordingAsset inside the reviewed range.",
+        "Signal-bound proof-listen requires playback from the exact protected media asset inside the reviewed range.",
         409,
         "EDIT_REVIEW_PROTECTED_PLAYBACK_REQUIRED",
       );

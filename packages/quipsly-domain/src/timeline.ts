@@ -75,7 +75,8 @@ export type TimelineRangeEdit = {
   createdAt?: string;
   aiSuggested?: boolean;
   sourceEvidence?: {
-    recordingAssetId: string;
+    mediaAssetKind: "capture-recording" | "studio-media";
+    mediaAssetId: string;
     sourceSha256: string;
     storageGeneration: string | null;
     signalProfileSha256: string;

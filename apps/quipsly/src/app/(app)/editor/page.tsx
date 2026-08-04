@@ -3370,7 +3370,8 @@ function CloudEditorContent() {
   const [aiEditSignalResolution, setAiEditSignalResolution] = useState<{
     status: "available" | "unavailable" | "ambiguous" | "held";
     reason: string;
-    boundRecordingAssetId: string | null;
+    boundMediaAssetKind: "capture-recording" | "studio-media" | null;
+    boundMediaAssetId: string | null;
   } | null>(null);
   const [aiEditSignalVisualization, setAiEditSignalVisualization] = useState<AiEditSignalVisualization | null>(null);
   const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
@@ -3435,6 +3436,7 @@ function CloudEditorContent() {
           projectSlug: resolvedProjectSlug,
           episodeSlug,
           timelineFingerprintSha256,
+          selectedMediaAssetId: persistedSpineAudio?.assetId ?? null,
         }),
       });
       const data = await res.json();
@@ -3484,7 +3486,8 @@ function CloudEditorContent() {
           ? {
             status: signalStatus,
             reason: typeof signalResolution.reason === "string" ? signalResolution.reason : "Decoded signal status is unavailable.",
-            boundRecordingAssetId: typeof signalResolution.boundRecordingAssetId === "string" ? signalResolution.boundRecordingAssetId : null,
+            boundMediaAssetKind: signalResolution.boundMediaAssetKind === "capture-recording" || signalResolution.boundMediaAssetKind === "studio-media" ? signalResolution.boundMediaAssetKind : null,
+            boundMediaAssetId: typeof signalResolution.boundMediaAssetId === "string" ? signalResolution.boundMediaAssetId : null,
           }
           : null,
       );
@@ -3809,7 +3812,8 @@ function CloudEditorContent() {
         itemKind: "proposalId" in edit ? edit.type : edit.kind,
         ...(boundProof ? {
           protectedPlayback: true,
-          recordingAssetId: boundProof.recordingAssetId,
+          mediaAssetKind: boundProof.mediaAssetKind,
+          mediaAssetId: boundProof.mediaAssetId,
           protectedPlaybackSourceId: boundProof.sourceId,
           sourceSha256: boundProof.sourceSha256,
           signalProfileSha256: boundProof.signalProfileSha256,
@@ -3822,7 +3826,7 @@ function CloudEditorContent() {
       setIsPreviewPlaying(false);
       setAiProofWatchEndSeconds(null);
       setCurrentTime(boundProof.playbackPositionSeconds);
-      setAiEditMessage(`Proof-listened through the exact protected RecordingAsset at ${formatClock(boundProof.playbackPositionSeconds)}.${receipt ? " Review receipt saved." : " Playback was operated, but the durable receipt failed and is visibly flagged."}`);
+      setAiEditMessage(`Proof-listened through the exact protected ${boundProof.mediaAssetKind === "studio-media" ? "Studio media" : "Capture recording"} at ${formatClock(boundProof.playbackPositionSeconds)}.${receipt ? " Review receipt saved." : " Playback was operated, but the durable receipt failed and is visibly flagged."}`);
       return;
     }
     const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
@@ -3876,7 +3880,8 @@ function CloudEditorContent() {
         !signal
         || signal.classification !== "measured-low-energy"
         || !boundSignal
-        || signal.recordingAssetId !== boundSignal.recordingAssetId
+        || signal.mediaAssetKind !== boundSignal.mediaAssetKind
+        || signal.mediaAssetId !== boundSignal.mediaAssetId
         || signal.sourceSha256 !== boundSignal.sourceSha256
         || signal.storageGeneration !== boundSignal.storageGeneration
         || signal.signalProfileSha256 !== boundSignal.signalProfileSha256
@@ -3923,7 +3928,8 @@ function CloudEditorContent() {
         createdAt: new Date().toISOString(),
         aiSuggested: true,
         sourceEvidence: {
-          recordingAssetId: signal.recordingAssetId,
+          mediaAssetKind: signal.mediaAssetKind,
+          mediaAssetId: signal.mediaAssetId,
           sourceSha256: signal.sourceSha256,
           storageGeneration: signal.storageGeneration,
           signalProfileSha256: signal.signalProfileSha256,
@@ -11125,7 +11131,7 @@ function CloudEditorContent() {
                         </p>
                         {aiEditGenerator?.kind === "deterministic" && aiEditSignalResolution && (
                           <p className={`mt-1 text-[10px] font-bold ${aiEditSignalResolution.status === "available" ? "text-emerald-300" : aiEditSignalResolution.status === "held" ? "text-amber-300" : "text-gray-500"}`} title={aiEditSignalResolution.reason}>
-                            Decoded signal: {aiEditSignalResolution.status}{aiEditSignalResolution.boundRecordingAssetId ? ` · ${aiEditSignalResolution.boundRecordingAssetId.slice(0, 12)}` : ""}
+                            Decoded signal: {aiEditSignalResolution.status}{aiEditSignalResolution.boundMediaAssetId ? ` · ${aiEditSignalResolution.boundMediaAssetKind?.replaceAll("-", " ")} ${aiEditSignalResolution.boundMediaAssetId.slice(0, 12)}` : ""}
                           </p>
                         )}
                       </div>

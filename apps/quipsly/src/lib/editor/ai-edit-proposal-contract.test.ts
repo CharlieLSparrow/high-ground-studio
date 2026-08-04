@@ -38,7 +38,8 @@ describe("AI edit proposal evidence", () => {
 
   it("accepts only bounded immutable decoded-waveform visualization payloads", () => {
     const valid = {
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       sourceSha256: "a".repeat(64),
       storageGeneration: "generation-1",
       signalProfileSha256: "b".repeat(64),

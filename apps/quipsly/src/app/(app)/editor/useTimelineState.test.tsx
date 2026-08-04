@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 
-import { deactivatedTimelineIntervals, useTimelineState } from "./useTimelineState";
+import { deactivatedTimelineIntervals, sanitizeTimelineRangeEdit, useTimelineState } from "./useTimelineState";
 
 describe("timeline range edits", () => {
   it("merges overlapping transcript and exact-range decisions for one playback skip", () => {
@@ -31,7 +31,8 @@ describe("timeline range edits", () => {
       source: "deterministic-signal",
       aiSuggested: true,
       sourceEvidence: {
-        recordingAssetId: "recording-1",
+        mediaAssetKind: "capture-recording",
+        mediaAssetId: "recording-1",
         sourceSha256: "a".repeat(64),
         storageGeneration: "generation-1",
         signalProfileSha256: "b".repeat(64),
@@ -76,6 +77,31 @@ describe("timeline range edits", () => {
     }));
 
     expect(result.current.state.deactivatedRanges).toEqual([]);
+  });
+
+  it("upgrades persisted v1 Capture range evidence without losing the decision", () => {
+    const range = sanitizeTimelineRangeEdit({
+      id: "legacy-range",
+      startSeconds: 2,
+      durationSeconds: 3,
+      reason: "Legacy measured interval",
+      source: "deterministic-signal",
+      sourceEvidence: {
+        recordingAssetId: "recording-legacy",
+        sourceSha256: "a".repeat(64),
+        storageGeneration: "generation-legacy",
+        signalProfileSha256: "b".repeat(64),
+        classification: "measured-low-energy",
+        coverageFraction: 1,
+        maximumRmsDbfs: -78,
+        nearSilenceDbfs: -72,
+      },
+    } as never);
+
+    expect(range?.sourceEvidence).toEqual(expect.objectContaining({
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-legacy",
+    }));
   });
 
   it("persists camera identity and clears a stale assembled cut when the mapping changes", () => {

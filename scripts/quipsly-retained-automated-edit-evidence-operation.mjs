@@ -47,7 +47,7 @@ async function main() {
     const response = await responsePromise;
     const body = await response.json().catch(() => ({}));
     assert(response.ok(), `Deterministic edit analysis failed (${response.status()}): ${JSON.stringify(body)}`);
-    assert(body?.proposalSet?.binding?.signalEvidence?.recordingAssetId === RECORDING_ASSET_ID, "Proposal set did not bind the retained RecordingAsset.");
+    assert(body?.proposalSet?.binding?.signalEvidence?.mediaAssetKind === "capture-recording" && body?.proposalSet?.binding?.signalEvidence?.mediaAssetId === RECORDING_ASSET_ID, "Proposal set did not bind the retained Capture recording.");
     assert(body?.proposalSet?.binding?.signalEvidence?.sourceSha256 === SOURCE_SHA256, "Proposal set did not bind the immutable source hash.");
     assert(body?.signalVisualization?.signalProfileSha256 === SIGNAL_PROFILE_SHA256, "Visualization did not bind the retained signal-profile hash.");
     assert(body?.signalVisualization?.waveform?.length === 3, "Visualization did not return the three retained decoded signal windows.");
@@ -82,7 +82,8 @@ async function main() {
       retained: true,
       projectSlug: PROJECT_SLUG,
       episodeSlug: EPISODE_SLUG,
-      recordingAssetId: RECORDING_ASSET_ID,
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: RECORDING_ASSET_ID,
       signalProfileSha256: SIGNAL_PROFILE_SHA256,
       decodedWaveformWindows: 3,
       measuredLowEnergyWindowVisible: true,

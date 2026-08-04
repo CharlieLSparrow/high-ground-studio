@@ -1,5 +1,7 @@
-export const AI_EDIT_PROPOSAL_SET_KIND = "quipsly-ai-edit-proposal-set-v1" as const;
-export const AI_EDIT_PROPOSAL_SET_VERSION = 1 as const;
+export const AI_EDIT_PROPOSAL_SET_KIND = "quipsly-ai-edit-proposal-set-v2" as const;
+export const AI_EDIT_PROPOSAL_SET_VERSION = 2 as const;
+
+export type AiEditMediaAssetKind = "capture-recording" | "studio-media";
 
 export type AiEditTranscriptBlock = {
   id: string;
@@ -11,7 +13,8 @@ export type AiEditTranscriptBlock = {
 };
 
 export type AiEditAudioSignalEvidence = {
-  recordingAssetId: string;
+  mediaAssetKind: AiEditMediaAssetKind;
+  mediaAssetId: string;
   sourceSha256: string;
   storageGeneration: string | null;
   signalProfileSha256: string;
@@ -25,8 +28,23 @@ export type AiEditAudioSignalEvidence = {
   classification: "measured-low-energy" | "measured-signal-present";
 };
 
+export type AiEditAudioObservationEvidence = {
+  mediaAssetKind: AiEditMediaAssetKind;
+  mediaAssetId: string;
+  sourceSha256: string;
+  storageGeneration: string | null;
+  signalProfileSha256: string;
+  algorithm: string;
+  kind: "sample-clipping" | "possible-dropout" | "near-digital-silence" | "stereo-imbalance" | "unknown";
+  severity: "attention" | "warning";
+  startSeconds: number;
+  endSeconds: number;
+  detail: string;
+};
+
 export type AiEditSignalVisualization = {
-  recordingAssetId: string;
+  mediaAssetKind: AiEditMediaAssetKind;
+  mediaAssetId: string;
   sourceSha256: string;
   storageGeneration: string | null;
   signalProfileSha256: string;
@@ -56,8 +74,9 @@ export function isAiEditSignalVisualization(value: unknown): value is AiEditSign
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
   const waveform = row.waveform;
-  return typeof row.recordingAssetId === "string"
-    && row.recordingAssetId.length > 0
+  return (row.mediaAssetKind === "capture-recording" || row.mediaAssetKind === "studio-media")
+    && typeof row.mediaAssetId === "string"
+    && row.mediaAssetId.length > 0
     && typeof row.sourceSha256 === "string"
     && SHA256.test(row.sourceSha256)
     && (row.storageGeneration === null || typeof row.storageGeneration === "string")
@@ -113,12 +132,14 @@ export type AiEditReviewCandidate = {
     | "signal-corroborated-gap"
     | "transcript-gap-with-signal"
     | "overlapping-speech"
-    | "speaker-change";
+    | "speaker-change"
+    | "signal-attention";
   sourceRange: { startSeconds: number; endSeconds: number };
   evidence: {
     blockIds: string[];
     transcriptTextSha256: string;
     audioSignal?: AiEditAudioSignalEvidence;
+    audioObservation?: AiEditAudioObservationEvidence;
   };
   rationale: string;
   confidence: "low" | "medium" | "high";
@@ -135,6 +156,7 @@ export type AiEditProposal = {
     blockIds: string[];
     transcriptTextSha256: string;
     audioSignal?: AiEditAudioSignalEvidence;
+    audioObservation?: AiEditAudioObservationEvidence;
   };
   rationale: string;
   confidence: "low" | "medium" | "high";
@@ -161,7 +183,8 @@ export type AiEditProposalSet = {
     startSeconds: number;
     endSeconds: number;
     signalEvidence?: {
-      recordingAssetId: string;
+      mediaAssetKind: AiEditMediaAssetKind;
+      mediaAssetId: string;
       sourceSha256: string;
       storageGeneration: string | null;
       signalProfileSha256: string;

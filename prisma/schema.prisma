@@ -3129,7 +3129,8 @@ model StudioEpisodeEditProposalSet {
   blockCount                Int
   sourceStartMilliseconds   Int
   sourceEndMilliseconds     Int
-  recordingAssetId          String?
+  mediaAssetKind            String?
+  mediaAssetId              String?
   sourceSha256              String?
   storageGeneration         String?
   signalProfileSha256       String?

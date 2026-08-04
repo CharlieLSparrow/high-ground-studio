@@ -1567,3 +1567,24 @@ These should be treated as cleanup candidates later, not as authoritative produc
   scoped provider credentials/policy receipts, and physical-device Apple
   evaluation remain open. See
   `docs/coordination/2026-08-03-transcript-provider-evidence-ledger.md`.
+
+### 2026-08-04 Studio-source automated edit evidence
+
+- Automated edit evidence now uses a unified v2 media identity for both
+  Capture recordings and canonical Studio media. The selected editor-spine
+  asset is passed explicitly; absent a selection, multiple released sources
+  fail ambiguous instead of guessing waveform ownership.
+- Studio evidence is admitted only after the server parses a completed
+  complete-decode signal receipt and rechecks current source SHA-256,
+  generation, size, attachment, source coordinates, and protected playback.
+- Measured clipping, dropout, near-digital-silence, and stereo-imbalance
+  observations become listen-only `signal-attention` candidates. They do not
+  authorize a repair or cut. Audio mastering remains a separate downstream
+  delivery decision and is not fed back into source-edit truth.
+- A genuine High Ground Odyssey Episode 8 “Be Curious” operation bound 84
+  canonical transcript segments / 597 timed words to 172 displayed waveform
+  points, served protected video with HTTP 206, and retained 19 review
+  candidates with zero invented cut proposals. Signed-out was 401, an
+  ungranted account was 403, and source, episode production, and timeline were
+  unchanged. See
+  `docs/coordination/quipsly-studio-source-automated-edit-evidence-2026-08-04.md`.

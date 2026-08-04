@@ -230,6 +230,7 @@ export async function POST(request: Request) {
 
   const projectSlug = typeof body.projectSlug === "string" ? body.projectSlug.trim() : "";
   const episodeSlug = typeof body.episodeSlug === "string" ? body.episodeSlug.trim() : "";
+  const selectedMediaAssetId = typeof body.selectedMediaAssetId === "string" ? body.selectedMediaAssetId.trim().slice(0, 200) : "";
   const timelineFingerprintSha256 = typeof body.timelineFingerprintSha256 === "string"
     ? body.timelineFingerprintSha256.trim().toLowerCase()
     : "";
@@ -266,6 +267,7 @@ export async function POST(request: Request) {
       projectId: accessProjectId,
       projectSlug,
       episodeSlug,
+      selectedMediaAssetId: selectedMediaAssetId || null,
     }).catch(() => ({
       status: "unavailable" as const,
       reason: "Decoded signal evidence could not be resolved, so transcript timing remains uncorroborated.",
@@ -289,7 +291,8 @@ export async function POST(request: Request) {
         ...bounds,
         ...(signalResolution.evidence ? {
           signalEvidence: {
-            recordingAssetId: signalResolution.evidence.recordingAssetId,
+            mediaAssetKind: signalResolution.evidence.mediaAssetKind,
+            mediaAssetId: signalResolution.evidence.mediaAssetId,
             sourceSha256: signalResolution.evidence.sourceSha256,
             storageGeneration: signalResolution.evidence.storageGeneration,
             signalProfileSha256: signalResolution.evidence.signalProfileSha256,
@@ -339,7 +342,8 @@ export async function POST(request: Request) {
         status: signalResolution.status,
         reason: signalResolution.reason,
         candidateCount: signalResolution.candidateCount,
-        boundRecordingAssetId: signalResolution.evidence?.recordingAssetId ?? null,
+        boundMediaAssetKind: signalResolution.evidence?.mediaAssetKind ?? null,
+        boundMediaAssetId: signalResolution.evidence?.mediaAssetId ?? null,
       },
       signalVisualization: signalResolution.evidence
         ? episodeEditSignalVisualization(signalResolution.evidence)

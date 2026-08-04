@@ -86,8 +86,8 @@ describe("CloudEditor production truth UX", () => {
             ok: true,
             applied: false,
             proposalSet: {
-              kind: "quipsly-ai-edit-proposal-set-v1",
-              version: 1,
+              kind: "quipsly-ai-edit-proposal-set-v2",
+              version: 2,
               proposalSetId: "edit_proposal_set_test",
               createdAt: "2026-08-03T20:00:00.000Z",
               binding: {
@@ -100,7 +100,8 @@ describe("CloudEditor production truth UX", () => {
                 endSeconds: 8,
                 ...(hasMeasuredRangeFixture ? {
                   signalEvidence: {
-                    recordingAssetId: "recording-range-test",
+                    mediaAssetKind: "capture-recording",
+                    mediaAssetId: "recording-range-test",
                     sourceSha256: "a".repeat(64),
                     storageGeneration: "generation-range-test",
                     signalProfileSha256: "b".repeat(64),
@@ -119,7 +120,8 @@ describe("CloudEditor production truth UX", () => {
                   blockIds: ["range-left", "range-right"],
                   transcriptTextSha256: "e".repeat(64),
                   audioSignal: {
-                    recordingAssetId: "recording-range-test",
+                    mediaAssetKind: "capture-recording",
+                    mediaAssetId: "recording-range-test",
                     sourceSha256: "a".repeat(64),
                     storageGeneration: "generation-range-test",
                     signalProfileSha256: "b".repeat(64),
@@ -172,10 +174,12 @@ describe("CloudEditor production truth UX", () => {
                 status: hasMeasuredRangeFixture ? "available" : "unavailable",
                 reason: hasMeasuredRangeFixture ? "One immutable source is available." : "No Capture recording is attached to this episode.",
                 candidateCount: hasMeasuredRangeFixture ? 1 : 0,
-                boundRecordingAssetId: hasMeasuredRangeFixture ? "recording-range-test" : null,
+                boundMediaAssetKind: hasMeasuredRangeFixture ? "capture-recording" : null,
+                boundMediaAssetId: hasMeasuredRangeFixture ? "recording-range-test" : null,
               },
               signalVisualization: hasMeasuredRangeFixture ? {
-                recordingAssetId: "recording-range-test",
+                mediaAssetKind: "capture-recording",
+                mediaAssetId: "recording-range-test",
                 sourceSha256: "a".repeat(64),
                 storageGeneration: "generation-range-test",
                 signalProfileSha256: "b".repeat(64),
@@ -368,7 +372,7 @@ describe("CloudEditor production truth UX", () => {
     fireEvent.timeUpdate(protectedSource);
     await user.click(screen.getByRole("checkbox", { name: /I listened inside this exact source range/i }));
     await user.click(screen.getByRole("button", { name: "Record proof-listen" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listened through the exact protected RecordingAsset/i);
+    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listened through the exact protected Capture recording/i);
     expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));

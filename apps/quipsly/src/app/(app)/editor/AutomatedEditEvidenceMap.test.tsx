@@ -21,7 +21,8 @@ const proposal: AiEditProposal = {
     blockIds: ["left", "right"],
     transcriptTextSha256: "a".repeat(64),
     audioSignal: {
-      recordingAssetId: "recording-1",
+      mediaAssetKind: "capture-recording",
+      mediaAssetId: "recording-1",
       sourceSha256: "b".repeat(64),
       storageGeneration: "generation-1",
       signalProfileSha256: "c".repeat(64),
@@ -54,7 +55,8 @@ const candidate: AiEditReviewCandidate = {
 };
 
 const signal: AiEditSignalVisualization = {
-  recordingAssetId: "recording-1",
+  mediaAssetKind: "capture-recording",
+  mediaAssetId: "recording-1",
   sourceSha256: "b".repeat(64),
   storageGeneration: "generation-1",
   signalProfileSha256: "c".repeat(64),
@@ -79,7 +81,7 @@ describe("AutomatedEditEvidenceMap", () => {
     expect(screen.getByText(/1 range is bound to decoded audio/i)).toBeInTheDocument();
     expect(screen.getByText(/1 is a measured low-energy proposal/i)).toBeInTheDocument();
     expect(screen.getByText(/original unchanged · not applied/i)).toBeInTheDocument();
-    expect(screen.getByText(/Bound source recording-1 · source b{12} · profile c{12}/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bound capture recording recording-1 · source b{12} · profile c{12}/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Protected-source proof required" })).toBeDisabled();
     expect(screen.getByText(/will not write a proof-listen receipt from the program monitor/i)).toBeInTheDocument();
   });
@@ -118,7 +120,7 @@ describe("AutomatedEditEvidenceMap", () => {
     expect(confirmation).toBeEnabled();
     fireEvent.click(confirmation);
     fireEvent.click(screen.getByRole("button", { name: "Record proof-listen" }));
-    expect(onProofReview).toHaveBeenCalledWith(proposal, expect.objectContaining({ recordingAssetId: "recording-1", sourceId: "source-1", playbackPositionSeconds: 4.4 }));
+    expect(onProofReview).toHaveBeenCalledWith(proposal, expect.objectContaining({ mediaAssetKind: "capture-recording", mediaAssetId: "recording-1", sourceId: "source-1", playbackPositionSeconds: 4.4 }));
     play.mockRestore();
   });
 });
