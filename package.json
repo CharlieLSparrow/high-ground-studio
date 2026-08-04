@@ -81,6 +81,8 @@
     "quipsly:retained:calendar-overview": "node scripts/quipsly-retained-calendar-overview-operation.mjs",
     "quipsly:retained:calendar-subscription": "node scripts/quipsly-retained-calendar-subscription-operation.mjs",
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
+    "quipsly:retained:audio-mastery-transparency": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
+    "test:quipsly:retained:audio-mastery-transparency": "node --test scripts/quipsly-retained-audio-mastery-transparency-operation.test.mjs",
     "quipsly:retained:speaker-camera-cut": "node scripts/quipsly-retained-speaker-camera-cut-operation.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:retained:native-weekly-plan": "node scripts/quipsly-retained-native-weekly-plan-operation.mjs",
