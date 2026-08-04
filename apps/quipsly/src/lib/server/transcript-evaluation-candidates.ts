@@ -73,6 +73,27 @@ function byteLength(value: unknown) {
   return Buffer.byteLength(stableJson(value), "utf8");
 }
 
+/**
+ * Stable cross-window comparison identity for one provider configuration.
+ *
+ * The complete request receipt also contains inputMedia, whose checksum is
+ * intentionally different for every evaluation window. Including that receipt
+ * in provider identity would split one pinned provider build into a different
+ * pseudo-provider per source and make workload-level thresholds impossible.
+ * Exact request bytes remain preserved in requestConfigJson and are bound into
+ * the append-only candidate key separately.
+ */
+export function transcriptProviderComparisonConfigSha256(value: unknown) {
+  const providerConfig = object(object(value).provider);
+  if (Object.keys(providerConfig).length === 0) {
+    throw new TranscriptEvaluationCandidateError(
+      "Provider request configuration must include a non-empty provider object.",
+      "CANDIDATE_PROVIDER_CONFIG_INVALID",
+    );
+  }
+  return sha256Value(providerConfig);
+}
+
 function boundedId(value: unknown, field: string) {
   const normalized = text(value);
   if (!SAFE_ID.test(normalized)) {
@@ -195,7 +216,8 @@ function buildCandidate(input: {
   const candidate = object(input.candidate);
   const providerKey = text(candidate.providerKey);
   const policy = policySnapshot(input.policy, providerKey);
-  const requestConfigSha256 = sha256Value(input.requestConfig);
+  const requestConfigSha256 = transcriptProviderComparisonConfigSha256(input.requestConfig);
+  const requestEvidenceSha256 = sha256Value(input.requestConfig);
   const rawResponseSha256 = sha256Value(input.rawResponse);
   let parsed: TranscriptEvaluationCandidate;
   try {
@@ -220,7 +242,7 @@ function buildCandidate(input: {
   if (Date.parse(policy.capturedAt) > Date.now() + 5 * 60_000) {
     throw new TranscriptEvaluationCandidateError("Provider policy capture time cannot be in the future.", "POLICY_CAPTURED_AT_INVALID");
   }
-  return { parsed, policy, requestConfigSha256, rawResponseSha256 };
+  return { parsed, policy, requestConfigSha256, requestEvidenceSha256, rawResponseSha256 };
 }
 
 function validatedInputMedia(requestConfig: unknown, window: any) {
@@ -305,6 +327,7 @@ export async function appendTranscriptEvaluationCandidate(input: {
       model: evidence.parsed.model,
       adapterVersion: evidence.parsed.adapterVersion,
       requestConfigSha256: evidence.requestConfigSha256,
+      requestEvidenceSha256: evidence.requestEvidenceSha256,
       speakerAttribution: evidence.parsed.speakerAttribution,
       timingGranularity: evidence.parsed.timingGranularity,
     },

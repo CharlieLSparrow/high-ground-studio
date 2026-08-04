@@ -527,9 +527,6 @@ function parseWindow(
     throw new Error("A human-approved transcript reference must contain words.");
   }
   const candidates = array(row.candidates).map((candidate) => parseCandidate(candidate, schemaVersion));
-  if (candidates.length === 0) {
-    throw new Error("Each transcript evaluation window requires a candidate.");
-  }
   const candidateKeys = candidates.map(providerIdentityKey);
   if (new Set(candidateKeys).size !== candidateKeys.length) {
     throw new Error("A window cannot contain duplicate provider candidate identities.");

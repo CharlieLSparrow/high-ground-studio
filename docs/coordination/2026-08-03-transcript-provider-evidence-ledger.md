@@ -17,7 +17,8 @@ The new ledger preserves:
 - a create-once provider data-policy snapshot and server-computed hash;
 - exact evaluation window, source SHA, consent revision, and human-reference
   hash;
-- provider, model, adapter, request configuration, run key, request ID,
+- provider, model, adapter, stable comparison configuration, exact request
+  receipt, run key, request ID,
   latency, observed cost, and capability boundary;
 - raw private provider response plus a server-computed response hash;
 - normalized word, speaker, and real timing evidence;
@@ -74,6 +75,16 @@ or Nest mutation. It still builds and probes the derivative so corpus mistakes
 are discovered before any provider receives media. Two independent dry runs
 must produce the same derivative checksum; the executable runner test proves
 that boundary.
+
+Provider comparison identity hashes only the pinned provider configuration
+(model version, language, diarization, and other provider parameters). The
+complete request receipt remains immutable and separately hashed in the
+candidate key, including the exact input-media derivative. This separation is
+required: derivative bytes differ by window, while the provider configuration
+must remain stable across all six conditions for a meaningful workload-level
+comparison. A focused regression test proves two different derivatives share
+one comparison identity and a request without a provider configuration fails
+closed.
 
 The runner deliberately requires a dated policy JSON file. It cannot know an
 account's effective retention or training controls from public documentation,

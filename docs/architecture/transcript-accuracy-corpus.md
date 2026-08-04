@@ -2,8 +2,8 @@
 
 Date: 2026-08-03
 
-Status: local production-shaped implementation and provider evidence ledger;
-genuine corpus collection open
+Status: local production-shaped implementation, provider evidence ledger, and
+cross-session evidence desk; genuine corpus collection open
 
 ## Product promise
 
@@ -91,6 +91,21 @@ observability and before correction controls. It makes the sequence visible:
 Blocked states explain the missing evidence and expose no approval control.
 Classification never guesses from transcript text or IDs.
 
+The permission-scoped **Transcription evidence** desk at `/transcription`
+provides the operating view across accessible Sessions. It shows the complete
+six-condition podcast and six-condition coaching matrices, exact
+provider/model/adapter/config comparisons, clean and difficult WER, speaker
+error, word-timing drift, latency, cost, failure receipts, and measured human
+correction work. Every retained Session links back to its protected transcript
+desk. The projection contains no transcript text, reviewer identity, source
+path, provider policy URL, or raw response and cannot invoke a provider or
+change a production default.
+
+An approved reference is now valid corpus evidence before any provider attempt
+exists. The evaluator reports its coverage with an empty provider list instead
+of rejecting it. This matches the durable workflow: establish human truth
+first, then compare pinned candidates against the same bytes.
+
 ## Operated evidence
 
 - Prisma schema validates and the committed migration applied to local
@@ -103,6 +118,18 @@ Classification never guesses from transcript text or IDs.
 - Focused server, route, and React suites cover fail-closed readiness, public
   text exclusion, authentication, explicit mutation routing, and the visible
   condition-selection workflow.
+- Focused board tests cover the cross-session 12-condition gap projection,
+  exact provider evidence, correction-effort aggregation, shared Session
+  authorization, and exclusion of private words, reviewer IDs, policy URLs,
+  and source hashes. The evaluator suite proves candidate-free human references
+  remain measurable and insufficient rather than invalid.
+- Provider comparison identity is stable across source windows: it hashes the
+  pinned provider settings, while the separately bound exact request receipt
+  includes each window's distinct derivative bytes. This prevents one provider
+  build from being fragmented into a pseudo-provider per recording.
+- The live local desk was opened under a non-staff HGO editor account. It and an
+  independent database count both reported 0 approved windows, 0 provider
+  attempts, and 0 correction passes; no sample scores were substituted.
 - The retained Episode 4 HGO 60-second source renders at 0/5 reviewed and keeps
   corpus approval unavailable. No review was fabricated: this agent cannot
   honestly substitute provider output for a person listening to that audio.

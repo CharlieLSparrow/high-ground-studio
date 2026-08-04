@@ -110,6 +110,21 @@ test("requires explicit v2 workload, condition, and provider capabilities", () =
   assert.throws(() => parseTranscriptEvaluationCorpus(missingCapability), /speakerAttribution/);
 });
 
+test("keeps approved references measurable before any provider candidate exists", () => {
+  const corpus = fixture();
+  for (const window of corpus.windows) window.candidates = [];
+  const report = buildTranscriptEvaluationReport(
+    parseTranscriptEvaluationCorpus(corpus),
+    "2026-08-01T18:00:00.000Z",
+  );
+
+  assert.equal(report.windowCount, 2);
+  assert.equal(report.providers.length, 0);
+  assert.equal(report.workloads[0].windowCount, 1);
+  assert.equal(report.workloads[0].providers.length, 0);
+  assert.equal(report.workloads[0].coverage.complete, false);
+});
+
 test("passes thresholds only after every podcast and coaching condition succeeds", () => {
   const corpus = completeFixture();
   const report = buildTranscriptEvaluationReport(corpus, "2026-08-01T18:00:00.000Z");
