@@ -22,10 +22,10 @@ Quipsly already has one real browser/iPhone media room rather than separate
   `StudioEpisodeProduction`, which owns the manuscript, shared Watch clips,
   episode-wide thread, milestones, editor, and publishing continuity.
 
-The remaining domain gap is coaching continuity. Coaching has canonical
-bookings, Sessions, notes, goals, tasks, follow-up, and cross-Session
-projections, but it does not yet have a first-class long-lived coaching
-engagement aggregate or engagement-scoped conversation.
+Coaching continuity now has a first-class durable boundary. A
+`CoachingEngagement` owns explicit members, an ordered Session series,
+engagement-linked work, and `engagement:<id>` conversation while keeping the
+surrounding Nest private from clients who are not Nest collaborators.
 
 ## The intended ownership model
 
@@ -33,7 +33,7 @@ engagement aggregate or engagement-scoped conversation.
 | --- | --- | --- | --- |
 | Session (`CallRoom`) | One call, interview, meeting, or recording take | participant access, consent, live provider identity, local/provider source receipts, Session thread, transcript evidence, take-specific notes | episode manuscript, publishing state, all coaching history, project-wide chat |
 | Episode (`StudioEpisodeProduction`) | Whole podcast episode | manuscript boundary, shared clips and Watch receipts, episode thread, recording Sessions, milestones, timeline/editor handoff, publishing | raw participant access for every take, implicit recording actions |
-| Coaching engagement (next canonical aggregate) | Whole coach/client relationship or program | explicit members and roles, privacy policy, shared coaching thread, engagement goals, Session sequence, client-safe resources and follow-through | private coach notes, provider credentials, automatic transcript-to-work promotion |
+| Coaching engagement (`CoachingEngagement`) | Whole coach/client relationship or program | explicit members and roles, shared coaching thread, engagement goals and commitments, Session sequence, client-safe resources and follow-through | private coach notes, provider credentials, automatic transcript-to-work promotion, implicit Nest access |
 | Nest (`StudioProject`) | Whole project or organization | membership, tags, research/writing/media vocabulary, project work, authorized resources | automatic access for coaching clients, one giant undifferentiated conversation |
 
 The media transport is deliberately shared. The surrounding experience is
@@ -91,6 +91,11 @@ recording source, not an inferred side effect of joining.
   Session workspace and the embedded Episode recording room.
 - The exact bound Nest and Episode slug now reach browser-source upload metadata
   even when recording from the Session workspace rather than Episode Room.
+- Quipsly Capture now decodes writable Coaching Engagements, lets a person bind
+  a new coaching Session to the exact engagement and Nest, preserves that
+  identity in its protected offline Session snapshot, and links back to the
+  private engagement workspace. Podcast and research purposes cannot carry an
+  engagement relationship accidentally.
 
 ## Conversation scopes
 
@@ -105,19 +110,27 @@ Chat is durable conversation, not canonical work. A message or transcript can
 propose a note, decision, goal, task, edit, or calendar commitment, but the
 appropriate review operation must create the canonical record.
 
-Coaching currently has only the Session thread. The system must not emulate
-coaching continuity with an arbitrary project-wide thread because that would
-blur client membership and expose unrelated Nest content. The next schema slice
-should introduce `CoachingEngagement` and `CoachingEngagementMember`, bind
-bookings and CallRooms to the engagement, and authorize an
-`engagement:<id>` thread through that membership boundary.
+Coaching also intentionally has two threads:
+
+- `session:<callRoomId>` is one call: device checks, immediate coordination,
+  consent, retained sources, and this Session's review.
+- `engagement:<coachingEngagementId>` is the relationship: between-call
+  coordination, shared goals and commitments, resources, and next-session
+  continuity.
+
+`CoachingEngagementMember` authorizes the latter without creating a
+`StudioProjectAccessGrant`. Removed members lose access immediately; observers
+are read-only; coach/support members and Nest owners/editors can manage the
+boundary. Historical Sessions are not guessed into engagements. A reviewed,
+side-effect-free local operation explicitly bound the two retained coaching
+Sessions for the same exact coach, client, and Nest and read them back through
+the rendered engagement page.
 
 ## Next production slices
 
-1. **First-class coaching engagement.** Add the engagement aggregate,
-   membership/access receipts, booking and Session bindings, private continuity
-   page, and engagement-scoped durable thread. Backfill only when one client and
-   coach pair is unambiguous; otherwise require an explicit repair decision.
+1. **Engagement membership operations.** Add explicit invite/remove/restore
+   receipts and a coach-facing member editor; keep client access independent of
+   Nest membership and prove it against a separate account on every release.
 2. **Durable plus low-latency chat.** Keep PostgreSQL as authority and add a
    LiveKit data-channel hint (or equivalent) so active rooms update immediately
    while reconnect/poll remains deterministic.
@@ -141,9 +154,12 @@ bookings and CallRooms to the engagement, and authorize an
 ## Explicitly not claimed yet
 
 - Browser device selection is implemented and covered by component/type gates,
-  but the in-app browser automation surface rejected localhost navigation, so
-  this slice does not claim a fresh visual browser acceptance receipt.
-- Coaching does not yet have an engagement-wide chat or collaboration page.
+  but this slice did not repeat physical external-device capture acceptance.
+- Coaching now has engagement-wide chat and a collaboration page. Member
+  invitation/removal UI and append-only membership-change receipts are still a
+  follow-on slice.
+- iPhone can choose and return to an existing engagement, but engagement chat is
+  still a Nest surface rather than a native low-latency chat sidecar.
 - Session chat currently polls durable storage; it is not yet provider-hinted
   real-time messaging.
 - Browser recording is a retained combined camera-plus-audio source or an audio

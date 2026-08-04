@@ -77,7 +77,9 @@ export default async function SessionReviewPage({
         provider: true,
         providerRoomId: true,
         episodeProductionId: true,
+        coachingEngagementId: true,
         episodeProduction: { select: { id: true, projectId: true, title: true, slug: true } },
+        coachingEngagement: { select: { id: true, title: true, status: true, project: { select: { slug: true } } } },
         episodeBindingReceipts: {
           orderBy: { createdAt: "desc" },
           take: 5,
@@ -290,6 +292,14 @@ export default async function SessionReviewPage({
     const collaborationContext = buildSessionCollaborationContext({
       project: visibleProject && room.project ? room.project : null,
       episode: boundEpisode,
+      engagement: room.purpose === "COACHING" && room.coachingEngagement
+        ? {
+            id: room.coachingEngagement.id,
+            title: room.coachingEngagement.title,
+            status: room.coachingEngagement.status,
+            projectSlug: room.coachingEngagement.project.slug,
+          }
+        : null,
       episodeRepair,
       episodeBindingHistory: (room.episodeBindingReceipts || []).map((receipt: any) => ({
         id: receipt.id,

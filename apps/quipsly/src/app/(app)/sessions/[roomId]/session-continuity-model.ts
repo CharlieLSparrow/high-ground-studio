@@ -122,7 +122,7 @@ export type PriorSessionContinuity = {
     endedAt: string | null;
   };
   brief: SavedSessionContinuityBrief;
-  relationship: "same-project-and-purpose";
+  relationship: "same-coaching-engagement" | "legacy-same-project-and-purpose";
   currentSessionMutated: false;
   externalSideEffects: false;
 };
@@ -192,7 +192,7 @@ export type PriorSessionFollowThrough = {
     changedSinceReleaseCount: number;
     unavailableCount: number;
   };
-  relationship: "same-project-purpose-client-and-coach";
+  relationship: "same-coaching-engagement" | "legacy-same-project-purpose-client-and-coach";
   canOpenWork: boolean;
   canonicalRecordsMutated: false;
   currentSessionMutated: false;

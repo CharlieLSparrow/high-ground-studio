@@ -22,6 +22,8 @@ export const REQUIRED_PRODUCTION_CORE_TABLES = [
   "StudioWorkflowJob",
   "StudioNativeAuthCode",
   "StudioNativeDeviceSession",
+  "CoachingEngagement",
+  "CoachingEngagementMember",
   "Goal",
   "GoalTaskLink",
   "GoalProgressReceipt",
@@ -73,6 +75,11 @@ export const PRODUCTION_CORE_FEATURE_GROUPS = [
     id: "native-mac-auth",
     label: "Native Mac app sessions",
     tables: ["StudioNativeAuthCode", "StudioNativeDeviceSession"],
+  },
+  {
+    id: "coaching-engagements",
+    label: "Private coaching engagements",
+    tables: ["CoachingEngagement", "CoachingEngagementMember"],
   },
   {
     id: "goals-follow-through",

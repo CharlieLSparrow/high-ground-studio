@@ -65,6 +65,8 @@
     "quipsly:cloud:artifact-cleanup:activate": "bash scripts/release/quipsly-artifact-cleanup-activate.sh",
     "quipsly:cloud:build-source-retention": "bash scripts/release/quipsly-cloud-build-source-retention.sh",
     "quipsly:local:session-collaboration-dogfood": "node --experimental-strip-types scripts/quipsly-local-session-collaboration-dogfood.mjs",
+    "quipsly:retained:coaching-engagement": "QUIPSLY_RETAINED_COACHING_ENGAGEMENT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-coaching-engagement-operation.mjs",
+    "quipsly:retained:coaching-engagement-browser": "QUIPSLY_RETAINED_COACHING_ENGAGEMENT_BROWSER_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-coaching-engagement-browser-operation.mjs",
     "quipsly:local:live-room": "QUIPSLY_LOCAL_LIVE_ROOM_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-live-room-operation.mjs",
     "quipsly:local:session-invitation": "QUIPSLY_LOCAL_SESSION_INVITATION_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-invitation-operation.mjs",
     "quipsly:local:calendar-cancellation-dogfood": "node --experimental-strip-types scripts/quipsly-local-calendar-cancellation-dogfood.mjs",

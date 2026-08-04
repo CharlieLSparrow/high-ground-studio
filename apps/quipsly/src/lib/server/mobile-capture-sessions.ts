@@ -1080,6 +1080,9 @@ export function mapMobileCaptureSessionsForUser(input: {
       projectBindingSource: sessionProject.bindingSource,
       projectLegacySlugDrift: sessionProject.legacySlugDrift,
       episodeSlug: canonicalMobileSessionEpisodeSlug(room),
+      coachingEngagementId: label(room.coachingEngagementId) || label(room.coachingEngagement?.id),
+      coachingEngagementTitle: label(room.coachingEngagement?.title),
+      coachingEngagementStatus: label(room.coachingEngagement?.status),
       scheduledStart: room.scheduledStart?.toISOString?.() ?? null,
       scheduledEnd: room.scheduledEnd?.toISOString?.() ?? null,
       scheduledTimezone: mobileSessionScheduledTimezone(

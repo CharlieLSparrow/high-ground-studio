@@ -7,6 +7,7 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "@/lib/mobile-capture-consent-policy.js";
 import { getPrismaClient } from "@/lib/prisma";
+import { coachingEngagementAccessWhere, coachingEngagementActorAccessWhere } from "@/lib/server/coaching-engagement";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import {
@@ -35,6 +36,9 @@ import {
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 const MOBILE_CAPTURE_ROOM_INCLUDE = {
+  coachingEngagement: {
+    select: { id: true, title: true, status: true },
+  },
   episodeProduction: {
     select: { id: true, projectId: true, slug: true, title: true },
   },
@@ -332,6 +336,19 @@ export async function GET(request: Request) {
   const captureProjects = accessibleCaptureProjects.filter(
     (project) => project.role === "OWNER" || project.role === "EDITOR",
   );
+  const coachingEngagements = await prisma.coachingEngagement.findMany({
+    where: coachingEngagementActorAccessWhere(session.user, "write"),
+    orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+    take: 100,
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      project: { select: { id: true, slug: true, name: true } },
+      primaryClient: { select: { name: true, primaryEmail: true } },
+      primaryCoach: { select: { name: true, primaryEmail: true } },
+    },
+  });
   const captureProjectTags = captureProjects.length > 0
     ? await prisma.studioTag.findMany({
         where: {
@@ -356,6 +373,7 @@ export async function GET(request: Request) {
       title: room.title,
       purpose: room.purpose,
       projectId: room.projectId,
+      coachingEngagementId: room.coachingEngagementId,
       scheduledStart: room.scheduledStart,
       endedAt: room.endedAt,
       createdAt: room.createdAt,
@@ -373,6 +391,7 @@ export async function GET(request: Request) {
       title: room.title,
       purpose: room.purpose,
       projectId: room.projectId,
+      coachingEngagementId: room.coachingEngagementId,
       scheduledStart: room.scheduledStart,
       endedAt: room.endedAt,
       createdAt: room.createdAt,
@@ -407,6 +426,16 @@ export async function GET(request: Request) {
         slug: tag.slug,
         label: tag.label,
       })),
+    })),
+    coachingEngagements: coachingEngagements.map((engagement: any) => ({
+      id: engagement.id,
+      title: engagement.title,
+      status: engagement.status,
+      projectId: engagement.project.id,
+      projectSlug: engagement.project.slug,
+      projectName: engagement.project.name,
+      clientLabel: engagement.primaryClient?.name || engagement.primaryClient?.primaryEmail || null,
+      coachLabel: engagement.primaryCoach?.name || engagement.primaryCoach?.primaryEmail || null,
     })),
     sessions: mapMobileCaptureSessionsForUser({
       rooms,
@@ -511,11 +540,36 @@ export async function POST(request: Request) {
     throw error;
   }
 
+  const requestedEngagementId = text(body.coachingEngagementId);
+  if (requestedEngagementId && purpose !== "COACHING") {
+    return NextResponse.json(
+      { ok: false, error: "Only coaching Sessions can bind a Coaching Engagement." },
+      { status: 409 },
+    );
+  }
+  const coachingEngagement = requestedEngagementId
+    ? await prisma.coachingEngagement.findFirst({
+        where: {
+          ...coachingEngagementAccessWhere(requestedEngagementId, session.user, "write"),
+          projectId: captureProjectId,
+          status: { in: ["ACTIVE", "PAUSED"] },
+        },
+        select: { id: true, title: true },
+      })
+    : null;
+  if (requestedEngagementId && !coachingEngagement) {
+    return NextResponse.json(
+      { ok: false, error: "The requested Coaching Engagement is unavailable or belongs to another Nest." },
+      { status: 404 },
+    );
+  }
+
   const room = await prisma.callRoom.create({
     data: {
       createdByUserId: userId,
       projectId: captureProjectId,
       episodeProductionId: episodeBinding.episodeProductionId,
+      coachingEngagementId: coachingEngagement?.id || null,
       purpose,
       status: "PLANNED",
       provider,
@@ -548,6 +602,8 @@ export async function POST(request: Request) {
         projectId: captureProjectId,
         projectSlug: captureProjectSlug,
         episodeSlug: episodeBinding.episodeSlug,
+        coachingEngagementId: coachingEngagement?.id || null,
+        coachingEngagementTitle: coachingEngagement?.title || null,
         quickSession: true,
         externalSideEffects: {
           calendarMutated: false,

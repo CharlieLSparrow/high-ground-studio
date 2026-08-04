@@ -372,6 +372,7 @@ describe("Session review goal candidates", () => {
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
         episode: { id: "episode-4-id", title: "The Swear Jar", slug: "episode-4" },
         binding: "EPISODE",
+        engagement: null,
         episodeBindingHistory: [{
           id: "binding-receipt-1",
           action: "BIND",

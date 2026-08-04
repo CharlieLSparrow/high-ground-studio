@@ -14,6 +14,8 @@ import {
   syncCoachingBookingToGoogleCalendar,
 } from "@/lib/server/coaching-google-calendar";
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
+import { ensureCoachingEngagement, CoachingEngagementError } from "@/lib/server/coaching-engagement";
+import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import {
   buildMobileCaptureConsentVersions,
   mobileCaptureAllPartiesReady,
@@ -21,6 +23,7 @@ import {
 import { mobileCaptureProcessingGateFromEvidence } from "@/lib/server/mobile-capture-processing-policy.js";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const runtime = "nodejs";
 
@@ -92,10 +95,38 @@ class RunwayActionError extends Error {
 }
 
 function runwayActionErrorResponse(error: unknown) {
+  if (error instanceof CoachingEngagementError) {
+    return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: error.status });
+  }
   if (error instanceof RunwayActionError) {
     return NextResponse.json({ ok: false, error: error.message }, { status: error.status });
   }
   throw error;
+}
+
+async function resolveCoachingProject(input: {
+  prisma: any;
+  requestedProjectSlug: unknown;
+  actorEmail: string;
+}) {
+  const requestedProjectSlug = text(input.requestedProjectSlug).toLowerCase();
+  if (requestedProjectSlug) {
+    const access = await resolveStudioProjectAccess({
+      projectSlug: requestedProjectSlug,
+      email: input.actorEmail,
+      action: "write",
+      prisma: input.prisma,
+    });
+    if (!access.allowed || !access.projectId) {
+      throw new RunwayActionError("You do not have write access to the requested coaching Nest.", 403);
+    }
+    return { id: access.projectId, slug: requestedProjectSlug };
+  }
+  const home = await ensureHomeNestForEmail(input.actorEmail, input.prisma);
+  if (!home?.id || !home.slug) {
+    throw new RunwayActionError("Quipsly could not create an actor-owned Nest for this coaching engagement.", 409);
+  }
+  return { id: home.id, slug: home.slug };
 }
 
 async function readJson(request: Request) {
@@ -1913,7 +1944,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await prisma.$transaction(async (tx: any) => {
+    let coachingProject;
+    try {
+      coachingProject = await resolveCoachingProject({
+        prisma,
+        requestedProjectSlug: body.projectSlug,
+        actorEmail: text(session.user.primaryEmail || session.user.email).toLowerCase(),
+      });
+    } catch (error) {
+      return runwayActionErrorResponse(error);
+    }
+
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
       const hold = await tx.bookingHold.findUnique({
         where: { id: holdId },
         include: {
@@ -1956,6 +1999,18 @@ export async function POST(request: Request) {
       const paymentPolicy = text(body.paymentPolicy) || offering?.paymentPolicy || "MANUAL";
       const amountCents = integer(body.amountCents) ?? offering?.priceCents ?? null;
       const purpose = normalizePurpose(body.purpose || offering?.kind);
+      if (purpose !== "COACHING" && text(body.engagementId)) {
+        throw new RunwayActionError("Only coaching Sessions can join a Coaching Engagement.", 409);
+      }
+      const engagement = purpose === "COACHING" ? await ensureCoachingEngagement({
+        prisma: tx,
+        projectId: coachingProject.id,
+        actorUserId: session.user.id,
+        clientUserId: client.id,
+        coachUserId,
+        clientLabel: client.name || client.primaryEmail,
+        requestedEngagementId: text(body.engagementId) || null,
+      }) : null;
 
       const appointment = await tx.appointment.create({
         data: {
@@ -1999,6 +2054,7 @@ export async function POST(request: Request) {
           offeringId: offering?.id || null,
           clientUserId: client.id,
           coachUserId,
+          engagementId: engagement?.id || null,
           status: paymentRecord ? "HOLDING_PAYMENT" : "CONFIRMED",
           scheduledStart: hold.scheduledStart,
           scheduledEnd: hold.scheduledEnd,
@@ -2021,6 +2077,8 @@ export async function POST(request: Request) {
         data: {
           bookingId: booking.id,
           createdByUserId: session.user.id,
+          projectId: coachingProject.id,
+          coachingEngagementId: engagement?.id || null,
           purpose,
           status: "PLANNED",
           provider: "planned",
@@ -2028,6 +2086,8 @@ export async function POST(request: Request) {
           title,
           scheduledStart: hold.scheduledStart,
           scheduledEnd: hold.scheduledEnd,
+          nestSlug: coachingProject.slug,
+          projectSlug: coachingProject.slug,
           recordingPolicyJson: {
             source: "quipsly-coaching-runway",
             requiresExplicitConsent: true,
@@ -2127,6 +2187,7 @@ export async function POST(request: Request) {
         appointmentId: appointment.id,
         bookingId: booking.id,
         callRoomId: room.id,
+        engagementId: engagement?.id || null,
         clientUserId: client.id,
         paymentRecordId: paymentRecord?.id || null,
         status: booking.status,
@@ -2136,11 +2197,14 @@ export async function POST(request: Request) {
       };
     });
 
-    return NextResponse.json({
-      ok: true,
-      action,
-      result,
-    });
+      return NextResponse.json({
+        ok: true,
+        action,
+        result,
+      });
+    } catch (error) {
+      return runwayActionErrorResponse(error);
+    }
   }
 
   const clientEmail = text(body.clientEmail).toLowerCase();
@@ -2237,7 +2301,19 @@ export async function POST(request: Request) {
     });
   }
 
-  const result = await prisma.$transaction(async (tx: any) => {
+  let coachingProject;
+  try {
+    coachingProject = await resolveCoachingProject({
+      prisma,
+      requestedProjectSlug: projectSlug,
+      actorEmail: text(session.user.primaryEmail || session.user.email).toLowerCase(),
+    });
+  } catch (error) {
+    return runwayActionErrorResponse(error);
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
     const offering = offeringId
       ? await tx.serviceOffering.findUnique({
           where: { id: offeringId },
@@ -2260,6 +2336,18 @@ export async function POST(request: Request) {
       name: clientName,
       prisma: tx,
     });
+    if (purpose !== "COACHING" && text(body.engagementId)) {
+      throw new RunwayActionError("Only coaching Sessions can join a Coaching Engagement.", 409);
+    }
+    const engagement = purpose === "COACHING" ? await ensureCoachingEngagement({
+      prisma: tx,
+      projectId: coachingProject.id,
+      actorUserId: session.user.id,
+      clientUserId: client.id,
+      coachUserId,
+      clientLabel: client.name || client.primaryEmail,
+      requestedEngagementId: text(body.engagementId) || null,
+    }) : null;
 
     const appointment = await tx.appointment.create({
       data: {
@@ -2302,6 +2390,7 @@ export async function POST(request: Request) {
         offeringId: offering?.id || null,
         clientUserId: client.id,
         coachUserId,
+        engagementId: engagement?.id || null,
         status: paymentRecord ? "HOLDING_PAYMENT" : "CONFIRMED",
         scheduledStart,
         scheduledEnd,
@@ -2323,6 +2412,8 @@ export async function POST(request: Request) {
       data: {
         bookingId: booking.id,
         createdByUserId: session.user.id,
+        projectId: coachingProject.id,
+        coachingEngagementId: engagement?.id || null,
         purpose,
         status: "PLANNED",
         provider: "planned",
@@ -2330,8 +2421,8 @@ export async function POST(request: Request) {
         title,
         scheduledStart,
         scheduledEnd,
-        nestSlug: projectSlug,
-        projectSlug,
+        nestSlug: coachingProject.slug,
+        projectSlug: coachingProject.slug,
         recordingPolicyJson: {
           source: "quipsly-coaching-runway",
           requiresExplicitConsent: true,
@@ -2413,6 +2504,7 @@ export async function POST(request: Request) {
       appointmentId: appointment.id,
       bookingId: booking.id,
       callRoomId: room.id,
+      engagementId: engagement?.id || null,
       clientUserId: client.id,
       paymentRecordId: paymentRecord?.id || null,
       status: booking.status,
@@ -2422,9 +2514,12 @@ export async function POST(request: Request) {
     };
   });
 
-  return NextResponse.json({
-    ok: true,
-    action,
-    result,
-  });
+    return NextResponse.json({
+      ok: true,
+      action,
+      result,
+    });
+  } catch (error) {
+    return runwayActionErrorResponse(error);
+  }
 }

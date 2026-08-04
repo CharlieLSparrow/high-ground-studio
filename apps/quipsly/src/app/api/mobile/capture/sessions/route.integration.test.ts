@@ -43,6 +43,8 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   let projectId = "";
   let roomId = "";
   let podcastRoomId = "";
+  let engagementId = "";
+  let engagementRoomId = "";
   let episodeProductionId = "";
   const projectSlug = `mobile-session-privacy-${nonce}`;
   const episodeSlug = `mobile-session-episode-${nonce}`;
@@ -95,6 +97,22 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
         },
       ],
     });
+    const engagement = await prisma.coachingEngagement.create({
+      data: {
+        projectId,
+        createdByUserId: ownerUserId,
+        primaryClientUserId: viewerUserId,
+        primaryCoachUserId: ownerUserId,
+        title: "Exact retained coaching relationship",
+        members: {
+          create: [
+            { userId: ownerUserId, role: "COACH", addedByUserId: ownerUserId },
+            { userId: viewerUserId, role: "CLIENT", addedByUserId: ownerUserId },
+          ],
+        },
+      },
+    });
+    engagementId = engagement.id;
     const episodeDocument = await prisma.studioDocument.create({
       data: {
         projectId,
@@ -209,8 +227,10 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
 
   afterAll(async () => {
     try {
+      if (engagementRoomId) await prisma.callRoom.deleteMany({ where: { id: engagementRoomId } });
       if (podcastRoomId) await prisma.callRoom.deleteMany({ where: { id: podcastRoomId } });
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
+      if (engagementId) await prisma.coachingEngagement.deleteMany({ where: { id: engagementId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
       await prisma.user.deleteMany({
         where: { id: { in: [ownerUserId, viewerUserId, staffUserId].filter(Boolean) } },
@@ -276,6 +296,47 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       projectId,
       slug: episodeSlug,
     });
+  });
+
+  it("lists writable engagements and binds an iPhone coaching Session to the exact relationship", async () => {
+    signedInAs(ownerUserId, ownerEmail);
+    const listResponse = await GET(new Request("http://localhost/api/mobile/capture/sessions"));
+    expect(listResponse.status).toBe(200);
+    const listPayload = await listResponse.json();
+    expect(listPayload.coachingEngagements).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: engagementId,
+        title: "Exact retained coaching relationship",
+        projectId,
+        projectSlug,
+      }),
+    ]));
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        purpose: "COACHING",
+        title: "iPhone relationship continuity proof",
+        projectSlug,
+        coachingEngagementId: engagementId,
+        provider: "planned",
+      }),
+    }));
+    expect(response.status).toBe(201);
+    const payload = await response.json();
+    expect(payload.session).toMatchObject({
+      coachingEngagementId: engagementId,
+      coachingEngagementTitle: "Exact retained coaching relationship",
+      projectId,
+      projectSlug,
+    });
+    engagementRoomId = payload.session.id;
+
+    await expect(prisma.callRoom.findUnique({
+      where: { id: engagementRoomId },
+      select: { projectId: true, coachingEngagementId: true },
+    })).resolves.toEqual({ projectId, coachingEngagementId: engagementId });
   });
 
   it("rejects an Episode relationship on a coaching Session without writing a room", async () => {

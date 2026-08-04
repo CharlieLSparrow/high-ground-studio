@@ -100,6 +100,8 @@ type MobileCaptureSession = {
   coachingPacketActionItemCount?: number;
   afterCaptureNextAction?: string | null;
   nextAction?: string | null;
+  coachingEngagementId?: string | null;
+  coachingEngagementTitle?: string | null;
 };
 
 type SessionsResponse = {
@@ -117,6 +119,16 @@ type SessionsResponse = {
     slug: string;
     name: string;
     role: "OWNER" | "EDITOR";
+  }>;
+  coachingEngagements?: Array<{
+    id: string;
+    title: string;
+    status: string;
+    projectId: string;
+    projectSlug: string;
+    projectName: string;
+    clientLabel?: string | null;
+    coachLabel?: string | null;
   }>;
   sessions?: MobileCaptureSession[];
 };
@@ -654,6 +666,7 @@ function SessionCard({
           <p className="mt-1 text-sm text-[#7b5c3b]">
             Coach: <strong>{session.coachLabel || "Not assigned yet"}</strong> · Client: <strong>{session.clientLabel || "You"}</strong>
           </p>
+          {session.coachingEngagementId ? <Link href={`/coaching/engagements/${encodeURIComponent(session.coachingEngagementId)}`} className="mt-2 inline-flex text-xs font-black uppercase tracking-wide text-violet-800 hover:underline">{session.coachingEngagementTitle || "Open coaching engagement"}</Link> : null}
           <p className="mt-3 max-w-3xl text-sm font-bold leading-relaxed text-[#3d3122]">
             {session.nextAction || session.actionPacket?.nextAction || session.captureReadiness?.nextAction || "Review the session details before recording."}
           </p>
@@ -725,6 +738,7 @@ export default function CoachingSessionsPage() {
     purpose: "PODCAST",
     projectSlug: "",
     episodeSlug: "",
+    coachingEngagementId: "",
     scheduledStart: "",
     scheduledEnd: "",
   });
@@ -822,6 +836,7 @@ export default function CoachingSessionsPage() {
           purpose: createDraft.purpose,
           projectSlug: createDraft.projectSlug || undefined,
           episodeSlug: createDraft.episodeSlug.trim() || undefined,
+          coachingEngagementId: createDraft.coachingEngagementId || undefined,
           scheduledStart: optionalIsoDate(createDraft.scheduledStart),
           scheduledEnd: optionalIsoDate(createDraft.scheduledEnd),
           deviceLabel: "Quipsly Nest web",
@@ -918,7 +933,7 @@ export default function CoachingSessionsPage() {
                 <input required value={createDraft.title} onChange={(event) => setCreateDraft((current) => ({ ...current, title: event.target.value }))} placeholder="High Ground Odyssey Episode 8 recording" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
               </label>
               <label className="text-sm font-black text-[#3d3122]">Purpose
-                <select value={createDraft.purpose} onChange={(event) => setCreateDraft((current) => ({ ...current, purpose: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                <select value={createDraft.purpose} onChange={(event) => setCreateDraft((current) => ({ ...current, purpose: event.target.value, episodeSlug: event.target.value === "PODCAST" ? current.episodeSlug : "", coachingEngagementId: event.target.value === "COACHING" ? current.coachingEngagementId : "" }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
                   <option value="PODCAST">Podcast episode</option>
                   <option value="COACHING">Coaching session</option>
                   <option value="RESEARCH_INTERVIEW">Research interview</option>
@@ -931,9 +946,16 @@ export default function CoachingSessionsPage() {
                   {(payload.captureProjects ?? []).map((project) => <option key={project.id} value={project.slug}>{project.name} · {project.role.toLowerCase()}</option>)}
                 </select>
               </label>
-              <label className="text-sm font-black text-[#3d3122]">Episode or boundary slug <span className="font-semibold text-[#806a4d]">(optional)</span>
+              {createDraft.purpose === "PODCAST" ? <label className="text-sm font-black text-[#3d3122]">Episode slug <span className="font-semibold text-[#806a4d]">(optional)</span>
                 <input value={createDraft.episodeSlug} onChange={(event) => setCreateDraft((current) => ({ ...current, episodeSlug: event.target.value }))} placeholder="episode-8" className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />
-              </label>
+              </label> : null}
+              {createDraft.purpose === "COACHING" ? <label className="text-sm font-black text-[#3d3122]">Coaching engagement <span className="font-semibold text-[#806a4d]">(optional)</span>
+                <select value={createDraft.coachingEngagementId} onChange={(event) => { const engagement = (payload?.coachingEngagements ?? []).find((item) => item.id === event.target.value); setCreateDraft((current) => ({ ...current, coachingEngagementId: event.target.value, projectSlug: engagement?.projectSlug || current.projectSlug })); }} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500">
+                  <option value="">Individual Session only</option>
+                  {(payload?.coachingEngagements ?? []).map((engagement) => <option key={engagement.id} value={engagement.id}>{engagement.title} · {engagement.status.toLowerCase()}</option>)}
+                </select>
+                <span className="mt-1 block text-xs font-semibold leading-5 text-[#806a4d]">Choose this for continuity across calls. Quipsly will not infer a client relationship from a title.</span>
+              </label> : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-black text-[#3d3122]">Starts <span className="font-semibold text-[#806a4d]">(optional)</span>
                   <input type="datetime-local" value={createDraft.scheduledStart} onChange={(event) => setCreateDraft((current) => ({ ...current, scheduledStart: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d6c5a5] bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500" />

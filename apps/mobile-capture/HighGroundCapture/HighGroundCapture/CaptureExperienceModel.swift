@@ -233,6 +233,7 @@ final class CaptureExperienceModel: ObservableObject {
     @Published var isChangingRoom = false
     @Published var newSessionTitle = ""
     @Published var newSessionPurpose = "COACHING"
+    @Published var newSessionCoachingEngagementID = ""
     @Published var message: String?
     @Published var errorMessage: String?
     @Published private(set) var workNavigationRequest: CaptureWorkNavigationRequest?
@@ -357,6 +358,16 @@ final class CaptureExperienceModel: ObservableObject {
 
     var captureProjects: [MobileCaptureProjectDestination] {
         sessionClient.captureProjects
+    }
+
+    var coachingEngagements: [MobileCaptureCoachingEngagement] {
+        sessionClient.coachingEngagements
+    }
+
+    var selectedNewSessionCoachingEngagement: MobileCaptureCoachingEngagement? {
+        guard newSessionPurpose == "COACHING",
+              !newSessionCoachingEngagementID.isEmpty else { return nil }
+        return coachingEngagements.first { $0.id == newSessionCoachingEngagementID }
     }
 
     var selectedSession: MobileCaptureSession? {
@@ -879,6 +890,12 @@ final class CaptureExperienceModel: ObservableObject {
             return false
         }
         guard !isCreatingSession else { return false }
+        if newSessionPurpose == "COACHING",
+           !newSessionCoachingEngagementID.isEmpty,
+           selectedNewSessionCoachingEngagement == nil {
+            errorMessage = "That Coaching Engagement is no longer available. Refresh Sessions and choose it again."
+            return false
+        }
         isCreatingSession = true
         defer { isCreatingSession = false }
         errorMessage = nil
@@ -900,7 +917,9 @@ final class CaptureExperienceModel: ObservableObject {
 
         guard let created = await sessionClient.createQuickSession(
             title: title,
-            purpose: newSessionPurpose
+            purpose: newSessionPurpose,
+            projectSlug: selectedNewSessionCoachingEngagement?.projectSlug,
+            coachingEngagementId: selectedNewSessionCoachingEngagement?.id
         ) else {
             errorMessage = sessionClient.errorMessage ?? "Quipsly could not create the session."
             return false
@@ -908,7 +927,11 @@ final class CaptureExperienceModel: ObservableObject {
 
         selectedSessionID = created.id
         newSessionTitle = ""
-        message = "Session created. Confirm consent when everyone is ready."
+        if let engagement = selectedNewSessionCoachingEngagement {
+            message = "Session created in \(engagement.title). Confirm consent when everyone is ready."
+        } else {
+            message = "Session created. Confirm consent when everyone is ready."
+        }
         return true
     }
 

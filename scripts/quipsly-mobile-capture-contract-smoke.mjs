@@ -537,7 +537,7 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     bridgeText.includes("struct MobileCaptureSessionCreateResponse")
-      && bridgeText.includes("func createQuickSession(title: String, purpose: String, provider: String = \"livekit\")")
+      && bridgeText.includes("func createQuickSession(")
       && capturePhoneShellText.includes("NewCaptureSessionSheet")
       && capturePhoneShellText.includes("showsNewSession")
       && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionCreateButton")')
@@ -553,6 +553,19 @@ function checkMeetingSpineContractSources() {
       && runtimeRunnerText.includes("session-create-surface)"),
     "nativeCaptureCanCreateSafeQuickSession",
     "Native Capture exposes a first-class create-session action before recording consent and recording controls.",
+  );
+  expect(
+    sessionsRouteText.includes("coachingEngagements: coachingEngagements.map")
+      && sessionsRouteText.includes("coachingEngagementId: coachingEngagement?.id || null")
+      && bridgeText.includes("struct MobileCaptureCoachingEngagement")
+      && bridgeText.includes("let coachingEngagements: [MobileCaptureCoachingEngagement]?")
+      && bridgeText.includes('requestBody["coachingEngagementId"] = coachingEngagementId')
+      && bridgeText.includes('requestBody["projectSlug"] = projectSlug')
+      && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionEngagementPicker")')
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenCoachingEngagement")')
+      && capturePhoneShellText.includes("engagement chat in Nest"),
+    "nativeCoachingEngagementContinuity",
+    "Native Capture decodes writable Coaching Engagements, binds new coaching Sessions to the exact engagement and Nest, preserves the identity offline, and exposes the private collaboration space.",
   );
   expect(
     captureRecorderViewText.indexOf("ConsentStrip(") >= 0

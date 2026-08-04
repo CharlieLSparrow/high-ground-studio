@@ -797,6 +797,9 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let projectBindingSource: String?
     let projectLegacySlugDrift: Bool?
     let episodeSlug: String?
+    var coachingEngagementId: String? = nil
+    var coachingEngagementTitle: String? = nil
+    var coachingEngagementStatus: String? = nil
     let scheduledStart: String?
     let scheduledEnd: String?
     let participantId: String?
@@ -1159,6 +1162,18 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         return components.url
     }
 
+    func coachingEngagementURL(baseURLString: String) -> URL? {
+        guard let engagementID = coachingEngagementId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !engagementID.isEmpty,
+              let encodedID = engagementID.addingPercentEncoding(
+                withAllowedCharacters: .urlPathAllowed
+              ) else { return nil }
+        return URL(
+            string: "\(normalizedNestBaseURL(baseURLString))/coaching/engagements/\(encodedID)"
+        )
+    }
+
     var recordingPromotedToStudioMedia: Bool {
         let sources = studioHandoffSources
         if !sources.isEmpty {
@@ -1265,10 +1280,31 @@ struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
     var tags: [MobileCaptureTag] { availableTags ?? [] }
 }
 
+struct MobileCaptureCoachingEngagement: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let status: String
+    let projectId: String
+    let projectSlug: String
+    let projectName: String
+    let clientLabel: String?
+    let coachLabel: String?
+
+    var participantLine: String {
+        [clientLabel, coachLabel]
+            .compactMap { value in
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .joined(separator: " · ")
+    }
+}
+
 struct MobileCaptureSessionsResponse: Codable {
     let ok: Bool
     let error: String?
     let captureProjects: [MobileCaptureProjectDestination]?
+    let coachingEngagements: [MobileCaptureCoachingEngagement]?
     let sessions: [MobileCaptureSession]?
 }
 
@@ -6413,6 +6449,7 @@ final class CaptureWorkClient: ObservableObject {
 final class CaptureSessionClient: ObservableObject {
     @Published var sessions: [MobileCaptureSession] = []
     @Published var captureProjects: [MobileCaptureProjectDestination] = []
+    @Published var coachingEngagements: [MobileCaptureCoachingEngagement] = []
     @Published var status = "Not loaded"
     @Published var errorMessage: String?
     @Published private(set) var isUsingCachedSessions = false
@@ -6440,6 +6477,7 @@ final class CaptureSessionClient: ObservableObject {
         let savedAt: Date
         let sessions: [MobileCaptureSession]
         let captureProjects: [MobileCaptureProjectDestination]?
+        let coachingEngagements: [MobileCaptureCoachingEngagement]?
     }
 
     nonisolated private static let cacheLifetime: TimeInterval = 30 * 24 * 60 * 60
@@ -6507,6 +6545,7 @@ final class CaptureSessionClient: ObservableObject {
 
             sessions = payload.sessions ?? []
             captureProjects = payload.captureProjects ?? []
+            coachingEngagements = payload.coachingEngagements ?? []
             isUsingCachedSessions = false
             cachedSessionsSavedAt = Date()
             if let selectedSessionID = authoritativeSessionID ?? sessions.first?.id {
@@ -6561,6 +6600,7 @@ final class CaptureSessionClient: ObservableObject {
     private func clearSessionsAfterAuthorityFailure() {
         sessions = []
         captureProjects = []
+        coachingEngagements = []
         isUsingCachedSessions = false
         cachedSessionsSavedAt = nil
     }
@@ -6596,7 +6636,13 @@ final class CaptureSessionClient: ObservableObject {
         [404, 408, 410, 425, 429].contains(statusCode) || (500...599).contains(statusCode)
     }
 
-    func createQuickSession(title: String, purpose: String, provider: String = "livekit") async -> MobileCaptureSession? {
+    func createQuickSession(
+        title: String,
+        purpose: String,
+        provider: String = "livekit",
+        projectSlug: String? = nil,
+        coachingEngagementId: String? = nil
+    ) async -> MobileCaptureSession? {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/sessions") else {
             status = "Bad Nest URL"
             errorMessage = "The configured Nest URL is not valid."
@@ -6612,12 +6658,21 @@ final class CaptureSessionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var requestBody: [String: Any] = [
                 "title": normalizedTitle,
                 "purpose": purpose,
                 "provider": provider,
                 "deviceLabel": "Quipsly iOS Capture",
-            ])
+            ]
+            if let projectSlug = projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !projectSlug.isEmpty {
+                requestBody["projectSlug"] = projectSlug
+            }
+            if let coachingEngagementId = coachingEngagementId?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !coachingEngagementId.isEmpty {
+                requestBody["coachingEngagementId"] = coachingEngagementId
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
 
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCaptureSessionCreateResponse.self, from: data)
@@ -7974,7 +8029,7 @@ final class CaptureSessionClient: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(ProtectedSessionCache.self, from: data)
             let age = Date().timeIntervalSince(cache.savedAt)
-            guard cache.schemaVersion == 1,
+            guard [1, 2].contains(cache.schemaVersion),
                   cache.ownerEmail == ownerEmail,
                   age >= 0,
                   age <= Self.cacheLifetime else {
@@ -7984,6 +8039,7 @@ final class CaptureSessionClient: ObservableObject {
 
             sessions = cache.sessions
             captureProjects = cache.captureProjects ?? []
+            coachingEngagements = cache.coachingEngagements ?? []
             cachedSessionsSavedAt = cache.savedAt
             isUsingCachedSessions = true
             status = "Cached · verifying Nest"
@@ -8007,11 +8063,12 @@ final class CaptureSessionClient: ObservableObject {
 
         let savedAt = Date()
         let cache = ProtectedSessionCache(
-            schemaVersion: 1,
+            schemaVersion: 2,
             ownerEmail: ownerEmail,
             savedAt: savedAt,
             sessions: sessions,
-            captureProjects: captureProjects
+            captureProjects: captureProjects,
+            coachingEngagements: coachingEngagements
         )
 
         do {

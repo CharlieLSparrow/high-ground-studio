@@ -6,6 +6,7 @@ import {
   sessionConversationAccessWhere,
   sessionMutationAccessWhere,
 } from "@/lib/server/session-access";
+import { coachingEngagementAccessWhere } from "@/lib/server/coaching-engagement";
 
 import {
   findStudioProjectForAccess,
@@ -24,6 +25,7 @@ const CLIENT_SURFACES = new Set([
   "capture-ios",
   "episode-room-web",
   "session-room-web",
+  "engagement-room-web",
   "nest-chat-web",
 ]);
 
@@ -74,6 +76,11 @@ function normalizeSessionRoomId(input: unknown) {
   return /^[a-z0-9][a-z0-9_-]{0,119}$/.test(raw) ? raw : "";
 }
 
+function normalizeEngagementId(input: unknown) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9_-]{0,119}$/.test(raw) ? raw : "";
+}
+
 function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) {
   const explicitEpisodeSlug = normalizeEpisodeSlug(episodeSlugInput);
   const key = explicitEpisodeSlug
@@ -85,10 +92,24 @@ function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) 
   const sessionRoomId = key.startsWith("session:")
     ? normalizeSessionRoomId(key.slice("session:".length))
     : "";
+  const engagementId = key.startsWith("engagement:")
+    ? normalizeEngagementId(key.slice("engagement:".length))
+    : "";
+  const invalidScope = (key.startsWith("session:") && !sessionRoomId)
+    || (key.startsWith("engagement:") && !engagementId)
+    || (key.startsWith("episode:") && !episodeSlug);
   return {
-    key: episodeSlug ? `episode:${episodeSlug}` : sessionRoomId ? `session:${sessionRoomId}` : key,
+    key: episodeSlug
+      ? `episode:${episodeSlug}`
+      : sessionRoomId
+        ? `session:${sessionRoomId}`
+        : engagementId
+          ? `engagement:${engagementId}`
+          : key,
     episodeSlug: episodeSlug || null,
     sessionRoomId: sessionRoomId || null,
+    engagementId: engagementId || null,
+    invalidScope,
   };
 }
 
@@ -235,15 +256,15 @@ async function normalizeBelieveSeedMessages(projectId?: string) {
   });
 }
 
-async function ensureThread(projectId: string, projectName: string, key: string) {
+async function ensureThread(projectId: string, projectName: string, key: string, titleOverride?: string) {
   const prisma = getPrismaClient();
   const thread = await prisma.studioNestChatThread.upsert({
     where: { projectId_key: { projectId, key } },
-    update: {},
+    update: titleOverride ? { title: titleOverride } : {},
     create: {
       projectId,
       key,
-      title: threadTitle(projectName, key),
+      title: titleOverride || threadTitle(projectName, key),
     },
     select: {
       id: true,
@@ -292,6 +313,52 @@ async function loadThread(
 ) {
   const prisma = getPrismaClient();
 
+  // Engagement membership is intentionally narrower than Nest membership.
+  // A client can collaborate across their coaching series without learning
+  // about private project notes, research, other clients, or production work.
+  if (scope.engagementId) {
+    const engagement = await prisma.coachingEngagement.findFirst({
+      where: {
+        ...coachingEngagementAccessWhere(scope.engagementId, actor, action),
+        project: { is: { slug: projectSlug } },
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        primaryClientUserId: true,
+        primaryCoachUserId: true,
+        members: {
+          where: { userId: actor.id, status: "ACTIVE" },
+          take: 1,
+          select: { role: true },
+        },
+        project: { select: { id: true, slug: true, name: true } },
+      },
+    });
+    if (!engagement?.project) {
+      return { ok: false as const, status: 404, error: "Coaching engagement thread is not available." };
+    }
+    const thread = await ensureThread(
+      engagement.project.id,
+      engagement.project.name,
+      scope.key,
+      `${engagement.title} · shared thread`,
+    );
+    return {
+      ok: true as const,
+      project: engagement.project,
+      episode: null,
+      sessionRoom: null,
+      engagement,
+      thread,
+      access: {
+        role: engagement.members[0]?.role
+          || (engagement.primaryCoachUserId === actor.id ? "COACH" : engagement.primaryClientUserId === actor.id ? "CLIENT" : "COLLABORATOR"),
+      },
+    };
+  }
+
   // A Session participant owns access to the meeting thread without receiving
   // access to the surrounding Nest. Resolve this scope at the CallRoom boundary
   // first; falling through to project access would make a Session-only invite
@@ -327,6 +394,7 @@ async function loadThread(
       project: sessionRoom.project,
       episode: null,
       sessionRoom,
+      engagement: null,
       thread,
       access: {
         role: sessionRoom.participants[0]?.role
@@ -372,7 +440,7 @@ async function loadThread(
   }
 
   const thread = await ensureThread(project.id, project.name, scope.key);
-  return { ok: true as const, project, episode, sessionRoom: null, thread, access };
+  return { ok: true as const, project, episode, sessionRoom: null, engagement: null, thread, access };
 }
 
 export async function GET(request: NextRequest) {
@@ -382,6 +450,10 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("episodeSlug"),
   );
   const actor = await resolveActor(request);
+
+  if (scope.invalidScope) {
+    return NextResponse.json({ ok: false, error: "The requested chat scope is invalid." }, { status: 400 });
+  }
 
   if (!projectSlug) {
     return NextResponse.json({ ok: false, error: "projectSlug is required." }, { status: 400 });
@@ -413,6 +485,7 @@ export async function GET(request: NextRequest) {
       },
       episode: loaded.episode,
       session: loaded.sessionRoom,
+      engagement: loaded.engagement,
       thread: {
         id: loaded.thread.id,
         key: loaded.thread.key,
@@ -445,6 +518,10 @@ export async function POST(request: NextRequest) {
   const messageId = clientMessageId ? persistedMessageId(clientMessageId) : null;
   const clientSurface = normalizeClientSurface(body.clientSurface, scope.episodeSlug);
   const actor = await resolveActor(request);
+
+  if (scope.invalidScope) {
+    return NextResponse.json({ ok: false, error: "The requested chat scope is invalid." }, { status: 400 });
+  }
 
   if (!projectSlug) {
     return NextResponse.json({ ok: false, error: "projectSlug is required." }, { status: 400 });
@@ -484,6 +561,10 @@ export async function POST(request: NextRequest) {
         ...(scope.sessionRoomId ? {
           callRoomId: loaded.sessionRoom?.id,
           sessionTitle: loaded.sessionRoom?.title,
+        } : {}),
+        ...(scope.engagementId ? {
+          coachingEngagementId: loaded.engagement?.id,
+          coachingEngagementTitle: loaded.engagement?.title,
         } : {}),
         ...(clientMessageId ? { clientMessageId } : {}),
       },

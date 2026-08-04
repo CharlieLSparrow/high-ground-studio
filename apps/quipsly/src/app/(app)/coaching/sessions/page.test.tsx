@@ -60,7 +60,7 @@ describe("CoachingSessionsPage planned session creation", () => {
     await user.type(screen.getByLabelText("Session title"), "Episode 8 recording");
     await user.selectOptions(screen.getByLabelText("Purpose"), "PODCAST");
     await user.selectOptions(screen.getByLabelText("Nest"), "high-ground");
-    await user.type(screen.getByLabelText(/Episode or boundary slug/i), "episode-8");
+    await user.type(screen.getByLabelText(/Episode slug/i), "episode-8");
     await user.click(screen.getByRole("button", { name: "Create planned session" }));
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(

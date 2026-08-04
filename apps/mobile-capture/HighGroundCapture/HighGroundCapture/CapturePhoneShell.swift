@@ -6159,6 +6159,33 @@ private struct CaptureRecorderView: View {
                         )
                     }
 
+                    if let engagementURL = session.coachingEngagementURL(
+                        baseURLString: Bundle.main.object(
+                            forInfoDictionaryKey: "QUIPSLY_API_BASE_URL"
+                        ) as? String ?? "https://nest.quipsly.com"
+                    ) {
+                        Link(destination: engagementURL) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.2.circle.fill")
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.coachingEngagementTitle?.nonempty ?? "Coaching Engagement")
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text("Open the private history, shared goals, tasks, Sessions, and engagement chat in Nest")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right.square")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .captureCard()
+                        .accessibilityIdentifier("CaptureOpenCoachingEngagement")
+                    }
+
                     DisclosureGroup(isExpanded: $showsSessionContext) {
                         CaptureSessionContextPanel(
                             session: session,
@@ -9173,6 +9200,12 @@ private struct SessionListRow: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let engagementTitle = session.coachingEngagementTitle?.nonempty {
+                        Label(engagementTitle, systemImage: "person.2.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(CapturePalette.accent)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(session.captureScheduleLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -9213,6 +9246,13 @@ private struct SessionChooserButton: View {
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let session {
+                        if let engagementTitle = session.coachingEngagementTitle?.nonempty {
+                            Text(engagementTitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(CapturePalette.accent)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("CaptureSessionEngagement_\(session.id)")
+                        }
                         Text(session.projectName?.nonempty ?? (session.projectBindingSource == "unfiled-session" ? "Unfiled Session" : session.projectSlug?.nonempty ?? "Nest not resolved"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(session.projectBindingSource == "unfiled-session" ? Color.orange : Color.secondary)
@@ -11305,6 +11345,11 @@ private struct SessionPickerSheet: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(session.displayTitle)
                                         .foregroundStyle(.primary)
+                                    if let engagementTitle = session.coachingEngagementTitle?.nonempty {
+                                        Text(engagementTitle)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(CapturePalette.accent)
+                                    }
                                     Text(session.captureScheduleLabel)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -11344,7 +11389,7 @@ private struct SessionPickerSheet: View {
                         isPresented = false
                     }
                 )
-                    .presentationDetents([.medium])
+                    .presentationDetents([.medium, .large])
             }
         }
     }
@@ -11369,6 +11414,42 @@ private struct NewCaptureSessionSheet: View {
                         Label("Podcast", systemImage: "mic.and.signal.meter").tag("PODCAST")
                         Label("Interview", systemImage: "quote.bubble").tag("RESEARCH_INTERVIEW")
                         Label("Field note", systemImage: "location").tag("FIELD_NOTE")
+                    }
+                    .onChange(of: model.newSessionPurpose) { _, purpose in
+                        if purpose != "COACHING" {
+                            model.newSessionCoachingEngagementID = ""
+                        }
+                    }
+                }
+
+                if model.newSessionPurpose == "COACHING" {
+                    Section("Coaching continuity") {
+                        Picker("Engagement", selection: $model.newSessionCoachingEngagementID) {
+                            Text("Choose later").tag("")
+                            ForEach(model.coachingEngagements) { engagement in
+                                Text(engagement.title).tag(engagement.id)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                        .accessibilityIdentifier("NewCaptureSessionEngagementPicker")
+
+                        if let engagement = model.selectedNewSessionCoachingEngagement {
+                            LabeledContent("Nest", value: engagement.projectName)
+                            if !engagement.participantLine.isEmpty {
+                                LabeledContent("People", value: engagement.participantLine)
+                            }
+                            Text("This Session will share the engagement's private history, goals, tasks, and collaboration thread without granting access to the whole Nest.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if model.coachingEngagements.isEmpty {
+                            Text("No writable Coaching Engagements are available yet. You can still create a Session in your private Home Nest and connect it later in Nest.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Choose an existing engagement to preserve exact client-and-coach continuity, or choose later for a standalone private Session.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 

@@ -32,6 +32,9 @@ function request(body: unknown) {
 
 const createdAt = new Date("2026-07-26T21:51:34.993Z");
 const prisma = {
+  coachingEngagement: {
+    findFirst: jest.fn(),
+  },
   callRoom: {
     findFirst: jest.fn(),
   },
@@ -79,6 +82,7 @@ describe("scoped Nest chat threads", () => {
     prisma.studioNestChatMessage.findUnique.mockResolvedValue(null);
     prisma.studioNestChatMessage.findMany.mockResolvedValue([]);
     prisma.callRoom.findFirst.mockResolvedValue(null);
+    prisma.coachingEngagement.findFirst.mockResolvedValue(null);
     prisma.studioEpisodeProduction.findUnique.mockResolvedValue({
       id: "episode-production-1",
       slug: "episode-4-part-2",
@@ -282,6 +286,56 @@ describe("scoped Nest chat threads", () => {
       ok: false,
       error: "Session thread is not available.",
     });
+    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+  });
+
+  it("authorizes an engagement member without granting the surrounding Nest", async () => {
+    prisma.coachingEngagement.findFirst.mockResolvedValue({
+      id: "engagement-1",
+      title: "Scott coaching",
+      status: "ACTIVE",
+      primaryClientUserId: "user-1",
+      primaryCoachUserId: "coach-1",
+      members: [{ role: "CLIENT" }],
+      project: { id: "project-1", slug: "coaching-home", name: "Coaching home" },
+    });
+    prisma.studioNestChatThread.upsert.mockResolvedValue({
+      id: "thread-engagement-1",
+      key: "engagement:engagement-1",
+      title: "Scott coaching · shared thread",
+      projectId: "project-1",
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=coaching-home&threadKey=engagement%3Aengagement-1",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      engagement: { id: "engagement-1", title: "Scott coaching" },
+      actor: { role: "CLIENT" },
+      thread: { key: "engagement:engagement-1" },
+    });
+    expect(resolveStudioProjectAccess).not.toHaveBeenCalled();
+    expect(prisma.coachingEngagement.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: "engagement-1",
+        project: { is: { slug: "coaching-home" } },
+        OR: expect.any(Array),
+      }),
+      select: expect.any(Object),
+    });
+  });
+
+  it("never falls an invalid private scope through to project chat", async () => {
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=coaching-home&threadKey=engagement%3A%2Fnot-valid",
+    ));
+    expect(response.status).toBe(400);
+    expect(resolveStudioProjectAccess).not.toHaveBeenCalled();
     expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
   });
 

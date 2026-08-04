@@ -3,7 +3,8 @@ import { normalizeSessionPurpose } from "@/lib/session-experience";
 export type SessionCollaborationContext = {
   project: { id: string; name: string; slug: string } | null;
   episode: { id: string; title: string; slug: string } | null;
-  binding: "EPISODE" | "PROJECT" | "STANDALONE";
+  engagement: { id: string; title: string; status: string; projectSlug: string } | null;
+  binding: "EPISODE" | "COACHING_ENGAGEMENT" | "PROJECT" | "STANDALONE";
   episodeRepair?: SessionEpisodeBindingRepairState | null;
   episodeBindingHistory?: Array<{
     id: string;
@@ -46,18 +47,27 @@ export function episodeSlugFromSessionMetadata(purpose: unknown, metadataJson: u
 export function buildSessionCollaborationContext(input: {
   project?: { id: string; name: string; slug: string } | null;
   episode?: { id: string; title: string; slug: string } | null;
+  engagement?: { id: string; title: string; status: string; projectSlug: string } | null;
   episodeRepair?: SessionEpisodeBindingRepairState | null;
   episodeBindingHistory?: SessionCollaborationContext["episodeBindingHistory"];
 }): SessionCollaborationContext {
   const project = input.project ?? null;
   const episode = project ? input.episode ?? null : null;
+  const engagement = input.engagement ?? null;
   return {
     project,
     episode,
-    binding: episode ? "EPISODE" : project ? "PROJECT" : "STANDALONE",
+    engagement,
+    binding: episode ? "EPISODE" : engagement ? "COACHING_ENGAGEMENT" : project ? "PROJECT" : "STANDALONE",
     episodeRepair: input.episodeRepair ?? null,
     episodeBindingHistory: input.episodeBindingHistory ?? [],
   };
+}
+
+export function coachingEngagementHref(context: SessionCollaborationContext) {
+  return context.engagement
+    ? `/coaching/engagements/${encodeURIComponent(context.engagement.id)}`
+    : null;
 }
 
 export function episodeRoomHref(context: SessionCollaborationContext) {

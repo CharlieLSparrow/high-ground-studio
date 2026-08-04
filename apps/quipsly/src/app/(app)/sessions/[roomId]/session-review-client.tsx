@@ -60,6 +60,7 @@ import {
   type SessionWorkspaceMode,
 } from "./session-workspace-model";
 import {
+  coachingEngagementHref,
   episodeRoomHref,
   type SessionCollaborationContext,
 } from "./session-collaboration-model";
@@ -1346,6 +1347,7 @@ function SessionCollaborationScopes({
   const experience = sessionExperienceForPurpose(purpose);
   const episode = experience.kind === "episode";
   const episodeHref = episodeRoomHref(context);
+  const engagementHref = coachingEngagementHref(context);
   const projectHref = context.project
     ? `/nests/${encodeURIComponent(context.project.slug)}`
     : null;
@@ -1354,13 +1356,15 @@ function SessionCollaborationScopes({
       ? `Episode Room · ${context.episode.title}`
       : "Episode relationship needs attention"
     : experience.kind === "coaching"
-      ? "Coaching continuity"
+      ? context.engagement?.title || "Coaching engagement needs attention"
       : experience.kind === "research"
         ? "Research continuity"
         : "Project continuity";
   const continuityDetail = episode && !context.episode
     ? "This recording Session is not bound to a validated Episode Room. Quipsly will not guess from its title or send collaborators into the wrong episode. The Nest remains available while the relationship is repaired."
-    : experience.continuityDescription;
+    : experience.kind === "coaching" && !context.engagement
+      ? "This call is not bound to a reviewed Coaching Engagement. Quipsly will preserve it as an individual Session instead of guessing which long-term client relationship it belongs to."
+      : experience.continuityDescription;
   return (
     <section className="rounded-2xl border border-sky-200 bg-sky-50/65 p-5" aria-labelledby="session-collaboration-scopes-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1401,6 +1405,7 @@ function SessionCollaborationScopes({
           <div className="mt-3 flex flex-wrap gap-2">
             {episodeHref ? <Link href={episodeHref} className="rounded-full bg-emerald-800 px-3 py-2 text-[10px] font-black uppercase text-white">Open exact Episode Room</Link> : null}
             {episodeHref ? <Link href={`${episodeHref}#episode-thread`} className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Episode thread</Link> : null}
+            {engagementHref ? <Link href={engagementHref} className="rounded-full bg-emerald-800 px-3 py-2 text-[10px] font-black uppercase text-white">Open coaching engagement</Link> : null}
             {projectHref ? <Link href={projectHref} className="rounded-full border border-emerald-300 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Open {context.project!.name}</Link> : null}
             {!projectHref && experience.kind === "coaching" ? <Link href="/coaching/sessions" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase text-emerald-950">Coaching Sessions</Link> : null}
           </div>
@@ -1584,7 +1589,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1954,11 +1959,11 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
             sessionTitle={sessionTitle}
             kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
             purpose={preparation?.purpose || "COACHING"}
-            projectSlug={collaborationContext.project?.slug || null}
+            projectSlug={collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || null}
             episodeSlug={collaborationContext.episode?.slug || null}
           />
           <div className="min-w-0 2xl:sticky 2xl:top-4">
-            {preparation?.project?.slug ? <SessionThread projectSlug={preparation.project.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
+            {(collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || preparation?.project?.slug) ? <SessionThread projectSlug={collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || preparation!.project!.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
           </div>
         </div>
       </div> : null}

@@ -28,6 +28,7 @@ export type FollowThroughRoomIdentity = {
   title: string | null;
   purpose: string;
   projectId: string | null;
+  coachingEngagementId?: string | null;
   scheduledStart: Date | null;
   endedAt: Date | null;
   createdAt: Date;
@@ -176,6 +177,7 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
       title: true,
       purpose: true,
       projectId: true,
+      coachingEngagementId: true,
       scheduledStart: true,
       endedAt: true,
       createdAt: true,
@@ -217,10 +219,13 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
     const selected = candidates
       .filter((candidate) => (
         candidate.id !== target.id
-        && candidate.projectId === target.projectId
-        && String(candidate.purpose) === String(target.purpose)
-        && candidate.booking?.clientUserId === booking.clientUserId
-        && candidate.booking?.coachUserId === booking.coachUserId
+        && (target.coachingEngagementId
+          ? candidate.coachingEngagementId === target.coachingEngagementId
+          : candidate.projectId === target.projectId
+            && !candidate.coachingEngagementId
+            && String(candidate.purpose) === String(target.purpose)
+            && candidate.booking?.clientUserId === booking.clientUserId
+            && candidate.booking?.coachUserId === booking.coachUserId)
         && isBefore(candidate, target)
       ))
       .flatMap((candidate) => candidate.outputs.flatMap((output: any) => {
@@ -438,7 +443,9 @@ export async function loadPriorSessionFollowThroughByRoomId(input: {
         changedSinceReleaseCount,
         unavailableCount,
       },
-      relationship: "same-project-purpose-client-and-coach",
+      relationship: selection.target.coachingEngagementId
+        ? "same-coaching-engagement"
+        : "legacy-same-project-purpose-client-and-coach",
       canOpenWork: selection.viewerRole === "CLIENT",
       canonicalRecordsMutated: false,
       currentSessionMutated: false,

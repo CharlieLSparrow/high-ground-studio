@@ -333,7 +333,7 @@ describe("Session continuity", () => {
     expect(result["room-1"]).toMatchObject({
       sourceRoom: { id: "room-previous", projectId: "project-1" },
       brief: { id: "brief-previous", snapshotSha256: "e".repeat(64) },
-      relationship: "same-project-and-purpose",
+      relationship: "legacy-same-project-and-purpose",
       currentSessionMutated: false,
       externalSideEffects: false,
     });

@@ -190,7 +190,7 @@ describe("SessionContinuityCard", () => {
           evidence: mergedTaskEvidence,
         }],
       },
-      relationship: "same-project-and-purpose",
+      relationship: "legacy-same-project-and-purpose",
       currentSessionMutated: false,
       externalSideEffects: false,
     };
@@ -270,7 +270,7 @@ describe("SessionContinuityCard", () => {
         changedSinceReleaseCount: 2,
         unavailableCount: 0,
       },
-      relationship: "same-project-purpose-client-and-coach",
+      relationship: "legacy-same-project-purpose-client-and-coach",
       canOpenWork: true,
       canonicalRecordsMutated: false,
       currentSessionMutated: false,

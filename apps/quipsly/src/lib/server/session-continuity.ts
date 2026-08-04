@@ -218,6 +218,7 @@ type ContinuityRoomIdentity = {
   title: string | null;
   purpose: string;
   projectId: string | null;
+  coachingEngagementId?: string | null;
   scheduledStart: Date | null;
   endedAt: Date | null;
   createdAt: Date;
@@ -268,6 +269,7 @@ export async function loadPriorSessionContinuityByRoomId(input: {
       title: true,
       purpose: true,
       projectId: true,
+      coachingEngagementId: true,
       scheduledStart: true,
       endedAt: true,
       createdAt: true,
@@ -322,8 +324,11 @@ export async function loadPriorSessionContinuityByRoomId(input: {
     const prior = parsedCandidates
       .filter(({ candidate }) => (
         candidate.id !== target.id
-        && candidate.projectId === target.projectId
-        && String(candidate.purpose) === String(target.purpose)
+        && (target.coachingEngagementId
+          ? candidate.coachingEngagementId === target.coachingEngagementId
+          : candidate.projectId === target.projectId
+            && !candidate.coachingEngagementId
+            && String(candidate.purpose) === String(target.purpose))
         && isBefore(candidate, target)
       ))
       .sort((left, right) => {
@@ -344,7 +349,9 @@ export async function loadPriorSessionContinuityByRoomId(input: {
         endedAt: prior.candidate.endedAt?.toISOString() ?? null,
       },
       brief: keepAccessibleTaskEvidence(prior.brief, accessibleEvidenceRoomIds),
-      relationship: "same-project-and-purpose",
+      relationship: target.coachingEngagementId
+        ? "same-coaching-engagement"
+        : "legacy-same-project-and-purpose",
       currentSessionMutated: false,
       externalSideEffects: false,
     };
@@ -467,6 +474,7 @@ export async function loadSessionContinuityState(input: {
       purpose: true,
       status: true,
       projectId: true,
+      coachingEngagementId: true,
       scheduledStart: true,
       endedAt: true,
       createdAt: true,

@@ -24,7 +24,7 @@ describe("Session collaboration context", () => {
     const context = buildSessionCollaborationContext({
       episode: { id: "episode-1", title: "Orphan", slug: "episode-4" },
     });
-    expect(context).toEqual({ project: null, episode: null, binding: "STANDALONE", episodeRepair: null, episodeBindingHistory: [] });
+    expect(context).toEqual({ project: null, episode: null, engagement: null, binding: "STANDALONE", episodeRepair: null, episodeBindingHistory: [] });
     expect(episodeRoomHref(context)).toBeNull();
   });
 });
