@@ -227,6 +227,17 @@ type AudioMasteryClientStatus = {
   boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedPreview: true; explicitApprovalStillRequired: true };
 };
 
+type AudioSignalProfileClientStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  media: null | { container: string; codec: string; sampleRate: number; channelCount: number; durationSeconds: number };
+  audioSignal: Record<string, unknown> | null;
+  analyzer: null | { algorithm: "quipsly-audio-signal-window-v1"; completeDecode: true; maximumWindows: 1_200 };
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: { originalRemainsSourceTruth: true; analysisDoesNotChangeMedia: true; observationsRequireHumanInterpretation: true };
+};
+
 type AudioTreatmentClientStatus = {
   jobId: string | null;
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
@@ -1069,17 +1080,20 @@ function importedAssetTimelinePercent(asset: ImportedMediaAsset, totalDuration: 
   return Math.max(0, Math.min(100, (anchor / totalDuration) * 100));
 }
 
-function importedAssetAudioSignal(asset: ImportedMediaAsset | null) {
+function importedAssetAudioSignal(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null) {
+  const durableEvidence = parseAudioSignalEvidence(durableProfile?.audioSignal, { maximumWaveformPoints: 360 });
+  if (durableEvidence) return durableEvidence;
   const recordingSync = asObject(asset?.sync?.recordingSync);
   const sourceProfile = asObject(recordingSync?.reportedSourceProfile);
   return parseAudioSignalEvidence(sourceProfile?.audioSignal, { maximumWaveformPoints: 360 });
 }
 
-function importedAssetDurationSeconds(asset: ImportedMediaAsset | null) {
+function importedAssetDurationSeconds(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null) {
+  if (durableProfile?.media?.durationSeconds && durableProfile.media.durationSeconds > 0) return durableProfile.media.durationSeconds;
   const recordingSync = asObject(asset?.sync?.recordingSync);
   const duration = Number(recordingSync?.durationSeconds);
   if (Number.isFinite(duration) && duration > 0) return duration;
-  return importedAssetAudioSignal(asset)?.durationSeconds ?? null;
+  return importedAssetAudioSignal(asset, durableProfile)?.durationSeconds ?? null;
 }
 
 function importedAssetSyncLabel(asset: ImportedMediaAsset) {
@@ -3183,6 +3197,7 @@ function CloudEditorContent() {
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
   const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
   const [audioMasteryStatusByAsset, setAudioMasteryStatusByAsset] = useState<Record<string, AudioMasteryClientStatus>>({});
+  const [audioSignalProfileStatusByAsset, setAudioSignalProfileStatusByAsset] = useState<Record<string, AudioSignalProfileClientStatus>>({});
   const [audioTreatmentStatusByAsset, setAudioTreatmentStatusByAsset] = useState<Record<string, AudioTreatmentClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
   const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
@@ -3225,6 +3240,7 @@ function CloudEditorContent() {
   const timelineSavedFingerprintRef = useRef("");
   const timelineRouteRef = useRef("");
   const captureGroupFocusAppliedRef = useRef("");
+  const audioSignalProfileAutoStartedRef = useRef<Set<string>>(new Set());
   const syncPreviewSpineRef = useRef<HTMLAudioElement | null>(null);
   const syncPreviewTargetRef = useRef<HTMLMediaElement | null>(null);
   const searchParams = useSearchParams();
@@ -4501,17 +4517,23 @@ function CloudEditorContent() {
     () => reviewedSourceAlignment(syncWizardTargetAsset),
     [syncWizardTargetAsset],
   );
+  const syncWizardSpineSignalProfile = syncWizardSpineAsset
+    ? audioSignalProfileStatusByAsset[syncWizardSpineAsset.id] ?? audioSignalProfileStatusByAsset[syncWizardSpineAsset.sourceId] ?? null
+    : null;
+  const syncWizardTargetSignalProfile = syncWizardTargetAsset
+    ? audioSignalProfileStatusByAsset[syncWizardTargetAsset.id] ?? audioSignalProfileStatusByAsset[syncWizardTargetAsset.sourceId] ?? null
+    : null;
   const syncWizardSpineSignal = useMemo(
-    () => importedAssetAudioSignal(syncWizardSpineAsset),
-    [syncWizardSpineAsset],
+    () => importedAssetAudioSignal(syncWizardSpineAsset, syncWizardSpineSignalProfile),
+    [syncWizardSpineAsset, syncWizardSpineSignalProfile],
   );
   const syncWizardTargetSignal = useMemo(
-    () => importedAssetAudioSignal(syncWizardTargetAsset),
-    [syncWizardTargetAsset],
+    () => importedAssetAudioSignal(syncWizardTargetAsset, syncWizardTargetSignalProfile),
+    [syncWizardTargetAsset, syncWizardTargetSignalProfile],
   );
   const syncWizardTargetDurationSeconds = useMemo(
-    () => importedAssetDurationSeconds(syncWizardTargetAsset),
-    [syncWizardTargetAsset],
+    () => importedAssetDurationSeconds(syncWizardTargetAsset, syncWizardTargetSignalProfile),
+    [syncWizardTargetAsset, syncWizardTargetSignalProfile],
   );
 
   const clockProposalMatchesSpine =
@@ -4726,6 +4748,30 @@ function CloudEditorContent() {
     setSyncReviewResidualMilliseconds("");
     setSyncReviewNotes("");
   }, [syncWizardSpineAssetId, syncWizardTargetAssetId]);
+
+  useEffect(() => {
+    let canceled = false;
+    const signalAssets = importedMediaAssets.filter((asset) => asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/"));
+    if (!signalAssets.length) return () => { canceled = true; };
+    void Promise.all(signalAssets.map(async (asset) => {
+      const query = new URLSearchParams({ projectSlug: resolvedProjectSlug, assetId: asset.id });
+      const response = await fetch(`/api/media-vault/audio-signal-profile?${query}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean } & Partial<AudioSignalProfileClientStatus>) | null;
+      return response.ok && payload?.ok && payload.status ? { asset, status: payload as { ok: true } & AudioSignalProfileClientStatus } : null;
+    })).then((rows) => {
+      if (canceled) return;
+      setAudioSignalProfileStatusByAsset((previous) => {
+        const next = { ...previous };
+        for (const row of rows) {
+          if (!row) continue;
+          next[row.asset.id] = row.status;
+          next[row.asset.sourceId] = row.status;
+        }
+        return next;
+      });
+    }).catch((error) => { if (!canceled) console.warn("Could not hydrate audio signal profile status.", error); });
+    return () => { canceled = true; };
+  }, [importedMediaAssets, resolvedProjectSlug]);
 
   useEffect(() => {
     let canceled = false;
@@ -5822,6 +5868,68 @@ function CloudEditorContent() {
       });
     }
   }, [episodeSlug, resolvedProjectSlug]);
+
+  const operateAudioSignalProfile = useCallback(async (asset: ImportedMediaAsset, options?: { quiet?: boolean }) => {
+    const jobKey = `${asset.id}:audio-signal-profile`;
+    const updateStatus = (status: AudioSignalProfileClientStatus) => setAudioSignalProfileStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/audio-signal-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, projectSlug: resolvedProjectSlug, assetId: asset.id, sourceId: asset.sourceId }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioSignalProfileClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) throw new Error(payload?.error || `Audio signal profiling returned HTTP ${response.status}.`);
+      const status = payload as { ok: true } & AudioSignalProfileClientStatus;
+      updateStatus(status);
+      return status;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    if (!options?.quiet) setMediaImportStatus(`Building complete-decode waveform evidence for ${asset.originalName}...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed") throw new Error(status.error || "Audio signal profiling failed.");
+        if (!options?.quiet) setMediaImportStatus(status.status === "output-ready" ? `Verifying the immutable source receipt for ${asset.originalName}...` : `Decoding ${asset.originalName} into bounded signal windows; the source remains untouched...`);
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed" || !status.audioSignal) throw new Error("Audio signal profiling is still processing. It can be resumed safely.");
+      if (!options?.quiet) setMediaImportStatus(`Verified source-bound waveform ready for ${asset.originalName}. Sync and audio QA now share the same evidence.`);
+    } catch (error) {
+      console.warn("Could not complete audio signal profiling.", error);
+      const message = error instanceof Error ? error.message : "Could not complete audio signal profiling.";
+      setAudioSignalProfileStatusByAsset((previous) => {
+        const existing = previous[asset.id] ?? previous[asset.sourceId];
+        const failed: AudioSignalProfileClientStatus = {
+          jobId: existing?.jobId ?? null,
+          status: "failed",
+          media: existing?.media ?? null,
+          audioSignal: existing?.audioSignal ?? null,
+          analyzer: existing?.analyzer ?? null,
+          error: message,
+          updatedAt: new Date().toISOString(),
+          boundaries: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true, observationsRequireHumanInterpretation: true },
+        };
+        return { ...previous, [asset.id]: failed, [asset.sourceId]: failed };
+      });
+      if (!options?.quiet) setMediaImportStatus(message);
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [resolvedProjectSlug]);
+
+  useEffect(() => {
+    const selected = [syncWizardSpineAsset, syncWizardTargetAsset].filter((asset): asset is ImportedMediaAsset => Boolean(asset));
+    for (const asset of selected) {
+      const status = audioSignalProfileStatusByAsset[asset.id] ?? audioSignalProfileStatusByAsset[asset.sourceId];
+      if (status?.status === "completed" || status?.status === "failed") continue;
+      const key = `${resolvedProjectSlug}:${asset.id}`;
+      if (audioSignalProfileAutoStartedRef.current.has(key)) continue;
+      audioSignalProfileAutoStartedRef.current.add(key);
+      void operateAudioSignalProfile(asset, { quiet: true });
+    }
+  }, [audioSignalProfileStatusByAsset, operateAudioSignalProfile, resolvedProjectSlug, syncWizardSpineAsset, syncWizardTargetAsset]);
 
   const operateAudioMastery = useCallback(async (asset: ImportedMediaAsset) => {
     const jobKey = `${asset.id}:audio-mastery`;
@@ -8869,17 +8977,45 @@ function CloudEditorContent() {
                   </div>
 
                   {syncWizardSpineAsset && syncWizardTargetAsset && (
-                    <SourceSyncEvidenceMap
-                      spineLabel={syncWizardSpineAsset.originalName}
-                      targetLabel={syncWizardTargetAsset.originalName}
-                      targetKind={syncWizardTargetAsset.kind}
-                      anchorSeconds={syncWizardAnchorSeconds}
-                      observationIntervalSeconds={syncEvidenceObservationIntervalSeconds}
-                      residualDriftMilliseconds={syncEvidenceResidualMilliseconds}
-                      targetDurationSeconds={syncWizardTargetDurationSeconds}
-                      spineSignal={syncWizardSpineSignal}
-                      targetSignal={syncWizardTargetSignal}
-                    />
+                    <>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2" data-testid="durable-audio-signal-profile-status">
+                        {[
+                          { role: "Spine", asset: syncWizardSpineAsset, profile: syncWizardSpineSignalProfile },
+                          { role: "Target", asset: syncWizardTargetAsset, profile: syncWizardTargetSignalProfile },
+                        ].map(({ role, asset, profile }) => {
+                          const isWorking = queueingMediaJobKeys.has(`${asset.id}:audio-signal-profile`);
+                          return (
+                            <div key={`${role}:${asset.id}`} className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-[10px] font-bold text-violet-950">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="uppercase tracking-[0.14em]">{role} signal receipt</span>
+                                <span className="rounded-full bg-violet-100 px-2 py-0.5 font-mono uppercase">{profile?.status ?? "checking"}</span>
+                              </div>
+                              <div className="mt-1 truncate text-violet-800">{asset.originalName}</div>
+                              {profile?.status === "completed" && profile.audioSignal && (
+                                <div className="mt-1 text-emerald-800">Complete decode · immutable source bound · max 1,200 windows</div>
+                              )}
+                              {profile?.status === "failed" && (
+                                <div className="mt-1">
+                                  <div className="text-rose-800">{profile.error || "Signal evidence failed."}</div>
+                                  <button type="button" disabled={isWorking} onClick={() => void operateAudioSignalProfile(asset)} className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 font-black text-rose-900 disabled:opacity-50">Retry exact-source decode</button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <SourceSyncEvidenceMap
+                        spineLabel={syncWizardSpineAsset.originalName}
+                        targetLabel={syncWizardTargetAsset.originalName}
+                        targetKind={syncWizardTargetAsset.kind}
+                        anchorSeconds={syncWizardAnchorSeconds}
+                        observationIntervalSeconds={syncEvidenceObservationIntervalSeconds}
+                        residualDriftMilliseconds={syncEvidenceResidualMilliseconds}
+                        targetDurationSeconds={syncWizardTargetDurationSeconds}
+                        spineSignal={syncWizardSpineSignal}
+                        targetSignal={syncWizardTargetSignal}
+                      />
+                    </>
                   )}
 
                   {syncWizardSavedReview && (

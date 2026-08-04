@@ -33,6 +33,10 @@ import {
   newLocalAudioTreatmentRuntime,
   runOneLocalAudioTreatmentJob,
 } from "./local-audio-treatment-worker.js";
+import {
+  newLocalAudioSignalProfileRuntime,
+  runOneLocalAudioSignalProfileJob,
+} from "./local-audio-signal-profile-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -475,6 +479,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const audioSignalProfile = newLocalAudioSignalProfileRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -484,9 +494,12 @@ async function main() {
       const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
         : proxyResult;
-      const result = masteryResult.disposition === "idle"
+      const treatmentResult = masteryResult.disposition === "idle"
         ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
         : masteryResult;
+      const result = treatmentResult.disposition === "idle"
+        ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
+        : treatmentResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }
