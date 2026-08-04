@@ -2,6 +2,7 @@ import { AbsoluteFill, Audio, Sequence, Video } from "remotion";
 import { TimelineState, deactivatedTimelineIntervals, isAudioTrackId, isVideoTrackId } from "./useTimelineState";
 import { Video360Player } from "./Video360Player";
 import type { TimelineClip } from "./useTimelineState";
+import { cameraSwitchDecisionAtTime } from "@high-ground/quipsly-domain";
 
 const FPS = 30;
 
@@ -92,7 +93,9 @@ export function computeRenderSegments(timeline: TimelineState) {
       renderStartIn: clip.startIn,
       renderDuration: clip.duration,
       renderSourceStart: clip.sourceStart,
-      renderSourceEnd: clip.sourceEnd ?? (clip.sourceStart + clip.duration)
+      renderSourceEnd: clip.sourceEnd ?? (clip.sourceStart + clip.duration),
+      sourceTimelineStart: clip.startIn,
+      sourceClipId: clip.id,
     }));
   }
 
@@ -156,7 +159,9 @@ export function computeRenderSegments(timeline: TimelineState) {
          renderStartIn: getRippledTime(s.startIn),
          renderDuration: s.duration,
          renderSourceStart: s.sourceStart,
-         renderSourceEnd: s.sourceStart + s.duration
+         renderSourceEnd: s.sourceStart + s.duration,
+         sourceTimelineStart: s.startIn,
+         sourceClipId: clip.id,
        });
      }
   }
@@ -164,9 +169,71 @@ export function computeRenderSegments(timeline: TimelineState) {
   return renderSegments;
 }
 
-export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
+type RenderSegment = ReturnType<typeof computeRenderSegments>[number];
+
+function renderVideoTrackOrder(trackId: string) {
+  const match = /^V(\d+)(?:\.(\d+))?$/i.exec(trackId);
+  if (!match) return 0;
+  return Number(match[1]) + (match[2] ? Number(`0.${match[2]}`) : 0);
+}
+
+function isRenderVideoSegment(segment: RenderSegment) {
+  return segment.kind === "video" || isVideoTrackId(segment.trackId);
+}
+
+/** Selects one visual for every source-time interval while leaving audio intact. */
+export function computeProgramRenderSegments(timeline: TimelineState) {
   const segments = computeRenderSegments(timeline);
-  const orderedSegments = sortComposureClips(segments);
+  const audio = segments.filter((segment) => !isRenderVideoSegment(segment));
+  const video = segments.filter(isRenderVideoSegment);
+  if (!video.length) return sortComposureClips(audio);
+
+  const boundaries = Array.from(new Set([
+    ...video.flatMap((segment) => [segment.sourceTimelineStart, segment.sourceTimelineStart + segment.renderDuration]),
+    ...(timeline.cameraSwitchDecisions ?? []).flatMap((decision) => [decision.startSeconds, decision.startSeconds + decision.durationSeconds]),
+  ]))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+    .sort((left, right) => left - right);
+
+  const selected: RenderSegment[] = [];
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const start = boundaries[index];
+    const end = boundaries[index + 1];
+    if (end - start < 0.001) continue;
+    const midpoint = start + (end - start) / 2;
+    const covering = video.filter((segment) => midpoint >= segment.sourceTimelineStart && midpoint < segment.sourceTimelineStart + segment.renderDuration);
+    if (!covering.length) continue;
+    const decision = cameraSwitchDecisionAtTime(timeline, midpoint);
+    const chosen = (decision ? covering.find((segment) => segment.sourceClipId === decision.targetClipId) : null)
+      ?? [...covering].sort((left, right) => renderVideoTrackOrder(right.trackId) - renderVideoTrackOrder(left.trackId))[0];
+    const offset = start - chosen.sourceTimelineStart;
+    const duration = end - start;
+    const prior = selected[selected.length - 1];
+    if (
+      prior
+      && prior.sourceClipId === chosen.sourceClipId
+      && Math.abs(prior.renderStartIn + prior.renderDuration - (chosen.renderStartIn + offset)) < 0.002
+      && Math.abs(prior.renderSourceEnd - (chosen.renderSourceStart + offset)) < 0.002
+    ) {
+      prior.renderDuration += duration;
+      prior.renderSourceEnd += duration;
+      continue;
+    }
+    selected.push({
+      ...chosen,
+      id: `${chosen.sourceClipId}-program-${Math.round(start * 1_000)}`,
+      renderStartIn: chosen.renderStartIn + offset,
+      renderDuration: duration,
+      renderSourceStart: chosen.renderSourceStart + offset,
+      renderSourceEnd: chosen.renderSourceStart + offset + duration,
+      sourceTimelineStart: start,
+    });
+  }
+  return sortComposureClips([...audio, ...selected]);
+}
+
+export const RemotionComposition = ({ timeline }: RemotionCompositionProps) => {
+  const orderedSegments = computeProgramRenderSegments(timeline);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>

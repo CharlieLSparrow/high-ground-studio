@@ -6,8 +6,9 @@ export const TRACK_PREFIX_AUDIO = "A" as const;
 
 export const DEFAULT_VIDEO_TRACK = `${TRACK_PREFIX_VIDEO}1`;
 export const DEFAULT_AUDIO_TRACK = `${TRACK_PREFIX_AUDIO}1`;
-import type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
-export type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
+import { canonicalSpeakerKey } from "@high-ground/quipsly-domain";
+import type { CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
+export type { CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
 
 type TrackPrefix = typeof TRACK_PREFIX_VIDEO | typeof TRACK_PREFIX_AUDIO;
 
@@ -252,6 +253,56 @@ function sanitizeLoopClip(loop: any): LoopClip {
   };
 }
 
+function sanitizeSpeakerCameraMapping(value: SpeakerCameraMapping): SpeakerCameraMapping | null {
+  const speakerLabel = typeof value.speakerLabel === "string" ? value.speakerLabel.trim() : "";
+  const speakerKey = canonicalSpeakerKey(value.speakerKey || speakerLabel);
+  const targetClipId = typeof value.targetClipId === "string" ? value.targetClipId.trim() : "";
+  const targetAssetId = typeof value.targetAssetId === "string" ? value.targetAssetId.trim() : "";
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  if (!id || !speakerKey || !speakerLabel || !targetClipId) return null;
+  return {
+    id,
+    speakerKey,
+    speakerLabel,
+    targetClipId,
+    targetAssetId,
+    source: value.source === "imported" ? "imported" : "manual",
+    createdAt: typeof value.createdAt === "string" && value.createdAt ? value.createdAt : new Date(0).toISOString(),
+  };
+}
+
+function sanitizeCameraSwitchDecision(value: CameraSwitchDecision): CameraSwitchDecision | null {
+  const id = typeof value.id === "string" ? value.id.trim() : "";
+  const speakerLabel = typeof value.speakerLabel === "string" ? value.speakerLabel.trim() : "";
+  const speakerKey = canonicalSpeakerKey(value.speakerKey || speakerLabel);
+  const targetClipId = typeof value.targetClipId === "string" ? value.targetClipId.trim() : "";
+  const mappingId = typeof value.mappingId === "string" ? value.mappingId.trim() : "";
+  const startSeconds = toFiniteNumber(value.startSeconds, -1);
+  const durationSeconds = toFiniteNumber(value.durationSeconds, -1);
+  if (!id || !speakerKey || !speakerLabel || !targetClipId || !mappingId || startSeconds < 0 || durationSeconds < MIN_TIMELINE_CLIP_SECONDS) return null;
+  const evidence = value.evidence && typeof value.evidence === "object" ? value.evidence : { transcriptBlockIds: [] };
+  return {
+    id,
+    startSeconds,
+    durationSeconds,
+    speakerKey,
+    speakerLabel,
+    targetClipId,
+    targetAssetId: typeof value.targetAssetId === "string" ? value.targetAssetId.trim() : "",
+    mappingId,
+    source: value.source === "manual" || value.source === "imported-edit" ? value.source : "deterministic-speaker",
+    status: value.status === "approved" ? "approved" : "draft",
+    createdAt: typeof value.createdAt === "string" && value.createdAt ? value.createdAt : new Date(0).toISOString(),
+    evidence: {
+      transcriptBlockIds: Array.isArray(evidence.transcriptBlockIds)
+        ? evidence.transcriptBlockIds.filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
+        : [],
+      proposalSetId: typeof evidence.proposalSetId === "string" ? evidence.proposalSetId.trim() || undefined : undefined,
+      proposalTimelineFingerprintSha256: typeof evidence.proposalTimelineFingerprintSha256 === "string" ? evidence.proposalTimelineFingerprintSha256.trim() || undefined : undefined,
+    },
+  };
+}
+
 function sanitizeTimelineState(nextState: TimelineState | null | undefined): TimelineState {
   if (!nextState || typeof nextState !== "object") {
     return { clips: [], transcript: [], deactivatedRanges: [], loopClips: [], editorMode: "play-edit" };
@@ -261,6 +312,8 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
   const rawTranscript = Array.isArray(nextState.transcript) ? nextState.transcript : [];
   const rawLoopClips = Array.isArray(nextState.loopClips) ? nextState.loopClips : [];
   const rawDeactivatedRanges = Array.isArray(nextState.deactivatedRanges) ? nextState.deactivatedRanges : [];
+  const rawSpeakerCameraMappings = Array.isArray(nextState.speakerCameraMappings) ? nextState.speakerCameraMappings : [];
+  const rawCameraSwitchDecisions = Array.isArray(nextState.cameraSwitchDecisions) ? nextState.cameraSwitchDecisions : [];
   const editorMode: "play-all" | "play-edit" = nextState.editorMode === "play-all" ? "play-all" : "play-edit";
 
   const sanitized = {
@@ -270,6 +323,13 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
       .map(sanitizeTimelineRangeEdit)
       .filter((range): range is TimelineRangeEdit => Boolean(range)),
     loopClips: rawLoopClips.map(sanitizeLoopClip),
+    speakerCameraMappings: rawSpeakerCameraMappings
+      .map(sanitizeSpeakerCameraMapping)
+      .filter((mapping): mapping is SpeakerCameraMapping => Boolean(mapping)),
+    cameraSwitchDecisions: rawCameraSwitchDecisions
+      .map(sanitizeCameraSwitchDecision)
+      .filter((decision): decision is CameraSwitchDecision => Boolean(decision))
+      .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id)),
     editorMode,
   };
 
@@ -303,6 +363,10 @@ type Action =
   | { type: "PUSH_TRACK_OVERLAPS_FROM_CLIP"; payload: { clipId: string } }
   | { type: "ADD_LOOP_CLIP"; payload: { loop: LoopClip } }
   | { type: "DELETE_LOOP_CLIP"; payload: { loopId: string } }
+  | { type: "SET_SPEAKER_CAMERA_MAPPING"; payload: { mapping: SpeakerCameraMapping } }
+  | { type: "REMOVE_SPEAKER_CAMERA_MAPPING"; payload: { mappingId: string } }
+  | { type: "SET_CAMERA_SWITCH_DECISIONS"; payload: { decisions: CameraSwitchDecision[] } }
+  | { type: "REMOVE_CAMERA_SWITCH_DECISION"; payload: { decisionId: string } }
   | { type: "TOGGLE_EDITOR_MODE"; payload?: never }
   | { type: "SET_EDITOR_MODE"; payload: { mode: "play-all" | "play-edit" } };
 
@@ -743,6 +807,35 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         loopClips: (state.loopClips ?? []).filter((l) => l.id !== action.payload.loopId),
       };
     }
+    case "SET_SPEAKER_CAMERA_MAPPING": {
+      const mapping = sanitizeSpeakerCameraMapping(action.payload.mapping);
+      if (!mapping) return state;
+      const existing = state.speakerCameraMappings ?? [];
+      return {
+        ...state,
+        speakerCameraMappings: [
+          ...existing.filter((candidate) => candidate.id !== mapping.id && candidate.speakerKey !== mapping.speakerKey),
+          mapping,
+        ].sort((left, right) => left.speakerLabel.localeCompare(right.speakerLabel)),
+        cameraSwitchDecisions: [],
+      };
+    }
+    case "REMOVE_SPEAKER_CAMERA_MAPPING": {
+      const mappings = state.speakerCameraMappings ?? [];
+      if (!mappings.some((mapping) => mapping.id === action.payload.mappingId)) return state;
+      return {
+        ...state,
+        speakerCameraMappings: mappings.filter((mapping) => mapping.id !== action.payload.mappingId),
+        cameraSwitchDecisions: (state.cameraSwitchDecisions ?? []).filter((decision) => decision.mappingId !== action.payload.mappingId),
+      };
+    }
+    case "SET_CAMERA_SWITCH_DECISIONS":
+      return sanitizeTimelineState({ ...state, cameraSwitchDecisions: action.payload.decisions });
+    case "REMOVE_CAMERA_SWITCH_DECISION":
+      return {
+        ...state,
+        cameraSwitchDecisions: (state.cameraSwitchDecisions ?? []).filter((decision) => decision.id !== action.payload.decisionId),
+      };
     default:
       return state;
   }
@@ -854,5 +947,13 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "ADD_LOOP_CLIP", payload: { loop } }),
     deleteLoopClip: (loopId: string) =>
       dispatch({ type: "DELETE_LOOP_CLIP", payload: { loopId } }),
+    setSpeakerCameraMapping: (mapping: SpeakerCameraMapping) =>
+      dispatch({ type: "SET_SPEAKER_CAMERA_MAPPING", payload: { mapping } }),
+    removeSpeakerCameraMapping: (mappingId: string) =>
+      dispatch({ type: "REMOVE_SPEAKER_CAMERA_MAPPING", payload: { mappingId } }),
+    setCameraSwitchDecisions: (decisions: CameraSwitchDecision[]) =>
+      dispatch({ type: "SET_CAMERA_SWITCH_DECISIONS", payload: { decisions } }),
+    removeCameraSwitchDecision: (decisionId: string) =>
+      dispatch({ type: "REMOVE_CAMERA_SWITCH_DECISION", payload: { decisionId } }),
   };
 }

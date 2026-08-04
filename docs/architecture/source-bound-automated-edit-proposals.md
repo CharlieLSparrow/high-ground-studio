@@ -60,9 +60,10 @@ source media was never changed.
 - `add_keyframe`: add a bounded source-timed reframe keyframe.
 
 The vocabulary is intentionally small while the evidence spine is established.
-Upcoming deterministic analyzers should propose silence and retake candidates,
-speaker-view changes, multicamera switches, and short-form extracts using this
-same contract rather than adding unbound automation paths.
+Upcoming deterministic analyzers should propose short-form extracts and more
+advanced shot grammar using this same contract rather than adding unbound
+automation paths. Speaker-view changes and the first multicamera draft now use
+the contract described below.
 
 ## Deterministic transcript evidence
 
@@ -112,12 +113,13 @@ missing words or intentional sound. RMS dBFS is never relabeled as LUFS.
 
 Canonical speaker labels are now part of the transcript hash. Exact timing
 overlap creates a listening candidate, and a real label transition creates a
-camera-review candidate. Neither becomes a timing repair or multicamera switch
-without review and source-camera mapping.
+camera-review candidate. A transition becomes a draft multicamera decision only
+after an explicit speaker-camera map, a current proposal-set binding, and a
+successful append-only draft receipt.
 
 ## Persisted range decisions
 
-Episode artifact v3 persists exact range decisions separately from transcript
+Episode artifact v4 persists exact range decisions separately from transcript
 blocks. Each range carries its reason, source class, confidence, proposal
 identity, creation time, and—when signal-backed—the immutable recording SHA,
 storage generation, signal-profile SHA, coverage, RMS observation, and
@@ -158,6 +160,33 @@ always available, draft automation can be fast, and the interface truthfully
 shows what is merely reviewed, what is locally changed, and what collaborators
 will actually reload.
 
+## Speaker-camera assembly
+
+Episode artifact v4 also persists two independent pieces of multicamera truth:
+
+- `speakerCameraMappings` explicitly connect one normalized canonical speaker
+  identity to one synchronized timeline clip; and
+- `cameraSwitchDecisions` select that clip over an exact source-time interval,
+  retaining the mapping identity, transcript block IDs, proposal-set identity,
+  timeline fingerprint, status, origin, and creation time.
+
+The deterministic assembler accepts only active speaker-labeled transcript
+blocks and explicit mappings. A mapped camera must cover the complete proposed
+speaker run. Turns shorter than 1.5 seconds, overlapping speech, missing maps,
+and missing camera coverage become visible shot holds instead of guessed cuts.
+Accepted runs extend until the next safe switch; consecutive runs mapped to the
+same clip collapse into one stable range. This gives short acknowledgements a
+natural reaction-shot hold without pretending that transcription alone knows
+editorial intent.
+
+The live edit monitor and Remotion renderer now resolve the same persisted
+decision vocabulary. Missing or invalid decisions fall back to the existing
+visible-track priority; audio remains continuous. Mapping changes clear stale
+draft decisions, all mapping/decision actions participate in timeline
+Undo/Redo, and canonical save/reload retains the assembled cut. Apply and
+restore actions append `LOCAL_DRAFT` receipts; only timeline autosave or manual
+save appends the `CANONICAL_TIMELINE` receipt.
+
 ## Non-negotiable boundaries
 
 - source bytes are never changed;
@@ -178,7 +207,8 @@ playback.
 - real provider run over a retained HGO transcript and media timeline;
 - decoded-signal corroboration for silence/dropout candidates plus overlap and
   speaker-change evidence on genuine Capture media;
-- automated draft timeline with before/after proof-watch and render receipts;
-- multicamera and local-device media synchronization;
+- genuine HGO automated draft timeline with before/after proof-watch and final
+  rendered-media probe;
+- multicamera and local-device media synchronization on physical captures;
 - physical-iPhone source, TestFlight, and full episode proof-watch;
 - real coaching-session privacy and consent validation.

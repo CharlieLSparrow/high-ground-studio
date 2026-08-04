@@ -30,6 +30,8 @@ import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
+import type { CameraCutAssemblyHold, CameraSwitchDecision, SpeakerCameraMapping } from "@high-ground/quipsly-domain";
+import { assembleSpeakerCameraCut, cameraClipAtTime, canonicalSpeakerKey } from "@high-ground/quipsly-domain";
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
@@ -1781,6 +1783,8 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
     const nestedTranscript = asObject((record as Record<string, unknown>).timeline)?.transcript;
     const nestedPaperEditSnapshots = asObject((record as Record<string, unknown>).timeline)?.paperEditSnapshots;
     const nestedDeactivatedRanges = asObject((record as Record<string, unknown>).timeline)?.deactivatedRanges;
+    const nestedSpeakerCameraMappings = asObject((record as Record<string, unknown>).timeline)?.speakerCameraMappings;
+    const nestedCameraSwitchDecisions = asObject((record as Record<string, unknown>).timeline)?.cameraSwitchDecisions;
     const nestedData = asObject((record as Record<string, unknown>).data);
     const transcriptSource = Array.isArray(record.transcript)
       ? record.transcript
@@ -1799,6 +1803,8 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
       transcript,
       deactivatedRanges,
       paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots ?? nestedPaperEditSnapshots ?? nestedData?.paperEditSnapshots),
+      speakerCameraMappings: coerceArray(record.speakerCameraMappings ?? nestedSpeakerCameraMappings ?? nestedData?.speakerCameraMappings) as SpeakerCameraMapping[],
+      cameraSwitchDecisions: coerceArray(record.cameraSwitchDecisions ?? nestedCameraSwitchDecisions ?? nestedData?.cameraSwitchDecisions) as CameraSwitchDecision[],
     };
   }
 
@@ -1938,14 +1944,155 @@ function videoTrackOrderValue(trackId: string) {
   return Number(match[1]) + (match[2] ? Number(`0.${match[2]}`) : 0);
 }
 
-function programClipAtTime(clips: TimelineClip[], time: number) {
-  return clips
+function programClipAtTime(timeline: TimelineState, time: number) {
+  const assembledCamera = cameraClipAtTime(timeline, time);
+  if (assembledCamera) return assembledCamera;
+  return timeline.clips
     .filter((clip) => isVisualTimelineClip(clip) && !clip.deactivated && clipContainsTime(clip, time))
     .sort((a, b) => {
       const trackDelta = videoTrackOrderValue(b.trackId) - videoTrackOrderValue(a.trackId);
       if (trackDelta) return trackDelta;
       return b.startIn - a.startIn;
     })[0] ?? null;
+}
+
+function SpeakerCameraCutDesk({
+  timeline,
+  holds,
+  message,
+  evidenceReady,
+  busy,
+  onMapSpeaker,
+  onAnalyzeEvidence,
+  onAssemble,
+  onRemoveDecision,
+}: {
+  timeline: TimelineState;
+  holds: CameraCutAssemblyHold[];
+  message: string;
+  evidenceReady: boolean;
+  busy: boolean;
+  onMapSpeaker: (speakerKey: string, speakerLabel: string, clipId: string) => void;
+  onAnalyzeEvidence: () => void;
+  onAssemble: () => void;
+  onRemoveDecision: (decision: CameraSwitchDecision) => void;
+}) {
+  const speakers = Array.from(
+    timeline.transcript.reduce((map, block) => {
+      const speakerKey = canonicalSpeakerKey(block.speaker);
+      if (!speakerKey) return map;
+      const current = map.get(speakerKey);
+      map.set(speakerKey, {
+        speakerKey,
+        speakerLabel: block.speaker?.trim() || speakerKey,
+        blockCount: (current?.blockCount ?? 0) + 1,
+      });
+      return map;
+    }, new Map<string, { speakerKey: string; speakerLabel: string; blockCount: number }>()),
+  ).map(([, value]) => value).sort((left, right) => left.speakerLabel.localeCompare(right.speakerLabel));
+  const videoClips = timeline.clips
+    .filter((clip) => isVisualTimelineClip(clip) && !clip.deactivated)
+    .sort((left, right) => trackSortValue(left.trackId) - trackSortValue(right.trackId));
+  const mappings = timeline.speakerCameraMappings ?? [];
+  const decisions = [...(timeline.cameraSwitchDecisions ?? [])]
+    .sort((left, right) => left.startSeconds - right.startSeconds);
+
+  return (
+    <section className="mb-6 overflow-hidden rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-violet-100 px-5 py-4">
+        <div className="max-w-3xl">
+          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-700">Automated speaker cut</div>
+          <h2 className="mt-1 text-xl font-black text-slate-950">Tell Quipsly which camera belongs to each voice</h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+            Quipsly uses canonical transcript timing to assemble a reversible camera draft. Short interjections, overlaps, unmapped voices, and uncovered source ranges hold the existing shot instead of creating a guess or flash cut.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-violet-200 bg-white px-4 py-3 text-right">
+          <div className="text-2xl font-black text-violet-950">{decisions.length}</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">draft camera ranges</div>
+        </div>
+      </div>
+
+      <div className="grid gap-5 p-5 xl:grid-cols-[1fr_1.2fr]">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Camera map</div>
+          <div className="mt-3 space-y-3">
+            {speakers.length ? speakers.map((speaker) => {
+              const mapping = mappings.find((candidate) => candidate.speakerKey === speaker.speakerKey);
+              return (
+                <label key={speaker.speakerKey} className="block rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="font-black text-slate-900">{speaker.speakerLabel}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-slate-500">{speaker.blockCount} transcript blocks</span>
+                  </span>
+                  <select
+                    aria-label={`Camera for ${speaker.speakerLabel}`}
+                    value={mapping?.targetClipId ?? ""}
+                    onChange={(event) => onMapSpeaker(speaker.speakerKey, speaker.speakerLabel, event.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-violet-400"
+                  >
+                    <option value="">No camera mapped</option>
+                    {videoClips.map((clip) => <option key={clip.id} value={clip.id}>{clip.trackId} · {clip.name}</option>)}
+                  </select>
+                </label>
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5 text-sm font-bold leading-6 text-slate-500">
+                Speaker labels are not available yet. Correct or evaluate the transcript first; Quipsly will not infer a person from an unlabeled voice.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Assembly ledger</div>
+            <div className="flex flex-wrap gap-2">
+              {!evidenceReady && (
+                <button type="button" onClick={onAnalyzeEvidence} disabled={busy || !speakers.length || !mappings.length} className="rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-800 disabled:cursor-not-allowed disabled:opacity-45">
+                  {busy ? "Analyzing…" : "Bind current evidence"}
+                </button>
+              )}
+              <button type="button" onClick={onAssemble} disabled={busy || !evidenceReady || !mappings.length || !videoClips.length} className="rounded-xl bg-violet-700 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-violet-600 disabled:cursor-not-allowed disabled:bg-slate-300">
+                Assemble speaker cut
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 text-xs font-semibold leading-5 text-slate-600">
+            <span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${evidenceReady ? "bg-emerald-500" : "bg-amber-500"}`} />
+            {evidenceReady
+              ? "The current transcript and timeline match a durable edit-evidence set. Assembly can write a receipt-backed local draft."
+              : "Map cameras, then bind the current transcript and timeline. A mapping change intentionally makes older analysis stale."}
+          </div>
+          {message && <div className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-950">{message}</div>}
+          {holds.length > 0 && (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-800">{holds.length} deliberate shot holds</div>
+              <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs font-semibold text-amber-950">
+                {holds.map((hold, index) => <div key={`${hold.reason}-${hold.startSeconds}-${index}`}>{formatClock(hold.startSeconds)}–{formatClock(hold.endSeconds)} · {hold.speakerLabel} · {hold.reason.replaceAll("-", " ")}</div>)}
+              </div>
+            </div>
+          )}
+          <div className="mt-3 max-h-60 space-y-2 overflow-y-auto pr-1">
+            {decisions.length ? decisions.map((decision) => {
+              const clip = videoClips.find((candidate) => candidate.id === decision.targetClipId);
+              return (
+                <div key={decision.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+                  <div>
+                    <div className="text-xs font-black text-slate-900">{formatClock(decision.startSeconds)}–{formatClock(decision.startSeconds + decision.durationSeconds)} · {decision.speakerLabel}</div>
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500">{clip?.trackId ?? "missing source"} · {clip?.name ?? decision.targetClipId} · {decision.status} · {decision.evidence.transcriptBlockIds.length} evidence blocks</div>
+                  </div>
+                  <button type="button" onClick={() => onRemoveDecision(decision)} className="shrink-0 rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-black text-rose-700 hover:bg-rose-50">Restore prior angle</button>
+                </div>
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5 text-sm font-bold leading-6 text-slate-500">No assembled camera draft yet. Existing track priority remains the edit-monitor fallback.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function isTimelineGapDeactivated(timeline: TimelineState, time: number) {
@@ -2065,7 +2212,9 @@ function EpisodeMonitorDeck({
   const videoClips = timelineState.clips
     .filter(isVisualTimelineClip)
     .sort((a, b) => trackSortValue(a.trackId) - trackSortValue(b.trackId) || a.startIn - b.startIn);
-  const programClip = programClipAtTime(timelineState.clips, currentTime);
+  const programClip = programClipAtTime(timelineState, currentTime);
+  const activeCameraDecision = timelineState.cameraSwitchDecisions
+    ?.find((decision) => currentTime >= decision.startSeconds && currentTime < decision.startSeconds + decision.durationSeconds) ?? null;
   const programSource = programClip ? sourceUrlForClip(programClip, importedMediaAssets) : "";
   const programSourceTime = programClip ? clipSourceTimeAt(programClip, currentTime) : 0;
   const mode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
@@ -2235,7 +2384,9 @@ function EpisodeMonitorDeck({
           {programClip && (
             <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-xs font-bold leading-5 text-white/65">
               Showing <span className="text-white">{programClip.name}</span> from <span className="font-mono text-emerald-200">{programClip.trackId}</span>.
-              Select a source feed or adjust the selected clip boundaries below to change what the edit shows.
+              {activeCameraDecision
+                ? <> The speaker-cut draft selected this angle for <span className="text-violet-200">{activeCameraDecision.speakerLabel}</span>; the decision is reversible timeline metadata.</>
+                : <> Select a source feed or adjust the selected clip boundaries below to change what the edit shows.</>}
             </div>
           )}
         </div>
@@ -2645,6 +2796,8 @@ function buildEpisodeArtifactPayload(
       startSeconds: roundSeconds(range.startSeconds),
       durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
     })),
+    speakerCameraMappings: timeline.speakerCameraMappings,
+    cameraSwitchDecisions: timeline.cameraSwitchDecisions,
     paperEditSnapshots: timeline.paperEditSnapshots,
     contentFingerprint,
     generatedFrom,
@@ -2719,11 +2872,27 @@ function timelineContentFingerprint(timeline: TimelineState): string {
       durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
     }))
     .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  const sortedSpeakerCameraMappings = [...(timeline.speakerCameraMappings ?? [])]
+    .map((mapping) => ({ ...mapping }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const sortedCameraSwitchDecisions = [...(timeline.cameraSwitchDecisions ?? [])]
+    .map((decision) => ({
+      ...decision,
+      startSeconds: roundSeconds(decision.startSeconds),
+      durationSeconds: roundSeconds(Math.max(decision.durationSeconds, 0.05)),
+      evidence: {
+        ...decision.evidence,
+        transcriptBlockIds: [...decision.evidence.transcriptBlockIds].sort(),
+      },
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
 
   return JSON.stringify({
     clips: sortedClips,
     transcript: sortedTranscript,
     deactivatedRanges: sortedDeactivatedRanges,
+    speakerCameraMappings: sortedSpeakerCameraMappings,
+    cameraSwitchDecisions: sortedCameraSwitchDecisions,
     paperEditSnapshots: sortedSnapshots,
   });
 }
@@ -3069,6 +3238,10 @@ function CloudEditorContent() {
     addClipKeyframe,
     addDeactivatedRange,
     removeDeactivatedRange,
+    setSpeakerCameraMapping,
+    removeSpeakerCameraMapping,
+    setCameraSwitchDecisions,
+    removeCameraSwitchDecision,
   } = useTimelineState(EMPTY_TIMELINE_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
@@ -3090,6 +3263,10 @@ function CloudEditorContent() {
   const [editReviewReceipts, setEditReviewReceipts] = useState<EpisodeEditReviewReceipt[]>([]);
   const [editReviewLedgerStatus, setEditReviewLedgerStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [editReviewLedgerNotice, setEditReviewLedgerNotice] = useState("");
+  const [cameraCutMessage, setCameraCutMessage] = useState("");
+  const [cameraCutHolds, setCameraCutHolds] = useState<CameraCutAssemblyHold[]>([]);
+  const [cameraEvidenceReady, setCameraEvidenceReady] = useState(false);
+  const [isAssemblingCameraCut, setIsAssemblingCameraCut] = useState(false);
   const pendingEditReviewReceiptIdsRef = useRef<string[]>([]);
 
   const handleTimelineUndo = useCallback(() => {
@@ -3274,6 +3451,132 @@ function CloudEditorContent() {
     }
   }, [aiEditProposalBinding?.timelineFingerprintSha256, aiEditProposalSetId, episodeSlug, resolvedProjectSlug, timelineFingerprint]);
 
+  const aiEditBindingIsCurrent = useCallback(async () => {
+    if (
+      !aiEditProposalBinding
+      || aiEditProposalBinding.projectSlug !== resolvedProjectSlug
+      || aiEditProposalBinding.episodeSlug !== episodeSlug
+      || aiEditProposalBinding.blockCount !== timelineState.transcript.length
+    ) return false;
+    const [currentTimelineSha256, currentTranscriptSha256] = await Promise.all([
+      browserSha256(timelineFingerprint),
+      browserSha256(canonicalAiEditTranscript(timelineState.transcript)),
+    ]);
+    return currentTimelineSha256 === aiEditProposalBinding.timelineFingerprintSha256
+      && currentTranscriptSha256 === aiEditProposalBinding.transcriptSha256;
+  }, [aiEditProposalBinding, episodeSlug, resolvedProjectSlug, timelineFingerprint, timelineState.transcript]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (
+      !aiEditProposalBinding
+      || aiEditProposalBinding.projectSlug !== resolvedProjectSlug
+      || aiEditProposalBinding.episodeSlug !== episodeSlug
+      || aiEditProposalBinding.blockCount !== timelineState.transcript.length
+    ) {
+      setCameraEvidenceReady(false);
+      return;
+    }
+    void browserSha256(timelineFingerprint).then((fingerprint) => {
+      if (!cancelled) setCameraEvidenceReady(fingerprint === aiEditProposalBinding.timelineFingerprintSha256);
+    });
+    return () => { cancelled = true; };
+  }, [aiEditProposalBinding, episodeSlug, resolvedProjectSlug, timelineFingerprint, timelineState.transcript.length]);
+
+  const mapSpeakerToCamera = useCallback((speakerKey: string, speakerLabel: string, clipId: string) => {
+    const existing = (timelineState.speakerCameraMappings ?? []).find((mapping) => mapping.speakerKey === speakerKey);
+    if (!clipId) {
+      if (existing) removeSpeakerCameraMapping(existing.id);
+      setCameraCutHolds([]);
+      setCameraCutMessage(`${speakerLabel} no longer has a camera mapping. The prior assembled cut was cleared; source media was unchanged.`);
+      return;
+    }
+    const clip = timelineState.clips.find((candidate) => candidate.id === clipId && isVisualTimelineClip(candidate));
+    if (!clip) {
+      setCameraCutMessage("That camera source is no longer on the timeline, so the mapping was not changed.");
+      return;
+    }
+    setSpeakerCameraMapping({
+      id: existing?.id ?? `speaker-camera:${encodeURIComponent(speakerKey)}`,
+      speakerKey,
+      speakerLabel,
+      targetClipId: clip.id,
+      targetAssetId: clip.assetId,
+      source: "manual",
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+    });
+    setCameraCutHolds([]);
+    setCameraCutMessage(`${speakerLabel} is mapped to ${clip.trackId} · ${clip.name}. Bind fresh evidence before assembling because camera identity is part of the edit decision.`);
+  }, [removeSpeakerCameraMapping, setSpeakerCameraMapping, timelineState.clips, timelineState.speakerCameraMappings]);
+
+  const assembleMappedSpeakerCut = useCallback(async () => {
+    setIsAssemblingCameraCut(true);
+    try {
+      if (!await aiEditBindingIsCurrent() || !aiEditProposalSetId || !aiEditProposalBinding) {
+        setCameraEvidenceReady(false);
+        setCameraCutMessage("The transcript, camera map, or timeline changed. Bind current deterministic evidence before assembling a new cut.");
+        return;
+      }
+      const createdAt = new Date().toISOString();
+      const result = assembleSpeakerCameraCut({
+        timeline: timelineState,
+        createdAt,
+        proposalSetId: aiEditProposalSetId,
+        proposalTimelineFingerprintSha256: aiEditProposalBinding.timelineFingerprintSha256,
+      });
+      setCameraCutHolds(result.holds);
+      if (!result.decisions.length) {
+        setCameraCutMessage(`No safe camera switch ranges were assembled. Quipsly held ${result.holds.length} range${result.holds.length === 1 ? "" : "s"} rather than guessing.`);
+        return;
+      }
+      const receipt = await recordEditReviewAction({
+        action: "APPLIED_TO_DRAFT",
+        subjectId: aiEditProposalSetId,
+        subjectKind: "proposal-set",
+        sourceRange: { startSeconds: aiEditProposalBinding.startSeconds, endSeconds: aiEditProposalBinding.endSeconds },
+        evidence: {
+          editKind: "deterministic-speaker-camera-cut",
+          decisionIds: result.decisions.map((decision) => decision.id),
+          mappingIds: Array.from(new Set(result.decisions.map((decision) => decision.mappingId))),
+          heldRanges: result.holds.map((hold) => ({ reason: hold.reason, startSeconds: hold.startSeconds, endSeconds: hold.endSeconds })),
+          sourceMediaUnchanged: true,
+        },
+      });
+      if (!receipt) {
+        setCameraCutMessage("The camera draft was not applied because its durable review receipt could not be saved.");
+        return;
+      }
+      setCameraSwitchDecisions(result.decisions);
+      setEditorMode("play-edit");
+      setIsPreviewPlaying(false);
+      setCameraCutMessage(`Assembled ${result.decisions.length} receipt-backed camera range${result.decisions.length === 1 ? "" : "s"} and deliberately held ${result.holds.length}. Review the edit monitor, then save the timeline. Source files remain untouched.`);
+    } finally {
+      setIsAssemblingCameraCut(false);
+    }
+  }, [aiEditBindingIsCurrent, aiEditProposalBinding, aiEditProposalSetId, recordEditReviewAction, setCameraSwitchDecisions, setEditorMode, timelineState]);
+
+  const restoreCameraSwitchDecision = useCallback(async (decision: CameraSwitchDecision) => {
+    const proposalSetId = decision.evidence.proposalSetId;
+    const proposalTimelineFingerprintSha256 = decision.evidence.proposalTimelineFingerprintSha256;
+    if (proposalSetId && proposalTimelineFingerprintSha256) {
+      const receipt = await recordEditReviewAction({
+        action: "RESTORED_TO_DRAFT",
+        subjectId: decision.id,
+        subjectKind: "camera-switch",
+        sourceRange: { startSeconds: decision.startSeconds, endSeconds: decision.startSeconds + decision.durationSeconds },
+        proposalSetId,
+        proposalTimelineFingerprintSha256,
+        evidence: { editKind: "deterministic-speaker-camera-cut", targetClipId: decision.targetClipId, sourceMediaUnchanged: true },
+      });
+      if (!receipt) {
+        setCameraCutMessage("The camera range was not restored because its durable review receipt could not be saved.");
+        return;
+      }
+    }
+    removeCameraSwitchDecision(decision.id);
+    setCameraCutMessage(`Restored the prior track-priority angle at ${formatClock(decision.startSeconds)}. The camera source and transcript were unchanged.`);
+  }, [recordEditReviewAction, removeCameraSwitchDecision]);
+
   const dismissAiEditSuggestion = async (index: number) => {
     const edit = aiEditSuggestions[index];
     if (edit) {
@@ -3322,21 +3625,6 @@ function CloudEditorContent() {
     })));
     setAiEditSuggestions([]);
     setAiEditReviewCandidates([]);
-  };
-
-  const aiEditBindingIsCurrent = async () => {
-    if (
-      !aiEditProposalBinding
-      || aiEditProposalBinding.projectSlug !== resolvedProjectSlug
-      || aiEditProposalBinding.episodeSlug !== episodeSlug
-      || aiEditProposalBinding.blockCount !== timelineState.transcript.length
-    ) return false;
-    const [currentTimelineSha256, currentTranscriptSha256] = await Promise.all([
-      browserSha256(timelineFingerprint),
-      browserSha256(canonicalAiEditTranscript(timelineState.transcript)),
-    ]);
-    return currentTimelineSha256 === aiEditProposalBinding.timelineFingerprintSha256
-      && currentTranscriptSha256 === aiEditProposalBinding.transcriptSha256;
   };
 
   const proofWatchAiEditSuggestion = async (
@@ -9804,7 +10092,7 @@ function CloudEditorContent() {
         </aside>
 
         {/* Main Editor Area */}
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-visible bg-transparent p-3 sm:p-5 lg:overflow-hidden lg:p-8">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-visible bg-transparent p-3 sm:p-5 lg:overflow-x-hidden lg:overflow-y-auto lg:p-8">
           <section className="mb-6 rounded-3xl border border-[#e8dcc4] bg-[#fffdf7] p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
@@ -9926,6 +10214,18 @@ function CloudEditorContent() {
               </div>
             </div>
           </section>
+
+          <SpeakerCameraCutDesk
+            timeline={timelineState}
+            holds={cameraCutHolds}
+            message={cameraCutMessage}
+            evidenceReady={cameraEvidenceReady}
+            busy={isAiAutoEditing || isAssemblingCameraCut}
+            onMapSpeaker={mapSpeakerToCamera}
+            onAnalyzeEvidence={handleDeterministicEditAnalysis}
+            onAssemble={() => void assembleMappedSpeakerCut()}
+            onRemoveDecision={(decision) => void restoreCameraSwitchDecision(decision)}
+          />
 
           <EpisodeMonitorDeck
             timelineState={timelineState}

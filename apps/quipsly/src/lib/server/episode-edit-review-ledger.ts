@@ -14,7 +14,7 @@ import {
 import type { EpisodeProductionActor } from "@/lib/server/episode-production-access";
 
 const SHA256 = /^[0-9a-f]{64}$/;
-const SUBJECT_KINDS = new Set<EditReviewSubjectKind>(["proposal", "candidate", "range", "proposal-set", "timeline"]);
+const SUBJECT_KINDS = new Set<EditReviewSubjectKind>(["proposal", "candidate", "range", "camera-switch", "proposal-set", "timeline"]);
 const MAX_EVIDENCE_JSON_CHARACTERS = 16_000;
 
 export class EpisodeEditReviewLedgerError extends Error {
@@ -209,8 +209,32 @@ function validateProposalSubject(
   subjectId: string,
   startSeconds: number,
   endSeconds: number,
+  evidence: Record<string, unknown> | undefined,
 ) {
   const proposalSet = proposalJson as unknown as AiEditProposalSet;
+  if (subjectKind === "proposal-set") {
+    if (
+      subjectId !== proposalSet.proposalSetId
+      || milliseconds(proposalSet.binding.startSeconds) !== milliseconds(startSeconds)
+      || milliseconds(proposalSet.binding.endSeconds) !== milliseconds(endSeconds)
+    ) {
+      throw new EpisodeEditReviewLedgerError("The reviewed proposal-set range does not match its canonical binding.", 409, "EDIT_REVIEW_SUBJECT_RANGE_CONFLICT");
+    }
+    return;
+  }
+  if (subjectKind === "camera-switch") {
+    if (
+      !subjectId.startsWith("camera-switch:")
+      || evidence?.editKind !== "deterministic-speaker-camera-cut"
+      || evidence?.sourceMediaUnchanged !== true
+      || typeof evidence?.targetClipId !== "string"
+      || startSeconds < proposalSet.binding.startSeconds - 0.001
+      || endSeconds > proposalSet.binding.endSeconds + 0.001
+    ) {
+      throw new EpisodeEditReviewLedgerError("The camera-switch review is not safely bound inside this proposal set.", 409, "EDIT_REVIEW_CAMERA_SWITCH_CONFLICT");
+    }
+    return;
+  }
   const subject = subjectKind === "proposal"
     ? proposalSet.proposals?.find((item) => item.proposalId === subjectId)
     : subjectKind === "candidate"
@@ -255,7 +279,7 @@ export async function appendEpisodeEditReviewReceipt(input: {
       if (proposal.timelineFingerprintSha256 !== input.review.proposalTimelineFingerprintSha256) {
         throw new EpisodeEditReviewLedgerError("This review action is bound to a different timeline revision.", 409, "STALE_EDIT_REVIEW_BINDING");
       }
-      validateProposalSubject(proposal.proposalJson, valid.subjectKind, valid.subjectId, valid.start, valid.end);
+      validateProposalSubject(proposal.proposalJson, valid.subjectKind, valid.subjectId, valid.start, valid.end, input.review.evidence);
       const existing = await tx.studioEpisodeEditReviewReceipt.findUnique({
         where: {
           episodeProductionId_actorEmail_clientRequestId: {

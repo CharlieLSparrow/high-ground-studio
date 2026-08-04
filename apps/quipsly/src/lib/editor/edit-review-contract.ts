@@ -10,7 +10,7 @@ export const EDIT_REVIEW_ACTIONS = [
 
 export type EditReviewAction = (typeof EDIT_REVIEW_ACTIONS)[number];
 export type EditReviewScope = "REVIEW_ONLY" | "LOCAL_DRAFT" | "CANONICAL_TIMELINE";
-export type EditReviewSubjectKind = "proposal" | "candidate" | "range" | "proposal-set" | "timeline";
+export type EditReviewSubjectKind = "proposal" | "candidate" | "range" | "camera-switch" | "proposal-set" | "timeline";
 
 export type EpisodeEditReviewReceipt = {
   id: string;

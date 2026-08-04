@@ -236,4 +236,60 @@ describe("episode edit review ledger", () => {
       jest.useRealTimers();
     }
   });
+
+  it("records a bounded speaker-cut draft and a later reversible camera-range restore", async () => {
+    const { prisma, receipts } = fakePrisma();
+    await persistEpisodeEditProposalSet({ prisma, projectId: "project-1", episodeSlug: "episode-1", actor, proposalSet });
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-03T20:00:02.000Z"));
+    try {
+      const assembled = await appendEpisodeEditReviewReceipt({
+        prisma,
+        projectId: "project-1",
+        episodeSlug: "episode-1",
+        actor,
+        review: {
+          clientRequestId: "5d444c16-af55-4b06-b37c-04c41927d73f",
+          proposalSetId: proposalSet.proposalSetId,
+          action: "APPLIED_TO_DRAFT",
+          subjectId: proposalSet.proposalSetId,
+          subjectKind: "proposal-set",
+          sourceRange: { startSeconds: 2, endSeconds: 5 },
+          proposalTimelineFingerprintSha256: "a".repeat(64),
+          timelineFingerprintBeforeSha256: "a".repeat(64),
+          evidence: {
+            editKind: "deterministic-speaker-camera-cut",
+            decisionIds: ["camera-switch:map-charlie:2000"],
+            sourceMediaUnchanged: true,
+          },
+        },
+      });
+      const restored = await appendEpisodeEditReviewReceipt({
+        prisma,
+        projectId: "project-1",
+        episodeSlug: "episode-1",
+        actor,
+        review: {
+          clientRequestId: "6d444c16-af55-4b06-b37c-04c41927d73f",
+          proposalSetId: proposalSet.proposalSetId,
+          action: "RESTORED_TO_DRAFT",
+          subjectId: "camera-switch:map-charlie:2000",
+          subjectKind: "camera-switch",
+          sourceRange: { startSeconds: 2, endSeconds: 4 },
+          proposalTimelineFingerprintSha256: "a".repeat(64),
+          timelineFingerprintBeforeSha256: "9".repeat(64),
+          evidence: {
+            editKind: "deterministic-speaker-camera-cut",
+            targetClipId: "charlie-camera",
+            sourceMediaUnchanged: true,
+          },
+        },
+      });
+
+      expect(assembled).toEqual(expect.objectContaining({ scope: "LOCAL_DRAFT", subjectKind: "proposal-set" }));
+      expect(restored).toEqual(expect.objectContaining({ scope: "LOCAL_DRAFT", subjectKind: "camera-switch" }));
+      expect(receipts.filter((receipt) => receipt.action === "APPLIED_TO_DRAFT" || receipt.action === "RESTORED_TO_DRAFT")).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

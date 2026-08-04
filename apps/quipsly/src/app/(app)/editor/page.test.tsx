@@ -360,7 +360,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
-      expect(saved.payloadVersion).toBe(3);
+      expect(saved.payloadVersion).toBe(4);
       expect(saved.deactivatedRanges[0]).toEqual(expect.objectContaining({
         startSeconds: 2,
         durationSeconds: 3,

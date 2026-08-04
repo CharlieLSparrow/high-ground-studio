@@ -77,4 +77,56 @@ describe("timeline range edits", () => {
 
     expect(result.current.state.deactivatedRanges).toEqual([]);
   });
+
+  it("persists camera identity and clears a stale assembled cut when the mapping changes", () => {
+    const { result } = renderHook(() => useTimelineState({
+      clips: [
+        { id: "cam-1", assetId: "one.mp4", kind: "video", startIn: 0, duration: 10, sourceStart: 0, name: "One", color: "#111", trackId: "V1" },
+        { id: "cam-2", assetId: "two.mp4", kind: "video", startIn: 0, duration: 10, sourceStart: 0, name: "Two", color: "#222", trackId: "V2" },
+      ],
+      transcript: [],
+    }));
+
+    act(() => result.current.setSpeakerCameraMapping({
+      id: "map-charlie",
+      speakerKey: "charlie",
+      speakerLabel: "Charlie",
+      targetClipId: "cam-1",
+      targetAssetId: "one.mp4",
+      source: "manual",
+      createdAt: "2026-08-03T00:00:00.000Z",
+    }));
+    act(() => result.current.setCameraSwitchDecisions([{
+      id: "camera-switch:map-charlie:0",
+      startSeconds: 0,
+      durationSeconds: 10,
+      speakerKey: "charlie",
+      speakerLabel: "Charlie",
+      targetClipId: "cam-1",
+      targetAssetId: "one.mp4",
+      mappingId: "map-charlie",
+      source: "deterministic-speaker",
+      status: "draft",
+      createdAt: "2026-08-03T00:00:00.000Z",
+      evidence: { transcriptBlockIds: ["b1"] },
+    }]));
+    expect(result.current.state.cameraSwitchDecisions).toHaveLength(1);
+
+    act(() => result.current.setSpeakerCameraMapping({
+      id: "map-charlie",
+      speakerKey: "CHARLIE",
+      speakerLabel: "Charlie",
+      targetClipId: "cam-2",
+      targetAssetId: "two.mp4",
+      source: "manual",
+      createdAt: "2026-08-03T00:00:00.000Z",
+    }));
+    expect(result.current.state.speakerCameraMappings?.[0]?.speakerKey).toBe("charlie");
+    expect(result.current.state.speakerCameraMappings?.[0]?.targetClipId).toBe("cam-2");
+    expect(result.current.state.cameraSwitchDecisions).toEqual([]);
+
+    act(() => result.current.undo());
+    expect(result.current.state.cameraSwitchDecisions).toHaveLength(1);
+    expect(result.current.state.speakerCameraMappings?.[0]?.targetClipId).toBe("cam-1");
+  });
 });

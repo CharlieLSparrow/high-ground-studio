@@ -90,8 +90,9 @@ gap and `00:07 to 00:12` for the speaker transition.
 
 ## Next join
 
-The first-class range decision is now implemented in episode artifact v3; see
+The first-class range decision is now implemented in episode artifact v4; see
 `docs/coordination/2026-08-03-persisted-audio-range-decisions.md`. Next bind
-provider and deterministic proposals to persisted review receipts, map named
-speakers to camera sources, and operate genuine consented HGO and coaching
-recordings from Capture.
+provider and deterministic proposals to persisted review receipts and operate
+genuine consented HGO and coaching recordings from Capture. Named-speaker
+camera mapping and a reversible assembled-cut projection are now implemented;
+see `docs/coordination/2026-08-03-speaker-camera-cut.md`.
