@@ -58,9 +58,21 @@ Primary references:
 
 ## Current delivery boundary
 
-The contract, deterministic target, real FFmpeg render, complete output
-diagnosis, independent verification, and adversarial parser test are qualified
-locally. Durable `StudioAssetProcessingJob` execution, private variant
-registration, Nest queue/reconciliation UI, approval receipts, and production
-cloud execution are deliberately still pending. This boundary is visible so an
-engine test cannot be mistaken for a shipped treatment workflow.
+The local Nest vertical slice is qualified. It includes the contract,
+deterministic target, leased `StudioAssetProcessingJob` execution, atomic
+FFmpeg render, complete output diagnosis, independent verification, private
+variant registration, queue/reconciliation UI, and same-playhead
+loudness-matched audition.
+
+On 2026-08-04 the UI imported and operated the retained test asset
+`cmsecf2px0007q7xlyooqnys0`. Durable job
+`audio_treatment_3076f60ac63d4242b55b23338a3324c3` completed with DC reduced
+from `0.12` to `0.000008`, zero duration drift, complete output decode, and
+independent source and derivative SHA-256 readback. Variant
+`audio-treatment-preview` remained explicitly unpromoted and not a mastered
+delivery file.
+
+Explicit approval receipts, promotion policy, neural-denoise qualification,
+and production cloud execution remain pending. This boundary is visible so a
+qualified local workflow cannot be mistaken for a cloud-ready or
+export-authorized treatment system.

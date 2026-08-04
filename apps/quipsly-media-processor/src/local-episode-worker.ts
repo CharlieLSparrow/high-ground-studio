@@ -29,6 +29,10 @@ import {
   newLocalAudioMasteryRuntime,
   runOneLocalAudioMasteryJob,
 } from "./local-audio-mastery-worker.js";
+import {
+  newLocalAudioTreatmentRuntime,
+  runOneLocalAudioTreatmentJob,
+} from "./local-audio-treatment-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -465,15 +469,24 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const audioTreatment = newLocalAudioTreatmentRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
   try {
     do {
       const proxyResult = await runOneLocalEpisodeProxyJob(store, transcoder, options);
-      const result = proxyResult.disposition === "idle"
+      const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
         : proxyResult;
+      const result = masteryResult.disposition === "idle"
+        ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
+        : masteryResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

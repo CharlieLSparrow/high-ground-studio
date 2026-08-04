@@ -28,6 +28,7 @@ import { RemotionComposition } from "./RemotionComposition";
 import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
+import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
@@ -219,6 +220,22 @@ type AudioMasteryClientStatus = {
   error: string | null;
   updatedAt: string | null;
   boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedPreview: true; explicitApprovalStillRequired: true };
+};
+
+type AudioTreatmentClientStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  profileId: "dc-rumble-correction-v1" | null;
+  sourceMeasurement: AudioMasteryMeasurement | null;
+  proposal: null | {
+    trigger: { kind: "dc-offset"; maximumAbsoluteDcOffset: number; thresholdAmplitude: 0.01; affectedChannels: number[] };
+    treatment: { frequencyHz: number; poles: number; widthType: string; width: number };
+  };
+  verification: null | { maximumAbsoluteDcBefore: number; maximumAbsoluteDcAfter: number; relativeReduction: number; durationDeltaSeconds: number; completeOutputDecode: true; passes: true };
+  derivative: null | { playbackUrl: string | null; durationSeconds: number; measured: AudioMasteryMeasurement };
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedExperiment: true; outputIsNotAMasteredDeliveryFile: true; explicitApprovalStillRequired: true };
 };
 
 type EpisodeMediaTruth = {
@@ -3136,6 +3153,7 @@ function CloudEditorContent() {
   const [queueingMediaJobKeys, setQueueingMediaJobKeys] = useState<Set<string>>(() => new Set());
   const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
   const [audioMasteryStatusByAsset, setAudioMasteryStatusByAsset] = useState<Record<string, AudioMasteryClientStatus>>({});
+  const [audioTreatmentStatusByAsset, setAudioTreatmentStatusByAsset] = useState<Record<string, AudioTreatmentClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
   const [promotingPremiereDraftId, setPromotingPremiereDraftId] = useState<string | null>(null);
   const [restoringTimelineBackupId, setRestoringTimelineBackupId] = useState<string | null>(null);
@@ -4628,6 +4646,30 @@ function CloudEditorContent() {
     return () => { canceled = true; };
   }, [importedMediaAssets, resolvedProjectSlug]);
 
+  useEffect(() => {
+    let canceled = false;
+    const treatmentAssets = importedMediaAssets.filter((asset) => asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/"));
+    if (!treatmentAssets.length) return () => { canceled = true; };
+    void Promise.all(treatmentAssets.map(async (asset) => {
+      const query = new URLSearchParams({ projectSlug: resolvedProjectSlug, assetId: asset.id });
+      const response = await fetch(`/api/media-vault/audio-treatment?${query}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean } & Partial<AudioTreatmentClientStatus>) | null;
+      return response.ok && payload?.ok && payload.status ? { asset, status: payload as { ok: true } & AudioTreatmentClientStatus } : null;
+    })).then((rows) => {
+      if (canceled) return;
+      setAudioTreatmentStatusByAsset((previous) => {
+        const next = { ...previous };
+        for (const row of rows) {
+          if (!row) continue;
+          next[row.asset.id] = row.status;
+          next[row.asset.sourceId] = row.status;
+        }
+        return next;
+      });
+    }).catch((error) => { if (!canceled) console.warn("Could not hydrate audio treatment status.", error); });
+    return () => { canceled = true; };
+  }, [importedMediaAssets, resolvedProjectSlug]);
+
   const handleSessionImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -5726,6 +5768,42 @@ function CloudEditorContent() {
         next.delete(jobKey);
         return next;
       });
+    }
+  }, [resolvedProjectSlug]);
+
+  const operateAudioTreatment = useCallback(async (asset: ImportedMediaAsset) => {
+    const jobKey = `${asset.id}:audio-treatment`;
+    const updateStatus = (status: AudioTreatmentClientStatus) => setAudioTreatmentStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/audio-treatment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, projectSlug: resolvedProjectSlug, assetId: asset.id, sourceId: asset.sourceId }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioTreatmentClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) throw new Error(payload?.error || `Audio treatment returned HTTP ${response.status}.`);
+      const status = payload as { ok: true } & AudioTreatmentClientStatus;
+      updateStatus(status);
+      return status;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Preparing a source-bound DC and rumble treatment experiment for ${asset.originalName}...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed") throw new Error(status.error || "Audio treatment failed.");
+        setMediaImportStatus(status.status === "output-ready" ? `Verifying and registering the treatment experiment for ${asset.originalName}...` : `Rendering and independently diagnosing ${asset.originalName}; the original remains untouched...`);
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed") throw new Error("Audio treatment is still processing. Resume it safely from this media card.");
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(`Verified treatment experiment ready for ${asset.originalName}. Listen in matched-level A/B before any approval.`);
+    } catch (error) {
+      console.warn("Could not complete audio treatment.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not complete audio treatment.");
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
     }
   }, [resolvedProjectSlug]);
 
@@ -9053,10 +9131,14 @@ function CloudEditorContent() {
                   ?? collaborationProxyStatusByAsset[asset.sourceId];
                 const audioMasteryStatus = audioMasteryStatusByAsset[asset.id]
                   ?? audioMasteryStatusByAsset[asset.sourceId];
+                const audioTreatmentStatus = audioTreatmentStatusByAsset[asset.id]
+                  ?? audioTreatmentStatusByAsset[asset.sourceId];
                 const proxyStatus = collaborationProxyStatus?.status
                   ?? (hasVerifiedCollaborationProxy(asset) ? "completed" : "not-queued");
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
+                const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
+                const hasDcTreatmentEvidence = Boolean(audioMasteryStatus?.signalDiagnosis?.channels.some((channel) => Math.abs(channel.dcOffset) >= 0.01));
                 const health = importedAssetHealth(asset);
                 const confidenceStatus = importedAssetConfidenceStatus(asset, health);
                 const isSpineAsset = persistedSpineAudio?.assetId === asset.id || persistedSpineAudio?.assetId === asset.sourceId;
@@ -9295,6 +9377,35 @@ function CloudEditorContent() {
                           Original bytes are never changed. Denoise, EQ, de-essing, silence removal, and editorial cuts are excluded from this automatic pass.
                         </div>
                       </button>
+                      {(hasDcTreatmentEvidence || audioTreatmentStatus?.jobId) && (
+                        <div className="mt-3 rounded-lg border border-cyan-300 bg-cyan-950 px-3 py-3 text-white">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-black">Evidence-led treatment</div>
+                              <div className="mt-1 text-[10px] font-bold leading-4 text-cyan-100/80">Measured DC offset qualifies a reversible 20 Hz correction experiment. No denoise, compression, de-essing, silence removal, or editorial cut is included.</div>
+                            </div>
+                            <span className="shrink-0 rounded-full border border-cyan-700 bg-slate-950 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.12em] text-cyan-100">{audioTreatmentStatus?.status ?? "proposed"}</span>
+                          </div>
+                          {audioTreatmentStatus?.proposal && (
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-center text-[10px] font-bold">
+                              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black text-amber-200">{audioTreatmentStatus.proposal.trigger.maximumAbsoluteDcOffset.toFixed(5)}</div><div className="text-slate-400">Measured trigger</div></div>
+                              <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black text-cyan-200">{audioTreatmentStatus.proposal.treatment.frequencyHz} Hz</div><div className="text-slate-400">Two-pole correction</div></div>
+                            </div>
+                          )}
+                          {audioTreatmentStatus?.derivative?.playbackUrl && audioTreatmentStatus.sourceMeasurement && audioTreatmentStatus.verification && (
+                            <AudioTreatmentAudition sourceUrl={asset.playbackUrl} treatedUrl={audioTreatmentStatus.derivative.playbackUrl} source={audioTreatmentStatus.sourceMeasurement} treated={audioTreatmentStatus.derivative.measured} verification={audioTreatmentStatus.verification} />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void operateAudioTreatment(asset)}
+                            disabled={!hasDcTreatmentEvidence || isAudioTreatmentWorking || audioTreatmentStatus?.status === "completed"}
+                            className="mt-3 w-full rounded-lg border border-cyan-500 bg-cyan-200 px-3 py-2 text-left font-black text-cyan-950 hover:bg-cyan-100 disabled:cursor-default disabled:bg-cyan-950 disabled:text-cyan-300"
+                          >
+                            {isAudioTreatmentWorking ? "Rendering and diagnosing..." : audioTreatmentStatus?.status === "completed" ? "Verified treatment experiment ready" : audioTreatmentStatus?.status === "queued" || audioTreatmentStatus?.status === "processing" || audioTreatmentStatus?.status === "output-ready" ? "Resume treatment experiment" : audioTreatmentStatus?.status === "failed" ? "Retry treatment experiment" : "Render treatment experiment"}
+                            <div className="mt-1 text-[10px] font-bold leading-4 opacity-80">Creates separate 48 kHz, 24-bit bytes and must pass independent DC, duration, channel, decode, and source-integrity checks before it can be auditioned.</div>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className={`mt-2 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2 ${realEditingMode ? "hidden" : ""}`}>

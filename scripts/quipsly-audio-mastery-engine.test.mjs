@@ -26,6 +26,7 @@ import {
 } from "../apps/quipsly-media-processor/src/audio-mastering-ffmpeg.ts";
 import { sha256File } from "../apps/quipsly-media-processor/src/transcoder.ts";
 import { runOneLocalAudioMasteryJob } from "../apps/quipsly-media-processor/src/local-audio-mastery-worker.ts";
+import { runOneLocalAudioTreatmentJob } from "../apps/quipsly-media-processor/src/local-audio-treatment-worker.ts";
 
 test("mastery proposal is a reversible source-bound graph", () => {
   const measurement = fixtureMeasurement();
@@ -253,6 +254,46 @@ test("local worker creates only a verified unpromoted derivative and can recover
   assert.equal(recovered.recoveredExistingOutput, true);
   assert.equal(recoveryEngine.renderCount, 0);
   parseAudioMasteryResult(recoveryStore.completed[0].receipt, job);
+});
+
+test("local treatment worker leases, verifies, and recovers a versioned experiment", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-audio-treatment-worker-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sourcePath = path.join(root, "media-vault", "raw", "dc-source.wav");
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "aevalsrc=0.12+0.1*sin(2*PI*440*t):s=48000:d=3",
+    "-c:a", "pcm_s24le", sourcePath,
+  ]);
+  const sourceSha256 = await sha256File(sourcePath);
+  const sourceStat = await stat(sourcePath);
+  const source = { assetId: "asset_treatment_worker_001", provider: "local", locator: sourcePath, generation: `sha256:${sourceSha256}`, sha256: sourceSha256, sizeBytes: sourceStat.size, contentType: "audio/wav" };
+  const job = newAudioTreatmentJob({
+    jobId: "audio_treatment_worker_001",
+    projectId: "project_treatment_worker_001",
+    requestedByEmail: "audio-treatment@example.test",
+    queuedAt: "2026-08-04T12:00:00.000Z",
+    source,
+    triggerDiagnosisId: "diagnosis_treatment_worker_001",
+    profileId: "dc-rumble-correction-v1",
+    target: { provider: "local", locator: buildAudioTreatmentTargetLocator({ assetId: source.assetId, sourceSha256, profileId: "dc-rumble-correction-v1" }), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "audio-treatment-preview" },
+  });
+  const options = { executionId: "execution_treatment_worker_001", buildId: "test-build", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-04T12:01:00.000Z") };
+  const store = new FakeTreatmentStore(job);
+  const first = await runOneLocalAudioTreatmentJob(store, new FfmpegAudioMasteringEngine(), options);
+  assert.equal(first.disposition, "completed");
+  assert.equal(first.recoveredExistingOutput, false);
+  const receipt = parseAudioTreatmentResult(store.completed[0].receipt, job);
+  assert.equal(receipt.boundaries.outputIsUnpromotedExperiment, true);
+  assert.ok(receipt.verification.maximumAbsoluteDcAfter <= 0.005);
+  assert.equal(await sha256File(sourcePath), sourceSha256);
+
+  const recoveryStore = new FakeTreatmentStore(job);
+  const recovered = await runOneLocalAudioTreatmentJob(recoveryStore, new FfmpegAudioMasteringEngine(), options);
+  assert.equal(recovered.disposition, "completed");
+  assert.equal(recovered.recoveredExistingOutput, true);
+  parseAudioTreatmentResult(recoveryStore.completed[0].receipt, job);
 });
 
 test("real FFmpeg measurement, double-pass PCM render, and independent verification preserve source bytes", async (context) => {
@@ -542,6 +583,8 @@ class FakeMasteryStore {
   async fail(value) { this.failed.push(value); return true; }
   async retry(value) { this.retried.push(value); return true; }
 }
+
+class FakeTreatmentStore extends FakeMasteryStore {}
 
 class FakeMasteringEngine {
   constructor() { this.renderCount = 0; }
