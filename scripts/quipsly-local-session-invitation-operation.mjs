@@ -403,7 +403,62 @@ try {
     "Invite someone to this Session",
     { exact: true },
   );
+  const connectedPresenceResponse = hostManagerPage.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/sessions/${ROOM_ID}/presence`) &&
+      response.request().method() === "GET",
+  );
   await invitationManager.click();
+  const connectedPresencePacket = await (
+    await connectedPresenceResponse
+  ).json();
+  const connectedPresenceSummary = {
+    status: connectedPresencePacket?.presence?.status || null,
+    connectedDeviceCount:
+      connectedPresencePacket?.presence?.connectedDeviceCount ?? null,
+    connectedParticipantCount:
+      connectedPresencePacket?.presence?.connectedParticipantCount ?? null,
+    unknownDeviceCount:
+      connectedPresencePacket?.presence?.unknownDeviceCount ?? null,
+    attentionCount: connectedPresencePacket?.presence?.attentionCount ?? null,
+  };
+  assert(
+    connectedPresencePacket?.ok === true &&
+      connectedPresencePacket?.presence?.status === "LIVE" &&
+      connectedPresencePacket.presence.connectedDeviceCount === 2 &&
+      connectedPresencePacket.presence.connectedParticipantCount === 2,
+    `Authoritative provider presence did not read back two connected devices and people: ${JSON.stringify(connectedPresenceSummary)}`,
+  );
+  assert(
+    connectedPresencePacket.presence.devices.every(
+      (device) =>
+        device.matchedToCanonicalParticipant === true &&
+        device.canonicalAccessStatus === "ACTIVE" &&
+        device.audio?.published === true,
+    ),
+    "Connected provider devices were not matched to active canonical participants with audio publication.",
+  );
+  const serializedConnectedPresence = JSON.stringify(
+    connectedPresencePacket.presence,
+  );
+  for (const forbiddenField of [
+    "providerIdentity",
+    "tokenJti",
+    "participantToken",
+    "apiKey",
+    "apiSecret",
+  ]) {
+    assert(
+      !serializedConnectedPresence.includes(forbiddenField),
+      `Live presence exposed forbidden field ${forbiddenField}.`,
+    );
+  }
+  await hostManagerPage
+    .getByText("Live provider readback", { exact: true })
+    .waitFor({ timeout: 20_000 });
+  await hostManagerPage
+    .getByText(/Refreshes every 10 seconds only while this manager is open/i)
+    .waitFor({ timeout: 20_000 });
   const guestInvitation = hostManagerPage
     .locator("article")
     .filter({ hasText: guest.email });
@@ -421,10 +476,16 @@ try {
           `/api/sessions/${ROOM_ID}/participants/${participant.id}/access`,
         ) && response.request().method() === "POST",
   );
+  const removedPresenceResponse = hostManagerPage.waitForResponse(
+    (response) =>
+      response.url().includes(`/api/sessions/${ROOM_ID}/presence`) &&
+      response.request().method() === "GET",
+  );
   await guestInvitation
     .getByRole("button", { name: "Confirm removal", exact: true })
     .click();
   const removalPacket = await (await removalResponse).json();
+  const removedPresencePacket = await (await removedPresenceResponse).json();
   assert(
     removalPacket?.ok === true,
     `Participant removal failed: ${removalPacket?.error || "unknown response"}`,
@@ -440,6 +501,16 @@ try {
   assert(
     removalPacket?.provider?.status === "CONVERGED",
     `LiveKit removal did not converge: ${removalPacket?.provider?.status || "missing"}`,
+  );
+  assert(
+    removedPresencePacket?.ok === true &&
+      removedPresencePacket?.presence?.status === "LIVE" &&
+      removedPresencePacket.presence.connectedDeviceCount === 1 &&
+      removedPresencePacket.presence.connectedParticipantCount === 1 &&
+      removedPresencePacket.presence.devices.every(
+        (device) => device.participantId !== participant.id,
+      ),
+    "Provider presence did not read back the host-only room after guest removal.",
   );
   const guestDisconnectSignalObserved = await guestPage
     .getByText(
@@ -681,9 +752,12 @@ try {
         consumedLinkReplayDenial: "passed",
         participantRole: participant.role,
         browserToBrowserLiveKit: "passed",
+        authoritativeConnectedPresenceReadback: "two-devices",
+        providerTrackStateReadback: "passed",
         sessionChatRoundTrip: "passed",
         connectedParticipantCanonicalRemoval: "passed",
         providerImmediateReadbackZero: true,
+        authoritativeRemovedPresenceReadback: "host-only",
         guestDisconnectSignalObserved,
         selfHostedTokenRevocationClaimed: false,
         removedJoinTokenDenial: "passed",

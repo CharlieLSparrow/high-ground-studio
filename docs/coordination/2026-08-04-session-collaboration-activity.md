@@ -88,8 +88,8 @@ passed, and the optimized 172-route production build passed.
 
 - Repeat the workflow with deployed LiveKit Cloud and a physical iPhone while
   both browser and Capture are connected.
-- Add real-time, provider-read presence as its own explicitly refreshed signal;
-  never infer it from a join-key lease.
+- Repeat the implemented provider-read presence signal on LiveKit Cloud with a
+  physical browser/iPhone pair; never infer it from a join-key lease.
 - Add production alerting for reconciliation that remains `BLOCKED` or
   `FAILED`.
 - Extend the append-only projection to Nest-wide grant and role changes without

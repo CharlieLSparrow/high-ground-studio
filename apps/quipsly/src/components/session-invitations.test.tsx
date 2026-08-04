@@ -224,6 +224,25 @@ describe("SessionInvitations", () => {
             joinKeyLeases: [],
           },
         }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          presence: {
+            status: "EMPTY",
+            errorCode: null,
+            observedAt: "2026-08-04T12:10:01.000Z",
+            provider: "livekit",
+            connectedDeviceCount: 0,
+            connectedParticipantCount: 0,
+            unknownDeviceCount: 0,
+            attentionCount: 0,
+            devices: [],
+            nextAction: "LiveKit reports no connected device.",
+          },
+        }),
       }) as typeof fetch;
 
     await act(async () => {
@@ -308,7 +327,7 @@ describe("SessionInvitations", () => {
     expect(
       await screen.findByText("Provider access reconciled"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Quipsly Capture · iPhone 16")).toBeInTheDocument();
+    expect(screen.getByText(/Quipsly Capture · iPhone 16/)).toBeInTheDocument();
     expect(
       screen.getByText(/not proof that the device is currently connected/i),
     ).toBeInTheDocument();
@@ -317,5 +336,89 @@ describe("SessionInvitations", () => {
         /Credentials and provider identities are never displayed/i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("renders separately refreshed provider presence with safe track states", async () => {
+    globalThis.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          invitations: [],
+          collaboration: { activity: [], joinKeyLeases: [] },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          presence: {
+            status: "LIVE",
+            errorCode: null,
+            observedAt: "2026-08-04T12:10:01.000Z",
+            provider: "livekit",
+            connectedDeviceCount: 2,
+            connectedParticipantCount: 2,
+            unknownDeviceCount: 0,
+            attentionCount: 0,
+            devices: [
+              {
+                id: "presence-host",
+                participantId: "host-1",
+                participantLabel: "Charles Sparrow",
+                role: "HOST",
+                canonicalAccessStatus: "ACTIVE",
+                clientKind: "web",
+                deviceLabel: "Quipsly Web · MacIntel",
+                joinedAt: "2026-08-04T12:00:00.000Z",
+                audio: { published: true, muted: false },
+                video: { published: false, muted: null },
+                matchedToCanonicalParticipant: true,
+              },
+              {
+                id: "presence-guest",
+                participantId: "guest-1",
+                participantLabel: "Scott Sparrow",
+                role: "GUEST",
+                canonicalAccessStatus: "ACTIVE",
+                clientKind: "ios",
+                deviceLabel: "Quipsly Capture · iPhone 16",
+                joinedAt: "2026-08-04T12:00:00.000Z",
+                audio: { published: true, muted: true },
+                video: { published: true, muted: false },
+                matchedToCanonicalParticipant: true,
+              },
+            ],
+            nextAction: "LiveKit reports these devices in the room.",
+          },
+        }),
+      }) as typeof fetch;
+
+    await act(async () => {
+      render(<SessionInvitations roomId="room-1" purpose="PODCAST" />);
+    });
+    await screen.findByText("Access activity");
+    const details = screen
+      .getByText("Invite someone to this Session", { exact: true })
+      .closest("details");
+    expect(details).not.toBeNull();
+    if (!details) return;
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+
+    expect(
+      await screen.findByText("LiveKit reports these devices in the room."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Quipsly Capture · iPhone 16/)).toBeInTheDocument();
+    expect(screen.getByText(/Audio muted/i)).toBeInTheDocument();
+    expect(screen.getByText(/Video published/i)).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/sessions/room-1/presence",
+      expect.objectContaining({ cache: "no-store", signal: expect.anything() }),
+    );
   });
 });

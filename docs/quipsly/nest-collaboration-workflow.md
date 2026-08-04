@@ -83,6 +83,10 @@ Important behavior:
   stream from invitation and append-only access receipts. Its unexpired
   browser/Capture join-key list is device authority, not current-presence proof,
   and never exposes provider identities or credentials.
+- A separate authorized LiveKit readback shows timestamped connected devices,
+  canonical participant/access state, and published or muted audio/video tracks.
+  It refreshes only while the manager is open, fails to unknown, and never
+  exposes provider identities, track IDs, or credentials.
 
 ## Why this is separate from Organization membership
 
@@ -113,5 +117,5 @@ The access-grant model avoids forcing every collaborator into an organization to
 - Add read-only UI polish so `VIEWER` users see fewer edit controls instead of discovering permissions only after a blocked save.
 - Add tests or smoke coverage for owner, editor, viewer, revoked, and invited-before-account scenarios.
 - Add a safe owner-transfer story before encouraging multiple OWNER grants.
-- Add real-time provider presence as its own signal; do not infer connection
-  from an unexpired join-key lease.
+- Add production alerting for unmatched or removed-but-connected provider
+  devices that persist across observations.

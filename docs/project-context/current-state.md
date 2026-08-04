@@ -42,7 +42,14 @@ Date: 2026-08-04
   credentials remain server-only. The retained two-account operation rendered
   all five change kinds and safe device authority. See
   `docs/coordination/2026-08-04-session-collaboration-activity.md`.
-- Full Nest Jest passes 295 suites / 1,544 runnable tests, the 172-route Nest
+- Live provider presence is now a separately refreshed, timestamped LiveKit
+  readback rather than an inference from access or join keys. The host sees safe
+  browser/Capture devices, canonical participant/access state, and audio/video
+  published or muted state; unknown or removed-but-connected devices require
+  attention without exposing provider identities. The retained operation read
+  two devices/two people before removal and host-only afterward. See
+  `docs/coordination/2026-08-04-session-provider-presence.md`.
+- Full Nest Jest passes 297 suites / 1,552 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This
