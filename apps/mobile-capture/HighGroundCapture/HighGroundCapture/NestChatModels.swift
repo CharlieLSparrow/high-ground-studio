@@ -21,6 +21,13 @@ struct NestChatEpisode: Codable, Hashable {
     let status: String
 }
 
+struct NestChatSession: Codable, Hashable {
+    let id: String
+    let title: String
+    let purpose: String
+    let status: String
+}
+
 struct NestChatThread: Codable, Hashable {
     let key: String?
     let title: String
@@ -37,6 +44,7 @@ struct NestChatLoadResponse: Codable {
     let error: String?
     let project: NestChatProject?
     let episode: NestChatEpisode?
+    let session: NestChatSession?
     let thread: NestChatThread?
     let actor: NestChatActor?
     let messages: [NestChatMessage]?

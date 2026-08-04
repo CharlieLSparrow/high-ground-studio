@@ -5779,6 +5779,7 @@ private struct CaptureRecorderView: View {
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
+    @StateObject private var sessionChat = MobileEpisodeChatClient(scope: .session)
 
     var body: some View {
         ScrollView {
@@ -6204,6 +6205,41 @@ private struct CaptureRecorderView: View {
                     }
                     .captureCard()
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
+
+                    if session.projectSlug?.nonempty != nil {
+                        MobileSessionChatCard(
+                            client: sessionChat,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "session-chat|\(session.id)|\(session.callRoomId)|\(session.projectSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                sessionChat.loadPreview(session: session)
+                            } else {
+                                await sessionChat.load(session: session)
+                                sessionChat.startPolling(session: session)
+                            }
+                        }
+                        .onDisappear { sessionChat.stopPolling() }
+                        .onChange(of: sessionChat.outboundLiveHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await model.providerRoom.publishChatPersistedHint(hint)
+                            }
+                        }
+                        .onChange(of: model.providerRoom.latestChatPersistedHint) { _, hint in
+                            guard let hint else { return }
+                            Task {
+                                await sessionChat.receiveLiveHint(
+                                    hint,
+                                    session: session
+                                )
+                            }
+                        }
+                    }
 
                     if session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {

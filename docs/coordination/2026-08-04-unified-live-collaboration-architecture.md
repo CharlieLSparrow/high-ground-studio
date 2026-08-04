@@ -117,9 +117,11 @@ recording source, not an inferred side effect of joining.
   recording command, or canonical-work payload crosses the transient channel;
   the existing poll remains the reconnect and delivery fallback.
 - The Episode Room path carries these durable-message hints between browser and
-  Quipsly Capture for its long-lived episode conversation. Browser Session
-  threads use the same contract between active browser participants. Native
-  take-specific Session chat is not yet exposed in Capture and is not claimed.
+  Quipsly Capture for its long-lived episode conversation. Browser and native
+  Session threads use the same contract for the exact active call. Capture
+  validates the full `session:<callRoomId>` key before refreshing the protected
+  account-partitioned Session cache, so an Episode hint cannot refresh Session
+  chat and a hint from another take cannot cross the active-call boundary.
 - Coaching Engagement Session cards now expose separate `Open coaching room`
   and `Session workspace` actions and explain that the browser can use external
   microphones, cameras, and supported headphone outputs while another person
@@ -188,18 +190,15 @@ behavior, and the absence of a surrounding Nest grant.
    coaching Session with external browser hardware and an iPhone participant;
    move among Watch, transcript, notes, commitments, and editor while proving
    the provider room, remote media, chat hints, and retained source remain live.
-2. **Native Session thread.** Add the take-specific `session:<callRoomId>`
-   conversation to Capture with the same protected-cache, exact-scope, durable
-   POST, live-hint, and polling behavior as the Episode thread.
-3. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
+2. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
    channel mapping, sample-rate/profile readback, headphone/output confidence,
    and a short recorded confidence take. Never replace post-capture waveform,
    loudness, spectral, sync, and drift analysis with a decorative meter.
-4. **Multi-source recording contract.** Represent call audio, isolated local
+3. **Multi-source recording contract.** Represent call audio, isolated local
    audio, camera video, screen/shared media, and provider safety recording as
    distinct source tracks with one Session clock and explicit alignment
    evidence.
-5. **Purpose-aware handoff.** Podcast sources flow to Episode editor and
+4. **Purpose-aware handoff.** Podcast sources flow to Episode editor and
    publishing; coaching evidence flows to reviewed private/team/client-safe
    notes and commitments; research evidence flows to annotations/citations;
    meetings flow to reviewed decisions and work.
@@ -214,9 +213,9 @@ behavior, and the absence of a surrounding Nest grant.
   dedicated 32-character `QUIPSLY_INVITATION_TOKEN_SECRET` before release.
 - iPhone can choose and return to an existing engagement, but engagement chat is
   still a Nest surface rather than a native low-latency chat sidecar.
-- Native Capture has the long-lived Episode thread, but not the take-specific
-  Session thread or Coaching Engagement thread. Those remain authenticated Nest
-  surfaces until their private native projections are implemented.
+- Native Capture has distinct long-lived Episode and take-specific Session
+  threads. Coaching Engagement chat remains an authenticated Nest surface until
+  its private native projection is implemented.
 - Browser recording is a retained combined camera-plus-audio source or an audio
   source, not yet a multi-track ISO capture graph.
 - Requested camera resolution is not proof of delivered 4K.

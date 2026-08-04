@@ -1815,3 +1815,19 @@ These should be treated as cleanup candidates later, not as authoritative produc
   Episode, LiveKit-component, and Watch-contract tests. Physical browser/iPhone
   cross-device operation is the next acceptance boundary, not a completed
   claim.
+
+### 2026-08-04 native exact-call collaboration
+
+- Quipsly Capture now presents two intentional podcast collaboration scopes:
+  the exact `session:<callRoomId>` conversation for device, consent, take, and
+  source-handoff coordination, and the durable `episode:<episodeSlug>`
+  conversation for writing through publishing.
+- Both scopes use the canonical Nest chat route, exact returned-thread
+  validation, idempotent message identity, account-partitioned complete-file-
+  protection caches, bounded post-persistence LiveKit hints, and polling as the
+  reconnect fallback. They do not start recording or promote chat into notes,
+  goals, tasks, or edits.
+- The native Session thread is available for any project-bound Capture Session;
+  an Episode relationship is not required. Coaching Engagement chat remains a
+  browser/Nest surface. Real browser/iPhone operation remains the acceptance
+  boundary rather than an inferred claim.

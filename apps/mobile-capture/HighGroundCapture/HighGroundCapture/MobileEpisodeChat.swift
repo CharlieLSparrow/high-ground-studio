@@ -59,11 +59,46 @@ struct MobileChatPersistedLiveHint: Codable, Hashable {
     }
 }
 
+enum MobileCollaborationChatScope: String, Codable {
+    case episode
+    case session
+
+    var title: String {
+        switch self {
+        case .episode: "Episode thread"
+        case .session: "Session thread"
+        }
+    }
+
+    var conversationLabel: String {
+        switch self {
+        case .episode: "Canonical episode conversation"
+        case .session: "Canonical take conversation"
+        }
+    }
+
+    var openLabel: String {
+        switch self {
+        case .episode: "Open episode thread"
+        case .session: "Open Session thread"
+        }
+    }
+
+    var accessibilityPrefix: String {
+        switch self {
+        case .episode: "CaptureEpisodeChat"
+        case .session: "CaptureSessionChat"
+        }
+    }
+}
+
 private struct MobileEpisodeChatCache: Codable {
     let schemaVersion: Int
     let ownerDigest: String
     let projectSlug: String
-    let episodeSlug: String
+    let scope: MobileCollaborationChatScope?
+    let scopeKey: String?
+    let episodeSlug: String?
     let savedAt: Date
     let threadTitle: String
     let messages: [NestChatMessage]
@@ -72,7 +107,7 @@ private struct MobileEpisodeChatCache: Codable {
 @MainActor
 final class MobileEpisodeChatClient: ObservableObject {
     @Published private(set) var messages: [NestChatMessage] = []
-    @Published private(set) var threadTitle = "Episode thread"
+    @Published private(set) var threadTitle: String
     @Published private(set) var canEdit = false
     @Published private(set) var isLoading = false
     @Published private(set) var isSending = false
@@ -83,6 +118,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     @Published private(set) var outboundLiveHint: MobileChatPersistedLiveHint?
 
     private let baseURL: URL
+    let scope: MobileCollaborationChatScope
     private var currentContextKey: String?
     private var pollingTask: Task<Void, Never>?
     private var accountCancellable: AnyCancellable?
@@ -91,7 +127,9 @@ final class MobileEpisodeChatClient: ObservableObject {
     private var pollingDisabledForMissingThread = false
     private var lastReceivedLiveMessageID: String?
 
-    init() {
+    init(scope: MobileCollaborationChatScope = .episode) {
+        self.scope = scope
+        threadTitle = scope.title
         let rawBaseURL = normalizedNestBaseURL(
             Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL")
                 as? String
@@ -115,13 +153,17 @@ final class MobileEpisodeChatClient: ObservableObject {
         reset()
         currentContextKey = "preview|\(session.id)"
         let now = ISO8601DateFormatter().string(from: Date())
-        threadTitle = "The Swear Jar Chat"
+        threadTitle = scope == .episode
+            ? "The Swear Jar Chat"
+            : "Episode rehearsal · Session thread"
         messages = [
             NestChatMessage(
                 id: "preview-chat-1",
                 authorEmail: "charlie@example.test",
                 authorName: "Charlie",
-                body: "Be Curious is first. Pause after the darts line so we can react before the clip resolves.",
+                body: scope == .episode
+                    ? "Be Curious is first. Pause after the darts line so we can react before the clip resolves."
+                    : "Canon and MV7i are checked. I’m ready to join and start the retained source separately.",
                 gifUrl: nil,
                 createdAt: now
             ),
@@ -129,7 +171,9 @@ final class MobileEpisodeChatClient: ObservableObject {
                 id: "preview-chat-2",
                 authorEmail: "homer@example.test",
                 authorName: "Homer",
-                body: "Ready. I’ll open with the swear jar story, then you cue the clip.",
+                body: scope == .episode
+                    ? "Ready. I’ll open with the swear jar story, then you cue the clip."
+                    : "iPhone source is framed and consent is current. Call audio is not the retained recording.",
                 gifUrl: nil,
                 createdAt: now
             ),
@@ -145,7 +189,9 @@ final class MobileEpisodeChatClient: ObservableObject {
     ) async {
         guard let context = context(for: session) else {
             reset()
-            errorMessage = "This Session is not attached to a valid episode thread."
+            errorMessage = scope == .episode
+                ? "This Session is not attached to a valid episode thread."
+                : "This Session is not attached to a valid Nest Session thread."
             return
         }
         if currentContextKey != context.key {
@@ -165,7 +211,7 @@ final class MobileEpisodeChatClient: ObservableObject {
                 statusMessage = "Protected offline copy"
                 errorMessage = nil
             } else if !quietly {
-                errorMessage = "Connect to Nest once to protect this episode thread for offline reading."
+                errorMessage = "Connect to Nest once to protect this \(scope.title.lowercased()) for offline reading."
             }
             return
         }
@@ -179,7 +225,10 @@ final class MobileEpisodeChatClient: ObservableObject {
             )
             components?.queryItems = [
                 URLQueryItem(name: "projectSlug", value: context.projectSlug),
-                URLQueryItem(name: "episodeSlug", value: context.episodeSlug),
+                URLQueryItem(
+                    name: scope == .episode ? "episodeSlug" : "threadKey",
+                    value: scope == .episode ? context.scopeKey : context.threadKey
+                ),
             ]
             guard let url = components?.url else { throw URLError(.badURL) }
             var request = URLRequest(url: url)
@@ -192,7 +241,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             )
             guard Self.isSameOrigin(response.url, baseURL) else {
                 throw Self.error(
-                    "The protected episode thread response left the configured Nest origin.",
+                    "The protected \(scope.title.lowercased()) response left the configured Nest origin.",
                     code: response.statusCode
                 )
             }
@@ -202,22 +251,26 @@ final class MobileEpisodeChatClient: ObservableObject {
             )
             guard response.statusCode < 400,
                   payload.ok,
-                  payload.episode?.slug == context.episodeSlug else {
+                  payload.thread?.key == context.threadKey,
+                  (scope == .episode
+                    ? payload.episode?.slug == context.scopeKey
+                    : payload.session?.id.lowercased() == context.scopeKey) else {
                 throw Self.error(
-                    payload.error ?? "The episode thread is unavailable.",
+                    payload.error ?? "The \(scope.title.lowercased()) is unavailable.",
                     code: response.statusCode
                 )
             }
 
             messages = Array((payload.messages ?? []).suffix(200))
-            threadTitle = payload.thread?.title ?? "Episode thread"
-            canEdit = ["OWNER", "EDITOR"].contains(
-                payload.actor?.role?.uppercased() ?? ""
-            )
+            threadTitle = payload.thread?.title ?? scope.title
+            let actorRole = payload.actor?.role?.uppercased() ?? ""
+            canEdit = scope == .episode
+                ? ["OWNER", "EDITOR"].contains(actorRole)
+                : !actorRole.isEmpty && !["OBSERVER", "VIEWER"].contains(actorRole)
             isUsingProtectedCache = false
             errorMessage = nil
             statusMessage = messages.isEmpty
-                ? "Start the episode conversation"
+                ? "Start the \(scope == .episode ? "episode" : "Session") conversation"
                 : "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             persist(context: context)
         } catch {
@@ -229,8 +282,8 @@ final class MobileEpisodeChatClient: ObservableObject {
                 pollingDisabledForMissingThread = true
                 canEdit = false
                 statusMessage = messages.isEmpty
-                    ? "Episode thread unavailable"
-                    : "Episode thread unavailable · protected copy"
+                    ? "\(scope.title) unavailable"
+                    : "\(scope.title) unavailable · protected copy"
             }
             if !messages.isEmpty {
                 isUsingProtectedCache = true
@@ -291,13 +344,15 @@ final class MobileEpisodeChatClient: ObservableObject {
             request.httpMethod = "POST"
             request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var requestBody: [String: Any] = [
                 "projectSlug": context.projectSlug,
-                "episodeSlug": context.episodeSlug,
                 "body": trimmed,
                 "clientMessageId": requestID.uuidString.lowercased(),
                 "clientSurface": "capture-ios",
-            ])
+            ]
+            requestBody[scope == .episode ? "episodeSlug" : "threadKey"] =
+                scope == .episode ? context.scopeKey : context.threadKey
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, response) = try await AuthManager.shared.authenticatedData(
                 for: request
             )
@@ -325,16 +380,12 @@ final class MobileEpisodeChatClient: ObservableObject {
             }
             pendingMessageBody = nil
             pendingMessageID = nil
-            if let threadKey = MobileChatPersistedLiveHint.episodeThreadKey(
-                context.episodeSlug
-            ) {
-                outboundLiveHint = MobileChatPersistedLiveHint(
-                    schema: MobileChatPersistedLiveHint.schemaVersion,
-                    threadKey: threadKey,
-                    messageId: message.id,
-                    persistedAt: message.createdAt
-                )
-            }
+            outboundLiveHint = MobileChatPersistedLiveHint(
+                schema: MobileChatPersistedLiveHint.schemaVersion,
+                threadKey: context.threadKey,
+                messageId: message.id,
+                persistedAt: message.createdAt
+            )
             isUsingProtectedCache = false
             statusMessage = "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             errorMessage = nil
@@ -354,37 +405,50 @@ final class MobileEpisodeChatClient: ObservableObject {
         guard hint.hasValidShape,
               hint.messageId != lastReceivedLiveMessageID,
               let context = context(for: session),
-              hint.threadKey == MobileChatPersistedLiveHint.episodeThreadKey(
-                context.episodeSlug
-              ) else { return }
+              hint.threadKey == context.threadKey else { return }
         lastReceivedLiveMessageID = hint.messageId
         await load(session: session, forceRefresh: true, quietly: true)
     }
 
     static func clearProtectedCache() {
-        guard let root = protectedCacheRoot() else { return }
-        try? FileManager.default.removeItem(at: root)
+        for scope in [MobileCollaborationChatScope.episode, .session] {
+            guard let root = protectedCacheRoot(scope: scope) else { continue }
+            try? FileManager.default.removeItem(at: root)
+        }
     }
 
     private struct Context {
         let key: String
         let projectSlug: String
-        let episodeSlug: String
+        let scopeKey: String
+        let threadKey: String
         let endpoint: URL
     }
 
     private func context(for session: MobileCaptureSession) -> Context? {
-        guard let projectSlug = Self.safeSlug(session.projectSlug),
-              let episodeSlug = Self.safeSlug(session.episodeSlug) else {
-            return nil
+        guard let projectSlug = Self.safeSlug(session.projectSlug) else { return nil }
+        let scopeKey: String
+        let threadKey: String
+        switch scope {
+        case .episode:
+            guard let episodeSlug = Self.safeSlug(session.episodeSlug),
+                  let episodeThreadKey = MobileChatPersistedLiveHint.episodeThreadKey(episodeSlug) else { return nil }
+            scopeKey = episodeSlug
+            threadKey = episodeThreadKey
+        case .session:
+            guard let callRoomID = Self.safeSlug(session.callRoomId),
+                  let sessionThreadKey = MobileChatPersistedLiveHint.sessionThreadKey(callRoomID) else { return nil }
+            scopeKey = callRoomID
+            threadKey = sessionThreadKey
         }
         let endpoint = baseURL
             .appendingPathComponent("api", isDirectory: true)
             .appendingPathComponent("nest-chat", isDirectory: false)
         return Context(
-            key: "\(projectSlug)|\(episodeSlug)",
+            key: "\(scope.rawValue)|\(projectSlug)|\(scopeKey)",
             projectSlug: projectSlug,
-            episodeSlug: episodeSlug,
+            scopeKey: scopeKey,
+            threadKey: threadKey,
             endpoint: endpoint
         )
     }
@@ -393,7 +457,7 @@ final class MobileEpisodeChatClient: ObservableObject {
         stopPolling()
         currentContextKey = nil
         messages = []
-        threadTitle = "Episode thread"
+        threadTitle = scope.title
         canEdit = false
         isLoading = false
         isSending = false
@@ -420,10 +484,13 @@ final class MobileEpisodeChatClient: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
             let cache = try decoder.decode(MobileEpisodeChatCache.self, from: data)
             let age = Date().timeIntervalSince(cache.savedAt)
-            guard cache.schemaVersion == 1,
+            let cachedScope = cache.scope ?? .episode
+            let cachedScopeKey = cache.scopeKey ?? cache.episodeSlug
+            guard [1, 2].contains(cache.schemaVersion),
                   cache.ownerDigest == Self.digest(owner.ownerAccountID),
                   cache.projectSlug == context.projectSlug,
-                  cache.episodeSlug == context.episodeSlug,
+                  cachedScope == scope,
+                  cachedScopeKey == context.scopeKey,
                   age >= 0,
                   age <= 30 * 24 * 60 * 60 else {
                 try? FileManager.default.removeItem(at: url)
@@ -449,10 +516,12 @@ final class MobileEpisodeChatClient: ObservableObject {
               let url = cacheURL(context: context, owner: owner) else { return }
         let savedAt = Date()
         let cache = MobileEpisodeChatCache(
-            schemaVersion: 1,
+            schemaVersion: 2,
             ownerDigest: Self.digest(owner.ownerAccountID),
             projectSlug: context.projectSlug,
-            episodeSlug: context.episodeSlug,
+            scope: scope,
+            scopeKey: context.scopeKey,
+            episodeSlug: scope == .episode ? context.scopeKey : nil,
             savedAt: savedAt,
             threadTitle: threadTitle,
             messages: messages
@@ -485,7 +554,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             try mutableURL.setResourceValues(values)
             protectedCacheSavedAt = savedAt
         } catch {
-            print("Protected episode chat cache could not be updated: \(error.localizedDescription)")
+            print("Protected \(scope.rawValue) chat cache could not be updated: \(error.localizedDescription)")
         }
     }
 
@@ -493,19 +562,23 @@ final class MobileEpisodeChatClient: ObservableObject {
         context: Context,
         owner: AuthManager.StableOwnerSnapshot
     ) -> URL? {
-        Self.protectedCacheRoot()?
+        Self.protectedCacheRoot(scope: scope)?
             .appendingPathComponent(Self.digest(owner.ownerAccountID), isDirectory: true)
             .appendingPathComponent(Self.digest(context.projectSlug), isDirectory: true)
-            .appendingPathComponent("\(Self.digest(context.episodeSlug)).json")
+            .appendingPathComponent("\(Self.digest(context.scopeKey)).json")
     }
 
-    nonisolated private static func protectedCacheRoot() -> URL? {
+    nonisolated private static func protectedCacheRoot(
+        scope: MobileCollaborationChatScope
+    ) -> URL? {
         FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first?
             .appendingPathComponent(
-                "QuipslyCapture/EpisodeChat",
+                scope == .episode
+                    ? "QuipslyCapture/EpisodeChat"
+                    : "QuipslyCapture/SessionChat",
                 isDirectory: true
             )
     }
@@ -569,7 +642,7 @@ struct MobileEpisodeChatCard: View {
             }
 
             if client.isLoading && client.messages.isEmpty {
-                ProgressView("Loading episode thread…")
+                ProgressView("Loading \(client.scope.title.lowercased())…")
             } else if let latest = client.latestMessage {
                 Text(latest.authorName ?? latest.authorEmail ?? "Collaborator")
                     .font(.caption.weight(.bold))
@@ -579,9 +652,15 @@ struct MobileEpisodeChatCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("CaptureEpisodeChatLatestMessage")
+                    .accessibilityIdentifier(
+                        client.scope == .episode
+                            ? "CaptureEpisodeChatLatestMessage"
+                            : "CaptureSessionChatLatestMessage"
+                    )
             } else {
-                Text("Keep writing, recording, editing, and publishing decisions with this exact episode.")
+                Text(client.scope == .episode
+                    ? "Keep writing, recording, editing, and publishing decisions with this exact episode."
+                    : "Coordinate device checks, consent, this take, and immediate handoff with everyone in this exact Session.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -589,23 +668,35 @@ struct MobileEpisodeChatCard: View {
             Button {
                 isPresented = true
             } label: {
-                Label("Open episode thread", systemImage: "bubble.left.and.bubble.right.fill")
+                Label(client.scope.openLabel, systemImage: "bubble.left.and.bubble.right.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(client.isLoading && client.messages.isEmpty)
-            .accessibilityIdentifier("CaptureEpisodeChatOpenButton")
+            .accessibilityIdentifier(
+                client.scope == .episode
+                    ? "CaptureEpisodeChatOpenButton"
+                    : "CaptureSessionChatOpenButton"
+            )
 
             if let errorMessage = client.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .accessibilityIdentifier("CaptureEpisodeChatError")
+                    .accessibilityIdentifier(
+                        client.scope == .episode
+                            ? "CaptureEpisodeChatError"
+                            : "CaptureSessionChatError"
+                    )
             }
         }
         .captureCard()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("CaptureEpisodeChatCard")
+        .accessibilityIdentifier(
+            client.scope == .episode
+                ? "CaptureEpisodeChatCard"
+                : "CaptureSessionChatCard"
+        )
         .sheet(isPresented: $isPresented) {
             MobileEpisodeChatThread(
                 client: client,
@@ -616,7 +707,7 @@ struct MobileEpisodeChatCard: View {
     }
 
     private var heading: some View {
-        Label("Episode thread", systemImage: "person.2.fill")
+        Label(client.scope.title, systemImage: "person.2.fill")
             .font(.headline)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -626,7 +717,25 @@ struct MobileEpisodeChatCard: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(client.isUsingProtectedCache ? .orange : .secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .accessibilityIdentifier("CaptureEpisodeChatStatus")
+            .accessibilityIdentifier(
+                client.scope == .episode
+                    ? "CaptureEpisodeChatStatus"
+                    : "CaptureSessionChatStatus"
+            )
+    }
+}
+
+struct MobileSessionChatCard: View {
+    @ObservedObject var client: MobileEpisodeChatClient
+    let session: MobileCaptureSession
+    let previewOnly: Bool
+
+    var body: some View {
+        MobileEpisodeChatCard(
+            client: client,
+            session: session,
+            previewOnly: previewOnly
+        )
     }
 }
 
@@ -682,12 +791,20 @@ private struct MobileEpisodeChatThread: View {
                         }
                     }
                     .disabled(client.isLoading || previewOnly)
-                    .accessibilityLabel("Refresh episode thread")
-                    .accessibilityIdentifier("CaptureEpisodeChatRefreshButton")
+                    .accessibilityLabel("Refresh \(client.scope.title.lowercased())")
+                    .accessibilityIdentifier(
+                        client.scope == .episode
+                            ? "CaptureEpisodeChatRefreshButton"
+                            : "CaptureSessionChatRefreshButton"
+                    )
                 }
             }
         }
-        .accessibilityIdentifier("CaptureEpisodeChatThread")
+        .accessibilityIdentifier(
+            client.scope == .episode
+                ? "CaptureEpisodeChatThread"
+                : "CaptureSessionChatThread"
+        )
     }
 
     private var boundary: some View {
@@ -695,19 +812,25 @@ private struct MobileEpisodeChatThread: View {
             Label(
                 client.isUsingProtectedCache
                     ? "Protected offline copy"
-                    : "Canonical episode conversation",
+                    : client.scope.conversationLabel,
                 systemImage: client.isUsingProtectedCache
                     ? "lock.bubble.left.fill"
                     : "checkmark.seal.fill"
             )
             .font(.subheadline.weight(.bold))
-            Text("Posts stay with this episode. Recording and playback never start from chat.")
+            Text(client.scope == .episode
+                ? "Posts stay with this episode. Recording and playback never start from chat."
+                : "Posts stay with this exact call. They do not become notes, goals, or tasks, and chat never starts recording.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("CaptureEpisodeChatBoundary")
+        .accessibilityIdentifier(
+            client.scope == .episode
+                ? "CaptureEpisodeChatBoundary"
+                : "CaptureSessionChatBoundary"
+        )
     }
 
     private func messageCard(_ message: NestChatMessage) -> some View {
@@ -739,7 +862,11 @@ private struct MobileEpisodeChatThread: View {
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("CaptureEpisodeChatMessage_\(message.id)")
+        .accessibilityIdentifier(
+            client.scope == .episode
+                ? "CaptureEpisodeChatMessage_\(message.id)"
+                : "CaptureSessionChatMessage_\(message.id)"
+        )
     }
 
     private var composer: some View {
@@ -751,14 +878,20 @@ private struct MobileEpisodeChatThread: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(
-                    client.canEdit ? "Message the episode team" : "View-only episode thread",
+                    client.canEdit
+                        ? (client.scope == .episode ? "Message the episode team" : "Message this Session")
+                        : "View-only \(client.scope.title.lowercased())",
                     text: $draft,
                     axis: .vertical
                 )
                 .lineLimit(2 ... 6)
                 .textFieldStyle(.roundedBorder)
                 .disabled(!client.canEdit || previewOnly)
-                .accessibilityIdentifier("CaptureEpisodeChatComposer")
+                .accessibilityIdentifier(
+                    client.scope == .episode
+                        ? "CaptureEpisodeChatComposer"
+                        : "CaptureSessionChatComposer"
+                )
 
                 Button {
                     let body = draft
@@ -781,8 +914,12 @@ private struct MobileEpisodeChatThread: View {
                         || client.isSending
                         || previewOnly
                 )
-                .accessibilityLabel("Send episode message")
-                .accessibilityIdentifier("CaptureEpisodeChatSendButton")
+                .accessibilityLabel(client.scope == .episode ? "Send episode message" : "Send Session message")
+                .accessibilityIdentifier(
+                    client.scope == .episode
+                        ? "CaptureEpisodeChatSendButton"
+                        : "CaptureSessionChatSendButton"
+                )
             }
             Text("A failed send keeps this draft and reuses the same message identity on retry.")
                 .font(.caption2)

@@ -461,10 +461,25 @@ function checkMeetingSpineContractSources() {
   expect(
     episodeChatText.includes("pollingDisabledForMissingThread")
       && episodeChatText.includes("responseCode == 404")
-      && episodeChatText.includes("Episode thread unavailable")
+      && episodeChatText.includes("scope.title) unavailable")
       && episodeChatText.includes("guard !self.pollingDisabledForMissingThread else { return }"),
     "nativeMissingEpisodeThreadStopsBackgroundPolling",
-    "A Session without a canonical episode thread stops background polling after the terminal 404 while preserving explicit manual refresh.",
+    "A missing canonical Episode or Session thread stops background polling after the terminal 404 while preserving explicit manual refresh.",
+  );
+  expect(
+    episodeChatText.includes("enum MobileCollaborationChatScope")
+      && episodeChatText.includes("case episode")
+      && episodeChatText.includes("case session")
+      && episodeChatText.includes("payload.thread?.key == context.threadKey")
+      && episodeChatText.includes('requestBody[scope == .episode ? "episodeSlug" : "threadKey"]')
+      && episodeChatText.includes("QuipslyCapture/SessionChat")
+      && episodeChatText.includes("Posts stay with this exact call.")
+      && capturePhoneShellText.includes("MobileSessionChatCard")
+      && capturePhoneShellText.includes("sessionChat.receiveLiveHint")
+      && nestChatRouteText.includes("sessionConversationAccessWhere")
+      && nestChatRouteText.includes("sessionMutationAccessWhere"),
+    "nativeSessionAndEpisodeThreadsRemainDistinct",
+    "Capture projects exact-call Session chat and durable Episode chat as separate account-protected scopes over the canonical Nest access boundary.",
   );
   expect(
     roomJoinDiagnosticsText.includes("diagnosticOnly: true")
