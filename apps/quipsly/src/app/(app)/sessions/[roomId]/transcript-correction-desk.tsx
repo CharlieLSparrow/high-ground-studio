@@ -162,6 +162,91 @@ function audioFormat(evidence: AudioTranscriptEvidence["audio"]) {
   ].filter(Boolean).join(" · ") || "Audio format not preserved";
 }
 
+function signalLevelHeight(dbfs: number) {
+  return Math.max(4, Math.min(100, ((dbfs + 72) / 72) * 100));
+}
+
+function AudioSignalEvidencePanel({
+  audio,
+  transcriptEndSeconds,
+  playbackReady,
+  onPlayAt,
+}: {
+  audio: AudioTranscriptEvidence["audio"];
+  transcriptEndSeconds: number | null;
+  playbackReady: boolean;
+  onPlayAt: (seconds: number) => Promise<void>;
+}) {
+  const [selectedSignalSeconds, setSelectedSignalSeconds] = useState(0);
+  const signal = audio.signal;
+  if (!signal) return <div className="mt-4 rounded-xl border border-dashed border-sky-200 bg-white/70 p-4 text-xs font-bold leading-5 text-sky-950"><p className="font-black uppercase tracking-wide">Decoded signal scan unavailable</p><p className="mt-1">This legacy or externally imported source did not preserve a complete frame scan. Quipsly will not infer loudness, clipping, silence, or dropout from transcript confidence.</p></div>;
+
+  const tailPoints = transcriptEndSeconds === null
+    ? []
+    : signal.waveform.filter((point) => point.startSeconds + point.durationSeconds > transcriptEndSeconds);
+  const tailPeak = tailPoints.length ? Math.max(...tailPoints.map((point) => point.samplePeakDbfs)) : null;
+  const tailHasSignal = tailPeak !== null && tailPeak > signal.thresholds.nearSilenceDbfs;
+  const statusTone = signal.status === "signal-present"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+    : signal.status === "near-digital-silence"
+      ? "border-rose-200 bg-rose-50 text-rose-950"
+      : "border-amber-200 bg-amber-50 text-amber-950";
+
+  return <div className="mt-4 rounded-xl border border-sky-200 bg-white p-4" aria-label="Decoded audio signal evidence">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-xs font-black uppercase tracking-wide text-sky-950">Decoded signal scan</p><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">Complete-frame RMS and sample-peak observations. RMS dBFS is not perceptual LUFS, and possible dropout always requires listening.</p></div>
+      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone}`}>{humanize(signal.status)}</span>
+    </div>
+    <dl className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+      <div className="rounded-lg bg-sky-50 p-3"><dt className="font-black uppercase tracking-wide text-sky-800">RMS</dt><dd className="mt-1 text-lg font-black text-sky-950">{signal.rmsDbfs.toFixed(1)} dBFS</dd><dd className="mt-1 text-[10px] font-bold text-sky-800">not LUFS</dd></div>
+      <div className="rounded-lg bg-violet-50 p-3"><dt className="font-black uppercase tracking-wide text-violet-800">Sample peak</dt><dd className="mt-1 text-lg font-black text-violet-950">{signal.samplePeakDbfs.toFixed(1)} dBFS</dd><dd className="mt-1 text-[10px] font-bold text-violet-800">{signal.clippedFrameCount.toLocaleString()} clipped frames observed</dd></div>
+      <div className="rounded-lg bg-amber-50 p-3"><dt className="font-black uppercase tracking-wide text-amber-800">Near-silent frames</dt><dd className="mt-1 text-lg font-black text-amber-950">{percent(signal.nearSilentFrameFraction, 1)}</dd><dd className="mt-1 text-[10px] font-bold text-amber-800">threshold {signal.thresholds.nearSilenceDbfs.toFixed(0)} dBFS</dd></div>
+      <div className="rounded-lg bg-emerald-50 p-3"><dt className="font-black uppercase tracking-wide text-emerald-800">Decoded coverage</dt><dd className="mt-1 text-lg font-black text-emerald-950">{timestampForSeconds(signal.durationSeconds)}</dd><dd className="mt-1 text-[10px] font-bold text-emerald-800">{signal.analyzedFrameCount.toLocaleString()} frames · {signal.channelCount} ch</dd></div>
+    </dl>
+
+    {signal.waveform.length > 0 ? <button
+      type="button"
+      disabled={!playbackReady}
+      onClick={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const fraction = bounds.width > 0 ? (event.clientX - bounds.left) / bounds.width : 0;
+        const nextSeconds = Math.max(0, Math.min(signal.durationSeconds, fraction * signal.durationSeconds));
+        setSelectedSignalSeconds(nextSeconds);
+        void onPlayAt(nextSeconds);
+      }}
+      className="mt-4 flex h-28 w-full items-center gap-px overflow-hidden rounded-lg border border-sky-200 bg-sky-50 px-2 py-3 disabled:opacity-50"
+      aria-label="Audio waveform overview. Select a position to play from that time."
+    >{signal.waveform.map((point, index) => <span
+      key={`${point.startSeconds}-${index}`}
+      aria-hidden="true"
+      className={`min-w-px flex-1 rounded-full ${point.clippedFrameCount > 0 ? "bg-rose-500" : point.rmsDbfs <= signal.thresholds.nearSilenceDbfs ? "bg-slate-300" : "bg-sky-600"}`}
+      style={{ height: `${signalLevelHeight(point.rmsDbfs)}%` }}
+    />)}</button> : null}
+    <div className="mt-2 flex justify-between text-[10px] font-black uppercase tracking-wide text-sky-800"><span>00:00</span><span>Select waveform to listen</span><span>{timestampForSeconds(signal.durationSeconds)}</span></div>
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+      <label htmlFor="audio-signal-time" className="text-xs font-black text-sky-950">Selected time {timestampForSeconds(selectedSignalSeconds)}</label>
+      <input
+        id="audio-signal-time"
+        type="range"
+        min={0}
+        max={Math.max(signal.durationSeconds, 0.01)}
+        step={0.1}
+        value={selectedSignalSeconds}
+        onChange={(event) => setSelectedSignalSeconds(Number(event.currentTarget.value))}
+        className="min-w-48 flex-1 accent-sky-700"
+      />
+      <button type="button" disabled={!playbackReady} onClick={() => void onPlayAt(selectedSignalSeconds)} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-sky-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50"><Play className="size-4" aria-hidden="true" />Play selected time</button>
+    </div>
+
+    {tailPeak !== null ? <p className={`mt-3 rounded-lg border p-3 text-xs font-bold leading-5 ${tailHasSignal ? "border-violet-200 bg-violet-50 text-violet-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}>{tailHasSignal ? `Measurable signal continues after the last timed transcript word (tail peak ${tailPeak.toFixed(1)} dBFS). Listen before treating the transcript as complete.` : `The overview scan found only near-silence after the last timed transcript word (tail peak ${tailPeak.toFixed(1)} dBFS). This is an observation, not proof that no speech exists.`}</p> : null}
+
+    {(signal.observations.length > 0 || audio.timelineEvents.length > 0) ? <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <div><p className="text-[10px] font-black uppercase tracking-wide text-rose-800">Signal observations</p><div className="mt-2 space-y-2">{signal.observations.length ? signal.observations.map((observation, index) => <button key={`${observation.kind}-${observation.startSeconds}-${index}`} type="button" disabled={!playbackReady} onClick={() => void onPlayAt(observation.startSeconds)} className="block min-h-11 w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-left text-xs font-bold leading-5 text-rose-950 disabled:opacity-50"><span className="font-black uppercase tracking-wide">{timestampForSeconds(observation.startSeconds)} · {humanize(observation.kind)}</span><span className="mt-1 block">{observation.detail}</span></button>) : <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-950">No configured signal threshold produced an observation.</p>}</div></div>
+      <div><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">Capture timeline boundaries</p><div className="mt-2 space-y-2">{audio.timelineEvents.length ? audio.timelineEvents.map((timelineEvent, index) => <button key={`${timelineEvent.kind}-${timelineEvent.startSeconds}-${index}`} type="button" disabled={!playbackReady} onClick={() => void onPlayAt(timelineEvent.startSeconds)} className="block min-h-11 w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs font-bold leading-5 text-amber-950 disabled:opacity-50"><span className="font-black uppercase tracking-wide">{timestampForSeconds(timelineEvent.startSeconds)} · {humanize(timelineEvent.kind)}</span><span className="mt-1 block">{[timelineEvent.detail, timelineEvent.routeName, timelineEvent.routePortType].filter(Boolean).join(" · ") || "Boundary preserved without route detail"}</span></button>) : <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800">No pause, interruption, route-loss, mark, or background boundary was preserved.</p>}</div></div>
+    </div> : <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-950">No configured signal observation or capture boundary needs attention.</p>}
+  </div>;
+}
+
 function AudioTranscriptEvidencePanel({
   evidence,
   playbackReady,
@@ -213,6 +298,13 @@ function AudioTranscriptEvidencePanel({
       </dl>
       {(audio.issues.length > 0 || transcript.endsBeforeRecordingBySeconds !== null) && <div className="mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">{audio.issues.map((issue) => <p key={issue}>{issue}</p>)}{transcript.endsBeforeRecordingBySeconds !== null && <p>Timed speech ends {transcript.endsBeforeRecordingBySeconds.toFixed(1)} seconds before the recording ends. That may be silence; Quipsly does not label it missing audio without signal analysis.</p>}</div>}
     </details>
+
+    <AudioSignalEvidencePanel
+      audio={audio}
+      transcriptEndSeconds={transcript.transcriptEndSeconds}
+      playbackReady={playbackReady}
+      onPlayAt={onPlayAt}
+    />
 
     {transcript.attentionSegments.length > 0 && <div className="mt-4 rounded-xl border border-violet-200 bg-white p-4">
       <p className="text-xs font-black uppercase tracking-wide text-violet-900">Listen next · lowest confidence and unchecked evidence</p>

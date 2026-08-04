@@ -7198,3 +7198,34 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   control on a retained coaching Session. Architecture and remaining corpus
   gates are documented in
   `docs/architecture/audio-and-transcript-observability.md`.
+
+### Decoded audio-signal visibility checkpoint — 2026-08-03
+
+- Fresh iPhone audio now completes a full decoded-frame validation before it
+  can enter the upload queue. The same pass records a bounded source signal
+  profile with energy-averaged RMS dBFS, sample peak, clipping, near-silence,
+  left/right balance, waveform points, and exact-time observations. An
+  incomplete decode preserves the bytes in the repair state instead of
+  uploading an unproved source.
+- Capture’s source-evidence sheet renders the waveform and diagnostics and can
+  play from an exact waveform position, clipping/silence observation, pause,
+  route interruption, user mark, or background boundary. A route-loss event
+  retains the displaced input name and port type when iOS provides them.
+- Nest carries the same immutable evidence into recording review and the
+  transcript correction desk. A measurable signal after the last provider word
+  becomes a listening target, not an assertion that words are missing. Legacy
+  and externally imported recordings show a specific unavailable state rather
+  than a zero-valued or healthy-looking waveform.
+- Signal language remains deliberately narrow: RMS is not LUFS, digital silence
+  is not corruption, and a near-silent interval surrounded by signal is a
+  possible-dropout candidate that requires listening. The analyzer uses channel
+  energy rather than a stereo sample average so out-of-phase material cannot
+  cancel into apparent silence.
+- Focused Nest suites pass 44/44, strict TypeScript passes, the native source
+  evidence contract passes 28/28, the generic iOS simulator Debug build passes,
+  and the focused compiled iPhone 17 Pro source-evidence journey passes 1/1.
+  Operated local Nest readback proves that a retained legacy coaching source
+  discloses the absent signal scan and refuses to infer audio integrity from
+  transcript confidence. Physical-iPhone signal capture, video-contained audio
+  analysis, standards-conformant LUFS/true peak, and the genuine consented
+  podcast/coaching transcription corpus remain open gates.

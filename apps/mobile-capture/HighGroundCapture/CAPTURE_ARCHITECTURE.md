@@ -171,6 +171,16 @@ the canonical encoded format. Nest carries the same evidence into transcript
 review; `docs/architecture/audio-and-transcript-observability.md` defines the
 cross-surface accuracy contract.
 
+Fresh audio finalization now runs the same complete decoded-stream validation
+used by recovery before the source may enter the upload queue. That pass also
+attaches a bounded, deterministic signal profile: energy-averaged RMS dBFS,
+sample peak, clipped and near-silent frame fractions, channel balance, a
+waveform, and exact-time listening observations. RMS is not presented as LUFS,
+and a near-silent interval surrounded by signal is only a possible-dropout
+candidate until someone listens. Structurally valid silence remains preserved;
+an incomplete decode is preserved in the repair state and never uploaded as a
+trusted source.
+
 Capture state is explicit; microphone permission is a separate preflight state:
 
 ```text

@@ -210,6 +210,37 @@ struct RecordingSegment: Codable {
     let stoppedAt: String?
     let durationSeconds: Double?
     let stopReason: RecordingStopReason?
+    let boundaryDetail: String?
+    let boundaryAudioRouteName: String?
+    let boundaryAudioRoutePortType: String?
+
+    init(
+        id: String,
+        sessionId: String,
+        participantId: String,
+        deviceKind: String,
+        status: String,
+        startedAt: String,
+        stoppedAt: String?,
+        durationSeconds: Double?,
+        stopReason: RecordingStopReason?,
+        boundaryDetail: String? = nil,
+        boundaryAudioRouteName: String? = nil,
+        boundaryAudioRoutePortType: String? = nil
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.participantId = participantId
+        self.deviceKind = deviceKind
+        self.status = status
+        self.startedAt = startedAt
+        self.stoppedAt = stoppedAt
+        self.durationSeconds = durationSeconds
+        self.stopReason = stopReason
+        self.boundaryDetail = boundaryDetail
+        self.boundaryAudioRouteName = boundaryAudioRouteName
+        self.boundaryAudioRoutePortType = boundaryAudioRoutePortType
+    }
 }
 
 // MARK: - Capture Sessions

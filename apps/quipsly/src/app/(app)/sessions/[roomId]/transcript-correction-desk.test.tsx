@@ -367,7 +367,54 @@ describe("TranscriptCorrectionDesk", () => {
         audioRouteName: "Shure MV7i",
         audioRoutePortType: "USBAudio",
         recordedMedia: { audioTrackCount: 1, audioSampleRate: 48_000, audioChannelCount: 1 },
+        audioSignal: {
+          schemaVersion: 1,
+          algorithm: "quipsly-audio-signal-window-v1",
+          sampleRate: 48_000,
+          channelCount: 1,
+          analyzedFrameCount: 2_880_000,
+          durationSeconds: 60,
+          windowDurationSeconds: 10,
+          rmsDbfs: -20,
+          samplePeakDbfs: -0.8,
+          clippedFrameCount: 3,
+          clippedFrameFraction: 0.000001,
+          nearSilentFrameFraction: 0.12,
+          leftRmsDbfs: -20,
+          rightRmsDbfs: null,
+          stereoBalanceDb: null,
+          signalStatus: "attention",
+          thresholds: {
+            clippingAmplitude: 0.999,
+            nearSilenceDbfs: -72,
+            possibleDropoutMinimumSeconds: 0.25,
+            surroundingSignalDbfs: -45,
+            stereoImbalanceDb: 12,
+          },
+          waveform: [
+            { startSeconds: 0, durationSeconds: 10, rmsDbfs: -18, samplePeakDbfs: -0.8, clippedFrameCount: 3 },
+            { startSeconds: 10, durationSeconds: 10, rmsDbfs: -80, samplePeakDbfs: -76, clippedFrameCount: 0 },
+            { startSeconds: 20, durationSeconds: 40, rmsDbfs: -22, samplePeakDbfs: -3, clippedFrameCount: 0 },
+          ],
+          observations: [{
+            kind: "possible-dropout",
+            severity: "attention",
+            startSeconds: 10,
+            endSeconds: 20,
+            detail: "Near-silent interval surrounded by measurable signal; listen before classifying.",
+          }],
+        },
       },
+      recordingStartedAt: "2026-08-03T18:00:00.000Z",
+      recordingSegments: [{
+        startedAt: "2026-08-03T18:00:00.000Z",
+        stoppedAt: "2026-08-03T18:00:08.000Z",
+        durationSeconds: 8,
+        stopReason: "interruption",
+        boundaryDetail: "active-audio-route-unavailable",
+        boundaryAudioRouteName: "Shure MV7i",
+        boundaryAudioRoutePortType: "USBAudio",
+      }],
       segments: [{
         ...segment,
         text: "Welcome, everyone.",
@@ -386,6 +433,14 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/50\.0% WER/i)).toBeInTheDocument();
     expect(screen.getByText(/provider confidence helps prioritize listening; it is not measured accuracy/i)).toBeInTheDocument();
     expect(screen.getByText(/1 corrected · 0 confirmed · 0 unchecked/i)).toBeInTheDocument();
-    expect(screen.getByText(/shure mv7i/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/shure mv7i/i)).not.toHaveLength(0);
+    expect(screen.getByText(/decoded signal scan/i)).toBeInTheDocument();
+    expect(screen.getByText(/RMS dBFS is not perceptual LUFS/i)).toBeInTheDocument();
+    expect(screen.getByText(/measurable signal continues after the last timed transcript word/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /audio waveform overview/i })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /selected time/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /play selected time/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /00:10 · Possible Dropout/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /00:08 · Interruption/i })).toBeInTheDocument();
   });
 });

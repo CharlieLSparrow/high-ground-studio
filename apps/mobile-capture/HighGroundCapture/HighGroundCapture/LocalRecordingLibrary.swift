@@ -55,6 +55,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var monotonicStoppedNanoseconds: UInt64?
     var clockSamples: [LocalRecordingClockSample]?
     var recordedMedia: LocalRecordingRecordedMediaProfile?
+    var audioSignal: LocalRecordingAudioSignalProfile?
 
     nonisolated init(
         schemaVersion: Int = 1,
@@ -86,7 +87,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         monotonicStartedNanoseconds: UInt64? = nil,
         monotonicStoppedNanoseconds: UInt64? = nil,
         clockSamples: [LocalRecordingClockSample]? = nil,
-        recordedMedia: LocalRecordingRecordedMediaProfile? = nil
+        recordedMedia: LocalRecordingRecordedMediaProfile? = nil,
+        audioSignal: LocalRecordingAudioSignalProfile? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.container = container
@@ -118,7 +120,57 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         self.clockSamples = clockSamples
         self.recordedMedia = recordedMedia
+        self.audioSignal = audioSignal
     }
+}
+
+struct LocalRecordingAudioSignalWindow: Codable, Equatable, Sendable {
+    let startSeconds: Double
+    let durationSeconds: Double
+    let rmsDbfs: Double
+    let samplePeakDbfs: Double
+    let clippedFrameCount: Int64
+}
+
+struct LocalRecordingAudioSignalObservation: Codable, Equatable, Sendable {
+    let kind: String
+    let severity: String
+    let startSeconds: Double
+    let endSeconds: Double
+    let detail: String
+}
+
+/// A deterministic observation over decoded source samples. RMS dBFS is not
+/// LUFS, and `possible-dropout` is deliberately a listening candidate rather
+/// than a claim that source audio was lost.
+struct LocalRecordingAudioSignalProfile: Codable, Equatable, Sendable {
+    let schemaVersion: Int
+    let algorithm: String
+    let sampleRate: Double
+    let channelCount: Int
+    let analyzedFrameCount: Int64
+    let durationSeconds: Double
+    let windowDurationSeconds: Double
+    let rmsDbfs: Double
+    let samplePeakDbfs: Double
+    let clippedFrameCount: Int64
+    let clippedFrameFraction: Double
+    let nearSilentFrameFraction: Double
+    let leftRmsDbfs: Double?
+    let rightRmsDbfs: Double?
+    let stereoBalanceDb: Double?
+    let signalStatus: String
+    let thresholds: LocalRecordingAudioSignalThresholds
+    let waveform: [LocalRecordingAudioSignalWindow]
+    let observations: [LocalRecordingAudioSignalObservation]
+}
+
+struct LocalRecordingAudioSignalThresholds: Codable, Equatable, Sendable {
+    let clippingAmplitude: Double
+    let nearSilenceDbfs: Double
+    let possibleDropoutMinimumSeconds: Double
+    let surroundingSignalDbfs: Double
+    let stereoImbalanceDb: Double
 }
 
 struct LocalRecordingRecordedMediaProfile: Codable, Equatable, Sendable {
@@ -476,6 +528,7 @@ final class LocalRecordingLibrary: ObservableObject {
         let durationSeconds: TimeInterval?
         let failureMessage: String?
         let recordedMedia: LocalRecordingRecordedMediaProfile?
+        let audioSignal: LocalRecordingAudioSignalProfile?
         let sourceIntegrityHoldReason: String?
 
         nonisolated init(
@@ -483,12 +536,14 @@ final class LocalRecordingLibrary: ObservableObject {
             durationSeconds: TimeInterval?,
             failureMessage: String?,
             recordedMedia: LocalRecordingRecordedMediaProfile? = nil,
+            audioSignal: LocalRecordingAudioSignalProfile? = nil,
             sourceIntegrityHoldReason: String? = nil
         ) {
             self.isPlayable = isPlayable
             self.durationSeconds = durationSeconds
             self.failureMessage = failureMessage
             self.recordedMedia = recordedMedia
+            self.audioSignal = audioSignal
             self.sourceIntegrityHoldReason = sourceIntegrityHoldReason
         }
     }
@@ -903,6 +958,7 @@ final class LocalRecordingLibrary: ObservableObject {
             if let recordedMedia = validation.recordedMedia,
                var sourceProfile = recording.sourceProfile {
                 sourceProfile.recordedMedia = recordedMedia
+                sourceProfile.audioSignal = validation.audioSignal
                 recording.sourceProfile = sourceProfile
             }
             recording.sourceIntegrityHoldReason =
@@ -1558,7 +1614,11 @@ final class LocalRecordingLibrary: ObservableObject {
         }
 
         do {
-            let audioFile = try AVAudioFile(forReading: fileURL)
+            let audioFile = try AVAudioFile(
+                forReading: fileURL,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
             let sampleRate = audioFile.processingFormat.sampleRate
             let frameCount = audioFile.length
             guard sampleRate.isFinite, sampleRate > 0, frameCount > 0 else {
@@ -1576,42 +1636,34 @@ final class LocalRecordingLibrary: ObservableObject {
                     failureMessage: "Quipsly preserved the source bytes, but could not prove a positive audio duration. It needs repair and is not claimed playable."
                 )
             }
-            if readsToEnd {
-                // A parseable M4A header and positive declared length are not
-                // enough after process death. Read every decoded frame so a
-                // truncated/corrupt tail cannot be mislabeled as recovered.
-                let bufferCapacity: AVAudioFrameCount = 65_536
-                guard let buffer = AVAudioPCMBuffer(
-                    pcmFormat: audioFile.processingFormat,
-                    frameCapacity: bufferCapacity
-                ) else {
-                    return SourceValidation(
-                        isPlayable: false,
-                        durationSeconds: nil,
-                        failureMessage: "Quipsly preserved the source bytes, but could not allocate a recovery-validation buffer. It needs repair and is not claimed playable."
-                    )
-                }
-                audioFile.framePosition = 0
-                var decodedFrames: AVAudioFramePosition = 0
-                while decodedFrames < frameCount {
-                    buffer.frameLength = 0
-                    let remaining = frameCount - decodedFrames
-                    try audioFile.read(
-                        into: buffer,
-                        frameCount: AVAudioFrameCount(min(Int64(bufferCapacity), remaining))
-                    )
-                    guard buffer.frameLength > 0 else { break }
-                    decodedFrames += AVAudioFramePosition(buffer.frameLength)
-                }
-                guard decodedFrames == frameCount else {
-                    return SourceValidation(
-                        isPlayable: false,
-                        durationSeconds: nil,
-                        failureMessage: "Quipsly preserved the source bytes, but could not decode the audio stream through its declared end. It needs repair and is not claimed playable."
-                    )
-                }
-            }
-            return SourceValidation(isPlayable: true, durationSeconds: duration, failureMessage: nil)
+            let recordedMedia = LocalRecordingRecordedMediaProfile(
+                videoTrackCount: 0,
+                audioTrackCount: 1,
+                videoCodec: nil,
+                encodedWidth: nil,
+                encodedHeight: nil,
+                presentationWidth: nil,
+                presentationHeight: nil,
+                rotationDegrees: nil,
+                nominalFrameRate: nil,
+                audioSampleRate: sampleRate,
+                audioChannelCount: Int(audioFile.processingFormat.channelCount),
+                durationSeconds: duration
+            )
+            let signal = readsToEnd
+                ? try analyzeAudioSignal(
+                    audioFile: audioFile,
+                    frameCount: frameCount,
+                    durationSeconds: duration
+                )
+                : nil
+            return SourceValidation(
+                isPlayable: true,
+                durationSeconds: duration,
+                failureMessage: nil,
+                recordedMedia: recordedMedia,
+                audioSignal: signal
+            )
         } catch {
             return SourceValidation(
                 isPlayable: false,
@@ -1619,6 +1671,296 @@ final class LocalRecordingLibrary: ObservableObject {
                 failureMessage: "Quipsly preserved the source bytes, but iOS could not decode a complete audio stream. It needs repair and is not claimed playable."
             )
         }
+    }
+
+    nonisolated private static func analyzeAudioSignal(
+        audioFile: AVAudioFile,
+        frameCount: AVAudioFramePosition,
+        durationSeconds: Double
+    ) throws -> LocalRecordingAudioSignalProfile {
+        let format = audioFile.processingFormat
+        let sampleRate = format.sampleRate
+        let channelCount = Int(format.channelCount)
+        guard channelCount > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let thresholds = LocalRecordingAudioSignalThresholds(
+            clippingAmplitude: 0.999,
+            nearSilenceDbfs: -72,
+            possibleDropoutMinimumSeconds: 0.25,
+            surroundingSignalDbfs: -45,
+            stereoImbalanceDb: 12
+        )
+        let minimumWindowFrames = max(Int64((sampleRate * 0.1).rounded()), 1)
+        let boundedPointCount: Int64 = 1_200
+        let framesPerWindow = max(
+            minimumWindowFrames,
+            Int64(ceil(Double(frameCount) / Double(boundedPointCount)))
+        )
+        let windowDuration = Double(framesPerWindow) / sampleRate
+        let nearSilenceAmplitude = pow(10, thresholds.nearSilenceDbfs / 20)
+        let bufferCapacity: AVAudioFrameCount = 65_536
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: bufferCapacity
+        ) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        struct WindowAccumulator {
+            var frameCount: Int64 = 0
+            var sumSquares: Double = 0
+            var peak: Double = 0
+            var clippedFrames: Int64 = 0
+        }
+
+        audioFile.framePosition = 0
+        var decodedFrames: Int64 = 0
+        var totalSumSquares: Double = 0
+        var totalPeak: Double = 0
+        var clippedFrames: Int64 = 0
+        var nearSilentFrames: Int64 = 0
+        var channelSumSquares = [Double](repeating: 0, count: channelCount)
+        var windows: [LocalRecordingAudioSignalWindow] = []
+        windows.reserveCapacity(Int(min(boundedPointCount, Int64.max)))
+        var accumulator = WindowAccumulator()
+
+        func finishWindow() {
+            guard accumulator.frameCount > 0 else { return }
+            let startFrame = decodedFrames - accumulator.frameCount
+            windows.append(
+                LocalRecordingAudioSignalWindow(
+                    startSeconds: roundedSignal(Double(startFrame) / sampleRate),
+                    durationSeconds: roundedSignal(Double(accumulator.frameCount) / sampleRate),
+                    rmsDbfs: amplitudeDbfs(
+                        sqrt(accumulator.sumSquares / Double(accumulator.frameCount))
+                    ),
+                    samplePeakDbfs: amplitudeDbfs(accumulator.peak),
+                    clippedFrameCount: accumulator.clippedFrames
+                )
+            )
+            accumulator = WindowAccumulator()
+        }
+
+        while decodedFrames < frameCount {
+            buffer.frameLength = 0
+            let remaining = frameCount - AVAudioFramePosition(decodedFrames)
+            try audioFile.read(
+                into: buffer,
+                frameCount: AVAudioFrameCount(min(Int64(bufferCapacity), remaining))
+            )
+            guard buffer.frameLength > 0,
+                  let channels = buffer.floatChannelData else { break }
+            for frameIndex in 0..<Int(buffer.frameLength) {
+                var channelEnergy = 0.0
+                var framePeak = 0.0
+                for channelIndex in 0..<channelCount {
+                    let sample = Double(channels[channelIndex][frameIndex])
+                    channelEnergy += sample * sample
+                    framePeak = max(framePeak, abs(sample))
+                    channelSumSquares[channelIndex] += sample * sample
+                }
+                // Average channel energy rather than channel samples. A sample
+                // average can cancel valid, out-of-phase stereo audio and make
+                // a healthy source look silent.
+                let square = channelEnergy / Double(channelCount)
+                totalSumSquares += square
+                totalPeak = max(totalPeak, framePeak)
+                accumulator.sumSquares += square
+                accumulator.peak = max(accumulator.peak, framePeak)
+                if framePeak >= thresholds.clippingAmplitude {
+                    clippedFrames += 1
+                    accumulator.clippedFrames += 1
+                }
+                if framePeak <= nearSilenceAmplitude {
+                    nearSilentFrames += 1
+                }
+                accumulator.frameCount += 1
+                decodedFrames += 1
+                if accumulator.frameCount >= framesPerWindow {
+                    finishWindow()
+                }
+            }
+        }
+        finishWindow()
+        guard decodedFrames == frameCount, decodedFrames > 0 else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+
+        let rms = amplitudeDbfs(sqrt(totalSumSquares / Double(decodedFrames)))
+        let peak = amplitudeDbfs(totalPeak)
+        let leftRms = channelCount > 0
+            ? amplitudeDbfs(sqrt(channelSumSquares[0] / Double(decodedFrames)))
+            : nil
+        let rightRms = channelCount > 1
+            ? amplitudeDbfs(sqrt(channelSumSquares[1] / Double(decodedFrames)))
+            : nil
+        let balance = leftRms.flatMap { left in rightRms.map { $0 - left } }
+        let observations = signalObservations(
+            windows: windows,
+            durationSeconds: durationSeconds,
+            signalPeakDbfs: peak,
+            stereoBalanceDb: balance,
+            thresholds: thresholds
+        )
+        let signalStatus = peak <= thresholds.nearSilenceDbfs
+            ? "near-digital-silence"
+            : !observations.isEmpty
+                ? "attention"
+                : "signal-present"
+        return LocalRecordingAudioSignalProfile(
+            schemaVersion: 1,
+            algorithm: "quipsly-audio-signal-window-v1",
+            sampleRate: sampleRate,
+            channelCount: channelCount,
+            analyzedFrameCount: decodedFrames,
+            durationSeconds: roundedSignal(durationSeconds),
+            windowDurationSeconds: roundedSignal(windowDuration),
+            rmsDbfs: rms,
+            samplePeakDbfs: peak,
+            clippedFrameCount: clippedFrames,
+            clippedFrameFraction: roundedSignal(Double(clippedFrames) / Double(decodedFrames)),
+            nearSilentFrameFraction: roundedSignal(Double(nearSilentFrames) / Double(decodedFrames)),
+            leftRmsDbfs: leftRms,
+            rightRmsDbfs: rightRms,
+            stereoBalanceDb: balance.map(roundedSignal),
+            signalStatus: signalStatus,
+            thresholds: thresholds,
+            waveform: windows,
+            observations: observations
+        )
+    }
+
+    nonisolated private static func signalObservations(
+        windows: [LocalRecordingAudioSignalWindow],
+        durationSeconds: Double,
+        signalPeakDbfs: Double,
+        stereoBalanceDb: Double?,
+        thresholds: LocalRecordingAudioSignalThresholds
+    ) -> [LocalRecordingAudioSignalObservation] {
+        var observations: [LocalRecordingAudioSignalObservation] = []
+        if signalPeakDbfs <= thresholds.nearSilenceDbfs {
+            observations.append(
+                LocalRecordingAudioSignalObservation(
+                    kind: "near-digital-silence",
+                    severity: "warning",
+                    startSeconds: 0,
+                    endSeconds: roundedSignal(durationSeconds),
+                    detail: "The decoded source peak stayed at or below the recorded near-silence threshold. Listen before relying on this take."
+                )
+            )
+        }
+        if let balance = stereoBalanceDb,
+           abs(balance) >= thresholds.stereoImbalanceDb {
+            observations.append(
+                LocalRecordingAudioSignalObservation(
+                    kind: "stereo-imbalance",
+                    severity: "attention",
+                    startSeconds: 0,
+                    endSeconds: roundedSignal(durationSeconds),
+                    detail: "The decoded left/right RMS balance differs by \(String(format: "%.1f", abs(balance))) dB."
+                )
+            )
+        }
+
+        appendWindowRanges(
+            windows: windows,
+            where: { $0.clippedFrameCount > 0 },
+            minimumDuration: 0,
+            make: { start, end, range in
+                let count = range.reduce(Int64(0)) { $0 + $1.clippedFrameCount }
+                return LocalRecordingAudioSignalObservation(
+                    kind: "sample-clipping",
+                    severity: "warning",
+                    startSeconds: start,
+                    endSeconds: end,
+                    detail: "\(count) decoded frame\(count == 1 ? "" : "s") reached the clipping observation threshold."
+                )
+            },
+            into: &observations
+        )
+
+        var index = 0
+        while index < windows.count {
+            guard windows[index].rmsDbfs <= thresholds.nearSilenceDbfs else {
+                index += 1
+                continue
+            }
+            let startIndex = index
+            while index + 1 < windows.count,
+                  windows[index + 1].rmsDbfs <= thresholds.nearSilenceDbfs {
+                index += 1
+            }
+            let endIndex = index
+            let start = windows[startIndex].startSeconds
+            let end = windows[endIndex].startSeconds + windows[endIndex].durationSeconds
+            let previousHasSignal = startIndex > 0
+                && windows[startIndex - 1].rmsDbfs >= thresholds.surroundingSignalDbfs
+            let nextHasSignal = endIndex + 1 < windows.count
+                && windows[endIndex + 1].rmsDbfs >= thresholds.surroundingSignalDbfs
+            if end - start >= thresholds.possibleDropoutMinimumSeconds,
+               previousHasSignal,
+               nextHasSignal {
+                observations.append(
+                    LocalRecordingAudioSignalObservation(
+                        kind: "possible-dropout",
+                        severity: "attention",
+                        startSeconds: roundedSignal(start),
+                        endSeconds: roundedSignal(end),
+                        detail: "A near-silent interval is surrounded by measurable signal. It may be intentional silence; listen before classifying it as a dropout."
+                    )
+                )
+            }
+            index += 1
+        }
+        return observations.sorted {
+            $0.startSeconds == $1.startSeconds
+                ? $0.kind < $1.kind
+                : $0.startSeconds < $1.startSeconds
+        }
+    }
+
+    nonisolated private static func appendWindowRanges(
+        windows: [LocalRecordingAudioSignalWindow],
+        where predicate: (LocalRecordingAudioSignalWindow) -> Bool,
+        minimumDuration: Double,
+        make: (Double, Double, ArraySlice<LocalRecordingAudioSignalWindow>) -> LocalRecordingAudioSignalObservation,
+        into observations: inout [LocalRecordingAudioSignalObservation]
+    ) {
+        var index = 0
+        while index < windows.count {
+            guard predicate(windows[index]) else {
+                index += 1
+                continue
+            }
+            let startIndex = index
+            while index + 1 < windows.count, predicate(windows[index + 1]) {
+                index += 1
+            }
+            let endIndex = index
+            let start = windows[startIndex].startSeconds
+            let end = windows[endIndex].startSeconds + windows[endIndex].durationSeconds
+            if end - start >= minimumDuration {
+                observations.append(
+                    make(
+                        roundedSignal(start),
+                        roundedSignal(end),
+                        windows[startIndex...endIndex]
+                    )
+                )
+            }
+            index += 1
+        }
+    }
+
+    nonisolated private static func amplitudeDbfs(_ amplitude: Double) -> Double {
+        guard amplitude.isFinite, amplitude > 0 else { return -160 }
+        return roundedSignal(max(20 * log10(amplitude), -160))
+    }
+
+    nonisolated private static func roundedSignal(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return (value * 10_000).rounded() / 10_000
     }
 
     nonisolated private static func validateVideoSourceHeader(

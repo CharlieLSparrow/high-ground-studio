@@ -39,6 +39,54 @@ export type AudioTranscriptEvidence = {
     durationSeconds: number | null;
     formatComparison: "MATCH" | "DRIFT" | "NOT_MEASURED";
     issues: string[];
+    signal: {
+      schemaVersion: 1;
+      algorithm: string;
+      status: "signal-present" | "attention" | "near-digital-silence";
+      sampleRateHz: number;
+      channelCount: number;
+      analyzedFrameCount: number;
+      durationSeconds: number;
+      windowDurationSeconds: number;
+      rmsDbfs: number;
+      samplePeakDbfs: number;
+      clippedFrameCount: number;
+      clippedFrameFraction: number;
+      nearSilentFrameFraction: number;
+      leftRmsDbfs: number | null;
+      rightRmsDbfs: number | null;
+      stereoBalanceDb: number | null;
+      rmsIsNotLufs: true;
+      thresholds: {
+        clippingAmplitude: number;
+        nearSilenceDbfs: number;
+        possibleDropoutMinimumSeconds: number;
+        surroundingSignalDbfs: number;
+        stereoImbalanceDb: number;
+      };
+      waveform: Array<{
+        startSeconds: number;
+        durationSeconds: number;
+        rmsDbfs: number;
+        samplePeakDbfs: number;
+        clippedFrameCount: number;
+      }>;
+      observations: Array<{
+        kind: "sample-clipping" | "possible-dropout" | "near-digital-silence" | "stereo-imbalance" | "unknown";
+        severity: "attention" | "warning";
+        startSeconds: number;
+        endSeconds: number;
+        detail: string;
+        requiresListening: true;
+      }>;
+    } | null;
+    timelineEvents: Array<{
+      kind: "pause" | "interruption" | "user-mark" | "app-backgrounded";
+      startSeconds: number;
+      detail: string | null;
+      routeName: string | null;
+      routePortType: string | null;
+    }>;
   };
   transcript: {
     provider: string | null;
@@ -93,6 +141,8 @@ type EvidenceInput = {
   status?: unknown;
   recordingDurationSeconds?: unknown;
   sourceProfile?: unknown;
+  recordingSegments?: unknown;
+  recordingStartedAt?: unknown;
   segments?: AudioTranscriptEvidenceSegment[];
   speakerGroups?: Array<{ attribution?: unknown }>;
 };
@@ -111,6 +161,10 @@ function text(value: unknown): string | null {
 
 function finite(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function signedFinite(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function integer(value: unknown): number | null {
@@ -155,7 +209,11 @@ export function transcriptWordEditDistance(hypothesis: string, reference: string
   return { errors: prior[right.length] ?? 0, referenceWords: right.length };
 }
 
-function sourceAudio(sourceProfileValue: unknown) {
+function sourceAudio(
+  sourceProfileValue: unknown,
+  recordingSegmentsValue: unknown,
+  recordingStartedAtValue: unknown,
+) {
   const profile = object(sourceProfileValue);
   const recorded = object(profile.recordedMedia);
   const includesAudio = typeof profile.includesAudio === "boolean" ? profile.includesAudio : null;
@@ -177,6 +235,10 @@ function sourceAudio(sourceProfileValue: unknown) {
   }
   const compared = (encodedSampleRateHz !== null && decodedSampleRateHz !== null)
     || (encodedChannelCount !== null && decodedChannelCount !== null);
+  const signal = parseAudioSignalEvidence(profile.audioSignal);
+  if (signal && audioDurationDrift(signal.durationSeconds, finite(recorded.durationSeconds))) {
+    issues.push("The signal scan duration does not match the decoded recording duration.");
+  }
 
   return {
     includesAudio,
@@ -197,7 +259,186 @@ function sourceAudio(sourceProfileValue: unknown) {
     durationSeconds: finite(recorded.durationSeconds),
     formatComparison: issues.length ? "DRIFT" as const : compared ? "MATCH" as const : "NOT_MEASURED" as const,
     issues,
+    signal,
+    timelineEvents: captureTimelineEvents({
+      value: recordingSegmentsValue,
+      recordingStartedAt: recordingStartedAtValue,
+      pauseTimelinePolicy: text(profile.pauseTimelinePolicy),
+    }),
   };
+}
+
+function audioDurationDrift(left: number, right: number | null) {
+  return right !== null && Math.abs(left - right) > Math.max(0.25, right * 0.005);
+}
+
+export function parseAudioSignalEvidence(value: unknown): AudioTranscriptEvidence["audio"]["signal"] {
+  const row = object(value);
+  if (integer(row.schemaVersion) !== 1) return null;
+  const algorithm = text(row.algorithm);
+  const sampleRateHz = finite(row.sampleRate);
+  const channelCount = integer(row.channelCount);
+  const analyzedFrameCount = integer(row.analyzedFrameCount);
+  const durationSeconds = finite(row.durationSeconds);
+  const windowDurationSeconds = finite(row.windowDurationSeconds);
+  const rmsDbfs = signedFinite(row.rmsDbfs);
+  const samplePeakDbfs = signedFinite(row.samplePeakDbfs);
+  const clippedFrameCount = integer(row.clippedFrameCount);
+  const clippedFrameFraction = confidence(row.clippedFrameFraction);
+  const nearSilentFrameFraction = confidence(row.nearSilentFrameFraction);
+  const status = text(row.signalStatus);
+  const thresholds = object(row.thresholds);
+  const clippingAmplitude = finite(thresholds.clippingAmplitude);
+  const nearSilenceDbfs = signedFinite(thresholds.nearSilenceDbfs);
+  const possibleDropoutMinimumSeconds = finite(thresholds.possibleDropoutMinimumSeconds);
+  const surroundingSignalDbfs = signedFinite(thresholds.surroundingSignalDbfs);
+  const stereoImbalanceDb = finite(thresholds.stereoImbalanceDb);
+  if (
+    !algorithm
+    || sampleRateHz === null
+    || channelCount === null
+    || channelCount < 1
+    || analyzedFrameCount === null
+    || analyzedFrameCount < 1
+    || durationSeconds === null
+    || durationSeconds <= 0
+    || windowDurationSeconds === null
+    || windowDurationSeconds <= 0
+    || rmsDbfs === null
+    || samplePeakDbfs === null
+    || clippedFrameCount === null
+    || clippedFrameFraction === null
+    || nearSilentFrameFraction === null
+    || clippingAmplitude === null
+    || nearSilenceDbfs === null
+    || possibleDropoutMinimumSeconds === null
+    || surroundingSignalDbfs === null
+    || stereoImbalanceDb === null
+    || !["signal-present", "attention", "near-digital-silence"].includes(status ?? "")
+  ) return null;
+
+  const rawWaveform = Array.isArray(row.waveform) ? row.waveform.slice(0, 1_200).flatMap((entry) => {
+    const point = object(entry);
+    const startSeconds = finite(point.startSeconds);
+    const pointDurationSeconds = finite(point.durationSeconds);
+    const pointRms = signedFinite(point.rmsDbfs);
+    const pointPeak = signedFinite(point.samplePeakDbfs);
+    const pointClipped = integer(point.clippedFrameCount);
+    return startSeconds !== null
+      && pointDurationSeconds !== null
+      && pointDurationSeconds > 0
+      && pointRms !== null
+      && pointPeak !== null
+      && pointClipped !== null
+      ? [{
+        startSeconds,
+        durationSeconds: pointDurationSeconds,
+        rmsDbfs: pointRms,
+        samplePeakDbfs: pointPeak,
+        clippedFrameCount: pointClipped,
+      }]
+      : [];
+  }) : [];
+
+  const observations = Array.isArray(row.observations) ? row.observations.slice(0, 80).flatMap((entry) => {
+    const observation = object(entry);
+    const startSeconds = finite(observation.startSeconds);
+    const endSeconds = finite(observation.endSeconds);
+    const rawKind = text(observation.kind);
+    const kind = ["sample-clipping", "possible-dropout", "near-digital-silence", "stereo-imbalance"].includes(rawKind ?? "")
+      ? rawKind as "sample-clipping" | "possible-dropout" | "near-digital-silence" | "stereo-imbalance"
+      : "unknown" as const;
+    const severity = text(observation.severity) === "warning" ? "warning" as const : "attention" as const;
+    const detail = text(observation.detail);
+    return startSeconds !== null && endSeconds !== null && endSeconds >= startSeconds && detail
+      ? [{ kind, severity, startSeconds, endSeconds, detail, requiresListening: true as const }]
+      : [];
+  }) : [];
+
+  return {
+    schemaVersion: 1,
+    algorithm,
+    status: status as "signal-present" | "attention" | "near-digital-silence",
+    sampleRateHz,
+    channelCount,
+    analyzedFrameCount,
+    durationSeconds,
+    windowDurationSeconds,
+    rmsDbfs,
+    samplePeakDbfs,
+    clippedFrameCount,
+    clippedFrameFraction,
+    nearSilentFrameFraction,
+    leftRmsDbfs: signedFinite(row.leftRmsDbfs),
+    rightRmsDbfs: signedFinite(row.rightRmsDbfs),
+    stereoBalanceDb: signedFinite(row.stereoBalanceDb),
+    rmsIsNotLufs: true,
+    thresholds: {
+      clippingAmplitude,
+      nearSilenceDbfs,
+      possibleDropoutMinimumSeconds,
+      surroundingSignalDbfs,
+      stereoImbalanceDb,
+    },
+    waveform: compactSignalWaveform(rawWaveform, 180),
+    observations,
+  };
+}
+
+function compactSignalWaveform(
+  points: NonNullable<AudioTranscriptEvidence["audio"]["signal"]>["waveform"],
+  maximumPoints: number,
+) {
+  if (points.length <= maximumPoints) return points;
+  const groupSize = Math.ceil(points.length / maximumPoints);
+  const compacted = [];
+  for (let index = 0; index < points.length; index += groupSize) {
+    const group = points.slice(index, index + groupSize);
+    const first = group[0]!;
+    const last = group[group.length - 1]!;
+    compacted.push({
+      startSeconds: first.startSeconds,
+      durationSeconds: (last.startSeconds + last.durationSeconds) - first.startSeconds,
+      rmsDbfs: Math.max(...group.map((point) => point.rmsDbfs)),
+      samplePeakDbfs: Math.max(...group.map((point) => point.samplePeakDbfs)),
+      clippedFrameCount: group.reduce((sum, point) => sum + point.clippedFrameCount, 0),
+    });
+  }
+  return compacted;
+}
+
+function captureTimelineEvents(input: {
+  value: unknown;
+  recordingStartedAt: unknown;
+  pauseTimelinePolicy: string | null;
+}): AudioTranscriptEvidence["audio"]["timelineEvents"] {
+  if (!Array.isArray(input.value)) return [];
+  const recordingStartedAt = typeof input.recordingStartedAt === "string" || input.recordingStartedAt instanceof Date
+    ? new Date(input.recordingStartedAt).getTime()
+    : Number.NaN;
+  let cumulativeActiveSeconds = 0;
+  return input.value.slice(0, 2_000).flatMap((entry) => {
+    const row = object(entry);
+    const durationSeconds = finite(row.durationSeconds) ?? 0;
+    cumulativeActiveSeconds += durationSeconds;
+    const reason = text(row.stopReason);
+    if (!reason || !["pause", "interruption", "user-mark", "app-backgrounded"].includes(reason)) return [];
+    const stoppedAt = text(row.stoppedAt);
+    const stoppedAtMilliseconds = stoppedAt ? new Date(stoppedAt).getTime() : Number.NaN;
+    const wallClockOffset = Number.isFinite(stoppedAtMilliseconds) && Number.isFinite(recordingStartedAt)
+      ? Math.max(0, (stoppedAtMilliseconds - recordingStartedAt) / 1_000)
+      : null;
+    const startSeconds = input.pauseTimelinePolicy === "silence-preserves-wall-clock" && wallClockOffset !== null
+      ? wallClockOffset
+      : cumulativeActiveSeconds;
+    return [{
+      kind: reason as "pause" | "interruption" | "user-mark" | "app-backgrounded",
+      startSeconds: rounded(startSeconds),
+      detail: text(row.boundaryDetail),
+      routeName: text(row.boundaryAudioRouteName),
+      routePortType: text(row.boundaryAudioRoutePortType),
+    }];
+  });
 }
 
 export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscriptEvidence {
@@ -234,7 +475,11 @@ export function buildAudioTranscriptEvidence(input: EvidenceInput): AudioTranscr
   const recordingDurationSeconds = finite(input.recordingDurationSeconds);
   const transcriptStartSeconds = segments.length ? Math.min(...segments.map((segment) => segment.startSeconds)) : null;
   const transcriptEndSeconds = segments.length ? Math.max(...segments.map((segment) => segment.endSeconds)) : null;
-  const audio = sourceAudio(input.sourceProfile);
+  const audio = sourceAudio(
+    input.sourceProfile,
+    input.recordingSegments,
+    input.recordingStartedAt,
+  );
 
   const attentionSegments = segments.map((segment) => {
     const lowWords = lowConfidenceThreshold === null ? [] : segment.words

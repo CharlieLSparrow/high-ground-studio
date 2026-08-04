@@ -20,6 +20,7 @@ const [
   uploads,
   exporter,
   evidenceView,
+  playback,
   phoneShell,
   uiTests,
 ] = await Promise.all([
@@ -30,6 +31,7 @@ const [
   readFile(path.join(captureRoot, "UploadManager.swift"), "utf8"),
   readFile(path.join(captureRoot, "CaptureSourceEvidenceExporter.swift"), "utf8"),
   readFile(path.join(captureRoot, "CaptureSourceEvidenceView.swift"), "utf8"),
+  readFile(path.join(captureRoot, "LocalRecordingPlaybackController.swift"), "utf8"),
   readFile(path.join(captureRoot, "CapturePhoneShell.swift"), "utf8"),
   readFile(
     path.join(
@@ -182,6 +184,45 @@ check(
     && evidenceView.includes('"Room boundary"')
     && evidenceView.includes('"Cloud copy"')
     && evidenceView.includes('"Portable evidence receipt"'),
+);
+check(
+  "fresh audio decodes through EOF and records signal evidence before upload",
+  audio.includes("await localRecordingLibrary.validateFinalizedSource(")
+    && audio.indexOf("await localRecordingLibrary.validateFinalizedSource(")
+      < audio.indexOf("queueUploadIfPossible(recording: finalized")
+    && library.includes("analyzeAudioSignal(")
+    && library.includes("guard decodedFrames == frameCount, decodedFrames > 0")
+    && library.includes("sourceProfile.audioSignal = validation.audioSignal"),
+);
+check(
+  "signal evidence avoids stereo phase cancellation and bounds its payload",
+  library.includes("let square = channelEnergy / Double(channelCount)")
+    && library.includes("let boundedPointCount: Int64 = 1_200")
+    && library.includes('algorithm: "quipsly-audio-signal-window-v1"'),
+);
+check(
+  "silence and dropout language remain observations that require listening",
+  library.includes('kind: "possible-dropout"')
+    && library.includes("It may be intentional silence; listen before classifying it as a dropout.")
+    && evidenceView.includes('detail: "Not LUFS"')
+    && evidenceView.includes("listen before classifying"),
+);
+check(
+  "route loss persists the displaced input and exact boundary reason",
+  audio.includes('boundaryDetail: "active-audio-route-unavailable"')
+    && audio.includes("boundaryAudioRouteName: boundaryRouteName")
+    && audio.includes("boundaryAudioRoutePortType: boundaryRoutePortType"),
+);
+check(
+  "waveform and observations can start local playback at exact source time",
+  evidenceView.includes("playback.play(")
+    && evidenceView.includes("from: observation.startSeconds")
+    && evidenceView.includes("from: event.startSeconds")
+    && evidenceView.includes('accessibilityIdentifier("CaptureAudioSignalPlaySelected")')
+    && playback.includes("from startSeconds: TimeInterval")
+    && playback.includes("player.currentTime = min(max(startSeconds, 0), player.duration)")
+    && playback.includes("toleranceBefore: .zero")
+    && playback.includes("toleranceAfter: .zero"),
 );
 check(
   "share action appears only after full byte verification succeeds",

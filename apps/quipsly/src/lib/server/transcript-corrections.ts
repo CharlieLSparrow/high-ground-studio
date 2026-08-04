@@ -360,9 +360,11 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
               durationSeconds: true,
               byteSize: true,
               checksum: true,
+              recordedStartedAt: true,
               storageBucket: true,
               storageObjectPath: true,
               localManifestJson: true,
+              segmentsJson: true,
             },
           },
           segments: {
@@ -564,6 +566,8 @@ function buildTranscriptEvidence(job: any, segments: AudioTranscriptEvidenceSegm
     status: job?.status,
     recordingDurationSeconds: job?.asset?.durationSeconds,
     sourceProfile: manifest.reportedSourceProfile,
+    recordingSegments: job?.asset?.segmentsJson,
+    recordingStartedAt: job?.asset?.recordedStartedAt,
     segments,
     speakerGroups: groups,
   });

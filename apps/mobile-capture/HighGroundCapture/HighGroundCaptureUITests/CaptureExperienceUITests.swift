@@ -1767,6 +1767,12 @@ final class CaptureExperienceUITests: XCTestCase {
         let nestPreviewBoundary = app.descendants(matching: .any)["CaptureNestEvidencePreviewBoundary"]
         XCTAssertTrue(nestPreviewBoundary.exists)
         XCTAssertTrue(nestPreviewBoundary.label.contains("no network request"))
+        XCTAssertTrue(app.staticTexts["Audio visibility"].exists)
+        XCTAssertTrue(app.staticTexts["RMS"].exists)
+        XCTAssertTrue(app.staticTexts["−18.4 dBFS · not LUFS"].exists)
+        XCTAssertTrue(
+            app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
+        )
         XCTAssertFalse(app.buttons["CaptureSourceEvidencePrepare"].exists)
         XCTAssertFalse(app.buttons["CaptureSourceEvidenceShare"].exists)
         XCTAssertFalse(app.buttons["CaptureNestEvidenceCompare"].exists)

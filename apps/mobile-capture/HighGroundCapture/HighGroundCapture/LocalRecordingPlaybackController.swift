@@ -27,6 +27,14 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             return
         }
 
+        play(recording: recording, library: library, from: 0)
+    }
+
+    func play(
+        recording: LocalRecording,
+        library: LocalRecordingLibrary,
+        from startSeconds: TimeInterval
+    ) {
         stop()
         guard recording.status.isPlaybackEligible else {
             if recording.status == .validatingRecovery {
@@ -50,11 +58,13 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
         recording.effectiveMediaKind == .video
             ? beginVideoPlayback(
                 recordingID: recording.id,
-                fileURL: fileURL
+                fileURL: fileURL,
+                startSeconds: startSeconds
             )
             : beginAudioPlayback(
                 recordingID: recording.id,
-                fileURL: fileURL
+                fileURL: fileURL,
+                startSeconds: startSeconds
             )
     }
 
@@ -73,16 +83,25 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
 
     private func beginAudioPlayback(
         recordingID: UUID,
-        fileURL: URL
+        fileURL: URL,
+        startSeconds: TimeInterval
     ) {
         do {
             try audioSessionCoordinator.beginLocalPlayback()
             let player = try AVAudioPlayer(contentsOf: fileURL)
             player.delegate = self
-            guard player.prepareToPlay(), player.play() else {
+            guard player.prepareToPlay() else {
                 throw NSError(
                     domain: "LocalRecordingPlayback",
                     code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "The local audio take could not prepare for playback."]
+                )
+            }
+            player.currentTime = min(max(startSeconds, 0), player.duration)
+            guard player.play() else {
+                throw NSError(
+                    domain: "LocalRecordingPlayback",
+                    code: 2,
                     userInfo: [NSLocalizedDescriptionKey: "The local audio take could not begin playback."]
                 )
             }
@@ -99,7 +118,8 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
 
     private func beginVideoPlayback(
         recordingID: UUID,
-        fileURL: URL
+        fileURL: URL,
+        startSeconds: TimeInterval
     ) {
         do {
             try audioSessionCoordinator.beginLocalPlayback()
@@ -117,6 +137,11 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             videoPlayer = player
             playingRecordingID = recordingID
             errorMessage = nil
+            player.seek(
+                to: CMTime(seconds: max(startSeconds, 0), preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
             player.play()
         } catch {
             audioSessionCoordinator.endLocalPlayback()

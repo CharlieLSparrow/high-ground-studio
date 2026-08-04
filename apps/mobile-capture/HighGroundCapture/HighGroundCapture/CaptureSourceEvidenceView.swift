@@ -4,6 +4,7 @@ struct CaptureSourceEvidenceView: View {
     let recordingID: UUID
 
     @StateObject private var library = LocalRecordingLibrary.shared
+    @StateObject private var playback = LocalRecordingPlaybackController()
     @State private var evidenceFileURL: URL?
     @State private var isPreparing = false
     @State private var errorMessage: String?
@@ -11,6 +12,7 @@ struct CaptureSourceEvidenceView: View {
     @State private var isComparing = false
     @State private var comparisonError: String?
     @State private var comparisonTask: Task<Void, Never>?
+    @State private var selectedAudioSeconds = 0.0
 
     var body: some View {
         ScrollView {
@@ -19,6 +21,7 @@ struct CaptureSourceEvidenceView: View {
                     explanation
                     identityCard(recording)
                     captureCard(recording)
+                    audioSignalCard(recording)
                     roomCard(recording)
                     cloudCard(recording)
                     nestComparisonCard(recording)
@@ -38,6 +41,7 @@ struct CaptureSourceEvidenceView: View {
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
         .onDisappear {
+            playback.stop()
             comparisonTask?.cancel()
             comparisonTask = nil
         }
@@ -91,6 +95,162 @@ struct CaptureSourceEvidenceView: View {
             if recording.effectiveMediaKind == .video {
                 EvidenceRow(label: "Camera", value: nonempty(recording.sourceProfile?.cameraPosition)?.capitalized ?? "Not recorded")
                 EvidenceRow(label: "Recorded media", value: recording.recordedVideoProfileLabel ?? "Awaiting full decode evidence")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func audioSignalCard(_ recording: LocalRecording) -> some View {
+        if recording.sourceProfile?.includesAudio == true {
+            evidenceCard(title: "Audio visibility", systemImage: "waveform.path.ecg") {
+                if let signal = recording.sourceProfile?.audioSignal {
+                    HStack(alignment: .top, spacing: 14) {
+                        signalMetric("RMS", value: String(format: "%.1f dBFS", signal.rmsDbfs), detail: "Not LUFS")
+                        signalMetric("Peak", value: String(format: "%.1f dBFS", signal.samplePeakDbfs), detail: "\(signal.clippedFrameCount) clipped frames")
+                    }
+                    HStack(alignment: .top, spacing: 14) {
+                        signalMetric("Near silent", value: String(format: "%.1f%%", signal.nearSilentFrameFraction * 100), detail: "Decoded frames")
+                        signalMetric("Coverage", value: durationLabel(signal.durationSeconds), detail: "\(signal.analyzedFrameCount) frames")
+                    }
+
+                    GeometryReader { geometry in
+                        let points = compactSignalPoints(signal.waveform, maximum: 120)
+                        Canvas { context, size in
+                            guard !points.isEmpty else { return }
+                            let barWidth = max(size.width / CGFloat(points.count), 1)
+                            for (index, point) in points.enumerated() {
+                                let normalized = max(0.04, min((point.rmsDbfs + 72) / 72, 1))
+                                let height = size.height * normalized
+                                let rect = CGRect(
+                                    x: CGFloat(index) * barWidth,
+                                    y: (size.height - height) / 2,
+                                    width: max(barWidth - 1, 1),
+                                    height: height
+                                )
+                                let color: Color = point.clippedFrameCount > 0
+                                    ? .red
+                                    : point.rmsDbfs <= signal.thresholds.nearSilenceDbfs
+                                        ? .gray.opacity(0.4)
+                                        : .blue
+                                context.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(color))
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .gesture(
+                            SpatialTapGesture().onEnded { tap in
+                                let fraction = geometry.size.width > 0
+                                    ? min(max(tap.location.x / geometry.size.width, 0), 1)
+                                    : 0
+                                selectedAudioSeconds = signal.durationSeconds * fraction
+                                playback.play(
+                                    recording: recording,
+                                    library: library,
+                                    from: selectedAudioSeconds
+                                )
+                            }
+                        )
+                    }
+                    .frame(height: 96)
+                    .accessibilityElement()
+                    .accessibilityLabel("Decoded audio waveform")
+                    .accessibilityHint("Use the time slider below to choose an exact position with VoiceOver")
+
+                    HStack {
+                        Text("0:00")
+                        Spacer()
+                        Text("Tap waveform to listen")
+                        Spacer()
+                        Text(durationLabel(signal.durationSeconds))
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Slider(
+                            value: $selectedAudioSeconds,
+                            in: 0...max(signal.durationSeconds, 0.01)
+                        )
+                        .accessibilityLabel("Selected playback time")
+                        .accessibilityValue(durationLabel(selectedAudioSeconds))
+                        Button {
+                            playback.play(
+                                recording: recording,
+                                library: library,
+                                from: selectedAudioSeconds
+                            )
+                        } label: {
+                            Label(
+                                "Play from \(durationLabel(selectedAudioSeconds))",
+                                systemImage: "play.fill"
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("CaptureAudioSignalPlaySelected")
+                    }
+
+                    Text("Complete-frame RMS and sample-peak observations. A possible dropout is only a listening candidate, never a claim that audio was lost.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(Array(signal.observations.enumerated()), id: \.offset) { _, observation in
+                        Button {
+                            playback.play(
+                                recording: recording,
+                                library: library,
+                                from: observation.startSeconds
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(durationLabel(observation.startSeconds)) · \(humanizedSignalKind(observation.kind))")
+                                    .font(.caption.weight(.bold))
+                                Text(observation.detail)
+                                    .font(.caption)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    ForEach(Array(captureTimelineEvents(recording).enumerated()), id: \.offset) { _, event in
+                        Button {
+                            playback.play(
+                                recording: recording,
+                                library: library,
+                                from: event.startSeconds
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(durationLabel(event.startSeconds)) · \(humanizedSignalKind(event.kind))")
+                                    .font(.caption.weight(.bold))
+                                Text(event.detail)
+                                    .font(.caption)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if signal.observations.isEmpty && captureTimelineEvents(recording).isEmpty {
+                        Label("No configured signal observation or capture boundary needs attention.", systemImage: "checkmark.circle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
+                    if playback.playingRecordingID == recording.id {
+                        Label("Playing this local original", systemImage: "speaker.wave.2.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.blue)
+                    }
+                    if let error = playback.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                } else {
+                    Text("This source does not yet have a complete decoded signal scan. Quipsly will not infer loudness, clipping, silence, or dropout from transcript confidence.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -457,6 +617,94 @@ struct CaptureSourceEvidenceView: View {
         return pieces.isEmpty ? "Not measured by this capture build" : pieces.joined(separator: " · ")
     }
 
+    private func signalMetric(
+        _ label: String,
+        value: String,
+        detail: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactSignalPoints(
+        _ points: [LocalRecordingAudioSignalWindow],
+        maximum: Int
+    ) -> [LocalRecordingAudioSignalWindow] {
+        guard maximum > 0, points.count > maximum else { return points }
+        let groupSize = Int(ceil(Double(points.count) / Double(maximum)))
+        return stride(from: 0, to: points.count, by: groupSize).map { index in
+            let group = points[index..<min(index + groupSize, points.count)]
+            let first = group.first!
+            let last = group.last!
+            return LocalRecordingAudioSignalWindow(
+                startSeconds: first.startSeconds,
+                durationSeconds: last.startSeconds + last.durationSeconds
+                    - first.startSeconds,
+                rmsDbfs: group.map(\.rmsDbfs).max() ?? first.rmsDbfs,
+                samplePeakDbfs: group.map(\.samplePeakDbfs).max()
+                    ?? first.samplePeakDbfs,
+                clippedFrameCount: group.reduce(Int64(0)) {
+                    $0 + $1.clippedFrameCount
+                }
+            )
+        }
+    }
+
+    private func captureTimelineEvents(
+        _ recording: LocalRecording
+    ) -> [CaptureAudioTimelineEvent] {
+        guard let json = recording.recordingSegmentsJson,
+              let data = json.data(using: .utf8),
+              let segments = try? JSONDecoder().decode(
+                [RecordingSegment].self,
+                from: data
+              ) else { return [] }
+        let preservesWallClock = recording.sourceProfile?.pauseTimelinePolicy
+            == "silence-preserves-wall-clock"
+        var cumulativeActiveSeconds = 0.0
+        return segments.compactMap { segment in
+            cumulativeActiveSeconds += max(segment.durationSeconds ?? 0, 0)
+            guard let reason = segment.stopReason,
+                  reason != .userStop else { return nil }
+            let stoppedAt = segment.stoppedAt.flatMap {
+                ISO8601DateFormatter().date(from: $0)
+            }
+            let offset = preservesWallClock
+                ? stoppedAt.map {
+                    max(0, $0.timeIntervalSince(recording.startedAt))
+                } ?? cumulativeActiveSeconds
+                : cumulativeActiveSeconds
+            let route = [
+                segment.boundaryAudioRouteName,
+                segment.boundaryAudioRoutePortType,
+            ].compactMap(nonempty).joined(separator: " · ")
+            let detail = [
+                nonempty(segment.boundaryDetail),
+                nonempty(route),
+            ].compactMap { $0 }.joined(separator: " · ")
+            return CaptureAudioTimelineEvent(
+                kind: reason.rawValue,
+                startSeconds: offset,
+                detail: nonempty(detail) ?? "Boundary preserved without route detail"
+            )
+        }
+    }
+
+    private func humanizedSignalKind(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
+    }
+
     private func shortenedDigest(_ value: String?) -> String {
         guard let value = nonempty(value), value.count >= 16 else {
             return "Not verified"
@@ -478,6 +726,12 @@ struct CaptureSourceEvidenceView: View {
         let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized?.isEmpty == false ? normalized : nil
     }
+}
+
+private struct CaptureAudioTimelineEvent {
+    let kind: String
+    let startSeconds: Double
+    let detail: String
 }
 
 private struct EvidenceRow: View {
@@ -541,6 +795,18 @@ struct CaptureSourceEvidencePreviewView: View {
                     EvidenceRow(label: "Hardware input", value: "48000 Hz · 1 input channel")
                     EvidenceRow(label: "Pipeline", value: "livekit-local-input-pcm")
                     EvidenceRow(label: "Pause timeline", value: "silence-preserves-wall-clock")
+                }
+
+                previewCard(title: "Audio visibility", systemImage: "waveform.path.ecg") {
+                    EvidenceRow(label: "Decoded coverage", value: "100% of preview frames")
+                    EvidenceRow(label: "RMS", value: "−18.4 dBFS · not LUFS")
+                    EvidenceRow(label: "Sample peak", value: "−1.2 dBFS · 0 clipped frames")
+                    EvidenceRow(label: "Near silent", value: "4.2% of decoded frames")
+                    Label("00:08 · Possible dropout · listen before classifying", systemImage: "play.circle")
+                        .font(.caption.weight(.semibold))
+                    Text("Preview values demonstrate the signal-review vocabulary only. No source was decoded and no audio-health claim was created.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 previewCard(title: "Room boundary", systemImage: "lock.shield.fill") {

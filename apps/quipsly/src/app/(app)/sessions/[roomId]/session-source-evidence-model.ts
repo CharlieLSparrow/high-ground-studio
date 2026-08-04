@@ -1,3 +1,5 @@
+import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+
 type UnknownRecord = Record<string, unknown>;
 
 type RecordingAssetEvidenceRow = {
@@ -92,6 +94,7 @@ export type SessionSourceEvidence = {
         decodedChannelCount: number | null;
         capturePipeline: string | null;
         pauseTimelinePolicy: string | null;
+        signal: AudioTranscriptEvidence["audio"]["signal"];
       };
     };
     processingDisposition: string | null;
@@ -182,6 +185,7 @@ function sourceRuntime(manifest: UnknownRecord) {
       decodedChannelCount: finiteNumber(recorded.audioChannelCount),
       capturePipeline: text(profile.audioCapturePipeline),
       pauseTimelinePolicy: text(profile.pauseTimelinePolicy),
+      signal: parseAudioSignalEvidence(profile.audioSignal),
     },
   };
 }

@@ -508,6 +508,7 @@ function SessionSourceEvidenceCard({
       decodedChannelCount: null,
       capturePipeline: null,
       pauseTimelinePolicy: null,
+      signal: null,
     };
     const audioSampleRate = audio.decodedSampleRateHz ?? audio.sampleRateHz;
     const audioChannels = audio.decodedChannelCount ?? audio.channelCount;
@@ -531,6 +532,8 @@ function SessionSourceEvidenceCard({
         <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Capture runtime</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{appLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{[source.captureRuntime.deviceModel, source.captureRuntime.operatingSystem].filter(Boolean).join(" · ") || "Device/OS not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.captureRuntime.audioRoute || "No captured audio route"}{source.captureRuntime.audioInputDataSource ? ` · ${source.captureRuntime.audioInputDataSource}` : ""}</dd><dd className="mt-1 text-[10px] font-black leading-4 text-sky-800">{audioFormatLabel}</dd></div>
         <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Cloud copy</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{byteSizeLabel(source.cloud.byteSize)} · generation {source.cloud.generation || "absent"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.cloud.verifiedAt ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}` : "No server verification time"}</dd></div>
       </dl>
+
+      {audio.signal ? <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-5 text-sky-950"><p className="font-black uppercase tracking-wide">Complete decoded signal scan · {humanize(audio.signal.status)}</p><p className="mt-1">RMS {audio.signal.rmsDbfs.toFixed(1)} dBFS · peak {audio.signal.samplePeakDbfs.toFixed(1)} dBFS · {audio.signal.clippedFrameCount.toLocaleString()} clipped frames · {(audio.signal.nearSilentFrameFraction * 100).toFixed(1)}% near-silent frames</p><p className="mt-1 text-[10px] text-sky-800">RMS is not LUFS. {audio.signal.observations.length} exact-time signal observation{audio.signal.observations.length === 1 ? "" : "s"} require{audio.signal.observations.length === 1 ? "s" : ""} listening in Transcript review.</p></div> : <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white p-3 text-xs font-bold leading-5 text-sky-950">No complete decoded signal scan is attached to this source. Nest does not infer audio health from transcript confidence.</p>}
 
       <div className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40] sm:grid-cols-2">
         <div><p className="font-black uppercase tracking-wide text-[#8a7354]">Capture / group</p><p className="mt-1 break-all font-mono">{source.captureId || "Capture ID absent"}</p><p className="mt-1 break-all font-mono">{source.captureGroupId || "Group ID absent"}</p></div>

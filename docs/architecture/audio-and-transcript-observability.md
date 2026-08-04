@@ -1,6 +1,6 @@
 # Audio and transcript observability
 
-Status: implemented baseline
+Status: implemented signal-observability slice; production corpus gate remains
 Last reviewed: 2026-08-03
 
 Quipsly treats captured audio, provider inference, and playback-backed review as
@@ -49,9 +49,28 @@ The projection exposes:
 - transcript start, end, recording duration, and untranscribed tail duration;
 - provider speaker-cluster and real-participant attribution coverage.
 
+It also carries a bounded, deterministic signal profile produced from decoded
+source samples on the iPhone:
+
+- overall and windowed RMS dBFS, sample peak dBFS, and decoded-frame coverage;
+- clipped-frame and near-silent-frame fractions;
+- left/right RMS and stereo-balance observations when the source has at least
+  two channels;
+- exact-time clipping, near-digital-silence, stereo-imbalance, and
+  possible-dropout listening candidates;
+- exact-time pause, interruption, user-mark, and app-background boundaries,
+  including the displaced audio route when iOS reports one.
+
+The signal algorithm averages channel energy, not channel samples, so valid
+out-of-phase stereo material cannot cancel into apparent silence. Waveform
+payloads are capped at 1,200 points on-device and compacted to at most 180
+points in Nest while retaining each group’s maximum RMS and peak so visible
+transients are not averaged away.
+
 The untranscribed tail is a timing observation, not automatically a dropout.
-It can be expected silence. Signal analysis must establish whether audible
-material exists before Quipsly labels words or audio as missing.
+It can be expected silence. When decoded signal exists after the final
+transcript word, Nest raises an exact-time listening target; it still does not
+assert which words, if any, are missing.
 
 ## Capture evidence
 
@@ -63,6 +82,18 @@ Those are deliberately separate from the requested encoder settings.
 The iPhone source evidence sheet shows the encoded format, hardware input,
 capture pipeline, and pause timeline. Missing legacy fields render as unknown;
 old recordings are not rewritten with guessed values.
+
+A newly finalized audio take is now decoded through its declared end before it
+becomes upload-eligible. In the same pass, Capture records the bounded signal
+profile. A zero-frame, truncated, corrupt, or incomplete decode keeps its bytes
+but enters the repair state; it is not uploaded or described as playable. A
+silent but structurally valid source remains preserved and uploadable with a
+visible warning because silence alone is not corruption.
+
+RMS dBFS is labeled explicitly as **not LUFS**. Integrated loudness requires a
+standards-conformant BS.1770/R128 implementation and remains a processing-worker
+addition; the product does not relabel the cheaper source observation as
+loudness.
 
 ## Correction and provenance
 
@@ -78,12 +109,12 @@ person.
 
 ## Next maturity layer
 
-The next audio-observability slice should add deterministic source analysis and
-a real evaluation corpus:
+The next audio-observability slice should extend this deterministic source
+analysis and operate a real evaluation corpus:
 
-- waveform and navigable transcript alignment;
-- peak, integrated loudness, clipping, silence, channel imbalance, and dropout
-  observations with exact time ranges;
+- standards-conformant integrated loudness and true-peak analysis in the media
+  worker, preserving the on-device RMS/sample-peak evidence separately;
+- server-side signal analysis for video-contained audio and legacy sources;
 - capture-route changes and pause/interruption boundaries on the same timeline;
 - side-by-side provider candidates without replacing the canonical source;
 - named speaker evaluation and domain vocabulary tests;
@@ -102,6 +133,11 @@ condition, never merely express that a model is uncertain.
 - WER is absent until at least one segment has playback-backed reference text.
 - Sample WER cannot be presented as whole-transcript accuracy.
 - Every attention item seeks to the exact source time without editing the file.
+- Fresh iPhone audio decodes through EOF and persists a bounded signal profile
+  before the upload queue accepts it.
+- Silence is never asserted to be a dropout without listening; UI and evidence
+  call the deterministic condition a possible-dropout candidate.
+- RMS is never labeled or displayed as LUFS.
 - An external microphone name and hardware format survive capture, local
   library readback, upload metadata, Nest ingestion, and transcript review.
 - A full-transcript accuracy claim requires complete playback-backed review or

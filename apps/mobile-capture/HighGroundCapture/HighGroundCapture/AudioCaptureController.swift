@@ -61,6 +61,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     #endif
     private var displayDurationTimer: Timer?
     private var startTask: Task<Void, Never>?
+    private var finalizationTask: Task<Void, Never>?
     private var providerAudioStartWatchdogTask: Task<Void, Never>?
     private var accountObserver: NSObjectProtocol?
 
@@ -524,6 +525,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     @objc private func handleRouteChange(notification: Notification) {
+        let previousInput = (
+            notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey]
+                as? AVAudioSessionRouteDescription
+        )?.inputs.first
         refreshInputRoute()
 
         guard captureState == .recording,
@@ -533,7 +538,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
             return
         }
 
-        pauseRecording(reason: .interruption, causedByInterruption: true)
+        pauseRecording(
+            reason: .interruption,
+            causedByInterruption: true,
+            boundaryDetail: "active-audio-route-unavailable",
+            boundaryRouteName: previousInput?.portName,
+            boundaryRoutePortType: previousInput?.portType.rawValue
+        )
         broadcastError(message: "The active microphone changed or disconnected. Recording is paused so you can verify the new route before explicitly resuming.")
     }
 
@@ -1083,7 +1094,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
         audioRecorder.stop()
     }
 
-    private func pauseRecording(reason: RecordingStopReason, causedByInterruption: Bool) {
+    private func pauseRecording(
+        reason: RecordingStopReason,
+        causedByInterruption: Bool,
+        boundaryDetail: String? = nil,
+        boundaryRouteName: String? = nil,
+        boundaryRoutePortType: String? = nil
+    ) {
         guard captureState == .recording else { return }
 
         let pausedAt = Date()
@@ -1096,7 +1113,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #else
         audioRecorder?.pause()
         #endif
-        endCurrentSegment(reason: reason, at: pausedAt)
+        endCurrentSegment(
+            reason: reason,
+            at: pausedAt,
+            boundaryDetail: boundaryDetail,
+            boundaryRouteName: boundaryRouteName,
+            boundaryRoutePortType: boundaryRoutePortType
+        )
         accumulateActiveDuration(until: pausedAt)
         startTime = nil
         currentDuration = sourceTimelineDuration(at: pausedAt)
@@ -1214,7 +1237,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
         currentSegmentStart = date
     }
 
-    private func endCurrentSegment(reason: RecordingStopReason, at stoppedAt: Date) {
+    private func endCurrentSegment(
+        reason: RecordingStopReason,
+        at stoppedAt: Date,
+        boundaryDetail: String? = nil,
+        boundaryRouteName: String? = nil,
+        boundaryRoutePortType: String? = nil
+    ) {
         guard let startedAt = currentSegmentStart else { return }
 
         let segment = RecordingSegment(
@@ -1229,7 +1258,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
             startedAt: ISO8601DateFormatter().string(from: startedAt),
             stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
             durationSeconds: max(0, stoppedAt.timeIntervalSince(startedAt)),
-            stopReason: reason
+            stopReason: reason,
+            boundaryDetail: boundaryDetail,
+            boundaryAudioRouteName: boundaryRouteName,
+            boundaryAudioRoutePortType: boundaryRoutePortType
         )
         segments.append(segment)
         currentSegmentOrder += 1
@@ -1465,6 +1497,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     private func finalizeSuccessfulRecording() {
+        guard finalizationTask == nil else { return }
+        finalizationTask = Task { [weak self] in
+            guard let self else { return }
+            await self.finishValidatedRecording()
+        }
+    }
+
+    private func finishValidatedRecording() async {
+        defer { finalizationTask = nil }
         guard let fileURL = currentRecordingURL,
               let recordingID = activeLocalRecordingID else {
             finishCaptureFailure("Quipsly finalized audio but could not find its local ledger identity.")
@@ -1477,12 +1518,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         do {
             try localRecordingLibrary.setFinalizedFileProtection(at: fileURL)
-            let finalized = try localRecordingLibrary.finalize(
+            let bounded = try localRecordingLibrary.finalize(
                 recordingID,
                 stoppedAt: stoppedAt,
                 durationSeconds: duration,
                 recordingSegmentsJson: segmentsJson,
                 statusMessage: pendingFinalizationMessage
+            )
+            let finalized = try await localRecordingLibrary.validateFinalizedSource(
+                bounded.id
             )
             guard finalized.status == .saved else {
                 finishCaptureFailure(
@@ -1492,8 +1536,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 return
             }
 
-            currentDuration = duration
-            accumulatedDuration = duration
+            currentDuration = finalized.durationSeconds
+            accumulatedDuration = finalized.durationSeconds
             currentTakeOrder += 1
             failureMessage = nil
             if automaticStopReason == nil {
