@@ -76,9 +76,11 @@ The Episode editor now consumes this evidence through one additional source
 boundary. Exact edit analysis retains up to 1,200 validated Capture waveform
 points rather than the 180-point display projection, binds the signal profile
 and immutable recording identity into the proposal set, and requires one
-unambiguous currently released source. A covered low-energy transcript gap is
-still a listening candidate; signal above the source threshold inside a word
-gap becomes a possible-missing-transcript candidate instead of a silence cut.
+unambiguous currently released source. A fully covered low-energy transcript
+gap may become an unapplied, proof-listen-first range proposal whose persisted
+timeline metadata can always be restored. Signal above the source threshold
+inside a word gap becomes a possible-missing-transcript candidate instead of a
+silence cut.
 See `docs/coordination/2026-08-03-signal-and-speaker-edit-evidence.md`.
 
 ## Capture evidence

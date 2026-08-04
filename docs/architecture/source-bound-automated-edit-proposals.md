@@ -55,6 +55,8 @@ source media was never changed.
 ## Current proposal vocabulary
 
 - `deactivate`: mark an exact transcript block inactive in the editable cut;
+- `deactivate_range`: skip an exact source-time interval in active-edit playback
+  and render projection while preserving source-review playback; and
 - `add_keyframe`: add a bounded source-timed reframe keyframe.
 
 The vocabulary is intentionally small while the evidence spine is established.
@@ -101,7 +103,10 @@ Covered transcript gaps now split into three honest states:
 - timing only, when evidence is absent, ambiguous, held, incomplete, or between
   thresholds.
 
-Measured low energy is not approved silence and has no Apply action. Signal in
+Measured low energy is not approved silence. When the decoded signal covers the
+entire interval and remains beneath the source threshold, Quipsly can offer an
+unapplied `deactivate_range` proposal. The reviewer must proof-listen the
+untouched interval before applying the reversible timeline decision. Signal in
 a transcript gap is a transcription-accuracy alert because it may contain
 missing words or intentional sound. RMS dBFS is never relabeled as LUFS.
 
@@ -109,6 +114,21 @@ Canonical speaker labels are now part of the transcript hash. Exact timing
 overlap creates a listening candidate, and a real label transition creates a
 camera-review candidate. Neither becomes a timing repair or multicamera switch
 without review and source-camera mapping.
+
+## Persisted range decisions
+
+Episode artifact v3 persists exact range decisions separately from transcript
+blocks. Each range carries its reason, source class, confidence, proposal
+identity, creation time, and—when signal-backed—the immutable recording SHA,
+storage generation, signal-profile SHA, coverage, RMS observation, and
+threshold. The same range contributes to the canonical timeline fingerprint,
+active-edit playback skip, ripple render projection, and duration display.
+
+The Playback cockpit exposes a persistent decision ledger. A reviewer can
+proof-listen each interval against complete source playback or restore it to the
+active edit after a save/reload. Restore and immediate Undo/Redo are normal
+timeline history operations. Save persists the resulting decision; none of
+these operations rewrites captured media.
 
 ## Non-negotiable boundaries
 
@@ -131,8 +151,8 @@ playback.
 - real provider run over a retained HGO transcript and media timeline;
 - decoded-signal corroboration for silence/dropout candidates plus overlap and
   speaker-change evidence on genuine Capture media;
-- a reversible, persisted timeline range-edit primitive before measured
-  low-energy intervals can become applicable proposals;
+- persisted proposal review receipts recording proof-listen, apply, dismiss,
+  restore, actor, and artifact revision independently of the range decision;
 - automated draft timeline with before/after proof-watch and render receipts;
 - multicamera and local-device media synchronization;
 - physical-iPhone source, TestFlight, and full episode proof-watch;

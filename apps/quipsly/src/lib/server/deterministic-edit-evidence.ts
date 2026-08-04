@@ -162,16 +162,15 @@ export function deterministicEditEvidence(
         : null;
       const baseEvidence = { blockIds: evidenceBlocks.map((block) => block.id), transcriptTextSha256: sha256(evidenceBlocks) };
       if (audioSignal?.classification === "measured-low-energy") {
-        reviewCandidates.push({
-          candidateId: `candidate_${stableId("signal-corroborated-gap", evidenceBlocks, leftEnd, right.time, audioSignal.signalProfileSha256)}`,
-          kind: "signal-corroborated-gap",
+        proposals.push({
+          proposalId: `deterministic_${stableId("signal-corroborated-range", evidenceBlocks, leftEnd, right.time, audioSignal.signalProfileSha256)}`,
+          type: "deactivate_range",
           sourceRange: { startSeconds: leftEnd, endSeconds: right.time },
           evidence: { ...baseEvidence, audioSignal },
-          rationale: `Decoded audio covers ${(audioSignal.coverageFraction * 100).toFixed(0)}% of this ${gap.toFixed(2)} second transcript gap. Its strongest RMS window is ${audioSignal.maximumRmsDbfs.toFixed(1)} dBFS, at or below the ${audioSignal.nearSilenceDbfs.toFixed(1)} dBFS near-silence threshold. This is measured low energy, not proof that the range should be cut.`,
+          rationale: `Decoded audio covers ${(audioSignal.coverageFraction * 100).toFixed(0)}% of this ${gap.toFixed(2)} second transcript gap. Its strongest RMS window is ${audioSignal.maximumRmsDbfs.toFixed(1)} dBFS, at or below the ${audioSignal.nearSilenceDbfs.toFixed(1)} dBFS near-silence threshold. Review the untouched interval before applying this reversible range skip.`,
           confidence: "medium",
-          suggestedAction: "review-cut",
-          requiresSignalEvidence: false,
           changesSource: false,
+          applied: false,
         });
       } else if (audioSignal?.classification === "measured-signal-present") {
         reviewCandidates.push({

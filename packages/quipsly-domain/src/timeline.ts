@@ -57,6 +57,33 @@ export type TranscriptBlock = {
   aiSuggested?: boolean;
 };
 
+/**
+ * A reversible non-destructive decision to skip an exact timeline interval.
+ * Source media stays immutable; active-edit playback and render projections
+ * ripple around this interval while source review continues to expose it.
+ */
+export type TimelineRangeEdit = {
+  id: string;
+  startSeconds: number;
+  durationSeconds: number;
+  reason: string;
+  source: "manual" | "deterministic-signal" | "imported-edit";
+  confidence?: "low" | "medium" | "high";
+  proposalId?: string;
+  createdAt?: string;
+  aiSuggested?: boolean;
+  sourceEvidence?: {
+    recordingAssetId: string;
+    sourceSha256: string;
+    storageGeneration: string | null;
+    signalProfileSha256: string;
+    classification: "measured-low-energy";
+    coverageFraction: number;
+    maximumRmsDbfs: number;
+    nearSilenceDbfs: number;
+  };
+};
+
 export type PaperEditSnapshot = {
   clips: TimelineClip[];
   transcript: TranscriptBlock[];
@@ -81,6 +108,7 @@ export type LoopClip = {
 export type TimelineState = {
   clips: TimelineClip[];
   transcript: TranscriptBlock[];
+  deactivatedRanges?: TimelineRangeEdit[];
   paperEditSnapshots?: Record<string, PaperEditSnapshot>;
   loopClips?: LoopClip[];
   editorMode?: "play-all" | "play-edit";

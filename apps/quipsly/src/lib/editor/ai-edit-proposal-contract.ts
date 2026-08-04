@@ -50,11 +50,12 @@ export type AiEditReviewCandidate = {
 
 export type AiEditProposal = {
   proposalId: string;
-  type: "deactivate" | "add_keyframe";
+  type: "deactivate" | "deactivate_range" | "add_keyframe";
   sourceRange: { startSeconds: number; endSeconds: number };
   evidence: {
     blockIds: string[];
     transcriptTextSha256: string;
+    audioSignal?: AiEditAudioSignalEvidence;
   };
   rationale: string;
   confidence: "low" | "medium" | "high";

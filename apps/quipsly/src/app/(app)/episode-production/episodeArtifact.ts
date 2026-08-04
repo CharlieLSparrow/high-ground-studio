@@ -1,3 +1,5 @@
+import type { TimelineRangeEdit } from "@high-ground/quipsly-domain";
+
 export type EpisodeArtifactTimelineClip = {
   id: string;
   assetId: string;
@@ -22,6 +24,8 @@ export type EpisodeArtifactTranscript = {
   text: string;
   deleted: boolean;
   alert: string | null;
+  speaker?: string | null;
+  deactivated?: boolean;
 };
 
 export type EpisodeArtifactPaperEditSnapshot = {
@@ -100,8 +104,9 @@ export type EpisodeImportedMediaAsset = {
 
 import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
-export const EPISODE_ARTIFACT_CURRENT_VERSION = 2;
-export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 1;
+export const EPISODE_ARTIFACT_CURRENT_VERSION = 3;
+export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 2;
+export const EPISODE_ARTIFACT_LEGACY_VERSION = 1;
 export const EPISODE_PRODUCTION_CURRENT_VERSION = 1;
 export const EPISODE_AUDIO_TAKE_STACK_SOURCE = "quipsly-audio-take-stack-v1";
 export const EPISODE_MAC_TIMELINE_ATTACH_SOURCE = "quipsly-mac-import-attach-v1";
@@ -115,6 +120,7 @@ export type EpisodeArtifactPayload = {
   source: EpisodeArtifactSource;
   timelineClips: EpisodeArtifactTimelineClip[];
   transcript: EpisodeArtifactTranscript[];
+  deactivatedRanges?: TimelineRangeEdit[];
   paperEditSnapshots?: Record<string, EpisodeArtifactPaperEditSnapshot>;
   importedMedia?: EpisodeImportedMediaAsset[];
   contentFingerprint?: string;
@@ -144,7 +150,7 @@ export type EpisodeArtifactLegacyInput = {
   // old key variants from early recorder/editor saves
   project?: string;
   episode?: string;
-  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[] };
+  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[]; deactivatedRanges?: TimelineRangeEdit[] };
   room?: {
     project?: string;
     episode?: string;
@@ -154,6 +160,7 @@ export type EpisodeArtifactLegacyInput = {
   data?: {
     timelineClips?: EpisodeArtifactTimelineClip[];
     transcript?: EpisodeArtifactTranscript[];
+    deactivatedRanges?: TimelineRangeEdit[];
   };
   savedAt?: string;
   [key: string]: unknown;
@@ -171,7 +178,7 @@ function toString(value: unknown, fallback?: string) {
 
 export function getEpisodePayloadVersion(value: EpisodeArtifactShape): number {
   const record = normalizeStringRecord(value);
-  if (!record) return EPISODE_ARTIFACT_PREVIOUS_VERSION;
+  if (!record) return EPISODE_ARTIFACT_LEGACY_VERSION;
 
   const raw = record.payloadVersion;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
@@ -182,7 +189,7 @@ export function getEpisodePayloadVersion(value: EpisodeArtifactShape): number {
   if (record.version === "quipsly-recording-room.v1" || record.version === "quipsly-timeline.v1") {
     return 1;
   }
-  return EPISODE_ARTIFACT_PREVIOUS_VERSION;
+  return EPISODE_ARTIFACT_LEGACY_VERSION;
 }
 
 export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload | null {
@@ -195,6 +202,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
 
   const timelineClips = Array.isArray(record.timelineClips) ? record.timelineClips : Array.isArray(nestedTimeline?.timelineClips) ? nestedTimeline?.timelineClips : Array.isArray(nestedData?.timelineClips) ? nestedData?.timelineClips : [];
   const transcript = Array.isArray(record.transcript) ? record.transcript : Array.isArray(nestedTimeline?.transcript) ? nestedTimeline?.transcript : Array.isArray(nestedData?.transcript) ? nestedData?.transcript : [];
+  const deactivatedRanges = Array.isArray(record.deactivatedRanges) ? record.deactivatedRanges : Array.isArray(nestedTimeline?.deactivatedRanges) ? nestedTimeline?.deactivatedRanges : Array.isArray(nestedData?.deactivatedRanges) ? nestedData?.deactivatedRanges : [];
 
   if (!Array.isArray(timelineClips) || !Array.isArray(transcript)) return null;
 
@@ -205,6 +213,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
     source: toString(record.source, "unknown"),
     timelineClips,
     transcript,
+    deactivatedRanges: deactivatedRanges as TimelineRangeEdit[],
     paperEditSnapshots: normalizeStringRecord(record.paperEditSnapshots) as Record<string, EpisodeArtifactPaperEditSnapshot> | undefined,
     importedMedia: Array.isArray(record.importedMedia) ? record.importedMedia as EpisodeImportedMediaAsset[] : undefined,
     contentFingerprint: toString(record.contentFingerprint, undefined),
@@ -229,6 +238,7 @@ export type EpisodeArtifactLegacyShape = {
   timelineClips?: EpisodeArtifactTimelineClip[];
   clips?: EpisodeArtifactTimelineClip[];
   transcript?: EpisodeArtifactTranscript[];
+  deactivatedRanges?: TimelineRangeEdit[];
   blocks?: EpisodeArtifactTranscript[];
   source?: string;
   generatedFrom?: string;

@@ -1,5 +1,5 @@
 import { AbsoluteFill, Audio, Sequence, Video } from "remotion";
-import { TimelineState, isAudioTrackId, isVideoTrackId } from "./useTimelineState";
+import { TimelineState, deactivatedTimelineIntervals, isAudioTrackId, isVideoTrackId } from "./useTimelineState";
 import { Video360Player } from "./Video360Player";
 import type { TimelineClip } from "./useTimelineState";
 
@@ -85,7 +85,7 @@ function sortComposureClips(clips: any[]) {
   });
 }
 
-function computeRenderSegments(timeline: TimelineState) {
+export function computeRenderSegments(timeline: TimelineState) {
   if (timeline.editorMode === "play-all" || !timeline.editorMode) {
     return timeline.clips.map(clip => ({
       ...clip,
@@ -96,15 +96,15 @@ function computeRenderSegments(timeline: TimelineState) {
     }));
   }
 
-  const deactivatedBlocks = timeline.transcript.filter(b => b.deactivated || b.deleted);
+  const deactivatedIntervals = deactivatedTimelineIntervals(timeline);
 
   function getRippledTime(t: number) {
     let shift = 0;
-    for (const b of deactivatedBlocks) {
-      if (t >= b.time + b.duration) {
-         shift += b.duration;
-      } else if (t > b.time) {
-         shift += (t - b.time);
+    for (const interval of deactivatedIntervals) {
+      if (t >= interval.endSeconds) {
+         shift += interval.endSeconds - interval.startSeconds;
+      } else if (t > interval.startSeconds) {
+         shift += (t - interval.startSeconds);
       }
     }
     return t - shift;
@@ -119,9 +119,9 @@ function computeRenderSegments(timeline: TimelineState) {
        duration: clip.duration
      }];
 
-     for (const block of deactivatedBlocks) {
-        const blockStart = block.time;
-        const blockEnd = blockStart + block.duration;
+     for (const interval of deactivatedIntervals) {
+        const blockStart = interval.startSeconds;
+        const blockEnd = interval.endSeconds;
         const newSegments = [];
         for (const seg of segments) {
            const segEnd = seg.startIn + seg.duration;

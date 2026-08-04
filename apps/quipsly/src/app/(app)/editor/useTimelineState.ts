@@ -6,8 +6,8 @@ export const TRACK_PREFIX_AUDIO = "A" as const;
 
 export const DEFAULT_VIDEO_TRACK = `${TRACK_PREFIX_VIDEO}1`;
 export const DEFAULT_AUDIO_TRACK = `${TRACK_PREFIX_AUDIO}1`;
-import type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
-export type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, PaperEditSnapshot, LoopClip, TimelineState };
+import type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
+export type { TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
 
 type TrackPrefix = typeof TRACK_PREFIX_VIDEO | typeof TRACK_PREFIX_AUDIO;
 
@@ -72,6 +72,84 @@ function sanitizeTranscriptBlock(block: TranscriptBlock) {
     aiSuggested: Boolean(block.aiSuggested),
     deactivated: Boolean(block.deactivated),
   } satisfies TranscriptBlock;
+}
+
+export function sanitizeTimelineRangeEdit(range: TimelineRangeEdit): TimelineRangeEdit | null {
+  const rawStartSeconds = toFiniteNumber(range.startSeconds, -1);
+  const durationSeconds = toFiniteNumber(range.durationSeconds, -1);
+  const id = typeof range.id === "string" ? range.id.trim() : "";
+  const reason = typeof range.reason === "string" ? range.reason.trim() : "";
+  if (!id || !reason || rawStartSeconds < 0 || durationSeconds < MIN_TIMELINE_CLIP_SECONDS) return null;
+  const source = range.source === "deterministic-signal" || range.source === "imported-edit"
+    ? range.source
+    : "manual";
+  const evidence = range.sourceEvidence;
+  return {
+    id,
+    startSeconds: rawStartSeconds,
+    durationSeconds,
+    reason,
+    source,
+    confidence: range.confidence === "low" || range.confidence === "medium" || range.confidence === "high"
+      ? range.confidence
+      : undefined,
+    proposalId: typeof range.proposalId === "string" ? range.proposalId.trim() || undefined : undefined,
+    createdAt: typeof range.createdAt === "string" ? range.createdAt : undefined,
+    aiSuggested: Boolean(range.aiSuggested),
+    sourceEvidence: evidence
+      && typeof evidence.recordingAssetId === "string"
+      && typeof evidence.sourceSha256 === "string"
+      && typeof evidence.signalProfileSha256 === "string"
+      && evidence.classification === "measured-low-energy"
+      ? {
+        recordingAssetId: evidence.recordingAssetId,
+        sourceSha256: evidence.sourceSha256,
+        storageGeneration: typeof evidence.storageGeneration === "string" ? evidence.storageGeneration : null,
+        signalProfileSha256: evidence.signalProfileSha256,
+        classification: "measured-low-energy",
+        coverageFraction: Math.max(0, Math.min(1, toFiniteNumber(evidence.coverageFraction, 0))),
+        maximumRmsDbfs: toFiniteNumber(evidence.maximumRmsDbfs, -160),
+        nearSilenceDbfs: toFiniteNumber(evidence.nearSilenceDbfs, -72),
+      }
+      : undefined,
+  };
+}
+
+export type DeactivatedTimelineInterval = {
+  startSeconds: number;
+  endSeconds: number;
+  ids: string[];
+};
+
+export function deactivatedTimelineIntervals(state: TimelineState): DeactivatedTimelineInterval[] {
+  const intervals = [
+    ...state.transcript
+      .filter((block) => block.deleted || block.deactivated)
+      .map((block) => ({
+        startSeconds: Math.max(0, block.time),
+        endSeconds: Math.max(0, block.time + block.duration),
+        id: `transcript:${block.id}`,
+      })),
+    ...(state.deactivatedRanges ?? []).map((range) => ({
+      startSeconds: Math.max(0, range.startSeconds),
+      endSeconds: Math.max(0, range.startSeconds + range.durationSeconds),
+      id: `range:${range.id}`,
+    })),
+  ]
+    .filter((range) => range.endSeconds - range.startSeconds >= MIN_TIMELINE_CLIP_SECONDS)
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds);
+
+  const merged: DeactivatedTimelineInterval[] = [];
+  for (const interval of intervals) {
+    const prior = merged[merged.length - 1];
+    if (prior && interval.startSeconds <= prior.endSeconds + 0.001) {
+      prior.endSeconds = Math.max(prior.endSeconds, interval.endSeconds);
+      prior.ids.push(interval.id);
+    } else {
+      merged.push({ startSeconds: interval.startSeconds, endSeconds: interval.endSeconds, ids: [interval.id] });
+    }
+  }
+  return merged;
 }
 
 function makeSplitTimelineId(clipId: string, suffix: string) {
@@ -174,17 +252,21 @@ function sanitizeLoopClip(loop: any): LoopClip {
 
 function sanitizeTimelineState(nextState: TimelineState | null | undefined): TimelineState {
   if (!nextState || typeof nextState !== "object") {
-    return { clips: [], transcript: [], loopClips: [], editorMode: "play-edit" };
+    return { clips: [], transcript: [], deactivatedRanges: [], loopClips: [], editorMode: "play-edit" };
   }
   const paperEditSnapshots = sanitizePaperEditSnapshots(nextState.paperEditSnapshots);
   const rawClips = Array.isArray(nextState.clips) ? nextState.clips : [];
   const rawTranscript = Array.isArray(nextState.transcript) ? nextState.transcript : [];
   const rawLoopClips = Array.isArray(nextState.loopClips) ? nextState.loopClips : [];
+  const rawDeactivatedRanges = Array.isArray(nextState.deactivatedRanges) ? nextState.deactivatedRanges : [];
   const editorMode: "play-all" | "play-edit" = nextState.editorMode === "play-all" ? "play-all" : "play-edit";
 
   const sanitized = {
     clips: rawClips.map((clip) => sanitizeTimelineClip(clip, DEFAULT_VIDEO_TRACK)),
     transcript: rawTranscript.map(sanitizeTranscriptBlock),
+    deactivatedRanges: rawDeactivatedRanges
+      .map(sanitizeTimelineRangeEdit)
+      .filter((range): range is TimelineRangeEdit => Boolean(range)),
     loopClips: rawLoopClips.map(sanitizeLoopClip),
     editorMode,
   };
@@ -197,6 +279,8 @@ type Action =
   | { type: "REPLACE"; payload: TimelineState }
   | { type: "ADD_CLIP"; payload: { clip: TimelineClip } }
   | { type: "TOGGLE_DELETE_BLOCK"; payload: { blockId: string } }
+  | { type: "ADD_DEACTIVATED_RANGE"; payload: { range: TimelineRangeEdit } }
+  | { type: "REMOVE_DEACTIVATED_RANGE"; payload: { rangeId: string } }
   | { type: "SPLIT_CLIP_AT"; payload: { clipId: string; time: number } }
   | { type: "TRIM_CLIP"; payload: { clipId: string; edge: "start" | "end"; deltaSeconds: number } }
   | { type: "UPDATE_CLIP_SOURCE"; payload: { clipId: string; assetId: string; name?: string } }
@@ -289,6 +373,29 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
             label: block.text.slice(0, 120),
           },
         },
+      };
+    }
+    case "ADD_DEACTIVATED_RANGE": {
+      const range = sanitizeTimelineRangeEdit(action.payload.range);
+      if (!range) return state;
+      const existing = state.deactivatedRanges ?? [];
+      if (existing.some((candidate) => candidate.id === range.id)) return state;
+      const rangeEnd = range.startSeconds + range.durationSeconds;
+      if (existing.some((candidate) => {
+        const candidateEnd = candidate.startSeconds + candidate.durationSeconds;
+        return range.startSeconds < candidateEnd && rangeEnd > candidate.startSeconds;
+      })) return state;
+      return {
+        ...state,
+        deactivatedRanges: [...existing, range].sort((left, right) => left.startSeconds - right.startSeconds),
+      };
+    }
+    case "REMOVE_DEACTIVATED_RANGE": {
+      const existing = state.deactivatedRanges ?? [];
+      if (!existing.some((range) => range.id === action.payload.rangeId)) return state;
+      return {
+        ...state,
+        deactivatedRanges: existing.filter((range) => range.id !== action.payload.rangeId),
       };
     }
     case "SPLIT_CLIP_AT": {
@@ -697,6 +804,10 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "ADD_CLIP", payload: { clip } }),
     toggleDeleteBlock: (blockId: string) =>
       dispatch({ type: "TOGGLE_DELETE_BLOCK", payload: { blockId } }),
+    addDeactivatedRange: (range: TimelineRangeEdit) =>
+      dispatch({ type: "ADD_DEACTIVATED_RANGE", payload: { range } }),
+    removeDeactivatedRange: (rangeId: string) =>
+      dispatch({ type: "REMOVE_DEACTIVATED_RANGE", payload: { rangeId } }),
     splitClipAt: (clipId: string, time: number) =>
       dispatch({ type: "SPLIT_CLIP_AT", payload: { clipId, time } }),
     trimClip: (clipId: string, edge: "start" | "end", deltaSeconds: number) =>

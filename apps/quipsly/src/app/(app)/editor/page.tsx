@@ -17,6 +17,8 @@ import {
   TRACK_PREFIX_AUDIO,
   DEFAULT_AUDIO_TRACK,
   DEFAULT_VIDEO_TRACK,
+  deactivatedTimelineIntervals,
+  sanitizeTimelineRangeEdit,
   useTimelineState,
   isAudioTrackId,
   isVideoTrackId,
@@ -27,7 +29,7 @@ import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
-import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimelineState";
+import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
@@ -1494,6 +1496,7 @@ function normalizeTranscriptBlock(raw: unknown): TranscriptBlock | null {
     deleted: coerceBoolean(record.deleted, false),
     alert: typeof record.alert === "string" ? record.alert : null,
     speaker: coerceOptionalString(record.speaker ?? record.speakerLabel, undefined) ?? null,
+    deactivated: coerceBoolean(record.deactivated, false),
   };
 }
 
@@ -1771,6 +1774,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
     const clips = rawClips.map(normalizeTimelineClip).filter((clip): clip is TimelineClip => Boolean(clip));
     const nestedTranscript = asObject((record as Record<string, unknown>).timeline)?.transcript;
     const nestedPaperEditSnapshots = asObject((record as Record<string, unknown>).timeline)?.paperEditSnapshots;
+    const nestedDeactivatedRanges = asObject((record as Record<string, unknown>).timeline)?.deactivatedRanges;
     const nestedData = asObject((record as Record<string, unknown>).data);
     const transcriptSource = Array.isArray(record.transcript)
       ? record.transcript
@@ -1780,10 +1784,14 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
           ? record.blocks
           : [];
     const transcript = transcriptSource.map(normalizeTranscriptBlock).filter((block): block is TranscriptBlock => Boolean(block));
+    const deactivatedRanges = coerceArray(record.deactivatedRanges ?? nestedDeactivatedRanges ?? nestedData?.deactivatedRanges)
+      .map((range) => sanitizeTimelineRangeEdit(range as TimelineRangeEdit))
+      .filter((range): range is TimelineRangeEdit => Boolean(range));
 
     return {
       clips,
       transcript,
+      deactivatedRanges,
       paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots ?? nestedPaperEditSnapshots ?? nestedData?.paperEditSnapshots),
     };
   }
@@ -1934,24 +1942,21 @@ function programClipAtTime(clips: TimelineClip[], time: number) {
     })[0] ?? null;
 }
 
-function isTimelineGapDeactivated(transcript: TranscriptBlock[], time: number) {
-  return transcript.some((block) => {
-    if (!block.deleted && !block.deactivated) return false;
-    return time >= block.time && time < block.time + block.duration;
-  });
+function isTimelineGapDeactivated(timeline: TimelineState, time: number) {
+  return deactivatedTimelineIntervals(timeline).some((range) => (
+    time >= range.startSeconds && time < range.endSeconds
+  ));
 }
 
 function nextPlaybackTimeForMode(time: number, step: number, totalDuration: number, timeline: TimelineState) {
   const requested = Math.min(totalDuration, time + step);
   if (timeline.editorMode === "play-all") return requested;
 
-  const sortedDeactivated = [...timeline.transcript]
-    .filter((block) => block.deleted || block.deactivated)
-    .sort((a, b) => a.time - b.time);
+  const sortedDeactivated = deactivatedTimelineIntervals(timeline);
 
   for (const block of sortedDeactivated) {
-    const blockStart = Math.max(0, block.time);
-    const blockEnd = Math.max(blockStart, block.time + block.duration);
+    const blockStart = block.startSeconds;
+    const blockEnd = block.endSeconds;
     if (requested >= blockStart && requested < blockEnd) {
       return Math.min(totalDuration, blockEnd);
     }
@@ -2058,7 +2063,7 @@ function EpisodeMonitorDeck({
   const programSource = programClip ? sourceUrlForClip(programClip, importedMediaAssets) : "";
   const programSourceTime = programClip ? clipSourceTimeAt(programClip, currentTime) : 0;
   const mode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
-  const currentGapIsDeactivated = isTimelineGapDeactivated(timelineState.transcript, currentTime);
+  const currentGapIsDeactivated = isTimelineGapDeactivated(timelineState, currentTime);
 
   return (
     <section className="mb-6 overflow-hidden rounded-3xl border border-[#d8b777] bg-[#17120d] shadow-xl">
@@ -2626,6 +2631,13 @@ function buildEpisodeArtifactPayload(
       text: block.text,
       deleted: Boolean(block.deleted),
       alert: block.alert ?? null,
+      speaker: block.speaker ?? null,
+      deactivated: Boolean(block.deactivated),
+    })),
+    deactivatedRanges: (timeline.deactivatedRanges ?? []).map((range) => ({
+      ...range,
+      startSeconds: roundSeconds(range.startSeconds),
+      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
     })),
     paperEditSnapshots: timeline.paperEditSnapshots,
     contentFingerprint,
@@ -2661,6 +2673,8 @@ function timelineContentFingerprint(timeline: TimelineState): string {
       text: block.text,
       deleted: Boolean(block.deleted),
       alert: block.alert ?? null,
+      speaker: block.speaker ?? null,
+      deactivated: Boolean(block.deactivated),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
   const sortedSnapshots = Object.entries(timeline.paperEditSnapshots ?? {})
@@ -2692,10 +2706,18 @@ function timelineContentFingerprint(timeline: TimelineState): string {
         .sort((a, b) => a.id.localeCompare(b.id)),
     }))
     .sort((a, b) => a.blockId.localeCompare(b.blockId));
+  const sortedDeactivatedRanges = [...(timeline.deactivatedRanges ?? [])]
+    .map((range) => ({
+      ...range,
+      startSeconds: roundSeconds(range.startSeconds),
+      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
 
   return JSON.stringify({
     clips: sortedClips,
     transcript: sortedTranscript,
+    deactivatedRanges: sortedDeactivatedRanges,
     paperEditSnapshots: sortedSnapshots,
   });
 }
@@ -3039,6 +3061,8 @@ function CloudEditorContent() {
     setEditorMode,
     updateClipTransforms,
     addClipKeyframe,
+    addDeactivatedRange,
+    removeDeactivatedRange,
   } = useTimelineState(EMPTY_TIMELINE_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
@@ -3223,6 +3247,59 @@ function CloudEditorContent() {
       if (!block.deactivated) toggleDeleteBlock(blockId);
       dismissAiEditSuggestion(index);
       setAiEditMessage("Transcript cut applied to the editable timeline. Review playback before saving or rendering.");
+      return;
+    }
+
+    if (edit.type === "deactivate_range") {
+      const signal = edit.evidence.audioSignal;
+      const boundSignal = aiEditProposalBinding?.signalEvidence;
+      const startSeconds = edit.sourceRange.startSeconds;
+      const endSeconds = edit.sourceRange.endSeconds;
+      if (
+        !signal
+        || signal.classification !== "measured-low-energy"
+        || !boundSignal
+        || signal.recordingAssetId !== boundSignal.recordingAssetId
+        || signal.sourceSha256 !== boundSignal.sourceSha256
+        || signal.storageGeneration !== boundSignal.storageGeneration
+        || signal.signalProfileSha256 !== boundSignal.signalProfileSha256
+        || signal.measuredStartSeconds > startSeconds
+        || signal.measuredEndSeconds < endSeconds
+        || endSeconds - startSeconds < 0.05
+      ) {
+        setAiEditMessage("That range proposal is missing current immutable low-energy evidence, so it was not applied.");
+        return;
+      }
+      const overlapsExistingDecision = deactivatedTimelineIntervals(timelineState).some((range) => (
+        startSeconds < range.endSeconds && endSeconds > range.startSeconds
+      ));
+      if (overlapsExistingDecision) {
+        setAiEditMessage("That range already overlaps a deactivated edit decision. Nothing new was applied.");
+        return;
+      }
+      addDeactivatedRange({
+        id: `ai-range-${edit.proposalId}`,
+        startSeconds,
+        durationSeconds: endSeconds - startSeconds,
+        reason: edit.rationale,
+        source: "deterministic-signal",
+        confidence: edit.confidence,
+        proposalId: edit.proposalId,
+        createdAt: new Date().toISOString(),
+        aiSuggested: true,
+        sourceEvidence: {
+          recordingAssetId: signal.recordingAssetId,
+          sourceSha256: signal.sourceSha256,
+          storageGeneration: signal.storageGeneration,
+          signalProfileSha256: signal.signalProfileSha256,
+          classification: "measured-low-energy",
+          coverageFraction: signal.coverageFraction,
+          maximumRmsDbfs: signal.maximumRmsDbfs,
+          nearSilenceDbfs: signal.nearSilenceDbfs,
+        },
+      });
+      dismissAiEditSuggestion(index);
+      setAiEditMessage("Measured low-energy range skipped in the editable timeline. Review active-edit playback before saving or rendering; source media is unchanged.");
       return;
     }
 
@@ -5740,14 +5817,20 @@ function CloudEditorContent() {
     timelineState.clips.reduce((acc, clip) => Math.max(acc, clip.startIn + clip.duration), 0),
     timelineState.transcript.reduce((acc, block) => Math.max(acc, block.time + block.duration), 0),
   );
-  const durationInFrames = Math.max(1, Math.round(totalDuration * 30));
+  const projectedSkippedDuration = deactivatedTimelineIntervals(timelineState)
+    .reduce((total, interval) => total + interval.endSeconds - interval.startSeconds, 0);
+  const renderedDurationSeconds = timelineState.editorMode === "play-all"
+    ? totalDuration
+    : Math.max(1 / 30, totalDuration - projectedSkippedDuration);
+  const durationInFrames = Math.max(1, Math.round(renderedDurationSeconds * 30));
   const playbackMode = timelineState.editorMode === "play-all" ? "play-all" : "play-edit";
   const playbackCockpitStats = useMemo(() => {
     const sourceClips = timelineState.clips.filter(isVisualTimelineClip);
     const activeTimelineClips = timelineState.clips.filter((clip) => !clip.deactivated);
     const deactivatedTimelineClips = timelineState.clips.filter((clip) => clip.deactivated);
     const skippedTranscriptBlocks = timelineState.transcript.filter((block) => block.deleted || block.deactivated);
-    const skippedDuration = skippedTranscriptBlocks.reduce((total, block) => total + Math.max(0, block.duration), 0);
+    const skippedIntervals = deactivatedTimelineIntervals(timelineState);
+    const skippedDuration = skippedIntervals.reduce((total, interval) => total + interval.endSeconds - interval.startSeconds, 0);
     const activeEditDuration = Math.max(0, totalDuration - skippedDuration);
     const activeTranscriptBlocks = timelineState.transcript.filter((block) => !block.deleted && !block.deactivated);
 
@@ -5756,11 +5839,26 @@ function CloudEditorContent() {
       activeClipCount: activeTimelineClips.length,
       deactivatedClipCount: deactivatedTimelineClips.length,
       skippedTranscriptBlockCount: skippedTranscriptBlocks.length,
+      skippedRangeEditCount: timelineState.deactivatedRanges?.length ?? 0,
+      skippedSectionCount: skippedIntervals.length,
       skippedDuration,
       activeEditDuration,
       activeTranscriptBlocks,
     };
   }, [timelineState, totalDuration]);
+  const deactivatedRangeEdits = useMemo(
+    () => [...(timelineState.deactivatedRanges ?? [])].sort((left, right) => left.startSeconds - right.startSeconds),
+    [timelineState.deactivatedRanges],
+  );
+  const proofListenPersistedRange = useCallback((range: TimelineRangeEdit) => {
+    const start = Math.max(0, range.startSeconds - 1.5);
+    const end = Math.min(totalDuration, range.startSeconds + range.durationSeconds + 1.5);
+    setEditorMode("play-all");
+    setCurrentTime(start);
+    setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
+    setIsPreviewPlaying(true);
+    setAiEditMessage(`Proof-listening to untouched source from ${formatClock(start)} to ${formatClock(end)}. The saved range decision remains active until you restore it.`);
+  }, [setEditorMode, totalDuration]);
   const startPlaybackMode = useCallback((mode: "play-all" | "play-edit") => {
     setEditorMode(mode);
     setCurrentTime((time) => time >= totalDuration - 0.05 ? 0 : time);
@@ -9663,7 +9761,7 @@ function CloudEditorContent() {
               <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Skipped safely</div>
                 <div className="mt-1 text-2xl font-black text-[#3d3122]">{formatClock(playbackCockpitStats.skippedDuration)}</div>
-                <div className="mt-1 text-xs font-bold text-[#7a674c]">{playbackCockpitStats.skippedTranscriptBlockCount} deactivated gap{playbackCockpitStats.skippedTranscriptBlockCount === 1 ? "" : "s"}</div>
+                <div className="mt-1 text-xs font-bold text-[#7a674c]">{playbackCockpitStats.skippedSectionCount} deactivated section{playbackCockpitStats.skippedSectionCount === 1 ? "" : "s"} · {playbackCockpitStats.skippedRangeEditCount} exact range{playbackCockpitStats.skippedRangeEditCount === 1 ? "" : "s"}</div>
               </div>
               <div className="rounded-2xl border border-[#e8dcc4] bg-white p-3">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Mode now</div>
@@ -9671,6 +9769,62 @@ function CloudEditorContent() {
                 <div className="mt-1 text-xs font-bold text-[#7a674c]">{isPreviewPlaying ? "Playing" : "Paused"} at {formatClock(currentTime)}</div>
               </div>
             </div>
+
+            {deactivatedRangeEdits.length > 0 && (
+              <section aria-label="Exact range edit decisions" className="mt-4 rounded-2xl border border-amber-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-800">Decision ledger</div>
+                    <h3 className="mt-1 text-base font-black text-[#3d3122]">Exact source ranges skipped in the active edit</h3>
+                    <p className="mt-1 text-xs font-bold leading-5 text-[#7a674c]">These decisions persist with the episode timeline. Proof-listen against the immutable source or restore any range without touching captured media.</p>
+                  </div>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-900">
+                    {deactivatedRangeEdits.length} reversible
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {deactivatedRangeEdits.map((range) => (
+                    <article key={range.id} className="rounded-xl border border-[#e8dcc4] bg-[#fffaf0] p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono text-xs font-black text-[#3d3122]">{formatClock(range.startSeconds)}–{formatClock(range.startSeconds + range.durationSeconds)} · {formatClock(range.durationSeconds)} skipped</p>
+                          <p className="mt-1 text-xs font-bold leading-5 text-[#6f5a3d]">{range.reason}</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-[0.12em]">
+                            <span className="rounded-full border border-[#e8dcc4] bg-white px-2 py-1 text-[#8c6b4a]">{range.source.replaceAll("-", " ")}</span>
+                            {range.confidence && <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-sky-900">{range.confidence} confidence</span>}
+                            {range.sourceEvidence && <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-900">decoded signal bound</span>}
+                          </div>
+                          {range.sourceEvidence && (
+                            <p className="mt-2 font-mono text-[9px] leading-4 text-[#7a674c]">
+                              {(range.sourceEvidence.coverageFraction * 100).toFixed(0)}% coverage · strongest RMS {range.sourceEvidence.maximumRmsDbfs.toFixed(1)} dBFS · profile {range.sourceEvidence.signalProfileSha256.slice(0, 10)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => proofListenPersistedRange(range)}
+                            className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-[10px] font-black text-sky-900 hover:bg-sky-50"
+                          >
+                            Proof-listen source
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              removeDeactivatedRange(range.id);
+                              setAiEditMessage(`Restored ${formatClock(range.startSeconds)}–${formatClock(range.startSeconds + range.durationSeconds)} to the active edit. Source media was unchanged; save the timeline to persist this decision.`);
+                            }}
+                            className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-950 hover:bg-amber-100"
+                          >
+                            Restore to edit
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-2">
               <button
@@ -9803,25 +9957,36 @@ function CloudEditorContent() {
                           : null;
                         const label = edit.type === "deactivate"
                           ? `Proposed transcript cut at ${formatClock(transcriptBlock?.time || 0)}`
-                          : `Proposed 360 reframe at ${formatClock(edit.timeOffset ?? edit.sourceRange.startSeconds)}`;
+                          : edit.type === "deactivate_range"
+                            ? `Proposed low-energy range skip at ${formatClock(edit.sourceRange.startSeconds)}`
+                            : `Proposed 360 reframe at ${formatClock(edit.timeOffset ?? edit.sourceRange.startSeconds)}`;
                         return (
-                          <article key={`${edit.type}-${edit.type === "deactivate" ? edit.blockId : edit.timeOffset}-${index}`} className="rounded-xl border border-[#333] bg-[#1b1b1b] p-3">
+                          <article key={edit.proposalId} className="rounded-xl border border-[#333] bg-[#1b1b1b] p-3">
                             <p className="text-xs font-black text-emerald-300">{label}</p>
                             <p className="mt-1 line-clamp-3 text-xs leading-5 text-gray-300">
                               {edit.type === "deactivate"
                                 ? transcriptBlock?.text || `Block ${edit.blockId} is no longer present.`
-                                : `Yaw ${edit.x}°, pitch ${edit.y}°, field of view ${edit.scale}°.`}
+                                : edit.type === "deactivate_range"
+                                  ? `Skip ${formatClock(edit.sourceRange.startSeconds)}–${formatClock(edit.sourceRange.endSeconds)} only in active-edit playback and renders.`
+                                  : `Yaw ${edit.x}°, pitch ${edit.y}°, field of view ${edit.scale}°.`}
                             </p>
                             <p className="mt-2 text-[11px] leading-5 text-gray-400">{edit.rationale}</p>
                             <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-gray-500">
                               {edit.confidence} confidence · source {formatClock(edit.sourceRange.startSeconds)}–{formatClock(edit.sourceRange.endSeconds)} · original unchanged
                             </p>
+                            {edit.evidence.audioSignal && (
+                              <div className="mt-2 rounded-lg border border-emerald-900 bg-emerald-950/30 px-2 py-1.5 text-[10px] font-bold leading-4 text-emerald-200">
+                                <p>Decoded coverage {(edit.evidence.audioSignal.coverageFraction * 100).toFixed(0)}% · strongest RMS window {edit.evidence.audioSignal.maximumRmsDbfs.toFixed(1)} dBFS</p>
+                                <p className="text-emerald-400">RMS is not LUFS · signal profile {edit.evidence.audioSignal.signalProfileSha256.slice(0, 10)}</p>
+                                <p className="text-amber-200">Applying creates reversible timeline metadata only. It does not alter source bytes.</p>
+                              </div>
+                            )}
                             <div className="mt-3 flex justify-end gap-2">
                               <button type="button" onClick={() => dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
-                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(edit)} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
-                                Proof-watch source
+                              <button type="button" onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
+                                {edit.type === "deactivate_range" ? "Proof-listen source" : "Proof-watch source"}
                               </button>
                               <button type="button" onClick={() => void applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
                                 Apply proposal

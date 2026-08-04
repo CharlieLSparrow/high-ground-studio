@@ -75,6 +75,7 @@ describe("CloudEditor production truth UX", () => {
             analysisMode?: string;
           };
           const deterministic = request.analysisMode === "deterministic";
+          const hasMeasuredRangeFixture = deterministic && request.transcriptBlocks?.some((block) => block.id === "range-left");
           const transcriptSha256 = createHash("sha256")
             .update(canonicalAiEditTranscript(request.transcriptBlocks || []))
             .digest("hex");
@@ -94,11 +95,45 @@ describe("CloudEditor production truth UX", () => {
                 blockCount: request.transcriptBlocks?.length || 0,
                 startSeconds: 0,
                 endSeconds: 8,
+                ...(hasMeasuredRangeFixture ? {
+                  signalEvidence: {
+                    recordingAssetId: "recording-range-test",
+                    sourceSha256: "a".repeat(64),
+                    storageGeneration: "generation-range-test",
+                    signalProfileSha256: "b".repeat(64),
+                  },
+                } : {}),
               },
               provider: deterministic
                 ? { kind: "deterministic", model: "quipsly-source-evidence-v2" }
                 : { kind: "google-gemini", model: "test-model" },
-              proposals: deterministic ? [] : [{
+              proposals: hasMeasuredRangeFixture ? [{
+                proposalId: "deterministic_range_test",
+                type: "deactivate_range",
+                sourceRange: { startSeconds: 2, endSeconds: 5 },
+                evidence: {
+                  blockIds: ["range-left", "range-right"],
+                  transcriptTextSha256: "e".repeat(64),
+                  audioSignal: {
+                    recordingAssetId: "recording-range-test",
+                    sourceSha256: "a".repeat(64),
+                    storageGeneration: "generation-range-test",
+                    signalProfileSha256: "b".repeat(64),
+                    algorithm: "capture-energy-v1",
+                    measuredStartSeconds: 2,
+                    measuredEndSeconds: 5,
+                    coverageFraction: 1,
+                    maximumRmsDbfs: -78,
+                    nearSilenceDbfs: -72,
+                    surroundingSignalDbfs: -45,
+                    classification: "measured-low-energy",
+                  },
+                },
+                rationale: "Decoded signal confirms a measured low-energy interval for reversible review.",
+                confidence: "medium",
+                changesSource: false,
+                applied: false,
+              }] : deterministic ? [] : [{
                 proposalId: "edit_proposal_test",
                 type: "deactivate",
                 blockId: "t2",
@@ -109,7 +144,7 @@ describe("CloudEditor production truth UX", () => {
                 changesSource: false,
                 applied: false,
               }],
-              reviewCandidates: deterministic ? [{
+              reviewCandidates: deterministic && !hasMeasuredRangeFixture ? [{
                 candidateId: "candidate_gap_test",
                 kind: "transcript-timing-gap",
                 sourceRange: { startSeconds: 2, endSeconds: 5 },
@@ -130,10 +165,10 @@ describe("CloudEditor production truth UX", () => {
             },
             ...(deterministic ? {
               signalEvidence: {
-                status: "unavailable",
-                reason: "No Capture recording is attached to this episode.",
-                candidateCount: 0,
-                boundRecordingAssetId: null,
+                status: hasMeasuredRangeFixture ? "available" : "unavailable",
+                reason: hasMeasuredRangeFixture ? "One immutable source is available." : "No Capture recording is attached to this episode.",
+                candidateCount: hasMeasuredRangeFixture ? 1 : 0,
+                boundRecordingAssetId: hasMeasuredRangeFixture ? "recording-range-test" : null,
               },
             } : {}),
           }, true, 200);
@@ -252,6 +287,65 @@ describe("CloudEditor production truth UX", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:06/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
+  });
+
+  it("persists, proof-listens, restores, and undoes a measured range decision without changing source media", async () => {
+    mockEpisodeProduction({
+      transcriptJson: {
+        blocks: [
+          { id: "range-left", time: 0, duration: 2, text: "The first complete thought.", speaker: "Charlie" },
+          { id: "range-right", time: 5, duration: 2, text: "The next complete thought.", speaker: "Homer" },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByText(/Loaded Current Episode from transcript payload/i);
+    await user.click(screen.getByRole("button", { name: "Analyze locally" }));
+
+    expect(await screen.findByText("Proposed low-energy range skip at 00:02")).toBeInTheDocument();
+    expect(screen.getByText(/Decoded coverage 100% · strongest RMS window -78.0 dBFS/i)).toBeInTheDocument();
+    expect(screen.getByText(/Applying creates reversible timeline metadata only/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Proof-listen source" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Proof-listening to untouched source/i);
+    expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Apply proposal" }));
+    const ledger = await screen.findByRole("region", { name: "Exact range edit decisions" });
+    expect(ledger).toHaveTextContent("00:02–00:05 · 00:03 skipped");
+    expect(ledger).toHaveTextContent("decoded signal bound");
+    expect(screen.getByText(/1 deactivated section · 1 exact range/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    await waitFor(() => {
+      const saveCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return body.action === "save-timeline" && body.timelineJson?.deactivatedRanges?.length === 1;
+      });
+      expect(saveCall).toBeDefined();
+      const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
+      expect(saved.payloadVersion).toBe(3);
+      expect(saved.deactivatedRanges[0]).toEqual(expect.objectContaining({
+        startSeconds: 2,
+        durationSeconds: 3,
+        source: "deterministic-signal",
+        sourceEvidence: expect.objectContaining({
+          sourceSha256: "a".repeat(64),
+          signalProfileSha256: "b".repeat(64),
+        }),
+      }));
+      expect(saved.transcript).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "range-left", speaker: "Charlie", deactivated: false }),
+      ]));
+    });
+
+    await user.click(screen.getByRole("button", { name: "Restore to edit" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Restored 00:02–00:05 to the active edit/i);
+    expect(screen.queryByRole("region", { name: "Exact range edit decisions" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByRole("region", { name: "Exact range edit decisions" })).toBeInTheDocument();
   });
 
   it("keeps a new episode honestly empty instead of injecting sample media or a representative cut", async () => {

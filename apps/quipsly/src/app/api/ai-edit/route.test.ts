@@ -182,6 +182,54 @@ describe("AI edit suggestion boundary", () => {
     expect(payload.signalEvidence).toEqual(expect.objectContaining({ status: "available", boundRecordingAssetId: "recording-1" }));
   });
 
+  it("creates a source-bound unapplied range proposal only for decoded low energy", async () => {
+    mockedSignalEvidence.mockResolvedValue({
+      status: "available",
+      reason: "One immutable source is available.",
+      candidateCount: 1,
+      evidence: {
+        recordingAssetId: "recording-low-energy",
+        sourceSha256: "d".repeat(64),
+        storageGeneration: "generation-low-energy",
+        signalProfileSha256: "e".repeat(64),
+        signal: {
+          algorithm: "capture-energy-v1",
+          thresholds: { nearSilenceDbfs: -72, surroundingSignalDbfs: -45 },
+          waveform: [{ startSeconds: 2, durationSeconds: 3, rmsDbfs: -78 }],
+        },
+      },
+    } as never);
+
+    const response = await POST(request({
+      analysisMode: "deterministic",
+      transcriptBlocks: [
+        { id: "left", time: 0, duration: 2, text: "The first complete thought." },
+        { id: "right", time: 5, duration: 2, text: "The next complete thought." },
+      ],
+      ...sourceBinding,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.proposalSet.proposals).toEqual([
+      expect.objectContaining({
+        type: "deactivate_range",
+        sourceRange: { startSeconds: 2, endSeconds: 5 },
+        changesSource: false,
+        applied: false,
+        evidence: expect.objectContaining({
+          audioSignal: expect.objectContaining({
+            recordingAssetId: "recording-low-energy",
+            sourceSha256: "d".repeat(64),
+            signalProfileSha256: "e".repeat(64),
+            classification: "measured-low-energy",
+          }),
+        }),
+      }),
+    ]);
+    expect(payload.proposalSet.reviewCandidates).toHaveLength(0);
+  });
+
   it("requires explicit provider disclosure acceptance and validates transcript bounds", async () => {
     const disclosure = await POST(request({ transcriptBlocks }));
     expect(disclosure.status).toBe(409);

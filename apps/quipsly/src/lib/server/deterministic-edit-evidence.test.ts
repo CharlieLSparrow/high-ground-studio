@@ -69,19 +69,18 @@ describe("deterministic edit evidence", () => {
     expect(new Set(result.reviewCandidates.map((candidate) => candidate.candidateId)).size).toBe(2);
   });
 
-  it("upgrades a fully covered timing gap to measured low-energy evidence without auto-cutting", () => {
+  it("creates an unapplied source-bound range proposal for a fully covered low-energy gap", () => {
     const result = deterministicEditEvidence([
       { id: "left", time: 0, duration: 2, text: "The first complete thought." },
       { id: "right", time: 5, duration: 2, text: "The next complete thought." },
     ], { audioSignal: audioSignal(-78) });
 
-    expect(result.proposals).toHaveLength(0);
-    expect(result.reviewCandidates).toEqual([
+    expect(result.proposals).toEqual([
       expect.objectContaining({
-        kind: "signal-corroborated-gap",
+        type: "deactivate_range",
         confidence: "medium",
-        suggestedAction: "review-cut",
-        requiresSignalEvidence: false,
+        applied: false,
+        changesSource: false,
         evidence: expect.objectContaining({
           audioSignal: expect.objectContaining({
             classification: "measured-low-energy",
@@ -91,7 +90,8 @@ describe("deterministic edit evidence", () => {
         }),
       }),
     ]);
-    expect(result.reviewCandidates[0]?.rationale).toMatch(/not proof that the range should be cut/i);
+    expect(result.reviewCandidates).toHaveLength(0);
+    expect(result.proposals[0]?.rationale).toMatch(/reversible range skip/i);
   });
 
   it("raises possible missing words when decoded signal is present inside a transcript gap", () => {

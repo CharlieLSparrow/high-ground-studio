@@ -34,8 +34,8 @@ across compacted spans.
 
 - A transcript gap with at least 85% decoded-window coverage and every strongest
   observed RMS window at or below the source's near-silence threshold becomes
-  **Measured low-energy gap**. It is still listen-before-cut and creates no
-  range edit.
+  **Measured low-energy gap**. It may produce an unapplied, source-bound exact
+  range proposal, but it remains proof-listen-before-apply and reversible.
 - A covered gap reaching the source's surrounding-signal threshold becomes
   **Signal inside transcript gap**. This prioritizes possible missing words or
   intentional sound before any edit.
@@ -90,8 +90,8 @@ gap and `00:07 to 00:12` for the speaker transition.
 
 ## Next join
 
-Add a first-class reversible timeline range-edit representation before a
-measured low-energy candidate can become an applicable proposal. Then bind
+The first-class range decision is now implemented in episode artifact v3; see
+`docs/coordination/2026-08-03-persisted-audio-range-decisions.md`. Next bind
 provider and deterministic proposals to persisted review receipts, map named
 speakers to camera sources, and operate genuine consented HGO and coaching
 recordings from Capture.
