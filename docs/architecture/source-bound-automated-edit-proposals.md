@@ -130,6 +130,34 @@ active edit after a save/reload. Restore and immediate Undo/Redo are normal
 timeline history operations. Save persists the resulting decision; none of
 these operations rewrites captured media.
 
+## Durable proposal and review ledger
+
+Proposal generation now commits `StudioEpisodeEditProposalSet` before the
+server returns anything actionable. The append-only record retains the complete
+proposal JSON, payload SHA-256, provider/model, actor snapshot, exact transcript
+and timeline fingerprints, covered bounds, and immutable signal identity. A
+provider response that cannot be preserved is not shown as reviewable work.
+
+`StudioEpisodeEditReviewReceipt` distinguishes three scopes:
+
+- `REVIEW_ONLY` for proposal creation, proof-listen/proof-watch, and dismiss;
+- `LOCAL_DRAFT` for apply and restore choices that have changed only the
+  current editor state; and
+- `CANONICAL_TIMELINE` only after the episode timeline transaction commits.
+
+Client request IDs are actor-and-episode idempotency keys. Reusing one with a
+different request hash fails closed. Receipt source ranges use integer
+milliseconds; timeline, transcript, source, and signal bindings remain exact
+SHA-256 values. A successful save links the draft-action receipt IDs it commits
+and writes its canonical receipt in the same serializable transaction. The
+server independently hashes the submitted timeline fingerprint before
+accepting the receipt claim.
+
+This is accountability without an approval bureaucracy: proof playback is
+always available, draft automation can be fast, and the interface truthfully
+shows what is merely reviewed, what is locally changed, and what collaborators
+will actually reload.
+
 ## Non-negotiable boundaries
 
 - source bytes are never changed;
@@ -147,12 +175,9 @@ High Ground QA episode. Because that fixture intentionally has no attached
 media, it proves state and boundary behavior—not audible or visual source
 playback.
 
-- persisted proposal/audit ledger rather than response-lifetime state;
 - real provider run over a retained HGO transcript and media timeline;
 - decoded-signal corroboration for silence/dropout candidates plus overlap and
   speaker-change evidence on genuine Capture media;
-- persisted proposal review receipts recording proof-listen, apply, dismiss,
-  restore, actor, and artifact revision independently of the range decision;
 - automated draft timeline with before/after proof-watch and render receipts;
 - multicamera and local-device media synchronization;
 - physical-iPhone source, TestFlight, and full episode proof-watch;

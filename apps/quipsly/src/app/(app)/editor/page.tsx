@@ -47,6 +47,11 @@ import {
   type AiEditProposalSet,
   type AiEditReviewCandidate,
 } from "@/lib/editor/ai-edit-proposal-contract";
+import type {
+  EditReviewAction,
+  EditReviewSubjectKind,
+  EpisodeEditReviewReceipt,
+} from "@/lib/editor/edit-review-contract";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
@@ -72,6 +77,7 @@ type EpisodeProductionState = {
   timelineJson?: unknown;
   transcriptJson?: unknown;
   productionJson?: unknown;
+  editReviewReceipt?: EpisodeEditReviewReceipt | null;
   updatedAt?: string;
   boundaryStartBlockId?: string;
 };
@@ -3071,6 +3077,7 @@ function CloudEditorContent() {
   const [isAiDisclosureOpen, setIsAiDisclosureOpen] = useState(false);
   const [aiEditSuggestions, setAiEditSuggestions] = useState<AiEditSuggestion[]>([]);
   const [aiEditReviewCandidates, setAiEditReviewCandidates] = useState<AiEditReviewCandidate[]>([]);
+  const [aiEditProposalSetId, setAiEditProposalSetId] = useState<string | null>(null);
   const [aiEditProposalBinding, setAiEditProposalBinding] = useState<AiEditProposalSet["binding"] | null>(null);
   const [aiEditGenerator, setAiEditGenerator] = useState<AiEditProposalSet["provider"] | null>(null);
   const [aiEditSignalResolution, setAiEditSignalResolution] = useState<{
@@ -3080,6 +3087,10 @@ function CloudEditorContent() {
   } | null>(null);
   const [aiProofWatchEndSeconds, setAiProofWatchEndSeconds] = useState<number | null>(null);
   const [aiEditMessage, setAiEditMessage] = useState("");
+  const [editReviewReceipts, setEditReviewReceipts] = useState<EpisodeEditReviewReceipt[]>([]);
+  const [editReviewLedgerStatus, setEditReviewLedgerStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [editReviewLedgerNotice, setEditReviewLedgerNotice] = useState("");
+  const pendingEditReviewReceiptIdsRef = useRef<string[]>([]);
 
   const handleTimelineUndo = useCallback(() => {
     undo();
@@ -3094,6 +3105,26 @@ function CloudEditorContent() {
     setAiProofWatchEndSeconds(null);
     setAiEditMessage("Timeline redo completed. Review the editable timeline before saving or rendering; source media was never changed.");
   }, [redo]);
+
+  const loadEditReviewLedger = useCallback(async (signal?: AbortSignal) => {
+    setEditReviewLedgerStatus("loading");
+    try {
+      const params = new URLSearchParams({ projectSlug: resolvedProjectSlug, episodeSlug });
+      const response = await fetch(`/api/editor/edit-review?${params.toString()}`, { cache: "no-store", signal });
+      const payload = await response.json() as { ok?: boolean; receipts?: EpisodeEditReviewReceipt[]; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "The review ledger could not be loaded.");
+      if (signal?.aborted) return false;
+      setEditReviewReceipts(Array.isArray(payload.receipts) ? payload.receipts : []);
+      setEditReviewLedgerStatus("ready");
+      setEditReviewLedgerNotice("");
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return false;
+      setEditReviewLedgerStatus("error");
+      setEditReviewLedgerNotice(error instanceof Error ? error.message : "The review ledger could not be loaded.");
+      return false;
+    }
+  }, [episodeSlug, resolvedProjectSlug]);
 
   const requestEditAnalysis = async (analysisMode: "deterministic" | "provider") => {
     if (!timelineState.transcript?.length) return;
@@ -3118,6 +3149,7 @@ function CloudEditorContent() {
       if (!res.ok) {
         setAiEditSuggestions([]);
         setAiEditReviewCandidates([]);
+        setAiEditProposalSetId(null);
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
         setAiEditSignalResolution(null);
@@ -3133,6 +3165,7 @@ function CloudEditorContent() {
       ) {
         setAiEditSuggestions([]);
         setAiEditReviewCandidates([]);
+        setAiEditProposalSetId(null);
         setAiEditProposalBinding(null);
         setAiEditGenerator(null);
         setAiEditSignalResolution(null);
@@ -3143,6 +3176,7 @@ function CloudEditorContent() {
       const reviewCandidates = Array.isArray(proposalSet.reviewCandidates) ? proposalSet.reviewCandidates : [];
       setAiEditSuggestions(suggestions);
       setAiEditReviewCandidates(reviewCandidates);
+      setAiEditProposalSetId(proposalSet.proposalSetId);
       setAiEditProposalBinding(proposalSet.binding);
       setAiEditGenerator(proposalSet.provider);
       const signalResolution = data.signalEvidence && typeof data.signalEvidence === "object"
@@ -3164,10 +3198,12 @@ function CloudEditorContent() {
       setAiEditMessage(itemCount
         ? `${suggestions.length} reversible proposal${suggestions.length === 1 ? "" : "s"} and ${reviewCandidates.length} review candidate${reviewCandidates.length === 1 ? "" : "s"} ready. Nothing has been applied.`
         : "No edit evidence was found. The timeline is unchanged.");
+      void loadEditReviewLedger();
     } catch (e) {
       console.error(e);
       setAiEditSuggestions([]);
       setAiEditReviewCandidates([]);
+      setAiEditProposalSetId(null);
       setAiEditProposalBinding(null);
       setAiEditGenerator(null);
       setAiEditSignalResolution(null);
@@ -3180,20 +3216,112 @@ function CloudEditorContent() {
   const handleAiAutoEdit = () => requestEditAnalysis("provider");
   const handleDeterministicEditAnalysis = () => requestEditAnalysis("deterministic");
 
-  const dismissAiEditSuggestion = (index: number) => {
+  useEffect(() => {
+    if (!productionState || productionState.mode !== "database") return;
+    const controller = new AbortController();
+    void loadEditReviewLedger(controller.signal);
+    return () => controller.abort();
+  }, [loadEditReviewLedger, productionState?.id, productionState?.mode, routeToken]);
+
+  const recordEditReviewAction = useCallback(async (input: {
+    action: EditReviewAction;
+    subjectId: string;
+    subjectKind: EditReviewSubjectKind;
+    sourceRange: { startSeconds: number; endSeconds: number };
+    proposalSetId?: string | null;
+    proposalTimelineFingerprintSha256?: string | null;
+    evidence?: Record<string, unknown>;
+  }) => {
+    const proposalSetId = input.proposalSetId ?? aiEditProposalSetId;
+    const proposalTimelineFingerprintSha256 = input.proposalTimelineFingerprintSha256 ?? aiEditProposalBinding?.timelineFingerprintSha256;
+    if (!proposalSetId || !proposalTimelineFingerprintSha256) {
+      setEditReviewLedgerNotice("This legacy decision has no durable proposal-set binding. The local action remains reversible, but no new review receipt was claimed.");
+      return null;
+    }
+    try {
+      const currentTimelineFingerprintSha256 = await browserSha256(timelineFingerprint);
+      const response = await fetch("/api/editor/edit-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          clientRequestId: crypto.randomUUID(),
+          proposalSetId,
+          action: input.action,
+          subjectId: input.subjectId,
+          subjectKind: input.subjectKind,
+          sourceRange: input.sourceRange,
+          proposalTimelineFingerprintSha256,
+          timelineFingerprintBeforeSha256: currentTimelineFingerprintSha256,
+          evidence: input.evidence ?? {},
+          occurredAt: new Date().toISOString(),
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; receipt?: EpisodeEditReviewReceipt; error?: string };
+      if (!response.ok || !payload.ok || !payload.receipt) throw new Error(payload.error || "The review action was not durably recorded.");
+      setEditReviewReceipts((current) => [payload.receipt!, ...current.filter((receipt) => receipt.id !== payload.receipt!.id)]);
+      if (payload.receipt.scope === "LOCAL_DRAFT") {
+        pendingEditReviewReceiptIdsRef.current = Array.from(new Set([...pendingEditReviewReceiptIdsRef.current, payload.receipt.id]));
+      }
+      setEditReviewLedgerStatus("ready");
+      setEditReviewLedgerNotice("");
+      return payload.receipt;
+    } catch (error) {
+      setEditReviewLedgerStatus("error");
+      setEditReviewLedgerNotice(error instanceof Error ? error.message : "The review action was not durably recorded.");
+      return null;
+    }
+  }, [aiEditProposalBinding?.timelineFingerprintSha256, aiEditProposalSetId, episodeSlug, resolvedProjectSlug, timelineFingerprint]);
+
+  const dismissAiEditSuggestion = async (index: number) => {
+    const edit = aiEditSuggestions[index];
+    if (edit) {
+      await recordEditReviewAction({
+        action: "DISMISSED",
+        subjectId: edit.proposalId,
+        subjectKind: "proposal",
+        sourceRange: edit.sourceRange,
+        evidence: { proposalType: edit.type, confidence: edit.confidence },
+      });
+    }
     setAiEditSuggestions((current) => {
       const next = current.filter((_, candidateIndex) => candidateIndex !== index);
-      if (!next.length && !aiEditReviewCandidates.length) setAiEditProposalBinding(null);
       return next;
     });
   };
 
-  const dismissAiEditReviewCandidate = (index: number) => {
+  const dismissAiEditReviewCandidate = async (index: number) => {
+    const candidate = aiEditReviewCandidates[index];
+    if (candidate) {
+      await recordEditReviewAction({
+        action: "DISMISSED",
+        subjectId: candidate.candidateId,
+        subjectKind: "candidate",
+        sourceRange: candidate.sourceRange,
+        evidence: { candidateKind: candidate.kind, confidence: candidate.confidence },
+      });
+    }
     setAiEditReviewCandidates((current) => {
       const next = current.filter((_, candidateIndex) => candidateIndex !== index);
-      if (!next.length && !aiEditSuggestions.length) setAiEditProposalBinding(null);
       return next;
     });
+  };
+
+  const dismissAllAiEditEvidence = async () => {
+    const items = [
+      ...aiEditSuggestions.map((item) => ({ id: item.proposalId, kind: "proposal" as const, range: item.sourceRange, evidence: { itemKind: item.type } })),
+      ...aiEditReviewCandidates.map((item) => ({ id: item.candidateId, kind: "candidate" as const, range: item.sourceRange, evidence: { itemKind: item.kind } })),
+    ];
+    await Promise.all(items.map((item) => recordEditReviewAction({
+      action: "DISMISSED",
+      subjectId: item.id,
+      subjectKind: item.kind,
+      sourceRange: item.range,
+      evidence: { ...item.evidence, bulkDismiss: true },
+    })));
+    setAiEditSuggestions([]);
+    setAiEditReviewCandidates([]);
   };
 
   const aiEditBindingIsCurrent = async () => {
@@ -3212,20 +3340,32 @@ function CloudEditorContent() {
   };
 
   const proofWatchAiEditSuggestion = async (
-    edit: Pick<AiEditSuggestion | AiEditReviewCandidate, "sourceRange">,
+    edit: AiEditSuggestion | AiEditReviewCandidate,
     reviewMode: "watch" | "listen" = "watch",
   ) => {
     if (!await aiEditBindingIsCurrent()) {
       setAiEditMessage("This edit analysis is stale because the transcript or timeline changed. Request a fresh analysis before reviewing or applying it.");
       return;
     }
+    const subjectId = "proposalId" in edit ? edit.proposalId : edit.candidateId;
+    const receipt = await recordEditReviewAction({
+      action: reviewMode === "listen" ? "PROOF_LISTENED" : "PROOF_WATCHED",
+      subjectId,
+      subjectKind: "proposalId" in edit ? "proposal" : "candidate",
+      sourceRange: edit.sourceRange,
+      evidence: {
+        reviewMode,
+        confidence: edit.confidence,
+        itemKind: "proposalId" in edit ? edit.type : edit.kind,
+      },
+    });
     const start = Math.max(0, edit.sourceRange.startSeconds - 1.5);
     const end = Math.min(totalDuration, edit.sourceRange.endSeconds + 1.5);
     setEditorMode("play-all");
     setCurrentTime(start);
     setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
     setIsPreviewPlaying(true);
-    setAiEditMessage(`${reviewMode === "listen" ? "Proof-listening to" : "Proof-watching"} untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.`);
+    setAiEditMessage(`${reviewMode === "listen" ? "Proof-listening to" : "Proof-watching"} untouched source from ${formatClock(start)} to ${formatClock(end)}. Nothing has been applied.${receipt ? " Review receipt saved." : " Playback is available, but the durable receipt failed and is visibly flagged."}`);
   };
 
   const applyAiEditSuggestion = async (edit: AiEditSuggestion, index: number) => {
@@ -3244,8 +3384,19 @@ function CloudEditorContent() {
         setAiEditMessage("That transcript block is no longer present, so the proposal was not applied.");
         return;
       }
+      const receipt = await recordEditReviewAction({
+        action: "APPLIED_TO_DRAFT",
+        subjectId: edit.proposalId,
+        subjectKind: "proposal",
+        sourceRange: edit.sourceRange,
+        evidence: { proposalType: edit.type, confidence: edit.confidence },
+      });
+      if (!receipt) {
+        setAiEditMessage("The transcript cut was not applied because its durable draft-action receipt could not be saved.");
+        return;
+      }
       if (!block.deactivated) toggleDeleteBlock(blockId);
-      dismissAiEditSuggestion(index);
+      setAiEditSuggestions((current) => current.filter((_, candidateIndex) => candidateIndex !== index));
       setAiEditMessage("Transcript cut applied to the editable timeline. Review playback before saving or rendering.");
       return;
     }
@@ -3277,6 +3428,22 @@ function CloudEditorContent() {
         setAiEditMessage("That range already overlaps a deactivated edit decision. Nothing new was applied.");
         return;
       }
+      const receipt = await recordEditReviewAction({
+        action: "APPLIED_TO_DRAFT",
+        subjectId: edit.proposalId,
+        subjectKind: "proposal",
+        sourceRange: edit.sourceRange,
+        evidence: {
+          proposalType: edit.type,
+          confidence: edit.confidence,
+          signalProfileSha256: signal.signalProfileSha256,
+          sourceSha256: signal.sourceSha256,
+        },
+      });
+      if (!receipt) {
+        setAiEditMessage("The measured range was not applied because its durable draft-action receipt could not be saved.");
+        return;
+      }
       addDeactivatedRange({
         id: `ai-range-${edit.proposalId}`,
         startSeconds,
@@ -3285,6 +3452,8 @@ function CloudEditorContent() {
         source: "deterministic-signal",
         confidence: edit.confidence,
         proposalId: edit.proposalId,
+        proposalSetId: aiEditProposalSetId ?? undefined,
+        proposalTimelineFingerprintSha256: aiEditProposalBinding?.timelineFingerprintSha256,
         createdAt: new Date().toISOString(),
         aiSuggested: true,
         sourceEvidence: {
@@ -3298,7 +3467,7 @@ function CloudEditorContent() {
           nearSilenceDbfs: signal.nearSilenceDbfs,
         },
       });
-      dismissAiEditSuggestion(index);
+      setAiEditSuggestions((current) => current.filter((_, candidateIndex) => candidateIndex !== index));
       setAiEditMessage("Measured low-energy range skipped in the editable timeline. Review active-edit playback before saving or rendering; source media is unchanged.");
       return;
     }
@@ -3312,6 +3481,17 @@ function CloudEditorContent() {
       setAiEditMessage("That reframe proposal is incomplete, so it was not applied.");
       return;
     }
+    const receipt = await recordEditReviewAction({
+      action: "APPLIED_TO_DRAFT",
+      subjectId: edit.proposalId,
+      subjectKind: "proposal",
+      sourceRange: edit.sourceRange,
+      evidence: { proposalType: edit.type, confidence: edit.confidence },
+    });
+    if (!receipt) {
+      setAiEditMessage("The reframe was not applied because its durable draft-action receipt could not be saved.");
+      return;
+    }
     addClipKeyframe(videoClip.id, {
       id: `kf-${crypto.randomUUID()}`,
       timeOffset: edit.timeOffset,
@@ -3321,7 +3501,7 @@ function CloudEditorContent() {
       easing: "ease-in-out",
       aiSuggested: true,
     });
-    dismissAiEditSuggestion(index);
+    setAiEditSuggestions((current) => current.filter((_, candidateIndex) => candidateIndex !== index));
     setAiEditMessage("Reframe keyframe applied to the editable timeline. Review playback before saving or rendering.");
   };
 
@@ -3350,6 +3530,14 @@ function CloudEditorContent() {
     setTimelineLastSavedAt(null);
     setTimelineHydrationSource("loading");
     setSelectedClipId(null);
+    setAiEditSuggestions([]);
+    setAiEditReviewCandidates([]);
+    setAiEditProposalSetId(null);
+    setAiEditProposalBinding(null);
+    setEditReviewReceipts([]);
+    setEditReviewLedgerStatus("idle");
+    setEditReviewLedgerNotice("");
+    pendingEditReviewReceiptIdsRef.current = [];
     timelineRouteRef.current = routeToken;
     timelineAutosaveAbortRef.current?.abort();
     if (timelineAutosaveTimerRef.current) {
@@ -3520,6 +3708,8 @@ function CloudEditorContent() {
     const requestId = ++timelineAutosaveRequestRef.current;
     const activeRoute = routeToken;
     const capturedFingerprint = timelineFingerprint;
+    const capturedPendingReceiptIds = [...pendingEditReviewReceiptIdsRef.current];
+    const editReviewSaveRequestId = crypto.randomUUID();
     const savedAt = new Date().toISOString();
     const episodeArtifact = buildTimelineArtifact(
       mode === "manual" ? "editor-save-manual" : "editor-autosave",
@@ -3532,6 +3722,10 @@ function CloudEditorContent() {
     setTimelineSaveStateSafe("saving");
 
     try {
+      const [timelineFingerprintBeforeSha256, timelineFingerprintAfterSha256] = await Promise.all([
+        browserSha256(timelineSavedFingerprintRef.current || capturedFingerprint),
+        browserSha256(capturedFingerprint),
+      ]);
       const state = await postEpisodeProduction(
         {
           action: "save-timeline",
@@ -3541,6 +3735,11 @@ function CloudEditorContent() {
           timelineJson: episodeArtifact,
           transcriptJson: episodeArtifact,
           expectedTimelineFingerprint: timelineSavedFingerprintRef.current || undefined,
+          editReviewSaveRequestId,
+          editReviewReceiptIds: capturedPendingReceiptIds,
+          editReviewSaveMode: mode,
+          timelineFingerprintBeforeSha256,
+          timelineFingerprintAfterSha256,
         },
         { signal: controller.signal },
       );
@@ -3556,6 +3755,13 @@ function CloudEditorContent() {
         setTimelineLastSavedAt(savedAt);
         setTimelineSaveStateSafe("saved");
         setRemoteTimelineNotice(null);
+        if (state.editReviewReceipt) {
+          setEditReviewReceipts((current) => [state.editReviewReceipt!, ...current.filter((receipt) => receipt.id !== state.editReviewReceipt!.id)]);
+          const persisted = new Set(capturedPendingReceiptIds);
+          pendingEditReviewReceiptIdsRef.current = pendingEditReviewReceiptIdsRef.current.filter((id) => !persisted.has(id));
+          setEditReviewLedgerStatus("ready");
+          setEditReviewLedgerNotice("");
+        }
       } else if (state.mode === "conflict") {
         setTimelineSaveStateSafe("conflict");
         setRemoteTimelineNotice("Nest has a newer timeline. Refresh before continuing, or save again after you decide what to keep.");
@@ -5850,15 +6056,45 @@ function CloudEditorContent() {
     () => [...(timelineState.deactivatedRanges ?? [])].sort((left, right) => left.startSeconds - right.startSeconds),
     [timelineState.deactivatedRanges],
   );
-  const proofListenPersistedRange = useCallback((range: TimelineRangeEdit) => {
+  const proofListenPersistedRange = useCallback(async (range: TimelineRangeEdit) => {
+    const receipt = await recordEditReviewAction({
+      action: "PROOF_LISTENED",
+      subjectId: range.proposalId ?? range.id,
+      subjectKind: range.proposalId ? "proposal" : "range",
+      sourceRange: { startSeconds: range.startSeconds, endSeconds: range.startSeconds + range.durationSeconds },
+      proposalSetId: range.proposalSetId,
+      proposalTimelineFingerprintSha256: range.proposalTimelineFingerprintSha256,
+      evidence: { persistedRangeId: range.id, decisionSource: range.source },
+    });
     const start = Math.max(0, range.startSeconds - 1.5);
     const end = Math.min(totalDuration, range.startSeconds + range.durationSeconds + 1.5);
     setEditorMode("play-all");
     setCurrentTime(start);
     setAiProofWatchEndSeconds(Math.max(start + 0.1, end));
     setIsPreviewPlaying(true);
-    setAiEditMessage(`Proof-listening to untouched source from ${formatClock(start)} to ${formatClock(end)}. The saved range decision remains active until you restore it.`);
-  }, [setEditorMode, totalDuration]);
+    setAiEditMessage(`Proof-listening to untouched source from ${formatClock(start)} to ${formatClock(end)}. The saved range decision remains active until you restore it.${receipt ? " Review receipt saved." : " This legacy or temporarily unavailable receipt is flagged separately."}`);
+  }, [recordEditReviewAction, setEditorMode, totalDuration]);
+  const restorePersistedRange = useCallback(async (range: TimelineRangeEdit) => {
+    if (range.proposalSetId && range.proposalTimelineFingerprintSha256) {
+      const receipt = await recordEditReviewAction({
+        action: "RESTORED_TO_DRAFT",
+        subjectId: range.proposalId ?? range.id,
+        subjectKind: range.proposalId ? "proposal" : "range",
+        sourceRange: { startSeconds: range.startSeconds, endSeconds: range.startSeconds + range.durationSeconds },
+        proposalSetId: range.proposalSetId,
+        proposalTimelineFingerprintSha256: range.proposalTimelineFingerprintSha256,
+        evidence: { persistedRangeId: range.id, decisionSource: range.source },
+      });
+      if (!receipt) {
+        setAiEditMessage("The range was not restored because its durable draft-action receipt could not be saved.");
+        return;
+      }
+    } else {
+      setEditReviewLedgerNotice("This older range predates durable proposal-set receipts. Its restore remains reversible and will become canonical only after save.");
+    }
+    removeDeactivatedRange(range.id);
+    setAiEditMessage(`Restored ${formatClock(range.startSeconds)}–${formatClock(range.startSeconds + range.durationSeconds)} to the active edit. Source media was unchanged; save the timeline to persist this decision.`);
+  }, [recordEditReviewAction, removeDeactivatedRange]);
   const startPlaybackMode = useCallback((mode: "play-all" | "play-edit") => {
     setEditorMode(mode);
     setCurrentTime((time) => time >= totalDuration - 0.05 ? 0 : time);
@@ -9803,17 +10039,14 @@ function CloudEditorContent() {
                         <div className="flex shrink-0 flex-wrap gap-2">
                           <button
                             type="button"
-                            onClick={() => proofListenPersistedRange(range)}
+                            onClick={() => void proofListenPersistedRange(range)}
                             className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-[10px] font-black text-sky-900 hover:bg-sky-50"
                           >
                             Proof-listen source
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              removeDeactivatedRange(range.id);
-                              setAiEditMessage(`Restored ${formatClock(range.startSeconds)}–${formatClock(range.startSeconds + range.durationSeconds)} to the active edit. Source media was unchanged; save the timeline to persist this decision.`);
-                            }}
+                            onClick={() => void restorePersistedRange(range)}
                             className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-950 hover:bg-amber-100"
                           >
                             Restore to edit
@@ -9931,6 +10164,35 @@ function CloudEditorContent() {
                   </div>
                 )}
 
+                {(editReviewLedgerStatus !== "idle" || editReviewReceipts.length > 0 || editReviewLedgerNotice) && (
+                  <section aria-label="Durable edit review history" className="border-t border-[#2d2d2d] bg-[#131313] px-4 py-3 text-white">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-black">Durable review history</h3>
+                        <p className="mt-1 text-[10px] leading-4 text-gray-400">Proof checks and draft choices append here. Only a successful timeline save changes the shared canonical cut.</p>
+                      </div>
+                      <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${editReviewLedgerStatus === "error" ? "border-rose-800 text-rose-300" : editReviewLedgerStatus === "loading" ? "border-amber-800 text-amber-300" : "border-emerald-800 text-emerald-300"}`}>
+                        {editReviewLedgerStatus === "loading" ? "Loading" : editReviewLedgerStatus === "error" ? "Attention" : `${editReviewReceipts.length} receipts`}
+                      </span>
+                    </div>
+                    {editReviewLedgerNotice && <p className="mt-2 rounded-lg border border-amber-900 bg-amber-950/30 px-2 py-1.5 text-[10px] font-bold leading-4 text-amber-200">{editReviewLedgerNotice}</p>}
+                    {editReviewReceipts.length > 0 && (
+                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                        {editReviewReceipts.slice(0, 6).map((receipt) => (
+                          <div key={receipt.id} className="rounded-lg border border-[#333] bg-[#1b1b1b] px-2.5 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[9px] font-black uppercase tracking-wider text-sky-300">{receipt.action.replaceAll("_", " ")}</span>
+                              <span className={`text-[8px] font-black uppercase tracking-wider ${receipt.scope === "CANONICAL_TIMELINE" ? "text-emerald-300" : receipt.scope === "LOCAL_DRAFT" ? "text-amber-300" : "text-gray-500"}`}>{receipt.scope.replaceAll("_", " ")}</span>
+                            </div>
+                            <p className="mt-1 truncate text-[9px] text-gray-400">{receipt.actorEmail} · {new Date(receipt.occurredAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+                            {receipt.sourceRange && <p className="mt-1 font-mono text-[8px] text-gray-500">source {formatClock(receipt.sourceRange.startSeconds)}–{formatClock(receipt.sourceRange.endSeconds)} · {receipt.timelineFingerprintBeforeSha256.slice(0, 10)}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
+
                 {(aiEditSuggestions.length > 0 || aiEditReviewCandidates.length > 0) && (
                   <section aria-label="Edit evidence and proposals" className="max-h-80 overflow-y-auto border-t border-[#2d2d2d] bg-[#111] p-4 text-white">
                     <div className="flex items-center justify-between gap-3">
@@ -9945,7 +10207,7 @@ function CloudEditorContent() {
                           </p>
                         )}
                       </div>
-                      <button type="button" onClick={() => { setAiEditSuggestions([]); setAiEditReviewCandidates([]); setAiEditProposalBinding(null); setAiEditGenerator(null); setAiEditSignalResolution(null); }} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
+                      <button type="button" onClick={() => void dismissAllAiEditEvidence()} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
                         Dismiss all
                       </button>
                     </div>
@@ -9982,7 +10244,7 @@ function CloudEditorContent() {
                               </div>
                             )}
                             <div className="mt-3 flex justify-end gap-2">
-                              <button type="button" onClick={() => dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
+                              <button type="button" onClick={() => void dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
                               <button type="button" onClick={() => void proofWatchAiEditSuggestion(edit, edit.type === "deactivate_range" ? "listen" : "watch")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">
@@ -10046,7 +10308,7 @@ function CloudEditorContent() {
                               <p className="mt-2 text-[10px] font-bold text-violet-200">Canonical speaker timing—not an automatic camera switch.</p>
                             )}
                             <div className="mt-3 flex justify-end gap-2">
-                              <button type="button" onClick={() => dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
+                              <button type="button" onClick={() => void dismissAiEditReviewCandidate(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
                                 Dismiss
                               </button>
                               <button type="button" onClick={() => void proofWatchAiEditSuggestion(candidate, "listen")} className="rounded-lg border border-sky-500 px-3 py-1.5 text-[10px] font-black text-sky-200 hover:bg-sky-950">

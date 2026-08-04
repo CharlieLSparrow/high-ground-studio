@@ -13,6 +13,10 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { deterministicEditEvidence } from "@/lib/server/deterministic-edit-evidence";
 import { loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
+import {
+  EpisodeEditReviewLedgerError,
+  persistEpisodeEditProposalSet,
+} from "@/lib/server/episode-edit-review-ledger";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -303,6 +307,25 @@ export async function POST(request: Request) {
         noAutomaticSaveRenderOrPublish: true as const,
       },
     };
+    try {
+      await persistEpisodeEditProposalSet({
+        prisma,
+        projectId: accessProjectId,
+        episodeSlug,
+        actor: access.actor,
+        proposalSet,
+      });
+    } catch (error) {
+      console.error("Could not persist deterministic edit proposal set", error);
+      const known = error instanceof EpisodeEditReviewLedgerError ? error : null;
+      return json({
+        ok: false,
+        errorCode: known?.code ?? "EDIT_REVIEW_LEDGER_UNAVAILABLE",
+        error: known?.message ?? "Quipsly found edit evidence but could not preserve its review history, so no proposals were shown.",
+        edits: [],
+        applied: false,
+      }, known?.status ?? 503);
+    }
     const itemCount = analysis.proposals.length + analysis.reviewCandidates.length;
     return json({
       ok: true,
@@ -408,6 +431,13 @@ ${formattedTranscript}`;
         noAutomaticSaveRenderOrPublish: true as const,
       },
     };
+    await persistEpisodeEditProposalSet({
+      prisma,
+      projectId: accessProjectId,
+      episodeSlug,
+      actor: access.actor,
+      proposalSet,
+    });
     return json({
       ok: true,
       proposalSet,
@@ -420,6 +450,9 @@ ${formattedTranscript}`;
     }, 200);
   } catch (error) {
     console.error("AI edit suggestion request failed", error);
+    if (error instanceof EpisodeEditReviewLedgerError) {
+      return json({ ok: false, errorCode: error.code, error: error.message, edits: [], applied: false }, error.status);
+    }
     return json({
       ok: false,
       errorCode: "AI_EDIT_PROVIDER_UNAVAILABLE",

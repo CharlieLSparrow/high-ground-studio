@@ -94,6 +94,8 @@ export function sanitizeTimelineRangeEdit(range: TimelineRangeEdit): TimelineRan
       ? range.confidence
       : undefined,
     proposalId: typeof range.proposalId === "string" ? range.proposalId.trim() || undefined : undefined,
+    proposalSetId: typeof range.proposalSetId === "string" ? range.proposalSetId.trim() || undefined : undefined,
+    proposalTimelineFingerprintSha256: typeof range.proposalTimelineFingerprintSha256 === "string" ? range.proposalTimelineFingerprintSha256.trim() || undefined : undefined,
     createdAt: typeof range.createdAt === "string" ? range.createdAt : undefined,
     aiSuggested: Boolean(range.aiSuggested),
     sourceEvidence: evidence

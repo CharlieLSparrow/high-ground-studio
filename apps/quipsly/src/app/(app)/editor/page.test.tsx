@@ -55,8 +55,11 @@ function mockEpisodeProduction(overrides: Record<string, unknown>) {
 }
 
 describe("CloudEditor production truth UX", () => {
+  let reviewReceiptSequence = 0;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    reviewReceiptSequence = 0;
     Object.defineProperty(globalThis, "crypto", {
       configurable: true,
       value: webcrypto,
@@ -173,6 +176,36 @@ describe("CloudEditor production truth UX", () => {
             } : {}),
           }, true, 200);
         }
+        if (url.includes("/api/editor/edit-review")) {
+          if (!init?.method || init.method === "GET") {
+            return response({ ok: true, productionId: "production-1", proposalSets: [], receipts: [] }, true, 200);
+          }
+          const review = JSON.parse(String(init.body || "{}")) as Record<string, unknown>;
+          reviewReceiptSequence += 1;
+          return response({
+            ok: true,
+            receipt: {
+              id: `review-receipt-${reviewReceiptSequence}`,
+              proposalSetId: review.proposalSetId,
+              actorEmail: "editor@example.com",
+              action: review.action,
+              scope: review.action === "APPLIED_TO_DRAFT" || review.action === "RESTORED_TO_DRAFT" ? "LOCAL_DRAFT" : "REVIEW_ONLY",
+              subjectId: review.subjectId,
+              subjectKind: review.subjectKind,
+              sourceRange: review.sourceRange,
+              proposalTimelineFingerprintSha256: review.proposalTimelineFingerprintSha256,
+              timelineFingerprintBeforeSha256: review.timelineFingerprintBeforeSha256,
+              timelineFingerprintAfterSha256: null,
+              transcriptSha256: "f".repeat(64),
+              sourceSha256: null,
+              storageGeneration: null,
+              signalProfileSha256: null,
+              evidence: review.evidence,
+              occurredAt: review.occurredAt,
+              createdAt: review.occurredAt,
+            },
+          }, true, 201);
+        }
         if (url === "/api/episode-production") {
           return response(productionState(), true, 200);
         }
@@ -249,6 +282,7 @@ describe("CloudEditor production truth UX", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Proof-watching untouched source/i);
     expect(screen.getByRole("status")).toHaveTextContent(/00:00 to 00:08/i);
     expect(screen.getByRole("status")).toHaveTextContent(/Nothing has been applied/i);
+    expect(screen.getByRole("region", { name: "Durable edit review history" })).toHaveTextContent(/PROOF WATCHED/i);
 
     await user.click(screen.getByRole("button", { name: "Apply proposal" }));
     expect(await screen.findByRole("status")).toHaveTextContent(/Transcript cut applied to the editable timeline/i);
@@ -339,6 +373,11 @@ describe("CloudEditor production truth UX", () => {
       expect(saved.transcript).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: "range-left", speaker: "Charlie", deactivated: false }),
       ]));
+      const saveBody = JSON.parse(String(saveCall?.[1]?.body));
+      expect(saveBody.editReviewSaveRequestId).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(saveBody.editReviewReceiptIds).toEqual(expect.arrayContaining([expect.stringMatching(/^review-receipt-/)]));
+      expect(saveBody.timelineFingerprintBeforeSha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(saveBody.timelineFingerprintAfterSha256).toMatch(/^[0-9a-f]{64}$/);
     });
 
     await user.click(screen.getByRole("button", { name: "Restore to edit" }));

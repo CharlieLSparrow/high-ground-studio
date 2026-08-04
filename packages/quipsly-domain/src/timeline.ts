@@ -70,6 +70,8 @@ export type TimelineRangeEdit = {
   source: "manual" | "deterministic-signal" | "imported-edit";
   confidence?: "low" | "medium" | "high";
   proposalId?: string;
+  proposalSetId?: string;
+  proposalTimelineFingerprintSha256?: string;
   createdAt?: string;
   aiSuggested?: boolean;
   sourceEvidence?: {

@@ -2,6 +2,34 @@
 
 Date: 2026-08-03
 
+## Durable episode edit-review history checkpoint
+
+- Generated deterministic/provider proposal sets are now canonical episode
+  records rather than response-lifetime browser state. Each retains the exact
+  payload SHA, provider/model, transcript and timeline hashes, covered bounds,
+  actor, and immutable decoded-source identity when present.
+- Proof-listen, proof-watch, dismiss, apply-to-draft, and restore-to-draft
+  append idempotent actor-bound receipts. The UI labels review-only and local
+  draft effects separately; a failed apply receipt blocks the local mutation
+  instead of claiming unrecorded automation.
+- A successful manual or automatic timeline write appends a distinct
+  `CANONICAL_TIMELINE` receipt in the same serializable transaction and links
+  the draft-action receipts it commits. Save receipt hashes are independently
+  checked against the submitted timeline fingerprint; exact retries can return
+  the existing receipt.
+- Signed-in local operation on the synthetic deterministic-audio QA episode
+  generated two proposal sets, proof-listened `00:04–00:07`, applied one
+  source-bound low-energy range, saved it, reloaded both the range and six
+  receipts, then proof-listened the persisted decision again under strict
+  canonical-subject validation. PostgreSQL retained two proof receipts, one draft-apply receipt,
+  and two canonical saves (restore-old-range and apply-new-range).
+- Six focused suites pass 33/33, strict Nest and domain TypeScript pass, all 50
+  local migrations are current, and the local Nest/worker/Auth/PostgreSQL lane
+  is healthy. This remains synthetic local proof—not a physical-iPhone,
+  genuine HGO, cloud, deployment, render, or publication claim.
+- Architecture and operated evidence are in
+  `docs/coordination/2026-08-03-durable-edit-review-ledger.md`.
+
 ## Audio mastery foundation checkpoint
 
 - Nest can now run a canonical, recoverable `StudioAssetProcessingJob` for one

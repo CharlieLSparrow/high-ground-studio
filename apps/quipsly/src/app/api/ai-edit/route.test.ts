@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { loadEpisodeEditSignalEvidence } from "@/lib/server/episode-edit-signal-evidence";
+import { persistEpisodeEditProposalSet } from "@/lib/server/episode-edit-review-ledger";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -13,6 +14,10 @@ jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest:
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/episode-production-access", () => ({ resolveEpisodeProductionAccess: jest.fn() }));
 jest.mock("@/lib/server/episode-edit-signal-evidence", () => ({ loadEpisodeEditSignalEvidence: jest.fn() }));
+jest.mock("@/lib/server/episode-edit-review-ledger", () => ({
+  EpisodeEditReviewLedgerError: class EpisodeEditReviewLedgerError extends Error {},
+  persistEpisodeEditProposalSet: jest.fn(),
+}));
 jest.mock("@google/genai", () => ({
   GoogleGenAI: jest.fn(),
   Type: { OBJECT: "OBJECT", ARRAY: "ARRAY", STRING: "STRING", NUMBER: "NUMBER" },
@@ -22,6 +27,7 @@ const mockedSession = jest.mocked(getQuipslySessionFromRequest);
 const mockedGoogle = jest.mocked(GoogleGenAI);
 const mockedAccess = jest.mocked(resolveEpisodeProductionAccess);
 const mockedSignalEvidence = jest.mocked(loadEpisodeEditSignalEvidence);
+const mockedPersistProposalSet = jest.mocked(persistEpisodeEditProposalSet);
 const generateContent = jest.fn();
 
 function request(body: unknown) {
@@ -61,6 +67,7 @@ describe("AI edit suggestion boundary", () => {
       evidence: null,
       candidateCount: 0,
     });
+    mockedPersistProposalSet.mockResolvedValue({} as never);
     process.env.GEMINI_API_KEY = "configured-test-key";
     mockedGoogle.mockImplementation(() => ({ models: { generateContent } }) as never);
   });

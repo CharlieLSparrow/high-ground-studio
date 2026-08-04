@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -7,6 +9,11 @@ import {
   planExistingEpisodeProductionEnsure,
 } from "@/lib/episode-production/episode-production-ensure";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
+import {
+  appendEpisodeTimelineSavedReceipt,
+  EpisodeEditReviewLedgerError,
+  publicEpisodeEditReviewReceipt,
+} from "@/lib/server/episode-edit-review-ledger";
 import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
 
@@ -36,6 +43,10 @@ function addPayloadVersion(value: unknown) {
 function payloadContentFingerprint(value: unknown) {
   const record = asRecord(value);
   return typeof record?.contentFingerprint === "string" ? record.contentFingerprint : "";
+}
+
+function sha256Text(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function publicProductionJson(
@@ -320,72 +331,116 @@ export async function POST(request: Request) {
 
   if (action === "save-timeline") {
     const prisma = getPrismaClient();
-    const currentForMerge = await prisma.studioEpisodeProduction.findUnique({
-      where: { id: state.id },
-      select: { updatedAt: true, recordingRoomJson: true, timelineJson: true, transcriptJson: true, productionJson: true },
-    });
-
-    if (body.expectedTimelineFingerprint) {
-      const currentFingerprint = payloadContentFingerprint(currentForMerge?.timelineJson);
-      if (currentFingerprint && currentFingerprint !== body.expectedTimelineFingerprint) {
-        return NextResponse.json({ 
-          ...state,
-          ok: false, 
-          mode: "conflict", 
-          message: "Timeline edit conflict detected. Refresh before overwriting this cut.",
-          recordingRoomJson: currentForMerge?.recordingRoomJson ?? null,
-          timelineJson: currentForMerge?.timelineJson ?? null,
-          transcriptJson: currentForMerge?.transcriptJson ?? null,
-          productionJson: publicProductionJson(
-            currentForMerge?.productionJson,
-            currentForMerge?.timelineJson,
-          ),
-          updatedAt: currentForMerge?.updatedAt?.toISOString() ?? state.updatedAt,
-        }, { status: 409 });
-      }
-    } else if (body.expectedUpdatedAt && currentForMerge && currentForMerge.updatedAt.toISOString() !== body.expectedUpdatedAt) {
-      return NextResponse.json({ 
-        ...state,
-        ok: false, 
-        mode: "conflict", 
-        message: "Concurrent edit detected.",
-        recordingRoomJson: currentForMerge.recordingRoomJson ?? null,
-        timelineJson: currentForMerge.timelineJson ?? null,
-        transcriptJson: currentForMerge.transcriptJson ?? null,
-        productionJson: publicProductionJson(
-          currentForMerge.productionJson,
-          currentForMerge.timelineJson,
-        ),
-        updatedAt: currentForMerge.updatedAt.toISOString(),
-      }, { status: 409 });
+    const saveAccess = await resolveEpisodeProductionAccess({ request, projectSlug: state.projectSlug, action: "write", prisma });
+    if (!saveAccess.allowed) {
+      return NextResponse.json({ ...state, ok: false, mode: "conflict", message: saveAccess.error, errorCode: saveAccess.code }, { status: saveAccess.status });
     }
-
     const timelinePayload = addPayloadVersion(body.timelineJson);
     const transcriptPayload = addPayloadVersion(body.transcriptJson);
-    const updated = await prisma.studioEpisodeProduction.update({
-      where: { id: state.id },
-      data: {
-        timelineJson: timelinePayload,
-        transcriptJson: transcriptPayload,
-        productionJson: jsonValue({
-          ...publicProductionJson(
-            currentForMerge?.productionJson,
-            currentForMerge?.timelineJson,
-          ),
-          lastTimelineSaveAt: new Date().toISOString(),
-          projectSlug: state.projectSlug,
-          episodeSlug: state.slug,
-        }),
-      },
-    });
+    const saveOccurredAt = new Date();
+    const saveRequestId = typeof body.editReviewSaveRequestId === "string" ? body.editReviewSaveRequestId : "";
+    const beforeSha256 = typeof body.timelineFingerprintBeforeSha256 === "string" ? body.timelineFingerprintBeforeSha256 : "";
+    const afterSha256 = typeof body.timelineFingerprintAfterSha256 === "string" ? body.timelineFingerprintAfterSha256 : "";
+    const linkedReviewReceiptIds = Array.isArray(body.editReviewReceiptIds)
+      ? body.editReviewReceiptIds.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+    const saveMode = body.editReviewSaveMode === "manual" ? "manual" : "auto";
+    const incomingFingerprint = payloadContentFingerprint(timelinePayload);
+    if (saveRequestId) {
+      const expectedBeforeFingerprint = typeof body.expectedTimelineFingerprint === "string"
+        ? body.expectedTimelineFingerprint
+        : incomingFingerprint;
+      if (!incomingFingerprint || sha256Text(expectedBeforeFingerprint) !== beforeSha256 || sha256Text(incomingFingerprint) !== afterSha256) {
+        return NextResponse.json({ ...state, ok: false, mode: "conflict", message: "The timeline-save receipt does not match the submitted timeline bytes.", errorCode: "TIMELINE_SAVE_RECEIPT_BINDING_INVALID" }, { status: 400 });
+      }
+    }
+
+    let write;
+    try {
+      write = await prisma.$transaction(async (tx) => {
+        const currentForMerge = await tx.studioEpisodeProduction.findUnique({
+          where: { id: state.id },
+          select: { updatedAt: true, recordingRoomJson: true, timelineJson: true, transcriptJson: true, productionJson: true },
+        });
+        const currentFingerprint = payloadContentFingerprint(currentForMerge?.timelineJson);
+        const fingerprintConflict = Boolean(body.expectedTimelineFingerprint && currentFingerprint && currentFingerprint !== body.expectedTimelineFingerprint);
+        const timestampConflict = Boolean(!body.expectedTimelineFingerprint && body.expectedUpdatedAt && currentForMerge && currentForMerge.updatedAt.toISOString() !== body.expectedUpdatedAt);
+        const exactReplay = Boolean(saveRequestId && currentFingerprint && currentFingerprint === incomingFingerprint);
+        if (currentForMerge && exactReplay) {
+          const receipt = await appendEpisodeTimelineSavedReceipt({
+            prisma: tx,
+            episodeProductionId: state.id,
+            actor: saveAccess.actor,
+            clientRequestId: saveRequestId,
+            timelineFingerprintBeforeSha256: beforeSha256,
+            timelineFingerprintAfterSha256: afterSha256,
+            linkedReviewReceiptIds,
+            saveMode,
+            occurredAt: saveOccurredAt,
+          });
+          return { conflict: false as const, current: currentForMerge, receipt, updated: currentForMerge };
+        }
+        if (fingerprintConflict || timestampConflict || !currentForMerge) {
+          return { conflict: true as const, current: currentForMerge, receipt: null, updated: null };
+        }
+        const updated = await tx.studioEpisodeProduction.update({
+          where: { id: state.id },
+          data: {
+            timelineJson: timelinePayload,
+            transcriptJson: transcriptPayload,
+            productionJson: jsonValue({
+              ...publicProductionJson(currentForMerge.productionJson, currentForMerge.timelineJson),
+              lastTimelineSaveAt: saveOccurredAt.toISOString(),
+              projectSlug: state.projectSlug,
+              episodeSlug: state.slug,
+            }),
+          },
+        });
+        const receipt = saveRequestId && beforeSha256 && afterSha256
+          ? await appendEpisodeTimelineSavedReceipt({
+            prisma: tx,
+            episodeProductionId: state.id,
+            actor: saveAccess.actor,
+            clientRequestId: saveRequestId,
+            timelineFingerprintBeforeSha256: beforeSha256,
+            timelineFingerprintAfterSha256: afterSha256,
+            linkedReviewReceiptIds,
+            saveMode,
+            occurredAt: saveOccurredAt,
+          })
+          : null;
+        return { conflict: false as const, current: currentForMerge, receipt, updated };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof EpisodeEditReviewLedgerError) {
+        return NextResponse.json({ ...state, ok: false, mode: "conflict", message: error.message, errorCode: error.code }, { status: error.status });
+      }
+      throw error;
+    }
+
+    if (write.conflict || !write.updated) {
+      const currentForMerge = write.current;
+      return NextResponse.json({
+        ...state,
+        ok: false,
+        mode: "conflict",
+        message: body.expectedTimelineFingerprint ? "Timeline edit conflict detected. Refresh before overwriting this cut." : "Concurrent edit detected.",
+        recordingRoomJson: currentForMerge?.recordingRoomJson ?? null,
+        timelineJson: currentForMerge?.timelineJson ?? null,
+        transcriptJson: currentForMerge?.transcriptJson ?? null,
+        productionJson: publicProductionJson(currentForMerge?.productionJson, currentForMerge?.timelineJson),
+        updatedAt: currentForMerge?.updatedAt?.toISOString() ?? state.updatedAt,
+      }, { status: 409 });
+    }
 
     return NextResponse.json({
       ...state,
       recordingRoomJson: state.recordingRoomJson,
       timelineJson: timelinePayload,
       transcriptJson: transcriptPayload,
-      productionJson: updated.productionJson ?? null,
-      updatedAt: updated.updatedAt.toISOString(),
+      productionJson: write.updated.productionJson ?? null,
+      updatedAt: write.updated.updatedAt.toISOString(),
+      editReviewReceipt: write.receipt ? publicEpisodeEditReviewReceipt(write.receipt) : null,
     });
   }
 

@@ -2109,10 +2109,10 @@ model TranscriptEvaluationWindow {
   approvedAt                 DateTime
   createdAt                  DateTime @default(now())
 
-  room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  transcriptJob  TranscriptJob  @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict)
-  recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict)
-  approvedBy     User           @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  room           CallRoom       @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_room_fkey")
+  transcriptJob  TranscriptJob  @relation(fields: [transcriptJobId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_job_fkey")
+  recordingAsset RecordingAsset @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_asset_fkey")
+  approvedBy     User           @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_approver_fkey")
 
   @@unique([approvedByUserId, clientRequestId], map: "TranscriptEvalWindow_approver_request_key")
   @@index([roomId, approvedAt], map: "TranscriptEvalWindow_room_approved_idx")
@@ -2987,14 +2987,104 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project    StudioProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document   StudioDocument           @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  milestones StudioEpisodeMilestone[]
+  project            StudioProject                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document           StudioDocument                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  milestones         StudioEpisodeMilestone[]
+  editProposalSets   StudioEpisodeEditProposalSet[]
+  editReviewReceipts StudioEpisodeEditReviewReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
   @@index([projectId, boundaryKind])
   @@index([projectId, status, updatedAt])
+}
+
+// A generated edit analysis is canonical evidence, not transient UI state.
+// The exact proposal payload and every immutable source binding are retained so
+// another collaborator can reconstruct what was reviewed without rerunning a
+// provider or pretending a later timeline was the reviewed one.
+model StudioEpisodeEditProposalSet {
+  id                        String   @id
+  episodeProductionId       String
+  createdByUserId           String?
+  createdByEmail            String
+  kind                      String
+  version                   Int
+  providerKind              String
+  providerModel             String
+  timelineFingerprintSha256 String
+  transcriptSha256          String
+  blockCount                Int
+  sourceStartMilliseconds   Int
+  sourceEndMilliseconds     Int
+  recordingAssetId          String?
+  sourceSha256              String?
+  storageGeneration         String?
+  signalProfileSha256       String?
+  payloadSha256             String
+  proposalJson              Json
+  createdAt                 DateTime @default(now())
+
+  episodeProduction StudioEpisodeProduction          @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  reviewReceipts    StudioEpisodeEditReviewReceipt[]
+
+  @@index([episodeProductionId, createdAt])
+  @@index([createdByEmail, createdAt])
+  @@index([timelineFingerprintSha256])
+}
+
+enum StudioEpisodeEditReviewAction {
+  PROPOSAL_CREATED
+  PROOF_LISTENED
+  PROOF_WATCHED
+  APPLIED_TO_DRAFT
+  DISMISSED
+  RESTORED_TO_DRAFT
+  TIMELINE_SAVED
+}
+
+enum StudioEpisodeEditReviewScope {
+  REVIEW_ONLY
+  LOCAL_DRAFT
+  CANONICAL_TIMELINE
+}
+
+// Review actions append here; they never rewrite the proposal, source media, or
+// prior receipts. LOCAL_DRAFT actions are deliberately distinct from the
+// TIMELINE_SAVED receipt created by a successful canonical timeline write.
+model StudioEpisodeEditReviewReceipt {
+  id                                String                        @id @default(cuid())
+  episodeProductionId               String
+  proposalSetId                     String?
+  actorUserId                       String?
+  actorEmail                        String
+  clientRequestId                   String
+  action                            StudioEpisodeEditReviewAction
+  scope                             StudioEpisodeEditReviewScope
+  subjectId                         String?
+  subjectKind                       String?
+  sourceStartMilliseconds           Int?
+  sourceEndMilliseconds             Int?
+  proposalTimelineFingerprintSha256 String
+  timelineFingerprintBeforeSha256   String
+  timelineFingerprintAfterSha256    String?
+  transcriptSha256                  String?
+  sourceSha256                      String?
+  storageGeneration                 String?
+  signalProfileSha256               String?
+  requestSha256                     String
+  evidenceJson                      Json                          @default("{}")
+  occurredAt                        DateTime
+  createdAt                         DateTime                      @default(now())
+
+  episodeProduction StudioEpisodeProduction       @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  proposalSet       StudioEpisodeEditProposalSet? @relation(fields: [proposalSetId], references: [id], onDelete: SetNull)
+
+  @@unique([episodeProductionId, actorEmail, clientRequestId], map: "StudioEpisodeEditReceipt_episode_actor_request_key")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeEditReceipt_episode_occurred_idx")
+  @@index([proposalSetId, occurredAt])
+  @@index([actorEmail, createdAt])
+  @@index([subjectId, occurredAt])
 }
 
 model StudioEpisodeMilestone {
