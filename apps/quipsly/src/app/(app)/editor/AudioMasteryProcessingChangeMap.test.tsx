@@ -37,8 +37,8 @@ describe("AudioMasteryAudition processing transparency", () => {
     fireEvent.click(screen.getByRole("button", { name: /open full audition desk/i }));
     expect(screen.getByText("Processing change map")).toBeInTheDocument();
     expect(screen.getByText(/not compressor gain reduction/i)).toBeInTheDocument();
-    expect(screen.getByText(/Delivery delta includes overall level change/i)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /mastering dynamic-shape change/i })).toBeInTheDocument();
+    expect(screen.getByText(/Level delta includes overall level change/i)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /processing change map over the source clock/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /select a position to move synchronized audition playback/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "15 sec" }));

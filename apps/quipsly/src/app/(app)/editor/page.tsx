@@ -227,12 +227,13 @@ type AudioTreatmentClientStatus = {
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
   profileId: "dc-rumble-correction-v1" | null;
   sourceMeasurement: AudioMasteryMeasurement | null;
+  sourceDiagnosis: AudioSignalDiagnosisSummary | null;
   proposal: null | {
     trigger: { kind: "dc-offset"; maximumAbsoluteDcOffset: number; thresholdAmplitude: 0.01; affectedChannels: number[] };
     treatment: { frequencyHz: number; poles: number; widthType: string; width: number };
   };
   verification: null | { maximumAbsoluteDcBefore: number; maximumAbsoluteDcAfter: number; relativeReduction: number; durationDeltaSeconds: number; completeOutputDecode: true; passes: true };
-  derivative: null | { playbackUrl: string | null; durationSeconds: number; measured: AudioMasteryMeasurement };
+  derivative: null | { playbackUrl: string | null; durationSeconds: number; measured: AudioMasteryMeasurement; diagnosis: AudioSignalDiagnosisSummary };
   error: string | null;
   updatedAt: string | null;
   boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedExperiment: true; outputIsNotAMasteredDeliveryFile: true; explicitApprovalStillRequired: true };
@@ -9442,8 +9443,8 @@ function CloudEditorContent() {
                               <div className="rounded-md bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black text-cyan-200">{audioTreatmentStatus.proposal.treatment.frequencyHz} Hz</div><div className="text-slate-400">Two-pole correction</div></div>
                             </div>
                           )}
-                          {audioTreatmentStatus?.derivative?.playbackUrl && audioTreatmentStatus.sourceMeasurement && audioTreatmentStatus.verification && (
-                            <AudioTreatmentAudition sourceUrl={asset.playbackUrl} treatedUrl={audioTreatmentStatus.derivative.playbackUrl} source={audioTreatmentStatus.sourceMeasurement} treated={audioTreatmentStatus.derivative.measured} verification={audioTreatmentStatus.verification} />
+                          {audioTreatmentStatus?.derivative?.playbackUrl && audioTreatmentStatus.sourceMeasurement && audioTreatmentStatus.sourceDiagnosis && audioTreatmentStatus.verification && (
+                            <AudioTreatmentAudition sourceUrl={asset.playbackUrl} treatedUrl={audioTreatmentStatus.derivative.playbackUrl} source={audioTreatmentStatus.sourceMeasurement} treated={audioTreatmentStatus.derivative.measured} sourceDiagnosis={audioTreatmentStatus.sourceDiagnosis} treatedDiagnosis={audioTreatmentStatus.derivative.diagnosis} verification={audioTreatmentStatus.verification} />
                           )}
                           <button
                             type="button"

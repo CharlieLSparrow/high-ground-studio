@@ -1,12 +1,14 @@
 import {
   audioMasteryAuditionGains,
-  audioMasteryProcessingDeltaSeries,
-  audioMasteryProcessingPointAt,
-  audioMasteryProcessingSummary,
-  audioMasteryProcessingViewSpan,
   audioMasteryReviewMoments,
 } from "./AudioMasteryAudition";
 import type { AudioMasteryMeasurement } from "./AudioMasteryAudition";
+import {
+  audioProcessingDeltaSeries,
+  audioProcessingPointAt,
+  audioProcessingSummary,
+  audioProcessingViewSpan,
+} from "./AudioProcessingChangeMap";
 
 function measurement(series: AudioMasteryMeasurement["series"]): AudioMasteryMeasurement {
   return {
@@ -89,14 +91,14 @@ describe("audio mastery processing-change evidence", () => {
       { timeMs: 9_050, momentaryLufs: -10, shortTermLufs: -10, integratedLufs: -16, truePeakDbtp: -1 },
     ]), integratedLufs: -16 };
 
-    const points = audioMasteryProcessingDeltaSeries(source, mastered);
+    const points = audioProcessingDeltaSeries(source, mastered);
     expect(points).toEqual([
-      expect.objectContaining({ timeSeconds: 1, deliveryDeltaLu: 10, shapeDeltaLu: 2 }),
-      expect.objectContaining({ timeSeconds: 5, deliveryDeltaLu: 8, shapeDeltaLu: 0 }),
-      expect.objectContaining({ timeSeconds: 9, deliveryDeltaLu: 8, shapeDeltaLu: 0 }),
+      expect.objectContaining({ timeSeconds: 1, levelDeltaLu: 10, shapeDeltaLu: 2 }),
+      expect.objectContaining({ timeSeconds: 5, levelDeltaLu: 8, shapeDeltaLu: 0 }),
+      expect.objectContaining({ timeSeconds: 9, levelDeltaLu: 8, shapeDeltaLu: 0 }),
     ]);
-    expect(audioMasteryProcessingPointAt(points, 1.4)).toEqual(expect.objectContaining({ timeSeconds: 1 }));
-    expect(audioMasteryProcessingSummary(points)).toEqual({
+    expect(audioProcessingPointAt(points, 1.4)).toEqual(expect.objectContaining({ timeSeconds: 1 }));
+    expect(audioProcessingSummary(points)).toEqual({
       pointCount: 3,
       meanAbsoluteShapeDeltaLu: 2 / 3,
       largestShapeDelta: expect.objectContaining({ timeSeconds: 1, shapeDeltaLu: 2 }),
@@ -104,15 +106,15 @@ describe("audio mastery processing-change evidence", () => {
   });
 
   it("bounds whole, minute, and detail views on the shared source clock", () => {
-    expect(audioMasteryProcessingViewSpan(180, 7, "minute")).toEqual({ startSeconds: 0, endSeconds: 60, durationSeconds: 60 });
-    expect(audioMasteryProcessingViewSpan(180, 176, "detail")).toEqual({ startSeconds: 165, endSeconds: 180, durationSeconds: 15 });
-    expect(audioMasteryProcessingViewSpan(12, 6, "minute")).toEqual({ startSeconds: 0, endSeconds: 12, durationSeconds: 12 });
+    expect(audioProcessingViewSpan(180, 7, "minute")).toEqual({ startSeconds: 0, endSeconds: 60, durationSeconds: 60 });
+    expect(audioProcessingViewSpan(180, 176, "detail")).toEqual({ startSeconds: 165, endSeconds: 180, durationSeconds: 15 });
+    expect(audioProcessingViewSpan(12, 6, "minute")).toEqual({ startSeconds: 0, endSeconds: 12, durationSeconds: 12 });
   });
 
   it("does not invent processing evidence when aligned short-term measurements are absent", () => {
     const empty = measurement([{ timeMs: 1_000, momentaryLufs: null, shortTermLufs: null, integratedLufs: null, truePeakDbtp: null }]);
-    expect(audioMasteryProcessingDeltaSeries(empty, empty)).toEqual([]);
-    expect(audioMasteryProcessingPointAt([], 5)).toBeNull();
-    expect(audioMasteryProcessingSummary([])).toEqual({ pointCount: 0, meanAbsoluteShapeDeltaLu: null, largestShapeDelta: null });
+    expect(audioProcessingDeltaSeries(empty, empty)).toEqual([]);
+    expect(audioProcessingPointAt([], 5)).toBeNull();
+    expect(audioProcessingSummary([])).toEqual({ pointCount: 0, meanAbsoluteShapeDeltaLu: null, largestShapeDelta: null });
   });
 });

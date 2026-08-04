@@ -283,7 +283,7 @@ function publicMeasurement(value: ReturnType<typeof parseAudioMasteryResult>["so
   };
 }
 
-function publicSignalDiagnosis(value: NonNullable<ReturnType<typeof parseAudioMasteryResult>["signalDiagnosis"]>) {
+export function publicSignalDiagnosis(value: NonNullable<ReturnType<typeof parseAudioMasteryResult>["signalDiagnosis"]>) {
   return {
     diagnosisId: value.diagnosisId,
     analyzedAt: value.analyzedAt,

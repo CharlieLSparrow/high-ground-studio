@@ -22,18 +22,21 @@ const EPISODE_SLUG = "episode-4-part-2";
 const ASSET_ID = "cmse192a8000e8jxldysq5b1u";
 const JOB_ID = "audio_mastery_9cafe8cc6c684e90bcb07ca008bfd48c";
 const ASSET_FILENAME = "quipsly-audio-mastery-dogfood.wav";
+const TREATMENT_ASSET_ID = "cmsecf2px0007q7xlyooqnys0";
+const TREATMENT_JOB_ID = "audio_treatment_3076f60ac63d4242b55b23338a3324c3";
+const TREATMENT_ASSET_FILENAME = "quipsly-audio-treatment-ui-acceptance.wav";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
 function checkpoint(label) {
-  process.stderr.write(`[retained audio mastery] ${label}\n`);
+  process.stderr.write(`[retained audio processing] ${label}\n`);
 }
 
 function requireLocalDatabase(value) {
   const url = new URL(value);
-  assert(["localhost", "127.0.0.1", "::1"].includes(url.hostname), "Audio mastery operation refuses non-local PostgreSQL.");
+  assert(["localhost", "127.0.0.1", "::1"].includes(url.hostname), "Audio processing operation refuses non-local PostgreSQL.");
   return value;
 }
 
@@ -45,9 +48,9 @@ function stable(value) {
   return typeof value === "bigint" ? value.toString() : value;
 }
 
-async function masterySnapshot(prisma) {
+async function processingSnapshot(prisma, { jobId, assetId, filename, type }) {
   const row = await prisma.studioAssetProcessingJob.findUnique({
-    where: { id: JOB_ID },
+    where: { id: jobId },
     select: {
       id: true,
       projectId: true,
@@ -73,10 +76,10 @@ async function masterySnapshot(prisma) {
       asset: { select: { filename: true, url: true, mimeType: true, sizeBytes: true, updatedAt: true } },
     },
   });
-  assert(row?.status === "completed", "Retained audio mastery receipt is not completed.");
-  assert(row.project?.slug === PROJECT_SLUG && row.assetId === ASSET_ID, "Retained audio mastery source boundary changed.");
+  assert(row?.status === "completed" && row.type === type, `Retained ${type} receipt is not completed.`);
+  assert(row.project?.slug === PROJECT_SLUG && row.assetId === assetId, `Retained ${type} source boundary changed.`);
   assert(row.project.accessGrants.length === 1, "Retained media operator lost its explicit HGO project grant.");
-  assert(row.asset.filename === ASSET_FILENAME, "Retained audio mastery filename changed.");
+  assert(row.asset.filename === filename, `Retained ${type} filename changed.`);
   return JSON.stringify(stable(row));
 }
 
@@ -93,7 +96,7 @@ async function operateRenderedDesk(baseURL, password) {
   const page = await context.newPage();
   const browserErrors = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
-  const identity = { role: "retained-audio-mastery-operator", email: OPERATOR_EMAIL };
+  const identity = { role: "retained-audio-processing-operator", email: OPERATOR_EMAIL };
 
   try {
     checkpoint("signing in");
@@ -126,7 +129,7 @@ async function operateRenderedDesk(baseURL, password) {
     await desk.waitFor({ timeout: 20_000 });
     await desk.getByText("Processing change map", { exact: true }).waitFor();
     await desk.getByText(/not compressor gain reduction/i).waitFor();
-    await desk.getByText(/Delivery delta includes overall level change/i).waitFor();
+    await desk.getByText(/Level delta includes overall level change/i).waitFor();
     checkpoint("operating processing map");
 
     const map = desk.getByRole("button", { name: /Processing change map from .* Select a position to move synchronized audition playback/i });
@@ -165,7 +168,60 @@ async function operateRenderedDesk(baseURL, password) {
     await desk.getByRole("button", { name: "Pause", exact: true }).click();
 
     await assertNoHorizontalOverflow(desk, "audio mastery audition dialog");
-    assert(browserErrors.length === 0, `Audio mastery desk raised browser exceptions: ${browserErrors.join(" | ")}`);
+    await desk.getByRole("button", { name: "Close", exact: true }).click();
+
+    checkpoint("operating retained treatment evidence");
+    await page.getByText(TREATMENT_ASSET_FILENAME, { exact: true }).first().waitFor({ timeout: 20_000 });
+    const treatmentDeskButtons = page.getByRole("button", { name: "Open full treatment desk", exact: true });
+    await treatmentDeskButtons.first().waitFor({ timeout: 20_000 });
+    let treatmentDeskButton = null;
+    for (let index = 0; index < await treatmentDeskButtons.count(); index += 1) {
+      const candidate = treatmentDeskButtons.nth(index);
+      const ownsFixture = await candidate.evaluate((element, filename) => element.closest(".shadow-sm")?.textContent?.includes(filename) === true, TREATMENT_ASSET_FILENAME);
+      if (ownsFixture) {
+        treatmentDeskButton = candidate;
+        break;
+      }
+    }
+    assert(treatmentDeskButton, `No treatment evidence desk belongs to ${TREATMENT_ASSET_FILENAME}.`);
+    await treatmentDeskButton.click();
+    const treatmentDialog = page.getByRole("dialog", { name: "Source-to-treatment evidence desk" });
+    await treatmentDialog.waitFor({ timeout: 20_000 });
+    const treatmentRegion = treatmentDialog.getByRole("region", { name: "Audio treatment evidence audition" });
+    assert(await treatmentRegion.getByText("Before/after complete-decode evidence", { exact: true }).textContent() === "Before/after complete-decode evidence", "Treatment complete-decode comparison did not render.");
+    assert(await treatmentRegion.getByText("1 → 0", { exact: true }).textContent() === "1 → 0", "Treatment before/after signal flags did not render.");
+    assert(await treatmentRegion.getByText("Treatment signal flag", { exact: true }).textContent() === "Treatment signal flag", "Treatment map did not expose its after-treatment observation lane.");
+    assert((await treatmentRegion.getByText(/cannot measure phase or frequency response/i).textContent())?.includes("cannot measure phase or frequency response"), "Treatment map lost its phase and frequency-response boundary.");
+
+    const treatmentMap = treatmentRegion.getByRole("button", { name: /Treatment loudness-change map from .* Select a position to move synchronized audition playback/i });
+    const treatmentMapBounds = await treatmentMap.boundingBox();
+    assert(treatmentMapBounds?.width > 100, "Rendered treatment map has no operable width.");
+    await treatmentMap.click({ position: { x: treatmentMapBounds.width * 0.62, y: treatmentMapBounds.height * 0.5 } });
+    const treatmentPlayhead = treatmentRegion.getByRole("slider", { name: "Treatment audition playhead" });
+    const treatmentSelectedSeconds = Number(await treatmentPlayhead.inputValue());
+    assert(treatmentSelectedSeconds > 4 && treatmentSelectedSeconds < 6, `Treatment map did not seek the shared 8-second clock: ${treatmentSelectedSeconds}.`);
+
+    const treatmentSourceAudio = treatmentRegion.locator('audio[data-treatment-version="source"]');
+    const treatmentOutputAudio = treatmentRegion.locator('audio[data-treatment-version="treated"]');
+    await page.waitForFunction(() => Array.from(document.querySelectorAll("audio[data-treatment-version]")).every((element) => element.readyState >= 1), undefined, { timeout: 20_000 });
+    const treatmentReadyState = await Promise.all([
+      treatmentSourceAudio.evaluate((element) => element.readyState),
+      treatmentOutputAudio.evaluate((element) => element.readyState),
+    ]);
+    assert(treatmentReadyState.every((value) => value >= 1), "Both protected treatment feeds did not load metadata.");
+    await treatmentRegion.getByRole("button", { name: "Play", exact: true }).click();
+    await page.waitForTimeout(800);
+    const treatmentAfterPlay = await treatmentOutputAudio.evaluate((element) => ({ currentTime: element.currentTime, paused: element.paused }));
+    assert(treatmentAfterPlay.currentTime > treatmentSelectedSeconds, "Treatment experiment did not advance from the map-selected source time.");
+    await treatmentRegion.getByRole("button", { name: "Immutable source", exact: true }).click();
+    await page.waitForTimeout(450);
+    const treatmentSourceAfterSwitch = await treatmentSourceAudio.evaluate((element) => ({ currentTime: element.currentTime, paused: element.paused }));
+    assert(treatmentSourceAfterSwitch.currentTime >= treatmentAfterPlay.currentTime - 0.2, "Treatment A/B switch lost the shared source playhead.");
+    assert(!treatmentSourceAfterSwitch.paused, "Treatment A/B switch did not preserve active playback.");
+    await treatmentRegion.getByRole("button", { name: "Pause", exact: true }).click();
+    await assertNoHorizontalOverflow(treatmentDialog, "audio treatment evidence dialog");
+
+    assert(browserErrors.length === 0, `Audio processing desks raised browser exceptions: ${browserErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, identity.role);
     checkpoint("rendered operation passed");
 
@@ -177,6 +233,14 @@ async function operateRenderedDesk(baseURL, password) {
       masteredReadyState: readyState[1],
       synchronizedPlaybackAdvanced: true,
       switchPreservedPlayback: true,
+      treatmentMapOperated: true,
+      treatmentSelectedSeconds,
+      treatmentSourceReadyState: treatmentReadyState[0],
+      treatmentOutputReadyState: treatmentReadyState[1],
+      treatmentSignalFlagsBefore: 1,
+      treatmentSignalFlagsAfter: 0,
+      treatmentSynchronizedPlaybackAdvanced: true,
+      treatmentSwitchPreservedPlayback: true,
       browserExceptions: browserErrors.length,
       horizontalOverflow: false,
     };
@@ -198,11 +262,17 @@ async function main() {
 
   try {
     checkpoint("reading immutable boundary before operation");
-    const before = await masterySnapshot(prisma);
+    const before = await Promise.all([
+      processingSnapshot(prisma, { jobId: JOB_ID, assetId: ASSET_ID, filename: ASSET_FILENAME, type: "audio-mastery" }),
+      processingSnapshot(prisma, { jobId: TREATMENT_JOB_ID, assetId: TREATMENT_ASSET_ID, filename: TREATMENT_ASSET_FILENAME, type: "audio-treatment" }),
+    ]);
     const rendered = await operateRenderedDesk(baseURL, password);
     checkpoint("reading immutable boundary after operation");
-    const after = await masterySnapshot(prisma);
-    assert(after === before, "Auditioning the evidence mutated the immutable asset or mastery receipt.");
+    const after = await Promise.all([
+      processingSnapshot(prisma, { jobId: JOB_ID, assetId: ASSET_ID, filename: ASSET_FILENAME, type: "audio-mastery" }),
+      processingSnapshot(prisma, { jobId: TREATMENT_JOB_ID, assetId: TREATMENT_ASSET_ID, filename: TREATMENT_ASSET_FILENAME, type: "audio-treatment" }),
+    ]);
+    assert(after[0] === before[0] && after[1] === before[1], "Auditioning the evidence mutated an immutable asset or processing receipt.");
     console.log(JSON.stringify({
       ok: true,
       localOnly: true,
@@ -212,6 +282,8 @@ async function main() {
       episodeSlug: EPISODE_SLUG,
       assetId: ASSET_ID,
       masteryJobId: JOB_ID,
+      treatmentAssetId: TREATMENT_ASSET_ID,
+      treatmentJobId: TREATMENT_JOB_ID,
       deliveryAndShapeDeltaSeparated: true,
       sourceAndReceiptUnchanged: true,
       credentialsPrinted: false,

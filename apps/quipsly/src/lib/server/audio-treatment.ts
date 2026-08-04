@@ -18,6 +18,8 @@ import {
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 
+import { publicSignalDiagnosis } from "./audio-mastery";
+
 const JOB_TYPE = "audio-treatment";
 const MASTERY_JOB_TYPE = "audio-mastery";
 
@@ -26,6 +28,7 @@ export type PublicAudioTreatmentStatus = {
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
   profileId: "dc-rumble-correction-v1" | null;
   sourceMeasurement: null | ReturnType<typeof publicMeasurement>;
+  sourceDiagnosis: null | ReturnType<typeof publicSignalDiagnosis>;
   proposal: null | {
     trigger: { kind: "dc-offset"; maximumAbsoluteDcOffset: number; thresholdAmplitude: 0.01; affectedChannels: number[] };
     treatment: { frequencyHz: number; poles: number; widthType: string; width: number };
@@ -38,7 +41,7 @@ export type PublicAudioTreatmentStatus = {
     completeOutputDecode: true;
     passes: true;
   };
-  derivative: null | { playbackUrl: string | null; durationSeconds: number; measured: ReturnType<typeof publicMeasurement> };
+  derivative: null | { playbackUrl: string | null; durationSeconds: number; measured: ReturnType<typeof publicMeasurement>; diagnosis: ReturnType<typeof publicSignalDiagnosis> };
   error: string | null;
   updatedAt: string | null;
   boundaries: {
@@ -181,9 +184,10 @@ export function toPublicAudioTreatmentStatus(job: any): PublicAudioTreatmentStat
     status: integrityFailure ? "failed" : declaredStatus,
     profileId: contract?.profileId ?? null,
     sourceMeasurement: result ? publicMeasurement(result.sourceMeasurement) : null,
+    sourceDiagnosis: result ? publicSignalDiagnosis(result.sourceDiagnosis) : null,
     proposal: result ? { trigger: result.proposal.trigger, treatment: { frequencyHz: Number(treatment?.parameters.frequencyHz), poles: Number(treatment?.parameters.poles), widthType: String(treatment?.parameters.widthType), width: Number(treatment?.parameters.width) } } : null,
     verification: result ? { maximumAbsoluteDcBefore: before, maximumAbsoluteDcAfter: after, relativeReduction: before > 0 ? 1 - after / before : 0, durationDeltaSeconds: result.verification.durationDeltaSeconds, completeOutputDecode: true, passes: true } : null,
-    derivative: result ? { playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null, durationSeconds: result.derivative.diagnosis.durationSeconds, measured: publicMeasurement(result.derivative.measurement) } : null,
+    derivative: result ? { playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null, durationSeconds: result.derivative.diagnosis.durationSeconds, measured: publicMeasurement(result.derivative.measurement), diagnosis: publicSignalDiagnosis(result.derivative.diagnosis) } : null,
     error: integrityFailure ? "Audio treatment evidence failed integrity validation." : typeof job.error === "string" ? job.error : null,
     updatedAt: job.updatedAt?.toISOString?.() ?? null,
     boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, explicitApprovalStillRequired: true },
@@ -209,7 +213,7 @@ function registrationMetadata(result: ReturnType<typeof parseAudioTreatmentResul
 }
 
 function emptyStatus(): PublicAudioTreatmentStatus {
-  return { jobId: null, status: "not-queued", profileId: null, sourceMeasurement: null, proposal: null, verification: null, derivative: null, error: null, updatedAt: null, boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, explicitApprovalStillRequired: true } };
+  return { jobId: null, status: "not-queued", profileId: null, sourceMeasurement: null, sourceDiagnosis: null, proposal: null, verification: null, derivative: null, error: null, updatedAt: null, boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, explicitApprovalStillRequired: true } };
 }
 
 function publicMeasurement(value: ReturnType<typeof parseAudioTreatmentResult>["sourceMeasurement"]) {
