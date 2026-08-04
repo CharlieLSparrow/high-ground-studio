@@ -119,6 +119,15 @@ async function inspectProtectedPlayback(page) {
 }
 
 async function verifyCoach(page, baseURL, identity, password) {
+  const spectralTileResponses = [];
+  page.on("response", (response) => {
+    if (response.url().includes("/api/media-vault/audio-spectral-evidence/tile")) {
+      spectralTileResponses.push({
+        status: response.status(),
+        contentType: response.headers()["content-type"] || null,
+      });
+    }
+  });
   await signInThroughRenderedLogin({
     page,
     baseURL,
@@ -163,7 +172,23 @@ async function verifyCoach(page, baseURL, identity, password) {
   await assertNoHorizontalOverflow(surface, identity.role);
   await evidenceLink.click();
   await page.locator(`#transcript-segment-${TRANSCRIPT_SEGMENT_ID}`).waitFor({ timeout: 20_000 });
-  await page.getByText("I can name the smallest repeatable boundary before the next Session.", { exact: true }).waitFor({ timeout: 20_000 });
+  await page.getByText("I can name the smallest repeatable boundary before the next Session.", { exact: true }).first().waitFor({ timeout: 20_000 });
+  const spectralEvidence = page.getByRole("region", { name: "High-resolution spectral evidence", exact: true });
+  await spectralEvidence.waitFor({ timeout: 20_000 });
+  await spectralEvidence.scrollIntoViewIfNeeded();
+  await spectralEvidence.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+  const spectralCanvas = spectralEvidence.getByRole("slider", { name: /Spectral evidence from/i });
+  await spectralCanvas.waitFor({ timeout: 20_000 });
+  const wholeLabel = await spectralCanvas.getAttribute("aria-label");
+  await spectralEvidence.getByRole("button", { name: "One minute", exact: true }).click();
+  await page.waitForTimeout(250);
+  assert(await spectralCanvas.getAttribute("aria-label") !== wholeLabel, "Coach could not operate the one-minute protected spectral view.");
+  await spectralEvidence.getByRole("button", { name: "Ten seconds", exact: true }).click();
+  await page.waitForTimeout(500);
+  assert(spectralTileResponses.length >= 3, "Coach did not receive protected overview, browse, and detail spectral tiles.");
+  assert(spectralTileResponses.every((response) => response.status === 200), "Coach received a failed protected spectral tile response.");
+  assert(spectralTileResponses.every((response) => response.contentType === "application/vnd.quipsly.spectral-tile; format=gray8"), `Coach received an unexpected protected spectral tile type: ${JSON.stringify(spectralTileResponses)}`);
+  await assertNoHorizontalOverflow(spectralEvidence, "coach high-resolution spectral evidence");
   const playback = await inspectProtectedPlayback(page);
   assert(playback.status === 206, "Authorized coach could not range-read the exact protected playback source.");
   assert(playback.contentType === "audio/wav", "Protected playback returned an unexpected media type.");
@@ -176,6 +201,8 @@ async function verifyCoach(page, baseURL, identity, password) {
     priorBrief: "visible",
     exactSourceLink: true,
     exactTaskEvidenceSource: true,
+    highResolutionSpectralEvidence: "overview-browse-detail-operated",
+    protectedSpectralTileResponses: spectralTileResponses.length,
     protectedPlaybackRange: "authorized",
     currentSessionMutated: false,
     viewport: `${identity.viewport.width}x${identity.viewport.height}`,

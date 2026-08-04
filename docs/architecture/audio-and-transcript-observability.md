@@ -1,7 +1,7 @@
 # Audio and transcript observability
 
-Status: implemented signal-observability slice; production corpus gate remains
-Last reviewed: 2026-08-03
+Status: implemented signal and high-resolution spectral observability; production corpus gate remains
+Last reviewed: 2026-08-04
 
 Quipsly treats captured audio, provider inference, and playback-backed review as
 three different kinds of evidence. The product must never collapse them into a
@@ -108,6 +108,12 @@ loudness. See `docs/architecture/audio-mastery.md` for the source-bound
 measurement, reversible proposal, independently verified preview, and
 non-promotion contract.
 
+Local Nest media also has a source-bound logarithmic spectral tile pyramid for
+whole-source, one-minute, and ten-second inspection. It shares the protected
+playback clock in Studio and coaching, preserves fractional source tails, and
+never presents visible energy as an automatic EQ or edit decision. See
+`docs/architecture/audio-spectral-evidence.md`.
+
 ## Correction and provenance
 
 Provider segments remain immutable. A reviewer can play an exact time range,
@@ -127,7 +133,7 @@ analysis and operate a real evaluation corpus:
 
 - standards-conformant integrated loudness and true-peak analysis in the media
   worker, preserving the on-device RMS/sample-peak evidence separately;
-- server-side signal analysis for video-contained audio and legacy sources;
+- cloud execution for the same source-bound spectral and signal contracts;
 - capture-route changes and pause/interruption boundaries on the same timeline;
 - side-by-side provider candidates without replacing the canonical source;
 - named speaker evaluation and domain vocabulary tests;

@@ -173,6 +173,41 @@ function playbackFromAsset(asset: any) {
   };
 }
 
+async function spectralContextForPlayback(
+  prisma: any,
+  playback: ReturnType<typeof playbackFromAsset>,
+  projectId: string | null,
+) {
+  if (
+    !playback
+    || !projectId
+    || typeof prisma?.studioMediaAsset?.findFirst !== "function"
+  ) return null;
+
+  const mediaAsset = await prisma.studioMediaAsset.findFirst({
+    where: {
+      url: playback.url,
+      assetAttachments: { some: { projectId } },
+    },
+    select: {
+      id: true,
+      assetAttachments: {
+        where: { projectId },
+        take: 1,
+        select: { project: { select: { slug: true } } },
+      },
+    },
+  });
+  const projectSlug = text(mediaAsset?.assetAttachments?.[0]?.project?.slug);
+  const assetId = text(mediaAsset?.id);
+  if (!projectSlug || !assetId) return null;
+  return {
+    projectSlug,
+    assetId,
+    sourceId: playback.sourceId,
+  };
+}
+
 function recordingForPlaybackPreparation(asset: any, gateAllowed: boolean) {
   if (!asset?.id) return null;
   return {
@@ -462,6 +497,7 @@ export async function readTranscriptCorrectionDesk(input: {
       gate: { allowed: false, error: "No recording-backed transcript is available." },
       recording: null,
       playback: null,
+      spectralContext: null,
       evidence: buildTranscriptEvidence(job, [], []),
       participants: [],
       speakerGroups: [],
@@ -482,6 +518,7 @@ export async function readTranscriptCorrectionDesk(input: {
       gate,
       recording: recordingForPlaybackPreparation(job.asset, false),
       playback: null,
+      spectralContext: null,
       evidence: buildTranscriptEvidence(job, [], []),
       participants: [],
       speakerGroups: [],
@@ -491,6 +528,12 @@ export async function readTranscriptCorrectionDesk(input: {
   }
 
   const projectedSpeakerGroups = speakerGroups(job);
+  const playback = playbackFromAsset(job.asset);
+  const spectralContext = await spectralContextForPlayback(
+    input.prisma,
+    playback,
+    room.projectId ?? null,
+  );
   const projectedSegments = job.segments.map((segment: any) => {
     const accepted = segment.corrections.find((correction: any) => correction.status === "accepted") ?? null;
     const attribution = currentSpeakerAttribution(job, segment.speakerLabel);
@@ -541,7 +584,8 @@ export async function readTranscriptCorrectionDesk(input: {
     processing: transcriptProcessingSummary(job),
     gate,
     recording: recordingForPlaybackPreparation(job.asset, true),
-    playback: playbackFromAsset(job.asset),
+    playback,
+    spectralContext,
     participants: (room.participants ?? []).map((participant: any) => ({
       id: participant.id as string,
       userId: participant.userId as string | null,

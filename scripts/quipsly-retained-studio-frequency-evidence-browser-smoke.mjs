@@ -26,7 +26,16 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1_100 }, colorScheme: "dark", locale: "en-US", reducedMotion: "reduce" });
   const page = await context.newPage();
   const pageErrors = [];
+  const spectralTileResponses = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("response", (response) => {
+    if (response.url().includes("/api/media-vault/audio-spectral-evidence/tile")) {
+      spectralTileResponses.push({
+        status: response.status(),
+        contentType: response.headers()["content-type"] || null,
+      });
+    }
+  });
   const identity = { role: "retained-studio-frequency-operator", email: OPERATOR_EMAIL };
 
   try {
@@ -75,6 +84,35 @@ async function main() {
     assert.ok(bounds?.width && bounds.width > 100, "Studio frequency map has no operable source-clock width.");
     await sourceClock.click({ position: { x: bounds.width * 0.62, y: bounds.height * 0.45 } });
     await evidenceMap.getByText("15 sec", { exact: true }).waitFor();
+
+    const spectralEvidence = dialog.getByRole("region", { name: "High-resolution spectral evidence", exact: true });
+    await spectralEvidence.waitFor({ timeout: 20_000 });
+    await spectralEvidence.scrollIntoViewIfNeeded();
+    await spectralEvidence.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+    const spectralCanvas = spectralEvidence.getByRole("slider", { name: /Spectral evidence from/i });
+    await spectralCanvas.waitFor({ timeout: 20_000 });
+    const spectralBounds = await spectralCanvas.boundingBox();
+    assert.ok(spectralBounds?.width && spectralBounds.width > 300, "High-resolution spectral evidence has no operable source-clock width.");
+    const wholeSourceLabel = await spectralCanvas.getAttribute("aria-label");
+    await spectralEvidence.getByRole("button", { name: "One minute", exact: true }).click();
+    await page.waitForTimeout(250);
+    const minuteLabel = await spectralCanvas.getAttribute("aria-label");
+    assert.notEqual(minuteLabel, wholeSourceLabel, "One-minute spectral zoom did not change the protected tile window.");
+    await spectralEvidence.getByRole("button", { name: "Ten seconds", exact: true }).click();
+    await page.waitForTimeout(250);
+    const detailLabel = await spectralCanvas.getAttribute("aria-label");
+    assert.notEqual(detailLabel, minuteLabel, "Ten-second spectral zoom did not change the protected tile window.");
+    const priorSpectralSecond = Number(await spectralCanvas.getAttribute("aria-valuenow"));
+    await spectralCanvas.click({ position: { x: spectralBounds.width * 0.72, y: spectralBounds.height * 0.5 } });
+    await page.waitForFunction(({ label, prior }) => {
+      const canvas = [...document.querySelectorAll('canvas[role="slider"]')].find((node) => node.getAttribute("aria-label")?.startsWith(label));
+      return canvas && Number(canvas.getAttribute("aria-valuenow")) !== prior;
+    }, { label: "Spectral evidence from", prior: priorSpectralSecond });
+    await page.waitForTimeout(500);
+    assert.ok(spectralTileResponses.length >= 3, "High-resolution spectral zoom did not fetch multiple protected pyramid levels.");
+    assert.ok(spectralTileResponses.every((response) => response.status === 200), "A protected spectral tile request failed.");
+    assert.ok(spectralTileResponses.every((response) => response.contentType === "application/vnd.quipsly.spectral-tile; format=gray8"), `A protected spectral tile returned an unexpected media type: ${JSON.stringify(spectralTileResponses)}`);
+    await assertNoHorizontalOverflow(spectralEvidence, "Studio high-resolution spectral evidence");
     await assertNoHorizontalOverflow(evidenceMap, "Studio broad-band frequency evidence map");
     assert.equal(pageErrors.length, 0, `Studio frequency journey raised browser errors: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, identity.role);
@@ -90,6 +128,9 @@ async function main() {
       frequencyBandCount: 6,
       frequencyViewOperated: true,
       sourceClockOperated: true,
+      spectralPyramidLevelsOperated: 3,
+      protectedSpectralTileResponses: spectralTileResponses.length,
+      sharedSpectralPlayheadOperated: true,
       horizontalOverflow: false,
       browserExceptions: 0,
       credentialsPrinted: false,

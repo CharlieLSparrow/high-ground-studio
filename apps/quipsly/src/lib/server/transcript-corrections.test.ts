@@ -258,6 +258,12 @@ describe("transcript correction desk", () => {
         findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
       },
       mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+      studioMediaAsset: {
+        findFirst: jest.fn(async () => ({
+          id: "media-1",
+          assetAttachments: [{ project: { slug: "episode-review" } }],
+        })),
+      },
     };
 
     const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
@@ -270,6 +276,17 @@ describe("transcript correction desk", () => {
       }),
     }));
     expect(result.playback).toMatchObject({ sourceId: "source-1", url: "/api/ingest/media/source-1" });
+    expect(result.spectralContext).toEqual({
+      projectSlug: "episode-review",
+      assetId: "media-1",
+      sourceId: "source-1",
+    });
+    expect(prisma.studioMediaAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        url: "/api/ingest/media/source-1",
+        assetAttachments: { some: { projectId: "project-1" } },
+      },
+    }));
     expect(result.recording).toMatchObject({
       id: "asset-1",
       status: "VERIFIED",

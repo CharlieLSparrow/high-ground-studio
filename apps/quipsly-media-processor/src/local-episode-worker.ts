@@ -38,6 +38,10 @@ import {
   runOneLocalAudioSignalProfileJob,
 } from "./local-audio-signal-profile-worker.js";
 import {
+  newLocalAudioSpectralRuntime,
+  runOneLocalAudioSpectralEvidenceJob,
+} from "./local-audio-spectral-evidence-worker.js";
+import {
   newLocalStudioTranscriptRuntime,
   runOneLocalStudioTranscriptJob,
 } from "./local-studio-transcript-worker.js";
@@ -489,6 +493,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const audioSpectral = newLocalAudioSpectralRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const studioTranscript = newLocalStudioTranscriptRuntime({
     pool,
     localMediaRoot,
@@ -512,9 +522,12 @@ async function main() {
       const signalResult = treatmentResult.disposition === "idle"
         ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
         : treatmentResult;
-      const result = signalResult.disposition === "idle"
-        ? await runOneLocalStudioTranscriptJob(studioTranscript.store, studioTranscript.transcriber, studioTranscript.options)
+      const spectralResult = signalResult.disposition === "idle"
+        ? await runOneLocalAudioSpectralEvidenceJob(audioSpectral.store, audioSpectral.analyzer, audioSpectral.options)
         : signalResult;
+      const result = spectralResult.disposition === "idle"
+        ? await runOneLocalStudioTranscriptJob(studioTranscript.store, studioTranscript.transcriber, studioTranscript.options)
+        : spectralResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

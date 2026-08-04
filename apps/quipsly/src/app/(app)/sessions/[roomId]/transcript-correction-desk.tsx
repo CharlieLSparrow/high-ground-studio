@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
+import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { timestampForSeconds } from "./session-review-model";
 import {
@@ -130,6 +131,11 @@ type Desk = {
     recordingAssetId: string;
     durationSeconds: number | null;
     label: string;
+  };
+  spectralContext?: null | {
+    projectSlug: string;
+    assetId: string;
+    sourceId: string;
   };
   participants: SessionParticipant[];
   speakerGroups: SpeakerGroup[];
@@ -1416,6 +1422,18 @@ export function TranscriptCorrectionDesk({
           onSelectTime={setPlaybackSeconds}
           onPlayAt={playFromTime}
         /> : null}
+
+      {desk.playback && desk.spectralContext ? <SpectralEvidenceViewer
+        projectSlug={desk.spectralContext.projectSlug}
+        assetId={desk.spectralContext.assetId}
+        sourceId={desk.spectralContext.sourceId}
+        selectedSeconds={playbackSeconds}
+        playbackReady={playbackReady}
+        onSelect={(seconds, play) => {
+          setPlaybackSeconds(seconds);
+          if (play) void playFromTime(seconds);
+        }}
+      /> : null}
 
       {desk.evaluation ? <TranscriptAccuracyCorpusPanel
         roomId={roomId}

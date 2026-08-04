@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
+import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
 import { transcriptConfidenceTriagePolicy, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 type ReviewCorrection = {
@@ -360,7 +361,7 @@ export function StudioTranscriptReviewDesk({
       ) : null}
 
       {audioSignal ? (
-        <AudioEvidenceMap
+        <><AudioEvidenceMap
           signal={audioSignal}
           timelineEvents={[]}
           transcriptEndSeconds={desk?.coverage.endSeconds ?? null}
@@ -372,6 +373,14 @@ export function StudioTranscriptReviewDesk({
           transcriptScopeLabel={`Loaded transcript evidence (${segments.length}/${desk?.coverage.segmentCount ?? segments.length} segments)`}
           onSelect={selectEvidenceTime}
         />
+        <SpectralEvidenceViewer
+          projectSlug={projectSlug}
+          assetId={assetId}
+          sourceId={sourceId}
+          selectedSeconds={playbackPosition ?? selected?.startSeconds ?? 0}
+          playbackReady={Boolean(desk?.playback)}
+          onSelect={selectEvidenceTime}
+        /></>
       ) : (
         <section className="mt-3 rounded-xl border border-dashed border-sky-300 bg-sky-50 p-3" aria-label="Decoded audio evidence status">
           <div className="flex flex-wrap items-start justify-between gap-3">

@@ -135,6 +135,12 @@ noise floor, DC offset, channel/sample-rate coverage, and clickable attention
 candidates. Zero candidates means only that the declared deterministic rules
 did not fire; it is never rendered as a quality certificate.
 
+The high-resolution spectral layer is implemented as a separate immutable
+evidence pyramid. It performs one complete decode into five-second logarithmic
+STFT tiles, builds coarser levels by deterministic max pooling, and shares the
+playback clock without turning a visible pattern into an EQ decision. See
+[High-resolution audio spectral evidence](./audio-spectral-evidence.md).
+
 Source-to-preview listening defaults to loudness-matched monitor gain. Quipsly
 uses the quieter complete-decode integrated LUFS as the reference and
 attenuates only the louder browser feed with `10^(deltaLU/20)`. This is a
@@ -147,7 +153,7 @@ playhead when they need to judge the verified final output level.
 
 1. generation-bound GCS manifest/outbox and database-free cloud execution;
 2. explicit preview approval/rejection and promotion receipts;
-3. dialogue-aware diagnosis proposals for noise, hum, clipping, plosives,
+3. evaluated dialogue-aware spectral diagnosis proposals for noise, hum, clipping, plosives,
    sibilance, room tone, and speaker-to-speaker loudness consistency;
 4. A/B and loudness-matched listening so “better” is never just “louder”;
 5. stem-aware podcast mastering before mixdown;
