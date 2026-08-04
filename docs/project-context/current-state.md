@@ -1796,3 +1796,22 @@ These should be treated as cleanup candidates later, not as authoritative produc
   ungranted account was 403, and source, episode production, and timeline were
   unchanged. See
   `docs/coordination/quipsly-studio-source-automated-edit-evidence-2026-08-04.md`.
+
+### 2026-08-04 persistent browser collaboration dock
+
+- Browser calling is no longer owned by the Session `Live` mode or an Episode
+  Room card. One authenticated app-shell dock keeps the actual LiveKit room,
+  external mic/camera/output selection, remote media, retained-source controls,
+  and take-specific durable thread mounted while the active Quipsly tool
+  changes.
+- Minimize is presentation-only. Connected close and cross-Session switching
+  require explicit inline decisions; Escape minimizes. Podcast and coaching
+  calls expose purpose-aware routes to Episode Room or Coaching Engagement plus
+  Session overview, transcript, notes, and reviewed goals/tasks.
+- Canonical Episode Watch writes remain in the Episode Room store. A validated
+  local bridge lets the persistent call publish and receive only accepted
+  receipt hints, after which clients re-read durable room state.
+- Current verification covers TypeScript and focused lifecycle, Session,
+  Episode, LiveKit-component, and Watch-contract tests. Physical browser/iPhone
+  cross-device operation is the next acceptance boundary, not a completed
+  claim.

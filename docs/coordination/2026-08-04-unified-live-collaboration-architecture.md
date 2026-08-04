@@ -86,6 +86,28 @@ recording source, not an inferred side effect of joining.
 
 ## Live-operation UX repair in this slice
 
+- The authenticated app shell now owns one persistent live-call dock. The
+  LiveKit room, selected external devices, participant media, retained-source
+  controls, and take-specific durable thread remain mounted while a person
+  opens transcript, notes, goals/tasks, Episode Room, or another Quipsly tool.
+  Minimizing changes presentation only; it does not disconnect the room.
+- A connected call cannot be destroyed by an ambiguous close or silently
+  replaced by another Session. Closing presents explicit `Leave & close` and
+  `Keep call & minimize` actions. Opening a different Session presents an
+  explicit leave-and-switch decision. Escape minimizes rather than hangs up.
+- On wide workstations the active tool and live dock reflow side by side. On
+  smaller screens the same mounted room appears as an overlay with a persistent
+  minimized status bar. Hidden call controls are inert so keyboard focus cannot
+  fall into the minimized panel while remote audio continues normally.
+- Generic Sessions and Episode Rooms now register purpose-aware dock context
+  rather than mounting competing room instances inside individual modes.
+  Podcast calls link back to Episode Room; coaching calls link to their
+  engagement; every call links directly to overview, transcript, notes, and
+  reviewed goals/tasks.
+- Shared Watch receipts cross the new component boundary through a strictly
+  validated browser event bridge. Episode Room still writes the canonical
+  command first; the dock publishes only that exact accepted receipt as a
+  LiveKit latency hint; receivers refresh the durable Episode Room state.
 - Session and Episode threads now keep PostgreSQL as their only message
   authority while using the connected LiveKit room as a cross-device latency
   hint. A successful authenticated POST emits only the exact thread key,
@@ -162,10 +184,10 @@ behavior, and the absence of a surrounding Nest grant.
 
 ## Next production slices
 
-1. **Composable live dock.** Let participants keep call controls, Session chat,
-   roster/consent, and the purpose-specific active tool visible together:
-   podcast run of show/Watch, coaching shared commitments, research questions,
-   or meeting agenda.
+1. **Real cross-device live-dock acceptance.** Operate one podcast and one
+   coaching Session with external browser hardware and an iPhone participant;
+   move among Watch, transcript, notes, commitments, and editor while proving
+   the provider room, remote media, chat hints, and retained source remain live.
 2. **Native Session thread.** Add the take-specific `session:<callRoomId>`
    conversation to Capture with the same protected-cache, exact-scope, durable
    POST, live-hint, and polling behavior as the Episode thread.
@@ -185,7 +207,8 @@ behavior, and the absence of a surrounding Nest grant.
 ## Explicitly not claimed yet
 
 - Browser device selection is implemented and covered by component/type gates,
-  but this slice did not repeat physical external-device capture acceptance.
+  and the persistent dock is covered by lifecycle/component gates, but this
+  slice did not repeat physical external-device or cross-device acceptance.
 - Engagement membership management is implemented and operated locally, but
   invitation delivery is deliberately manual and production requires a
   dedicated 32-character `QUIPSLY_INVITATION_TOKEN_SECRET` before release.

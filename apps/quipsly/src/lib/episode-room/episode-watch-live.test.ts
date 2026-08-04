@@ -1,6 +1,10 @@
 import { EPISODE_ROOM_VERSION, type EpisodeRoomState } from "./episode-room-contract";
 import {
   decodeEpisodeWatchLiveHint,
+  dispatchEpisodeWatchIncoming,
+  dispatchEpisodeWatchOutgoing,
+  EPISODE_WATCH_INCOMING_EVENT,
+  EPISODE_WATCH_OUTGOING_EVENT,
   episodeWatchLiveHintFromRoom,
   parseEpisodeWatchLiveHint,
 } from "./episode-watch-live";
@@ -61,5 +65,21 @@ describe("episode Watch live authority hints", () => {
     expect(parseEpisodeWatchLiveHint({ ...hint, revision: 1.5 }, context)).toBeNull();
     expect(parseEpisodeWatchLiveHint({ ...hint, receiptId: "" }, context)).toBeNull();
     expect(decodeEpisodeWatchLiveHint(new TextEncoder().encode("not-json"), context)).toBeNull();
+  });
+
+  it("bridges a validated durable receipt between Episode Room and the persistent call", () => {
+    const hint = episodeWatchLiveHintFromRoom(context, room())!;
+    const outgoing = jest.fn();
+    const incoming = jest.fn();
+    window.addEventListener(EPISODE_WATCH_OUTGOING_EVENT, outgoing);
+    window.addEventListener(EPISODE_WATCH_INCOMING_EVENT, incoming);
+
+    dispatchEpisodeWatchOutgoing(hint);
+    dispatchEpisodeWatchIncoming(hint);
+
+    expect((outgoing.mock.calls[0]?.[0] as CustomEvent).detail).toEqual(hint);
+    expect((incoming.mock.calls[0]?.[0] as CustomEvent).detail).toEqual(hint);
+    window.removeEventListener(EPISODE_WATCH_OUTGOING_EVENT, outgoing);
+    window.removeEventListener(EPISODE_WATCH_INCOMING_EVENT, incoming);
   });
 });

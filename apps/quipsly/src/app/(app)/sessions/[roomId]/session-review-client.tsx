@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, Radio, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
 import { CaptureAppHandoff } from "@/components/capture-app-handoff";
-import { LiveSessionRoom } from "@/components/live-session-room";
+import { LiveSessionDockLauncher, type LiveSessionDockConfig } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
-import { SessionThread } from "@/components/session-thread";
 import { sessionExperienceForPurpose } from "@/lib/session-experience";
 
 import {
@@ -1907,6 +1906,30 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   const emptyReviewLanes = reviewLanes.filter((lane) => lane.itemCount <= 0);
   const purpose = preparation?.purpose || "COACHING";
   const activeMode = sessionWorkspaceDefinitionForPurpose(mode, purpose);
+  const liveProjectSlug = collaborationContext.project?.slug
+    || collaborationContext.engagement?.projectSlug
+    || preparation?.project?.slug
+    || null;
+  const liveParentHref = episodeRoomHref(collaborationContext)
+    || coachingEngagementHref(collaborationContext)
+    || (liveProjectSlug ? `/nests/${encodeURIComponent(liveProjectSlug)}` : null);
+  const liveParentLabel = collaborationContext.episode
+    ? "Episode Room"
+    : collaborationContext.engagement
+      ? "Coaching engagement"
+      : liveProjectSlug
+        ? "Nest"
+        : null;
+  const liveDockConfig = useMemo<LiveSessionDockConfig>(() => ({
+    callRoomId: roomId,
+    sessionTitle,
+    kind: sessionExperienceForPurpose(purpose).captureProfile,
+    purpose,
+    projectSlug: liveProjectSlug,
+    episodeSlug: collaborationContext.episode?.slug || null,
+    parentHref: liveParentHref,
+    parentLabel: liveParentLabel,
+  }), [collaborationContext.episode?.slug, liveParentHref, liveParentLabel, liveProjectSlug, purpose, roomId, sessionTitle]);
 
   return (
     <div className="space-y-8">
@@ -1953,19 +1976,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       {mode === "live" ? <div className="space-y-5">
         <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
         <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
-        <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(0,1.7fr)_minmax(21rem,0.72fr)] 2xl:items-start">
-          <LiveSessionRoom
-            callRoomId={roomId}
-            sessionTitle={sessionTitle}
-            kind={sessionExperienceForPurpose(preparation?.purpose).captureProfile}
-            purpose={preparation?.purpose || "COACHING"}
-            projectSlug={collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || null}
-            episodeSlug={collaborationContext.episode?.slug || null}
-          />
-          <div className="min-w-0 2xl:sticky 2xl:top-4">
-            {(collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || preparation?.project?.slug) ? <SessionThread projectSlug={collaborationContext.project?.slug || collaborationContext.engagement?.projectSlug || preparation!.project!.slug} roomId={roomId} sessionTitle={sessionTitle} /> : <WorkspaceEmptyState title="Session thread needs a Nest" detail="This meeting is not connected to an accessible Nest, so Quipsly cannot create a durable collaboration thread for it." />}
-          </div>
-        </div>
+        <LiveSessionDockLauncher
+          config={liveDockConfig}
+          autoOpen
+          label="Open mic, camera & call"
+          description="The browser call and its durable Session thread now live in a persistent dock. Use an external mic, camera, and headphones, then open transcript, notes, goals, or the connected Episode or Coaching workspace without dropping the room."
+        />
       </div> : null}
 
       {mode === "recordings" ? <>

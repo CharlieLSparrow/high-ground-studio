@@ -3,6 +3,7 @@ import { Inter, Merriweather } from "next/font/google";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
+import { LiveSessionDockProvider } from "@/components/live-session-dock";
 import { BetaAccessView } from "@/components/beta/BetaAccessView";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { canAccessStudio } from "@/lib/studio-authz";
@@ -137,7 +138,9 @@ export default async function RootLayout({
               : null
           }
         >
-          {children}
+          <LiveSessionDockProvider>
+            {children}
+          </LiveSessionDockProvider>
         </SidebarLayout>
       </body>
     </html>

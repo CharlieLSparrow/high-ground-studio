@@ -34,9 +34,8 @@ import {
 } from "react";
 
 import LocalDateTime from "@/components/LocalDateTime";
-import { LiveSessionRoom } from "@/components/live-session-room";
+import { LiveSessionDockLauncher, type LiveSessionDockConfig } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
-import { SessionThread } from "@/components/session-thread";
 import {
   episodeRoomTimelineClips,
   episodeRoomTimelineIsCurrent,
@@ -45,7 +44,10 @@ import {
   type EpisodeRoomState,
 } from "@/lib/episode-room/episode-room-contract";
 import {
+  dispatchEpisodeWatchOutgoing,
   episodeWatchLiveHintFromRoom,
+  EPISODE_WATCH_INCOMING_EVENT,
+  parseEpisodeWatchLiveHint,
   type EpisodeWatchLiveHint,
 } from "@/lib/episode-room/episode-watch-live";
 import type {
@@ -181,7 +183,6 @@ export default function EpisodeRoomClient({
   );
   const [localDuration, setLocalDuration] = useState(initialPayload.room.durationSeconds ?? 0);
   const [localPlaybackBlocked, setLocalPlaybackBlocked] = useState(false);
-  const [episodeWatchHint, setEpisodeWatchHint] = useState<EpisodeWatchLiveHint | null>(null);
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const rangeEndSentRef = useRef("");
@@ -203,6 +204,17 @@ export default function EpisodeRoomClient({
     || recordingSessions.find((session) => session.status === "RECORDING")
     || recordingSessions[0]
     || null;
+  const recordingDockConfig = useMemo<LiveSessionDockConfig | null>(() => recordingSession ? ({
+    callRoomId: recordingSession.id,
+    sessionTitle: recordingSession.title,
+    kind: "episode",
+    purpose: "PODCAST",
+    projectSlug,
+    episodeSlug,
+    canPost: canEdit,
+    parentLabel: "Episode Room",
+    parentHref: `/nests/${encodeURIComponent(projectSlug)}/episodes/${encodeURIComponent(episodeSlug)}`,
+  }) : null, [canEdit, episodeSlug, projectSlug, recordingSession]);
 
   const refresh = useCallback(async (quiet = false) => {
     try {
@@ -305,11 +317,12 @@ export default function EpisodeRoomClient({
       setStatus("idle");
       if (options.success) setNotice(options.success);
       if (recordingSession?.id) {
-        setEpisodeWatchHint(episodeWatchLiveHintFromRoom({
+        const hint = episodeWatchLiveHintFromRoom({
           projectSlug,
           episodeSlug,
           callRoomId: recordingSession.id,
-        }, payload.room));
+        }, payload.room);
+        if (hint) dispatchEpisodeWatchOutgoing(hint);
       }
       return payload.room;
     }
@@ -322,6 +335,19 @@ export default function EpisodeRoomClient({
     if (hint.revision <= roomRef.current.revision) return;
     void refresh(true);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!recordingSession?.id) return;
+    const receive = (event: Event) => {
+      const hint = parseEpisodeWatchLiveHint(
+        (event as CustomEvent<unknown>).detail,
+        { projectSlug, episodeSlug, callRoomId: recordingSession.id },
+      );
+      if (hint) receiveEpisodeWatchHint(hint);
+    };
+    window.addEventListener(EPISODE_WATCH_INCOMING_EVENT, receive);
+    return () => window.removeEventListener(EPISODE_WATCH_INCOMING_EVENT, receive);
+  }, [episodeSlug, projectSlug, receiveEpisodeWatchHint, recordingSession?.id]);
 
   const refreshVault = useCallback(async (quiet = false) => {
     setVaultLoading(true);
@@ -685,29 +711,11 @@ export default function EpisodeRoomClient({
             <div className="mb-4">
               <SessionInvitations roomId={recordingSession.id} purpose="PODCAST" />
             </div>
-            <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.8fr)_minmax(22rem,0.7fr)] 2xl:items-start">
-              <LiveSessionRoom
-                callRoomId={recordingSession.id}
-                sessionTitle={recordingSession.title}
-                kind="episode"
-                purpose="PODCAST"
-                projectSlug={projectSlug}
-                episodeSlug={episodeSlug}
-                episodeWatchHint={episodeWatchHint}
-                onEpisodeWatchHint={receiveEpisodeWatchHint}
-                compact
-              />
-              <div className="min-w-0 2xl:sticky 2xl:top-4">
-                <SessionThread
-                  projectSlug={projectSlug}
-                  roomId={recordingSession.id}
-                  sessionTitle={recordingSession.title}
-                  canPost={canEdit}
-                  scopeLabel="This recording Session only"
-                  scopeDescription="Coordinate this take, device checks, handoffs, and immediate recording decisions here. The Episode thread below remains the long-lived conversation for writing, editing, and publishing."
-                />
-              </div>
-            </div>
+            {recordingDockConfig ? <LiveSessionDockLauncher
+              config={recordingDockConfig}
+              label="Open mic, camera & call"
+              description="Open the browser participant room with external mics, cameras, and headphones. The call, local source controls, and take-specific thread stay mounted while you use the manuscript, shared Watch controls, timeline, editor, or publishing tools."
+            /> : null}
           </div>
         </details> : null}
 

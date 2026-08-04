@@ -2,6 +2,8 @@ import type { EpisodeRoomState } from "./episode-room-contract";
 
 export const EPISODE_WATCH_LIVE_HINT_SCHEMA = "quipsly-episode-watch-hint.v1" as const;
 export const EPISODE_WATCH_LIVE_TOPIC = "quipsly.episode-watch.authority.v1" as const;
+export const EPISODE_WATCH_OUTGOING_EVENT = "quipsly:episode-watch:outgoing" as const;
+export const EPISODE_WATCH_INCOMING_EVENT = "quipsly:episode-watch:incoming" as const;
 
 export type EpisodeWatchLiveHint = {
   schema: typeof EPISODE_WATCH_LIVE_HINT_SCHEMA;
@@ -104,4 +106,12 @@ export function decodeEpisodeWatchLiveHint(
   } catch {
     return null;
   }
+}
+
+export function dispatchEpisodeWatchOutgoing(hint: EpisodeWatchLiveHint) {
+  window.dispatchEvent(new CustomEvent(EPISODE_WATCH_OUTGOING_EVENT, { detail: hint }));
+}
+
+export function dispatchEpisodeWatchIncoming(hint: EpisodeWatchLiveHint) {
+  window.dispatchEvent(new CustomEvent(EPISODE_WATCH_INCOMING_EVENT, { detail: hint }));
 }
