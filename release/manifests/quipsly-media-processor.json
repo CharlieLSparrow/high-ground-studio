@@ -2,7 +2,7 @@
   "$schema": "./schema.json",
   "schemaVersion": 1,
   "id": "quipsly-media-processor",
-  "displayName": "Quipsly Capture Proxy Processor",
+  "displayName": "Quipsly Media Processor",
   "ownerSurface": "quipsly-media-processor",
   "status": "active",
   "applicationRoot": "apps/quipsly-media-processor",
@@ -26,6 +26,7 @@
     "validation": {
       "prefixes": [
         "scripts/quipsly-capture-proxy",
+        "scripts/quipsly-audio-alignment",
         "scripts/release/quipsly-media-processor"
       ],
       "files": []
@@ -49,13 +50,17 @@
     "deterministic": [
       "pnpm --filter quipsly-media-processor build",
       "pnpm quipsly:media-processor:test",
-      "pnpm quipsly:media-processor:acceptance"
+      "pnpm quipsly:media-processor:acceptance",
+      "pnpm quipsly:audio-alignment:test",
+      "pnpm quipsly:audio-alignment-job:test",
+      "pnpm quipsly:audio-alignment-cloud:test"
     ],
     "localRuntime": [
       "Run the real FFmpeg portrait-video acceptance and fault-injected immutable-storage worker tests."
     ],
     "credentialedRuntime": [
       "Run scripts/release/quipsly-media-processor-cloud-fixture.mjs against the exact deployed build and verify its generation-pinned source, queue, manifest, output, result, and create-once retry evidence.",
+      "Run ALLOW_GCS_FIXTURE=1 PROJECT_ID=<project> QUIPSLY_MEDIA_BUCKET=<bucket> EXPECTED_BUILD_ID=<sha> pnpm quipsly:audio-alignment:gcs-fixture against the exact deployed build and verify the generation-pinned two-source evidence-only result, source hashes, queue deletion, manifest completion, and create-once replay.",
       "Verify one released video through the authorized Nest finalization and reconciliation boundary.",
       "Apply and read back managed-folder IAM plus no-override Cloud Run Jobs execution authority."
     ],

@@ -20,9 +20,12 @@ Date: 2026-08-05
   completed evidence, and loaded the proposal before operating preview,
   pause, explicit delegated review, and assembled playback. This uncovered
   and repaired an actual JSONB boundary bug: exact source identity is now
-  compared field-by-field because PostgreSQL may reorder object keys. The GCS
-  request is deliberately retained as `blocked` until its two-source cloud
-  worker/outbox is deployed; production cloud analysis is not claimed yet.
+  compared field-by-field because PostgreSQL may reorder object keys. The same
+  job now has a create-once GCS manifest/queue/result control plane, generation-
+  bound two-source Cloud Run worker, lease recovery, terminal dead letter,
+  and exact-source database reconciliation. The cloud fixture is green, but
+  the new processor image and Nest route are not deployed yet; production
+  cloud analysis is therefore not claimed yet.
 - Guided Sync no longer forces automation to impersonate a human listener.
   Human approval remains the default, while a signed-in staff delegator can
   authorize one bounded agent qualification backed by exact source hashes and

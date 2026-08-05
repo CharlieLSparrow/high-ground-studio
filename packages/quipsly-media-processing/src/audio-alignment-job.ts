@@ -7,6 +7,13 @@ import {
 export const AUDIO_ALIGNMENT_JOB_KIND = "quipsly-audio-alignment-job-v1" as const;
 export const AUDIO_ALIGNMENT_RESULT_KIND = "quipsly-audio-alignment-result-v1" as const;
 export const AUDIO_ALIGNMENT_JOB_VERSION = 1 as const;
+export const AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND = "quipsly-audio-alignment-cloud-manifest-v1" as const;
+export const AUDIO_ALIGNMENT_CLOUD_QUEUE_KIND = "quipsly-audio-alignment-cloud-queue-v1" as const;
+export const AUDIO_ALIGNMENT_CLOUD_CONTROL_PREFIX = "media-vault/control/audio-alignment" as const;
+export const AUDIO_ALIGNMENT_CLOUD_MANIFEST_PREFIX = `${AUDIO_ALIGNMENT_CLOUD_CONTROL_PREFIX}/manifests` as const;
+export const AUDIO_ALIGNMENT_CLOUD_QUEUE_PREFIX = `${AUDIO_ALIGNMENT_CLOUD_CONTROL_PREFIX}/queue` as const;
+export const AUDIO_ALIGNMENT_CLOUD_RESULT_PREFIX = `${AUDIO_ALIGNMENT_CLOUD_CONTROL_PREFIX}/results` as const;
+export const AUDIO_ALIGNMENT_CLOUD_DEAD_LETTER_PREFIX = `${AUDIO_ALIGNMENT_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
 
 export type AudioAlignmentJob = {
   kind: typeof AUDIO_ALIGNMENT_JOB_KIND;
@@ -55,6 +62,33 @@ export type AudioAlignmentResult = {
     outputIsEvidenceOnly: true;
     placementApplied: false;
   };
+};
+
+export type AudioAlignmentCloudManifest = {
+  kind: typeof AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND;
+  version: 1;
+  job: AudioAlignmentJob;
+  status: "queued" | "processing" | "completed" | "failed-terminal";
+  queuedAt: string;
+  updatedAt: string;
+  lease: null | {
+    id: string;
+    executionId: string;
+    claimedAt: string;
+    expiresAt: string;
+    attempt: number;
+  };
+  resultObjectName: string | null;
+  failure: null | { code: string; message: string; failedAt: string };
+};
+
+export type AudioAlignmentCloudQueueReceipt = {
+  kind: typeof AUDIO_ALIGNMENT_CLOUD_QUEUE_KIND;
+  version: 1;
+  jobId: string;
+  manifestObjectName: string;
+  manifestGeneration: string;
+  enqueuedAt: string;
 };
 
 const SAFE_ID = /^[A-Za-z0-9_-]{8,180}$/;
@@ -174,6 +208,194 @@ export function parseAudioAlignmentResult(value: unknown, expectedJob?: AudioAli
     || boundaries.placementApplied !== false
   ) throw new Error("Audio alignment result integrity is invalid.");
   return parsed;
+}
+
+export function buildAudioAlignmentCloudManifestObjectName(jobId: string) {
+  return `${AUDIO_ALIGNMENT_CLOUD_MANIFEST_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+export function buildAudioAlignmentCloudQueueObjectName(jobId: string) {
+  return `${AUDIO_ALIGNMENT_CLOUD_QUEUE_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+export function buildAudioAlignmentCloudResultObjectName(jobId: string) {
+  return `${AUDIO_ALIGNMENT_CLOUD_RESULT_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+export function buildAudioAlignmentCloudDeadLetterObjectName(jobId: string) {
+  return `${AUDIO_ALIGNMENT_CLOUD_DEAD_LETTER_PREFIX}/${identifier(jobId, "jobId")}.json`;
+}
+
+export function newAudioAlignmentCloudManifest(jobValue: AudioAlignmentJob | unknown): AudioAlignmentCloudManifest {
+  const job = parseAudioAlignmentJob(jobValue);
+  if (job.spine.provider !== "gcs" || job.target.provider !== "gcs") throw new Error("Cloud alignment requires two GCS sources.");
+  return parseAudioAlignmentCloudManifest({
+    kind: AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND,
+    version: 1,
+    job,
+    status: "queued",
+    queuedAt: job.queuedAt,
+    updatedAt: job.queuedAt,
+    lease: null,
+    resultObjectName: null,
+    failure: null,
+  }, job.jobId);
+}
+
+export function parseAudioAlignmentCloudQueueReceipt(value: unknown): AudioAlignmentCloudQueueReceipt {
+  const row = record(value);
+  const jobId = identifier(row.jobId, "jobId");
+  const parsed: AudioAlignmentCloudQueueReceipt = {
+    kind: row.kind as AudioAlignmentCloudQueueReceipt["kind"],
+    version: Number(row.version) as 1,
+    jobId,
+    manifestObjectName: requiredText(row.manifestObjectName, "manifestObjectName"),
+    manifestGeneration: requiredText(row.manifestGeneration, "manifestGeneration"),
+    enqueuedAt: isoDate(row.enqueuedAt, "enqueuedAt"),
+  };
+  if (
+    parsed.kind !== AUDIO_ALIGNMENT_CLOUD_QUEUE_KIND
+    || parsed.version !== 1
+    || parsed.manifestObjectName !== buildAudioAlignmentCloudManifestObjectName(jobId)
+    || !/^[1-9][0-9]*$/.test(parsed.manifestGeneration)
+  ) throw new Error("Audio alignment cloud queue receipt is invalid.");
+  return parsed;
+}
+
+export function parseAudioAlignmentCloudManifest(value: unknown, expectedJobId?: string): AudioAlignmentCloudManifest {
+  const row = record(value);
+  const job = parseAudioAlignmentJob(row.job, expectedJobId);
+  const status = requiredText(row.status, "status") as AudioAlignmentCloudManifest["status"];
+  const lease = row.lease == null ? null : parseCloudLease(row.lease);
+  const failure = row.failure == null ? null : parseCloudFailure(row.failure);
+  const resultObjectName = row.resultObjectName == null ? null : requiredText(row.resultObjectName, "resultObjectName");
+  const parsed: AudioAlignmentCloudManifest = {
+    kind: row.kind as AudioAlignmentCloudManifest["kind"],
+    version: Number(row.version) as 1,
+    job,
+    status,
+    queuedAt: isoDate(row.queuedAt, "queuedAt"),
+    updatedAt: isoDate(row.updatedAt, "updatedAt"),
+    lease,
+    resultObjectName,
+    failure,
+  };
+  if (
+    parsed.kind !== AUDIO_ALIGNMENT_CLOUD_MANIFEST_KIND
+    || parsed.version !== 1
+    || job.spine.provider !== "gcs"
+    || job.target.provider !== "gcs"
+    || !validGcsSource(job.spine)
+    || !validGcsSource(job.target)
+    || parsed.queuedAt !== job.queuedAt
+    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
+    || (status === "processing") !== Boolean(lease)
+    || (status === "completed" ? resultObjectName !== buildAudioAlignmentCloudResultObjectName(job.jobId) : resultObjectName !== null)
+    || (status === "failed-terminal") !== Boolean(failure)
+  ) throw new Error("Audio alignment cloud manifest is invalid.");
+  return parsed;
+}
+
+export function claimAudioAlignmentCloudManifest(input: {
+  manifest: AudioAlignmentCloudManifest;
+  leaseId: string;
+  executionId: string;
+  now: Date;
+  leaseDurationMs: number;
+}) {
+  const { manifest, now } = input;
+  if (manifest.status === "completed" || manifest.status === "failed-terminal") return null;
+  if (manifest.status === "processing" && manifest.lease && Date.parse(manifest.lease.expiresAt) > now.getTime()) return null;
+  if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs < 60_000) throw new Error("Audio alignment cloud lease duration is invalid.");
+  const leaseId = identifier(input.leaseId, "leaseId");
+  const executionId = identifier(input.executionId, "executionId");
+  return parseAudioAlignmentCloudManifest({
+    ...manifest,
+    status: "processing",
+    updatedAt: now.toISOString(),
+    lease: {
+      id: leaseId,
+      executionId,
+      claimedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + input.leaseDurationMs).toISOString(),
+      attempt: (manifest.lease?.attempt ?? 0) + 1,
+    },
+    resultObjectName: null,
+    failure: null,
+  }, manifest.job.jobId);
+}
+
+export function releaseAudioAlignmentCloudLease(input: { manifest: AudioAlignmentCloudManifest; leaseId: string; now: Date }) {
+  assertCloudLease(input.manifest, input.leaseId);
+  return parseAudioAlignmentCloudManifest({
+    ...input.manifest,
+    status: "queued",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+  }, input.manifest.job.jobId);
+}
+
+export function completeAudioAlignmentCloudManifest(input: {
+  manifest: AudioAlignmentCloudManifest;
+  leaseId: string;
+  result: AudioAlignmentResult;
+  now: Date;
+}) {
+  assertCloudLease(input.manifest, input.leaseId);
+  parseAudioAlignmentResult(input.result, input.manifest.job);
+  return parseAudioAlignmentCloudManifest({
+    ...input.manifest,
+    status: "completed",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: buildAudioAlignmentCloudResultObjectName(input.manifest.job.jobId),
+    failure: null,
+  }, input.manifest.job.jobId);
+}
+
+export function failAudioAlignmentCloudManifest(input: {
+  manifest: AudioAlignmentCloudManifest;
+  leaseId: string;
+  code: string;
+  message: string;
+  now: Date;
+}) {
+  assertCloudLease(input.manifest, input.leaseId);
+  return parseAudioAlignmentCloudManifest({
+    ...input.manifest,
+    status: "failed-terminal",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: null,
+    failure: {
+      code: requiredText(input.code, "failure.code"),
+      message: requiredText(input.message, "failure.message"),
+      failedAt: input.now.toISOString(),
+    },
+  }, input.manifest.job.jobId);
+}
+
+function assertCloudLease(manifest: AudioAlignmentCloudManifest, leaseId: string) {
+  if (manifest.status !== "processing" || !manifest.lease || manifest.lease.id !== leaseId) throw new Error("Audio alignment cloud lease is no longer active.");
+}
+function parseCloudLease(value: unknown) {
+  const row = record(value);
+  return {
+    id: identifier(row.id, "lease.id"),
+    executionId: identifier(row.executionId, "lease.executionId"),
+    claimedAt: isoDate(row.claimedAt, "lease.claimedAt"),
+    expiresAt: isoDate(row.expiresAt, "lease.expiresAt"),
+    attempt: integer(row.attempt, 1, 1_000, "lease.attempt"),
+  };
+}
+function parseCloudFailure(value: unknown) {
+  const row = record(value);
+  return {
+    code: requiredText(row.code, "failure.code"),
+    message: requiredText(row.message, "failure.message"),
+    failedAt: isoDate(row.failedAt, "failure.failedAt"),
+  };
+}
+function validGcsSource(value: AudioMasterySourceBinding) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(value.locator);
+  return Boolean(match && match[3] === value.generation && !match[2].split("/").some((part) => !part || part === "." || part === ".."));
 }
 
 function sameSource(left: AudioMasterySourceBinding, right: AudioMasterySourceBinding) {

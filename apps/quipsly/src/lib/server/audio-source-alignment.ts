@@ -3,7 +3,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import {
+  buildAudioAlignmentCloudManifestObjectName,
+  buildAudioAlignmentCloudResultObjectName,
   newAudioAlignmentJob,
+  parseAudioAlignmentCloudManifest,
   parseAudioAlignmentJob,
   parseAudioAlignmentResult,
   type AudioAlignmentEvidence,
@@ -12,6 +15,8 @@ import {
 
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { getMediaBucket } from "@/lib/server/gcs";
+import { ensureAudioSourceAlignmentCloudQueued } from "@/lib/server/audio-source-alignment-cloud";
 
 const JOB_TYPE = "audio-alignment";
 
@@ -73,13 +78,32 @@ export async function queueAudioSourceAlignment(input: {
     target: { assetId: context.targetAsset.id, ...targetEvidence },
     proposal: input.proposal,
   });
+  let matchingExisting: AudioAlignmentJob | null = null;
   if (existing && existing.status !== "failed") {
     try {
       const current = parseAudioAlignmentJob(existing.inputJson, existing.id);
-      if (sameRequest(current, job)) return publicStatus(existing);
+      if (sameRequest(current, job)) matchingExisting = current;
     } catch {
       // A malformed or differently bound job cannot own this request.
     }
+  }
+  if (existing && matchingExisting) {
+    if (matchingExisting.spine.provider !== "gcs") return publicStatus(existing);
+    const cloud = await ensureAudioSourceAlignmentCloudQueued({
+      prisma: input.prisma,
+      processingJob: existing,
+    });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({
+      where: { id: existing.id },
+    });
+    const status = publicStatus(refreshed ?? existing);
+    return cloud.status === "configuration-required"
+      ? {
+          ...status,
+          status: "blocked" as const,
+          error: "Cloud exact-source alignment is retained, but the media processor execution control is not configured.",
+        }
+      : status;
   }
   const saved = await input.prisma.studioAssetProcessingJob.create({
     data: {
@@ -93,11 +117,12 @@ export async function queueAudioSourceAlignment(input: {
     },
   });
   if (job.spine.provider === "gcs") {
-    return {
-      ...publicStatus(saved),
-      status: "blocked" as const,
-      error: "The exact-source alignment request is retained, but the GCS two-source worker is not deployed yet. Local Nest can process this same immutable job now.",
-    };
+    const cloud = await ensureAudioSourceAlignmentCloudQueued({ prisma: input.prisma, processingJob: saved });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: saved.id } });
+    const current = refreshed ? publicStatus(refreshed) : publicStatus(saved);
+    return cloud.status === "configuration-required"
+      ? { ...current, status: "blocked" as const, error: "Cloud exact-source alignment is retained, but the media processor execution control is not configured." }
+      : current;
   }
   return publicStatus(saved);
 }
@@ -139,7 +164,7 @@ export async function reconcileAudioSourceAlignment(input: {
   if (!row) return emptyStatus();
   const job = parseAudioAlignmentJob(row.inputJson, row.id);
   if (job.spine.provider === "gcs" || job.target.provider === "gcs") {
-    return { ...publicStatus(row), status: "blocked" as const, error: "GCS two-source alignment processing is not deployed yet; the retained job has not changed either source." };
+    return reconcileCloud(input.prisma, row, job, context);
   }
   if (row.status !== "output-ready") return publicStatus(row);
   const result = parseAudioAlignmentResult(object(row.resultJson).receipt, job);
@@ -168,6 +193,70 @@ export async function reconcileAudioSourceAlignment(input: {
     },
   });
   return publicStatus(updated);
+}
+
+async function reconcileCloud(prisma: any, row: any, job: AudioAlignmentJob, context: Awaited<ReturnType<typeof loadContext>>) {
+  const cloud = await ensureAudioSourceAlignmentCloudQueued({ prisma, processingJob: row });
+  const refreshed = await prisma.studioAssetProcessingJob.findUnique({ where: { id: row.id } });
+  const current = refreshed ?? row;
+  if (cloud.status === "configuration-required") return { ...publicStatus(current), status: "blocked" as const, error: "Cloud exact-source alignment is retained, but media processor execution control is not configured." };
+  if (cloud.status === "failed") return publicStatus(current);
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadGcsJson(bucket, buildAudioAlignmentCloudManifestObjectName(job.jobId));
+  if (!storedManifest) return publicStatus(current);
+  const manifest = parseAudioAlignmentCloudManifest(storedManifest.value, job.jobId);
+  if (manifest.status === "failed-terminal") {
+    const failed = await prisma.studioAssetProcessingJob.update({
+      where: { id: job.jobId },
+      data: { status: "failed", error: `${manifest.failure?.code}: ${manifest.failure?.message}`.slice(0, 4_000), completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt) },
+    });
+    return publicStatus(failed);
+  }
+  if (manifest.status !== "completed") return publicStatus(current);
+  const storedResult = await loadGcsJson(bucket, buildAudioAlignmentCloudResultObjectName(job.jobId));
+  if (!storedResult) return publicStatus(current);
+  const result = parseAudioAlignmentResult(storedResult.value, job);
+  const [currentSpine, currentTarget] = await Promise.all([
+    inspectImmutableStudioMediaSource(context.spineSource.providerSourceId, context.spineAsset.mimeType),
+    inspectImmutableStudioMediaSource(context.targetSource.providerSourceId, context.targetAsset.mimeType),
+  ]);
+  if (!sameSource(job.spine, { assetId: context.spineAsset.id, ...currentSpine }) || !sameSource(job.target, { assetId: context.targetAsset.id, ...currentTarget })) throw new Error("A cloud alignment source changed before evidence registration.");
+  const completed = await prisma.studioAssetProcessingJob.update({
+    where: { id: job.jobId },
+    data: {
+      status: "completed",
+      completedAt: new Date(result.completedAt),
+      error: null,
+      resultJson: json({
+        state: "completed",
+        receipt: result,
+        registration: {
+          exactSourceBytesBound: true,
+          sourceBytesImmutable: true,
+          placementApplied: false,
+          placementRequiresSeparateReview: true,
+          cloudManifestObjectName: cloud.manifestObjectName,
+          cloudManifestGeneration: storedManifest.generation,
+          cloudResultObjectName: cloud.resultObjectName,
+          cloudResultGeneration: storedResult.generation,
+        },
+      }),
+    },
+  });
+  return publicStatus(completed);
+}
+
+async function loadGcsJson(bucket: any, objectName: string) {
+  try {
+    const [metadata] = await bucket.file(objectName).getMetadata();
+    const generation = String(metadata.generation ?? "");
+    if (!/^[1-9][0-9]*$/.test(generation)) throw new Error("Alignment cloud object lacks an immutable generation.");
+    const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+    return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 404) return null;
+    throw error;
+  }
 }
 
 async function loadContext(input: {
