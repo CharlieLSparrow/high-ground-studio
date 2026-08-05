@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-08-03
+Last updated: 2026-08-05
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -34,15 +34,32 @@ docs/coordination/quipsly-episode-4-editing-hardening-log.md
 
 - Worktree: `/Users/wall-e/Dev/high-ground-studio-product`
 - Branch: `codex/quipsly-product-20260724`
-- Current slice: one canonical weekly-plan and reflection decision across Nest
-  Work and Capture Today, protected before iPhone sync and operated through
-  process-relaunch/database readback.
-- Evidence:
-  `docs/coordination/2026-08-03-capture-weekly-plan-operation.md`
-- Boundary: local post-Build-27 source; no deploy, TestFlight, cloud, billing,
-  production database, or provider mutation. Coordinate before touching the
-  weekly-commitment kernel, mobile Today route/client, or native weekly-plan
-  outbox and editor.
+- Current slice: the one-hour Capture suite is now split into a fast critical
+  lane plus bounded deep shards; next advance the research-led Session Truth
+  Console and Dialogue Repair Review.
+- Latest pushed commit: `0500f526` adds USB-independent, privacy-bounded
+  physical TestFlight install/authentication readback without inventing
+  recording proof.
+- Evidence: current Build 28 public TestFlight readback is green. The new
+  critical lane passed 11/11 in 258 seconds end to end on iOS 26.3.1. The
+  complete clean-install qualification passed 63/63 across four source-derived
+  shards with zero failures, skips, or expected failures. It also uncovered a
+  real SwiftUI layout loop in the coaching follow-up title editor; a single-line
+  title control fixed the semantic UX defect and passed isolated, neighboring,
+  and full-suite regression. Planner contracts prove no duplicate or omitted
+  journey, and the aggregate manifest independently re-reads every native
+  result bundle.
+- Product research: `docs/research/quipsly-capability-expansion-2026-08-05.md`
+  identifies evidence-connected work memory as the product advantage and
+  prioritizes the Session-to-Outcome spine, dialogue repair, transcript truth,
+  source-linked rough cuts, coaching continuity, and research/citation work.
+  `docs/coordination/2026-08-05-dialogue-repair-review-architecture.md`
+  turns the first audio gap into a production vertical slice over the existing
+  generation-bound mastery, audition, approval, and delivery contracts.
+- Owned paths for this slice: Capture Fastfile/scripts/tests,
+  `.github/workflows/capture-pr-tests.yml`, Capture release/architecture docs,
+  and the unified product blueprint. No deploy, schema, production database,
+  billing, or provider mutation is planned for the test-lane repair.
 
 ### Current product-development authority
 

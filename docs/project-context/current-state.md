@@ -1992,3 +1992,59 @@ These should be treated as cleanup candidates later, not as authoritative produc
   Insta360, DJI, and Canon sources remain independent preserved backups or
   masters. See
   `docs/operations/2026-08-04-episode-9-hybrid-recording-runbook.md`.
+
+### 2026-08-05 bounded Capture UI qualification
+
+- The former one-process Capture UI gate had reached 63 deterministic journeys
+  and about one hour. Its latest run passed 61; both late failures passed alone,
+  initially making accumulated shared-simulator state plausible. The first
+  clean-install sharded run then reproduced a different coaching follow-up
+  stall. A process sample showed the app main thread cycling through
+  SwiftUI/AttributeGraph layout after dismissing the keyboard from a vertically
+  growing multiline title field inside the recorder's lazy layout. The title
+  is semantically single-line; replacing it with a single-line field removed
+  the layout cycle without weakening the journey.
+- A source-parsing planner now defines an explicit 11-journey critical lane and
+  four complete weighted shards. Contract tests prove all 63 non-screenshot
+  journeys occur exactly once in complete qualification and keep critical
+  crash, consent, recording, clip-watch, audio, accessibility, login, support,
+  and share-extension boundaries explicit.
+- Pull requests run the critical lane. Manual CI can deliberately run the full
+  four-runner matrix. Committed-source release qualification still runs the
+  entire suite locally as four separate serial processes, reinstalls the app at
+  every shard boundary, and seals a source-bound aggregate evidence manifest
+  before archive/export. Manifest reuse re-reads each native result and requires
+  the exact source-derived selector set and pass counts.
+- The final corrected critical run passed 11/11 on an iPhone 17 Pro simulator
+  with iOS 26.3.1 in 258 seconds of Fastlane execution. The app-container
+  reinstall and manifest self-verification both completed. The corrected full
+  run then passed 63/63 across four clean-install shards with zero failures,
+  skips, or expected failures. Its worktree-labeled manifest records native shard
+  summaries of 15/15, 15/15, 16/16, and 17/17 and exactly matches the 63 methods
+  discovered from current source. The exact formerly stalled follow-up journey
+  passed both alone and inside shard two; the neighboring canonical-source-
+  change journey passed alone and inside shard three. This improves iteration
+  confidence but does not replace physical TestFlight install, capture, upload,
+  playback, or cross-device acceptance. See
+  `docs/coordination/2026-08-05-capture-ui-test-lanes.md`.
+
+### 2026-08-05 capability expansion research
+
+- The current product thesis is evidence-connected work memory, not a sidebar
+  containing small independent copies of Riverside, Descript, Notion, Teams,
+  Trello, Canvas, Scrivener, Canva, Hootsuite, and StudioBinder.
+- Market and architecture research prioritizes the trustworthy Session-to-
+  Outcome spine, Audio Mastery, Transcript Truth, source-linked rough cuts,
+  coaching continuity, and a citation-first research workbench before broader
+  course, production, and social projections.
+- The repository audit found that generation-bound audio sources, complete-
+  decode measurement, spectral evidence, source-clock review, matched A/B
+  audition, versioned treatment, promotion, and delivery receipts already
+  exist. The missing audio leap is event-level Dialogue Repair Review rather
+  than another generic mastering screen.
+- The next slice starts with human-marked, exact-source mouth-noise ranges and a
+  conservative range-scoped de-click experiment, then qualifies automatic
+  listening candidates against synthetic traps and retained human-reviewed
+  podcast/coaching windows. See
+  `docs/research/quipsly-capability-expansion-2026-08-05.md` and
+  `docs/coordination/2026-08-05-dialogue-repair-review-architecture.md`.
