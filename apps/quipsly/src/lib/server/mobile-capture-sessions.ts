@@ -1060,6 +1060,7 @@ export function mapMobileCaptureSessionsForUser(input: {
     });
 
     return {
+      captureGroupId: label(room.captureGroupId),
       id: room.id,
       callRoomId: room.id,
       title: label(room.title) || booking?.offering?.title || "Quipsly capture session",

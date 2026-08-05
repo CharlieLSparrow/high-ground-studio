@@ -42,6 +42,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   let staffUserId = "";
   let projectId = "";
   let roomId = "";
+  let roomCaptureGroupId = "";
   let podcastRoomId = "";
   let engagementId = "";
   let engagementRoomId = "";
@@ -146,6 +147,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       },
     });
     roomId = room.id;
+    roomCaptureGroupId = room.captureGroupId;
     await prisma.coachingNote.createMany({
       data: [
         {
@@ -258,6 +260,7 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
     const payload = await response.json();
     const session = payload.sessions.find((candidate: { id: string }) => candidate.id === roomId);
     expect(session).toBeDefined();
+    expect(session.captureGroupId).toBe(roomCaptureGroupId);
     return {
       session,
       ids: session.sessionNotes.map((note: { id: string }) => note.id),

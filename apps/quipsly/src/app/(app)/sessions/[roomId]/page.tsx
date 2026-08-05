@@ -71,6 +71,7 @@ export default async function SessionReviewPage({
       where: sessionAccessWhere(roomId, session.user),
       select: {
         id: true,
+        captureGroupId: true,
         title: true,
         purpose: true,
         status: true,

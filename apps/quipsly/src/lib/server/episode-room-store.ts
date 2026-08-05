@@ -108,6 +108,7 @@ export type EpisodeRoomVaultSavedClip = {
 
 export type EpisodeRoomRecordingSession = {
   id: string;
+  captureGroupId: string;
   title: string;
   purpose: string;
   status: string;
@@ -483,6 +484,7 @@ async function vaultAssetsForProject(
     },
     select: {
       id: true,
+      captureGroupId: true,
       filename: true,
       url: true,
       mimeType: true,
@@ -772,6 +774,7 @@ export async function recordingSessionsFor(
   });
   const sessions = rooms.map((room: any) => ({
     id: room.id,
+    captureGroupId: room.captureGroupId,
     title: text(room.title) || "Podcast recording session",
     purpose: room.purpose,
     status: room.status,
@@ -802,6 +805,7 @@ export async function recordingSessionsFor(
     },
     select: {
       id: true,
+      captureGroupId: true,
       title: true,
       purpose: true,
       status: true,
@@ -817,6 +821,7 @@ export async function recordingSessionsFor(
     ...sessions,
     {
       id: boundRoom.id,
+      captureGroupId: boundRoom.captureGroupId,
       title: text(boundRoom.title) || "Podcast recording session",
       purpose: boundRoom.purpose,
       status: boundRoom.status,

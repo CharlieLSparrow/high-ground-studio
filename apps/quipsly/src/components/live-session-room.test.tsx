@@ -3,8 +3,15 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { LiveSessionRoom } from "./live-session-room";
 
 jest.mock("@/components/browser-source-recorder", () => ({
-  BrowserSourceRecorder: ({ onSourceLockChange }: { onSourceLockChange?: (locked: boolean) => void }) => (
+  BrowserSourceRecorder: ({
+    captureGroupId,
+    onSourceLockChange,
+  }: {
+    captureGroupId: string;
+    onSourceLockChange?: (locked: boolean) => void;
+  }) => (
     <div>
+      <span data-testid="browser-source-capture-group">{captureGroupId}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
     </div>
@@ -38,7 +45,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-1" sessionTitle="Episode test" kind="episode" purpose="PODCAST" />);
+      render(<LiveSessionRoom callRoomId="room-1" captureGroupId="55555555-5555-4555-8555-555555555551" sessionTitle="Episode test" kind="episode" purpose="PODCAST" />);
     });
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
@@ -50,6 +57,9 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
     expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
+    expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent(
+      "55555555-5555-4555-8555-555555555551",
+    );
   });
 
   it("does not request media permission until the person acts", async () => {
@@ -65,7 +75,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-2" sessionTitle="Coaching test" kind="coaching" />);
+      render(<LiveSessionRoom callRoomId="room-2" captureGroupId="55555555-5555-4555-8555-555555555552" sessionTitle="Coaching test" kind="coaching" />);
     });
     expect(getUserMedia).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Allow microphone/i }));
@@ -89,7 +99,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-3" sessionTitle="Coaching test" kind="coaching" />);
+      render(<LiveSessionRoom callRoomId="room-3" captureGroupId="55555555-5555-4555-8555-555555555553" sessionTitle="Coaching test" kind="coaching" />);
     });
     expect(screen.queryByRole("button", { name: /Allow camera/i })).not.toBeInTheDocument();
 
@@ -115,7 +125,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-4" sessionTitle="Podcast test" kind="episode" />);
+      render(<LiveSessionRoom callRoomId="room-4" captureGroupId="55555555-5555-4555-8555-555555555554" sessionTitle="Podcast test" kind="episode" />);
     });
 
     expect(screen.getByRole("combobox", { name: "Camera" })).toHaveValue("");
@@ -138,7 +148,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-5" sessionTitle="Locked source" kind="episode" />);
+      render(<LiveSessionRoom callRoomId="room-5" captureGroupId="55555555-5555-4555-8555-555555555555" sessionTitle="Locked source" kind="episode" />);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source start" }));

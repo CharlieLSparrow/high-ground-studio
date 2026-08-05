@@ -212,6 +212,7 @@ export default function EpisodeRoomClient({
     || null;
   const recordingDockConfig = useMemo<LiveSessionDockConfig | null>(() => recordingSession ? ({
     callRoomId: recordingSession.id,
+    captureGroupId: recordingSession.captureGroupId,
     sessionTitle: recordingSession.title,
     kind: "episode",
     purpose: "PODCAST",

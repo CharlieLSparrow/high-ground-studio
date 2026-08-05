@@ -7466,3 +7466,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   production AASA file are deployed and read back together. The next physical
   gate is a two-person browser/iPhone Session with route loss, reconnect,
   headphones, retained-source upload, and editor playback.
+
+## 2026-08-04 canonical Session capture-group checkpoint
+
+- Closed the cross-device rendezvous defect that let browser, iPhone, and
+  external imports for one Session mint unrelated take identities. A canonical
+  Session now owns one additive, server-generated UUID capture group and
+  projects it to every authorized capture surface.
+- Browser retained capture now stores a schema-v3 source profile with the
+  source monotonic start and up to three NTP-style Nest clock samples. Partial
+  network failure preserves the usable samples and never prevents a safe local
+  recording.
+- iPhone audio, video, and coordinated audio/video now use the refreshed
+  Session group; the Episode Room live dock and external-source import carry the
+  same value. Capture IDs, resumable upload IDs, device/source profiles,
+  consent, START/STOP, and exact-byte receipts remain independently auditable.
+- Provider recording stays optional safety/reference media. It can help later
+  waveform correlation but is not required for grouping or deterministic
+  first placement. Final placement still requires opening-cue/waveform and
+  late-drift review and never claims sample accuracy from clocks alone.
+- The migration and current worktree were operated against local PostgreSQL,
+  Firebase Auth Emulator, Nest, the media worker, and the Whisper worker. A
+  signed-in retained coach opened the real Session Live workspace and read back
+  the one-take copy plus honest `0/3` evidence on older protected sources.
+- Build 27 remains preservation-compatible and is not rewritten. The next
+  Capture/Nest release must prove a same-Session browser+iPhone group, distinct
+  source identities, physical clock evidence, upload, waveform/drift review,
+  and editor playback before this becomes a production-qualified claim. See
+  `docs/coordination/2026-08-04-session-capture-group-clock.md`.

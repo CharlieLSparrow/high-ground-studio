@@ -354,6 +354,7 @@ describe("Session review goal candidates", () => {
       mode="overview"
       consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }}
       preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555551",
         purpose: "PODCAST",
         status: "PLANNED",
         provider: "livekit",
@@ -1129,6 +1130,7 @@ describe("Session review goal candidates", () => {
       mode="prepare"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
       preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555552",
         purpose: "COACHING",
         status: "PLANNED",
         provider: "planned",

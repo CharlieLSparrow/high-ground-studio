@@ -36,6 +36,10 @@ import {
   saveBrowserSourceLedger,
 } from "@/lib/browser-source-vault";
 import {
+  browserMonotonicNanoseconds,
+  measureBrowserCaptureClockBurst,
+} from "@/lib/browser-capture-clock";
+import {
   analyseStudioAudioFrame,
   appendBrowserCaptureMeterAggregate,
   appendBrowserCaptureMeterFrame,
@@ -115,6 +119,7 @@ async function postRoomReceipt(input: {
 
 export function BrowserSourceRecorder({
   callRoomId,
+  captureGroupId,
   sessionTitle,
   sessionKind,
   episodeSlug = null,
@@ -125,6 +130,7 @@ export function BrowserSourceRecorder({
   onSourceLockChange,
 }: {
   callRoomId: string;
+  captureGroupId: string;
   sessionTitle: string;
   sessionKind: "coaching" | "episode";
   episodeSlug?: string | null;
@@ -587,13 +593,16 @@ export function BrowserSourceRecorder({
     setStatus("starting");
     setMessage("Opening the selected source and durable local file…");
     const captureId = crypto.randomUUID();
-    const captureGroupId = crypto.randomUUID();
     const uploadSessionId = crypto.randomUUID();
     const startReceiptId = crypto.randomUUID();
     const stopReceiptId = crypto.randomUUID();
     let stream: MediaStream | null = null;
     try {
       await postRoomReceipt({ callRoomId, action: "OPEN", receiptId: crypto.randomUUID(), occurredAt: new Date().toISOString() });
+      const clockSamples = await measureBrowserCaptureClockBurst({
+        callRoomId,
+        captureGroupId,
+      });
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: { exact: microphoneId },
@@ -622,6 +631,7 @@ export function BrowserSourceRecorder({
       const { writable } = await createBrowserSourceFile(opfsFileName);
       writableRef.current = writable;
       const startedAt = new Date().toISOString();
+      const monotonicStartedNanoseconds = browserMonotonicNanoseconds(performance.now());
       const audioSettings = stream.getAudioTracks()[0]?.getSettings() ?? {};
       const videoSettings = stream.getVideoTracks()[0]?.getSettings() ?? {};
       const ledger: BrowserSourceCaptureLedger = {
@@ -640,6 +650,7 @@ export function BrowserSourceRecorder({
         sourceType,
         sourceProfile: {
           contractKind: QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND,
+          schemaVersion: 3,
           clientKind: "web",
           sourceKind: sourceType,
           quality: "studio-source",
@@ -647,6 +658,8 @@ export function BrowserSourceRecorder({
           deviceId: sourceType === "video" ? cameraId : microphoneId,
           deviceLabel: sourceType === "video" ? `${cameraLabel} + ${microphoneLabel}` : microphoneLabel,
           trackSettings: { ...safeTrackSettings(audioSettings), ...Object.fromEntries(Object.entries(safeTrackSettings(videoSettings)).map(([key, value]) => [`video.${key}`, value])) },
+          monotonicStartedNanoseconds,
+          clockSamples,
           processing: {
             echoCancellation: typeof audioSettings.echoCancellation === "boolean" ? audioSettings.echoCancellation : null,
             noiseSuppression: typeof audioSettings.noiseSuppression === "boolean" ? audioSettings.noiseSuppression : null,
@@ -778,7 +791,7 @@ export function BrowserSourceRecorder({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The browser source could not start.");
     }
-  }, [callRoomId, cameraId, cameraLabel, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, readiness, refreshRecovery, sessionTitle, sourceType, startRetainedSourceMeter, stopRetainedSourceMeter, updateLedger, uploadLedger]);
+  }, [callRoomId, cameraId, cameraLabel, captureGroupId, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, readiness, refreshRecovery, sessionTitle, sourceType, startRetainedSourceMeter, stopRetainedSourceMeter, updateLedger, uploadLedger]);
 
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -796,7 +809,7 @@ export function BrowserSourceRecorder({
         <div>
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-800"><HardDrive size={14} /> Retained local source</p>
           <h3 id={`browser-source-${callRoomId}`} className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Record the selected studio source</h3>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture.</p>
+          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">This is independent from the live call. Chunks go to a private on-device file, survive refreshes, receive START/STOP and consent receipts, then use the same verified upload path as iPhone Capture. Every source in this Session shares one take identity while preserving its own clock and immutable bytes.</p>
         </div>
         <span className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${status === "recording" ? "bg-rose-700 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-emerald-100 text-emerald-950"}`}>{status === "recording" ? `Recording ${elapsedSeconds}s` : status}</span>
       </div>
@@ -845,7 +858,7 @@ export function BrowserSourceRecorder({
       {recoveryRows.length ? <div className="mt-4 border-t border-[#e5d8c0] pt-3">
         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]"><HardDrive size={14} /> Protected takes on this browser · {recoveryRows.length}</div>
         <div className="mt-2 space-y-2">{recoveryRows.slice(0, 6).map((ledger) => <div key={ledger.captureId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf0] px-3 py-2 text-xs font-bold text-[#5b472f]">
-          <span className="min-w-0"><span className="block truncate">{ledger.fileName}</span><span className="text-[10px] text-[#8a7354]">{ledger.state} · {formatBytes(ledger.sizeBytes)} · {new Date(ledger.startedAt).toLocaleString()}</span></span>
+          <span className="min-w-0"><span className="block truncate">{ledger.fileName}</span><span className="text-[10px] text-[#8a7354]">{ledger.state} · {formatBytes(ledger.sizeBytes)} · {ledger.sourceProfile.clockSamples?.length ?? 0}/3 clock samples · {new Date(ledger.startedAt).toLocaleString()}</span></span>
           <span className="flex gap-2">
             <button type="button" onClick={() => void downloadBrowserSource(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border bg-white px-3 text-[10px] uppercase"><Download size={13} /> Download</button>
             {["stopped", "held", "failed", "uploading", "verifying"].includes(ledger.state) && ledger.sha256 ? <button type="button" onClick={() => void retryUploadLedger(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"><UploadCloud size={13} /> Retry handoff</button> : null}
@@ -853,7 +866,7 @@ export function BrowserSourceRecorder({
           </span>
         </div>)}</div>
       </div> : null}
-      {activeLedger?.state === "verified" ? <p className="mt-3 text-[10px] font-bold text-emerald-800">Verified editor evidence: {activeLedger.serverRecordingAssetId || "recording receipt created"}. Local deletion remains unavailable by design.</p> : null}
+      {activeLedger?.state === "verified" ? <p className="mt-3 text-[10px] font-bold text-emerald-800">Verified editor evidence: {activeLedger.serverRecordingAssetId || "recording receipt created"}. Session take {activeLedger.captureGroupId.slice(0, 8)} has {activeLedger.sourceProfile.clockSamples?.length ?? 0}/3 network clock samples; waveform and late-drift review still decide final placement. Local deletion remains unavailable by design.</p> : null}
     </section>
   );
 }

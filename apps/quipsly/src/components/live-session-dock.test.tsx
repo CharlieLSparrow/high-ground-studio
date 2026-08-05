@@ -11,13 +11,15 @@ import {
 jest.mock("./live-session-room", () => ({
   LiveSessionRoom: ({
     callRoomId,
+    captureGroupId,
     onStatusChange,
   }: {
     callRoomId: string;
+    captureGroupId: string;
     onStatusChange?: (status: string) => void;
   }) => {
     useEffect(() => onStatusChange?.("connected"), [onStatusChange]);
-    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId}</div>;
+    return <div data-testid={`live-room-${callRoomId}`}>Mounted LiveKit room {callRoomId} · take {captureGroupId}</div>;
   },
 }));
 
@@ -27,6 +29,7 @@ jest.mock("./session-thread", () => ({
 
 const episodeConfig: LiveSessionDockConfig = {
   callRoomId: "episode-session-1",
+  captureGroupId: "55555555-5555-4555-8555-555555555551",
   sessionTitle: "Episode 7 recording",
   kind: "episode",
   purpose: "PODCAST",
@@ -38,6 +41,7 @@ const episodeConfig: LiveSessionDockConfig = {
 
 const coachingConfig: LiveSessionDockConfig = {
   callRoomId: "coaching-session-2",
+  captureGroupId: "55555555-5555-4555-8555-555555555552",
   sessionTitle: "Retained coaching follow-up",
   kind: "coaching",
   purpose: "COACHING",
@@ -56,6 +60,9 @@ describe("LiveSessionDockProvider", () => {
     );
 
     expect(await screen.findByTestId("live-room-episode-session-1")).toBeInTheDocument();
+    expect(screen.getByTestId("live-room-episode-session-1")).toHaveTextContent(
+      "take 55555555-5555-4555-8555-555555555551",
+    );
     await user.click(screen.getByRole("button", { name: "Minimize live call" }));
 
     expect(screen.getByTestId("live-room-episode-session-1")).toBeInTheDocument();

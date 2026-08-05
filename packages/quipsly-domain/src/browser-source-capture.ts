@@ -23,6 +23,24 @@ export type BrowserSourceCaptureChunk = {
   readonly receivedAt: string;
 };
 
+export type BrowserSourceCaptureClockSample = {
+  readonly protocolVersion: 1;
+  readonly sampleId: string;
+  readonly callRoomId: string;
+  readonly captureGroupId: string;
+  readonly clientKind: "web";
+  readonly deviceWallSentAt: string;
+  readonly deviceMonotonicSentNanoseconds: string;
+  readonly serverReceivedAt: string;
+  readonly serverSentAt: string;
+  readonly deviceWallReceivedAt: string;
+  readonly deviceMonotonicReceivedNanoseconds: string;
+  readonly networkRoundTripMilliseconds: number;
+  readonly serverOffsetMilliseconds: number;
+  readonly uncertaintyMilliseconds: number;
+  readonly wallClockDiscontinuityMilliseconds: number;
+};
+
 export type BrowserSourceCaptureMeterSummaryLegacy = {
   readonly contractKind: "quipsly-browser-source-meter-v1";
   readonly measurement: string;
@@ -74,6 +92,7 @@ export type BrowserSourceCaptureMeterSummary =
 
 export type BrowserSourceCaptureProfile = {
   readonly contractKind: typeof QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND;
+  readonly schemaVersion: 3;
   readonly clientKind: "web";
   readonly sourceKind: BrowserSourceKind;
   readonly quality: BrowserSourceCaptureQuality;
@@ -81,6 +100,8 @@ export type BrowserSourceCaptureProfile = {
   readonly deviceId: string;
   readonly deviceLabel: string;
   readonly trackSettings: Readonly<Record<string, string | number | boolean | null>>;
+  readonly monotonicStartedNanoseconds: string;
+  readonly clockSamples: readonly BrowserSourceCaptureClockSample[];
   readonly processing: {
     readonly echoCancellation: boolean | null;
     readonly noiseSuppression: boolean | null;

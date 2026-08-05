@@ -36,6 +36,7 @@ import {
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
+  captureGroupId: string;
   sessionTitle: string;
   kind: SessionCaptureProfile;
   purpose: string;
@@ -225,6 +226,7 @@ export function LiveSessionDockProvider({ children }: { children: ReactNode }) {
             <div className="mt-3 space-y-3">
               <LiveSessionRoom
                 callRoomId={active.callRoomId}
+                captureGroupId={active.captureGroupId}
                 sessionTitle={active.sessionTitle}
                 kind={active.kind}
                 purpose={active.purpose}

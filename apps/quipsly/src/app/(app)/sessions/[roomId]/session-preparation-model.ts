@@ -36,6 +36,7 @@ type LiveKitEnvironment = {
 };
 
 export type SessionPreparation = {
+  captureGroupId: string;
   purpose: string;
   status: string;
   provider: string;
@@ -83,6 +84,7 @@ function iso(value: Date | string | null | undefined) {
 }
 
 export function buildSessionPreparationState(room: {
+  captureGroupId: string;
   purpose?: string | null;
   status?: string | null;
   provider?: string | null;
@@ -149,6 +151,7 @@ export function buildSessionPreparationState(room: {
       )).length,
     },
     preparation: {
+      captureGroupId: room.captureGroupId,
       purpose: String(room.purpose || "COACHING"),
       status: String(room.status || "PLANNED"),
       provider,

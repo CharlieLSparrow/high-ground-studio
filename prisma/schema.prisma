@@ -1790,6 +1790,7 @@ model StripeWebhookEvent {
 
 model CallRoom {
   id                   String          @id @default(cuid())
+  captureGroupId       String          @unique @default(uuid()) @db.Uuid
   bookingId            String?         @unique
   createdByUserId      String?
   projectId            String?

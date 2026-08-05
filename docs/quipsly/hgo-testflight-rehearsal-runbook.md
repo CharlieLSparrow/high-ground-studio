@@ -8,12 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (26)**
+- App: **Quipsly Capture 1.0 (27)**
 - Exact native source:
-  `283d522058bb036d3d81ae966ebc8939af92e55d`
-- Qualified upload-bound IPA: 22,376,036 bytes, SHA-256
-  `ffc30e329e4f872bc384f8f4d02ed88ee098bf8921cd4e1a9f1d1131766264f3`
-- App Store Connect build ID: `0ef2cf7a-43d1-49bb-800f-c08239730b96`
+  `cf95f4ed0579b66f4e41faa9666a4cad5f66e147`
+- App Store Connect build ID: `443cad38-3677-4510-8af3-803b5fdb1b9d`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -24,7 +22,7 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 26 passed all 54 serialized iPhone and Share Extension journeys,
+- Build 27 passed all 54 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
   of Apple's page naming **Quipsly Capture**. This does not claim a physical

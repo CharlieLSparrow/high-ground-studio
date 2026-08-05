@@ -1274,7 +1274,7 @@ final class CaptureExperienceModel: ObservableObject {
         await videoCapture.start(
             context: context,
             includesAudio: mode.movieIncludesAudio,
-            captureGroupID: captureGroupID
+            captureGroupID: captureGroupID ?? refreshed.captureGroupId
         )
         guard [.arming, .recording, .finalizing].contains(videoCapture.state) else {
             isChangingCapture = false
@@ -1325,7 +1325,7 @@ final class CaptureExperienceModel: ObservableObject {
             return
         }
 
-        let captureGroupID = UUID()
+        let captureGroupID = selectedSession?.captureGroupId ?? UUID()
         activeCoordinatedCaptureGroupID = captureGroupID
         await startVideoCapture(
             using: videoCapture,
@@ -1754,7 +1754,7 @@ final class CaptureExperienceModel: ObservableObject {
 
         let contextSlugs = MobileContextManager.shared.getTargetSlugs()
         let captureID = UUID()
-        let resolvedCaptureGroupID = captureGroupID ?? captureID
+        let resolvedCaptureGroupID = captureGroupID ?? session.captureGroupId ?? captureID
         let clockSamples = usesPreviewData
             ? []
             : await CaptureClockClient.shared.measureBurst(

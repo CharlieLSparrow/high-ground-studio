@@ -262,6 +262,7 @@ describe("EpisodeRoomClient shared writing", () => {
       },
       recordingSessions: [{
         id: "call-room-1",
+        captureGroupId: "55555555-5555-4555-8555-555555555551",
         title: "Episode 5 capture",
         purpose: "PODCAST",
         status: "RECORDING",
@@ -316,6 +317,7 @@ describe("EpisodeRoomClient shared writing", () => {
       },
       recordingSessions: [{
         id: "call-room-1",
+        captureGroupId: "55555555-5555-4555-8555-555555555551",
         title: "Stopped Episode 5 capture",
         purpose: "PODCAST",
         status: "OPEN",

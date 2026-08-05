@@ -23,6 +23,7 @@ function currentEvidence() {
 describe("Session preparation projection", () => {
   it("uses current policy evidence for per-person and all-party readiness", () => {
     const state = buildSessionPreparationState({
+      captureGroupId: "55555555-5555-4555-8555-555555555551",
       purpose: "COACHING",
       status: "PLANNED",
       provider: "livekit",
@@ -56,6 +57,7 @@ describe("Session preparation projection", () => {
 
     expect(state.consentSnapshot).toEqual({ total: 1, granted: 1, transcriptionPermitted: 1 });
     expect(state.preparation).toMatchObject({
+      captureGroupId: "55555555-5555-4555-8555-555555555551",
       purpose: "COACHING",
       status: "PLANNED",
       provider: "livekit",
@@ -80,6 +82,7 @@ describe("Session preparation projection", () => {
 
   it("does not call a selected LiveKit room ready when server credentials are absent", () => {
     const state = buildSessionPreparationState({
+      captureGroupId: "55555555-5555-4555-8555-555555555552",
       provider: "livekit",
       providerRoomId: "provider-room-1",
     }, null, {});
@@ -93,6 +96,7 @@ describe("Session preparation projection", () => {
 
   it("projects only the latest consent version and ignores anonymous observers", () => {
     const state = buildSessionPreparationState({
+      captureGroupId: "55555555-5555-4555-8555-555555555553",
       participants: [
         { id: "participant-1", userId: "user-1", displayName: "Charlie", role: "HOST" },
         { id: "observer-1", userId: "observer-user", displayName: "Observer", role: "OBSERVER" },

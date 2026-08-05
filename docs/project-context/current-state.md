@@ -4,6 +4,16 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- A Session now owns one server-generated capture group for its one recording
+  encounter. Browser retained sources, authorized iPhone audio/video, Episode
+  Room recording, and external-source import receive that same take identity
+  while keeping distinct capture/upload IDs, participant evidence, clocks, and
+  immutable bytes. Browser capture now collects three NTP-style Session-clock
+  samples and displays missing legacy evidence honestly. Provider recording
+  remains optional safety/reference media; it is not needed for grouping or
+  clock placement, and waveform plus late-drift review remain required. Build
+  27 stays preservation-compatible but does not gain the new grouping claim.
+  See `docs/coordination/2026-08-04-session-capture-group-clock.md`.
 - Durable Session and Episode chat now use the active LiveKit room only as a
   low-latency persisted-message hint. The strict packet contains no message
   body or author identity; browser and Capture validate its exact active thread
@@ -103,7 +113,7 @@ Date: 2026-08-04
   attention without exposing provider identities. The retained operation read
   two devices/two people before removal and host-only afterward. See
   `docs/coordination/2026-08-04-session-provider-presence.md`.
-- Full Nest Jest passes 301 suites / 1,572 runnable tests, the 172-route Nest
+- The prior full Nest checkpoint passed 301 suites / 1,572 runnable tests, the 172-route Nest
   production build passes, the media-vault CORS policy generator passes 5/5,
   the Capture/App Store static gate passes 1,025/1,025, and the Quipsly Capture
   iOS simulator build plus focused authenticated handoff operation pass. This

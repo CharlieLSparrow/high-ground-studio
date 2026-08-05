@@ -1922,6 +1922,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         : null;
   const liveDockConfig = useMemo<LiveSessionDockConfig>(() => ({
     callRoomId: roomId,
+    captureGroupId: preparation?.captureGroupId || "",
     sessionTitle,
     kind: sessionExperienceForPurpose(purpose).captureProfile,
     purpose,
@@ -1929,7 +1930,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     episodeSlug: collaborationContext.episode?.slug || null,
     parentHref: liveParentHref,
     parentLabel: liveParentLabel,
-  }), [collaborationContext.episode?.slug, liveParentHref, liveParentLabel, liveProjectSlug, purpose, roomId, sessionTitle]);
+  }), [collaborationContext.episode?.slug, liveParentHref, liveParentLabel, liveProjectSlug, preparation?.captureGroupId, purpose, roomId, sessionTitle]);
 
   return (
     <div className="space-y-8">

@@ -13,6 +13,14 @@ import {
 
 type ImportStage = "idle" | "hashing" | "reserving" | "uploading" | "verifying" | "complete" | "failed";
 
+function newImportIdentity(captureGroupId: string) {
+  return {
+    uploadSessionId: crypto.randomUUID(),
+    captureId: crypto.randomUUID(),
+    captureGroupId,
+  };
+}
+
 function localDateTimeValue(value: string | null, fallback: Date) {
   const parsed = value ? new Date(value) : fallback;
   const safe = Number.isFinite(parsed.getTime()) ? parsed : fallback;
@@ -62,7 +70,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<SessionRecordingImportResult | null>(null);
-  const identity = useRef({ uploadSessionId: crypto.randomUUID(), captureId: crypto.randomUUID(), captureGroupId: crypto.randomUUID() });
+  const identity = useRef(newImportIdentity(preparation?.captureGroupId || ""));
   const controller = useRef<AbortController | null>(null);
   const busy = stage === "hashing" || stage === "reserving" || stage === "uploading" || stage === "verifying";
 
@@ -83,7 +91,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
   const startIso = isoFromLocal(startedAt);
   const stopIso = isoFromLocal(stoppedAt);
   const validRange = Boolean(startIso && stopIso && new Date(stopIso).getTime() >= new Date(startIso).getTime());
-  const canImport = Boolean(file && fileType && actor && actorConsent?.id && actorCanRecord && validRange && !busy);
+  const canImport = Boolean(file && fileType && actor && actorConsent?.id && actorCanRecord && validRange && preparation?.captureGroupId && !busy);
   const activeProgress = progressLabel(stage, hashProgress, uploadProgress);
 
   function chooseFile(nextFile: File | null) {
@@ -94,7 +102,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
     setHashProgress(0);
     setUploadProgress(0);
     setStage("idle");
-    identity.current = { uploadSessionId: crypto.randomUUID(), captureId: crypto.randomUUID(), captureGroupId: crypto.randomUUID() };
+    identity.current = newImportIdentity(preparation?.captureGroupId || "");
   }
 
   async function runImport() {
@@ -143,7 +151,7 @@ export function SessionRecordingImportCard({ roomId, preparation }: {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Computer, camera, or recorder</p>
           <h2 id="session-recording-import-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Import an existing session recording</h2>
-          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Choose the original Canon, Shure, browser, phone, or recorder file. Quipsly reads it in chunks, preserves it privately, then independently matches its exact byte count and SHA-256. It does not alter, transcribe, share, or publish the source.</p>
+          <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Choose the original Canon, Shure, browser, phone, or recorder file. Quipsly reads it in chunks, preserves it privately, then independently matches its exact byte count and SHA-256. It joins this Session’s recording take for clock and waveform review; it does not alter, transcribe, share, or publish the source.</p>
         </div>
       </div>
       <span className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-violet-900"><ShieldCheck size={14} aria-hidden="true" />Original-preserving</span>

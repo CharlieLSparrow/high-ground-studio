@@ -215,6 +215,7 @@ function StudioInputEvidenceMeter({ evidence }: { evidence: StudioAudioMeterEvid
 
 export function LiveSessionRoom({
   callRoomId,
+  captureGroupId,
   sessionTitle,
   kind,
   purpose,
@@ -227,6 +228,7 @@ export function LiveSessionRoom({
   narrow = false,
 }: {
   callRoomId: string;
+  captureGroupId: string;
   sessionTitle: string;
   kind: SessionCaptureProfile;
   purpose?: string | null;
@@ -904,6 +906,7 @@ export function LiveSessionRoom({
       <div className="mt-5">
         <BrowserSourceRecorder
           callRoomId={callRoomId}
+          captureGroupId={captureGroupId}
           sessionTitle={sessionTitle}
           sessionKind={experience.captureProfile}
           episodeSlug={episodeSlug}

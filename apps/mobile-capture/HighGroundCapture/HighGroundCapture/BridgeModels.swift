@@ -780,6 +780,7 @@ struct MobileCapturePriorFollowThrough: Codable, Hashable {
 
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
+    var captureGroupId: UUID? = nil
     let callRoomId: String
     let title: String
     let purpose: String?

@@ -129,6 +129,10 @@ surface.
 Provider egress is optional safety/reference media. It never silently becomes
 the only master. Starting provider recording remains a separate, consent-gated,
 visible command with durable idempotency and reconciliation requirements.
+It can assist waveform correlation when present, but the Session's canonical
+capture group, per-source clock evidence, and explicit alignment review do not
+depend on provider egress. See
+`docs/coordination/2026-08-04-session-capture-group-clock.md`.
 
 ## Identity and simultaneous devices
 

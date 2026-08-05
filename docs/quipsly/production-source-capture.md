@@ -435,10 +435,11 @@ Every independent file has:
 - `sourceId`: one immutable local/server source identity;
 - `uploadSessionId`: one immutable resumable-transfer identity for exactly one
   file; retries reuse it, while a second audio or video file receives another;
-- `captureId`: the actor-owned recording interval bound to the Episode Room's
-  applied START receipt; every source intentionally recorded in that interval
-  may share it;
-- `captureGroupId`: one participant's continuous recording intention;
+- `captureId`: one actor-owned recording interval bound to the Episode Room's
+  applied START receipt;
+- `captureGroupId`: the server-owned identity for one canonical Session
+  encounter/take; every participant/device source intentionally recorded for
+  that Session shares it while retaining its own actor-bound `captureId`;
 - `callRoomId`, `participantId`, `projectSlug`, and `episodeSlug`;
 - media kind, camera position/device unique ID, codec, dimensions, frame rate,
   color space, orientation, and audio-route evidence;
