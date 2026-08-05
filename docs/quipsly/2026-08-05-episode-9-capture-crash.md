@@ -62,3 +62,34 @@ requires all of the following on the tester's iPhone:
 
 Build 28 must not be described as physically proven until this readback is
 recorded.
+
+## Episode 9 identity and access preflight
+
+The crash and session-visibility checks are separate boundaries. A read-only
+production preflight now signs in through each real Firebase identity and asks
+the same `/api/mobile/capture/sessions` endpoint used by Quipsly Capture for
+the expected Session. On August 5, 2026, all of these paths returned HTTP 200
+and included **Episode 9: The Swear Jar**:
+
+- `charlie@highgroundodyssey.com` -> canonical Charlie user;
+- `charlielsparrow@gmail.com` -> the same canonical Charlie user; and
+- `shomers@gmail.com` -> canonical Scott user.
+
+Run that proof without printing or persisting its short-lived credentials:
+
+```bash
+pnpm quipsly:capture:access-preflight -- \
+  --email charlie@highgroundodyssey.com \
+  --email charlielsparrow@gmail.com \
+  --email shomers@gmail.com
+```
+
+Local Nest data had drifted independently: the Episode 9 room contained only
+a retained test operator. The local-only collaboration converger now resolves
+canonical users through primary or alias email, refuses non-loopback database
+targets, checks Firebase-subject collisions, preserves test participants,
+upserts project grants and room roles, and creates only `REQUESTED` consent
+rows with every permission false. It is dry-run by default and records an
+audit event when applied. A second dry run after the repair reported Charlie
+OWNER/HOST and Scott EDITOR/GUEST as already active, with no missing identity
+bindings and both consent requests preserved.
