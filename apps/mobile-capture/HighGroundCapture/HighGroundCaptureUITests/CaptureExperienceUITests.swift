@@ -1036,6 +1036,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let projection = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
         ).firstMatch
+        reveal(projection)
         XCTAssertTrue(projection.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(projection.label.contains("1 of 1 private task alert"))
         let status = app.staticTexts.matching(
@@ -1051,6 +1052,7 @@ final class CaptureExperienceUITests: XCTestCase {
         let recoveredProjection = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
         ).firstMatch
+        reveal(recoveredProjection)
         XCTAssertTrue(recoveredProjection.waitForExistence(timeout: 10))
         XCTAssertTrue(recoveredProjection.label.contains("1 of 1 private task alert"))
         XCTAssertTrue(app.staticTexts["Task · Private reminder projection proof"].exists)
