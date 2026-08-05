@@ -5,6 +5,19 @@ import QuipslyVideoCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum EpisodeCaptureSoundCheckPhase:
+    String,
+    Equatable
+{
+    case idle
+    case recording
+    case analyzing
+    case playback
+    case passed
+    case attention
+    case failed
+}
+
 @MainActor
 final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var inventory: ProductionCaptureInventory?
@@ -38,6 +51,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         ProductionAudioRecordingLiveStatus?
     @Published private(set) var isFinalizing = false
     @Published private(set) var recordingError: String?
+    @Published private(set) var soundCheckPhase:
+        EpisodeCaptureSoundCheckPhase = .idle
+    @Published private(set) var soundCheckLiveStatus:
+        ProductionAudioRecordingLiveStatus?
+    @Published private(set) var soundCheckSummary:
+        ProductionAudioSignalSummary?
+    @Published private(set) var soundCheckElapsedSeconds = 0.0
+    @Published private(set) var soundCheckMessage =
+        "Record 15 seconds at episode intensity, then hear the exact captured WAV through the selected output."
+    @Published private(set) var soundCheckError: String?
+    @Published private(set) var lastSoundCheckReceipt:
+        ProductionAudioRecordingReceipt?
     @Published private(set) var captureGroupID = UUID()
     @Published private(set) var captureGroupIsClosed = false
     @Published private(set) var isImportingCanon = false
@@ -97,6 +122,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
 
     private let recorder = ProductionAudioRecorder()
+    private let soundCheckRecorder = ProductionAudioRecorder()
+    private let soundCheckPlayer =
+        ProductionAudioSoundCheckPlayer()
     let videoRecorder = ProductionVideoReferenceRecorder()
     private let captureClockClient =
         ProductionCaptureClockClient(clientKind: "macos")
@@ -109,6 +137,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     private let playbackEngine: PlaybackEngine
     let nativeAccountStore: QuipslyNativeAccountStore
     private var elapsedTask: Task<Void, Never>?
+    private var soundCheckTask: Task<Void, Never>?
     private var activeRoomCapture: ActiveRoomCapture?
     private var didAttemptLaunchReceiptRecovery = false
     private var didAttemptLaunchUploadRecovery = false
@@ -138,6 +167,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             await self?.stopRecording(
                 audioInterruption: receipt
             )
+        }
+        soundCheckRecorder.onRouteContinuityLost = {
+            [weak self] receipt in
+            self?.handleSoundCheckRouteLoss(receipt)
         }
         if !roomReceiptOutbox.isWritable {
             roomReceiptError =
@@ -334,6 +367,29 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         .observedInputUID
                         ?? activeReceipt.routeContinuity?
                         .observedInputUID ?? "",
+                "levelState":
+                    liveStatus?.level.state.rawValue
+                        ?? "unavailable",
+                "samplePeakDBFS":
+                    liveStatus?.level.samplePeakDBFS
+                        ?? ProductionAudioLevelPolicy.floorDBFS,
+                "rmsDBFS":
+                    liveStatus?.level.rmsDBFS
+                        ?? ProductionAudioLevelPolicy.floorDBFS,
+                "sessionSamplePeakDBFS":
+                    liveStatus?.level
+                        .sessionSamplePeakDBFS
+                        ?? ProductionAudioLevelPolicy.floorDBFS,
+                "clippedSampleCount":
+                    liveStatus?.level.clippedSampleCount ?? 0,
+                "measuredSampleCount":
+                    liveStatus?.level.measuredSampleCount ?? 0,
+                "channelSamplePeakDBFS":
+                    liveStatus?.channelSamplePeakDBFS ?? [],
+                "channelRMSDBFS":
+                    liveStatus?.channelRMSDBFS ?? [],
+                "levelGuidance":
+                    liveStatus?.level.guidance ?? "",
             ]
         } else {
             activeAudioState = [:]
@@ -518,6 +574,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "observe_exact_routes_prepare_local_start_stop_audit_reobserve",
             "agentCapabilityParity": [
                 "read exact camera, microphone, and output routes",
+                "read current sample peak, RMS, channel levels, and clipped-sample evidence",
                 "prepare a local-only capture without joining a room",
                 "keep negotiated camera format separate from explicit live-image verification",
                 "start only when exact selected device IDs are reconfirmed",
@@ -738,6 +795,24 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         recorder.isRecording || videoRecorder.isRecording
     }
 
+    var isSoundChecking: Bool {
+        soundCheckRecorder.isRecording
+            || soundCheckPhase == .analyzing
+            || soundCheckPhase == .playback
+    }
+
+    var canStartSoundCheck: Bool {
+        !isRecording
+            && !isFinalizing
+            && !isSoundChecking
+            && !isImportingCanon
+            && !isUploadingMaster
+            && inventory?.microphoneAuthorization
+                == .authorized
+            && selectedAudioInput?.hasInput == true
+            && selectedAudioOutput?.hasOutput == true
+    }
+
     var canAuditLastFinalizedTake: Bool {
         guard !isRecording,
               !isFinalizing,
@@ -793,6 +868,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     var canStartRecording: Bool {
         guard !isRecording,
+              !isSoundChecking,
               !isFinalizing,
               !isImportingCanon,
               !isRefreshingEpisodeRooms,
@@ -1442,7 +1518,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 
     func selectEpisodeRoom(_ roomID: String?) {
-        guard !isRecording, !isFinalizing, !isImportingCanon else {
+        guard !isRecording,
+              !isSoundChecking,
+              !isFinalizing,
+              !isImportingCanon else {
             return
         }
         let nextIsLocalOnly = roomID == nil
@@ -1454,6 +1533,203 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             roomID,
             beginNewGroup: shouldBeginNewGroup
         )
+    }
+
+    func startSoundCheck() async {
+        guard canStartSoundCheck,
+              let input = selectedAudioInput,
+              let output = selectedAudioOutput else {
+            soundCheckPhase = .failed
+            soundCheckError =
+                "Choose an authorized microphone and headphone/output route before sound check."
+            return
+        }
+
+        soundCheckTask?.cancel()
+        soundCheckPlayer.stop()
+        soundCheckError = nil
+        soundCheckSummary = nil
+        soundCheckLiveStatus = nil
+        soundCheckElapsedSeconds = 0
+        lastSoundCheckReceipt = nil
+
+        do {
+            let receipt = try soundCheckRecorder.start(
+                configuration:
+                    ProductionAudioRecordingConfiguration(
+                        captureGroupID: UUID(),
+                        episodeSpaceID: "_sound-checks",
+                        participantID:
+                            participantID
+                                .trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                )
+                                .isEmpty
+                            ? "local-operator"
+                            : participantID
+                                .trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ),
+                        capturePurpose: "audio_preflight",
+                        inputDevice: input,
+                        rootDirectory: captureRoot
+                    )
+            )
+            soundCheckPhase = .recording
+            soundCheckMessage =
+                "Speak naturally, then include one energetic sentence. Quipsly will stop at 15 seconds and replay the exact WAV through \(output.name)."
+            let startedAt = receipt.startedAt
+            soundCheckTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    self.soundCheckElapsedSeconds =
+                        Date().timeIntervalSince(startedAt)
+                    self.soundCheckLiveStatus =
+                        self.soundCheckRecorder.liveStatus
+                    self.soundCheckSummary =
+                        self.soundCheckRecorder.signalSummary
+                    if self.soundCheckElapsedSeconds >= 15 {
+                        await self.finishSoundCheck()
+                        return
+                    }
+                    try? await Task.sleep(
+                        for: .milliseconds(100)
+                    )
+                }
+            }
+        } catch {
+            soundCheckPhase = .failed
+            soundCheckError = error.localizedDescription
+            soundCheckMessage =
+                "Sound check did not open the selected microphone."
+        }
+    }
+
+    func finishSoundCheck() async {
+        guard soundCheckRecorder.isRecording else { return }
+        soundCheckTask?.cancel()
+        soundCheckTask = nil
+        soundCheckLiveStatus = soundCheckRecorder.liveStatus
+        soundCheckSummary = soundCheckRecorder.signalSummary
+        soundCheckPhase = .analyzing
+        soundCheckMessage =
+            "Finalizing the exact sound-check bytes and verifying the selected playback route…"
+
+        do {
+            let receipt = try await soundCheckRecorder.stop()
+            lastSoundCheckReceipt = receipt
+            guard let summary = soundCheckSummary else {
+                throw NSError(
+                    domain: "QuipslySoundCheck",
+                    code: 422,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The WAV finalized, but no signal summary was available.",
+                    ]
+                )
+            }
+            guard let output = selectedAudioOutput else {
+                throw ProductionAudioSoundCheckPlaybackError
+                    .outputDeviceUnavailable(
+                        "selected output"
+                    )
+            }
+            soundCheckPhase = .playback
+            soundCheckMessage =
+                "Playing the exact captured WAV through \(output.name). Listen for room noise, distortion, dropouts, and headphone routing."
+            try soundCheckPlayer.play(
+                fileURL: URL(
+                    fileURLWithPath: receipt.audioPath
+                ),
+                outputDevice: output
+            ) { [weak self] in
+                self?.completeSoundCheckPlayback(
+                    summary: summary,
+                    output: output
+                )
+            }
+        } catch {
+            soundCheckPhase = .failed
+            soundCheckError = error.localizedDescription
+            soundCheckMessage =
+                "The sound-check source is preserved, but preflight needs attention."
+        }
+    }
+
+    func replaySoundCheck() {
+        guard soundCheckPhase != .recording,
+              soundCheckPhase != .analyzing,
+              let receipt = lastSoundCheckReceipt,
+              let summary = soundCheckSummary,
+              let output = selectedAudioOutput else {
+            return
+        }
+        soundCheckPlayer.stop()
+        do {
+            soundCheckError = nil
+            soundCheckPhase = .playback
+            soundCheckMessage =
+                "Replaying the exact captured WAV through \(output.name)."
+            try soundCheckPlayer.play(
+                fileURL: URL(
+                    fileURLWithPath: receipt.audioPath
+                ),
+                outputDevice: output
+            ) { [weak self] in
+                self?.completeSoundCheckPlayback(
+                    summary: summary,
+                    output: output
+                )
+            }
+        } catch {
+            soundCheckPhase = .failed
+            soundCheckError = error.localizedDescription
+        }
+    }
+
+    func cancelSoundCheck() async {
+        soundCheckTask?.cancel()
+        soundCheckTask = nil
+        soundCheckPlayer.stop()
+        if soundCheckRecorder.isRecording {
+            soundCheckSummary = soundCheckRecorder.signalSummary
+            lastSoundCheckReceipt =
+                try? await soundCheckRecorder.stop()
+        }
+        if soundCheckPhase == .recording
+            || soundCheckPhase == .analyzing
+            || soundCheckPhase == .playback {
+            soundCheckPhase = .attention
+            soundCheckMessage =
+                "Sound check stopped. Run it again before the production take."
+        }
+    }
+
+    private func completeSoundCheckPlayback(
+        summary: ProductionAudioSignalSummary,
+        output: CaptureAudioDeviceSnapshot
+    ) {
+        let state = summary.assessment.state
+        soundCheckPhase = state == .ready
+            ? .passed
+            : .attention
+        soundCheckMessage = state == .ready
+            ? "Sound check passed: healthy spoken headroom, no clipping, exact microphone route, and verified playback through \(output.name)."
+            : "Playback completed through \(output.name). \(summary.assessment.guidance)"
+    }
+
+    private func handleSoundCheckRouteLoss(
+        _ receipt: ProductionAudioRecordingReceipt
+    ) {
+        soundCheckTask?.cancel()
+        soundCheckTask = nil
+        soundCheckLiveStatus = nil
+        lastSoundCheckReceipt = receipt
+        soundCheckPhase = .failed
+        soundCheckError = receipt.failure
+            ?? "The selected microphone route was lost."
+        soundCheckMessage =
+            "Sound check stopped without changing the production take."
     }
 
     func startRecording() async {
@@ -3151,6 +3427,53 @@ private final class CameraPreviewNSView: NSView {
     }
 }
 
+private extension ProductionAudioLevelState {
+    var captureLabel: String {
+        switch self {
+        case .noSignal:
+            "No signal"
+        case .low:
+            "Low"
+        case .ready:
+            "Healthy"
+        case .hot:
+            "Hot"
+        case .clipping:
+            "Clipping"
+        }
+    }
+
+    var captureSystemImage: String {
+        switch self {
+        case .noSignal:
+            "waveform.slash"
+        case .low:
+            "speaker.wave.1.fill"
+        case .ready:
+            "checkmark.waveform"
+        case .hot:
+            "exclamationmark.triangle.fill"
+        case .clipping:
+            "bolt.trianglebadge.exclamationmark.fill"
+        }
+    }
+
+    var captureColor: Color {
+        switch self {
+        case .noSignal:
+            .secondary
+        case .low:
+            .orange
+        case .ready:
+            .green
+        case .hot:
+            .orange
+        case .clipping:
+            .red
+        }
+    }
+}
+
 private struct CameraPreviewView: NSViewRepresentable {
     let session: AVCaptureSession
 
@@ -3205,6 +3528,7 @@ struct EpisodeCaptureSetupView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     episodeRoomCard
                     routeSelectors
+                    soundCheckCard
                     cameraReferenceCard
                     localMasterCard
                     takeAcceptanceCard
@@ -3267,6 +3591,7 @@ struct EpisodeCaptureSetupView: View {
                 if model.isRecording {
                     await model.stopRecording()
                 }
+                await model.cancelSoundCheck()
                 if audioRoom.isActive {
                     await audioRoom.disconnect()
                 }
@@ -3937,6 +4262,7 @@ struct EpisodeCaptureSetupView: View {
                 .disabled(
                     model.isRefreshing
                         || model.isRecording
+                        || model.isSoundChecking
                         || model.isFinalizing
                         || model.isImportingCanon
                         || model.isUploadingMaster
@@ -3964,6 +4290,7 @@ struct EpisodeCaptureSetupView: View {
                         .labelsHidden()
                         .disabled(
                             model.isRecording
+                                || model.isSoundChecking
                                 || model.isFinalizing
                                 || model.isImportingCanon
                                 || model.isUploadingMaster
@@ -3982,6 +4309,7 @@ struct EpisodeCaptureSetupView: View {
                         .labelsHidden()
                         .disabled(
                             model.isRecording
+                                || model.isSoundChecking
                                 || model.isFinalizing
                                 || model.isImportingCanon
                                 || model.isUploadingMaster
@@ -4000,6 +4328,7 @@ struct EpisodeCaptureSetupView: View {
                         .labelsHidden()
                         .disabled(
                             model.isRecording
+                                || model.isSoundChecking
                                 || model.isFinalizing
                                 || model.isImportingCanon
                                 || model.isUploadingMaster
@@ -4038,6 +4367,223 @@ struct EpisodeCaptureSetupView: View {
             return "Grant camera + microphone"
         }
         return "Refresh hardware"
+    }
+
+    private var soundCheckCard: some View {
+        GroupBox("Sound check") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Hear the exact microphone master before the take")
+                            .font(.headline)
+                        Text(
+                            "Quipsly records 15 seconds without changing gain, measures speech instead of pauses, finalizes the WAV, and plays those bytes through the selected headphones. This preflight is preserved as evidence but never added to the episode timeline."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Label(
+                        soundCheckPhaseLabel,
+                        systemImage: soundCheckPhaseSystemImage
+                    )
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(soundCheckPhaseColor)
+                }
+
+                HStack(spacing: 10) {
+                    if model.soundCheckPhase == .recording {
+                        Button(role: .destructive) {
+                            Task { await model.finishSoundCheck() }
+                        } label: {
+                            Label("Finish and listen", systemImage: "stop.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button {
+                            Task { await model.startSoundCheck() }
+                        } label: {
+                            Label(
+                                model.lastSoundCheckReceipt == nil
+                                    ? "Run 15-second sound check"
+                                    : "Run sound check again",
+                                systemImage: "waveform.badge.mic"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            !model.canStartSoundCheck
+                                || audioRoom.isActive
+                        )
+                    }
+
+                    if model.soundCheckPhase == .recording {
+                        Text(
+                            "\(min(15, model.soundCheckElapsedSeconds).formatted(.number.precision(.fractionLength(1)))) / 15.0 s"
+                        )
+                        .font(.body.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.red)
+                    }
+
+                    if model.lastSoundCheckReceipt != nil,
+                       model.soundCheckPhase != .recording,
+                       model.soundCheckPhase != .analyzing {
+                        Button("Replay exact WAV") {
+                            model.replaySoundCheck()
+                        }
+                        .disabled(model.soundCheckPhase == .playback)
+                    }
+                    Spacer()
+                }
+
+                if let live = model.soundCheckLiveStatus,
+                   model.soundCheckPhase == .recording {
+                    let level = live.level
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Label(
+                                level.state.captureLabel,
+                                systemImage:
+                                    level.state.captureSystemImage
+                            )
+                            .fontWeight(.semibold)
+                            .foregroundStyle(
+                                level.state.captureColor
+                            )
+                            Text(
+                                "Live peak \(level.samplePeakDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS · RMS \(level.rmsDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                            )
+                            .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        ProgressView(
+                            value: max(
+                                0,
+                                min(
+                                    1,
+                                    (level.samplePeakDBFS + 60) / 60
+                                )
+                            )
+                        )
+                        .tint(level.state.captureColor)
+                        Text(
+                            live.routeContinuity.isLocked
+                                ? "Exact input route locked · speak at real episode intensity."
+                                : "Input route lost — Quipsly is holding the check."
+                        )
+                        .foregroundStyle(
+                            live.routeContinuity.isLocked
+                                ? Color.secondary
+                                : Color.red
+                        )
+                    }
+                    .font(.caption.monospacedDigit())
+                }
+
+                if let summary = model.soundCheckSummary,
+                   model.soundCheckPhase != .recording {
+                    Grid(
+                        alignment: .leading,
+                        horizontalSpacing: 18,
+                        verticalSpacing: 5
+                    ) {
+                        GridRow {
+                            Text("Spoken peak")
+                            Text(
+                                "\(summary.sessionSamplePeakDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                            )
+                            Text("Speech RMS")
+                            Text(
+                                "\(summary.speechActiveRMSDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                            )
+                        }
+                        GridRow {
+                            Text("Speech measured")
+                            Text(
+                                "\(summary.speechActiveDurationSeconds.formatted(.number.precision(.fractionLength(1)))) s"
+                            )
+                            Text("Clipped samples")
+                            Text(summary.clippedSampleCount.formatted())
+                                .foregroundStyle(
+                                    summary.clippedSampleCount == 0
+                                        ? .green
+                                        : .red
+                                )
+                        }
+                        if !summary.channelSessionPeakDBFS.isEmpty {
+                            GridRow {
+                                Text("Channel highs")
+                                Text(
+                                    summary.channelSessionPeakDBFS
+                                        .enumerated()
+                                        .map {
+                                            "Ch \($0.offset + 1) \($0.element.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                                        }
+                                        .joined(separator: " · ")
+                                )
+                                .gridCellColumns(3)
+                            }
+                        }
+                    }
+                    .font(.caption.monospacedDigit())
+                    Text(summary.assessment.guidance)
+                        .font(.caption)
+                        .foregroundStyle(
+                            summary.assessment.state.captureColor
+                        )
+                }
+
+                Text(model.soundCheckMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let error = model.soundCheckError {
+                    Label(
+                        error,
+                        systemImage: "exclamationmark.octagon.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier("EpisodeCaptureSoundCheck")
+    }
+
+    private var soundCheckPhaseLabel: String {
+        switch model.soundCheckPhase {
+        case .idle: "Ready"
+        case .recording: "Recording"
+        case .analyzing: "Finalizing"
+        case .playback: "Listen"
+        case .passed: "Passed"
+        case .attention: "Review"
+        case .failed: "Needs attention"
+        }
+    }
+
+    private var soundCheckPhaseSystemImage: String {
+        switch model.soundCheckPhase {
+        case .idle: "waveform"
+        case .recording: "record.circle.fill"
+        case .analyzing: "waveform.badge.magnifyingglass"
+        case .playback: "headphones"
+        case .passed: "checkmark.seal.fill"
+        case .attention: "exclamationmark.triangle.fill"
+        case .failed: "xmark.octagon.fill"
+        }
+    }
+
+    private var soundCheckPhaseColor: Color {
+        switch model.soundCheckPhase {
+        case .idle, .analyzing, .playback: .secondary
+        case .recording: .red
+        case .passed: .green
+        case .attention: .orange
+        case .failed: .red
+        }
     }
 
     private var localMasterCard: some View {
@@ -4163,33 +4709,88 @@ struct EpisodeCaptureSetupView: View {
                 if model.isRecording,
                    let liveStatus =
                     model.activeAudioLiveStatus {
-                    HStack(spacing: 8) {
-                        Label(
-                            liveStatus.routeContinuity.isLocked
-                                ? "Exact microphone route locked"
-                                : "Microphone route lost — holding take",
-                            systemImage:
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Label(
                                 liveStatus.routeContinuity.isLocked
-                                ? "checkmark.shield.fill"
-                                : "exclamationmark.shield.fill"
+                                    ? "Exact microphone route locked"
+                                    : "Microphone route lost — holding take",
+                                systemImage:
+                                    liveStatus.routeContinuity.isLocked
+                                    ? "checkmark.shield.fill"
+                                    : "exclamationmark.shield.fill"
+                            )
+                            .foregroundStyle(
+                                liveStatus.routeContinuity.isLocked
+                                    ? .green
+                                    : .red
+                            )
+                            Text(
+                                "\(liveStatus.frameCount.formatted()) frames · \(ByteCountFormatter.string(fromByteCount: liveStatus.byteCount ?? 0, countStyle: .file)) written"
+                            )
+                            .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+
+                        let level = liveStatus.level
+                        HStack(spacing: 8) {
+                            Label(
+                                level.state.captureLabel,
+                                systemImage:
+                                    level.state.captureSystemImage
+                            )
+                            .fontWeight(.semibold)
+                            .foregroundStyle(
+                                level.state.captureColor
+                            )
+                            Text(
+                                "Sample peak \(level.samplePeakDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS · RMS \(level.rmsDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS · take high \(level.sessionSamplePeakDBFS.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                            )
+                            .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+
+                        ProgressView(
+                            value: max(
+                                0,
+                                min(
+                                    1,
+                                    (level.samplePeakDBFS + 60) / 60
+                                )
+                            )
                         )
-                        .foregroundStyle(
-                            liveStatus.routeContinuity.isLocked
-                                ? .green
-                                : .red
-                        )
-                        Text(
-                            "\(liveStatus.frameCount.formatted()) frames · \(ByteCountFormatter.string(fromByteCount: liveStatus.byteCount ?? 0, countStyle: .file)) written"
-                        )
-                        .foregroundStyle(.secondary)
-                        Spacer()
+                        .tint(level.state.captureColor)
+
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(level.guidance)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !liveStatus
+                                .channelSamplePeakDBFS.isEmpty {
+                                Text(
+                                    liveStatus.channelSamplePeakDBFS
+                                        .enumerated()
+                                        .map {
+                                            "Ch \($0.offset + 1) \($0.element.formatted(.number.precision(.fractionLength(1)))) dBFS"
+                                        }
+                                        .joined(separator: " · ")
+                                )
+                                .foregroundStyle(.secondary)
+                            }
+                            if level.clippedSampleCount > 0 {
+                                Text(
+                                    "\(level.clippedSampleCount.formatted()) clipped samples"
+                                )
+                                .foregroundStyle(.red)
+                            }
+                        }
                     }
                     .font(.caption.monospacedDigit())
                     .accessibilityElement(
                         children: .combine
                     )
                     .accessibilityIdentifier(
-                        "EpisodeCaptureAudioRouteContinuity"
+                        "EpisodeCaptureAudioLevelAndRoute"
                     )
                 }
 

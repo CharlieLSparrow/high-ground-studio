@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import AudioToolbox
 import CryptoKit
@@ -67,6 +68,140 @@ public struct ProductionAudioRecordingLiveStatus:
     public let byteCount: Int64?
     public let routeContinuity:
         ProductionAudioRouteContinuityEvidence
+    public let level: ProductionAudioLevelAssessment
+    public let channelSamplePeakDBFS: [Double]
+    public let channelRMSDBFS: [Double]
+}
+
+public enum ProductionAudioLevelState:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case noSignal = "no-signal"
+    case low
+    case ready
+    case hot
+    case clipping
+}
+
+public struct ProductionAudioLevelAssessment:
+    Equatable,
+    Sendable
+{
+    public let samplePeakDBFS: Double
+    public let rmsDBFS: Double
+    public let sessionSamplePeakDBFS: Double
+    public let clippedSampleCount: Int64
+    public let measuredSampleCount: Int64
+    public let state: ProductionAudioLevelState
+    public let guidance: String
+}
+
+public struct ProductionAudioSignalSummary:
+    Equatable,
+    Sendable
+{
+    public let sessionSamplePeakDBFS: Double
+    public let sessionMaximumRMSDBFS: Double
+    public let speechActiveRMSDBFS: Double
+    public let speechActiveDurationSeconds: Double
+    public let clippedSampleCount: Int64
+    public let measuredSampleCount: Int64
+    public let channelSessionPeakDBFS: [Double]
+    public let assessment: ProductionAudioLevelAssessment
+}
+
+public enum ProductionAudioLevelPolicy {
+    public static let floorDBFS = -120.0
+
+    public static func decibelsFS(
+        magnitude: Double
+    ) -> Double {
+        guard magnitude.isFinite, magnitude > 0 else {
+            return floorDBFS
+        }
+        return max(
+            floorDBFS,
+            min(0, 20 * log10(magnitude))
+        )
+    }
+
+    public static func assess(
+        samplePeakMagnitude: Double,
+        rmsMagnitude: Double,
+        sessionSamplePeakMagnitude: Double,
+        clippedSampleCount: Int64,
+        measuredSampleCount: Int64
+    ) -> ProductionAudioLevelAssessment {
+        let peak = decibelsFS(
+            magnitude: samplePeakMagnitude
+        )
+        let rms = decibelsFS(magnitude: rmsMagnitude)
+        let sessionPeak = decibelsFS(
+            magnitude: sessionSamplePeakMagnitude
+        )
+        let state: ProductionAudioLevelState
+        let guidance: String
+        if clippedSampleCount > 0
+            || samplePeakMagnitude >= 0.999 {
+            state = .clipping
+            guidance =
+                "Clipped samples detected. Reduce input gain before continuing."
+        } else if measuredSampleCount == 0
+            || peak <= -60 {
+            state = .noSignal
+            guidance =
+                "No useful signal yet. Check the exact input route and speak into the microphone."
+        } else if peak < -24 || rms < -36 {
+            state = .low
+            guidance =
+                "Signal is low. Speak at episode intensity and aim for sample peaks between -18 and -6 dBFS."
+        } else if peak > -3 {
+            state = .hot
+            guidance =
+                "Signal is hot. Leave more headroom before a louder word clips."
+        } else {
+            state = .ready
+            guidance =
+                "Healthy capture range. Keep normal speech roughly between -18 and -6 dBFS sample peak."
+        }
+        return ProductionAudioLevelAssessment(
+            samplePeakDBFS: peak,
+            rmsDBFS: rms,
+            sessionSamplePeakDBFS: sessionPeak,
+            clippedSampleCount: clippedSampleCount,
+            measuredSampleCount: measuredSampleCount,
+            state: state,
+            guidance: guidance
+        )
+    }
+
+    public static func assessSummary(
+        sessionSamplePeakMagnitude: Double,
+        sessionMaximumRMSMagnitude: Double,
+        speechActiveRMSMagnitude: Double,
+        speechActiveFrameCount: Int64,
+        clippedSampleCount: Int64,
+        measuredSampleCount: Int64
+    ) -> ProductionAudioLevelAssessment {
+        let usefulRMS = speechActiveFrameCount > 0
+            ? speechActiveRMSMagnitude
+            : sessionMaximumRMSMagnitude
+        return assess(
+            samplePeakMagnitude:
+                sessionSamplePeakMagnitude,
+            rmsMagnitude: usefulRMS,
+            sessionSamplePeakMagnitude:
+                sessionSamplePeakMagnitude,
+            clippedSampleCount: clippedSampleCount,
+            measuredSampleCount:
+                speechActiveFrameCount > 0
+                    ? measuredSampleCount
+                    : 0
+        )
+    }
 }
 
 public enum ProductionAudioRouteContinuityPolicy {
@@ -390,6 +525,17 @@ public final class ProductionAudioRecorder {
         ProductionAudioRecordingLiveStatus? {
         guard let session else { return nil }
         let snapshot = session.writer.snapshot
+        let level = ProductionAudioLevelPolicy.assess(
+            samplePeakMagnitude:
+                snapshot.samplePeakMagnitude,
+            rmsMagnitude: snapshot.rmsMagnitude,
+            sessionSamplePeakMagnitude:
+                snapshot.sessionSamplePeakMagnitude,
+            clippedSampleCount:
+                snapshot.clippedSampleCount,
+            measuredSampleCount:
+                snapshot.measuredSampleCount
+        )
         return ProductionAudioRecordingLiveStatus(
             recordingID: session.recordingID,
             frameCount: snapshot.frameCount,
@@ -405,7 +551,69 @@ public final class ProductionAudioRecorder {
                         session.configuration
                             .inputDevice.id,
                     writerFailure: snapshot.failure
-                )
+                ),
+            level: level,
+            channelSamplePeakDBFS:
+                snapshot.channelSamplePeakMagnitudes.map {
+                    ProductionAudioLevelPolicy.decibelsFS(
+                        magnitude: $0
+                    )
+                },
+            channelRMSDBFS:
+                snapshot.channelRMSMagnitudes.map {
+                    ProductionAudioLevelPolicy.decibelsFS(
+                        magnitude: $0
+                    )
+                }
+        )
+    }
+
+    public var signalSummary:
+        ProductionAudioSignalSummary? {
+        guard let session else { return nil }
+        let snapshot = session.writer.snapshot
+        let assessment = ProductionAudioLevelPolicy
+            .assessSummary(
+                sessionSamplePeakMagnitude:
+                    snapshot.sessionSamplePeakMagnitude,
+                sessionMaximumRMSMagnitude:
+                    snapshot.sessionMaximumRMSMagnitude,
+                speechActiveRMSMagnitude:
+                    snapshot.speechActiveRMSMagnitude,
+                speechActiveFrameCount:
+                    snapshot.speechActiveFrameCount,
+                clippedSampleCount:
+                    snapshot.clippedSampleCount,
+                measuredSampleCount:
+                    snapshot.measuredSampleCount
+            )
+        return ProductionAudioSignalSummary(
+            sessionSamplePeakDBFS:
+                assessment.sessionSamplePeakDBFS,
+            sessionMaximumRMSDBFS:
+                ProductionAudioLevelPolicy.decibelsFS(
+                    magnitude:
+                        snapshot.sessionMaximumRMSMagnitude
+                ),
+            speechActiveRMSDBFS:
+                ProductionAudioLevelPolicy.decibelsFS(
+                    magnitude:
+                        snapshot.speechActiveRMSMagnitude
+                ),
+            speechActiveDurationSeconds:
+                Double(snapshot.speechActiveFrameCount)
+                    / Self.targetSampleRate,
+            clippedSampleCount:
+                snapshot.clippedSampleCount,
+            measuredSampleCount:
+                snapshot.measuredSampleCount,
+            channelSessionPeakDBFS:
+                snapshot.channelSessionPeakMagnitudes.map {
+                    ProductionAudioLevelPolicy.decibelsFS(
+                        magnitude: $0
+                    )
+                },
+            assessment: assessment
         )
     }
     public var onRouteContinuityLost:
@@ -1110,12 +1318,34 @@ private final class RecordingWriter: @unchecked Sendable {
     struct Snapshot {
         let frameCount: Int64
         let failure: String?
+        let samplePeakMagnitude: Double
+        let rmsMagnitude: Double
+        let sessionSamplePeakMagnitude: Double
+        let sessionMaximumRMSMagnitude: Double
+        let speechActiveRMSMagnitude: Double
+        let speechActiveFrameCount: Int64
+        let clippedSampleCount: Int64
+        let measuredSampleCount: Int64
+        let channelSamplePeakMagnitudes: [Double]
+        let channelRMSMagnitudes: [Double]
+        let channelSessionPeakMagnitudes: [Double]
     }
 
     private let lock = NSLock()
     private var audioFile: AVAudioFile?
     private var frameCount: Int64 = 0
     private var failure: String?
+    private var samplePeakMagnitude = 0.0
+    private var rmsMagnitude = 0.0
+    private var sessionSamplePeakMagnitude = 0.0
+    private var sessionMaximumRMSMagnitude = 0.0
+    private var speechActiveMeanSquareTotal = 0.0
+    private var speechActiveFrameCount: Int64 = 0
+    private var clippedSampleCount: Int64 = 0
+    private var measuredSampleCount: Int64 = 0
+    private var channelSamplePeakMagnitudes: [Double] = []
+    private var channelRMSMagnitudes: [Double] = []
+    private var channelSessionPeakMagnitudes: [Double] = []
 
     init(audioFile: AVAudioFile) {
         self.audioFile = audioFile
@@ -1123,14 +1353,14 @@ private final class RecordingWriter: @unchecked Sendable {
 
     var snapshot: Snapshot {
         lock.withLock {
-            Snapshot(frameCount: frameCount, failure: failure)
+            makeSnapshot()
         }
     }
 
     func closeAndSnapshot() -> Snapshot {
         lock.withLock {
             audioFile = nil
-            return Snapshot(frameCount: frameCount, failure: failure)
+            return makeSnapshot()
         }
     }
 
@@ -1144,8 +1374,126 @@ private final class RecordingWriter: @unchecked Sendable {
             do {
                 try audioFile.write(from: buffer)
                 frameCount += Int64(buffer.frameLength)
+                measure(buffer)
             } catch {
                 failure = error.localizedDescription
+            }
+        }
+    }
+
+    private func makeSnapshot() -> Snapshot {
+        Snapshot(
+            frameCount: frameCount,
+            failure: failure,
+            samplePeakMagnitude: samplePeakMagnitude,
+            rmsMagnitude: rmsMagnitude,
+            sessionSamplePeakMagnitude:
+                sessionSamplePeakMagnitude,
+            sessionMaximumRMSMagnitude:
+                sessionMaximumRMSMagnitude,
+            speechActiveRMSMagnitude:
+                speechActiveFrameCount > 0
+                    ? sqrt(
+                        max(
+                            0,
+                            speechActiveMeanSquareTotal
+                                / Double(
+                                    speechActiveFrameCount
+                                )
+                        )
+                    )
+                    : 0,
+            speechActiveFrameCount:
+                speechActiveFrameCount,
+            clippedSampleCount: clippedSampleCount,
+            measuredSampleCount: measuredSampleCount,
+            channelSamplePeakMagnitudes:
+                channelSamplePeakMagnitudes,
+            channelRMSMagnitudes: channelRMSMagnitudes,
+            channelSessionPeakMagnitudes:
+                channelSessionPeakMagnitudes
+        )
+    }
+
+    private func measure(_ buffer: AVAudioPCMBuffer) {
+        guard buffer.format.commonFormat == .pcmFormatFloat32,
+              let channelData = buffer.floatChannelData else {
+            return
+        }
+        let frameLength = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        guard frameLength > 0, channelCount > 0 else { return }
+
+        var peaks: [Double] = []
+        var rmsValues: [Double] = []
+        var meanSquareTotal = 0.0
+        var clippedInBuffer: Int64 = 0
+        let isInterleaved = buffer.format.isInterleaved
+        let stride = isInterleaved ? channelCount : 1
+
+        for channelIndex in 0..<channelCount {
+            let base = isInterleaved
+                ? channelData[0].advanced(by: channelIndex)
+                : channelData[channelIndex]
+            var peak: Float = 0
+            var meanSquare: Float = 0
+            vDSP_maxmgv(
+                base,
+                vDSP_Stride(stride),
+                &peak,
+                vDSP_Length(frameLength)
+            )
+            vDSP_measqv(
+                base,
+                vDSP_Stride(stride),
+                &meanSquare,
+                vDSP_Length(frameLength)
+            )
+            for frameIndex in 0..<frameLength {
+                if abs(base[frameIndex * stride]) >= 0.999 {
+                    clippedInBuffer += 1
+                }
+            }
+            let peakValue = Double(peak)
+            let rmsValue = sqrt(max(0, Double(meanSquare)))
+            peaks.append(peakValue)
+            rmsValues.append(rmsValue)
+            meanSquareTotal += Double(meanSquare)
+        }
+
+        samplePeakMagnitude = peaks.max() ?? 0
+        rmsMagnitude = sqrt(
+            max(0, meanSquareTotal / Double(channelCount))
+        )
+        sessionSamplePeakMagnitude = max(
+            sessionSamplePeakMagnitude,
+            samplePeakMagnitude
+        )
+        sessionMaximumRMSMagnitude = max(
+            sessionMaximumRMSMagnitude,
+            rmsMagnitude
+        )
+        // A permissive gate excludes pauses and room tone from the spoken
+        // verdict without changing a single source sample.
+        if samplePeakMagnitude >= pow(10, -35.0 / 20.0),
+           rmsMagnitude >= pow(10, -45.0 / 20.0) {
+            speechActiveMeanSquareTotal +=
+                rmsMagnitude * rmsMagnitude
+                    * Double(frameLength)
+            speechActiveFrameCount += Int64(frameLength)
+        }
+        clippedSampleCount += clippedInBuffer
+        measuredSampleCount += Int64(frameLength * channelCount)
+        channelSamplePeakMagnitudes = peaks
+        channelRMSMagnitudes = rmsValues
+        if channelSessionPeakMagnitudes.count != peaks.count {
+            channelSessionPeakMagnitudes = peaks
+        } else {
+            for index in peaks.indices {
+                channelSessionPeakMagnitudes[index] = max(
+                    channelSessionPeakMagnitudes[index],
+                    peaks[index]
+                )
             }
         }
     }

@@ -292,6 +292,120 @@ final class ProductionAudioRecorderTests: XCTestCase {
         XCTAssertFalse(receipt.truth.contains("finalized local microphone master"))
     }
 
+    func testLiveLevelPolicySeparatesNoSignalLowReadyHotAndClipping() {
+        func assessment(
+            peakDBFS: Double,
+            rmsDBFS: Double,
+            clipped: Int64 = 0,
+            measured: Int64 = 48_000
+        ) -> ProductionAudioLevelAssessment {
+            ProductionAudioLevelPolicy.assess(
+                samplePeakMagnitude:
+                    pow(10, peakDBFS / 20),
+                rmsMagnitude: pow(10, rmsDBFS / 20),
+                sessionSamplePeakMagnitude:
+                    pow(10, peakDBFS / 20),
+                clippedSampleCount: clipped,
+                measuredSampleCount: measured
+            )
+        }
+
+        XCTAssertEqual(
+            ProductionAudioLevelPolicy.assess(
+                samplePeakMagnitude: 0,
+                rmsMagnitude: 0,
+                sessionSamplePeakMagnitude: 0,
+                clippedSampleCount: 0,
+                measuredSampleCount: 0
+            ).state,
+            .noSignal
+        )
+        XCTAssertEqual(
+            assessment(peakDBFS: -30, rmsDBFS: -45).state,
+            .low
+        )
+        XCTAssertEqual(
+            assessment(peakDBFS: -12, rmsDBFS: -24).state,
+            .ready
+        )
+        XCTAssertEqual(
+            assessment(peakDBFS: -2, rmsDBFS: -16).state,
+            .hot
+        )
+        XCTAssertEqual(
+            assessment(
+                peakDBFS: -12,
+                rmsDBFS: -24,
+                clipped: 1
+            ).state,
+            .clipping
+        )
+    }
+
+    func testLiveLevelPolicyReportsSamplePeakAndRMSInDBFS() {
+        let assessment = ProductionAudioLevelPolicy.assess(
+            samplePeakMagnitude: 0.5,
+            rmsMagnitude: 0.25,
+            sessionSamplePeakMagnitude: 0.75,
+            clippedSampleCount: 0,
+            measuredSampleCount: 96_000
+        )
+
+        XCTAssertEqual(
+            assessment.samplePeakDBFS,
+            -6.0206,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            assessment.rmsDBFS,
+            -12.0412,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            assessment.sessionSamplePeakDBFS,
+            -2.4988,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(assessment.state, .ready)
+        XCTAssertEqual(assessment.measuredSampleCount, 96_000)
+    }
+
+    func testSoundCheckSummaryUsesSpeechWindowsInsteadOfTrailingSilence() {
+        let assessment = ProductionAudioLevelPolicy.assessSummary(
+            sessionSamplePeakMagnitude: pow(10, -10.2 / 20),
+            sessionMaximumRMSMagnitude: pow(10, -22.4 / 20),
+            speechActiveRMSMagnitude: pow(10, -24 / 20),
+            speechActiveFrameCount: 240_000,
+            clippedSampleCount: 0,
+            measuredSampleCount: 960_000
+        )
+
+        XCTAssertEqual(assessment.state, .ready)
+        XCTAssertEqual(
+            assessment.samplePeakDBFS,
+            -10.2,
+            accuracy: 0.01
+        )
+        XCTAssertEqual(
+            assessment.rmsDBFS,
+            -24,
+            accuracy: 0.01
+        )
+    }
+
+    func testSoundCheckSummaryRequiresUsefulSpeech() {
+        let assessment = ProductionAudioLevelPolicy.assessSummary(
+            sessionSamplePeakMagnitude: pow(10, -52 / 20),
+            sessionMaximumRMSMagnitude: pow(10, -65 / 20),
+            speechActiveRMSMagnitude: 0,
+            speechActiveFrameCount: 0,
+            clippedSampleCount: 0,
+            measuredSampleCount: 960_000
+        )
+
+        XCTAssertEqual(assessment.state, .noSignal)
+    }
+
     private func lockedEvidence(
         inputUID: String
     ) -> ProductionAudioRouteContinuityEvidence {
