@@ -7580,3 +7580,35 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   tests with 40 suites / 123 tests intentionally opt-in, all three TypeScript
   boundaries, Prisma validation and local migration 67, media package and
   worker builds, optimized Nest build with 175 static pages, and diff checks.
+
+## 2026-08-05 Quipsly Capture Build 28 candidate checkpoint
+
+- Advanced the native candidate identity to `1.0 (28)` while leaving the
+  canonical public TestFlight ledger on Build 27. Exact pushed candidate source
+  is `c9daa075a4b4824f52df8d656d085ab3ac497c74`.
+- Replaced an obsolete App Store safety assertion that demanded the retired
+  no-ledger provider interlock. The 1,046-check verifier now requires the
+  qualified durable provider START/STOP ledger, authenticated webhook receipts,
+  database serialization, explicit operator activation, shared media-vault
+  authority, and reconciliation-required ambiguity.
+- The first 62-journey candidate run correctly failed one old generic `sources`
+  assertion and exposed a Swift actor-isolation warning. The replacement makes
+  the immutable LiveKit topic safely nonisolated while preserving main-actor
+  decode/UI state, and asserts protected `masters` through ready, retry, and
+  complete Studio handoff states.
+- The clean detached-source rerun passed all 62 serialized iPhone/login/Share
+  journeys, signed Release archive, App Store IPA export, strict nested
+  signatures, App Store profiles, distribution-safe entitlements, iPhone-only
+  metadata, privacy/permission/background-mode inspection, and independent
+  byte/hash readback.
+- The qualified IPA is 23,797,648 bytes with SHA-256
+  `27938d4df0dc743ca663538cf44c569fe67f1aedc1b3e04e9901ef221ea80a30`.
+  The owner-only receipt records candidate qualification and no upload,
+  assignment, processing, or physical-install claim. Durable evidence is under
+  `/Users/wall-e/Dev/Quipsly QA Artifacts/Capture Build 28/c9daa075a4b4/20260805T103229Z-22380`.
+- Build 28 is not yet releasable. Matching Nest preview/promotion, App Store
+  Connect readback authority, physical browser/iPhone capture and recovery,
+  exact-byte upload, waveform/opening-cue and late-drift review, assembled
+  Studio playback, screenshots, privacy/legal gates, and App Review remain
+  open. Provider room recording may stay disabled. See
+  `docs/coordination/2026-08-05-capture-build28-qualified-candidate.md`.
