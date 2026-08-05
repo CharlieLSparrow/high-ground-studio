@@ -46,6 +46,8 @@ export type SessionPreparation = {
   providerNextAction: string;
   scheduledStart: string | null;
   scheduledEnd: string | null;
+  updatedAt?: string | null;
+  canSchedule?: boolean;
   project: { id: string; name: string; slug: string } | null;
   participants: Array<{
     id: string;

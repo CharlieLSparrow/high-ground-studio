@@ -196,9 +196,14 @@ export default async function SessionReviewPage({
       stateReceipts: room.stateReceipts,
     });
     const {
-      preparation: sessionPreparation,
+      preparation: builtSessionPreparation,
       consentSnapshot,
     } = buildSessionPreparationState(room, session.user.id);
+    const sessionPreparation = {
+      ...builtSessionPreparation,
+      updatedAt: room.updatedAt.toISOString(),
+      canSchedule: session.user.isStaff || room.createdByUserId === session.user.id,
+    };
     const contentReadiness = recordingContentReadiness(room.recordingAssets, room.purpose);
     const captureReceiptGroups = new Map<string, {
       captureId: string;

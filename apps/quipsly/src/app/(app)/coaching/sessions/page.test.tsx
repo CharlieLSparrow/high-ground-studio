@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import CoachingSessionsPage from "./page";
@@ -12,7 +12,7 @@ function jsonResponse(payload: unknown, status = 200) {
   } as Response);
 }
 
-describe("CoachingSessionsPage planned session creation", () => {
+describe("CoachingSessionsPage", () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
@@ -50,12 +50,14 @@ describe("CoachingSessionsPage planned session creation", () => {
     });
   });
 
-  it("creates only a planned app-owned session from explicit form values", async () => {
+  it("keeps planning secondary and creates only the explicit canonical Session", async () => {
     const user = userEvent.setup();
     render(<CoachingSessionsPage />);
 
     expect(await screen.findByRole("heading", { name: "Plan a real session" })).toBeInTheDocument();
-    expect(screen.getByText(/does not invite, schedule, charge, join, record, transcribe, send, or publish/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Session title")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Plan a session" }));
+    expect(screen.getByText(/does not invite, charge, join, record, transcribe, send, publish, or update an external calendar/i)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Session title"), "Episode 8 recording");
     await user.selectOptions(screen.getByLabelText("Purpose"), "PODCAST");
@@ -79,131 +81,54 @@ describe("CoachingSessionsPage planned session creation", () => {
     expect(screen.getByRole("link", { name: "Open created session" })).toHaveAttribute("href", "/sessions/room-1");
   });
 
-  it("submits the explicit recording and transcription choices shown to the participant", async () => {
-    const user = userEvent.setup();
-    jest.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === "/api/mobile/capture/consent" && init?.method === "POST") {
-        return jsonResponse({ ok: true, session: { nextAction: "Consent saved." } });
-      }
-      return jsonResponse({
-        ok: true,
-        user: { id: "user-1", email: "creator@example.com", name: "Creator", canCreateCaptureSessions: false },
-        sessions: [{
-          id: "room-1",
-          callRoomId: "room-1",
-          participantId: "participant-1",
-          title: "Episode 8 recording",
-          purpose: "PODCAST",
-          status: "PLANNED",
-          recordingConsentStatus: "REQUESTED",
-        }],
-      });
-    });
+  it("routes consent into the exact Session workspace instead of multiplying mutation controls across the index", async () => {
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true,
+      user: { id: "user-1", email: "creator@example.com", name: "Creator", canCreateCaptureSessions: false },
+      sessions: [{
+        id: "room-1",
+        callRoomId: "room-1",
+        participantId: "participant-1",
+        title: "Episode 8 recording",
+        purpose: "PODCAST",
+        status: "PLANNED",
+        recordingConsentStatus: "REQUESTED",
+      }],
+    }));
 
     render(<CoachingSessionsPage />);
     expect(await screen.findByRole("heading", { name: "Episode 8 recording" })).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("Allow audio recording of my participation."));
-    await user.click(screen.getByLabelText("Separately allow transcription of my recorded participation."));
-    await user.click(screen.getByLabelText(/anyone else who may be heard has been told and agreed/i));
-    await user.click(screen.getByRole("button", { name: "Grant recording consent" }));
-
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/mobile/capture/consent",
-      expect.objectContaining({ method: "POST" }),
-    ));
-    const consentCall = jest.mocked(globalThis.fetch).mock.calls.find(([input]) => String(input) === "/api/mobile/capture/consent");
-    expect(JSON.parse(String(consentCall?.[1]?.body))).toEqual(expect.objectContaining({
-      callRoomId: "room-1",
-      participantId: "participant-1",
-      consentAction: "GRANT",
-      canRecordAudio: true,
-      canRecordVideo: false,
-      canTranscribe: true,
-      allAudibleParticipantsNotifiedAndAgreed: true,
-    }));
+    expect(screen.getByRole("link", { name: "Open workspace" })).toHaveAttribute("href", "/sessions/room-1");
+    expect(screen.getByRole("link", { name: "Review consent" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
+    expect(screen.queryByLabelText("Allow audio recording of my participation.")).not.toBeInTheDocument();
+    expect(jest.mocked(globalThis.fetch).mock.calls.some(([input, init]) => String(input) === "/api/mobile/capture/consent" && init?.method === "POST")).toBe(false);
   });
 
-  it("schedules the existing canonical Session without implying an invite, recording, consent, or external calendar change", async () => {
+  it("bounds a large Session collection and makes an older Episode directly searchable", async () => {
     const user = userEvent.setup();
-    jest.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === "/api/mobile/capture/sessions" && init?.method === "PATCH") {
-        return jsonResponse({
-          ok: true,
-          session: {
-            roomId: "room-1",
-            scheduledStart: "2026-07-29T22:30:00.000Z",
-            scheduledEnd: "2026-07-29T23:20:00.000Z",
-            timezone: "America/Denver",
-            updatedAt: "2026-07-29T22:01:00.000Z",
-            replayed: false,
-          },
-          boundaries: {
-            quipslyScheduleUpdated: true,
-            externalCalendarMutated: false,
-            externalInviteSent: false,
-            recordingStarted: false,
-            nextAction: "The Quipsly Session time is saved. Consent, recording, invitations, and external calendars remain separate.",
-          },
-        });
-      }
-      return jsonResponse({
-        ok: true,
-        user: {
-          id: "user-1",
-          email: "creator@example.com",
-          name: "Creator",
-          isStaff: false,
-          canCreateCaptureSessions: true,
-        },
-        captureProjects: [],
-        sessions: [{
-          id: "room-1",
-          callRoomId: "room-1",
-          updatedAt: "2026-07-29T21:00:00.000Z",
-          title: "Episode 8 recording",
-          purpose: "PODCAST",
-          status: "PLANNED",
-          canSchedule: true,
-          scheduledStart: null,
-          scheduledEnd: null,
-          recordingConsentStatus: "REQUESTED",
-        }],
-      });
-    });
+    const sessions = Array.from({ length: 14 }, (_, index) => ({
+      id: `room-${index + 1}`,
+      callRoomId: `room-${index + 1}`,
+      title: index === 13 ? "Episode 9: The Swear Jar" : `Retained coaching rehearsal ${index + 1}`,
+      purpose: index === 13 ? "PODCAST" : "COACHING",
+      status: "PLANNED",
+      recordingConsentStatus: "REQUESTED",
+    }));
+    jest.mocked(globalThis.fetch).mockImplementation(() => jsonResponse({
+      ok: true,
+      user: { id: "user-1", email: "creator@example.com", name: "Creator", canCreateCaptureSessions: true },
+      captureProjects: [],
+      sessions,
+    }));
 
     render(<CoachingSessionsPage />);
-    expect(await screen.findByRole("heading", { name: "Episode 8 recording" })).toBeInTheDocument();
-    expect(screen.getByText(/does not send an invitation, update an external calendar, grant consent, or start recording/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Session index" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("session-index-card")).toHaveLength(12);
+    expect(screen.queryByRole("heading", { name: "Episode 9: The Swear Jar" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Set Quipsly time" }));
-    fireEvent.change(screen.getByLabelText("Session starts"), {
-      target: { value: "2026-07-29T16:30" },
-    });
-    fireEvent.change(screen.getByLabelText("Session ends"), {
-      target: { value: "2026-07-29T17:20" },
-    });
-    await user.click(screen.getByRole("button", { name: "Save Quipsly time" }));
-
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith(
-      "/api/mobile/capture/sessions",
-      expect.objectContaining({ method: "PATCH" }),
-    ));
-    const patchCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => init?.method === "PATCH");
-    const scheduleIntent = JSON.parse(String(patchCall?.[1]?.body));
-    expect(scheduleIntent).toEqual(expect.objectContaining({
-      callRoomId: "room-1",
-      scheduledStart: new Date("2026-07-29T16:30").toISOString(),
-      scheduledEnd: new Date("2026-07-29T17:20").toISOString(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      expectedUpdatedAt: "2026-07-29T21:00:00.000Z",
-      reason: "Scheduled from the Quipsly Session workspace.",
-    }));
-    expect(scheduleIntent.clientRequestId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Consent, recording, invitations, and external calendars remain separate.",
-    );
+    await user.type(screen.getByLabelText("Search Sessions"), "Episode 9");
+    expect(await screen.findByRole("heading", { name: "Episode 9: The Swear Jar" })).toBeInTheDocument();
+    expect(screen.getAllByTestId("session-index-card")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Open workspace" })).toHaveAttribute("href", "/sessions/room-14");
   });
 });

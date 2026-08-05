@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, Radio, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -10,6 +11,11 @@ import { TagSearchChips } from "@/components/tag-search-chips";
 import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import { LiveSessionDockLauncher, type LiveSessionDockConfig } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
+import {
+  MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT,
+  MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+} from "@/lib/mobile-capture-consent-policy.js";
 import { sessionExperienceForPurpose } from "@/lib/session-experience";
 
 import {
@@ -282,9 +288,258 @@ function sessionTime(value: string | null) {
     : null;
 }
 
-function SessionPreparationCard({
+function localDateTimeValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function defaultSessionWindow() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15);
+  return {
+    scheduledStart: localDateTimeValue(start.toISOString()),
+    scheduledEnd: localDateTimeValue(new Date(start.getTime() + 50 * 60_000).toISOString()),
+  };
+}
+
+function scheduleRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (part) => {
+    const random = Math.floor(Math.random() * 16);
+    return (part === "x" ? random : (random & 0x3) | 0x8).toString(16);
+  });
+}
+
+function SessionScheduleControl({ roomId, preparation }: { roomId: string; preparation: SessionPreparation }) {
+  const router = useRouter();
+  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
+  const [isOpen, setIsOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [clientRequestId, setClientRequestId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({
+    scheduledStart: localDateTimeValue(preparation.scheduledStart),
+    scheduledEnd: localDateTimeValue(preparation.scheduledEnd),
+  });
+
+  useEffect(() => {
+    setDraft({
+      scheduledStart: localDateTimeValue(preparation.scheduledStart),
+      scheduledEnd: localDateTimeValue(preparation.scheduledEnd),
+    });
+    setClientRequestId(null);
+  }, [preparation.scheduledEnd, preparation.scheduledStart, preparation.updatedAt, roomId]);
+
+  if (!preparation.canSchedule) return null;
+
+  function open() {
+    if (!preparation.scheduledStart || !preparation.scheduledEnd) setDraft(defaultSessionWindow());
+    setMessage(null);
+    setError(null);
+    setIsOpen(true);
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const start = new Date(draft.scheduledStart);
+    const end = new Date(draft.scheduledEnd);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setError("Choose an end time after the start time.");
+      return;
+    }
+    if (!preparation.updatedAt) {
+      setError("Refresh this Session before changing its time.");
+      return;
+    }
+
+    const requestId = clientRequestId || scheduleRequestId();
+    setClientRequestId(requestId);
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/sessions", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callRoomId: roomId,
+          scheduledStart: start.toISOString(),
+          scheduledEnd: end.toISOString(),
+          timezone,
+          expectedUpdatedAt: preparation.updatedAt,
+          clientRequestId: requestId,
+          reason: "Scheduled from the exact Quipsly Session workspace.",
+        }),
+      });
+      const body = await response.json() as { ok?: boolean; error?: string; boundaries?: { nextAction?: string } };
+      if (!response.ok || !body.ok) throw new Error(body.error || `Scheduling returned HTTP ${response.status}.`);
+      setMessage(body.boundaries?.nextAction || "Quipsly time saved. Invitations, external calendars, consent, and recording remain separate.");
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The Session time could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4" aria-labelledby="session-time-editor-heading">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h3 id="session-time-editor-heading" className="font-black text-[#3d3122]">Quipsly Session time</h3>
+          <p className="mt-1 text-xs font-bold leading-5 text-sky-950">Change this canonical Session only. Invitations and external calendars require their own explicit action.</p>
+        </div>
+        <button type="button" onClick={open} className="inline-flex min-h-11 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950 hover:bg-sky-50">{preparation.scheduledStart ? "Change Quipsly time" : "Set Quipsly time"}</button>
+      </div>
+      {isOpen ? <form onSubmit={save} className="mt-4 grid gap-4 border-t border-sky-100 pt-4 md:grid-cols-2">
+        <label className="text-sm font-black text-[#3d3122]">Session starts<input type="datetime-local" required value={draft.scheduledStart} onChange={(event) => { setDraft((current) => ({ ...current, scheduledStart: event.target.value })); setClientRequestId(null); }} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 font-semibold" /></label>
+        <label className="text-sm font-black text-[#3d3122]">Session ends<input type="datetime-local" required value={draft.scheduledEnd} onChange={(event) => { setDraft((current) => ({ ...current, scheduledEnd: event.target.value })); setClientRequestId(null); }} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 font-semibold" /></label>
+        <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+          <button type="submit" disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{busy ? "Saving…" : "Save Quipsly time"}</button>
+          <button type="button" onClick={() => setIsOpen(false)} disabled={busy} className="inline-flex min-h-11 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-950">Cancel</button>
+          <p className="text-xs font-bold text-sky-950">Shown in {timezone} on this device.</p>
+        </div>
+        {message ? <p role="status" className="text-sm font-bold text-emerald-800 md:col-span-2">{message}</p> : null}
+        {error ? <p role="alert" className="text-sm font-bold text-rose-800 md:col-span-2">{error}</p> : null}
+      </form> : null}
+    </section>
+  );
+}
+
+function SessionConsentControl({
+  roomId,
   preparation,
 }: {
+  roomId: string;
+  preparation: SessionPreparation;
+}) {
+  const router = useRouter();
+  const actor = preparation.participants.find((participant) => participant.isCurrentActor) ?? null;
+  const consent = actor?.consent ?? null;
+  const closed = preparation.status === "CANCELED" || preparation.status === "ENDED";
+  const [canRecordAudio, setCanRecordAudio] = useState(consent?.canRecordAudio ?? false);
+  const [canRecordVideo, setCanRecordVideo] = useState(consent?.canRecordVideo ?? false);
+  const [canTranscribe, setCanTranscribe] = useState(consent?.canTranscribe ?? false);
+  const [audiblePeopleAttested, setAudiblePeopleAttested] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCanRecordAudio(consent?.canRecordAudio ?? false);
+    setCanRecordVideo(consent?.canRecordVideo ?? false);
+    setCanTranscribe(consent?.canTranscribe ?? false);
+    setAudiblePeopleAttested(false);
+  }, [actor?.id, consent?.canRecordAudio, consent?.canRecordVideo, consent?.canTranscribe, consent?.updatedAt]);
+
+  useEffect(() => {
+    setMessage(null);
+    setError(null);
+  }, [actor?.id, roomId]);
+
+  async function saveConsent(consentAction: "GRANT" | "DECLINE" | "REVOKE") {
+    if (!actor || busy || closed) return;
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callRoomId: roomId,
+          participantId: actor.id,
+          consentAction,
+          ...(consentAction === "GRANT" ? {
+            consentPolicyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+            consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+            consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+            canRecordAudio,
+            canRecordVideo,
+            canTranscribe,
+            allAudibleParticipantsNotifiedAndAgreed: audiblePeopleAttested,
+            presentationEvidence: {
+              version: 1,
+              surface: "quipsly-session-workspace-consent-v1",
+              presentedAt: new Date().toISOString(),
+              recordingChoicePresented: true,
+              transcriptionChoicePresented: true,
+              audibleParticipantAttestationPresented: true,
+            },
+          } : {}),
+        }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        session?: { nextAction?: string };
+      };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error || `Consent update returned HTTP ${response.status}.`);
+      }
+      setMessage(body.session?.nextAction || "Your consent choice is saved. Quipsly is refreshing the exact Session evidence.");
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Your consent choice could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const grantDisabled = busy
+    || closed
+    || !actor
+    || (!canRecordAudio && !canRecordVideo)
+    || !audiblePeopleAttested;
+
+  return (
+    <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/55 p-5" aria-labelledby="my-session-consent-heading" data-testid="session-consent-control">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-800">My participation</p>
+          <h3 id="my-session-consent-heading" className="mt-1 text-xl font-black text-[#3d3122]">Recording and transcription consent</h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#6b5538]">{MOBILE_CAPTURE_CONSENT_TEXT}</p>
+        </div>
+        <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(consent?.recordingReady ? "READY" : "HELD")}`}>
+          {consent?.recordingReady ? "My consent is current" : "My consent needs attention"}
+        </span>
+      </div>
+
+      {!actor ? (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-white p-4 text-sm font-black leading-6 text-amber-950">Your signed-in account is not attached as a participant in this Session. Accept the invitation or ask an owner to add the exact account before granting consent.</div>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 text-sm font-bold text-[#3d3122] md:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3"><input type="checkbox" checked={canRecordAudio} onChange={(event) => setCanRecordAudio(event.target.checked)} disabled={busy || closed} className="mt-1" />Allow audio recording of my participation.</label>
+            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3"><input type="checkbox" checked={canRecordVideo} onChange={(event) => setCanRecordVideo(event.target.checked)} disabled={busy || closed} className="mt-1" />Allow video recording of my participation.</label>
+            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3"><input type="checkbox" checked={canTranscribe} onChange={(event) => setCanTranscribe(event.target.checked)} disabled={busy || closed} className="mt-1" />Separately allow transcription of my recorded participation.</label>
+            <label className="flex items-start gap-3 rounded-xl border border-amber-100 bg-white p-3"><input type="checkbox" checked={audiblePeopleAttested} onChange={(event) => setAudiblePeopleAttested(event.target.checked)} disabled={busy || closed} className="mt-1" />I confirm anyone else who may be heard has been told and agreed before recording starts.</label>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => void saveConsent("GRANT")} disabled={grantDisabled} className="inline-flex min-h-11 items-center justify-center rounded-full bg-emerald-700 px-5 py-3 text-xs font-black uppercase tracking-wide text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-45">{busy ? "Saving…" : consent?.status === "GRANTED" ? "Update consent choices" : "Grant selected consent"}</button>
+            {consent?.status === "GRANTED" ? <button type="button" onClick={() => void saveConsent("REVOKE")} disabled={busy || closed} className="inline-flex min-h-11 items-center justify-center rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-45">Revoke my consent</button> : <button type="button" onClick={() => void saveConsent("DECLINE")} disabled={busy || closed || consent?.status === "DECLINED"} className="inline-flex min-h-11 items-center justify-center rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900 disabled:opacity-45">Decline recording</button>}
+          </div>
+        </>
+      )}
+
+      <p className="mt-4 text-xs font-bold leading-5 text-[#765f40]">Saving consent does not join a call, start recording, enable another participant, schedule anything, send a message, or publish. Every signed-in participant must make their own current choice.</p>
+      {closed ? <p className="mt-3 text-xs font-black uppercase tracking-wide text-rose-800">This Session is closed, so consent changes are paused.</p> : null}
+      {message ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-bold text-emerald-900">{message}</p> : null}
+      {error ? <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-white px-4 py-3 text-sm font-bold text-rose-900">{error}</p> : null}
+    </section>
+  );
+}
+
+function SessionPreparationCard({
+  roomId,
+  preparation,
+}: {
+  roomId: string;
   preparation: SessionPreparation;
 }) {
   const scheduledStart = sessionTime(preparation.scheduledStart);
@@ -312,7 +567,7 @@ function SessionPreparationCard({
             <CalendarDays className="h-4 w-4" aria-hidden="true" />Open Calendar
           </Link>
           <Link href="/coaching/sessions" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950">
-            <Users className="h-4 w-4" aria-hidden="true" />Manage room setup
+            <Users className="h-4 w-4" aria-hidden="true" />All Sessions
           </Link>
         </div>
       </div>
@@ -382,6 +637,10 @@ function SessionPreparationCard({
           </div>
         )}
       </div>
+
+      <SessionScheduleControl roomId={roomId} preparation={preparation} />
+
+      <SessionConsentControl roomId={roomId} preparation={preparation} />
 
       <p className="mt-5 rounded-xl border border-sky-200 bg-white px-4 py-3 text-xs font-black leading-5 text-sky-950">
         This is current preparation evidence only. Recordings verifies immutable source state; Transcript separately enforces the complete release receipt. No invitation, message, provider event, or consent decision is created here.
@@ -1968,7 +2227,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       /> : null}
 
       {mode === "prepare" ? <>
-        {preparation ? <SessionPreparationCard preparation={preparation} /> : <WorkspaceEmptyState title="Preparation truth unavailable" detail="Quipsly could not derive this Session’s schedule, participant, or versioned-consent projection. No ready-to-record state is inferred." />}
+        {preparation ? <SessionPreparationCard roomId={roomId} preparation={preparation} /> : <WorkspaceEmptyState title="Preparation truth unavailable" detail="Quipsly could not derive this Session’s schedule, participant, or versioned-consent projection. No ready-to-record state is inferred." />}
         <PriorSessionFollowThroughCard followThrough={sessionContinuity?.priorFollowThrough ?? null} />
         <PriorSessionContinuityCard prior={sessionContinuity?.prior ?? null} />
         {sessionTaxonomy ? <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} /> : <WorkspaceEmptyState title="No project context" detail="This Session is not connected to an accessible Nest, so Quipsly has no shared tag vocabulary or Studio destination to show." />}

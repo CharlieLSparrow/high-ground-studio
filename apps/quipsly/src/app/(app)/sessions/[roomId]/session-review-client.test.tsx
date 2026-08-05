@@ -1171,9 +1171,135 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Homer")).toBeInTheDocument();
     expect(screen.getByText("All participants ready")).toBeInTheDocument();
     expect(screen.getByText("Transcript not ready")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage room setup" })).toHaveAttribute("href", "/coaching/sessions");
+    expect(screen.getByRole("link", { name: "All Sessions" })).toHaveAttribute("href", "/coaching/sessions");
+    expect(screen.getByText(/signed-in account is not attached as a participant/i)).toBeInTheDocument();
     expect(screen.getByText(/Transcript separately enforces the complete release receipt/)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("saves the current participant's explicit consent from the exact Session workspace", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      session: { nextAction: "Consent saved for this exact Session." },
+    }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient
+      roomId="room-episode-9"
+      sessionTitle="Episode 9: The Swear Jar"
+      mode="prepare"
+      consentSnapshot={{ total: 1, granted: 0, transcriptionPermitted: 0 }}
+      preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555552",
+        purpose: "PODCAST",
+        status: "PLANNED",
+        provider: "planned",
+        providerRoomId: null,
+        providerCanJoin: false,
+        providerReadiness: "local-fallback",
+        providerNextAction: "Prepare the exact participant and consent evidence.",
+        scheduledStart: null,
+        scheduledEnd: null,
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        participants: [{
+          id: "participant-charlie",
+          label: "Charlie",
+          role: "HOST",
+          isCurrentActor: true,
+          joinedAt: null,
+          consent: null,
+        }],
+        allAudioReady: false,
+        allTranscriptionReady: false,
+      }}
+    />);
+
+    await user.click(screen.getByLabelText("Allow audio recording of my participation."));
+    await user.click(screen.getByLabelText("Separately allow transcription of my recorded participation."));
+    await user.click(screen.getByLabelText(/anyone else who may be heard/i));
+    await user.click(screen.getByRole("button", { name: "Grant selected consent" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith("/api/mobile/capture/consent", expect.objectContaining({ method: "POST" }));
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(payload).toEqual(expect.objectContaining({
+      callRoomId: "room-episode-9",
+      participantId: "participant-charlie",
+      consentAction: "GRANT",
+      canRecordAudio: true,
+      canRecordVideo: false,
+      canTranscribe: true,
+      allAudibleParticipantsNotifiedAndAgreed: true,
+      presentationEvidence: expect.objectContaining({
+        surface: "quipsly-session-workspace-consent-v1",
+        recordingChoicePresented: true,
+        transcriptionChoicePresented: true,
+        audibleParticipantAttestationPresented: true,
+      }),
+    }));
+    expect(payload.consentPolicyVersion).toBeTruthy();
+    expect(payload.consentTextHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(await screen.findByRole("status")).toHaveTextContent("Consent saved for this exact Session.");
+    expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("changes only the canonical Quipsly time from the exact Session workspace", async () => {
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({
+      ok: true,
+      boundaries: { nextAction: "Quipsly Session time saved without external side effects." },
+    }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient
+      roomId="room-episode-9"
+      sessionTitle="Episode 9: The Swear Jar"
+      mode="prepare"
+      consentSnapshot={{ total: 1, granted: 0, transcriptionPermitted: 0 }}
+      preparation={{
+        captureGroupId: "55555555-5555-4555-8555-555555555552",
+        purpose: "PODCAST",
+        status: "PLANNED",
+        provider: "planned",
+        providerRoomId: null,
+        providerCanJoin: false,
+        providerReadiness: "local-fallback",
+        providerNextAction: "Prepare the Session.",
+        scheduledStart: null,
+        scheduledEnd: null,
+        updatedAt: "2026-08-05T18:00:00.000Z",
+        canSchedule: true,
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        participants: [{ id: "participant-charlie", label: "Charlie", role: "HOST", isCurrentActor: true, joinedAt: null, consent: null }],
+        allAudioReady: false,
+        allTranscriptionReady: false,
+      }}
+    />);
+
+    await user.click(screen.getByRole("button", { name: "Set Quipsly time" }));
+    const start = screen.getByLabelText("Session starts");
+    const end = screen.getByLabelText("Session ends");
+    await user.clear(start);
+    await user.type(start, "2026-08-06T10:00");
+    await user.clear(end);
+    await user.type(end, "2026-08-06T11:00");
+    await user.click(screen.getByRole("button", { name: "Save Quipsly time" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(fetchMock).toHaveBeenCalledWith("/api/mobile/capture/sessions", expect.objectContaining({ method: "PATCH" }));
+    expect(payload).toEqual(expect.objectContaining({
+      callRoomId: "room-episode-9",
+      scheduledStart: new Date("2026-08-06T10:00").toISOString(),
+      scheduledEnd: new Date("2026-08-06T11:00").toISOString(),
+      expectedUpdatedAt: "2026-08-05T18:00:00.000Z",
+      reason: "Scheduled from the exact Quipsly Session workspace.",
+    }));
+    expect(payload.clientRequestId).toBeTruthy();
+    expect(payload.timezone).toBeTruthy();
+    expect(await screen.findByRole("status")).toHaveTextContent("without external side effects");
+    expect(mockRouterRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("shows the durable Studio attachment receipt and opens the exact episode", async () => {
