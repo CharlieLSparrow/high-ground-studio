@@ -160,6 +160,61 @@ describe("capture source alignment proposal", () => {
     });
   });
 
+  it("measures late device-clock drift without claiming waveform or sample accuracy", () => {
+    const proposal = buildCaptureSourceAlignmentProposal({
+      sourceProfile: {
+        schemaVersion: 4,
+        monotonicStartedNanoseconds: "1500000000",
+        monotonicStoppedNanoseconds: "3601500000000",
+        clockSamples: [
+          isoSample({
+            sampleId: "sample-fast",
+            serverReceivedAt: "2026-07-27T18:00:00.060Z",
+            serverSentAt: "2026-07-27T18:00:00.070Z",
+            deviceWallReceivedAt: "2026-07-27T18:00:00.110Z",
+            deviceMonotonicReceivedNanoseconds: "1110000000",
+            networkRoundTripMilliseconds: 100,
+            uncertaintyMilliseconds: 50,
+          }),
+          isoSample({
+            sampleId: "sample-stop",
+            deviceWallSentAt: "2026-07-27T19:00:00.000Z",
+            deviceMonotonicSentNanoseconds: "3601000000000",
+            serverReceivedAt: "2026-07-27T19:00:00.067Z",
+            serverSentAt: "2026-07-27T19:00:00.077Z",
+            deviceWallReceivedAt: "2026-07-27T19:00:00.100Z",
+            deviceMonotonicReceivedNanoseconds: "3601100000000",
+            networkRoundTripMilliseconds: 90,
+            uncertaintyMilliseconds: 45,
+          }),
+        ],
+      },
+      callRoomId: "room-1",
+      captureId: "capture-1",
+      captureGroupId: "group-1",
+      actorUserId: "user-1",
+      startReceiptId: "receipt-1",
+      startReceipt: receipt,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "proposal-ready",
+      estimatedServerStartedAt: "2026-07-27T18:00:00.510Z",
+      clockDriftEvidence: {
+        status: "measured",
+        openingSampleId: "sample-fast",
+        laterSampleId: "sample-stop",
+        observationIntervalSeconds: 3600,
+        residualDriftMilliseconds: 12,
+        observedPartsPerMillion: 3.333,
+        uncertaintyMilliseconds: 99,
+        sampleAccurateClaimed: false,
+      },
+      sampleAccurateClaimed: false,
+      reviewRequired: true,
+    });
+  });
+
   it("refuses a room/take mismatch and never upgrades it to aligned", () => {
     const proposal = buildCaptureSourceAlignmentProposal({
       sourceProfile: {

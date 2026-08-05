@@ -256,6 +256,7 @@ describe("CloudEditor production truth UX", () => {
   });
 
   it("opens an exact Capture take as a transparent source set without approving placement", async () => {
+    const user = userEvent.setup();
     const captureGroupId = "55555555-5555-4555-8555-555555555555";
     const alignment = (input: {
       recordingAssetId: string;
@@ -281,6 +282,16 @@ describe("CloudEditor production truth UX", () => {
         baselineEstimatedServerStartedAt: "2026-08-05T05:00:00.000Z",
         estimatedOffsetMilliseconds: input.offsetMilliseconds,
         proposalSourceCount: 2,
+        sampleAccurateClaimed: false,
+      },
+      clockDriftEvidence: {
+        status: "measured",
+        openingSampleId: `opening-${input.recordingAssetId}`,
+        laterSampleId: `later-${input.recordingAssetId}`,
+        observationIntervalSeconds: 3600,
+        residualDriftMilliseconds: 12,
+        observedPartsPerMillion: 3.333,
+        uncertaintyMilliseconds: 99,
         sampleAccurateClaimed: false,
       },
       startBoundary: { receiptId: `start-${input.recordingAssetId}` },
@@ -347,6 +358,18 @@ describe("CloudEditor production truth UX", () => {
     });
     expect(within(sourceSet).queryByText("Reviewed sync")).not.toBeInTheDocument();
     expect(screen.getAllByText(/No placement or episode-spine decision has been made/i).length).toBeGreaterThan(0);
+
+    const clockWitness = await screen.findByTestId("guided-sync-clock-drift-evidence");
+    expect(within(clockWitness).getByText("Device-clock drift witness")).toBeInTheDocument();
+    expect(within(clockWitness).getByText(/survives with provider recording off/i)).toBeInTheDocument();
+    expect(within(clockWitness).getByText("3600.000 s")).toBeInTheDocument();
+    expect(within(clockWitness).getByText("+12.000 ms")).toBeInTheDocument();
+    await user.click(within(clockWitness).getByRole("button", { name: "Use as comparison start" }));
+    expect(screen.getByLabelText("Seconds between review points")).toHaveValue(3600);
+    expect(screen.getByLabelText("Residual drift at later point (ms)")).toHaveValue(12);
+    expect(screen.getByLabelText(/Later event compared/i)).not.toBeChecked();
+    expect(screen.getByLabelText(/Approve this reversible placement/i)).not.toBeChecked();
+    expect(screen.getByText(/no timeline placement changed/i)).toBeInTheDocument();
   });
 
   it("opens the paper edit from the transcript mode control", async () => {

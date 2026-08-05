@@ -104,8 +104,18 @@ check(
   model.includes("captureGroupID: resolvedCaptureGroupID")
     && model.includes("CaptureClockClient.shared.measureBurst")
     && videoController.includes("CaptureClockClient.shared.measureBurst")
-    && architecture.includes("server-clock burst")
+    && architecture.includes("server-clock")
     && architecture.includes("never copy one source's timestamps"),
+);
+check(
+  "provider-independent drift evidence is periodic, bounded, and supporting only",
+  audio.includes("startPeriodicClockEvidence")
+    && audio.includes("sampleCount: 1")
+    && videoController.includes("startPeriodicClockEvidence")
+    && videoController.includes("sampleCount: 1")
+    && audio.includes("Clock history is supporting evidence. The protected local")
+    && videoController.includes("Supporting clock evidence must never stop protected video.")
+    && architecture.includes("waveform review remains the"),
 );
 check(
   "camera delegate confirmation precedes microphone start",

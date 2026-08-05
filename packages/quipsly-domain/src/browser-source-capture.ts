@@ -92,7 +92,7 @@ export type BrowserSourceCaptureMeterSummary =
 
 export type BrowserSourceCaptureProfile = {
   readonly contractKind: typeof QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND;
-  readonly schemaVersion: 3;
+  readonly schemaVersion: 4;
   readonly clientKind: "web";
   readonly sourceKind: BrowserSourceKind;
   readonly quality: BrowserSourceCaptureQuality;
@@ -101,6 +101,7 @@ export type BrowserSourceCaptureProfile = {
   readonly deviceLabel: string;
   readonly trackSettings: Readonly<Record<string, string | number | boolean | null>>;
   readonly monotonicStartedNanoseconds: string;
+  readonly monotonicStoppedNanoseconds: string | null;
   readonly clockSamples: readonly BrowserSourceCaptureClockSample[];
   readonly processing: {
     readonly echoCancellation: boolean | null;

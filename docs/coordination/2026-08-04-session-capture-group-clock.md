@@ -28,8 +28,9 @@ never the only master by implication.
 Synchronization uses three layers:
 
 1. the server-owned Session capture group identifies the intended take;
-2. each device preserves an NTP-style clock burst plus wall and monotonic source
-   start evidence for a deterministic first-placement proposal;
+2. each device preserves opening, periodic, and closing NTP-style clock
+   evidence plus monotonic source start/stop boundaries for deterministic
+   placement and drift proposals;
 3. waveform/opening-cue correlation and a later drift check determine the
    reversible editor placement.
 
@@ -42,10 +43,14 @@ review-required; it does not fabricate alignment.
 
 - `CallRoom.captureGroupId` is an additive UUID with a unique database index.
 - The browser Session recorder receives that exact value instead of minting a
-  private group, measures three bounded clock samples, and keeps partial
-  evidence when Nest is temporarily unavailable.
+  private group, measures three opening samples, one sample every five minutes,
+  and a closing burst. It keeps partial evidence when Nest is temporarily
+  unavailable and aborts a clock request after five seconds so evidence cannot
+  hold media finalization hostage.
 - Quipsly Capture receives the same value in its authorized Session projection
-  and uses it for audio, video, and coordinated audio/video capture.
+  and uses it for audio, video, and coordinated audio/video capture. Native
+  clock requests have a two-second timeout and closing evidence writes are
+  non-fatal to media finalization.
 - Session imports and Episode Room live recording use the same canonical value.
 - Source/upload IDs, exact bytes, participant ownership, consent, START/STOP,
   proxy, transcript, and alignment states remain independent.
@@ -67,6 +72,21 @@ together. Before promotion, verify:
    late-drift review;
 5. old Build 27 uploads still finalize without a forced metadata rewrite; and
 6. provider recording can remain off without changing any of the above.
+
+## August 5 drift evidence extension
+
+Source profiles now preserve at most 48 chronological samples: the complete
+opening three plus the newest 45 periodic/closing samples. Nest chooses the
+cleanest opening observation and the cleanest sample from the latest ten-second
+epoch at least 30 seconds into the take. It projects the same source start from
+both observations and records their residual, observation span, estimated ppm,
+and a conservative combined network/wall-clock uncertainty.
+
+The projection is supporting evidence only. It always carries
+`sampleAccurateClaimed: false`, does not stretch or resample media, and cannot
+check the editor's later-event or approval controls. The reviewer may load it
+as a comparison starting point, then correct it from a shared word, clap,
+waveform event, or another defensible source relationship.
 
 ## Explicit non-claims
 

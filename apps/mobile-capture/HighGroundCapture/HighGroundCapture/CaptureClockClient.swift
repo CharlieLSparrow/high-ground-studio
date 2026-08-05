@@ -77,7 +77,7 @@ final class CaptureClockClient {
     static let shared = CaptureClockClient()
 
     private let protocolVersion = 1
-    private let burstCount = 3
+    private let maximumBurstCount = 3
     private let iso8601WithFractionalSeconds: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -87,13 +87,15 @@ final class CaptureClockClient {
     func measureBurst(
         callRoomID: String,
         captureGroupID: UUID,
-        expectedOwnerAccountID: String
+        expectedOwnerAccountID: String,
+        sampleCount: Int = 3
     ) async -> [LocalRecordingClockSample] {
+        let boundedSampleCount = min(max(1, sampleCount), maximumBurstCount)
         let samples = await withTaskGroup(
             of: LocalRecordingClockSample?.self,
             returning: [LocalRecordingClockSample].self
         ) { group in
-            for _ in 0..<burstCount {
+            for _ in 0..<boundedSampleCount {
                 group.addTask { @MainActor [weak self] in
                     guard let self, !Task.isCancelled else { return nil }
                     return try? await self.measure(

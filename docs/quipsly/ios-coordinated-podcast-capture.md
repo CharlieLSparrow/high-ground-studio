@@ -2,7 +2,7 @@
 
 Status: implementation architecture
 Owner: Quipsly Capture
-Last reviewed: 2026-07-29
+Last reviewed: 2026-08-05
 
 ## Outcome
 
@@ -15,8 +15,9 @@ One visible Start action creates two independent local production sources:
 2. a fragmented video-only MOV from the selected iPhone camera.
 
 Both sources share one capture-group UUID. Each samples the same Nest/CallRoom
-clock service near its own Start boundary and keeps its own source UUID,
-server-clock burst, durable START/STOP evidence, wall clock, monotonic clock,
+clock service near its own Start boundary, every five minutes during a long
+take, and again at Stop. Each keeps its own source UUID, bounded server-clock
+history, durable START/STOP evidence, wall clock, monotonic start/stop clock,
 local file, recovery state, upload job, and editor lane. The LiveKit room
 remains the conversation path and is not copied into either master.
 
@@ -92,6 +93,9 @@ YouTube, and single-person recording without a live room.
   opening either source.
 - Measure a Nest/CallRoom clock burst for each source using the shared group
   UUID; never copy one source's timestamps onto its partner.
+- Retain the opening three samples, bounded periodic one-sample observations,
+  and a closing burst. A clock request or evidence-write failure must never
+  stop or invalidate protected local media.
 - Durably enqueue each source START before its bytes may begin.
 - Never describe the group as recording until both source controllers report
   recording.
@@ -122,6 +126,13 @@ Starting video first avoids claiming a camera source before AVFoundation
 confirms it. The microphone begins immediately afterward. Both source profiles
 retain monotonic start nanoseconds, so the small measured start difference is
 evidence rather than hidden drift.
+
+During recording, each active source requests one additional clock sample at a
+five-minute interval. Stop captures the source's monotonic stop immediately,
+then requests a final three-sample burst. The bounded history keeps the first
+three and newest 45 samples. Nest may use an opening/later pair to propose a
+rate residual and uncertainty, but Guided Sync leaves the later-event and
+human-approval gates unchecked until someone compares the actual sources.
 
 ## Pause, resume, mark, and Flip
 

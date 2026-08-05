@@ -62,6 +62,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var startTask: Task<Void, Never>?
     private var finalizationTask: Task<Void, Never>?
     private var providerAudioStartWatchdogTask: Task<Void, Never>?
+    private var captureClockSamplingTask: Task<Void, Never>?
     private var accountObserver: NSObjectProtocol?
 
     private var currentRecordingURL: URL?
@@ -71,6 +72,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var accumulatedDuration: TimeInterval = 0
     private var overallStartTimestamp: Date?
     private var pendingFinalizationStoppedAt: Date?
+    private var pendingFinalizationMonotonicStoppedNanoseconds: UInt64?
     private var pendingFinalizationDuration: TimeInterval = 0
     private var localFallbackSessionId: String?
     private var pausedByInterruption = false
@@ -930,6 +932,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         userMarkOffsets = []
         currentSegmentOrder = 1
         pendingFinalizationStoppedAt = nil
+        pendingFinalizationMonotonicStoppedNanoseconds = nil
         pendingFinalizationDuration = 0
         pendingFinalizationMessage = nil
         automaticStopReason = nil
@@ -977,6 +980,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         startNewSegment(at: startedAt)
         startDurationAndMeterTimer()
         transition(to: .recording)
+        startPeriodicClockEvidence(
+            recordingID: ledgerEntry.id,
+            captureIntent: captureIntent
+        )
         updateNowPlayingInfo()
     }
 
@@ -1010,6 +1017,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
         startNewSegment(at: segmentStartedAt)
         startDurationAndMeterTimer()
         transition(to: .recording)
+        if let captureIntent = activeCaptureIntent {
+            startPeriodicClockEvidence(
+                recordingID: recordingID,
+                captureIntent: captureIntent
+            )
+        }
         updateNowPlayingInfo()
     }
 
@@ -1048,6 +1061,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #endif
 
         let stoppedAt = Date()
+        let monotonicStoppedNanoseconds = DispatchTime.now().uptimeNanoseconds
         if captureState == .recording {
             endCurrentSegment(reason: .userStop, at: stoppedAt)
             accumulateActiveDuration(until: stoppedAt)
@@ -1056,12 +1070,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
         startTime = nil
         currentDuration = sourceTimelineDuration(at: stoppedAt)
         pendingFinalizationStoppedAt = stoppedAt
+        pendingFinalizationMonotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         pendingFinalizationDuration = currentDuration
         pendingFinalizationMessage = normalized(finalizationMessage)
         pausedByInterruption = false
         pendingProviderSegmentStart = nil
         providerAudioStartWatchdogTask?.cancel()
         providerAudioStartWatchdogTask = nil
+        captureClockSamplingTask?.cancel()
+        captureClockSamplingTask = nil
         stopDurationAndMeterTimer()
 
         if let activeLocalRecordingID {
@@ -1503,10 +1520,28 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
 
         let stoppedAt = pendingFinalizationStoppedAt ?? Date()
+        let monotonicStoppedNanoseconds =
+            pendingFinalizationMonotonicStoppedNanoseconds
+            ?? DispatchTime.now().uptimeNanoseconds
         let duration = max(pendingFinalizationDuration, accumulatedDuration)
         let segmentsJson = encodeSegments()
 
         do {
+            if let captureIntent = activeCaptureIntent,
+               let callRoomID = captureIntent.callRoomID {
+                let stopSamples = await CaptureClockClient.shared.measureBurst(
+                    callRoomID: callRoomID,
+                    captureGroupID: captureIntent.captureGroupID,
+                    expectedOwnerAccountID: captureIntent.ownerSnapshot.ownerAccountID
+                )
+                // Closing clock evidence is supporting metadata. A Nest outage
+                // or rejected sample must never prevent local media finalization.
+                try? localRecordingLibrary.recordClockEvidence(
+                    recordingID,
+                    samples: stopSamples,
+                    monotonicStoppedNanoseconds: monotonicStoppedNanoseconds
+                )
+            }
             try localRecordingLibrary.setFinalizedFileProtection(at: fileURL)
             let bounded = try localRecordingLibrary.finalize(
                 recordingID,
@@ -1548,10 +1583,48 @@ final class AudioCaptureController: NSObject, ObservableObject {
             providerAudioStartWatchdogTask = nil
             pendingProviderSegmentStart = nil
             pendingFinalizationStoppedAt = nil
+            pendingFinalizationMonotonicStoppedNanoseconds = nil
             pendingFinalizationDuration = 0
             pendingFinalizationMessage = nil
         } catch {
             finishCaptureFailure("The audio source remains local, but Quipsly could not finish its ledger: \(error.localizedDescription)")
+        }
+    }
+
+    private func startPeriodicClockEvidence(
+        recordingID: UUID,
+        captureIntent: CaptureIntent
+    ) {
+        captureClockSamplingTask?.cancel()
+        guard let callRoomID = captureIntent.callRoomID else { return }
+        captureClockSamplingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000_000)
+                guard !Task.isCancelled,
+                      let self,
+                      self.activeLocalRecordingID == recordingID,
+                      (self.captureState == .recording
+                          || self.captureState == .paused),
+                      AuthManager.shared.matchesStableOwnerSnapshot(
+                          captureIntent.ownerSnapshot
+                      ) else { return }
+                let samples = await CaptureClockClient.shared.measureBurst(
+                    callRoomID: callRoomID,
+                    captureGroupID: captureIntent.captureGroupID,
+                    expectedOwnerAccountID: captureIntent.ownerSnapshot.ownerAccountID,
+                    sampleCount: 1
+                )
+                guard !samples.isEmpty else { continue }
+                do {
+                    try self.localRecordingLibrary.recordClockEvidence(
+                        recordingID,
+                        samples: samples
+                    )
+                } catch {
+                    // Clock history is supporting evidence. The protected local
+                    // source keeps recording even if one evidence write fails.
+                }
+            }
         }
     }
 
@@ -1620,6 +1693,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         )
         providerAudioStartWatchdogTask?.cancel()
         providerAudioStartWatchdogTask = nil
+        captureClockSamplingTask?.cancel()
+        captureClockSamplingTask = nil
         audioRecorder?.stop()
         audioRecorder = nil
         #if canImport(LiveKit)

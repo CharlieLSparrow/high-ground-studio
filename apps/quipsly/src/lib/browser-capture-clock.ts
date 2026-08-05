@@ -4,6 +4,8 @@ import type { BrowserSourceCaptureClockSample } from "@high-ground/quipsly-domai
 
 const CAPTURE_CLOCK_PROTOCOL_VERSION = 1;
 const CAPTURE_CLOCK_BURST_COUNT = 3;
+const MAX_CAPTURE_CLOCK_SAMPLES = 48;
+const CAPTURE_CLOCK_REQUEST_TIMEOUT_MS = 5_000;
 
 type ClockResponse = {
   ok?: boolean;
@@ -51,20 +53,31 @@ export async function measureBrowserCaptureClockSample(input: {
   const deviceWallSentAt = runtime.wallNow();
   const monotonicSentMilliseconds = runtime.monotonicNowMilliseconds();
   const deviceMonotonicSentNanoseconds = browserMonotonicNanoseconds(monotonicSentMilliseconds);
-  const response = await runtime.fetch("/api/mobile/capture/clock-sample", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({
-      protocolVersion: CAPTURE_CLOCK_PROTOCOL_VERSION,
-      sampleId,
-      callRoomId: input.callRoomId,
-      captureGroupId: input.captureGroupId,
-      clientKind: "web",
-      deviceWallSentAt: deviceWallSentAt.toISOString(),
-      deviceMonotonicSentNanoseconds,
-    }),
-  });
+  const abortController = new AbortController();
+  const timeout = globalThis.setTimeout(
+    () => abortController.abort("Capture clock request timed out."),
+    CAPTURE_CLOCK_REQUEST_TIMEOUT_MS,
+  );
+  let response: Response;
+  try {
+    response = await runtime.fetch("/api/mobile/capture/clock-sample", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      cache: "no-store",
+      signal: abortController.signal,
+      body: JSON.stringify({
+        protocolVersion: CAPTURE_CLOCK_PROTOCOL_VERSION,
+        sampleId,
+        callRoomId: input.callRoomId,
+        captureGroupId: input.captureGroupId,
+        clientKind: "web",
+        deviceWallSentAt: deviceWallSentAt.toISOString(),
+        deviceMonotonicSentNanoseconds,
+      }),
+    });
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
   const monotonicReceivedMilliseconds = runtime.monotonicNowMilliseconds();
   const deviceWallReceivedAt = runtime.wallNow();
   const packet = await response.json().catch(() => ({})) as ClockResponse;
@@ -124,9 +137,14 @@ export async function measureBrowserCaptureClockBurst(input: {
   callRoomId: string;
   captureGroupId: string;
   runtime?: BrowserCaptureClockRuntime;
+  sampleCount?: number;
 }) {
+  const sampleCount = input.sampleCount ?? CAPTURE_CLOCK_BURST_COUNT;
+  if (!Number.isSafeInteger(sampleCount) || sampleCount < 1 || sampleCount > CAPTURE_CLOCK_BURST_COUNT) {
+    throw new Error("A capture-clock burst must contain between one and three samples.");
+  }
   const samples = await Promise.all(Array.from(
-    { length: CAPTURE_CLOCK_BURST_COUNT },
+    { length: sampleCount },
     () => measureBrowserCaptureClockSample(input).catch(() => null),
   ));
   return samples
@@ -136,4 +154,32 @@ export async function measureBrowserCaptureClockBurst(input: {
       || left.uncertaintyMilliseconds - right.uncertaintyMilliseconds
       || left.sampleId.localeCompare(right.sampleId)
     ));
+}
+
+/**
+ * Keeps a bounded, chronological clock history while preserving the complete
+ * opening burst and the newest in-take/stop evidence. Sample identity is
+ * server-echo-bound; duplicate retries never inflate the source profile.
+ */
+export function mergeBrowserCaptureClockSamples(
+  existing: readonly BrowserSourceCaptureClockSample[],
+  incoming: readonly BrowserSourceCaptureClockSample[],
+  maximum = MAX_CAPTURE_CLOCK_SAMPLES,
+) {
+  if (!Number.isSafeInteger(maximum) || maximum < 6 || maximum > MAX_CAPTURE_CLOCK_SAMPLES) {
+    throw new Error("Capture-clock history must remain between six and 48 samples.");
+  }
+  const byId = new Map<string, BrowserSourceCaptureClockSample>();
+  for (const sample of [...existing, ...incoming]) byId.set(sample.sampleId, sample);
+  const ordered = [...byId.values()].sort((left, right) => {
+    const leftMonotonic = BigInt(left.deviceMonotonicSentNanoseconds);
+    const rightMonotonic = BigInt(right.deviceMonotonicSentNanoseconds);
+    if (leftMonotonic < rightMonotonic) return -1;
+    if (leftMonotonic > rightMonotonic) return 1;
+    return left.sampleId.localeCompare(right.sampleId);
+  });
+  if (ordered.length <= maximum) return ordered;
+  const opening = ordered.slice(0, CAPTURE_CLOCK_BURST_COUNT);
+  const tail = ordered.slice(-(maximum - opening.length));
+  return [...opening, ...tail];
 }

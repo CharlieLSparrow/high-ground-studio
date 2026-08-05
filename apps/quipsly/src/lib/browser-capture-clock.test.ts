@@ -1,5 +1,6 @@
 import {
   browserMonotonicNanoseconds,
+  mergeBrowserCaptureClockSamples,
   measureBrowserCaptureClockBurst,
   measureBrowserCaptureClockSample,
 } from "./browser-capture-clock";
@@ -137,5 +138,59 @@ describe("browser capture clock", () => {
       sampleIds[0],
     ]);
     randomUUID.mockRestore();
+  });
+
+  test("takes bounded one-sample in-take bursts and rejects an unbounded request", async () => {
+    const walls = [new Date(1_000), new Date(1_010)];
+    const monotonics = [100, 110];
+    const runtime = {
+      wallNow: () => walls.shift()!,
+      monotonicNowMilliseconds: () => monotonics.shift()!,
+      fetch: jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return jsonResponse({
+          ok: true,
+          ...request,
+          serverReceivedAt: new Date(1_002).toISOString(),
+          serverSentAt: new Date(1_003).toISOString(),
+        });
+      }) as typeof globalThis.fetch,
+    };
+    await expect(measureBrowserCaptureClockBurst({
+      callRoomId: "room-1",
+      captureGroupId: "55555555-5555-4555-8555-555555555555",
+      sampleCount: 1,
+      runtime,
+    })).resolves.toHaveLength(1);
+    await expect(measureBrowserCaptureClockBurst({
+      callRoomId: "room-1",
+      captureGroupId: "55555555-5555-4555-8555-555555555555",
+      sampleCount: 4,
+    })).rejects.toThrow("between one and three");
+  });
+
+  test("deduplicates and bounds clock history without discarding the opening burst", () => {
+    const sample = (index: number): ReturnType<typeof mergeBrowserCaptureClockSamples>[number] => ({
+      protocolVersion: 1,
+      sampleId: `${String(index).padStart(8, "0")}-1111-4111-8111-111111111111`,
+      callRoomId: "room-1",
+      captureGroupId: "55555555-5555-4555-8555-555555555555",
+      clientKind: "web",
+      deviceWallSentAt: new Date(index * 1_000).toISOString(),
+      deviceMonotonicSentNanoseconds: String(index * 1_000_000_000),
+      serverReceivedAt: new Date(index * 1_000 + 2).toISOString(),
+      serverSentAt: new Date(index * 1_000 + 3).toISOString(),
+      deviceWallReceivedAt: new Date(index * 1_000 + 5).toISOString(),
+      deviceMonotonicReceivedNanoseconds: String(index * 1_000_000_000 + 5_000_000),
+      networkRoundTripMilliseconds: 4,
+      serverOffsetMilliseconds: 0,
+      uncertaintyMilliseconds: 2,
+      wallClockDiscontinuityMilliseconds: 0,
+    });
+    const all = Array.from({ length: 52 }, (_, index) => sample(index + 1));
+    const merged = mergeBrowserCaptureClockSamples(all.slice(0, 30), [all[0]!, ...all.slice(30)]);
+    expect(merged).toHaveLength(48);
+    expect(merged.slice(0, 3).map((row) => row.sampleId)).toEqual(all.slice(0, 3).map((row) => row.sampleId));
+    expect(merged.at(-1)?.sampleId).toBe(all.at(-1)?.sampleId);
   });
 });

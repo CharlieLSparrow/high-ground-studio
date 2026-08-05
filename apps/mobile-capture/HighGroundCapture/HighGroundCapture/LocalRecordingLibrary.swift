@@ -891,6 +891,63 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
+    /// Appends bounded NTP-style samples to one immutable source. Opening,
+    /// periodic, and stop samples share the source's monotonic clock; they may
+    /// improve drift estimates but never rewrite media timestamps or claim
+    /// sample-accurate synchronization.
+    func recordClockEvidence(
+        _ id: UUID,
+        samples: [LocalRecordingClockSample],
+        monotonicStoppedNanoseconds: UInt64? = nil
+    ) throws {
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard var profile = recording.sourceProfile,
+                  let callRoomID = recording.callRoomId,
+                  let captureGroupID = recording.captureGroupId,
+                  samples.count <= 3,
+                  samples.allSatisfy({ sample in
+                      sample.protocolVersion == 1
+                          && sample.callRoomId == callRoomID
+                          && sample.captureGroupId == captureGroupID
+                          && sample.clientKind == "ios"
+                          && sample.deviceMonotonicReceivedNanoseconds
+                              >= sample.deviceMonotonicSentNanoseconds
+                  }) else {
+                throw LibraryError.clockEvidenceConflict
+            }
+            if let monotonicStoppedNanoseconds {
+                guard let started = profile.monotonicStartedNanoseconds,
+                      monotonicStoppedNanoseconds >= started else {
+                    throw LibraryError.clockEvidenceConflict
+                }
+                profile.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
+            }
+            var byID: [UUID: LocalRecordingClockSample] = [:]
+            for sample in profile.clockSamples ?? [] {
+                byID[sample.sampleId] = sample
+            }
+            for sample in samples {
+                byID[sample.sampleId] = sample
+            }
+            let ordered = byID.values.sorted {
+                if $0.deviceMonotonicSentNanoseconds
+                    != $1.deviceMonotonicSentNanoseconds {
+                    return $0.deviceMonotonicSentNanoseconds
+                        < $1.deviceMonotonicSentNanoseconds
+                }
+                return $0.sampleId.uuidString < $1.sampleId.uuidString
+            }
+            let maximumSamples = 48
+            if ordered.count > maximumSamples {
+                profile.clockSamples = Array(ordered.prefix(3))
+                    + Array(ordered.suffix(maximumSamples - 3))
+            } else {
+                profile.clockSamples = ordered
+            }
+            recording.sourceProfile = profile
+        }
+    }
+
     @discardableResult
     func finalize(
         _ id: UUID,
@@ -2359,6 +2416,7 @@ final class LocalRecordingLibrary: ObservableObject {
         case invalidOrDuplicateRecordingIdentity
         case unsupportedSourceContainer
         case roomStopReceiptConflict
+        case clockEvidenceConflict
         case invalidRuntimeSmokeFixture
         case runtimeSmokeFixtureOwnerMismatch
         case runtimeSmokeFixtureSourceRejected
@@ -2385,6 +2443,8 @@ final class LocalRecordingLibrary: ObservableObject {
                 return "Quipsly refused a source container that does not match the selected audio or video recording mode."
             case .roomStopReceiptConflict:
                 return "Quipsly already preserved a different STOP receipt for this immutable source."
+            case .clockEvidenceConflict:
+                return "Capture-clock evidence did not match this protected source, Session, take, or monotonic boundary."
             case .invalidRuntimeSmokeFixture:
                 return "The operated playback fixture is incomplete, outside the temporary test bridge, or belongs to another account."
             case .runtimeSmokeFixtureOwnerMismatch:

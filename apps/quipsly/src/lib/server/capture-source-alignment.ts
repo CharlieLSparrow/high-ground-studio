@@ -25,6 +25,16 @@ export type CaptureSourceAlignmentProposal = {
     wallClockDiscontinuityMilliseconds: number;
     sourceProfileDateEncoding: "iso8601" | "swift-reference-date";
   } | null;
+  clockDriftEvidence: {
+    status: "not-measured" | "measured";
+    openingSampleId: string | null;
+    laterSampleId: string | null;
+    observationIntervalSeconds: number | null;
+    residualDriftMilliseconds: number | null;
+    observedPartsPerMillion: number | null;
+    uncertaintyMilliseconds: number | null;
+    sampleAccurateClaimed: false;
+  };
   startBoundary: {
     receiptId: string;
     occurredAt: string;
@@ -110,15 +120,19 @@ export function buildCaptureSourceAlignmentProposal(input: {
       schemaVersion: finiteInteger(sourceProfile.schemaVersion) ?? 1,
       callRoomId: input.callRoomId,
       captureGroupId,
-      monotonicStartedNanoseconds,
     }))
     .filter((sample): sample is ValidClockSample => Boolean(sample))
-    .sort((left, right) => (
-      left.networkRoundTripMilliseconds - right.networkRoundTripMilliseconds
-      || left.uncertaintyMilliseconds - right.uncertaintyMilliseconds
-      || left.sampleId.localeCompare(right.sampleId)
-    ));
-  const selected = validSamples[0];
+    .sort((left, right) => compareClockQuality(left, right));
+  const openingSamples = validSamples.filter(
+    (sample) => sample.deviceMonotonicSentNanoseconds <= monotonicStartedNanoseconds,
+  );
+  const selected = openingSamples[0] ?? [...validSamples].sort((left, right) => {
+    const leftDistance = absoluteBigInt(left.deviceMonotonicSentNanoseconds - monotonicStartedNanoseconds);
+    const rightDistance = absoluteBigInt(right.deviceMonotonicSentNanoseconds - monotonicStartedNanoseconds);
+    if (leftDistance < rightDistance) return -1;
+    if (leftDistance > rightDistance) return 1;
+    return compareClockQuality(left, right);
+  })[0];
   if (!selected) {
     return {
       ...base,
@@ -171,6 +185,11 @@ export function buildCaptureSourceAlignmentProposal(input: {
     + Math.abs(selected.wallClockDiscontinuityMilliseconds) / 2
     + 2,
   );
+  const clockDriftEvidence = buildClockDriftEvidence({
+    monotonicStartedNanoseconds,
+    openingSample: selected,
+    samples: validSamples,
+  });
 
   return {
     ...base,
@@ -194,6 +213,7 @@ export function buildCaptureSourceAlignmentProposal(input: {
       ),
       sourceProfileDateEncoding: selected.sourceProfileDateEncoding,
     },
+    clockDriftEvidence,
     startBoundary,
     reportedWallStartAt: reportedWallStartAtMilliseconds === null
       ? null
@@ -306,6 +326,9 @@ export function addCaptureGroupOffsetsToImportedMedia(
         selectedClockSample: alignment.selectedClockSample
           ? { ...alignment.selectedClockSample }
           : null,
+        clockDriftEvidence: {
+          ...alignment.clockDriftEvidence,
+        },
         startBoundary: alignment.startBoundary
           ? { ...alignment.startBoundary }
           : null,
@@ -351,7 +374,6 @@ function validClockSample(input: {
   schemaVersion: number;
   callRoomId: string;
   captureGroupId: string | null;
-  monotonicStartedNanoseconds: bigint;
 }): ValidClockSample | null {
   const sample = object(input.sample);
   const protocolVersion = finiteInteger(sample.protocolVersion);
@@ -385,7 +407,6 @@ function validClockSample(input: {
     || !monotonicSent
     || !monotonicReceived
     || monotonicReceived < monotonicSent
-    || input.monotonicStartedNanoseconds < monotonicSent
     || !wallSent
     || !wallReceived
     || !serverReceived
@@ -437,6 +458,103 @@ function validClockSample(input: {
   };
 }
 
+function compareClockQuality(left: ValidClockSample, right: ValidClockSample) {
+  return left.networkRoundTripMilliseconds - right.networkRoundTripMilliseconds
+    || left.uncertaintyMilliseconds - right.uncertaintyMilliseconds
+    || left.sampleId.localeCompare(right.sampleId);
+}
+
+function projectedServerStartMilliseconds(
+  sample: ValidClockSample,
+  monotonicStartedNanoseconds: bigint,
+) {
+  return sample.deviceWallSentAtMilliseconds
+    + nanosecondsToMilliseconds(
+      monotonicStartedNanoseconds - sample.deviceMonotonicSentNanoseconds,
+    )
+    + sample.serverOffsetMilliseconds;
+}
+
+function buildClockDriftEvidence(input: {
+  monotonicStartedNanoseconds: bigint;
+  openingSample: ValidClockSample;
+  samples: ValidClockSample[];
+}): CaptureSourceAlignmentProposal["clockDriftEvidence"] {
+  const minimumObservationNanoseconds = 30_000_000_000n;
+  const laterCandidates = input.samples.filter((sample) => (
+    sample.deviceMonotonicSentNanoseconds - input.monotonicStartedNanoseconds
+      >= minimumObservationNanoseconds
+  ));
+  if (!laterCandidates.length) return emptyClockDriftEvidence(input.openingSample.sampleId);
+
+  const latestMonotonic = laterCandidates.reduce(
+    (latest, sample) => sample.deviceMonotonicSentNanoseconds > latest
+      ? sample.deviceMonotonicSentNanoseconds
+      : latest,
+    0n,
+  );
+  // A stop burst may contain three samples. Choose the cleanest sample from
+  // the latest ten-second epoch instead of treating network arrival order as
+  // device drift.
+  const latestEpoch = laterCandidates
+    .filter((sample) => latestMonotonic - sample.deviceMonotonicSentNanoseconds <= 10_000_000_000n)
+    .sort(compareClockQuality);
+  const later = latestEpoch[0]!;
+  const observationIntervalSeconds = nanosecondsToMilliseconds(
+    later.deviceMonotonicSentNanoseconds - input.openingSample.deviceMonotonicSentNanoseconds,
+  ) / 1_000;
+  if (!Number.isFinite(observationIntervalSeconds) || observationIntervalSeconds <= 0) {
+    return emptyClockDriftEvidence(input.openingSample.sampleId);
+  }
+  const openingProjection = projectedServerStartMilliseconds(
+    input.openingSample,
+    input.monotonicStartedNanoseconds,
+  );
+  const laterProjection = projectedServerStartMilliseconds(
+    later,
+    input.monotonicStartedNanoseconds,
+  );
+  const residualDriftMilliseconds = laterProjection - openingProjection;
+  const uncertaintyMilliseconds = (
+    Math.max(input.openingSample.uncertaintyMilliseconds, input.openingSample.networkRoundTripMilliseconds / 2)
+    + Math.max(later.uncertaintyMilliseconds, later.networkRoundTripMilliseconds / 2)
+    + Math.abs(input.openingSample.wallClockDiscontinuityMilliseconds) / 2
+    + Math.abs(later.wallClockDiscontinuityMilliseconds) / 2
+    + 4
+  );
+  return {
+    status: "measured",
+    openingSampleId: input.openingSample.sampleId,
+    laterSampleId: later.sampleId,
+    observationIntervalSeconds: rounded(observationIntervalSeconds),
+    residualDriftMilliseconds: rounded(residualDriftMilliseconds),
+    observedPartsPerMillion: rounded(
+      residualDriftMilliseconds * 1_000 / observationIntervalSeconds,
+    ),
+    uncertaintyMilliseconds: rounded(uncertaintyMilliseconds),
+    sampleAccurateClaimed: false,
+  };
+}
+
+function emptyClockDriftEvidence(
+  openingSampleId: string | null = null,
+): CaptureSourceAlignmentProposal["clockDriftEvidence"] {
+  return {
+    status: "not-measured",
+    openingSampleId,
+    laterSampleId: null,
+    observationIntervalSeconds: null,
+    residualDriftMilliseconds: null,
+    observedPartsPerMillion: null,
+    uncertaintyMilliseconds: null,
+    sampleAccurateClaimed: false,
+  };
+}
+
+function absoluteBigInt(value: bigint) {
+  return value < 0n ? -value : value;
+}
+
 function validStartReceipt(
   value: unknown,
   expected: {
@@ -482,6 +600,7 @@ function baseProposal(
     estimatedServerStartedAt: null,
     uncertaintyMilliseconds: null,
     selectedClockSample: null,
+    clockDriftEvidence: emptyClockDriftEvidence(),
     startBoundary: null,
     reportedWallStartAt: null,
     reportedWallVsMonotonicEstimateMilliseconds: null,

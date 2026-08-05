@@ -40,6 +40,7 @@ import {
 } from "@/lib/browser-source-vault";
 import {
   browserMonotonicNanoseconds,
+  mergeBrowserCaptureClockSamples,
   measureBrowserCaptureClockBurst,
 } from "@/lib/browser-capture-clock";
 import {
@@ -65,6 +66,8 @@ type ConsentPolicy = {
 };
 
 type RecorderStatus = "checking" | "ready" | "starting" | "recording" | "stopping" | "uploading" | "held" | "error";
+
+const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(Object.entries(settings).filter((entry): entry is [string, string | number | boolean] => (
@@ -100,6 +103,20 @@ function captureMeterDisplayEvidence(meter: BrowserSourceCaptureMeterSummary) {
     missingMessageCount: meter.missingMessageCount ?? 0,
     tailLabel: "meter v1 did not record a tail acknowledgement",
   };
+}
+
+function clockEvidenceLabel(ledger: BrowserSourceCaptureLedger) {
+  const samples = ledger.sourceProfile.clockSamples ?? [];
+  let hasLateSample = false;
+  try {
+    const started = BigInt(ledger.sourceProfile.monotonicStartedNanoseconds);
+    hasLateSample = samples.some((sample) => (
+      BigInt(sample.deviceMonotonicSentNanoseconds) - started >= 30_000_000_000n
+    ));
+  } catch {
+    // Legacy malformed clock evidence remains visible as an opening-only count.
+  }
+  return `${samples.length} clock sample${samples.length === 1 ? "" : "s"} · ${hasLateSample ? "late drift evidence" : "opening only"}`;
 }
 
 function stoppedFileName(title: string, sourceType: BrowserSourceKind, mimeType: string, captureId: string) {
@@ -179,6 +196,9 @@ export function BrowserSourceRecorder({
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ledgerRef = useRef<BrowserSourceCaptureLedger | null>(null);
   const timerRef = useRef<number | null>(null);
+  const clockTimerRef = useRef<number | null>(null);
+  const monotonicStoppedNanosecondsRef = useRef<string | null>(null);
+  const stopClockBurstRef = useRef<Promise<Awaited<ReturnType<typeof measureBrowserCaptureClockBurst>>> | null>(null);
   const retainedMeterContextRef = useRef<AudioContext | null>(null);
   const retainedMeterNodeRef = useRef<AudioNode | null>(null);
   const retainedMeterFrameRef = useRef<number | null>(null);
@@ -642,10 +662,47 @@ export function BrowserSourceRecorder({
   const stop = useCallback((reason?: string) => {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === "inactive") return;
+    monotonicStoppedNanosecondsRef.current = browserMonotonicNanoseconds(performance.now());
+    stopClockBurstRef.current = measureBrowserCaptureClockBurst({
+      callRoomId,
+      captureGroupId,
+    });
     setStatus("stopping");
     setMessage(reason || "Stopping cleanly, flushing the local file, then computing exact-byte evidence…");
     recorder.stop();
-  }, []);
+  }, [callRoomId, captureGroupId]);
+
+  useEffect(() => {
+    if (status !== "recording") return;
+    const captureId = ledgerRef.current?.captureId;
+    if (!captureId) return;
+    const collectInTakeSample = () => {
+      void measureBrowserCaptureClockBurst({
+        callRoomId,
+        captureGroupId,
+        sampleCount: 1,
+      }).then((samples) => {
+        if (!samples.length) return;
+        writeQueueRef.current = writeQueueRef.current.then(async () => {
+          const current = ledgerRef.current;
+          if (!current || current.captureId !== captureId || current.state !== "recording") return;
+          await updateLedger({
+            ...current,
+            sourceProfile: {
+              ...current.sourceProfile,
+              clockSamples: mergeBrowserCaptureClockSamples(current.sourceProfile.clockSamples, samples),
+            },
+            updatedAt: new Date().toISOString(),
+          });
+        });
+      }).catch(() => undefined);
+    };
+    clockTimerRef.current = window.setInterval(collectInTakeSample, IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS);
+    return () => {
+      if (clockTimerRef.current) window.clearInterval(clockTimerRef.current);
+      clockTimerRef.current = null;
+    };
+  }, [callRoomId, captureGroupId, status, updateLedger]);
 
   useEffect(() => {
     if (status !== "recording") return;
@@ -687,6 +744,8 @@ export function BrowserSourceRecorder({
     const stopReceiptId = crypto.randomUUID();
     let stream: MediaStream | null = null;
     try {
+      monotonicStoppedNanosecondsRef.current = null;
+      stopClockBurstRef.current = null;
       await postRoomReceipt({ callRoomId, action: "OPEN", receiptId: crypto.randomUUID(), occurredAt: new Date().toISOString() });
       const clockSamples = await measureBrowserCaptureClockBurst({
         callRoomId,
@@ -739,7 +798,7 @@ export function BrowserSourceRecorder({
         sourceType,
         sourceProfile: {
           contractKind: QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND,
-          schemaVersion: 3,
+          schemaVersion: 4,
           clientKind: "web",
           sourceKind: sourceType,
           quality: "studio-source",
@@ -748,6 +807,7 @@ export function BrowserSourceRecorder({
           deviceLabel: sourceType === "video" ? `${cameraLabel} + ${microphoneLabel}` : microphoneLabel,
           trackSettings: { ...safeTrackSettings(audioSettings), ...Object.fromEntries(Object.entries(safeTrackSettings(videoSettings)).map(([key, value]) => [`video.${key}`, value])) },
           monotonicStartedNanoseconds,
+          monotonicStoppedNanoseconds: null,
           clockSamples,
           processing: {
             echoCancellation: typeof audioSettings.echoCancellation === "boolean" ? audioSettings.echoCancellation : null,
@@ -820,6 +880,12 @@ export function BrowserSourceRecorder({
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
           const stoppedAt = new Date().toISOString();
+          const monotonicStoppedNanoseconds = monotonicStoppedNanosecondsRef.current
+            ?? browserMonotonicNanoseconds(performance.now());
+          const stopClockSamples = await (
+            stopClockBurstRef.current
+            ?? measureBrowserCaptureClockBurst({ callRoomId, captureGroupId })
+          ).catch(() => []);
           const captureMeter = await stopRetainedSourceMeter(stoppedAt);
           const file = await loadBrowserSourceFile(opfsFileName);
           const hash = await hashBrowserSourceFile(file);
@@ -831,8 +897,17 @@ export function BrowserSourceRecorder({
             sizeBytes: hash.sizeBytes,
             sha256: hash.sha256,
             sourceProfile: captureMeter
-              ? { ...current.sourceProfile, captureMeter }
-              : current.sourceProfile,
+              ? {
+                  ...current.sourceProfile,
+                  monotonicStoppedNanoseconds,
+                  clockSamples: mergeBrowserCaptureClockSamples(current.sourceProfile.clockSamples, stopClockSamples),
+                  captureMeter,
+                }
+              : {
+                  ...current.sourceProfile,
+                  monotonicStoppedNanoseconds,
+                  clockSamples: mergeBrowserCaptureClockSamples(current.sourceProfile.clockSamples, stopClockSamples),
+                },
             updatedAt: stoppedAt,
           };
           await updateLedger(current);
@@ -947,7 +1022,7 @@ export function BrowserSourceRecorder({
       {recoveryRows.length ? <div className="mt-4 border-t border-[#e5d8c0] pt-3">
         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]"><HardDrive size={14} /> Protected takes on this browser · {recoveryRows.length}</div>
         <div className="mt-2 space-y-2">{recoveryRows.slice(0, 6).map((ledger) => <div key={ledger.captureId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf0] px-3 py-2 text-xs font-bold text-[#5b472f]">
-          <span className="min-w-0"><span className="block truncate">{ledger.fileName}</span><span className="text-[10px] text-[#8a7354]">{ledger.state} · {formatBytes(ledger.sizeBytes)} · {ledger.sourceProfile.clockSamples?.length ?? 0}/3 clock samples · {new Date(ledger.startedAt).toLocaleString()}</span></span>
+          <span className="min-w-0"><span className="block truncate">{ledger.fileName}</span><span className="text-[10px] text-[#8a7354]">{ledger.state} · {formatBytes(ledger.sizeBytes)} · {clockEvidenceLabel(ledger)} · {new Date(ledger.startedAt).toLocaleString()}</span></span>
           <span className="flex gap-2">
             <button type="button" onClick={() => void downloadBrowserSource(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border bg-white px-3 text-[10px] uppercase"><Download size={13} /> Download</button>
             {["stopped", "held", "failed", "uploading", "verifying"].includes(ledger.state) && ledger.sha256 ? <button type="button" onClick={() => void retryUploadLedger(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"><UploadCloud size={13} /> Retry handoff</button> : null}
@@ -1000,7 +1075,7 @@ export function BrowserSourceRecorder({
         </div>
         <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">Attachment preserves immutable originals and source identities. Network clocks and rough anchors remain proposals; waveform, late-drift, and playback review still decide placement and the approved master.</p>
       </section>
-      {activeLedger?.state === "verified" ? <p className="mt-3 text-[10px] font-bold text-emerald-800">Verified editor evidence: {activeLedger.serverRecordingAssetId || "recording receipt created"}. Session take {activeLedger.captureGroupId.slice(0, 8)} has {activeLedger.sourceProfile.clockSamples?.length ?? 0}/3 network clock samples; waveform and late-drift review still decide final placement. Local deletion remains unavailable by design.</p> : null}
+      {activeLedger?.state === "verified" ? <p className="mt-3 text-[10px] font-bold text-emerald-800">Verified editor evidence: {activeLedger.serverRecordingAssetId || "recording receipt created"}. Session take {activeLedger.captureGroupId.slice(0, 8)} has {clockEvidenceLabel(activeLedger)}; clock drift remains a bounded proposal and waveform/listening review still decides final placement. Local deletion remains unavailable by design.</p> : null}
     </section>
   );
 }

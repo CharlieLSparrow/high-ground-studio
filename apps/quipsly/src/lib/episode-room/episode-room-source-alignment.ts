@@ -14,6 +14,16 @@ export type EpisodeRoomCaptureAlignment = {
   baselineRecordingAssetId: string | null;
   proposalSourceCount: number | null;
   startReceiptId: string | null;
+  clockDriftEvidence: {
+    status: "not-measured" | "measured";
+    openingSampleId: string | null;
+    laterSampleId: string | null;
+    observationIntervalSeconds: number | null;
+    residualDriftMilliseconds: number | null;
+    observedPartsPerMillion: number | null;
+    uncertaintyMilliseconds: number | null;
+    sampleAccurateClaimed: false;
+  };
   sampleAccurateClaimed: boolean;
   reviewRequired: boolean;
   reviewGate: {
@@ -81,6 +91,7 @@ export function episodeRoomCaptureAlignment(
 
   const group = record(alignment.captureGroup);
   const startBoundary = record(alignment.startBoundary);
+  const clockDrift = record(alignment.clockDriftEvidence);
   const reviewGate = record(alignment.reviewGate);
   const reportedStatus = text(alignment.status);
   const estimatedServerStartedAt = validIsoDate(
@@ -105,6 +116,22 @@ export function episodeRoomCaptureAlignment(
   const groupContractValid =
     Object.keys(group).length === 0
     || group.sampleAccurateClaimed === false;
+  const driftStatus = clockDrift.status === "measured" ? "measured" : "not-measured";
+  const driftObservationIntervalSeconds = finiteNumber(clockDrift.observationIntervalSeconds);
+  const driftResidualMilliseconds = finiteNumber(clockDrift.residualDriftMilliseconds);
+  const driftObservedPartsPerMillion = finiteNumber(clockDrift.observedPartsPerMillion);
+  const driftUncertaintyMilliseconds = finiteNumber(clockDrift.uncertaintyMilliseconds);
+  const driftContractValid = driftStatus === "not-measured" || (
+    clockDrift.sampleAccurateClaimed === false
+    && driftObservationIntervalSeconds !== null
+    && driftObservationIntervalSeconds > 0
+    && driftResidualMilliseconds !== null
+    && driftObservedPartsPerMillion !== null
+    && driftUncertaintyMilliseconds !== null
+    && driftUncertaintyMilliseconds >= 0
+    && Boolean(text(clockDrift.openingSampleId))
+    && Boolean(text(clockDrift.laterSampleId))
+  );
   const contractValid =
     sampleAccurateDeclaredFalse
     && reviewRequired
@@ -112,7 +139,8 @@ export function episodeRoomCaptureAlignment(
     && parsedReviewGate.driftReviewRequired
     && parsedReviewGate.humanApprovalRequired
     && proposalShapeValid
-    && groupContractValid;
+    && groupContractValid
+    && driftContractValid;
   const status =
     reportedStatus === "proposal-ready" && contractValid
       ? "proposal-ready"
@@ -142,6 +170,27 @@ export function episodeRoomCaptureAlignment(
       return count === null ? null : Math.max(0, Math.trunc(count));
     })(),
     startReceiptId: text(startBoundary.receiptId) || null,
+    clockDriftEvidence: driftStatus === "measured" && driftContractValid
+      ? {
+          status: "measured",
+          openingSampleId: text(clockDrift.openingSampleId) || null,
+          laterSampleId: text(clockDrift.laterSampleId) || null,
+          observationIntervalSeconds: driftObservationIntervalSeconds,
+          residualDriftMilliseconds: driftResidualMilliseconds,
+          observedPartsPerMillion: driftObservedPartsPerMillion,
+          uncertaintyMilliseconds: driftUncertaintyMilliseconds,
+          sampleAccurateClaimed: false,
+        }
+      : {
+          status: "not-measured",
+          openingSampleId: null,
+          laterSampleId: null,
+          observationIntervalSeconds: null,
+          residualDriftMilliseconds: null,
+          observedPartsPerMillion: null,
+          uncertaintyMilliseconds: null,
+          sampleAccurateClaimed: false,
+        },
     sampleAccurateClaimed,
     reviewRequired,
     reviewGate: parsedReviewGate,

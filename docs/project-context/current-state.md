@@ -20,6 +20,17 @@ Date: 2026-08-05
 
 ## Browser and iPhone Session recording checkpoint
 
+- Provider-off synchronization now has a durable late-drift rail rather than
+  relying only on opening samples. Browser and iPhone sources keep an opening
+  burst, five-minute in-take samples, an immediate monotonic stop marker, and a
+  closing burst under their shared Session capture group. Nest projects a
+  bounded residual/ppm/uncertainty packet; Guided Sync can load it only as a
+  comparison starting point and leaves waveform, later-event, and human
+  approval controls false. Clock outages and rejected evidence cannot block
+  protected media finalization. A rendered retained Session operation proved
+  provider copy Off created zero provider commands/assets while local capture
+  grouping remained visible. See
+  `docs/coordination/2026-08-05-provider-independent-drift.md`.
 - Episode Room now routes each Capture alignment candidate to the deep guided
   sync desk with its exact `captureGroup` identity. The editor renders every
   protected master in that take, identifies the group baseline, exposes rough

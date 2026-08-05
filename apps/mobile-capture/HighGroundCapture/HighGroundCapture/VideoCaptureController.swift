@@ -151,6 +151,7 @@ final class VideoCaptureController: ObservableObject {
     private let receiptStore = CaptureRoomReceiptStore.shared
     private var eventTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
+    private var captureClockSamplingTask: Task<Void, Never>?
     private var activeCapture: ActiveCapture?
     private var pendingStopReason: StopReason = .user
     private var stopRequestedWhileArming: StopReason?
@@ -246,6 +247,7 @@ final class VideoCaptureController: ObservableObject {
     deinit {
         eventTask?.cancel()
         monitorTask?.cancel()
+        captureClockSamplingTask?.cancel()
         observers.forEach(NotificationCenter.default.removeObserver)
     }
 
@@ -605,6 +607,7 @@ final class VideoCaptureController: ObservableObject {
                 state = .recording
                 safetyMessage = "Recording \(resolvedProfile?.profileLabel ?? "resolved video") locally. Network loss will not stop this source."
                 startMonitor()
+                startPeriodicClockEvidence(activeCapture)
                 if let requestedReason = stopRequestedWhileArming {
                     stopRequestedWhileArming = nil
                     await stopIfActive(reason: requestedReason)
@@ -625,6 +628,9 @@ final class VideoCaptureController: ObservableObject {
         monitorTask?.cancel()
         monitorTask = nil
         let stoppedAt = Date()
+        let monotonicStoppedNanoseconds = DispatchTime.now().uptimeNanoseconds
+        captureClockSamplingTask?.cancel()
+        captureClockSamplingTask = nil
         let duration = max(
             durationSeconds,
             Double(
@@ -637,6 +643,18 @@ final class VideoCaptureController: ObservableObject {
             guard url.standardizedFileURL == activeCapture.fileURL.standardizedFileURL else {
                 throw VideoCaptureControllerError.sourceIdentityMismatch
             }
+            let stopSamples = await CaptureClockClient.shared.measureBurst(
+                callRoomID: activeCapture.context.callRoomID,
+                captureGroupID: activeCapture.captureGroupID,
+                expectedOwnerAccountID: activeCapture.ownerSnapshot.ownerAccountID
+            )
+            // Closing clock evidence is supporting metadata. A Nest outage or
+            // rejected sample must never prevent local movie finalization.
+            try? library.recordClockEvidence(
+                activeCapture.recordingID,
+                samples: stopSamples,
+                monotonicStoppedNanoseconds: monotonicStoppedNanoseconds
+            )
             try library.setFinalizedFileProtection(at: url)
             let boundedResult = try library.finalize(
                 activeCapture.recordingID,
@@ -883,6 +901,37 @@ final class VideoCaptureController: ObservableObject {
         }
     }
 
+    private func startPeriodicClockEvidence(_ capture: ActiveCapture) {
+        captureClockSamplingTask?.cancel()
+        captureClockSamplingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000_000)
+                guard !Task.isCancelled,
+                      let self,
+                      self.activeCapture?.recordingID == capture.recordingID,
+                      self.state == .recording,
+                      AuthManager.shared.matchesStableOwnerSnapshot(
+                          capture.ownerSnapshot
+                      ) else { return }
+                let samples = await CaptureClockClient.shared.measureBurst(
+                    callRoomID: capture.context.callRoomID,
+                    captureGroupID: capture.captureGroupID,
+                    expectedOwnerAccountID: capture.ownerSnapshot.ownerAccountID,
+                    sampleCount: 1
+                )
+                guard !samples.isEmpty else { continue }
+                do {
+                    try self.library.recordClockEvidence(
+                        capture.recordingID,
+                        samples: samples
+                    )
+                } catch {
+                    // Supporting clock evidence must never stop protected video.
+                }
+            }
+        }
+    }
+
     private func handleThermalStateChange() async {
         switch ProcessInfo.processInfo.thermalState {
         case .nominal:
@@ -1003,6 +1052,8 @@ final class VideoCaptureController: ObservableObject {
     }
 
     private func fail(_ error: Error) {
+        captureClockSamplingTask?.cancel()
+        captureClockSamplingTask = nil
         state = .failed
         lastErrorMessage = error.localizedDescription
         safetyMessage = "No unverified success is claimed. Any local bytes and durable receipts remain preserved."

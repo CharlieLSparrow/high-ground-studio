@@ -109,4 +109,65 @@ describe("Episode Room capture alignment read model", () => {
       proposalSourceCount: null,
     });
   });
+
+  it("exposes bounded late-clock evidence while preserving the listening gate", () => {
+    const result = episodeRoomCaptureAlignment({
+      sync: {
+        alignment: proposal({
+          clockDriftEvidence: {
+            status: "measured",
+            openingSampleId: "opening-sample",
+            laterSampleId: "stop-sample",
+            observationIntervalSeconds: 3600,
+            residualDriftMilliseconds: 12,
+            observedPartsPerMillion: 3.333,
+            uncertaintyMilliseconds: 19,
+            sampleAccurateClaimed: false,
+          },
+        }),
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "proposal-ready",
+      contractValid: true,
+      clockDriftEvidence: {
+        status: "measured",
+        observationIntervalSeconds: 3600,
+        residualDriftMilliseconds: 12,
+        observedPartsPerMillion: 3.333,
+        uncertaintyMilliseconds: 19,
+        sampleAccurateClaimed: false,
+      },
+      reviewGate: {
+        driftReviewRequired: true,
+        humanApprovalRequired: true,
+      },
+    });
+  });
+
+  it("fails closed when a measured clock drift packet claims sample accuracy", () => {
+    const result = episodeRoomCaptureAlignment({
+      sync: {
+        alignment: proposal({
+          clockDriftEvidence: {
+            status: "measured",
+            openingSampleId: "opening-sample",
+            laterSampleId: "stop-sample",
+            observationIntervalSeconds: 3600,
+            residualDriftMilliseconds: 12,
+            observedPartsPerMillion: 3.333,
+            uncertaintyMilliseconds: 19,
+            sampleAccurateClaimed: true,
+          },
+        }),
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "needs-alignment",
+      contractValid: false,
+      reason: expect.stringContaining("failed its safety contract"),
+    });
+  });
 });

@@ -266,10 +266,48 @@ check(
     && audio.includes('"silence-preserves-wall-clock"')
     && audio.includes("monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds"),
 );
+check(
+  "source clock evidence is bounded and never claims sample accuracy",
+  library.includes("func recordClockEvidence(")
+    && library.includes("samples.count <= 3")
+    && library.includes("profile.clockSamples = Array(ordered.prefix(3))")
+    && library.includes("Array(ordered.suffix(maximumSamples - 3))")
+    && library.includes("never rewrite media timestamps or claim")
+    && library.includes("sample-accurate synchronization"),
+);
+check(
+  "audio collects periodic and stop clock evidence without endangering media",
+  audio.includes("try? await Task.sleep(nanoseconds: 300_000_000_000)")
+    && audio.includes("sampleCount: 1")
+    && audio.includes("let monotonicStoppedNanoseconds = DispatchTime.now().uptimeNanoseconds")
+    && audio.includes("localRecordingLibrary.recordClockEvidence(")
+    && audio.includes("Clock history is supporting evidence. The protected local")
+    && audio.includes("source keeps recording even if one evidence write fails."),
+);
+check(
+  "closing audio clock evidence cannot block media finalization",
+  audio.includes("try? localRecordingLibrary.recordClockEvidence(")
+    && audio.indexOf("try? localRecordingLibrary.recordClockEvidence(")
+      < audio.indexOf("try localRecordingLibrary.setFinalizedFileProtection("),
+);
+check(
+  "video collects periodic and stop clock evidence without endangering media",
+  videoController.includes("try? await Task.sleep(nanoseconds: 300_000_000_000)")
+    && videoController.includes("sampleCount: 1")
+    && videoController.includes("let monotonicStoppedNanoseconds = DispatchTime.now().uptimeNanoseconds")
+    && videoController.includes("library.recordClockEvidence(")
+    && videoController.includes("Supporting clock evidence must never stop protected video."),
+);
+check(
+  "closing video clock evidence cannot block media finalization",
+  videoController.includes("try? library.recordClockEvidence(")
+    && videoController.indexOf("try? library.recordClockEvidence(")
+      < videoController.indexOf("try library.setFinalizedFileProtection("),
+);
 check("source ledger keeps a last-known-good copy", library.includes("recordings-index.last-known-good.json"));
 check("corrupt source ledger becomes read-only", library.includes("ledgerIsWritable = false") && library.includes("throw LibraryError.ledgerQuarantined"));
 check("corrupt source ledger is never reset empty", !library.includes("persist([])"));
-check("crash recovery decodes through declared EOF", library.includes("AVAudioFile(forReading:") && library.includes("readsToEnd: true") && library.includes("decodedFrames == frameCount"));
+check("crash recovery decodes through declared EOF", /AVAudioFile\(\s*forReading:/.test(library) && library.includes("readsToEnd: true") && library.includes("decodedFrames == frameCount"));
 check(
   "video recovery reads every declared track through EOF",
   library.includes("AVAssetReaderTrackOutput")

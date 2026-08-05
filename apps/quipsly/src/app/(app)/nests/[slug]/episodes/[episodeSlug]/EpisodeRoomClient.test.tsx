@@ -279,6 +279,16 @@ describe("EpisodeRoomClient shared writing", () => {
           baselineRecordingAssetId: "recording-audio",
           proposalSourceCount: 2,
           startReceiptId: "start-video",
+          clockDriftEvidence: {
+            status: "not-measured",
+            openingSampleId: null,
+            laterSampleId: null,
+            observationIntervalSeconds: null,
+            residualDriftMilliseconds: null,
+            observedPartsPerMillion: null,
+            uncertaintyMilliseconds: null,
+            sampleAccurateClaimed: false,
+          },
           sampleAccurateClaimed: false,
           reviewRequired: true,
           reviewGate: {

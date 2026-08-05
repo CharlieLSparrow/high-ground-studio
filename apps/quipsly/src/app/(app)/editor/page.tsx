@@ -5433,6 +5433,20 @@ function CloudEditorContent() {
     });
   }, []);
 
+  const useClockDriftStartingPoint = useCallback(() => {
+    const evidence = syncWizardCaptureAlignment?.clockDriftEvidence;
+    if (
+      evidence?.status !== "measured"
+      || evidence.observationIntervalSeconds === null
+      || evidence.residualDriftMilliseconds === null
+    ) return;
+    setSyncReviewIntervalSeconds(String(evidence.observationIntervalSeconds));
+    setSyncReviewResidualMilliseconds(String(evidence.residualDriftMilliseconds));
+    setSyncReviewDriftConfirmed(false);
+    setSyncReviewHumanApproved(false);
+    setMediaImportStatus("Loaded the late device-clock estimate as a comparison starting point. Listen at the later event and correct it before approval; no timeline placement changed.");
+  }, [syncWizardCaptureAlignment?.clockDriftEvidence]);
+
   const pauseSyncPreview = useCallback(() => {
     syncPreviewSpineRef.current?.pause();
     syncPreviewTargetRef.current?.pause();
@@ -9444,6 +9458,32 @@ function CloudEditorContent() {
                         residual {syncWizardSavedReview.driftReview.residualDriftMilliseconds.toFixed(3)} ms /
                         {" "}{syncWizardSavedReview.driftReview.observationIntervalSeconds.toFixed(3)} s ·
                         {" "}{syncWizardSavedReview.driftReview.observedPartsPerMillion.toFixed(3)} ppm
+                      </div>
+                    </div>
+                  )}
+
+                  {syncWizardCaptureAlignment?.clockDriftEvidence.status === "measured" && (
+                    <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-cyan-950" data-testid="guided-sync-clock-drift-evidence">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-black">Device-clock drift witness</div>
+                          <p className="mt-1 max-w-3xl text-[11px] font-bold leading-5">
+                            Quipsly compared an opening network-clock sample with a later sample from this protected master. This survives with provider recording off, but network uncertainty means it is a starting point—not waveform proof and not permission to resample media.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={useClockDriftStartingPoint}
+                          className="min-h-10 rounded-lg border border-cyan-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-cyan-950 hover:bg-cyan-100"
+                        >
+                          Use as comparison start
+                        </button>
+                      </div>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                        <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Observed span</div><div className="mt-1 font-mono text-sm font-black">{syncWizardCaptureAlignment.clockDriftEvidence.observationIntervalSeconds?.toFixed(3)} s</div></div>
+                        <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Clock residual</div><div className="mt-1 font-mono text-sm font-black">{syncWizardCaptureAlignment.clockDriftEvidence.residualDriftMilliseconds! > 0 ? "+" : ""}{syncWizardCaptureAlignment.clockDriftEvidence.residualDriftMilliseconds?.toFixed(3)} ms</div></div>
+                        <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Observed rate</div><div className="mt-1 font-mono text-sm font-black">{syncWizardCaptureAlignment.clockDriftEvidence.observedPartsPerMillion?.toFixed(3)} ppm</div></div>
+                        <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Network bound</div><div className="mt-1 font-mono text-sm font-black">±{syncWizardCaptureAlignment.clockDriftEvidence.uncertaintyMilliseconds?.toFixed(3)} ms</div></div>
                       </div>
                     </div>
                   )}
