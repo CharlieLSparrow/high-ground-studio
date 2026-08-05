@@ -2274,6 +2274,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
 
         let disclosure = app.buttons["Session plan, Notes, goals & tasks"]
+        reveal(disclosure)
         XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
         disclosure.tap()
 
@@ -2433,6 +2434,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         func chooseSession(_ id: String) {
             let chooser = app.buttons["CaptureSessionChooser"]
+            reveal(chooser)
             XCTAssertTrue(chooser.waitForExistence(timeout: 5))
             chooser.tap()
 
@@ -2970,6 +2972,48 @@ final class CaptureLoginExperienceUITests: XCTestCase {
 final class ShareCaptureExtensionUITests: XCTestCase {
     private var captureApp: XCUIApplication!
 
+    private func revealCapture(_ element: XCUIElement) {
+        let visibleBottom = captureApp.frame.maxY - 96
+        if element.exists,
+           element.isHittable,
+           element.frame.minY >= captureApp.frame.minY + 72,
+           element.frame.maxY <= visibleBottom {
+            return
+        }
+
+        let scrollSurface = captureApp.scrollViews["CaptureRecorderView"].firstMatch
+        for searchAbove in [true, false] {
+            for _ in 0..<16 {
+                let shouldMoveContentDown = element.exists
+                    ? element.frame.maxY <= captureApp.frame.minY + 72
+                    : searchAbove
+                if scrollSurface.exists {
+                    let startY = shouldMoveContentDown ? 0.34 : 0.72
+                    let endY = shouldMoveContentDown ? 0.64 : 0.42
+                    scrollSurface
+                        .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: startY))
+                        .press(
+                            forDuration: 0.05,
+                            thenDragTo: scrollSurface.coordinate(
+                                withNormalizedOffset: CGVector(dx: 0.5, dy: endY)
+                            )
+                        )
+                    RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+                } else if shouldMoveContentDown {
+                    captureApp.swipeDown()
+                } else {
+                    captureApp.swipeUp()
+                }
+                if element.exists,
+                   element.isHittable,
+                   element.frame.minY >= captureApp.frame.minY + 72,
+                   element.frame.maxY <= visibleBottom {
+                    return
+                }
+            }
+        }
+    }
+
     private func navigateSafari(_ safari: XCUIApplication, to url: String, expectedHost: String) {
         let address = safari.textFields["Address"].firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 5), safari.debugDescription)
@@ -3125,7 +3169,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=record"]
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
-        XCTAssertTrue(captureApp.descendants(matching: .any)["CaptureQuickEntrySyncCard"].waitForExistence(timeout: 10))
+        let syncCard = captureApp.staticTexts["1 quick capture waiting"]
+        revealCapture(syncCard)
+        XCTAssertTrue(syncCard.waitForExistence(timeout: 10))
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Imported 1 protected Share Sheet source")
         ).firstMatch.exists)
@@ -3141,7 +3187,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=record"]
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
-        XCTAssertTrue(captureApp.staticTexts["1 quick capture waiting"].waitForExistence(timeout: 8))
+        let recoveredStatus = captureApp.staticTexts["1 quick capture waiting"]
+        revealCapture(recoveredStatus)
+        XCTAssertTrue(recoveredStatus.waitForExistence(timeout: 8))
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "The same URL must recover after terminating and relaunching Capture.")
@@ -3159,7 +3207,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launchArguments = ["--capture-ui-preview", otherOwnerArgument, "--capture-ui-preview-tab=record"]
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
-        XCTAssertFalse(captureApp.staticTexts["1 quick capture waiting"].exists)
+        let otherOwnerStatus = captureApp.staticTexts["1 quick capture waiting"]
+        revealCapture(otherOwnerStatus)
+        XCTAssertFalse(otherOwnerStatus.exists)
         XCTAssertFalse(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists, "A different verified owner must not see the first owner's protected URL.")
@@ -3172,7 +3222,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=record"]
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
-        XCTAssertTrue(captureApp.staticTexts["1 quick capture waiting"].waitForExistence(timeout: 8))
+        let restoredStatus = captureApp.staticTexts["1 quick capture waiting"]
+        revealCapture(restoredStatus)
+        XCTAssertTrue(restoredStatus.waitForExistence(timeout: 8))
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@", "iana.org")
         ).firstMatch.exists)
@@ -3224,7 +3276,9 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         captureApp.launchArguments = ["--capture-ui-preview", ownerArgument, "--capture-ui-preview-tab=record"]
         captureApp.launch()
         XCTAssertTrue(captureApp.navigationBars["Record"].waitForExistence(timeout: 12))
-        XCTAssertTrue(captureApp.descendants(matching: .any)["CaptureQuickEntrySyncCard"].waitForExistence(timeout: 10))
+        let syncCard = captureApp.staticTexts["1 quick capture waiting"]
+        revealCapture(syncCard)
+        XCTAssertTrue(syncCard.waitForExistence(timeout: 10))
         XCTAssertTrue(captureApp.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Imported 1 protected Share Sheet source")
         ).firstMatch.exists)
