@@ -42,6 +42,49 @@ export type AudioMasteryReviewSummary = {
   rejectionCount: number;
 };
 
+export type AudioMasterPromotionReceipt = {
+  id: string;
+  jobId: string;
+  reviewReceiptId: string | null;
+  operation: "promote" | "withdraw";
+  reason: string | null;
+  occurredAt: string;
+  actorEmail: string;
+  candidatePlaybackUrl: string | null;
+};
+
+export type AudioMasterPromotionSummary = {
+  active: boolean;
+  latest: AudioMasterPromotionReceipt | null;
+  activePromotion: AudioMasterPromotionReceipt | null;
+  promoteCount: number;
+  withdrawalCount: number;
+  candidatePlaybackUrl: string | null;
+  boundaries: {
+    originalRemainsSourceTruth: true;
+    episodeSpineUnchanged: true;
+    deliveryEncodingNotCreated: true;
+    publicationNotStarted: true;
+    withdrawalPreservesHistory: true;
+  };
+};
+
+const EMPTY_AUDIO_MASTER_PROMOTION: AudioMasterPromotionSummary = {
+  active: false,
+  latest: null,
+  activePromotion: null,
+  promoteCount: 0,
+  withdrawalCount: 0,
+  candidatePlaybackUrl: null,
+  boundaries: {
+    originalRemainsSourceTruth: true,
+    episodeSpineUnchanged: true,
+    deliveryEncodingNotCreated: true,
+    publicationNotStarted: true,
+    withdrawalPreservesHistory: true,
+  },
+};
+
 export function audioMasteryAuditionGains(
   sourceIntegratedLufs: number,
   masteredIntegratedLufs: number,
@@ -181,6 +224,7 @@ function AudioMasteryComparisonGraph({ source, mastered, targetLufs }: {
 }
 
 export function AudioMasteryAudition({
+  masteryJobId,
   sourceUrl,
   masteredUrl,
   source,
@@ -189,9 +233,13 @@ export function AudioMasteryAudition({
   maximumTruePeakDbtp,
   diagnosis,
   review = { latest: null, approvalCount: 0, rejectionCount: 0 },
+  promotion = EMPTY_AUDIO_MASTER_PROMOTION,
   isReviewing = false,
+  isPromoting = false,
   onReview,
+  onPromotion,
 }: {
+  masteryJobId?: string | null;
   sourceUrl: string;
   masteredUrl: string;
   source: AudioMasteryMeasurement;
@@ -200,8 +248,11 @@ export function AudioMasteryAudition({
   maximumTruePeakDbtp: number;
   diagnosis: AudioSignalDiagnosisSummary | null;
   review?: AudioMasteryReviewSummary;
+  promotion?: AudioMasterPromotionSummary;
   isReviewing?: boolean;
+  isPromoting?: boolean;
   onReview?: (decision: "approved" | "rejected", evidence: AudioMasteryPlaybackReviewEvidence, note: string | null) => Promise<void>;
+  onPromotion?: (operation: "promote" | "withdraw", reviewReceiptId: string | null, reason: string | null) => Promise<void>;
 }) {
   const sourceRef = useRef<HTMLAudioElement>(null);
   const masteredRef = useRef<HTMLAudioElement>(null);
@@ -215,7 +266,15 @@ export function AudioMasteryAudition({
   const [observedMonitorModes, setObservedMonitorModes] = useState<AudioMasteryMonitorMode[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
+  const [withdrawalReason, setWithdrawalReason] = useState("");
+  const [promotionMessage, setPromotionMessage] = useState("");
   const duration = Math.max(source.durationSeconds, mastered.durationSeconds, 0.001);
+  const thisPreviewPromoted = Boolean(
+    promotion.active
+    && masteryJobId
+    && promotion.activePromotion?.jobId === masteryJobId,
+  );
+  const anotherPreviewPromoted = promotion.active && !thisPreviewPromoted;
   const moments = useMemo(() => audioMasteryReviewMoments(source, mastered), [mastered, source]);
   const auditionGains = useMemo(
     () => audioMasteryAuditionGains(source.integratedLufs, mastered.integratedLufs, monitorMode),
@@ -307,6 +366,29 @@ export function AudioMasteryAudition({
     }
   };
 
+  const changePromotion = async (operation: "promote" | "withdraw") => {
+    if (!onPromotion) return;
+    const reviewReceiptId = operation === "promote" && review.latest?.decision === "approved"
+      ? review.latest.id
+      : promotion.activePromotion?.reviewReceiptId ?? null;
+    setPromotionMessage(operation === "promote"
+      ? "Promoting the approved preview as a delivery candidate…"
+      : "Withdrawing the delivery candidate while preserving its history…");
+    try {
+      await onPromotion(
+        operation,
+        reviewReceiptId,
+        operation === "withdraw" ? withdrawalReason.trim() || null : null,
+      );
+      setPromotionMessage(operation === "promote"
+        ? "Delivery candidate promoted. The source, episode spine, delivery encoding, and publication remain unchanged."
+        : "Promotion withdrawn. The source, candidate bytes, review, and promotion history remain available.");
+      if (operation === "withdraw") setWithdrawalReason("");
+    } catch (error) {
+      setPromotionMessage(error instanceof Error ? error.message : "The mastering promotion could not be changed.");
+    }
+  };
+
   const passes = mastered.integratedLufs >= targetLufs - 1
     && mastered.integratedLufs <= targetLufs + 1
     && mastered.truePeakDbtp <= maximumTruePeakDbtp;
@@ -328,6 +410,8 @@ export function AudioMasteryAudition({
               Verified preview ready. {diagnosis ? `${diagnosis.observations.length} signal candidate${diagnosis.observations.length === 1 ? "" : "s"} to review.` : "Add decoded signal evidence to this legacy preview."}
             </p>
             {review.latest ? <p className="mt-1 text-[9px] font-black text-sky-200">Latest decision: {review.latest.decision} · {new Date(review.latest.reviewedAt).toLocaleString()}</p> : null}
+            {thisPreviewPromoted ? <p className="mt-1 text-[9px] font-black text-emerald-200">This preview is the active delivery candidate · source and episode spine unchanged</p> : null}
+            {anotherPreviewPromoted ? <p className="mt-1 text-[9px] font-black text-amber-200">Another mastering pass remains the active delivery candidate</p> : null}
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] ${passes ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-amber-700 bg-amber-950 text-amber-200"}`}>
             {passes ? "Target verified" : "Needs attention"}
@@ -521,6 +605,24 @@ export function AudioMasteryAudition({
         <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={isReviewing || !reviewCoverage.approvalReady} onClick={() => void saveReview("approved")} className="rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Approve as heard<span className="mt-1 block text-[9px] opacity-75">Creates a receipt only; promotion stays separate.</span></button><button type="button" disabled={isReviewing || masteredListenedSecondBins.length === 0 || reviewNote.trim().length < 3} onClick={() => void saveReview("rejected")} className="rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Reject preview<span className="mt-1 block text-[9px] opacity-75">Keeps both files and records what failed.</span></button></div>
         {reviewMessage ? <p role="status" className="mt-3 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{reviewMessage}</p> : null}
         {review.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest retained decision {review.latest.id.slice(0, 12)} · {review.approvalCount} approval{review.approvalCount === 1 ? "" : "s"} · {review.rejectionCount} rejection{review.rejectionCount === 1 ? "" : "s"}. A later receipt does not erase this history.</p> : null}
+      </section> : null}
+      {onPromotion ? <section className={`mt-3 rounded-xl border p-3 ${thisPreviewPromoted ? "border-emerald-700 bg-emerald-950/40" : promotion.active ? "border-amber-700 bg-amber-950/30" : "border-sky-700 bg-sky-950/30"}`} aria-label="Mastering delivery candidate">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-black">Delivery candidate</div>
+            <p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-300">Promotion is a reversible editorial decision after playback approval. It does not replace the immutable source, change the episode spine, encode RSS audio, upload, or publish.</p>
+          </div>
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${thisPreviewPromoted ? "border-emerald-600 bg-emerald-950 text-emerald-200" : promotion.active ? "border-amber-700 bg-slate-950 text-amber-200" : "border-sky-700 bg-slate-950 text-sky-200"}`}>{thisPreviewPromoted ? "This preview active" : promotion.active ? "Another preview active" : "Not promoted"}</span>
+        </div>
+        {promotion.active ? <>
+          <p className={`mt-3 rounded-lg border bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 ${thisPreviewPromoted ? "border-emerald-800 text-emerald-200" : "border-amber-800 text-amber-200"}`}>{thisPreviewPromoted ? "This preview is" : `Mastering job ${promotion.activePromotion?.jobId.slice(0, 12) || "unknown"} is`} promoted from listening receipt {promotion.activePromotion?.reviewReceiptId?.slice(0, 12) || "unknown"}. It is ready to be selected by a later export recipe; no delivery artifact exists yet.</p>
+          <label className="mt-3 block text-[9px] font-black text-slate-300">Why withdraw this candidate?
+            <textarea value={withdrawalReason} onChange={(event) => setWithdrawalReason(event.target.value)} rows={2} placeholder="Required. For example: heard pumping in the final section." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] text-white focus:border-rose-400 focus:outline-none" />
+          </label>
+          <button type="button" disabled={isPromoting || withdrawalReason.trim().length < 3} onClick={() => void changePromotion("withdraw")} className="mt-2 w-full rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">Withdraw delivery candidate<span className="mt-1 block text-[9px] opacity-75">Preserves the preview and every review/promotion receipt.</span></button>
+        </> : review.latest?.decision === "approved" ? <button type="button" disabled={isPromoting} onClick={() => void changePromotion("promote")} className="mt-3 w-full rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:opacity-50">Promote approved preview<span className="mt-1 block text-[9px] opacity-75">Creates the active delivery-candidate receipt. Source, timeline, encoding, upload, and publication remain untouched.</span></button> : <p className="mt-3 rounded-lg border border-amber-800 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-amber-200">Complete the playback comparison and make the latest decision an approval before promotion is available.</p>}
+        {promotion.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest promotion event {promotion.latest.id.slice(0, 12)} · {promotion.promoteCount} promotion{promotion.promoteCount === 1 ? "" : "s"} · {promotion.withdrawalCount} withdrawal{promotion.withdrawalCount === 1 ? "" : "s"}. History is append-only.</p> : null}
+        {promotionMessage ? <p role="status" className="mt-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{promotionMessage}</p> : null}
       </section> : null}
       <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">
         Both curves come from complete BS.1770 decodes at one-second display resolution. The preview is a separate 24-bit WAV and has not replaced or modified the source.

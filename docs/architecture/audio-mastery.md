@@ -1,6 +1,6 @@
 # Audio Mastery Architecture
 
-Date: 2026-08-03
+Date: 2026-08-05
 
 Quipsly audio mastery is an evidence pipeline, not a destructive effect button.
 The immutable capture/import remains source truth. Automated work produces a
@@ -44,7 +44,11 @@ flowchart LR
   R --> V["Independent complete output measurement"]
   V -->|"passes"| A["Registered audio-master-preview variant"]
   V -->|"fails"| F["Terminal failure; derivative removed"]
-  A --> H["Explicit approval required before promotion"]
+  A --> H["Playback-bound approval or rejection receipt"]
+  H -->|"latest exact approval"| C["Active delivery-candidate receipt"]
+  C --> X["Later export recipe may select candidate"]
+  C --> W["Explicit withdrawal receipt"]
+  W --> H
 ```
 
 Every measurement is explicitly bound to the selected mastering profile. This
@@ -83,6 +87,22 @@ temporary media roots, and output remeasurement. The Nest control plane
 rechecks source and derivative bytes before it registers an
 `audio-master-preview` variant.
 
+Approval and promotion are intentionally different append-only decisions.
+`StudioAudioMasterReviewReceipt` proves which exact source generation and
+verified preview the reviewer compared, including the browser playback
+coverage that made the decision available. It does not claim that JavaScript
+can prove audibility or attention. `StudioAudioMasterPromotionReceipt` then
+makes that exact approved preview the asset's active delivery candidate.
+Promotion is serialized at the project/asset boundary, not at one processing
+job, so two mastering passes cannot both become current. A withdrawal appends
+another receipt and preserves the preview, review, promotion, and source.
+
+The historical `audio-master-candidate` variant is discoverability metadata,
+not current-state authority. Episode inventory and future export recipes must
+project current state from the latest asset-level promotion event. Promotion
+does not change the episode spine, create an RSS/delivery encoding, upload to a
+publisher, or publish.
+
 ## Automation boundary
 
 This pass may automatically:
@@ -105,6 +125,15 @@ This pass does not automatically:
   waveform shape;
 - apply a repair merely because a threshold was crossed;
 - publish or export a final episode.
+
+After the automatic pass, the explicit lifecycle may:
+
+- append an approval or rejection bound to source, preview, and playback
+  evidence;
+- promote only the latest completed mastering job with the latest exact
+  approval;
+- expose one active asset-level delivery candidate to downstream inventory;
+- withdraw that candidate with a required reason while preserving history.
 
 Those capabilities should become their own observable proposal nodes with
 before/after listening, exact changed regions, reversible parameters, and
@@ -159,7 +188,8 @@ playhead when they need to judge the verified final output level.
 ## Next qualified layers
 
 1. generation-bound GCS manifest/outbox and database-free cloud execution;
-2. explicit preview approval/rejection and promotion receipts;
+2. export-recipe selection, delivery encoding, proof-listen, and publisher
+   handoff as separate receipt-bearing stages;
 3. evaluated dialogue-aware spectral diagnosis proposals for noise, hum, clipping, plosives,
    sibilance, room tone, and speaker-to-speaker loudness consistency;
 4. A/B and loudness-matched listening so “better” is never just “louder”;

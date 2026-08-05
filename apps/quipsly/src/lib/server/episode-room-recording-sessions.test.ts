@@ -134,6 +134,7 @@ describe("Episode Room recording-session projection", () => {
         purpose: true,
         status: true,
         provider: true,
+        captureGroupId: true,
         recordingStartedAt: true,
         endedAt: true,
         updatedAt: true,

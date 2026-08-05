@@ -3305,7 +3305,7 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace             StudioWorkspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace             StudioWorkspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   documents             StudioDocument[]
   tags                  StudioTag[]
   tagAliases            StudioTagAlias[]
@@ -3313,7 +3313,7 @@ model StudioProject {
   tagMergeReceipts      StudioTagMergeReceipt[]
   viewDefinitions       StudioViewDefinition[]
   knowledgeNodes        StudioKnowledgeNode[]
-  manuscript            StudioManuscript?                @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  manuscript            StudioManuscript?                   @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
   mediaAssets           StudioMediaAsset[]
   mediaBins             MediaBin[]
   episodeProductions    StudioEpisodeProduction[]
@@ -3329,6 +3329,7 @@ model StudioProject {
   assetAttachments      StudioAssetAttachment[]
   assetProcessingJobs   StudioAssetProcessingJob[]
   audioMasterReviews    StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions StudioAudioMasterPromotionReceipt[]
   sourceUnits           StudioSourceUnit[]
   personalSourceFilings StudioPersonalSourceFiling[]
   sourceAnnotations     StudioSourceAnnotation[]
@@ -3668,9 +3669,10 @@ model StudioAssetProcessingJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project            StudioProject?                   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset              StudioMediaAsset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  audioMasterReviews StudioAudioMasterReviewReceipt[]
+  project               StudioProject?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset                 StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  audioMasterReviews    StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions StudioAudioMasterPromotionReceipt[]
 
   @@index([assetId, status, createdAt])
   @@index([projectId, status])
@@ -3680,6 +3682,11 @@ model StudioAssetProcessingJob {
 enum StudioAudioMasterReviewDecision {
   APPROVED
   REJECTED
+}
+
+enum StudioAudioMasterPromotionOperation {
+  PROMOTE
+  WITHDRAW
 }
 
 // A listening decision is append-only and source/preview bound. Approval does
@@ -3703,13 +3710,49 @@ model StudioAudioMasterReviewReceipt {
   occurredAt       DateTime
   createdAt        DateTime                        @default(now())
 
-  project    StudioProject            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  asset      StudioMediaAsset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  masteryJob StudioAssetProcessingJob @relation(fields: [masteryJobId], references: [id], onDelete: Cascade)
+  project    StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset      StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  masteryJob StudioAssetProcessingJob            @relation(fields: [masteryJobId], references: [id], onDelete: Cascade)
+  promotions StudioAudioMasterPromotionReceipt[]
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudioMasterReview_project_actor_request_key")
   @@index([masteryJobId, createdAt], map: "StudioAudioMasterReview_job_created_idx")
   @@index([projectId, assetId, createdAt], map: "StudioAudioMasterReview_project_asset_created_idx")
+}
+
+// Promotion is a separate append-only decision after a playback-bound review.
+// It makes the verified derivative a delivery candidate; it never replaces the
+// immutable source, changes the episode spine, encodes a delivery file, or
+// publishes. Withdrawal preserves the candidate and every prior receipt.
+model StudioAudioMasterPromotionReceipt {
+  id               String                              @id @default(cuid())
+  projectId        String
+  assetId          String
+  masteryJobId     String
+  reviewReceiptId  String?
+  actorUserId      String?
+  actorEmail       String
+  clientRequestId  String
+  operation        StudioAudioMasterPromotionOperation
+  profileId        String
+  sourceSha256     String
+  sourceGeneration String
+  previewSha256    String
+  requestSha256    String
+  evidenceJson     Json
+  reason           String?
+  occurredAt       DateTime
+  createdAt        DateTime                            @default(now())
+
+  project       StudioProject                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset         StudioMediaAsset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  masteryJob    StudioAssetProcessingJob        @relation(fields: [masteryJobId], references: [id], onDelete: Cascade)
+  reviewReceipt StudioAudioMasterReviewReceipt? @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudioMasterPromotion_project_actor_request_key")
+  @@index([masteryJobId, occurredAt], map: "StudioAudioMasterPromotion_job_occurred_idx")
+  @@index([projectId, assetId, occurredAt], map: "StudioAudioMasterPromotion_project_asset_occurred_idx")
+  @@index([reviewReceiptId], map: "StudioAudioMasterPromotion_review_idx")
 }
 
 model StudioSourceUnit {
@@ -4900,13 +4943,14 @@ model StudioMediaAsset {
   updatedAt DateTime @updatedAt
 
   projects                StudioProject[]
-  mediaBin                MediaBin?                        @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  mediaBin                MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
   clips                   MediaClip[]
   mediaTags               StudioMediaTag[]
   assetAttachments        StudioAssetAttachment[]
   variants                StudioAssetVariant[]
   processingJobs          StudioAssetProcessingJob[]
   audioMasterReviews      StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
   sourceUnits             StudioSourceUnit[]
   workflowJobs            StudioWorkflowJob[]
   transcriptJobs          TranscriptJob[]

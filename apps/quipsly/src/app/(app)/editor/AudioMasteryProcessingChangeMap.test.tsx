@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { AudioMasteryAudition } from "./AudioMasteryAudition";
 import type { AudioMasteryMeasurement } from "./AudioMasteryAudition";
+import type { AudioMasterPromotionSummary } from "./AudioMasteryAudition";
 import {
   audioProcessingAdjacentMoment,
   audioProcessingAttentionMoments,
@@ -24,6 +25,34 @@ function measurement(integratedLufs: number, shortTermLufs: number[]): AudioMast
       integratedLufs,
       truePeakDbtp: -3,
     })),
+  };
+}
+
+function promotion(active = false): AudioMasterPromotionSummary {
+  const latest = active ? {
+    id: "promotion-1",
+    jobId: "job-1",
+    reviewReceiptId: "review-1",
+    operation: "promote" as const,
+    reason: null,
+    occurredAt: "2026-08-05T12:00:00.000Z",
+    actorEmail: "editor@example.test",
+    candidatePlaybackUrl: "/master.wav",
+  } : null;
+  return {
+    active,
+    latest,
+    activePromotion: latest,
+    promoteCount: active ? 1 : 0,
+    withdrawalCount: 0,
+    candidatePlaybackUrl: active ? "/master.wav" : null,
+    boundaries: {
+      originalRemainsSourceTruth: true,
+      episodeSpineUnchanged: true,
+      deliveryEncodingNotCreated: true,
+      publicationNotStarted: true,
+      withdrawalPreservesHistory: true,
+    },
   };
 }
 
@@ -59,5 +88,72 @@ describe("AudioMasteryAudition processing transparency", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Next change/i }));
     expect(screen.getByRole("button", { name: "15 sec" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("keeps playback approval and delivery-candidate promotion as separate decisions", async () => {
+    const source = measurement(-24, [-30, -26, -22, -18]);
+    const mastered = measurement(-16, [-21, -18, -14, -11]);
+    const onPromotion = jest.fn().mockResolvedValue(undefined);
+    render(<AudioMasteryAudition
+      masteryJobId="job-1"
+      sourceUrl="/source.wav"
+      masteredUrl="/master.wav"
+      source={source}
+      mastered={mastered}
+      targetLufs={-16}
+      maximumTruePeakDbtp={-1}
+      diagnosis={null}
+      review={{
+        latest: {
+          id: "review-1",
+          jobId: "job-1",
+          decision: "approved",
+          note: "Heard through.",
+          reviewedAt: "2026-08-05T11:00:00.000Z",
+          actorEmail: "editor@example.test",
+        },
+        approvalCount: 1,
+        rejectionCount: 0,
+      }}
+      promotion={promotion(false)}
+      onPromotion={onPromotion}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open full audition desk/i }));
+    expect(screen.getByRole("region", { name: "Mastering delivery candidate" })).toHaveTextContent(/does not replace the immutable source/i);
+    fireEvent.click(screen.getByRole("button", { name: /promote approved preview/i }));
+    await waitFor(() => expect(onPromotion).toHaveBeenCalledWith("promote", "review-1", null));
+  });
+
+  it("requires an explicit reason to withdraw while preserving the candidate history", async () => {
+    const source = measurement(-24, [-30, -26, -22, -18]);
+    const mastered = measurement(-16, [-21, -18, -14, -11]);
+    const onPromotion = jest.fn().mockResolvedValue(undefined);
+    render(<AudioMasteryAudition
+      masteryJobId="job-1"
+      sourceUrl="/source.wav"
+      masteredUrl="/master.wav"
+      source={source}
+      mastered={mastered}
+      targetLufs={-16}
+      maximumTruePeakDbtp={-1}
+      diagnosis={null}
+      promotion={promotion(true)}
+      onPromotion={onPromotion}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open full audition desk/i }));
+    const withdraw = screen.getByRole("button", { name: /withdraw delivery candidate/i });
+    expect(withdraw).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/why withdraw this candidate/i), {
+      target: { value: "Pumping is audible near the ending." },
+    });
+    fireEvent.click(withdraw);
+    await waitFor(() => expect(onPromotion).toHaveBeenCalledWith(
+      "withdraw",
+      "review-1",
+      "Pumping is audible near the ending.",
+    ));
+    expect(screen.getByText(/history is append-only/i)).toBeInTheDocument();
   });
 });

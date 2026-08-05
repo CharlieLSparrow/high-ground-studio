@@ -27,7 +27,7 @@ import {
 import { RemotionComposition } from "./RemotionComposition";
 import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
-import { AudioMasteryAudition, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
+import { AudioMasteryAudition, type AudioMasterPromotionSummary, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
@@ -230,6 +230,7 @@ type AudioMasteryClientStatus = {
     approvalCount: number;
     rejectionCount: number;
   };
+  promotion: AudioMasterPromotionSummary;
   error: string | null;
   updatedAt: string | null;
   boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedPreview: true; explicitApprovalStillRequired: true };
@@ -6210,6 +6211,60 @@ function CloudEditorContent() {
     }
   }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
 
+  const operateAudioMasteryPromotion = useCallback(async (
+    asset: ImportedMediaAsset,
+    operation: "promote" | "withdraw",
+    reviewReceiptId: string | null,
+    reason: string | null,
+  ) => {
+    const current = audioMasteryStatusByAsset[asset.id] ?? audioMasteryStatusByAsset[asset.sourceId];
+    if (!current?.jobId) throw new Error("The verified mastering job is unavailable. Refresh before changing its promotion.");
+    const targetJobId = operation === "withdraw"
+      ? current.promotion.activePromotion?.jobId || current.jobId
+      : current.jobId;
+    const jobKey = `${asset.id}:audio-mastery-promotion`;
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    try {
+      const response = await fetch("/api/media-vault/audio-mastery/promotion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectSlug: resolvedProjectSlug,
+          assetId: asset.id,
+          sourceId: asset.sourceId,
+          jobId: targetJobId,
+          clientRequestId: crypto.randomUUID(),
+          operation,
+          reviewReceiptId,
+          reason,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean;
+        error?: string;
+        promotion?: AudioMasterPromotionSummary;
+      } | null;
+      if (!response.ok || !payload?.ok || !payload.promotion) {
+        throw new Error(payload?.error || `Mastering promotion returned HTTP ${response.status}.`);
+      }
+      setAudioMasteryStatusByAsset((previous) => {
+        const existing = previous[asset.id] ?? previous[asset.sourceId] ?? current;
+        const next = { ...existing, promotion: payload.promotion! };
+        return { ...previous, [asset.id]: next, [asset.sourceId]: next };
+      });
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(operation === "promote"
+        ? `Promoted the approved preview for ${asset.originalName} as a delivery candidate. Source, spine, encoding, upload, and publication are unchanged.`
+        : `Withdrew the delivery candidate for ${asset.originalName}. The preview and append-only decision history remain available.`);
+    } finally {
+      setQueueingMediaJobKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(jobKey);
+        return next;
+      });
+    }
+  }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
+
   const operateAudioTreatment = useCallback(async (asset: ImportedMediaAsset) => {
     const jobKey = `${asset.id}:audio-treatment`;
     const updateStatus = (status: AudioTreatmentClientStatus) => setAudioTreatmentStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
@@ -9707,6 +9762,7 @@ function CloudEditorContent() {
                 const isCollaborationProxyWorking = queueingMediaJobKeys.has(`${asset.id}:collaboration-proxy`);
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
                 const isAudioMasteryReviewing = queueingMediaJobKeys.has(`${asset.id}:audio-mastery-review`);
+                const isAudioMasteryPromoting = queueingMediaJobKeys.has(`${asset.id}:audio-mastery-promotion`);
                 const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
                 const isAudioSignalProfileWorking = queueingMediaJobKeys.has(`${asset.id}:audio-signal-profile`);
                 const isSourceTranscriptWorking = queueingMediaJobKeys.has(`${asset.id}:source-transcript`);
@@ -10022,6 +10078,7 @@ function CloudEditorContent() {
                           </div>
                           {audioMasteryStatus.derivative?.playbackUrl && audioMasteryStatus.proposal && (
                             <AudioMasteryAudition
+                              masteryJobId={audioMasteryStatus.jobId}
                               sourceUrl={asset.playbackUrl}
                               masteredUrl={audioMasteryStatus.derivative.playbackUrl}
                               source={audioMasteryStatus.sourceMeasurement}
@@ -10030,8 +10087,11 @@ function CloudEditorContent() {
                               maximumTruePeakDbtp={audioMasteryStatus.proposal.profile.maximumTruePeakDbtp}
                               diagnosis={audioMasteryStatus.signalDiagnosis}
                               review={audioMasteryStatus.review}
+                              promotion={audioMasteryStatus.promotion}
                               isReviewing={isAudioMasteryReviewing}
+                              isPromoting={isAudioMasteryPromoting}
                               onReview={(decision, evidence, note) => operateAudioMasteryReview(asset, decision, evidence, note)}
+                              onPromotion={(operation, reviewReceiptId, reason) => operateAudioMasteryPromotion(asset, operation, reviewReceiptId, reason)}
                             />
                           )}
                         </div>

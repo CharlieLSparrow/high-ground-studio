@@ -1,6 +1,22 @@
 # Current State
 
-Date: 2026-08-04
+Date: 2026-08-05
+
+## Audio master delivery-candidate checkpoint
+
+- Verified local mastery previews now have a separate append-only promotion and
+  withdrawal ledger after playback-bound review. Promotion requires the latest
+  exact approval, current source/preview bytes, and the latest mastering job;
+  current state is projected at the asset boundary rather than inferred from a
+  historical variant.
+- Episode inventory and the rendered editor expose the candidate while keeping
+  the immutable source, episode spine, delivery encoding, publisher upload,
+  and publication unchanged. Withdrawal requires a reason and preserves all
+  bytes and receipts.
+- The retained HGO operator completed a real Episode 8 mastering pass and
+  synchronized source/preview audition. The human listening and promotion gate
+  correctly remained closed. See
+  `docs/coordination/2026-08-05-audio-master-delivery-candidate.md`.
 
 ## Browser and iPhone Session recording checkpoint
 

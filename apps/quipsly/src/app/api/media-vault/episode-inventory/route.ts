@@ -5,6 +5,7 @@ import {
   canonicalEpisodeImportedMedia,
 } from "@/lib/episode-production/imported-media";
 import { getPrismaClient } from "@/lib/prisma";
+import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import {
@@ -136,6 +137,12 @@ function publicAsset(asset: any, proxies: any[] = []): any {
   const variants = Array.isArray(asset.variants) ? asset.variants.map(publicVariant) : [];
   const jobs = Array.isArray(asset.workflowJobs) ? asset.workflowJobs.map(publicJob) : [];
   const attachments = Array.isArray(asset.assetAttachments) ? asset.assetAttachments.map(publicAttachment) : [];
+  const audioMasterPromotionEvents = Array.isArray(asset.audioMasterPromotions)
+    ? asset.audioMasterPromotions
+    : [];
+  const audioMasterDeliveryCandidate = episodeInventoryAudioMasterCandidate(
+    audioMasterPromotionEvents,
+  );
   const proxyAssets: any[] = proxies.map((proxy) => publicAsset(proxy, [])).filter(Boolean);
   const hasProxy =
     proxyAssets.length > 0 ||
@@ -160,12 +167,14 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     variants,
     jobs,
     proxyAssets,
+    audioMasterDeliveryCandidate,
     readiness: {
       sourceSafe: asset.isProxy !== true,
       hasProxy,
       needsProxy: asset.isProxy !== true && String(asset.mimeType || "").startsWith("video/") && !hasProxy,
       hasThumbnail: Boolean(asset.thumbnailUrl) || variants.some((variant: any) => String(variant.kind || "").toLowerCase().includes("thumb")),
       hasWorkflowJobs: jobs.length > 0,
+      hasActiveAudioMasterCandidate: audioMasterDeliveryCandidate?.active === true,
     },
   };
 }
@@ -400,6 +409,11 @@ export async function GET(request: Request) {
       include: {
         variants: { orderBy: { updatedAt: "desc" } },
         workflowJobs: { orderBy: { createdAt: "desc" }, take: 8 },
+        audioMasterPromotions: {
+          where: { projectId: project.id },
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          take: 20,
+        },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },
           orderBy: { updatedAt: "desc" },
@@ -421,6 +435,11 @@ export async function GET(request: Request) {
       include: {
         variants: { orderBy: { updatedAt: "desc" } },
         workflowJobs: { orderBy: { createdAt: "desc" }, take: 8 },
+        audioMasterPromotions: {
+          where: { projectId: project.id },
+          orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+          take: 20,
+        },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },
           orderBy: { updatedAt: "desc" },
@@ -502,6 +521,9 @@ export async function GET(request: Request) {
     count + (recording.transcriptJobs || []).filter((job: any) => job.status === "COMPLETED").length
   ), 0);
   const unresolvedRecordingReferenceCount = imported.filter((item: any) => item.unresolvedRecordingReference).length;
+  const activeAudioMasterCandidateCount = rawAssets.filter((asset: any) => (
+    asset.audioMasterPromotions?.[0]?.operation === "PROMOTE"
+  )).length;
   const mediaHeldCount = recordingEvidence.length - releasedRecordingEvidence.length;
   const transcriptHeldCount = recordingEvidence.length - transcriptReleasedRecordingEvidence.length;
 
@@ -554,6 +576,7 @@ export async function GET(request: Request) {
       transcriptHeldCount,
       unresolvedRecordingReferenceCount,
       attachedAssetCount: rawAssets.length,
+      activeAudioMasterCandidateCount,
     },
     safeNextActions,
     actions: {

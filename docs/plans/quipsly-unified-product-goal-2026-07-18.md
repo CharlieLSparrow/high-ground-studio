@@ -7519,3 +7519,30 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   playback, opening-cue review, and late-drift review. Provider recording may
   remain disabled. See
   `docs/coordination/2026-08-05-browser-iphone-take-rendezvous.md`.
+
+## 2026-08-05 audio master delivery-candidate checkpoint
+
+- Added an append-only asset-level promotion and withdrawal ledger after the
+  existing playback-bound review. Promotion requires the latest completed
+  mastering job and latest exact approval; withdrawal requires a reason and
+  preserves every source, preview, variant, review, and promotion receipt.
+- Promotion actions are serialized at the project/asset boundary, exact retries
+  are idempotent, changed retries conflict, and source/preview verification
+  failures remain bounded. A historical candidate variant is never treated as
+  current state without the latest promotion event.
+- Episode inventory and the editor now expose the active delivery candidate
+  while saying explicitly that the immutable source and episode spine remain
+  unchanged and no delivery encoding, upload, or publication has occurred.
+- Operated the real retained Episode 8 source through complete-decode
+  measurement, 24-bit preview creation, independent verification, synchronized
+  source/preview playback, matched and delivery monitoring, and processing-map
+  navigation. Approval stayed disabled and promotion stayed unavailable
+  because no human listening claim was made.
+- Seven focused suites pass 38 tests, and the complete Quipsly regression passes
+  312 suites and 1,630 tests with operation suites intentionally opt-in.
+  Quipsly TypeScript, Prisma validation, local migration status, optimized
+  production build, scoped diff checks, and the signed-in rendered operation
+  pass. The next boundary is a genuine human proof-listen followed by candidate
+  promotion, then a separately verified export recipe and encoded delivery
+  artifact. See
+  `docs/coordination/2026-08-05-audio-master-delivery-candidate.md`.

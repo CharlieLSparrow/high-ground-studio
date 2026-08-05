@@ -63,7 +63,7 @@ export async function readAudioMasterReviewSummary(input: { prisma: any; jobId: 
   return { latest: latest ? publicReceipt(latest) : null, approvalCount: approvals, rejectionCount: rejections };
 }
 
-async function reviewContext(input: Coordinates) {
+export async function loadAudioMasteryReviewContext(input: Coordinates) {
   const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true } });
   if (!project) throw new AudioMasteryReviewError("Nest not found for mastering review.", 404, "AUDIO_MASTER_REVIEW_PROJECT_NOT_FOUND");
   const [asset, source, row] = await Promise.all([
@@ -98,7 +98,7 @@ async function reviewContext(input: Coordinates) {
   if (!previewStat.isFile() || previewEvidence.sha256 !== result.derivative.sha256 || previewEvidence.sizeBytes !== result.derivative.sizeBytes) {
     throw new AudioMasteryReviewError("The mastering preview no longer matches its verified receipt.", 409, "AUDIO_MASTER_PREVIEW_DRIFT");
   }
-  return { project, asset, source, row, job, result };
+  return { project, asset, source, row, job, result, registration };
 }
 
 export async function appendAudioMasterReview(input: Coordinates & {
@@ -111,7 +111,7 @@ export async function appendAudioMasterReview(input: Coordinates & {
   const clientRequestId = text(input.clientRequestId, 160);
   const note = text(input.note, 2_000) || null;
   if (!clientRequestId) throw new AudioMasteryReviewError("A stable client request id is required.", 400, "INVALID_AUDIO_MASTER_REVIEW_REQUEST");
-  const context = await reviewContext(input);
+  const context = await loadAudioMasteryReviewContext(input);
   let evidence;
   try {
     evidence = parseAudioMasteryPlaybackReviewEvidence(

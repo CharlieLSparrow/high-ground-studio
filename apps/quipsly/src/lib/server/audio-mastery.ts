@@ -17,6 +17,11 @@ import {
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 import { readAudioMasterReviewSummary } from "@/lib/server/audio-mastery-review";
+import {
+  emptyAudioMasterPromotionSummary,
+  readAudioMasterPromotionSummary,
+  type PublicAudioMasterPromotionSummary,
+} from "@/lib/server/audio-mastery-promotion";
 
 const JOB_TYPE = "audio-mastery";
 
@@ -50,6 +55,7 @@ export type PublicAudioMasteryStatus = {
     approvalCount: number;
     rejectionCount: number;
   };
+  promotion: PublicAudioMasterPromotionSummary;
   error: string | null;
   updatedAt: string | null;
   boundaries: {
@@ -143,6 +149,11 @@ export async function readAudioMasteryStatus(input: { prisma: any; projectSlug: 
   return {
     ...toPublicAudioMasteryStatus(job),
     review: await readAudioMasterReviewSummary({ prisma: input.prisma, jobId: job.id }),
+    promotion: await readAudioMasterPromotionSummary({
+      prisma: input.prisma,
+      projectId: project.id,
+      assetId: input.assetId,
+    }),
   };
 }
 
@@ -273,6 +284,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
       measured: publicMeasurement(result.derivative.verificationMeasurement),
     } : null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
+    promotion: emptyAudioMasterPromotionSummary(),
     error: integrityFailure
       ? "Audio mastery evidence failed integrity validation."
       : typeof job.error === "string" ? job.error : null,
@@ -340,6 +352,7 @@ function emptyStatus(): PublicAudioMasteryStatus {
     proposal: null,
     derivative: null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
+    promotion: emptyAudioMasterPromotionSummary(),
     error: null,
     updatedAt: null,
     boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedPreview: true, explicitApprovalStillRequired: true },
