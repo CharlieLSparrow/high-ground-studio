@@ -71,6 +71,11 @@ external account, render, publication, or physical device was changed.
   relationship, preview from a normalized source seek, and become a
   nonnegative timeline clip with explicit leading-source trim. They are never
   silently clamped to zero.
+- Credentialed GCS audio mastery passed on exact source `4ac426af`: complete
+  source decode measured -38.25 LUFS, the exact stored derivative generation
+  independently measured -16.01 LUFS and passed, the source hash was unchanged,
+  promotion remained approval-gated, replay was create-once, and cleanup left
+  no source, output, or control object versions.
 - Reviewed-alignment and editor suites: 26 focused assertions passed before the
   retained operation, including agent source/drift tamper rejection.
 - Media-processing, media-processor, and Quipsly TypeScript checks passed.

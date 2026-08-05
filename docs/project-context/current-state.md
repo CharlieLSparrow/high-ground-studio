@@ -37,6 +37,10 @@ Date: 2026-08-05
   unpromoted review state. The processor and Nest changes still require the
   next cost-aware deployment and deployed-image readback before production is
   claimed.
+  A credentialed real-bucket fixture on commit `4ac426afb836a1d10776398a7a708f78e5e6bc39`
+  measured the exact source at -38.25 LUFS, read the stored preview generation
+  back at -16.01 LUFS, passed independent profile verification, preserved the
+  source hash, proved create-once replay, and left no fixture object versions.
 - Guided Sync no longer forces automation to impersonate a human listener.
   Human approval remains the default, while a signed-in staff delegator can
   authorize one bounded agent qualification backed by exact source hashes and
