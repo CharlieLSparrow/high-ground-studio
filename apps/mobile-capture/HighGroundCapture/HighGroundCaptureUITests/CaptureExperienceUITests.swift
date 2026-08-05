@@ -395,6 +395,28 @@ final class CaptureExperienceUITests: XCTestCase {
             watch.label.contains("does not fake a protected download")
         )
 
+        let soundCheck = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_sound-check"
+        ]
+        XCTAssertTrue(soundCheck.exists)
+        XCTAssertTrue(soundCheck.label.contains("Listen-back sound check"))
+        let soundCheckControls = app.descendants(matching: .any)[
+            "CaptureSoundCheckControls"
+        ]
+        XCTAssertTrue(soundCheckControls.exists)
+        let soundCheckStart = app.buttons["CaptureSoundCheckStart"]
+        XCTAssertTrue(soundCheckStart.exists)
+        XCTAssertFalse(
+            soundCheckStart.isEnabled,
+            "Deterministic preview must expose the sound-check workflow without opening a microphone or inventing level evidence."
+        )
+        let soundCheckBoundary = app.descendants(matching: .any)[
+            "CaptureSoundCheckBoundary"
+        ]
+        XCTAssertTrue(soundCheckBoundary.exists)
+        XCTAssertTrue(soundCheckBoundary.label.contains("never uploads"))
+        XCTAssertTrue(soundCheckBoundary.label.contains("Consent is still required"))
+
         let runCheck = app.buttons["CaptureRehearsalRunCheck"]
         XCTAssertTrue(runCheck.exists)
         XCTAssertFalse(

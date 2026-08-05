@@ -36,6 +36,7 @@ struct CaptureRehearsalReadinessCard: View {
     @ObservedObject private var audioSession =
         CaptureAudioSessionCoordinator.shared
     @ObservedObject var audioCapture: AudioCaptureController
+    @ObservedObject var soundCheck: CaptureAudioSoundCheckController
     @ObservedObject var videoCapture: VideoCaptureController
     @ObservedObject var manuscript: MobileEpisodeManuscriptClient
     @ObservedObject var watch: MobileEpisodeWatchClient
@@ -125,6 +126,19 @@ struct CaptureRehearsalReadinessCard: View {
                         )
                     }
 
+                    if mode.requiresAudioConsent {
+                        CaptureAudioSoundCheckControls(
+                            controller: soundCheck,
+                            routeName: audioCapture.inputRouteName,
+                            consentReady:
+                                session.canRecordAudioNow
+                                ?? session.canRecordNow,
+                            previewOnly: previewOnly,
+                            providerConnected: providerConnected,
+                            captureIsActive: isCaptureActive
+                        )
+                    }
+
                     Button(action: onRunCheck) {
                         if isRunningCheck {
                             HStack {
@@ -178,6 +192,9 @@ struct CaptureRehearsalReadinessCard: View {
             consentItem,
             microphoneItem,
         ]
+        if mode.requiresAudioConsent {
+            result.append(soundCheckItem)
+        }
         if mode.recordsVideo {
             result.append(cameraItem)
         }
@@ -305,6 +322,52 @@ struct CaptureRehearsalReadinessCard: View {
             "Run the check before joining the live room to verify the real route and reserve.",
             .action
         )
+    }
+
+    private var soundCheckItem: CaptureRehearsalCheckItem {
+        guard let summary = soundCheck.summary else {
+            if soundCheck.state == .recording {
+                return item(
+                    "sound-check",
+                    "Listen-back sound check",
+                    "Speak at normal episode level while Quipsly records up to ten local-only seconds.",
+                    .action
+                )
+            }
+            return item(
+                "sound-check",
+                "Listen-back sound check",
+                "Record and replay normal speech on the selected microphone before the real take.",
+                .action
+            )
+        }
+        guard summary.routeName == audioCapture.inputRouteName else {
+            return item(
+                "sound-check",
+                "Listen-back sound check",
+                "The check used \(summary.routeName), but the selected route is now \(audioCapture.inputRouteName). Run it again.",
+                .blocked
+            )
+        }
+        guard summary.duration >= soundCheck.minimumUsefulDuration else {
+            return item(
+                "sound-check",
+                "Listen-back sound check",
+                "The check lasted \(formattedDuration(summary.duration)). Run at least three seconds of normal speech so the level evidence is representative.",
+                .action
+            )
+        }
+        let detail = "\(summary.routeName) · average \(formattedDBFS(summary.averagePowerDBFS)) · peak \(formattedDBFS(summary.peakPowerDBFS)). \(summary.health.guidance)"
+        return item(
+            "sound-check",
+            "Listen-back sound check",
+            detail,
+            summary.health == .healthy ? .ready : .blocked
+        )
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        String(format: "%.1f seconds", max(0, duration))
     }
 
     private var cameraItem: CaptureRehearsalCheckItem {
@@ -499,10 +562,204 @@ struct CaptureRehearsalReadinessCard: View {
         return formatter.string(fromByteCount: max(0, bytes))
     }
 
+    private func formattedDBFS(_ value: Float) -> String {
+        guard value > -120 else { return "below -120 dBFS" }
+        return String(format: "%.1f dBFS", value)
+    }
+
     private func nonempty(_ value: String?) -> String? {
         guard let normalized = value?
             .trimmingCharacters(in: .whitespacesAndNewlines),
               !normalized.isEmpty else { return nil }
         return normalized
+    }
+}
+
+private struct CaptureAudioSoundCheckControls: View {
+    @ObservedObject var controller: CaptureAudioSoundCheckController
+    let routeName: String
+    let consentReady: Bool
+    let previewOnly: Bool
+    let providerConnected: Bool
+    let captureIsActive: Bool
+
+    private var canStart: Bool {
+        !previewOnly
+            && consentReady
+            && !providerConnected
+            && !captureIsActive
+            && !controller.state.isBusy
+    }
+
+    private var routeMatchesSummary: Bool {
+        controller.summary?.routeName == routeName
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Local sound check", systemImage: "waveform.badge.mic")
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                if controller.state == .recording {
+                    Text("\(max(0, Int(ceil(controller.maximumDuration - controller.elapsed))))s")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(.red)
+                } else if let summary = controller.summary {
+                    Text(summary.health.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(summaryTint(summary.health))
+                }
+            }
+
+            if controller.state == .recording {
+                InputLevelMeter(
+                    averagePowerDB: controller.liveAveragePowerDBFS,
+                    peakPowerDB: controller.livePeakPowerDBFS,
+                    isActive: true
+                )
+                Button {
+                    controller.finishRecording()
+                } label: {
+                    Label("Stop and evaluate", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .accessibilityIdentifier("CaptureSoundCheckStop")
+            } else if let summary = controller.summary {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("\(summary.routeName) · \(formattedDuration(summary.duration))")
+                        .font(.caption.weight(.semibold))
+                    Text("Average \(formattedDBFS(summary.averagePowerDBFS)) · peak \(formattedDBFS(summary.peakPowerDBFS))")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                    if !routeMatchesSummary {
+                        Label(
+                            "Route changed to \(routeName). This result is stale.",
+                            systemImage: "arrow.trianglehead.2.clockwise.rotate.90"
+                        )
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.orange)
+                    }
+                    Text(summary.health.guidance)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureSoundCheckResult")
+
+                HStack(spacing: 8) {
+                    Button {
+                        if controller.state == .playing {
+                            controller.stopPlayback()
+                        } else {
+                            controller.play()
+                        }
+                    } label: {
+                        Label(
+                            controller.state == .playing ? "Stop playback" : "Listen back",
+                            systemImage: controller.state == .playing ? "stop.fill" : "play.fill"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(providerConnected || captureIsActive)
+                    .accessibilityIdentifier("CaptureSoundCheckPlayback")
+
+                    Button("Run again") {
+                        Task { await controller.start(currentRouteName: routeName) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canStart)
+                    .accessibilityIdentifier("CaptureSoundCheckAgain")
+
+                    Button(role: .destructive) {
+                        controller.discard()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Delete local sound check")
+                    .accessibilityIdentifier("CaptureSoundCheckDelete")
+                }
+            } else {
+                Button {
+                    Task { await controller.start(currentRouteName: routeName) }
+                } label: {
+                    if controller.state == .requestingPermission {
+                        HStack {
+                            ProgressView()
+                            Text("Opening microphone…")
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        Label("Record 10-second sound check", systemImage: "record.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canStart)
+                .accessibilityHint(startHint)
+                .accessibilityIdentifier("CaptureSoundCheckStart")
+            }
+
+            if let message = controller.message {
+                Text(message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(controller.state == .failed ? Color.red : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureSoundCheckMessage")
+            }
+
+            Text("This explicit check records only a temporary protected file on this iPhone. Quipsly never uploads it, creates no Session source, and deletes abandoned checks on launch. Consent is still required because another person could be audible.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureSoundCheckBoundary")
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.accentColor.opacity(0.06))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.16), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureSoundCheckControls")
+    }
+
+    private var startHint: String {
+        if previewOnly {
+            return "Preview shows the sound-check workflow without opening a microphone or inventing level evidence."
+        }
+        if !consentReady {
+            return "Save current audio consent before recording a sound check."
+        }
+        if providerConnected {
+            return "Leave the live room before opening a separate microphone sound check."
+        }
+        if captureIsActive {
+            return "Stop the current take before recording a sound check."
+        }
+        return "Records up to ten seconds locally for level evidence and listen-back. It is never uploaded."
+    }
+
+    private func summaryTint(_ health: CaptureAudioSoundCheckHealth) -> Color {
+        switch health {
+        case .healthy: .green
+        case .tooQuiet, .hot: .orange
+        case .noSignal, .clippingRisk: .red
+        }
+    }
+
+    private func formattedDBFS(_ value: Float) -> String {
+        guard value > -120 else { return "below -120 dBFS" }
+        return String(format: "%.1f dBFS", value)
+    }
+
+    private func formattedDuration(_ value: TimeInterval) -> String {
+        String(format: "%.1f seconds", max(0, value))
     }
 }

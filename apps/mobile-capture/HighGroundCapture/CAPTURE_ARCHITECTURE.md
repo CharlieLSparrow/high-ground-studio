@@ -171,6 +171,22 @@ the canonical encoded format. Nest carries the same evidence into transcript
 review; `docs/architecture/audio-and-transcript-observability.md` defines the
 cross-surface accuracy contract.
 
+Before a real take, the expanded iPhone rehearsal card now offers an explicit
+ten-second sound check on the selected input route. It uses the same 48 kHz,
+192 kbps mono AAC shape as audio capture, but it is deliberately not a Session
+source: the protected temporary file stays in an excluded-from-backup cache,
+never enters the recording ledger or upload queue, and is deleted on explicit
+discard, when the Record surface closes, or on the next launch. The check is
+disabled until current audio consent is ready and while local capture or the
+provider room owns audio. Backgrounding or an audio interruption visibly
+finalizes an in-progress check; a result shorter than three seconds remains an
+action instead of becoming rehearsal-ready. It energy-combines metering windows, retains the
+maximum observed sample peak, and distinguishes no signal, too quiet, usable
+headroom, hot input, and near-full-scale risk. A route change invalidates the
+result. Electrical dBFS evidence never claims LUFS, true peak, or perceptual
+quality; listen-back remains required for mouth clicks, plosives, room echo,
+clothing rub, and monitoring bleed.
+
 Fresh audio finalization now runs the same complete decoded-stream validation
 used by recovery before the source may enter the upload queue. That pass also
 attaches a bounded, deterministic signal profile: energy-averaged RMS dBFS,

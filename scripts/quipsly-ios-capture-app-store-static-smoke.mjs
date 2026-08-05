@@ -35,6 +35,9 @@ const files = {
     "HighGroundCapture.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
   ),
   audioCapture: path.join(sourceRoot, "AudioCaptureController.swift"),
+  audioSoundCheck: path.join(sourceRoot, "CaptureAudioSoundCheck.swift"),
+  audioSoundCheckModel: path.join(sourceRoot, "CaptureAudioSoundCheckModel.swift"),
+  captureRehearsalReadiness: path.join(sourceRoot, "CaptureRehearsalReadiness.swift"),
   videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
@@ -186,6 +189,9 @@ const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const audioSoundCheckText = read(files.audioSoundCheck);
+const audioSoundCheckModelText = read(files.audioSoundCheckModel);
+const captureRehearsalReadinessText = read(files.captureRehearsalReadiness);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
@@ -194,7 +200,7 @@ const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
-const shippingCaptureUIText = `${capturePhoneShellText}\n${mobileText}`;
+const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const onDeviceTranscriptRouteText = read(files.onDeviceTranscriptRoute);
@@ -1517,6 +1523,19 @@ requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping 
 requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
+requireIncludes(capturePhoneShellText, "CaptureAudioSoundCheckController()", "shipping recorder owns the local sound-check lifecycle");
+requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("CaptureSoundCheckStart")', "shipping rehearsal exposes an addressable sound-check action");
+requireIncludes(captureRehearsalReadinessText, "Consent is still required because another person could be audible.", "shipping sound check retains participant-consent truth");
+requireIncludes(captureRehearsalReadinessText, "Quipsly never uploads it, creates no Session source", "shipping sound check declares its no-upload boundary");
+requireIncludes(audioSoundCheckText, "coordinator.activateLocalCapture()", "sound check shares the process audio-session lease");
+requireIncludes(audioSoundCheckText, "coordinator.beginLocalPlayback()", "sound check listen-back shares the process playback lease");
+requireIncludes(audioSoundCheckText, "purgeAbandonedChecks()", "sound check purges abandoned temporary files on launch");
+requireIncludes(audioSoundCheckText, "FileProtectionType.complete", "sound check file is protected at rest");
+requireIncludes(audioSoundCheckText, "UIApplication.didEnterBackgroundNotification", "sound check finalizes visibly when the app backgrounds");
+assert(!audioSoundCheckText.includes("UploadManager"), "Sound check must not enter the upload subsystem.", { forbidden: "UploadManager" });
+assert(!audioSoundCheckText.includes("LocalRecordingLibrary"), "Sound check must not create a canonical local source.", { forbidden: "LocalRecordingLibrary" });
+requireIncludes(audioSoundCheckModelText, "safeNearFullScaleObservationCount > 0", "sound check retains near-full-scale risk across later quiet windows");
+requireIncludes(audioSoundCheckModelText, "Listen back for mouth noise", "healthy electrical evidence still requires perceptual review");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureLiveRoomDisclosure")', "shipping recorder exposes live room controls");
 requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping recorder reaches provider room controls");
 requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");

@@ -5776,6 +5776,7 @@ private struct CaptureRecorderView: View {
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
     @State private var isRunningRehearsalCheck = false
+    @StateObject private var soundCheck = CaptureAudioSoundCheckController()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
@@ -5979,6 +5980,7 @@ private struct CaptureRecorderView: View {
 
                     CaptureRehearsalReadinessCard(
                         audioCapture: audioCapture,
+                        soundCheck: soundCheck,
                         videoCapture: videoCapture,
                         manuscript: episodeManuscript,
                         watch: episodeWatch,
@@ -6400,6 +6402,7 @@ private struct CaptureRecorderView: View {
             cameraPosition = position
         }
         .onDisappear {
+            soundCheck.discard()
             guard !videoCapture.state.isActive,
                   videoCapture.state != .paused else { return }
             Task { await videoCapture.shutdownPreview() }
@@ -10425,7 +10428,7 @@ private struct RecorderHero: View {
     }
 }
 
-private struct InputLevelMeter: View {
+struct InputLevelMeter: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let averagePowerDB: Float
     let peakPowerDB: Float
