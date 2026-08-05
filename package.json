@@ -63,6 +63,8 @@
     "quipsly:cloud:cost-audit:test": "node --test scripts/release/quipsly-cloud-cost-audit.test.mjs scripts/release/quipsly-canonical-deploy-entrypoints.test.mjs scripts/release/quipsly-artifact-cleanup-dry-run.test.mjs scripts/release/quipsly-artifact-cleanup-activate.test.mjs scripts/release/quipsly-cloud-build-source-retention.test.mjs",
     "quipsly:xcode-cloud:audit": "node scripts/release/quipsly-xcode-cloud-workflow-audit.mjs",
     "quipsly:xcode-cloud:audit:test": "node --test scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs",
+    "quipsly:capture:ui-test-plan": "node scripts/release/quipsly-capture-ui-test-plan.mjs",
+    "quipsly:capture:ui-test-plan:test": "node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs",
     "quipsly:cloud:cleanup-dry-run": "bash scripts/release/quipsly-artifact-cleanup-dry-run.sh",
     "quipsly:cloud:artifact-cleanup:activate": "bash scripts/release/quipsly-artifact-cleanup-activate.sh",
     "quipsly:cloud:build-source-retention": "bash scripts/release/quipsly-cloud-build-source-retention.sh",

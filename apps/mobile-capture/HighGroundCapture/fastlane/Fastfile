@@ -1,6 +1,7 @@
 require "fileutils"
 require "digest"
 require "json"
+require "open3"
 require "tmpdir"
 require "time"
 
@@ -15,11 +16,126 @@ ARTIFACT_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-artifact.
 SOURCE_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-source.sh")
 APPLE_APP_ID = "6780995957"
 APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
-DETERMINISTIC_UI_TESTS = [
-  "HighGroundCaptureUITests/CaptureExperienceUITests",
-  "HighGroundCaptureUITests/CaptureLoginExperienceUITests",
-  "HighGroundCaptureUITests/ShareCaptureExtensionUITests",
-].freeze
+UI_TEST_PLANNER = File.join(REPO_ROOT, "scripts", "release", "quipsly-capture-ui-test-plan.mjs")
+DEFAULT_FULL_UI_TEST_SHARDS = 4
+
+def capture_ui_test_plan(suite:, shard:, shards:)
+  stdout, stderr, status = Open3.capture3(
+    "node",
+    UI_TEST_PLANNER,
+    "--suite=#{suite}",
+    "--shard=#{shard}",
+    "--shards=#{shards}",
+  )
+  UI.user_error!("Capture UI test planner failed: #{stderr.strip}") unless status.success?
+  plan = JSON.parse(stdout)
+  UI.user_error!("Capture UI test planner returned no selectors.") if plan.fetch("selectors", []).empty?
+  plan
+rescue JSON::ParserError => error
+  UI.user_error!("Capture UI test planner returned invalid JSON: #{error.message}")
+end
+
+def write_ui_test_evidence_manifest(path, manifest)
+  temporary_path = "#{path}.tmp-#{Process.pid}"
+  File.write(temporary_path, JSON.pretty_generate(manifest) + "\n")
+  File.chmod(0o600, temporary_path)
+  FileUtils.mv(temporary_path, path)
+ensure
+  FileUtils.rm_f(temporary_path) if defined?(temporary_path)
+end
+
+def capture_ui_xcresult_summary(path)
+  stdout, stderr, status = Open3.capture3(
+    "xcrun",
+    "xcresulttool",
+    "get",
+    "test-results",
+    "summary",
+    "--path",
+    path,
+    "--format",
+    "json",
+  )
+  UI.user_error!("Could not inspect Capture UI result bundle: #{stderr.strip}") unless status.success?
+  summary = JSON.parse(stdout)
+  {
+    result: summary.fetch("result"),
+    totalTestCount: Integer(summary.fetch("totalTestCount")),
+    passedTests: Integer(summary.fetch("passedTests")),
+    failedTests: Integer(summary.fetch("failedTests")),
+    skippedTests: Integer(summary.fetch("skippedTests")),
+    expectedFailures: Integer(summary.fetch("expectedFailures")),
+  }
+rescue JSON::ParserError, KeyError, ArgumentError => error
+  UI.user_error!("Capture UI result summary is invalid: #{error.message}")
+end
+
+def verify_capture_ui_xcresult(path, expected_test_count = nil)
+  summary = capture_ui_xcresult_summary(path)
+  UI.user_error!("Capture UI result bundle did not pass.") unless summary[:result] == "Passed"
+  UI.user_error!("Capture UI result bundle contains failed, skipped, or expected-failure tests.") unless
+    summary[:failedTests].zero? && summary[:skippedTests].zero? && summary[:expectedFailures].zero?
+  if expected_test_count
+    UI.user_error!("Capture UI result bundle test count does not match its planned selectors.") unless
+      summary[:totalTestCount] == expected_test_count && summary[:passedTests] == expected_test_count
+  end
+  summary
+end
+
+def verify_ui_test_evidence_path(path, expected_source_revision: nil, require_full: true, allow_legacy: false)
+  expanded_path = File.expand_path(path.to_s)
+  if File.directory?(expanded_path) && File.file?(File.join(expanded_path, "Info.plist"))
+    UI.user_error!(
+      "Legacy direct result bundles cannot authorize sealed upload because they do not prove source or complete selector coverage. Re-run candidate qualification.",
+    ) unless allow_legacy
+    verify_capture_ui_xcresult(expanded_path)
+    return expanded_path
+  end
+
+  UI.user_error!("Qualified UI evidence manifest is unavailable: #{expanded_path}") unless File.file?(expanded_path)
+  manifest = JSON.parse(File.read(expanded_path))
+  UI.user_error!("Unsupported UI evidence schema.") unless manifest["schema"] == "quipsly-capture-ui-test-evidence-v1"
+  if expected_source_revision && manifest["sourceRevision"] != expected_source_revision
+    UI.user_error!("UI evidence source does not match the qualified candidate.")
+  end
+  suite = manifest.fetch("suite")
+  UI.user_error!("UI evidence suite must be critical or full.") unless ["critical", "full"].include?(suite)
+  UI.user_error!("Complete UI evidence must record the full suite.") if require_full && suite != "full"
+  if suite == "full"
+    UI.user_error!("Complete UI evidence did not cover every discovered deterministic test.") unless
+      manifest["selectedTestCount"] == manifest["discoveredTestCount"]
+  end
+  shards = manifest.fetch("shards", [])
+  UI.user_error!("UI evidence shard count is inconsistent.") unless shards.length == manifest["shardCount"]
+  selected_tests = shards.flat_map { |shard| shard.fetch("selectors", []) }
+  UI.user_error!("UI evidence contains duplicate or omitted selectors.") unless
+    selected_tests.length == manifest["selectedTestCount"] && selected_tests.uniq.length == selected_tests.length
+  configured_shard_count = Integer(manifest.fetch("configuredShardCount"))
+  expected_plans = if suite == "full"
+    (1..configured_shard_count).map do |shard_number|
+      capture_ui_test_plan(suite: "full", shard: shard_number, shards: configured_shard_count)
+    end
+  else
+    UI.user_error!("Critical UI evidence must contain exactly one shard.") unless configured_shard_count == 1 && shards.length == 1
+    [capture_ui_test_plan(suite: "critical", shard: 1, shards: 1)]
+  end
+  expected_tests = expected_plans.flat_map { |plan| plan.fetch("selectors") }
+  UI.user_error!("UI evidence does not match the current source-derived plan.") unless
+    manifest["discoveredTestCount"] == expected_plans.fetch(0).fetch("discoveredTestCount") &&
+      selected_tests.sort == expected_tests.sort
+  shards.each do |shard|
+    result_bundle_path = File.expand_path(shard.fetch("resultBundlePath"), File.dirname(expanded_path))
+    UI.user_error!("UI shard #{shard.fetch("shard")} result bundle is unavailable.") unless
+      File.directory?(result_bundle_path) && File.file?(File.join(result_bundle_path, "Info.plist"))
+    summary = verify_capture_ui_xcresult(result_bundle_path, shard.fetch("selectors").length)
+    recorded_summary = shard.fetch("resultSummary")
+    UI.user_error!("UI shard #{shard.fetch("shard")} recorded result summary changed.") unless
+      recorded_summary == summary.transform_keys(&:to_s)
+  end
+  expanded_path
+rescue JSON::ParserError, KeyError, ArgumentError, TypeError => error
+  UI.user_error!("Qualified UI evidence manifest is invalid: #{error.message}")
+end
 
 def release_paths(options)
   version = get_version_number(xcodeproj: PROJECT_PATH, target: SCHEME)
@@ -124,9 +240,10 @@ def qualified_release_paths(receipt_path)
   UI.user_error!("Qualified IPA byte count changed.") unless File.size(paths[:ipa_path]) == receipt["ipaBytes"]
   UI.user_error!("Qualified IPA digest changed.") unless Digest::SHA256.file(paths[:ipa_path]).hexdigest == receipt["ipaSHA256"]
 
-  ui_evidence_path = File.expand_path(receipt["uiTestEvidencePath"].to_s)
-  UI.user_error!("Qualified UI result bundle is unavailable.") unless
-    File.directory?(ui_evidence_path) && File.file?(File.join(ui_evidence_path, "Info.plist"))
+  verify_ui_test_evidence_path(
+    receipt["uiTestEvidencePath"],
+    expected_source_revision: source_revision,
+  )
   sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
   UI.success("Qualified candidate receipt and packaged artifact passed upload reuse verification.")
   paths
@@ -205,7 +322,22 @@ platform :ios do
     sh("bash", SOURCE_VERIFIER)
   end
 
-  desc "Run the deterministic iPhone UX and Share Capture suite serially"
+  desc "Independently verify a Capture UI evidence manifest or legacy result bundle"
+  lane :verify_ui_evidence do |options|
+    evidence_path = options[:path] || ENV["QUIPSLY_CAPTURE_UI_TEST_EVIDENCE"]
+    UI.user_error!("Provide path:<manifest-or-xcresult>.") if evidence_path.to_s.empty?
+    expected_source_revision = options[:source_revision] || ENV["QUIPSLY_CAPTURE_UI_TEST_SOURCE_REVISION"]
+    verified_path = verify_ui_test_evidence_path(
+      evidence_path,
+      expected_source_revision: expected_source_revision,
+      require_full: false,
+      allow_legacy: true,
+    )
+    UI.success("Capture UI evidence independently verified: #{verified_path}")
+    verified_path
+  end
+
+  desc "Run a bounded critical or complete sharded deterministic Capture UI suite"
   lane :ui_test do |options|
     source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
     capture_status = sh(
@@ -241,27 +373,72 @@ platform :ios do
     UI.message("Capture UI evidence: #{output_root}")
     UI.message("Capture UI DerivedData: #{derived_data_path}")
 
-    run_tests(
-      project: PROJECT_PATH,
-      scheme: SCHEME,
-      devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
-      only_testing: DETERMINISTIC_UI_TESTS,
-      parallel_testing: false,
-      result_bundle: true,
-      output_directory: output_root,
-      derived_data_path: derived_data_path,
-      buildlog_path: output_root,
-      fail_build: true,
-    )
-    result_bundles = Dir[File.join(output_root, "*.xcresult")].select do |path|
-      File.directory?(path)
+    suite = (options[:suite] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_SUITE", "critical")).to_s
+    shard_count = suite == "full" ? Integer(options[:shards] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_SHARDS", DEFAULT_FULL_UI_TEST_SHARDS)) : 1
+    requested_shard = options[:shard] || ENV["QUIPSLY_CAPTURE_UI_TEST_SHARD"]
+    shard_numbers = requested_shard.to_s.empty? ? (1..shard_count).to_a : [Integer(requested_shard)]
+    evidence_shards = []
+
+    shard_numbers.each do |shard_number|
+      plan = capture_ui_test_plan(suite: suite, shard: shard_number, shards: shard_count)
+      shard_root = File.join(output_root, "shard-#{shard_number}-of-#{shard_count}")
+      FileUtils.mkdir_p(shard_root)
+      UI.message(
+        "Capture UI #{suite} shard #{shard_number}/#{shard_count}: " \
+        "#{plan.fetch("selectedTestCount")} tests, estimated weight #{plan.fetch("estimatedWeight")}",
+      )
+      run_tests(
+        project: PROJECT_PATH,
+        scheme: SCHEME,
+        devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
+        only_testing: plan.fetch("selectors"),
+        parallel_testing: false,
+        reinstall_app: true,
+        app_identifier: APP_IDENTIFIER,
+        result_bundle: true,
+        output_directory: shard_root,
+        derived_data_path: derived_data_path,
+        buildlog_path: shard_root,
+        fail_build: true,
+      )
+      result_bundles = Dir[File.join(shard_root, "*.xcresult")].select { |path| File.directory?(path) }
+      UI.user_error!(
+        "Expected exactly one UI result bundle in #{shard_root}; found #{result_bundles.length}.",
+      ) unless result_bundles.length == 1
+      result_bundle_path = File.expand_path(result_bundles.fetch(0))
+      result_summary = verify_capture_ui_xcresult(result_bundle_path, plan.fetch("selectedTestCount"))
+      evidence_shards << {
+        shard: shard_number,
+        selectors: plan.fetch("selectors"),
+        resultBundlePath: result_bundle_path,
+        resultSummary: result_summary.transform_keys(&:to_s),
+      }
     end
-    UI.user_error!(
-      "Expected exactly one deterministic UI result bundle in #{output_root}; found #{result_bundles.length}.",
-    ) unless result_bundles.length == 1
-    result_bundle_path = File.expand_path(result_bundles.fetch(0))
-    UI.success("Deterministic Capture UI evidence: #{result_bundle_path}")
-    result_bundle_path
+
+    plans = shard_numbers.map { |number| capture_ui_test_plan(suite: suite, shard: number, shards: shard_count) }
+    manifest_path = File.join(output_root, "quipsly-capture-ui-test-evidence.json")
+    write_ui_test_evidence_manifest(
+      manifest_path,
+      {
+        schema: "quipsly-capture-ui-test-evidence-v1",
+        createdAt: Time.now.utc.iso8601,
+        sourceRevision: source_revision,
+        sourceLabel: source_label,
+        suite: suite,
+        shardCount: shard_numbers.length,
+        configuredShardCount: shard_count,
+        discoveredTestCount: plans.fetch(0).fetch("discoveredTestCount"),
+        selectedTestCount: plans.sum { |plan| plan.fetch("selectedTestCount") },
+        shards: evidence_shards,
+      },
+    )
+    verify_ui_test_evidence_path(
+      manifest_path,
+      expected_source_revision: source_revision,
+      require_full: suite == "full",
+    )
+    UI.success("Deterministic Capture UI evidence manifest: #{manifest_path}")
+    manifest_path
   end
 
   desc "Build, export, and inspect the exact committed Capture version"
@@ -368,7 +545,7 @@ platform :ios do
       )
     end
 
-    ui_test_evidence_path = ui_test(device: options[:device])
+    ui_test_evidence_path = ui_test(device: options[:device], suite: "full")
     release(options)
     paths = release_paths(options)
     receipt_path = update_release_receipt(paths) do |receipt|

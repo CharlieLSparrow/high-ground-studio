@@ -835,8 +835,10 @@ struct MobileCoachClientFollowUpCard: View {
                         Text(workspace.output?.status == "DRAFT" ? "Adjust private draft" : "Prepare a new private draft")
                             .font(.headline)
 
-                        TextField("Follow-up title", text: $draft.title, axis: .vertical)
+                        TextField("Follow-up title", text: $draft.title)
                             .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .onSubmit { focusedField = nil }
                             .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureCoachFollowUpTitle")
 

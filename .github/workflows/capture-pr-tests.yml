@@ -32,6 +32,8 @@ on:
       - scripts/release/quipsly-capture-privacy-questionnaire.test.mjs
       - scripts/release/quipsly-capture-physical-install-readback.mjs
       - scripts/release/quipsly-capture-physical-install-readback.test.mjs
+      - scripts/release/quipsly-capture-ui-test-plan.mjs
+      - scripts/release/quipsly-capture-ui-test-plan.test.mjs
       - scripts/release/quipsly-capture-release-target.mjs
       - scripts/release/quipsly-capture-release-target.test.mjs
       - scripts/release/quipsly-testflight-public-link-readback.mjs
@@ -40,6 +42,15 @@ on:
       - scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs
       - .github/workflows/capture-pr-tests.yml
   workflow_dispatch:
+    inputs:
+      depth:
+        description: UI test depth. Critical is the fast review gate; full runs all coverage-proven shards.
+        required: true
+        default: critical
+        type: choice
+        options:
+          - critical
+          - full
 
 concurrency:
   group: capture-iphone-tests-${{ github.event.pull_request.number || github.ref }}
@@ -50,9 +61,13 @@ permissions:
 
 jobs:
   deterministic-ui:
-    name: Deterministic iPhone UX
+    name: Deterministic iPhone UX (${{ matrix.shard == 0 && 'critical' || format('full {0}/4', matrix.shard) }})
     runs-on: macos-26
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(github.event_name == 'workflow_dispatch' && inputs.depth == 'full' && '[1,2,3,4]' || '[0]') }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       CAPTURE_PROJECT: apps/mobile-capture/HighGroundCapture/HighGroundCapture.xcodeproj
@@ -70,9 +85,11 @@ jobs:
           xcrun simctl list devices available
 
       - name: Validate Capture release source
+        if: matrix.shard == 0 || matrix.shard == 1
         run: |
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
           node scripts/quipsly-ios-capture-app-store-static-smoke.mjs
+          node --test scripts/release/quipsly-capture-ui-test-plan.test.mjs
           node --test scripts/release/quipsly-app-store-connect-readback.test.mjs
           node --test scripts/release/quipsly-app-store-connect-assign-build.test.mjs
           node --test scripts/release/quipsly-app-store-connect-external-beta.test.mjs
@@ -90,11 +107,29 @@ jobs:
       - name: Prewarm deterministic simulator services
         run: bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2"
 
-      - name: Run deterministic Capture UI suite serially
+      - name: Run bounded deterministic Capture UI lane serially
         run: |
           set -euo pipefail
-          result_bundle="${RUNNER_TEMP}/capture-ui-tests.xcresult"
-          build_log="${RUNNER_TEMP}/capture-ui-tests.log"
+          if [[ "${{ matrix.shard }}" == "0" ]]; then
+            suite="critical"
+            shard="1"
+          else
+            suite="full"
+            shard="${{ matrix.shard }}"
+          fi
+          evidence_root="${RUNNER_TEMP}/capture-ui-${suite}-${shard}"
+          result_bundle="${evidence_root}/capture-ui-tests.xcresult"
+          build_log="${evidence_root}/capture-ui-tests.log"
+          mkdir -p "${evidence_root}"
+          only_testing_args=()
+          while IFS= read -r selector; do
+            only_testing_args+=("-only-testing:${selector}")
+          done < <(node scripts/release/quipsly-capture-ui-test-plan.mjs \
+            --suite="${suite}" \
+            --shard="${shard}" \
+            --shards=4 \
+            --format=lines)
+          test "${#only_testing_args[@]}" -gt 0
 
           xcodebuild \
             -project "${CAPTURE_PROJECT}" \
@@ -102,18 +137,16 @@ jobs:
             -destination "${CAPTURE_DESTINATION}" \
             -parallel-testing-enabled NO \
             -resultBundlePath "${result_bundle}" \
-            -only-testing:HighGroundCaptureUITests/CaptureExperienceUITests \
-            -only-testing:HighGroundCaptureUITests/CaptureLoginExperienceUITests \
-            -only-testing:HighGroundCaptureUITests/ShareCaptureExtensionUITests \
+            "${only_testing_args[@]}" \
             test | tee "${build_log}"
 
       - name: Preserve native test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: capture-iphone-test-evidence-${{ github.run_attempt }}
+          name: capture-iphone-test-evidence-${{ github.run_attempt }}-${{ matrix.shard == 0 && 'critical' || format('full-{0}-of-4', matrix.shard) }}
           path: |
-            ${{ runner.temp }}/capture-ui-tests.xcresult
-            ${{ runner.temp }}/capture-ui-tests.log
+            ${{ runner.temp }}/capture-ui-*/capture-ui-tests.xcresult
+            ${{ runner.temp }}/capture-ui-*/capture-ui-tests.log
           if-no-files-found: warn
           retention-days: 14

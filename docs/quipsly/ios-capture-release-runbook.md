@@ -246,12 +246,17 @@ scripts/release/quipsly-capture-release-from-commit.sh \
   --revision "$candidate_sha"
 ```
 
-The `candidate` lane runs the deterministic iPhone and Share Capture UI suite
-first, then creates and verifies the signed archive and IPA from the same
-detached commit. The resulting receipt must record
+The `candidate` lane runs every deterministic iPhone and Share Capture journey
+exactly once across four bounded serial shards, then creates and verifies the
+signed archive and IPA from the same detached commit. Each shard gets its own
+`xcodebuild` process and native result bundle so an hour of accumulated
+simulator state cannot masquerade as one trustworthy test process. The
+resulting receipt must record
 `candidateQualified: true`, `deterministicUITestPerformed: true`, and the
-exact result-bundle evidence path. The lower-level `release` lane is retained
-for archive-only diagnosis; it is not a fully qualified candidate.
+exact aggregate evidence-manifest path. The manifest binds the source revision,
+all selected method-level test identifiers, and all native result bundles.
+The lower-level `release` lane is retained for archive-only diagnosis; it is
+not a fully qualified candidate.
 
 Expected output directory:
 
@@ -269,7 +274,7 @@ receipt must say:
   "sourceIsolation": "detached-worktree",
   "candidateQualified": true,
   "deterministicUITestPerformed": true,
-  "uiTestEvidencePath": "/tmp/quipsly-capture-ui-tests/<SHA>/<run>/HighGroundCapture.xcresult",
+  "uiTestEvidencePath": "/tmp/quipsly-capture-ui-tests/<SHA>/<run>/quipsly-capture-ui-test-evidence.json",
   "uploadAttempted": false,
   "uploadPerformed": false,
   "uploadOutcome": "not-attempted",
@@ -278,6 +283,21 @@ receipt must say:
   "physicalTestFlightInstallReadbackPerformed": false
 }
 ```
+
+For ordinary iteration, use the bounded critical lane rather than release
+qualification:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test \
+  suite:critical \
+  device:'iPhone 17 Pro'
+```
+
+It currently covers 11 reviewed high-risk journeys. It is intentionally not a
+release receipt and cannot satisfy the complete-suite gate. GitHub pull
+requests use this lane; manual workflow dispatch can request the four-shard
+`full` lane. See
+`docs/coordination/2026-08-05-capture-ui-test-lanes.md`.
 
 The UI-test and archive lanes keep Xcode DerivedData inside the run-scoped
 artifact tree instead of the global `~/Library/Developer/Xcode/DerivedData`
