@@ -7769,3 +7769,25 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   publication, five approved signed/TestFlight screenshots, physical Build 28
   capture/failure-recovery/upload/playback proof, LiveKit separation, and
   disposable production account-deletion proof.
+
+## 2026-08-05 USB-independent iPhone install-proof checkpoint
+
+- Turned the app's existing privacy-bounded Account support snapshot into a
+  machine-verifiable physical install and authentication receipt. It requires
+  a fresh exact Build 28 snapshot from a physical iPhone, production Nest,
+  non-preview mode, authenticated online or verified-offline access, and the
+  exact in-app privacy boundary.
+- The validator rejects simulators, wrong/stale builds, sign-in-only surfaces,
+  preview mode, malformed device/system identities, missing privacy copy, and
+  any injected email, identifier, path, filename, credential, or token field.
+  The owner-only output never retains the raw snapshot.
+- The HGO live preflight can consume this receipt through the optional
+  `QUIPSLY_CAPTURE_IPHONE_SUPPORT_SNAPSHOT` path. It may close only Homer's
+  physical install/authentication gate; it explicitly preserves consent,
+  route/fidelity, camera-switch, recovery, two-person-room, upload, playback,
+  and timeline gates as unproved.
+- This provides a mature fallback when USB/CoreDevice pairing is unavailable
+  without treating App Store tester state, an email invitation, or a screenshot
+  as physical app operation. The next human action is one share from Homer's
+  Account screen; the next real product gate remains operating the short
+  physical take and reading the same source through Nest and Studio.

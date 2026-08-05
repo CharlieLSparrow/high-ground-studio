@@ -553,7 +553,11 @@ installed-app version/build readback remains the immediate source of truth.
 >    wait for a Quipsly verification email; Google sign-in is the intended
 >    path.
 > 6. Allow microphone and camera access when iOS asks.
-> 7. Stop there if Charlie is not with you. We will choose the exact rehearsal
+> 7. Open **Account**, expand **Help & diagnostics**, and share the support
+>    snapshot with Charlie. It contains the app build and coarse device/runtime
+>    state, but no email, account ID, session ID, source text, filename, path,
+>    or credential.
+> 8. Stop there if Charlie is not with you. We will choose the exact rehearsal
 >    Session and make the recording-consent choices together.
 
 The Apple Account signed into TestFlight is `shomers@icloud.com`; the Quipsly
@@ -582,16 +586,41 @@ If the public link does not hand off to TestFlight:
 4. report the exact Safari/TestFlight screen before changing accounts or
    entering a redemption code.
 
+## USB-independent physical install readback
+
+The support snapshot closes the recurring gap between “Apple says a tester is
+installed” and “the exact public build is open on Homer's authenticated physical
+iPhone.” Save the shared text without editing it, then run:
+
+```bash
+pnpm quipsly:capture:physical-install-readback -- \
+  --snapshot /absolute/path/homer-quipsly-support.txt \
+  --output /private/tmp/homer-quipsly-physical-install.json
+```
+
+The owner-only receipt requires a fresh Account-surface snapshot, exact
+Quipsly Capture `1.0 (28)`, an `iPhone<model>,<variant>` hardware identifier,
+iOS, production Nest, non-preview mode, online or verified offline account
+access, and the exact privacy disclaimer. It fails on an email/private field,
+wrong build, simulator, signed-out state, preview, stale timestamp, or missing
+privacy boundary. It never retains the raw shared text.
+
+This proves only physical installation plus Quipsly authentication. It
+deliberately leaves consent, microphone/camera fidelity, front/back switching,
+pause/resume, interruption and force-quit recovery, upload verification,
+assembled playback, and timeline alignment unproved.
+
 ## Ten-minute preflight
 
 From the exact product worktree, run the consolidated live readback first:
 
 ```bash
+QUIPSLY_CAPTURE_IPHONE_SUPPORT_SNAPSHOT=/absolute/path/homer-quipsly-support.txt \
 pnpm quipsly:capture:rehearsal-preflight \
   --output /private/tmp/quipsly-hgo-rehearsal-preflight-current.json
 ```
 
-`infrastructureReady: true` proves the current Build 14/public-link boundary,
+`infrastructureReady: true` proves the current Build 28/public-link boundary,
 the exact private production Room, two participant records, just-in-time
 Scott Google linking, the 34-block manuscript, all three protected Watch
 objects, and the signed canonical Mac launcher. It intentionally leaves
@@ -601,6 +630,11 @@ take, the two-person room, and same-ID upload/timeline readback are separately
 proved. The preflight verifies Charlie's saved device-bound Mac session before
 it restarts the canonical app into bounded Capture Setup. Never edit that
 receipt to make a human or physical gate green.
+
+When the optional support snapshot is present, the preflight composes its
+owner-only derivative receipt and can close only
+`scottPhysicalInstallProven`. It still cannot make any recording, consent,
+route, recovery, upload, playback, or two-person-room claim green.
 
 Both people:
 

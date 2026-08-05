@@ -9,6 +9,7 @@ ASC_KEY_PATH="${APP_STORE_CONNECT_API_KEY_PATH:-${XDG_CONFIG_HOME:-${HOME}/.conf
 TESTER_EMAIL="${QUIPSLY_CAPTURE_TESTER_EMAIL:-shomers@icloud.com}"
 BASE_URL="${QUIPSLY_REHEARSAL_BASE_URL:-https://nest.quipsly.com}"
 OUTPUT_PATH="${QUIPSLY_HGO_REHEARSAL_PREFLIGHT_OUTPUT:-/private/tmp/quipsly-hgo-rehearsal-preflight-current.json}"
+IPHONE_SUPPORT_SNAPSHOT_PATH="${QUIPSLY_CAPTURE_IPHONE_SUPPORT_SNAPSHOT:-}"
 
 usage() {
   cat <<'USAGE'
@@ -28,6 +29,9 @@ Environment:
   QUIPSLY_REHEARSAL_BASE_URL      Defaults to https://nest.quipsly.com.
   QUIPSLY_HGO_REHEARSAL_PREFLIGHT_OUTPUT
                                   Default receipt path.
+  QUIPSLY_CAPTURE_IPHONE_SUPPORT_SNAPSHOT
+                                  Optional support snapshot shared from Homer's
+                                  physical Quipsly Capture Account screen.
 USAGE
 }
 
@@ -131,6 +135,21 @@ run_logged app-store \
   --expect-tester-state INVITED,ACCEPTED,INSTALLED \
   --output "$WORK_DIR/app-store.json"
 
+PREFLIGHT_IPHONE_ARGS=()
+if [[ -n "$IPHONE_SUPPORT_SNAPSHOT_PATH" ]]; then
+  if [[ ! -f "$IPHONE_SUPPORT_SNAPSHOT_PATH" ]]; then
+    echo "Physical iPhone support snapshot not found at the configured path." >&2
+    exit 2
+  fi
+  run_logged iphone-physical-install \
+    node "$ROOT_DIR/scripts/release/quipsly-capture-physical-install-readback.mjs" \
+    --snapshot "$IPHONE_SUPPORT_SNAPSHOT_PATH" \
+    --output "$WORK_DIR/iphone-physical-install.json"
+  PREFLIGHT_IPHONE_ARGS=(
+    --iphone-support-snapshot "$WORK_DIR/iphone-physical-install.json"
+  )
+fi
+
 run_logged rehearsal-plan \
   env \
   QUIPSLY_REHEARSAL_APPLY=0 \
@@ -185,6 +204,7 @@ node "$ROOT_DIR/scripts/quipsly-hgo-rehearsal-preflight.mjs" \
   --mac-capture "$WORK_DIR/mac-capture.json" \
   --native-account-smoke "$WORK_DIR/native-account-smoke.json" \
   --capture-launcher-smoke "$WORK_DIR/capture-launcher-smoke.json" \
+  "${PREFLIGHT_IPHONE_ARGS[@]}" \
   --output "$OUTPUT_PATH"
 
 echo "rehearsalPreflightReceipt=$OUTPUT_PATH"

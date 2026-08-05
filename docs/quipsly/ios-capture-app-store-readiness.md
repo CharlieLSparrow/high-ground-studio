@@ -550,6 +550,11 @@ The remaining release gates are therefore:
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,
    assembled playback, timeline alignment, and same-ID Nest/Studio readback.
+   If USB/CoreDevice is unavailable, the fresh privacy-bounded Account support
+   snapshot can independently prove only exact Build 28 installation and
+   authenticated production mode; run
+   `pnpm quipsly:capture:physical-install-readback`. The remaining physical
+   capture assertions still require operating the app.
 5. Join a Nest-issued LiveKit room and prove provider transport, CallKit audio
    activation, and local recording stay visibly separate through failure and
    recovery. Provider egress must remain interlocked unless it explicitly

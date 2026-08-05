@@ -30,6 +30,8 @@ on:
       - scripts/release/quipsly-capture-app-store-metadata.test.mjs
       - scripts/release/quipsly-capture-privacy-questionnaire.mjs
       - scripts/release/quipsly-capture-privacy-questionnaire.test.mjs
+      - scripts/release/quipsly-capture-physical-install-readback.mjs
+      - scripts/release/quipsly-capture-physical-install-readback.test.mjs
       - scripts/release/quipsly-capture-release-target.mjs
       - scripts/release/quipsly-capture-release-target.test.mjs
       - scripts/release/quipsly-testflight-public-link-readback.mjs
@@ -76,6 +78,7 @@ jobs:
           node --test scripts/release/quipsly-app-store-connect-external-beta.test.mjs
           node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
           node --test scripts/release/quipsly-capture-privacy-questionnaire.test.mjs
+          node --test scripts/release/quipsly-capture-physical-install-readback.test.mjs
           node --test scripts/release/quipsly-capture-release-target.test.mjs
           node --test scripts/release/quipsly-testflight-public-link-readback.test.mjs
           node --test scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs

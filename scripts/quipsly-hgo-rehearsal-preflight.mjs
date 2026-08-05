@@ -32,6 +32,7 @@ export function parseArguments(argv) {
     macCapturePath: "",
     nativeAccountSmokePath: "",
     captureLauncherSmokePath: "",
+    iphoneSupportSnapshotPath: "",
     outputPath: "",
   };
 
@@ -54,15 +55,27 @@ export function parseArguments(argv) {
       options.nativeAccountSmokePath = value;
     } else if (flag === "--capture-launcher-smoke") {
       options.captureLauncherSmokePath = value;
+    } else if (flag === "--iphone-support-snapshot") {
+      options.iphoneSupportSnapshotPath = value;
     } else if (flag === "--output") options.outputPath = value;
     else fail(`Unknown argument: ${flag}`);
     index += 1;
   }
 
   if (options.help) return options;
-  for (const [name, value] of Object.entries(options)) {
-    if (name === "help") continue;
-    if (!clean(value)) fail(`${name} is required.`);
+  for (const name of [
+    "appStorePath",
+    "publicLinkPath",
+    "rehearsalPath",
+    "watchPath",
+    "macAppPath",
+    "macAccountPath",
+    "macCapturePath",
+    "nativeAccountSmokePath",
+    "captureLauncherSmokePath",
+    "outputPath",
+  ]) {
+    if (!clean(options[name])) fail(`${name} is required.`);
   }
   return options;
 }
@@ -79,6 +92,7 @@ function usage() {
     --mac-capture <capture-status.json> \\
     --native-account-smoke <smoke.json> \\
     --capture-launcher-smoke <smoke.json> \\
+    [--iphone-support-snapshot <physical-install-readback.json>] \\
     --output <receipt.json>
 
 Composes existing redacted provider, Nest, and exact-Mac readbacks. It never
@@ -110,6 +124,7 @@ export function composeRehearsalPreflight({
   macCapture,
   nativeAccountSmoke,
   captureLauncherSmoke,
+  iphoneSupportSnapshot = null,
   auditedAt = new Date().toISOString(),
 }) {
   const nativeAccount = macState?.nativeAccount ?? {};
@@ -145,6 +160,19 @@ export function composeRehearsalPreflight({
   );
   const consentStateValid = consentStatuses.every(
     (status) => status === "REQUESTED" || status === "GRANTED",
+  );
+  const physicalInstallReadbackPassed = Boolean(
+    iphoneSupportSnapshot?.ok
+    && iphoneSupportSnapshot?.physicalInstallAndAuthenticationProven
+    && iphoneSupportSnapshot?.physicalCaptureAcceptanceProven === false
+    && iphoneSupportSnapshot?.target?.appId
+      === QUIPSLY_CAPTURE_RELEASE_TARGET.appId
+    && iphoneSupportSnapshot?.target?.bundleId
+      === QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId
+    && iphoneSupportSnapshot?.target?.version
+      === QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion
+    && iphoneSupportSnapshot?.target?.build
+      === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
   );
 
   const infrastructureChecks = {
@@ -220,7 +248,7 @@ export function composeRehearsalPreflight({
   };
 
   const humanGates = {
-    scottPhysicalInstallProven: false,
+    scottPhysicalInstallProven: physicalInstallReadbackPassed,
     charlieMacSessionVerified: Boolean(
       nativeAccount?.hasSavedSession && nativeAccount?.isVerified,
     ),
@@ -276,6 +304,18 @@ export function composeRehearsalPreflight({
       expectedNamedTesterState: expectedTesterState,
       namedTesterStateReportsInstalled:
         expectedTesterState === "INSTALLED",
+      physicalInstallReadback: iphoneSupportSnapshot ? {
+        checkedAt: iphoneSupportSnapshot.checkedAt ?? "",
+        snapshotCreatedAt:
+          iphoneSupportSnapshot.snapshot?.createdAt ?? "",
+        appBuild: iphoneSupportSnapshot.snapshot?.appBuild ?? "",
+        deviceModel: iphoneSupportSnapshot.snapshot?.deviceModel ?? "",
+        systemVersion: iphoneSupportSnapshot.snapshot?.systemVersion ?? "",
+        accountAccessMode:
+          iphoneSupportSnapshot.snapshot?.accountAccessMode ?? "",
+        passed: physicalInstallReadbackPassed,
+        physicalCaptureAcceptanceProven: false,
+      } : null,
       truth:
         "The public link is the canonical enrollment path. An INVITED named-tester state does not block that path and never proves physical installation.",
     },
@@ -354,6 +394,7 @@ export function composeRehearsalPreflight({
       automatedChecksCount:
         Object.keys(infrastructureChecks).length,
       physicalClaimsInvented: false,
+      rawIPhoneSupportSnapshotRetained: false,
     },
   };
 }
@@ -379,6 +420,7 @@ async function main() {
     macCapture,
     nativeAccountSmoke,
     captureLauncherSmoke,
+    iphoneSupportSnapshot,
   ] = await Promise.all([
     readJson(options.appStorePath),
     readJson(options.publicLinkPath),
@@ -389,6 +431,9 @@ async function main() {
     readJson(options.macCapturePath),
     readJson(options.nativeAccountSmokePath),
     readJson(options.captureLauncherSmokePath),
+    options.iphoneSupportSnapshotPath
+      ? readJson(options.iphoneSupportSnapshotPath)
+      : Promise.resolve(null),
   ]);
 
   const receipt = composeRehearsalPreflight({
@@ -401,6 +446,7 @@ async function main() {
     macCapture,
     nativeAccountSmoke,
     captureLauncherSmoke,
+    iphoneSupportSnapshot,
   });
   const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
   await writeFile(options.outputPath, serialized, { mode: 0o600 });

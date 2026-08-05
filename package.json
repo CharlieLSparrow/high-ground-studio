@@ -155,6 +155,8 @@
     "quipsly:capture:testflight-resend-invitation": "node scripts/release/quipsly-app-store-connect-resend-invitation.mjs",
     "quipsly:capture:app-store-assign-build": "node scripts/release/quipsly-app-store-connect-assign-build.mjs",
     "quipsly:capture:testflight-public-link-readback": "node scripts/release/quipsly-testflight-public-link-readback.mjs",
+    "quipsly:capture:physical-install-readback": "node scripts/release/quipsly-capture-physical-install-readback.mjs",
+    "quipsly:capture:physical-install-readback:test": "node --test scripts/release/quipsly-capture-physical-install-readback.test.mjs",
     "quipsly:capture:rehearsal-preflight": "bash scripts/quipsly-hgo-rehearsal-live-preflight.sh",
     "quipsly:capture:rehearsal-preflight:test": "node --test scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
     "quipsly:capture:sound-check:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-audio-sound-check-model.sh",
