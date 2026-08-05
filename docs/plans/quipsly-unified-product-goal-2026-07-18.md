@@ -7612,3 +7612,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   Studio playback, screenshots, privacy/legal gates, and App Review remain
   open. Provider room recording may stay disabled. See
   `docs/coordination/2026-08-05-capture-build28-qualified-candidate.md`.
+
+## 2026-08-05 generation-bound cloud waveform checkpoint
+
+- Removed the local-only boundary from Nest signal profiling without weakening
+  source authority. A cloud request now binds exact GCS generation, SHA-256,
+  size, content type, project, asset, analyzer contract, and worker identity in
+  create-once manifest, queue, result, retry-lease, and dead-letter records.
+- The processor fully decodes the exact object generation into at most 1,200
+  waveform windows and at most six broad frequency bands. Nest re-inspects the
+  current source before registration; analysis remains derived evidence and
+  cannot rewrite or promote the original.
+- Isolated all five media lanes so one retrying proxy cannot prevent episode
+  proxy, alignment, mastery, or signal analysis. Lanes remain sequential to
+  avoid unbounded FFmpeg contention, and the job reports per-lane failures
+  before returning a retry exit status.
+- The credentialed real-bucket fixture passed on committed source
+  `b3d257d85a78231a87131dcda3a73dc142ae5c0d`: an 8-second source produced 80
+  waveform and 80 six-band frequency windows, exact source readback was
+  unchanged, result replay was idempotent, and independent all-version cleanup
+  found no retained fixture source or control objects.
+- This proves the committed worker and real storage boundary, not the deployed
+  Cloud Run image or a physical browser/iPhone take. The next release gate is
+  the exact Nest and processor deployment after the cost-aware build cadence,
+  followed by a retained physical multi-device recording, opening/later drift
+  review, and assembled playback. Provider recording remains optional. See
+  `docs/coordination/2026-08-05-cloud-audio-signal-profile.md`.

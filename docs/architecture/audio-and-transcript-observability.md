@@ -1,7 +1,7 @@
 # Audio and transcript observability
 
-Status: implemented signal and high-resolution spectral observability; production corpus gate remains
-Last reviewed: 2026-08-04
+Status: implemented local and generation-bound cloud signal observability; production corpus gate remains
+Last reviewed: 2026-08-05
 
 Quipsly treats captured audio, provider inference, and playback-backed review as
 three different kinds of evidence. The product must never collapse them into a
@@ -108,6 +108,16 @@ loudness. See `docs/architecture/audio-mastery.md` for the source-bound
 measurement, reversible proposal, independently verified preview, and
 non-promotion contract.
 
+Local and cloud Nest media now share the same complete-decode signal-profile
+contract. Cloud analysis accepts only an immutable GCS URI with an exact object
+generation, SHA-256, size, and content type. Its create-once manifest, queue,
+result, retry lease, and terminal dead letter are separate from the media. Nest
+rechecks the current source binding before registering the result, and the
+editor exposes a retained configuration-required state rather than pretending
+that analysis succeeded. One failing proxy, alignment, mastering, or signal
+lane cannot starve the others; the shared job attempts them sequentially and
+reports failures per lane.
+
 Local Nest media also has a source-bound logarithmic spectral tile pyramid for
 whole-source, one-minute, and ten-second inspection. It shares the protected
 playback clock in Studio and coaching, preserves fractional source tails, and
@@ -133,7 +143,7 @@ analysis and operate a real evaluation corpus:
 
 - standards-conformant integrated loudness and true-peak analysis in the media
   worker, preserving the on-device RMS/sample-peak evidence separately;
-- cloud execution for the same source-bound spectral and signal contracts;
+- cloud execution for the same source-bound spectral contract;
 - capture-route changes and pause/interruption boundaries on the same timeline;
 - side-by-side provider candidates without replacing the canonical source;
 - named speaker evaluation and domain vocabulary tests;
@@ -159,5 +169,16 @@ condition, never merely express that a model is uncertain.
 - RMS is never labeled or displayed as LUFS.
 - An external microphone name and hardware format survive capture, local
   library readback, upload metadata, Nest ingestion, and transcript review.
+- A cloud signal result is accepted only after exact-generation materialization,
+  complete decode, bounded waveform and frequency evidence, unchanged source
+  hash readback, and create-once replay.
 - A full-transcript accuracy claim requires complete playback-backed review or
   a separately identified, controlled reference transcript.
+
+The committed `b3d257d85a78231a87131dcda3a73dc142ae5c0d` credentialed fixture
+proved the cloud boundary against `high-ground-odyssey-media`: one 8-second
+source produced 80 waveform windows and 80 six-band frequency windows, replay
+retained the first result generation, the source hash remained unchanged, and
+an independent all-version readback found no fixture source or control objects
+after cleanup. Provider recording was not enabled or required. See
+`docs/coordination/2026-08-05-cloud-audio-signal-profile.md`.
