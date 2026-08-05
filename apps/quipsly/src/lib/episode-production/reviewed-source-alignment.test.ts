@@ -3,6 +3,7 @@
 import {
   ReviewedSourceAlignmentError,
   buildReviewedSourceAlignment,
+  canDelegateAuthorizedAgentAlignment,
   hasProtectedReviewedAlignment,
   reviewedSourceAlignment,
 } from "./reviewed-source-alignment";
@@ -82,7 +83,80 @@ function reviewInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function delegatedAgentEvidence() {
+  return {
+    kind: "quipsly-audio-alignment-evidence-v1",
+    createdAt: "2026-07-27T18:55:00.000Z",
+    spine: {
+      assetId: "spine",
+      provider: "local",
+      locator: "/private/spine.wav",
+      generation: "sha256:spine",
+      sha256: "a".repeat(64),
+      sizeBytes: 1_000,
+      contentType: "audio/wav",
+    },
+    target: {
+      assetId: "target",
+      provider: "local",
+      locator: "/private/target.mov",
+      generation: "sha256:target",
+      sha256: "b".repeat(64),
+      sizeBytes: 2_000,
+      contentType: "video/quicktime",
+    },
+    analyzer: {
+      algorithm: "normalized-fft-cross-correlation-v1",
+      sampleRate: 12_000,
+      windowSeconds: 6,
+      searchRadiusSeconds: 1,
+      ffmpegVersion: "ffmpeg test",
+    },
+    opening: {
+      targetStartSeconds: 10,
+      expectedSpineStartSeconds: 10.5,
+      measuredSpineStartSeconds: 10.5,
+      measuredOffsetSeconds: 0.5,
+      normalizedCorrelation: 0.96,
+      secondBestCorrelation: 0.61,
+      peakMargin: 0.35,
+    },
+    later: {
+      targetStartSeconds: 1_810,
+      expectedSpineStartSeconds: 1_810.5,
+      measuredSpineStartSeconds: 1_810.536,
+      measuredOffsetSeconds: 0.536,
+      normalizedCorrelation: 0.93,
+      secondBestCorrelation: 0.58,
+      peakMargin: 0.35,
+    },
+    drift: {
+      observationIntervalSeconds: 1_800,
+      residualDriftMilliseconds: 36,
+      observedPartsPerMillion: 20,
+    },
+    qualification: {
+      minimumCorrelation: 0.78,
+      minimumPeakMargin: 0.04,
+      qualifiedForAuthorizedAgentReview: true,
+      reason: "Distinct peaks at two separated source-bound windows.",
+    },
+    boundaries: {
+      sampleAccurateClaimed: false,
+      sourceBytesMutated: false,
+      timelinePlacementApplied: false,
+      personOrDelegatedApprovalStillRequired: true,
+    },
+  };
+}
+
 describe("reviewed source alignment", () => {
+  it("limits agent delegation to a signed-in staff authority", () => {
+    expect(canDelegateAuthorizedAgentAlignment({ isStaff: true })).toBe(true);
+    expect(canDelegateAuthorizedAgentAlignment({ isStaff: false })).toBe(false);
+    expect(canDelegateAuthorizedAgentAlignment({})).toBe(false);
+  });
+
   it("builds a reversible placement approval from server-owned evidence", () => {
     const review = buildReviewedSourceAlignment(reviewInput());
 
@@ -128,6 +202,54 @@ describe("reviewed source alignment", () => {
     expect(() => buildReviewedSourceAlignment(reviewInput({
       driftReviewConfirmed: false,
     }))).toThrow(ReviewedSourceAlignmentError);
+  });
+
+  it("records authorized agent qualification without manufacturing human listening", () => {
+    const evidence = delegatedAgentEvidence();
+    const review = buildReviewedSourceAlignment(reviewInput({
+      humanApprovalConfirmed: false,
+      authorizedAgentQualificationConfirmed: true,
+      approvalAuthority: {
+        kind: "authorized-agent",
+        agentId: "codex-quipsly-media-review",
+        delegationScope: "Exact-source reversible alignment for this retained QA take only.",
+        qualificationMethod: "normalized-fft-cross-correlation-v1",
+        evidence,
+      },
+    }));
+
+    expect(review).toMatchObject({
+      schema: "quipsly-reviewed-source-alignment-v2",
+      method: "authorized-agent-waveform-and-drift-qualification-v1",
+      checks: {
+        humanApprovalConfirmed: false,
+        authorizedAgentQualificationConfirmed: true,
+      },
+      approvalAuthority: {
+        kind: "authorized-agent",
+        agentId: "codex-quipsly-media-review",
+        delegatedByUserId: "user-1",
+      },
+    });
+    expect(reviewedSourceAlignment({ sync: { alignmentReview: review } })).toEqual(review);
+  });
+
+  it("rejects agent qualification when evidence source bytes or drift are changed", () => {
+    const evidence = delegatedAgentEvidence();
+    expect(() => buildReviewedSourceAlignment(reviewInput({
+      humanApprovalConfirmed: false,
+      authorizedAgentQualificationConfirmed: true,
+      approvalAuthority: {
+        kind: "authorized-agent",
+        agentId: "codex-quipsly-media-review",
+        delegationScope: "One retained QA take.",
+        qualificationMethod: "normalized-fft-cross-correlation-v1",
+        evidence: {
+          ...evidence,
+          target: { ...evidence.target, sha256: "c".repeat(64) },
+        },
+      },
+    }))).toThrow(/does not match/);
   });
 
   it("refuses a capture proposal whose safety contract is invalid", () => {

@@ -1212,7 +1212,9 @@ function importedAssetConfidenceStatus(asset: ImportedMediaAsset, health: MediaS
         ? "border-emerald-200 bg-emerald-50 text-emerald-900"
         : "border-amber-200 bg-amber-50 text-amber-900",
       meaning: review
-        ? "A named editor approved this reversible placement after waveform and later-take drift review."
+        ? review.approvalAuthority?.kind === "authorized-agent"
+          ? "A staff-delegated software agent qualified this reversible placement from exact-source waveform and later-drift evidence."
+          : "A named editor approved this reversible placement after waveform and later-take drift review."
         : "This older file says synced, but it has no complete reviewer or evidence receipt.",
       next: review
         ? "Keep editing; reopen Guided sync if new evidence changes the placement."
@@ -9451,9 +9453,23 @@ function CloudEditorContent() {
                     <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[11px] font-bold leading-5 text-emerald-950">
                       <div className="font-black">Existing reviewed placement</div>
                       <div className="mt-1">
-                        {syncWizardSavedReview.reviewer.name} approved {formatSyncClock(syncWizardSavedReview.placement.anchorTimelineSeconds)}
+                        {syncWizardSavedReview.approvalAuthority?.kind === "authorized-agent"
+                          ? `${syncWizardSavedReview.approvalAuthority.agentId} qualified`
+                          : `${syncWizardSavedReview.reviewer.name} approved`} {formatSyncClock(syncWizardSavedReview.placement.anchorTimelineSeconds)}
                         {" "}on {new Date(syncWizardSavedReview.reviewedAt).toLocaleString()} using {syncWizardSavedReview.sourceEvidence.strength === "sha256-pair" ? "two verified SHA-256 identities" : "stable source identities"}.
                       </div>
+                      {syncWizardSavedReview.approvalAuthority?.kind === "authorized-agent" && (
+                        <div className="mt-2 rounded-lg border border-emerald-200 bg-white/80 p-2" data-testid="authorized-agent-alignment-evidence">
+                          <div><span className="font-black">Delegated by:</span> {syncWizardSavedReview.reviewer.name}</div>
+                          <div><span className="font-black">Scope:</span> {syncWizardSavedReview.approvalAuthority.delegationScope}</div>
+                          <div><span className="font-black">Method:</span> {syncWizardSavedReview.approvalAuthority.qualificationMethod}</div>
+                          <div className="mt-1 font-mono text-[10px]">
+                            opening r={syncWizardSavedReview.approvalAuthority.evidence?.opening.normalizedCorrelation.toFixed(4)} ·
+                            {" "}later r={syncWizardSavedReview.approvalAuthority.evidence?.later.normalizedCorrelation.toFixed(4)} ·
+                            {" "}source bytes unchanged · not sample-accurate
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-1 font-mono text-[10px]">
                         residual {syncWizardSavedReview.driftReview.residualDriftMilliseconds.toFixed(3)} ms /
                         {" "}{syncWizardSavedReview.driftReview.observationIntervalSeconds.toFixed(3)} s ·
@@ -9872,7 +9888,13 @@ function CloudEditorContent() {
                 const confidenceStatus = importedAssetConfidenceStatus(asset, health);
                 const isSpineAsset = persistedSpineAudio?.assetId === asset.id || persistedSpineAudio?.assetId === asset.sourceId;
                 return (
-                <div key={asset.id} className="rounded-lg border border-[#e8dcc4] bg-white p-2 shadow-sm">
+                <div
+                  key={asset.id}
+                  role="region"
+                  aria-label={`Imported media ${asset.originalName}`}
+                  data-testid={`imported-media-card-${asset.id}`}
+                  className="rounded-lg border border-[#e8dcc4] bg-white p-2 shadow-sm"
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate font-black text-[#3d3122]">{asset.originalName}</div>

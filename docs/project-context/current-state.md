@@ -2,6 +2,21 @@
 
 Date: 2026-08-05
 
+## Agent-qualified audio alignment checkpoint
+
+- Guided Sync no longer forces automation to impersonate a human listener.
+  Human approval remains the default, while a signed-in staff delegator can
+  authorize one bounded agent qualification backed by exact source hashes and
+  two separated deterministic FFT correlation windows. The version-2 receipt
+  exposes the agent, delegator, scope, method, correlations, drift, and safety
+  boundaries; non-staff delegation, weak/ambiguous peaks, mismatched hashes,
+  changed drift, or changed placement fail closed. A retained source/proxy
+  operation measured `r=0.998465` and `r=0.999379`, saved no human-approval
+  claim, operated synchronized preview and pause, persisted a two-source
+  timeline, and operated decoded assembled playback with provider recording
+  off. See
+  `docs/coordination/2026-08-05-agent-qualified-audio-alignment.md`.
+
 ## Rehearsal authentication and Mac signing checkpoint
 
 - Guest Google-link readiness is now independent from Episode artifact staging:

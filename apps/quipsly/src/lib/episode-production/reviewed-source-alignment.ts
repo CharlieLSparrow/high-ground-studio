@@ -2,17 +2,23 @@ import {
   episodeRoomCaptureAlignment,
   type EpisodeRoomCaptureAlignment,
 } from "@/lib/episode-room/episode-room-source-alignment";
+import {
+  parseAudioAlignmentEvidence,
+  type AudioAlignmentEvidence,
+} from "@high-ground/quipsly-media-processing";
 
 const REVIEW_SCHEMA = "quipsly-reviewed-source-alignment-v1";
+const AGENT_REVIEW_SCHEMA = "quipsly-reviewed-source-alignment-v2";
 const REVIEW_METHOD = "human-waveform-and-drift-review-v1";
+const AGENT_REVIEW_METHOD = "authorized-agent-waveform-and-drift-qualification-v1";
 
 type JsonRecord = Record<string, unknown>;
 
 export type ReviewedSourceAlignment = {
-  schema: typeof REVIEW_SCHEMA;
+  schema: typeof REVIEW_SCHEMA | typeof AGENT_REVIEW_SCHEMA;
   reviewId: string;
   status: "placement-approved";
-  method: typeof REVIEW_METHOD;
+  method: typeof REVIEW_METHOD | typeof AGENT_REVIEW_METHOD;
   reviewedAt: string;
   reviewer: {
     userId: string;
@@ -51,7 +57,16 @@ export type ReviewedSourceAlignment = {
   checks: {
     waveformCorrelationConfirmed: true;
     driftReviewConfirmed: true;
-    humanApprovalConfirmed: true;
+    humanApprovalConfirmed: boolean;
+    authorizedAgentQualificationConfirmed?: boolean;
+  };
+  approvalAuthority?: {
+    kind: "person" | "authorized-agent";
+    agentId?: string;
+    delegatedByUserId: string;
+    delegationScope?: string;
+    qualificationMethod?: string;
+    evidence?: AudioAlignmentEvidence;
   };
   driftReview: {
     observationIntervalSeconds: number;
@@ -85,6 +100,12 @@ export class ReviewedSourceAlignmentError extends Error {
     super(message);
     this.name = "ReviewedSourceAlignmentError";
   }
+}
+
+export function canDelegateAuthorizedAgentAlignment(
+  actor: { isStaff?: boolean | null },
+) {
+  return actor.isStaff === true;
 }
 
 function record(value: unknown): JsonRecord {
@@ -172,6 +193,8 @@ export function buildReviewedSourceAlignment(input: {
   waveformCorrelationConfirmed: unknown;
   driftReviewConfirmed: unknown;
   humanApprovalConfirmed: unknown;
+  authorizedAgentQualificationConfirmed?: unknown;
+  approvalAuthority?: unknown;
   driftObservationIntervalSeconds: unknown;
   residualDriftMilliseconds: unknown;
   notes?: unknown;
@@ -196,13 +219,20 @@ export function buildReviewedSourceAlignment(input: {
       "alignment-review-invalid",
     );
   }
+  const authorityInput = record(input.approvalAuthority);
+  const isAuthorizedAgent = authorityInput.kind === "authorized-agent";
   if (
     input.waveformCorrelationConfirmed !== true
     || input.driftReviewConfirmed !== true
-    || input.humanApprovalConfirmed !== true
+    || (
+      isAuthorizedAgent
+        ? input.authorizedAgentQualificationConfirmed !== true
+          || input.humanApprovalConfirmed === true
+        : input.humanApprovalConfirmed !== true
+    )
   ) {
     throw new ReviewedSourceAlignmentError(
-      "Listen at the sync point, review drift later in the take, and explicitly approve the placement before saving.",
+      "Listen at the sync point or provide qualified deterministic evidence, review drift later in the take, and explicitly approve or delegate the reversible placement before saving.",
       "alignment-review-invalid",
     );
   }
@@ -260,12 +290,61 @@ export function buildReviewedSourceAlignment(input: {
     );
   }
 
+  let approvalAuthority: ReviewedSourceAlignment["approvalAuthority"];
+  if (isAuthorizedAgent) {
+    let evidence: AudioAlignmentEvidence;
+    try {
+      evidence = parseAudioAlignmentEvidence(authorityInput.evidence);
+    } catch {
+      throw new ReviewedSourceAlignmentError(
+        "Authorized agent approval requires valid exact-source audio alignment evidence.",
+        "alignment-review-invalid",
+      );
+    }
+    const agentId = text(authorityInput.agentId);
+    const delegationScope = text(authorityInput.delegationScope);
+    const qualificationMethod = text(authorityInput.qualificationMethod);
+    if (
+      !agentId
+      || !delegationScope
+      || qualificationMethod !== evidence.analyzer.algorithm
+      || evidence.qualification.qualifiedForAuthorizedAgentReview !== true
+      || evidence.spine.assetId !== spine.assetId
+      || evidence.target.assetId !== target.assetId
+      || !spine.sha256
+      || !target.sha256
+      || evidence.spine.sha256 !== spine.sha256
+      || evidence.target.sha256 !== target.sha256
+      || Math.abs(evidence.drift.observationIntervalSeconds - observationIntervalSeconds) > 0.000001
+      || Math.abs(evidence.drift.residualDriftMilliseconds - residualDriftMilliseconds) > 0.000001
+      || Math.abs(evidence.opening.measuredOffsetSeconds - anchorTimelineSeconds) > 0.001
+    ) {
+      throw new ReviewedSourceAlignmentError(
+        "Authorized agent evidence does not match the selected sources, reviewed placement, drift measurement, or delegation scope.",
+        "alignment-review-invalid",
+      );
+    }
+    approvalAuthority = {
+      kind: "authorized-agent",
+      agentId,
+      delegatedByUserId: reviewer.userId,
+      delegationScope,
+      qualificationMethod,
+      evidence,
+    };
+  } else {
+    approvalAuthority = {
+      kind: "person",
+      delegatedByUserId: reviewer.userId,
+    };
+  }
+
   const notes = text(input.notes).slice(0, 2_000) || null;
   return {
-    schema: REVIEW_SCHEMA,
+    schema: isAuthorizedAgent ? AGENT_REVIEW_SCHEMA : REVIEW_SCHEMA,
     reviewId,
     status: "placement-approved",
-    method: REVIEW_METHOD,
+    method: isAuthorizedAgent ? AGENT_REVIEW_METHOD : REVIEW_METHOD,
     reviewedAt: new Date(reviewedAt).toISOString(),
     reviewer: {
       ...reviewer,
@@ -311,8 +390,10 @@ export function buildReviewedSourceAlignment(input: {
     checks: {
       waveformCorrelationConfirmed: true,
       driftReviewConfirmed: true,
-      humanApprovalConfirmed: true,
+      humanApprovalConfirmed: !isAuthorizedAgent,
+      ...(isAuthorizedAgent ? { authorizedAgentQualificationConfirmed: true } : {}),
     },
+    approvalAuthority,
     driftReview: {
       observationIntervalSeconds: rounded(observationIntervalSeconds),
       residualDriftMilliseconds: rounded(residualDriftMilliseconds),
@@ -339,6 +420,7 @@ export function reviewedSourceAlignment(
   const spine = record(sourceEvidenceRecord.spine);
   const target = record(sourceEvidenceRecord.target);
   const checks = record(review.checks);
+  const approvalAuthority = record(review.approvalAuthority);
   const driftReview = record(review.driftReview);
   const clockProposal = review.clockProposal === null
     ? null
@@ -401,10 +483,45 @@ export function reviewedSourceAlignment(
         residualDriftMilliseconds * 1_000 / observationIntervalSeconds,
       )
     ) <= 0.000001;
+  const isPersonReview = review.schema === REVIEW_SCHEMA && review.method === REVIEW_METHOD;
+  const isAgentReview = review.schema === AGENT_REVIEW_SCHEMA && review.method === AGENT_REVIEW_METHOD;
+  const personAuthorityValid = isPersonReview
+    && checks.humanApprovalConfirmed === true
+    && checks.authorizedAgentQualificationConfirmed !== true
+    && (
+      Object.keys(approvalAuthority).length === 0
+      || (
+        approvalAuthority.kind === "person"
+        && text(approvalAuthority.delegatedByUserId) === text(reviewer.userId)
+      )
+    );
+  let agentAuthorityValid = false;
+  if (isAgentReview) {
+    try {
+      const evidence = parseAudioAlignmentEvidence(approvalAuthority.evidence);
+      agentAuthorityValid =
+        approvalAuthority.kind === "authorized-agent"
+        && Boolean(text(approvalAuthority.agentId))
+        && text(approvalAuthority.delegatedByUserId) === text(reviewer.userId)
+        && Boolean(text(approvalAuthority.delegationScope))
+        && text(approvalAuthority.qualificationMethod) === evidence.analyzer.algorithm
+        && evidence.qualification.qualifiedForAuthorizedAgentReview === true
+        && evidence.spine.assetId === spineAssetId
+        && evidence.target.assetId === targetAssetId
+        && evidence.spine.sha256 === validSha256(spine.sha256)
+        && evidence.target.sha256 === validSha256(target.sha256)
+        && Math.abs(evidence.opening.measuredOffsetSeconds - (anchorTimelineSeconds ?? Number.NaN)) <= 0.001
+        && Math.abs(evidence.drift.observationIntervalSeconds - (observationIntervalSeconds ?? Number.NaN)) <= 0.000001
+        && Math.abs(evidence.drift.residualDriftMilliseconds - (residualDriftMilliseconds ?? Number.NaN)) <= 0.000001
+        && checks.humanApprovalConfirmed === false
+        && checks.authorizedAgentQualificationConfirmed === true;
+    } catch {
+      agentAuthorityValid = false;
+    }
+  }
   if (
-    review.schema !== REVIEW_SCHEMA
+    (!isPersonReview && !isAgentReview)
     || review.status !== "placement-approved"
-    || review.method !== REVIEW_METHOD
     || !text(review.reviewId)
     || !reviewedAt
     || !text(reviewer.userId)
@@ -419,7 +536,7 @@ export function reviewedSourceAlignment(
     || !clockProposalValid
     || checks.waveformCorrelationConfirmed !== true
     || checks.driftReviewConfirmed !== true
-    || checks.humanApprovalConfirmed !== true
+    || (!personAuthorityValid && !agentAuthorityValid)
     || observationIntervalSeconds === null
     || observationIntervalSeconds <= 0
     || observationIntervalSeconds > 86_400

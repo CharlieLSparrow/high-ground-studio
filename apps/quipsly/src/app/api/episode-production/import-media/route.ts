@@ -7,6 +7,7 @@ import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-
 import {
   ReviewedSourceAlignmentError,
   buildReviewedSourceAlignment,
+  canDelegateAuthorizedAgentAlignment,
   hasProtectedReviewedAlignment,
 } from "@/lib/episode-production/reviewed-source-alignment";
 import { planEpisodeProductionSyncUndo } from "@/lib/episode-production/episode-production-sync-undo";
@@ -1530,6 +1531,17 @@ export async function PATCH(request: Request) {
       }
       try {
         const review = asRecord(body.alignmentReview);
+        const approvalAuthority = asRecord(review.approvalAuthority);
+        if (
+          approvalAuthority.kind === "authorized-agent"
+          && !canDelegateAuthorizedAgentAlignment(access.actor)
+        ) {
+          return NextResponse.json({
+            ok: false,
+            code: "authorized-agent-alignment-forbidden",
+            error: "Authorized agent alignment qualification requires a signed-in Quipsly staff delegator and inspectable exact-source evidence.",
+          }, { status: 403 });
+        }
         alignmentReview = buildReviewedSourceAlignment({
           reviewId: randomUUID(),
           reviewedAt: syncedAt,
@@ -1547,6 +1559,9 @@ export async function PATCH(request: Request) {
             review.waveformCorrelationConfirmed,
           driftReviewConfirmed: review.driftReviewConfirmed,
           humanApprovalConfirmed: review.humanApprovalConfirmed,
+          authorizedAgentQualificationConfirmed:
+            review.authorizedAgentQualificationConfirmed,
+          approvalAuthority,
           driftObservationIntervalSeconds:
             review.driftObservationIntervalSeconds,
           residualDriftMilliseconds:
