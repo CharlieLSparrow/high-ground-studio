@@ -58,7 +58,8 @@
       "pnpm quipsly:audio-alignment-cloud:test",
       "pnpm quipsly:audio-mastery-cloud:test",
       "pnpm quipsly:audio-signal-profile:test",
-      "pnpm quipsly:audio-signal-profile-cloud:test"
+      "pnpm quipsly:audio-signal-profile-cloud:test",
+      "pnpm quipsly:media-processor:access:test"
     ],
     "localRuntime": [
       "Run the real FFmpeg portrait-video acceptance and fault-injected immutable-storage worker tests."

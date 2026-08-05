@@ -212,6 +212,7 @@
     "quipsly:media-processor:cloud-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-media-processor-cloud-fixture.mjs",
     "quipsly:media-processor:deploy": "bash scripts/release/quipsly-media-processor-deploy.sh",
     "quipsly:media-processor:access": "bash scripts/release/quipsly-media-processor-access.sh",
+    "quipsly:media-processor:access:test": "node --test scripts/release/quipsly-media-processor-access.test.mjs",
     "quipsly:asset-registration-receipts": "node scripts/quipsly-asset-registration-receipts.mjs",
     "quipsly:hotfix:deploy": "bash scripts/release/quipsly-hotfix-deploy.sh",
     "quipsly:hotfix:deploy:live": "PROMOTE=1 bash scripts/release/quipsly-hotfix-deploy.sh",

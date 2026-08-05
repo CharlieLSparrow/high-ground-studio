@@ -138,12 +138,20 @@ ensure_service_account \
 recordings_folder="media-vault/recordings/"
 raw_folder="media-vault/raw/"
 control_folder="media-vault/control/capture-proxy/"
+alignment_control_folder="media-vault/control/audio-alignment/"
+mastery_control_folder="media-vault/control/audio-mastery/"
+signal_profile_control_folder="media-vault/control/audio-signal-profile/"
 proxy_folder="media-vault/proxy/"
+mastering_folder="media-vault/mastering/"
 for folder in \
   "${recordings_folder}" \
   "${raw_folder}" \
   "${control_folder}" \
-  "${proxy_folder}"; do
+  "${alignment_control_folder}" \
+  "${mastery_control_folder}" \
+  "${signal_profile_control_folder}" \
+  "${proxy_folder}" \
+  "${mastering_folder}"; do
   ensure_managed_folder "${folder}"
 done
 
@@ -159,16 +167,46 @@ ensure_binding \
   "${control_folder}" \
   "serviceAccount:${processor_service_account}" \
   "roles/storage.objectUser"
+for folder in \
+  "${alignment_control_folder}" \
+  "${mastery_control_folder}" \
+  "${signal_profile_control_folder}"; do
+  ensure_binding \
+    "${folder}" \
+    "serviceAccount:${processor_service_account}" \
+    "roles/storage.objectUser"
+done
 ensure_binding \
   "${proxy_folder}" \
   "serviceAccount:${processor_service_account}" \
   "roles/storage.objectUser"
 ensure_binding \
+  "${mastering_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectCreator"
+ensure_binding \
+  "${mastering_folder}" \
+  "serviceAccount:${processor_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
   "${control_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectUser"
+for folder in \
+  "${alignment_control_folder}" \
+  "${mastery_control_folder}" \
+  "${signal_profile_control_folder}"; do
+  ensure_binding \
+    "${folder}" \
+    "serviceAccount:${nest_service_account}" \
+    "roles/storage.objectUser"
+done
 ensure_binding \
   "${proxy_folder}" \
+  "serviceAccount:${nest_service_account}" \
+  "roles/storage.objectViewer"
+ensure_binding \
+  "${mastering_folder}" \
   "serviceAccount:${nest_service_account}" \
   "roles/storage.objectViewer"
 
