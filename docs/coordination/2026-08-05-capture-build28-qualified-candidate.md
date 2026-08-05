@@ -2,15 +2,24 @@
 
 Date: 2026-08-05
 
-Status: exact-source signed candidate qualified; no Apple upload or physical-iPhone claim
+Status: exact-source signed candidate uploaded and in external beta testing; no physical-iPhone claim
+
+> Release update, 2026-08-05: Apple reports Build 28 as `VALID` and
+> `IN_BETA_TESTING`, App Store Connect build ID
+> `ed68117d-5604-45c3-b9f7-239e7cd2af4f`, from exact released source
+> `ab1b167a39749909797177e1304bd9283c558484`. The public rehearsal group
+> includes it and the public installation page is open. The sealed
+> `c9daa075...` no-upload qualification below remains useful historical
+> evidence; physical Episode 9 acceptance is still open.
 
 ## Outcome
 
-Quipsly Capture `1.0 (28)` is a sealed no-upload candidate from exact pushed
-source `c9daa075a4b4824f52df8d656d085ab3ac497c74`. The public TestFlight ledger
-remains pinned to Build 27. Build 28 must not replace it until the matching Nest
-source is deployed and read back, the physical browser/iPhone recording drill
-passes, and App Store Connect independently reports the exact uploaded build.
+Quipsly Capture `1.0 (28)` was first sealed as a no-upload candidate from exact
+pushed source `c9daa075a4b4824f52df8d656d085ab3ac497c74`. At that qualification
+checkpoint, the public TestFlight ledger remained pinned to Build 27 pending a
+matching Nest readback and an independent App Store Connect build receipt. The
+release update above records the later, distinct released-source qualification
+and Apple receipt; the physical browser/iPhone recording drill remains open.
 
 The candidate contains the current canonical Session capture group, browser and
 iPhone source rendezvous, protected-master versus optional-provider-witness

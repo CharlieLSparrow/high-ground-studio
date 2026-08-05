@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-08-02
+Last verified: 2026-08-05
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,10 +8,10 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (27)**
+- App: **Quipsly Capture 1.0 (28)**
 - Exact native source:
-  `cf95f4ed0579b66f4e41faa9666a4cad5f66e147`
-- App Store Connect build ID: `443cad38-3677-4510-8af3-803b5fdb1b9d`
+  `ab1b167a39749909797177e1304bd9283c558484`
+- App Store Connect build ID: `ed68117d-5604-45c3-b9f7-239e7cd2af4f`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -22,11 +22,12 @@ needs to prove.
 - Automatic tester notification: enabled
 - Installation mode: public-link-only; neither a named-tester email nor a
   redemption code is required
-- Build 27 passed all 54 serialized iPhone and Share Extension journeys,
+- Build 28 passed all 63 serialized iPhone and Share Extension journeys,
   exact-source preflight, signed archive/export inspection, Apple processing,
   external beta review, external-group readback, and an anonymous HTTP 200 read
   of Apple's page naming **Quipsly Capture**. This does not claim a physical
-  install or recording.
+  install or recording. It contains the Episode-workspace crash correction;
+  physical Episode 9 acceptance remains required.
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**

@@ -458,9 +458,9 @@ remain red until approved screenshots and every delivery-layer proof exist.
 ## Remaining blockers before App Store submission
 
 The canonical TestFlight distribution target is now **Quipsly Capture 1.0
-(27)**, provider build `443cad38-3677-4510-8af3-803b5fdb1b9d`. Apple reports
+(28)**, provider build `ed68117d-5604-45c3-b9f7-239e7cd2af4f`. Apple reports
 the build identity, while the editable App Store 1.0 version still has Build 26
-assigned and therefore remains blocked from submission. Build 27 is the public
+assigned and therefore remains blocked from submission. Build 28 is the public
 TestFlight rehearsal target; physical-iPhone acceptance remains open. Build
 6/8/9 sections below are historical evidence, not current installation
 instructions.
@@ -470,7 +470,7 @@ The credentialed read-only submission audit is:
 ```bash
 pnpm quipsly:capture:app-store-submission-readiness -- \
   --api-key-path /absolute/private/app-store-connect-key.json \
-  --output /absolute/private/submission-readiness-build27.json
+  --output /absolute/private/submission-readiness-build28.json
 ```
 
 Exit `2` means the read succeeded but submission is still blocked. This first
