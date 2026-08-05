@@ -4,6 +4,20 @@ Date: 2026-08-04
 
 ## Browser and iPhone Session recording checkpoint
 
+- Episode Room now routes each Capture alignment candidate to the deep guided
+  sync desk with its exact `captureGroup` identity. The editor renders every
+  protected master in that take, identifies the group baseline, exposes rough
+  clock offsets and uncertainty, and keeps final placement disabled until
+  opening-cue, later-drift, and explicit approval evidence are complete.
+  Provider receipt slots and real LiveKit room composites now carry the same
+  server-owned capture-group identity, but provider media remains an optional
+  witness/recovery rail rather than a prerequisite for local-master grouping or
+  synchronization. A signed-in local operation loaded a two-source take,
+  completed both immutable signal decodes, applied a `+0.240s` clock proposal
+  only as a rough anchor, and retained the approval hold. The operation also
+  exposed and repaired an invalid Media Vault Prisma selection that had crashed
+  real Episode Rooms. See
+  `docs/coordination/2026-08-05-capture-source-rendezvous.md`.
 - A Session now owns one server-generated capture group for its one recording
   encounter. Browser retained sources, authorized iPhone audio/video, Episode
   Room recording, and external-source import receive that same take identity

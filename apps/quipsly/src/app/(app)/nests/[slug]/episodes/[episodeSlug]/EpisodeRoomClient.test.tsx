@@ -247,6 +247,63 @@ describe("EpisodeRoomClient shared writing", () => {
     expect(screen.getByRole("button", { name: "Prepare for Watch" })).toBeEnabled();
   });
 
+  it("carries the exact Capture take into guided sync instead of dropping it in the live-cut editor", () => {
+    const captureGroupId = "55555555-5555-4555-8555-555555555555";
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      importedCandidates: [{
+        watchId: "asset-homer-video",
+        assetId: "asset-homer-video",
+        sourceId: "source-homer-video",
+        title: "Homer iPhone 4K.mov",
+        kind: "video",
+        playbackUrl: "/api/ingest/media/source-homer-video",
+        importRole: "camera-video",
+        addedAt: "2026-08-05T05:01:01.000Z",
+        addedBy: "Imported media",
+        attached: false,
+        proxyStatus: "ready",
+        sourceStatus: "source verified",
+        sourceSyncStatus: "ready-to-sync",
+        alignmentStatus: "proposal-ready",
+        captureGroupId,
+        captureAlignment: {
+          schema: "quipsly-capture-alignment-proposal-v1",
+          status: "proposal-ready",
+          contractValid: true,
+          method: "lowest-rtt-monotonic-server-projection-v1",
+          sourceClockEvidence: "lowest-rtt-monotonic-projection",
+          estimatedServerStartedAt: "2026-08-05T05:00:00.240Z",
+          uncertaintyMilliseconds: 8.5,
+          estimatedOffsetMilliseconds: 240,
+          baselineRecordingAssetId: "recording-audio",
+          proposalSourceCount: 2,
+          startReceiptId: "start-video",
+          sampleAccurateClaimed: false,
+          reviewRequired: true,
+          reviewGate: {
+            waveformCorrelationRequired: true,
+            driftReviewRequired: true,
+            humanApprovalRequired: true,
+          },
+          reason: "Clock evidence is ready for waveform, drift, and human review.",
+        },
+        canAddToWatch: true,
+        readinessLabel: "source verified · clock proposal ready",
+      }],
+    }} />);
+
+    expect(screen.getByRole("link", { name: "Open guided sync" })).toHaveAttribute(
+      "href",
+      "/editor?project=high-ground-odyssey&episode=episode-5#guided-sync-wizard",
+    );
+    expect(screen.getByRole("link", { name: "Review this take" })).toHaveAttribute(
+      "href",
+      `/editor?project=high-ground-odyssey&episode=episode-5&captureGroup=${captureGroupId}#guided-sync-wizard`,
+    );
+    expect(screen.getByText("+0.240s from baseline · ±8.5ms clock uncertainty")).toBeInTheDocument();
+  });
+
   it("shows a bound recording clock without leaking raw Capture-room access", () => {
     render(<EpisodeRoomClient initialPayload={{
       ...initialPayload,

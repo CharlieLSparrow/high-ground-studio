@@ -239,6 +239,7 @@ async function createHeldAsset(input: {
       recordedStartedAt: input.action === "START" ? now : null,
       localManifestJson: {
         provider: "livekit",
+        captureGroupId: input.room.captureGroupId,
         action: input.action,
         heldAt: now.toISOString(),
         heldByUserId: input.operatorUserId,
@@ -400,6 +401,7 @@ export async function startQuipslyLiveKitRoomCompositeEgress(input: {
       recordedStartedAt: now,
       localManifestJson: {
         provider: "livekit",
+        captureGroupId: room.captureGroupId,
         providerProcessingDisposition: "PENDING",
         providerTranscriptDisposition: consentReadiness.allPartiesAllowTranscription
           ? "PENDING"

@@ -130,6 +130,20 @@ function formatUncertainty(milliseconds: number | null) {
   return `±${milliseconds.toFixed(milliseconds < 10 ? 1 : 0)}ms clock uncertainty`;
 }
 
+function guidedSyncHref(
+  projectSlug: string,
+  episodeSlug: string,
+  captureGroupId?: string,
+) {
+  const query = new URLSearchParams({
+    project: projectSlug,
+    episode: episodeSlug,
+  });
+  const group = captureGroupId?.trim();
+  if (group) query.set("captureGroup", group);
+  return `/editor?${query.toString()}#guided-sync-wizard`;
+}
+
 function selectedClip(room: EpisodeRoomState) {
   return room.clips.find((clip) => clip.watchId === room.selectedClipId);
 }
@@ -1016,10 +1030,10 @@ export default function EpisodeRoomClient({
                         </p>
                       </div>
                       <Link
-                        href={`/nests/${encodeURIComponent(projectSlug)}/episode-editor?episode=${encodeURIComponent(episodeSlug)}`}
+                        href={guidedSyncHref(projectSlug, episodeSlug)}
                         className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f]"
                       >
-                        <Scissors size={13} /> Review in editor
+                        <Scissors size={13} /> Open guided sync
                       </Link>
                     </div>
                     <ul className="mt-3 grid min-w-0 gap-2 lg:grid-cols-2">
@@ -1050,6 +1064,18 @@ export default function EpisodeRoomClient({
                                 Proposed server start {alignment.estimatedServerStartedAt}
                                 {alignment.proposalSourceCount ? ` · ${alignment.proposalSourceCount} grouped sources` : ""}
                               </p>
+                            ) : null}
+                            {candidate.captureGroupId ? (
+                              <Link
+                                href={guidedSyncHref(
+                                  projectSlug,
+                                  episodeSlug,
+                                  candidate.captureGroupId,
+                                )}
+                                className="mt-3 inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[9px] font-black uppercase tracking-wide text-[#f6d68f]"
+                              >
+                                <Scissors size={12} /> Review this take
+                              </Link>
                             ) : null}
                           </li>
                         );

@@ -4662,6 +4662,29 @@ function CloudEditorContent() {
       ));
   }, [captureGroupFocus?.assetIds, importedMediaAssets, syncWizardSpineAsset]);
 
+  const captureGroupSourceSet = useMemo(() => {
+    if (!captureGroupFocus?.matched) return [];
+    const byId = new Map(importedMediaAssets.map((asset) => [asset.id, asset]));
+    return captureGroupFocus.assetIds.flatMap((assetId) => {
+      const asset = byId.get(assetId);
+      if (!asset) return [];
+      const alignment = episodeRoomCaptureAlignment(asset);
+      const reviewed = reviewedSourceAlignment(asset);
+      const recordingAssetId = importedAssetRecordingAssetId(asset);
+      return [{
+        asset,
+        alignment,
+        reviewed,
+        recordingAssetId,
+        isAudio: asset.kind === "audio" || asset.contentType.startsWith("audio/"),
+        isBaseline: Boolean(
+          recordingAssetId
+          && alignment?.baselineRecordingAssetId === recordingAssetId,
+        ),
+      }];
+    });
+  }, [captureGroupFocus, importedMediaAssets]);
+
   const mediaHealthProbeItems = useMemo(() => {
     const items = new Map<string, MediaHealthProbeItem>();
 
@@ -8751,12 +8774,95 @@ function CloudEditorContent() {
                     </span>
                   </div>
                   {captureGroupFocus.matched && (
-                    <p className="mt-2 text-[11px] font-bold leading-5">
-                      Quipsly selected this group&apos;s microphone master and
-                      first camera source only as the starting view. It did not
-                      change the episode spine, place clips, approve clock
-                      offsets, or claim sample accuracy.
-                    </p>
+                    <>
+                      <p className="mt-2 text-[11px] font-bold leading-5">
+                        Quipsly selected this group&apos;s microphone master and
+                        first camera source only as the starting view. It did not
+                        change the episode spine, place clips, approve clock
+                        offsets, or claim sample accuracy.
+                      </p>
+                      <section
+                        aria-label="Capture take source set"
+                        className="mt-3 rounded-xl border border-sky-200 bg-white/75 p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <div className="font-black text-sky-950">One take · separate protected masters</div>
+                            <p className="mt-1 text-[10px] font-bold leading-4 text-sky-900">
+                              Inspect every source before choosing the spine and target. Clock placement is only a rough anchor until opening-cue and late-drift review are saved.
+                              A provider room mix, when present, is an optional witness and recovery rail; the protected local masters do not depend on it to rendezvous.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-sky-100 px-2 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-sky-950">
+                            {captureGroupSourceSet.length} source{captureGroupSourceSet.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                          {captureGroupSourceSet.map((source) => {
+                            const alignmentLabel = source.reviewed
+                              ? "Reviewed sync"
+                              : source.alignment?.status === "proposal-ready"
+                                ? "Clock proposal"
+                                : source.alignment
+                                  ? "Waveform review"
+                                  : "Evidence pending";
+                            const selectedAsSpine = syncWizardSpineAssetId === source.asset.id;
+                            const selectedAsTarget = syncWizardTargetAssetId === source.asset.id;
+                            return (
+                              <article key={source.asset.id} className="min-w-0 rounded-lg border border-sky-100 bg-white p-3 text-sky-950">
+                                <div className="flex min-w-0 items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate font-black">{source.asset.originalName}</div>
+                                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-sky-700">
+                                      {importedAssetRoleLabel(source.asset)} · {alignmentLabel}
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                                    {source.isBaseline ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-black uppercase text-emerald-900">Group baseline</span> : null}
+                                    {selectedAsSpine ? <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-900">Spine selection</span> : null}
+                                    {selectedAsTarget ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-900">Target selection</span> : null}
+                                  </div>
+                                </div>
+                                <div className="mt-2 font-mono text-[10px] font-bold leading-5 text-sky-800">
+                                  {source.alignment?.estimatedOffsetMilliseconds === null || source.alignment?.estimatedOffsetMilliseconds === undefined
+                                    ? "Group offset pending"
+                                    : `${source.alignment.estimatedOffsetMilliseconds >= 0 ? "+" : ""}${(source.alignment.estimatedOffsetMilliseconds / 1_000).toFixed(3)}s from baseline`}
+                                  {source.alignment?.uncertaintyMilliseconds === null || source.alignment?.uncertaintyMilliseconds === undefined
+                                    ? " · uncertainty unavailable"
+                                    : ` · ±${source.alignment.uncertaintyMilliseconds.toFixed(1)}ms`}
+                                </div>
+                                {source.recordingAssetId ? (
+                                  <div className="mt-1 truncate font-mono text-[9px] text-sky-700">Recording {source.recordingAssetId}</div>
+                                ) : null}
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={!source.isAudio}
+                                    onClick={() => setSyncWizardSpineAssetId(source.asset.id)}
+                                    className="rounded-md border border-sky-200 bg-sky-50 px-2 py-2 text-[10px] font-black text-sky-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                  >
+                                    Use as spine
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={selectedAsSpine}
+                                    onClick={() => setSyncWizardTargetAssetId(source.asset.id)}
+                                    className="rounded-md border border-sky-200 bg-white px-2 py-2 text-[10px] font-black text-sky-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                  >
+                                    Review as target
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                        {captureGroupSourceSet.length === 1 ? (
+                          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-bold leading-4 text-amber-950">
+                            Only one master has reached this take. Preserve it, then finish the other device upload or import before cross-source synchronization review.
+                          </p>
+                        ) : null}
+                      </section>
+                    </>
                   )}
                 </div>
               )}

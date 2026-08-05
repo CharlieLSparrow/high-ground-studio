@@ -484,7 +484,6 @@ async function vaultAssetsForProject(
     },
     select: {
       id: true,
-      captureGroupId: true,
       filename: true,
       url: true,
       mimeType: true,

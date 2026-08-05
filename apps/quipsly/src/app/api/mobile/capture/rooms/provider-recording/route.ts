@@ -84,6 +84,7 @@ function providerRecordingManifest(input: {
     provider: input.room.provider,
     providerRoomId: input.room.providerRoomId,
     callRoomId: input.room.id,
+    captureGroupId: input.room.captureGroupId,
     preparedAt: input.now.toISOString(),
     preparedByUserId: input.userId,
     reusedExistingSlot: input.existing === true,

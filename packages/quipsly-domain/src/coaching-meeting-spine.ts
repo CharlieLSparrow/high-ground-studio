@@ -35,6 +35,7 @@ export interface QuipslyProviderRecordingReceiptSlotManifestInput {
   readonly provider?: string | null;
   readonly providerRoomId?: string | null;
   readonly callRoomId: string;
+  readonly captureGroupId: string;
   readonly preparedAt: string;
   readonly preparedByUserId: string;
   readonly reusedExistingSlot?: boolean;
@@ -170,6 +171,7 @@ export function buildQuipslyProviderRecordingReceiptSlotManifest(
     provider: normalizedProvider(input.provider),
     providerRoomId: input.providerRoomId || input.callRoomId,
     callRoomId: input.callRoomId,
+    captureGroupId: input.captureGroupId,
     preparedAt: input.preparedAt,
     preparedByUserId: input.preparedByUserId,
     startsWithJoin: false,

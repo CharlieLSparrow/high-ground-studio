@@ -1,7 +1,8 @@
 import React from "react";
 import { createHash, webcrypto } from "node:crypto";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useSearchParams } from "next/navigation";
 
 import CloudEditor from "./page";
 import { canonicalAiEditTranscript } from "@/lib/editor/ai-edit-proposal-contract";
@@ -59,6 +60,9 @@ describe("CloudEditor production truth UX", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(useSearchParams).mockReturnValue(
+      new URLSearchParams() as unknown as ReturnType<typeof useSearchParams>,
+    );
     reviewReceiptSequence = 0;
     Object.defineProperty(globalThis, "crypto", {
       configurable: true,
@@ -249,6 +253,100 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByRole("button", { name: "TRANSCRIPT" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Source Monitor" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Program Monitor" })).toBeInTheDocument();
+  });
+
+  it("opens an exact Capture take as a transparent source set without approving placement", async () => {
+    const captureGroupId = "55555555-5555-4555-8555-555555555555";
+    const alignment = (input: {
+      recordingAssetId: string;
+      offsetMilliseconds: number;
+      uncertaintyMilliseconds: number;
+    }) => ({
+      schema: "quipsly-capture-alignment-proposal-v1",
+      status: "proposal-ready",
+      captureGroupId,
+      sourceClockEvidence: "lowest-rtt-monotonic-projection",
+      method: "lowest-rtt-monotonic-server-projection-v1",
+      estimatedServerStartedAt: "2026-08-05T05:00:00.000Z",
+      uncertaintyMilliseconds: input.uncertaintyMilliseconds,
+      sampleAccurateClaimed: false,
+      reviewRequired: true,
+      reviewGate: {
+        waveformCorrelationRequired: true,
+        driftReviewRequired: true,
+        humanApprovalRequired: true,
+      },
+      captureGroup: {
+        baselineRecordingAssetId: "recording-audio",
+        baselineEstimatedServerStartedAt: "2026-08-05T05:00:00.000Z",
+        estimatedOffsetMilliseconds: input.offsetMilliseconds,
+        proposalSourceCount: 2,
+        sampleAccurateClaimed: false,
+      },
+      startBoundary: { receiptId: `start-${input.recordingAssetId}` },
+      reason: "Clock evidence is ready for waveform, drift, and human review.",
+    });
+    jest.mocked(useSearchParams).mockReturnValue(new URLSearchParams({
+      project: "high-ground-odyssey",
+      episode: "episode-9",
+      captureGroup: captureGroupId,
+    }) as unknown as ReturnType<typeof useSearchParams>);
+    mockEpisodeProduction({
+      projectSlug: "high-ground-odyssey",
+      slug: "episode-9",
+      title: "Episode 9",
+      productionJson: {
+        importedMedia: [
+          {
+            id: "asset-audio",
+            sourceId: "source-audio",
+            originalName: "Homer clean audio.m4a",
+            contentType: "audio/mp4",
+            kind: "audio",
+            playbackUrl: "/api/ingest/media/source-audio",
+            importedAt: "2026-08-05T05:01:00.000Z",
+            importRole: "phone-audio",
+            sync: {
+              recordingAssetId: "recording-audio",
+              recordingSync: { recordingAssetId: "recording-audio", captureGroupId },
+              alignment: alignment({ recordingAssetId: "recording-audio", offsetMilliseconds: 0, uncertaintyMilliseconds: 6.2 }),
+            },
+          },
+          {
+            id: "asset-video",
+            sourceId: "source-video",
+            originalName: "Homer iPhone 4K.mov",
+            contentType: "video/quicktime",
+            kind: "video",
+            playbackUrl: "/api/ingest/media/source-video",
+            importedAt: "2026-08-05T05:01:01.000Z",
+            importRole: "camera-video",
+            sync: {
+              recordingAssetId: "recording-video",
+              recordingSync: { recordingAssetId: "recording-video", captureGroupId },
+              alignment: alignment({ recordingAssetId: "recording-video", offsetMilliseconds: 240, uncertaintyMilliseconds: 8.5 }),
+            },
+          },
+        ],
+      },
+    });
+
+    render(<CloudEditor />);
+
+    expect(await screen.findByText("Opened from Capture — exact take focused")).toBeInTheDocument();
+    const sourceSet = screen.getByRole("region", { name: "Capture take source set" });
+    expect(within(sourceSet).getByText("Homer clean audio.m4a")).toBeInTheDocument();
+    expect(within(sourceSet).getByText("Homer iPhone 4K.mov")).toBeInTheDocument();
+    expect(within(sourceSet).getByText("2 sources")).toBeInTheDocument();
+    expect(within(sourceSet).getByText(/provider room mix, when present, is an optional witness/i)).toBeInTheDocument();
+    expect(within(sourceSet).getByText("Group baseline")).toBeInTheDocument();
+    expect(within(sourceSet).getByText("+0.240s from baseline · ±8.5ms")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(sourceSet).getByText("Spine selection")).toBeInTheDocument();
+      expect(within(sourceSet).getByText("Target selection")).toBeInTheDocument();
+    });
+    expect(within(sourceSet).queryByText("Reviewed sync")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/No placement or episode-spine decision has been made/i).length).toBeGreaterThan(0);
   });
 
   it("opens the paper edit from the transcript mode control", async () => {
