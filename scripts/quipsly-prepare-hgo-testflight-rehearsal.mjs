@@ -167,6 +167,10 @@ function userIdentityWhere(email) {
   };
 }
 
+function episodeDocumentStableId(options) {
+  return `doc-${options.projectSlug}-${options.episodeSlug}`;
+}
+
 async function userForEmail(prisma, email) {
   return prisma.user.findFirst({
     where: userIdentityWhere(email),
@@ -247,9 +251,9 @@ async function discover(prisma, options) {
 }
 
 async function upsertRehearsalDocument(prisma, options, projectId) {
-  const stableId = `doc-${options.projectSlug}`;
-  const title = `${options.projectName} Production Document`;
-  const sourceLabel = "nest-kind:production";
+  const stableId = episodeDocumentStableId(options);
+  const title = `${options.episodeTitle} Production Document`;
+  const sourceLabel = `episode:${options.episodeSlug}`;
   const existing = await prisma.$queryRawUnsafe(
     `SELECT "id", "projectId", "stableId", "title", "sourceLabel", "isPrivate", "updatedAt"
        FROM "StudioDocument"
@@ -289,6 +293,9 @@ async function upsertRehearsalDocument(prisma, options, projectId) {
 }
 
 function planFor(state, options) {
+  const episodeDocument = state.project?.documents.find(
+    (document) => document.stableId === episodeDocumentStableId(options),
+  );
   const ownerGrant = state.project?.accessGrants.find(
     (grant) =>
       normalizeEmail(grant.email) === options.hostEmail
@@ -328,7 +335,7 @@ function planFor(state, options) {
     ),
     ensureWorkspace: !state.workspace,
     ensureProject: !state.project,
-    ensureDocument: !state.project?.documents.length,
+    ensureDocument: !episodeDocument,
     ensureOwnerGrant: !ownerGrant,
     ensureGuestEditorGrant: !guestGrant,
     ensureGuestInviteLedger: !invite,
@@ -647,6 +654,47 @@ async function createRoomThroughProductionApi(options, host, project) {
   return clean(document.session.callRoomId || document.session.id);
 }
 
+async function ensureEpisodeWorkspace(prisma, options, foundation) {
+  return prisma.studioEpisodeProduction.upsert({
+    where: {
+      projectId_slug: {
+        projectId: foundation.project.id,
+        slug: options.episodeSlug,
+      },
+    },
+    create: {
+      projectId: foundation.project.id,
+      documentId: foundation.document.id,
+      slug: options.episodeSlug,
+      title: options.episodeTitle,
+      boundaryLabel: options.episodeTitle,
+      boundaryKind: "episode",
+      status: "rehearsal",
+      recordingRoomJson: {
+        state: "awaiting-session-binding",
+        source: "quipsly-prepare-hgo-testflight-rehearsal",
+      },
+      timelineJson: {},
+      transcriptJson: {},
+      productionJson: {
+        episodeRoom: {
+          revision: 0,
+          status: "idle",
+          clips: [],
+        },
+        importedMedia: [],
+        timelineClips: [],
+      },
+    },
+    update: {
+      documentId: foundation.document.id,
+      title: options.episodeTitle,
+      boundaryLabel: options.episodeTitle,
+      boundaryKind: "episode",
+    },
+  });
+}
+
 async function readProductionRehearsalApi(options, host, roomId) {
   const idToken = await firebaseIdTokenForHost(options, host);
   const headers = {
@@ -957,6 +1005,8 @@ async function main() {
     if (options.apply) {
       const foundation = await ensureProjectFoundation(prisma, options);
       operations.push("ensure-shared-rehearsal-nest-and-invite");
+      await ensureEpisodeWorkspace(prisma, options, foundation);
+      operations.push("ensure-episode-workspace-before-session-binding");
       state = await discover(prisma, options);
       let roomId = state.room?.id || "";
       if (!roomId) {

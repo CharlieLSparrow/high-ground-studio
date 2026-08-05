@@ -429,16 +429,6 @@ export default function EpisodeRoomClient({
       }
       return payload;
     };
-    const readStatus = async () => {
-      const params = new URLSearchParams(coordinates);
-      const response = await fetch(`${proxyEndpoint}?${params}`, { cache: "no-store" });
-      const payload = await response.json().catch(() => ({})) as CollaborationProxyResponse;
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "The collaboration proxy status is unavailable.");
-      }
-      return payload;
-    };
-
     setStatus("uploading");
     setError("");
     setNotice(`${candidate.title} is safely uploaded. Preparing dependable Shared Watch playback…`);
@@ -465,7 +455,11 @@ export default function EpisodeRoomClient({
           throw new Error(proxy.error || "The collaboration proxy needs attention before Shared Watch can use it.");
         }
         await new Promise((resolve) => window.setTimeout(resolve, 1_250));
-        proxy = await readStatus();
+        // The private worker publishes an immutable object-store receipt. A
+        // reconcile call both observes that receipt and registers the verified
+        // proxy back into the episode, while a status-only read cannot advance
+        // the durable workflow to completed.
+        proxy = await operate("reconcile");
       }
 
       await refresh(true);

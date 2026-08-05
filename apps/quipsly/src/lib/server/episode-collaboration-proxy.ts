@@ -153,10 +153,20 @@ export async function queueEpisodeCollaborationProxy(input: {
       },
     });
     if (existing) {
-      if (existing.status === "output-ready" || existing.status === "processing") {
+      if (
+        existing.status === "queued"
+        || existing.status === "processing"
+        || existing.status === "output-ready"
+      ) {
         try {
           const currentContract = parseEpisodeCollaborationProxyJob(existing.inputJson, existing.id);
-          if (currentContract.source.sha256 === job.source.sha256) return existing;
+          if (sameImmutableProxyJobBinding(currentContract, job)) {
+            // Preserve the original actor and queuedAt. Reconstructing a
+            // create-once job on retry would mint a different contract after
+            // the database assigned its createdAt timestamp, which correctly
+            // fails the manifest's immutable-binding check.
+            return existing;
+          }
         } catch {
           // A legacy or stale job is replaced below with the current immutable binding.
         }
@@ -205,6 +215,27 @@ export async function queueEpisodeCollaborationProxy(input: {
       : status;
   }
   return statusFromJob(saved);
+}
+
+function sameImmutableProxyJobBinding(
+  left: EpisodeCollaborationProxyJob,
+  right: EpisodeCollaborationProxyJob,
+) {
+  return JSON.stringify({
+    projectId: left.projectId,
+    projectSlug: left.projectSlug,
+    episodeProductionId: left.episodeProductionId,
+    episodeSlug: left.episodeSlug,
+    source: left.source,
+    target: left.target,
+  }) === JSON.stringify({
+    projectId: right.projectId,
+    projectSlug: right.projectSlug,
+    episodeProductionId: right.episodeProductionId,
+    episodeSlug: right.episodeSlug,
+    source: right.source,
+    target: right.target,
+  });
 }
 
 export async function readEpisodeCollaborationProxyStatus(input: {

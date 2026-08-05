@@ -26,30 +26,23 @@ import {
 const execFileAsync = promisify(execFile);
 const REFERENCE_CLIP_ROLE = "reference-clip";
 const RETIRED_PROOF_ROLE = "rehearsal-proof";
+const COLLABORATION_PROXY_POLL_INTERVAL_MS = 1_250;
+const COLLABORATION_PROXY_MAX_POLLS = 360;
 const DEFAULTS = Object.freeze({
   baseUrl: "https://nest.quipsly.com",
   hostEmail: "charlie@highgroundodyssey.com",
   projectSlug: "high-ground-odyssey-rehearsal",
   episodeSlug: "testflight-rehearsal",
 });
-const SYNTHETIC_REHEARSAL_BLOCKS = Object.freeze([
-  {
-    order: 0,
-    body: "# High Ground Odyssey TestFlight Rehearsal",
-  },
-  {
-    order: 1000,
-    body: [
-      "## Rehearsal checklist",
-      "",
-      "- Both people join the Quipsly audio room.",
-      "- Each person grants their own recording consent.",
-      "- Record local audio and iPhone video.",
-      "- Pause/resume and switch between front and back cameras.",
-      "- End capture, verify upload, then listen to the assembled timeline.",
-    ].join("\n"),
-  },
-]);
+const SYNTHETIC_REHEARSAL_CHECKLIST = [
+  "## Rehearsal checklist",
+  "",
+  "- Both people join the Quipsly audio room.",
+  "- Each person grants their own recording consent.",
+  "- Record local audio and iPhone video.",
+  "- Pause/resume and switch between front and back cameras.",
+  "- End capture, verify upload, then listen to the assembled timeline.",
+].join("\n");
 
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -260,11 +253,13 @@ function isCanonicalSyntheticSeed(desk) {
   const blocks = Array.isArray(desk?.textBlocks)
     ? desk.textBlocks
     : [];
-  return blocks.length === SYNTHETIC_REHEARSAL_BLOCKS.length
-    && blocks.every((block, index) => (
-      Number(block?.order) === SYNTHETIC_REHEARSAL_BLOCKS[index].order
-      && clean(block?.body) === SYNTHETIC_REHEARSAL_BLOCKS[index].body
-    ));
+  const episodeTitle = clean(desk?.episode?.title);
+  return blocks.length === 2
+    && Boolean(episodeTitle)
+    && Number(blocks[0]?.order) === 0
+    && clean(blocks[0]?.body) === `# ${episodeTitle}`
+    && Number(blocks[1]?.order) === 1000
+    && clean(blocks[1]?.body) === SYNTHETIC_REHEARSAL_CHECKLIST;
 }
 
 function matchingReferenceCandidate(desk, clip) {
@@ -291,6 +286,7 @@ async function replaceSyntheticSeedWithManuscript(
       },
       select: {
         id: true,
+        title: true,
         projectId: true,
         documentId: true,
         productionJson: true,
@@ -317,13 +313,15 @@ async function replaceSyntheticSeedWithManuscript(
       },
     });
     const exactSeed =
-      existing.length === SYNTHETIC_REHEARSAL_BLOCKS.length
-      && existing.every((block, index) => (
-        block.order === SYNTHETIC_REHEARSAL_BLOCKS[index].order
-        && clean(block.body) === SYNTHETIC_REHEARSAL_BLOCKS[index].body
-        && !clean(block.sourceLabel)
-        && !clean(block.sourcePath)
-      ));
+      existing.length === 2
+      && existing[0].order === 0
+      && clean(existing[0].body) === `# ${clean(production.title)}`
+      && !clean(existing[0].sourceLabel)
+      && !clean(existing[0].sourcePath)
+      && existing[1].order === 1000
+      && clean(existing[1].body) === SYNTHETIC_REHEARSAL_CHECKLIST
+      && !clean(existing[1].sourceLabel)
+      && !clean(existing[1].sourcePath);
     if (!exactSeed) {
       fail(
         "The rehearsal writing changed after planning; refusing to replace it.",
@@ -494,6 +492,124 @@ async function importClip(options, credentials, clip) {
     sourceId: clean(document.sourceId),
     playbackUrl: clean(document.playbackUrl),
   };
+}
+
+function collaborationProxyEndpoint(options) {
+  return `${options.baseUrl}/api/episode-production/collaboration-proxy`;
+}
+
+async function operateCollaborationProxy(
+  options,
+  credentials,
+  candidate,
+  action,
+) {
+  const response = await fetch(collaborationProxyEndpoint(options), {
+    method: "POST",
+    headers: authenticatedHeaders(credentials, {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({
+      action,
+      projectSlug: options.projectSlug,
+      episodeSlug: options.episodeSlug,
+      assetId: candidate.assetId,
+      sourceId: candidate.sourceId,
+    }),
+  });
+  const document = await response.json();
+  if (!response.ok || document?.ok !== true || !clean(document?.status)) {
+    fail(
+      `Collaboration proxy ${action} failed with HTTP ${response.status}: `
+      + `${clean(document?.error) || "unknown error"}`,
+    );
+  }
+  return document;
+}
+
+async function verifyCollaborationProxyPlayback(
+  options,
+  credentials,
+  proxy,
+) {
+  const playbackUrl = new URL(clean(proxy?.proxyUrl), options.baseUrl);
+  const expectedSha256 = clean(proxy?.outputEvidence?.sha256);
+  const expectedBytes = Number(proxy?.outputEvidence?.sizeBytes);
+  if (!expectedSha256 || !Number.isFinite(expectedBytes) || expectedBytes <= 0) {
+    fail("Completed collaboration proxy lacks immutable output evidence.");
+  }
+  const outsiderResponse = await fetch(playbackUrl, {
+    headers: { Accept: "*/*" },
+    redirect: "manual",
+  });
+  await outsiderResponse.arrayBuffer();
+  const authenticatedResponse = await fetch(playbackUrl, {
+    headers: authenticatedHeaders(credentials, { Accept: "*/*" }),
+  });
+  const bytes = Buffer.from(await authenticatedResponse.arrayBuffer());
+  const playbackSha256 = sha256(bytes);
+  return {
+    outsiderStatus: outsiderResponse.status,
+    outsiderDenied: [401, 403, 404].includes(outsiderResponse.status),
+    authenticatedStatus: authenticatedResponse.status,
+    authenticatedBytes: bytes.byteLength,
+    expectedBytes,
+    expectedSha256,
+    playbackSha256,
+    exactOutputMatch:
+      authenticatedResponse.status === 200
+      && bytes.byteLength === expectedBytes
+      && playbackSha256 === expectedSha256,
+  };
+}
+
+async function prepareCollaborationProxy(options, credentials, candidate) {
+  if (!clean(candidate?.sourceId)) {
+    fail(`${clean(candidate?.title) || "Video"} lacks a source identity.`);
+  }
+  let proxy = await operateCollaborationProxy(
+    options,
+    credentials,
+    candidate,
+    "queue",
+  );
+  for (let attempt = 0; attempt < COLLABORATION_PROXY_MAX_POLLS; attempt += 1) {
+    if (proxy.status === "completed") {
+      const playback = await verifyCollaborationProxyPlayback(
+        options,
+        credentials,
+        proxy,
+      );
+      if (!playback.exactOutputMatch || !playback.outsiderDenied) {
+        fail("Collaboration proxy failed protected playback verification.");
+      }
+      return { proxy, playback, pollCount: attempt };
+    }
+    if (proxy.status === "blocked" || proxy.status === "failed") {
+      fail(
+        `Collaboration proxy entered ${proxy.status}: `
+        + `${clean(proxy.error) || "no durable error was returned"}`,
+      );
+    }
+    if (attempt > 0 && attempt % 24 === 0) {
+      process.stderr.write(
+        `Collaboration proxy is ${proxy.status}; continuing durable reconciliation.\n`,
+      );
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, COLLABORATION_PROXY_POLL_INTERVAL_MS));
+    // The worker completes through immutable object-store receipts. Reconcile,
+    // rather than merely reading the database row, so a completed receipt is
+    // registered back into the episode and becomes usable by Shared Watch.
+    proxy = await operateCollaborationProxy(
+      options,
+      credentials,
+      candidate,
+      "reconcile",
+    );
+  }
+  fail("Collaboration proxy did not finish within the bounded wait window.");
 }
 
 async function issueRoomCommand(
@@ -713,12 +829,18 @@ async function main() {
       if (options.apply && !candidate) {
         fail(`${clip.name} did not appear in the Episode Room after upload.`);
       }
+      const sourcePlaybackCandidate = candidate
+        ? {
+            ...candidate,
+            playbackUrl: `/api/ingest/media/${encodeURIComponent(candidate.sourceId)}`,
+          }
+        : null;
       const playback =
         options.apply && candidate
           ? await verifyPlayback(
               options,
               credentials,
-              candidate,
+              sourcePlaybackCandidate,
               clip.bytes,
             )
           : null;
@@ -727,6 +849,14 @@ async function main() {
       }
       if (options.apply && playback?.outsiderDenied !== true) {
         fail(`${clip.name} was readable without an authenticated Nest session.`);
+      }
+      const proxyResult =
+        options.apply && candidate && candidate.kind === "video"
+          ? await prepareCollaborationProxy(options, credentials, candidate)
+          : null;
+      if (proxyResult) {
+        desk = (await readEpisodeDesk(options, credentials)).desk;
+        candidate = matchingReferenceCandidate(desk, clip);
       }
       clipResults.push({
         name: clip.name,
@@ -745,6 +875,19 @@ async function main() {
         importedThisRun: imported,
         assetId: candidate?.assetId ?? null,
         sourceId: candidate?.sourceId ?? null,
+        proxy: proxyResult
+          ? {
+              jobId: clean(proxyResult.proxy.jobId),
+              status: proxyResult.proxy.status,
+              proxyAssetId: clean(proxyResult.proxy.proxyAssetId),
+              proxySourceId: clean(proxyResult.proxy.proxySourceId),
+              variantId: clean(proxyResult.proxy.variantId),
+              originalRemainsSourceTruth:
+                proxyResult.proxy.originalRemainsSourceTruth === true,
+              pollCount: proxyResult.pollCount,
+              playback: proxyResult.playback,
+            }
+          : null,
         playback: playback
           ? {
               outsiderStatus: playback.outsiderStatus,
@@ -845,7 +988,11 @@ async function main() {
         && clipResults.every(
           (clip) =>
             clip.playback?.exactBytesMatch === true
-            && clip.playback?.outsiderDenied === true,
+            && clip.playback?.outsiderDenied === true
+            && clip.proxy?.status === "completed"
+            && clip.proxy?.originalRemainsSourceTruth === true
+            && clip.proxy?.playback?.exactOutputMatch === true
+            && clip.proxy?.playback?.outsiderDenied === true,
         ),
       ),
     };

@@ -41,6 +41,7 @@ test("episode cloud outbox is create-once, generation-bound, and crash-replayabl
     "parseEpisodeCollaborationProxyCloudManifest",
     "parseEpisodeCollaborationProxyCloudQueueReceipt",
     "assertImmutableManifestBinding",
+    "loadJsonGeneration",
     "manifestGeneration",
     "sourceGeneration",
     "sourceSha256",
@@ -50,6 +51,20 @@ test("episode cloud outbox is create-once, generation-bound, and crash-replayabl
   ]) {
     assert.ok(control.includes(contract), contract);
   }
+  assert.ok(
+    control.indexOf("loadJsonGeneration(")
+      < control.lastIndexOf("assertImmutableManifestBinding("),
+  );
+  assert.ok(
+    control.includes(
+      "The create-once queue receipt intentionally identifies the generation",
+    ),
+  );
+  assert.ok(reconciliation.includes('existing.status === "queued"'));
+  assert.ok(reconciliation.includes("sameImmutableProxyJobBinding"));
+  assert.ok(
+    reconciliation.includes("Preserve the original actor and queuedAt"),
+  );
 });
 
 test("one immutable processor image executes both capture and episode queues", () => {

@@ -117,7 +117,12 @@ export async function ensureEpisodeCollaborationProxyCloudQueued(input: {
       manifestGeneration: storedManifest.generation,
       enqueuedAt: canonicalManifest.queuedAt,
     };
-    await saveQueueIfAbsent(bucket, queueObjectName, queueReceipt);
+    await saveQueueIfAbsent(
+      bucket,
+      queueObjectName,
+      queueReceipt,
+      canonicalManifest,
+    );
   }
 
   const existingInput = jsonObject(input.workflow.inputJson);
@@ -249,6 +254,7 @@ async function saveQueueIfAbsent(
   bucket: any,
   objectName: string,
   receipt: EpisodeCollaborationProxyCloudQueueReceipt,
+  expectedManifest: EpisodeCollaborationProxyCloudManifest,
 ) {
   const file = bucket.file(objectName);
   try {
@@ -270,9 +276,31 @@ async function saveQueueIfAbsent(
   }
   const stored = await loadJson(bucket, objectName);
   const canonical = parseEpisodeCollaborationProxyCloudQueueReceipt(stored.value);
-  if (JSON.stringify(canonical) !== JSON.stringify(receipt)) {
+  if (
+    canonical.kind !== receipt.kind
+    || canonical.version !== receipt.version
+    || canonical.jobId !== receipt.jobId
+    || canonical.manifestObjectName !== receipt.manifestObjectName
+    || canonical.enqueuedAt !== receipt.enqueuedAt
+  ) {
     throw new Error("Existing episode collaboration proxy queue receipt has drifted.");
   }
+  // The create-once queue receipt intentionally identifies the generation at
+  // which the job entered the queue. The worker advances the manifest to new
+  // generations as it leases and processes the job, so comparing the stored
+  // queue receipt with the current manifest generation would reject normal
+  // progress. Instead, re-read the historical generation named by the receipt
+  // and prove it has the same immutable job binding as the current manifest.
+  const queuedManifestStored = await loadJsonGeneration(
+    bucket,
+    canonical.manifestObjectName,
+    canonical.manifestGeneration,
+  );
+  const queuedManifest = parseEpisodeCollaborationProxyCloudManifest(
+    queuedManifestStored.value,
+    canonical.jobId,
+  );
+  assertImmutableManifestBinding(queuedManifest, expectedManifest);
 }
 
 async function loadJson(bucket: any, objectName: string) {
@@ -285,6 +313,21 @@ async function loadJson(bucket: any, objectName: string) {
   return {
     value: JSON.parse(raw.toString("utf8")) as unknown,
     generation,
+  };
+}
+
+async function loadJsonGeneration(
+  bucket: any,
+  objectName: string,
+  generation: string,
+) {
+  const exactGeneration = requiredGeneration(generation);
+  const [raw] = await bucket.file(objectName, {
+    generation: exactGeneration,
+  }).download({ validation: "crc32c" });
+  return {
+    value: JSON.parse(raw.toString("utf8")) as unknown,
+    generation: exactGeneration,
   };
 }
 
