@@ -5,13 +5,16 @@ import { LiveSessionRoom } from "./live-session-room";
 jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
     captureGroupId,
+    projectSlug,
     onSourceLockChange,
   }: {
     captureGroupId: string;
+    projectSlug?: string | null;
     onSourceLockChange?: (locked: boolean) => void;
   }) => (
     <div>
       <span data-testid="browser-source-capture-group">{captureGroupId}</span>
+      <span data-testid="browser-source-project">{projectSlug || "unbound"}</span>
       <button type="button" onClick={() => onSourceLockChange?.(true)}>Simulate retained source start</button>
       <button type="button" onClick={() => onSourceLockChange?.(false)}>Simulate retained source stop</button>
     </div>
@@ -45,7 +48,7 @@ describe("LiveSessionRoom", () => {
     });
 
     await act(async () => {
-      render(<LiveSessionRoom callRoomId="room-1" captureGroupId="55555555-5555-4555-8555-555555555551" sessionTitle="Episode test" kind="episode" purpose="PODCAST" />);
+      render(<LiveSessionRoom callRoomId="room-1" captureGroupId="55555555-5555-4555-8555-555555555551" sessionTitle="Episode test" kind="episode" purpose="PODCAST" projectSlug="high-ground-odyssey" />);
     });
 
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
@@ -60,6 +63,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent(
       "55555555-5555-4555-8555-555555555551",
     );
+    expect(screen.getByTestId("browser-source-project")).toHaveTextContent("high-ground-odyssey");
   });
 
   it("does not request media permission until the person acts", async () => {

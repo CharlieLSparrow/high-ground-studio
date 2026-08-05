@@ -1722,6 +1722,9 @@ function checkTranscriptCorrectionContractSources() {
     recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")
       && recordingPromotionText.includes('"capture-group-source-set-changed"')
       && recordingPromotionText.includes('"capture-group-processing-held"')
+      && recordingPromotionText.includes("missingRequiredRecordingAssetIds")
+      && recordingPromotionText.includes('kind?: string | null')
+      && recordingPromotionText.includes('toUpperCase() === "SERVER_MIX"')
       && recordingPromotionText.includes("originalSourcesMutated: false")
       && recordingPromotionText.includes("alignmentRemainsProposal: true")
       && recordingPromotionText.includes("retryIsIdempotent: true")
@@ -1729,7 +1732,11 @@ function checkTranscriptCorrectionContractSources() {
       && recordingPromotionRouteText.includes("promoteRecordingCaptureGroupToStudioMedia")
       && mobileCaptureSessionsText.includes("captureGroupStudioHandoff")
       && mobileCaptureSessionsText.includes("captureGroupPromotionRequiresCompleteSourceSet: true")
+      && mobileCaptureSessionsText.includes("providerWitnessCount")
+      && mobileCaptureSessionsText.includes("requiredSourceCount")
       && bridgeText.includes("MobileCaptureSourceSummary")
+      && bridgeText.includes("studioRequiredHandoffSources")
+      && bridgeText.includes("studioProviderWitnesses.filter(\\.isVerifiedForStudio)")
       && bridgeText.includes('requestBody["captureGroupId"] = captureGroupID')
       && bridgeText.includes('requestBody["expectedRecordingAssetIds"]')
       && bridgeText.includes("studioCaptureReviewURL")
@@ -1747,7 +1754,7 @@ function checkTranscriptCorrectionContractSources() {
       && captureUITestText.includes('expectedStatus: "1 of 2 in Studio"')
       && captureUITestText.includes('expectedStatus: "2 sources in Studio"'),
     "completeCaptureGroupStudioHandoff",
-    "iPhone and Nest attach the newest verified podcast take as one exact source-set snapshot, preserve every source original, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
+    "iPhone and Nest attach every required protected master from the newest podcast take as one exact source-set snapshot, preserve every original, optionally include only reconciled provider media as a non-blocking sync and recovery witness, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

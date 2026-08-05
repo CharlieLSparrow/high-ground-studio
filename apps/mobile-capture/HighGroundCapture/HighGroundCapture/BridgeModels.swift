@@ -1137,6 +1137,27 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         }
     }
 
+    var studioRequiredHandoffSources: [MobileCaptureSourceSummary] {
+        studioHandoffSources.filter {
+            $0.kind?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased() != "SERVER_MIX"
+        }
+    }
+
+    var studioProviderWitnesses: [MobileCaptureSourceSummary] {
+        studioHandoffSources.filter {
+            $0.kind?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased() == "SERVER_MIX"
+        }
+    }
+
+    var studioPromotionSources: [MobileCaptureSourceSummary] {
+        studioRequiredHandoffSources
+            + studioProviderWitnesses.filter(\.isVerifiedForStudio)
+    }
+
     func studioCaptureReviewURL(baseURLString: String) -> URL? {
         guard let projectSlug = projectSlug?
             .trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1176,9 +1197,10 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingPromotedToStudioMedia: Bool {
-        let sources = studioHandoffSources
-        if !sources.isEmpty {
-            return sources.allSatisfy(\.isPromotedToStudio)
+        let requiredSources = studioRequiredHandoffSources
+        if !requiredSources.isEmpty {
+            return requiredSources.allSatisfy(\.isPromotedToStudio)
+                && studioPromotionSources.allSatisfy(\.isPromotedToStudio)
         }
         return latestRecordingMediaAssetId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1187,10 +1209,10 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
 
     var canPromoteRecordingToStudioMedia: Bool {
         guard projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return false }
-        let sources = studioHandoffSources
-        if !sources.isEmpty {
-            return sources.allSatisfy(\.isVerifiedForStudio)
-                && sources.contains { !$0.isPromotedToStudio }
+        let requiredSources = studioRequiredHandoffSources
+        if !requiredSources.isEmpty {
+            return requiredSources.allSatisfy(\.isVerifiedForStudio)
+                && studioPromotionSources.contains { !$0.isPromotedToStudio }
         }
         if actionPacket?.capabilities?.canPromoteRecordingToMedia == true { return true }
         guard latestRecordingAssetId != nil, !recordingPromotedToStudioMedia else { return false }
@@ -1199,20 +1221,23 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingPromotionBadgeLabel: String {
-        let sources = studioHandoffSources
+        let sources = studioRequiredHandoffSources
         if !sources.isEmpty {
             let promotedCount = sources.filter(\.isPromotedToStudio).count
+            let witnessSuffix = studioProviderWitnesses.isEmpty
+                ? ""
+                : " · \(studioProviderWitnesses.count) optional witness"
             if promotedCount == sources.count {
-                return "\(sources.count) \(sources.count == 1 ? "source" : "sources") in Studio"
+                return "\(sources.count) \(sources.count == 1 ? "master" : "masters") in Studio\(witnessSuffix)"
             }
             if promotedCount > 0 {
-                return "\(promotedCount) of \(sources.count) in Studio"
+                return "\(promotedCount) of \(sources.count) masters in Studio\(witnessSuffix)"
             }
             if sources.allSatisfy(\.isVerifiedForStudio) {
-                return "\(sources.count) \(sources.count == 1 ? "source" : "sources") ready"
+                return "\(sources.count) \(sources.count == 1 ? "master" : "masters") ready\(witnessSuffix)"
             }
             let verifiedCount = sources.filter(\.isVerifiedForStudio).count
-            return "\(verifiedCount) of \(sources.count) verified"
+            return "\(verifiedCount) of \(sources.count) masters verified\(witnessSuffix)"
         }
         if recordingPromotedToStudioMedia { return "Studio media ready" }
         if latestRecordingAssetId != nil && projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
@@ -1225,20 +1250,23 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingMediaVaultLine: String {
-        let sources = studioHandoffSources
+        let sources = studioRequiredHandoffSources
         if !sources.isEmpty {
             let promotedCount = sources.filter(\.isPromotedToStudio).count
+            let witnessLine = studioProviderWitnesses.isEmpty
+                ? ""
+                : " Provider room media is visible as an optional sync and recovery witness; it never blocks these masters."
             if promotedCount == sources.count {
-                return "The complete \(sources.count)-source capture group is attached to Studio. Every original remains immutable capture evidence."
+                return "The complete \(sources.count)-master capture group is attached to Studio. Every original remains immutable capture evidence.\(witnessLine)"
             }
             if promotedCount > 0 {
-                return "\(promotedCount) of \(sources.count) capture-group sources reached Studio. Retry safely to continue the exact same handoff."
+                return "\(promotedCount) of \(sources.count) protected masters reached Studio. Retry safely to continue the exact same handoff.\(witnessLine)"
             }
             if sources.allSatisfy(\.isVerifiedForStudio) {
-                return "All \(sources.count) sources in this capture group passed exact-byte verification and can move to Studio together."
+                return "All \(sources.count) protected masters passed exact-byte verification and can move to Studio together.\(witnessLine)"
             }
             let verifiedCount = sources.filter(\.isVerifiedForStudio).count
-            return "\(verifiedCount) of \(sources.count) capture-group sources are verified. Studio handoff waits for the complete group."
+            return "\(verifiedCount) of \(sources.count) protected masters are verified. Studio handoff waits for the required group, not optional provider media.\(witnessLine)"
         }
         if let mediaAssetId = latestRecordingMediaAssetId, !mediaAssetId.isEmpty {
             return "Promoted to Studio media: \(mediaAssetId). The original recording remains capture evidence."
@@ -7457,7 +7485,7 @@ final class CaptureSessionClient: ObservableObject {
 
     func promoteRecordingToStudioMedia(for session: MobileCaptureSession) async -> Bool {
         let captureGroupID = session.studioHandoffCaptureGroupID
-        let captureGroupSources = session.studioHandoffSources
+        let captureGroupSources = session.studioPromotionSources
         let recordingAssetID = session.latestRecordingAssetId
         guard captureGroupID != nil || recordingAssetID != nil else {
             status = "No verified recording"

@@ -1021,8 +1021,13 @@ type CaptureGroupPromotionSource = {
   recordingAssetId: string;
   captureGroupId: string;
   status: string;
+  kind?: string | null;
   recordedStartedAt?: Date | string | null;
 };
+
+function isProviderWitnessSource(source: CaptureGroupPromotionSource) {
+  return text(source.kind).toUpperCase() === "SERVER_MIX";
+}
 
 export function captureGroupIdForRecordingAsset(
   asset: any,
@@ -1079,7 +1084,7 @@ export function resolveCaptureGroupPromotionPlan(input: {
     };
   }
 
-  const sources = input.sources
+  const groupSources = input.sources
     .filter((source) => text(source.captureGroupId).toLowerCase() === captureGroupId)
     .sort((left, right) => {
       const byStart = String(left.recordedStartedAt || "")
@@ -1087,7 +1092,7 @@ export function resolveCaptureGroupPromotionPlan(input: {
       return byStart || left.recordingAssetId.localeCompare(right.recordingAssetId);
     });
   const actualRecordingAssetIds = normalizedAssetIds(
-    sources.map((source) => source.recordingAssetId),
+    groupSources.map((source) => source.recordingAssetId),
   );
   if (actualRecordingAssetIds.length === 0) {
     return {
@@ -1098,12 +1103,21 @@ export function resolveCaptureGroupPromotionPlan(input: {
         "That capture group is no longer visible in this Session. Refresh before retrying.",
     };
   }
+  const requiredRecordingAssetIds = normalizedAssetIds(
+    groupSources
+      .filter((source) => !isProviderWitnessSource(source))
+      .map((source) => source.recordingAssetId),
+  );
+  const unknownExpectedRecordingAssetIds = expectedRecordingAssetIds.filter(
+    (recordingAssetId) => !actualRecordingAssetIds.includes(recordingAssetId),
+  );
+  const missingRequiredRecordingAssetIds = requiredRecordingAssetIds.filter(
+    (recordingAssetId) => !expectedRecordingAssetIds.includes(recordingAssetId),
+  );
   if (
-    actualRecordingAssetIds.length !== expectedRecordingAssetIds.length
-    || actualRecordingAssetIds.some(
-      (recordingAssetId, index) =>
-        recordingAssetId !== expectedRecordingAssetIds[index],
-    )
+    requiredRecordingAssetIds.length === 0
+    || unknownExpectedRecordingAssetIds.length > 0
+    || missingRequiredRecordingAssetIds.length > 0
   ) {
     return {
       ok: false as const,
@@ -1112,10 +1126,18 @@ export function resolveCaptureGroupPromotionPlan(input: {
       captureGroupId,
       expectedRecordingAssetIds,
       actualRecordingAssetIds,
+      requiredRecordingAssetIds,
+      unknownExpectedRecordingAssetIds,
+      missingRequiredRecordingAssetIds,
       message:
-        "The capture group changed after it was shown on the iPhone. Refresh and review the complete source set before attaching anything.",
+        "The required protected-master set changed after review. Refresh before attaching anything. Provider room media is optional and never substitutes for a protected master.",
     };
   }
+
+  const expectedIdSet = new Set(expectedRecordingAssetIds);
+  const sources = groupSources.filter((source) => (
+    expectedIdSet.has(source.recordingAssetId)
+  ));
 
   const unverified = sources.filter(
     (source) => text(source.status).toUpperCase() !== "VERIFIED",
@@ -1132,7 +1154,7 @@ export function resolveCaptureGroupPromotionPlan(input: {
         (source) => source.recordingAssetId,
       ),
       message:
-        "Every source in the capture group must pass exact-byte verification before Studio handoff.",
+        "Every selected protected master or optional provider witness must pass exact-byte verification before Studio handoff.",
     };
   }
 
@@ -1200,6 +1222,7 @@ export async function promoteRecordingCaptureGroupToStudioMedia(
           finalizationReceipts,
         ),
         status: text(asset.status).toUpperCase(),
+        kind: text(asset.kind).toUpperCase(),
         recordedStartedAt: asset.recordedStartedAt,
       })),
   });

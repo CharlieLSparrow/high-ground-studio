@@ -381,6 +381,12 @@ export function captureGroupStudioHandoff(captureSources: any[]) {
         label(source.captureGroupId) === captureGroupId
       ))
     : [];
+  const requiredSources = sources.filter((source: any) => (
+    label(source.kind)?.toUpperCase() !== "SERVER_MIX"
+  ));
+  const providerWitnesses = sources.filter((source: any) => (
+    label(source.kind)?.toUpperCase() === "SERVER_MIX"
+  ));
   const verifiedSourceCount = sources.filter((source: any) => (
     source.exactBytesVerified === true
     && label(source.recordingStatus)?.toUpperCase() === "VERIFIED"
@@ -389,18 +395,38 @@ export function captureGroupStudioHandoff(captureSources: any[]) {
   const promotedSourceCount = sources.filter((source: any) => (
     Boolean(label(source.mediaAssetId))
   )).length;
+  const verifiedRequiredSourceCount = requiredSources.filter((source: any) => (
+    source.exactBytesVerified === true
+    && label(source.recordingStatus)?.toUpperCase() === "VERIFIED"
+    && label(source.processingDisposition)?.toUpperCase() === "RELEASED"
+  )).length;
+  const promotedRequiredSourceCount = requiredSources.filter((source: any) => (
+    Boolean(label(source.mediaAssetId))
+  )).length;
+  const readyProviderWitnesses = providerWitnesses.filter((source: any) => (
+    source.exactBytesVerified === true
+    && label(source.recordingStatus)?.toUpperCase() === "VERIFIED"
+    && label(source.processingDisposition)?.toUpperCase() === "RELEASED"
+  ));
 
   return {
     captureGroupId: captureGroupId || null,
     sourceCount: sources.length,
+    requiredSourceCount: requiredSources.length,
+    providerWitnessCount: providerWitnesses.length,
     verifiedSourceCount,
+    verifiedRequiredSourceCount,
     promotedSourceCount,
+    promotedRequiredSourceCount,
     ready:
-      sources.length > 0
-      && verifiedSourceCount === sources.length,
+      requiredSources.length > 0
+      && verifiedRequiredSourceCount === requiredSources.length,
     complete:
-      sources.length > 0
-      && promotedSourceCount === sources.length,
+      requiredSources.length > 0
+      && promotedRequiredSourceCount === requiredSources.length
+      && readyProviderWitnesses.every((source: any) => (
+        Boolean(label(source.mediaAssetId))
+      )),
     sourceSetRequired: true,
     sources,
   };
@@ -1144,8 +1170,12 @@ export function mapMobileCaptureSessionsForUser(input: {
       studioHandoff: {
         captureGroupId: studioHandoff.captureGroupId,
         sourceCount: studioHandoff.sourceCount,
+        requiredSourceCount: studioHandoff.requiredSourceCount,
+        providerWitnessCount: studioHandoff.providerWitnessCount,
         verifiedSourceCount: studioHandoff.verifiedSourceCount,
+        verifiedRequiredSourceCount: studioHandoff.verifiedRequiredSourceCount,
         promotedSourceCount: studioHandoff.promotedSourceCount,
+        promotedRequiredSourceCount: studioHandoff.promotedRequiredSourceCount,
         ready: studioHandoff.ready,
         complete: studioHandoff.complete,
         sourceSetRequired: studioHandoff.sourceSetRequired,

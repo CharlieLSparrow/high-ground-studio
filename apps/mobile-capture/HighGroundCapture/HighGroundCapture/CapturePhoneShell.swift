@@ -10800,7 +10800,7 @@ private struct StudioHandoffCard: View {
     }
 
     private var studioHandoffActionLabel: String {
-        let sourceCount = session.studioHandoffSources.count
+        let sourceCount = session.studioRequiredHandoffSources.count
         if session.recordingPromotedToStudioMedia {
             return sourceCount > 1 ? "Group in Studio" : "Attached to Studio"
         }
@@ -10808,7 +10808,7 @@ private struct StudioHandoffCard: View {
     }
 
     private var studioReviewActionLabel: String {
-        session.studioHandoffSources.count > 1
+        session.studioRequiredHandoffSources.count > 1
             ? "Review group sync"
             : "Review in Studio"
     }

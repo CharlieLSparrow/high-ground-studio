@@ -574,4 +574,35 @@ describe("mobile Session canonical capture sources", () => {
       complete: false,
     });
   });
+
+  it("keeps provider room media optional for protected-master readiness", () => {
+    expect(captureGroupStudioHandoff([
+      {
+        recordingAssetId: "iphone-master",
+        captureGroupId: "take-4",
+        kind: "LOCAL_VIDEO",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "RELEASED",
+        mediaAssetId: "media-iphone",
+      },
+      {
+        recordingAssetId: "provider-held",
+        captureGroupId: "take-4",
+        kind: "SERVER_MIX",
+        exactBytesVerified: false,
+        recordingStatus: "UPLOADING",
+        processingDisposition: "PENDING",
+        mediaAssetId: null,
+      },
+    ])).toMatchObject({
+      sourceCount: 2,
+      requiredSourceCount: 1,
+      providerWitnessCount: 1,
+      verifiedRequiredSourceCount: 1,
+      promotedRequiredSourceCount: 1,
+      ready: true,
+      complete: true,
+    });
+  });
 });

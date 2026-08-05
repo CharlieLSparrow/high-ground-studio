@@ -246,6 +246,63 @@ describe("capture Session to Studio handoff boundary", () => {
     });
   });
 
+  it("does not require an unfinished provider witness to attach protected masters", () => {
+    const sources = [
+      {
+        recordingAssetId: "iphone-master",
+        captureGroupId: "take-1",
+        kind: "LOCAL_VIDEO",
+        status: "VERIFIED",
+      },
+      {
+        recordingAssetId: "browser-master",
+        captureGroupId: "take-1",
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+      },
+      {
+        recordingAssetId: "provider-held",
+        captureGroupId: "take-1",
+        kind: "SERVER_MIX",
+        status: "UPLOADING",
+      },
+    ];
+
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["browser-master", "iphone-master"],
+      sources,
+    })).toMatchObject({
+      ok: true,
+      sources: [
+        { recordingAssetId: "browser-master" },
+        { recordingAssetId: "iphone-master" },
+      ],
+    });
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["provider-held"],
+      sources,
+    })).toMatchObject({
+      ok: false,
+      status: "capture-group-source-set-changed",
+      missingRequiredRecordingAssetIds: ["browser-master", "iphone-master"],
+    });
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: [
+        "browser-master",
+        "iphone-master",
+        "provider-held",
+      ],
+      sources,
+    })).toMatchObject({
+      ok: false,
+      status: "capture-group-awaiting-verification",
+      blockedRecordingAssetIds: ["provider-held"],
+    });
+  });
+
   it("converges every verified source and reports idempotent partial truth", async () => {
     const assets = [
       {
@@ -403,6 +460,83 @@ describe("capture Session to Studio handoff boundary", () => {
     });
     expect(processingGate).toHaveBeenCalledTimes(2);
     expect(promoteOne).not.toHaveBeenCalled();
+  });
+
+  it("promotes protected masters while an unfinished provider file remains optional", async () => {
+    const assets = [
+      {
+        id: "browser-master",
+        roomId: "room-1",
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-08-05T12:00:00.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "iphone-master",
+        roomId: "room-1",
+        kind: "LOCAL_VIDEO",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-08-05T12:00:01.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "provider-held",
+        roomId: "room-1",
+        kind: "SERVER_MIX",
+        status: "UPLOADING",
+        recordedStartedAt: new Date("2026-08-05T12:00:02.000Z"),
+        localManifestJson: {
+          provider: "livekit",
+          captureGroupId: "take-1",
+        },
+      },
+    ];
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn().mockResolvedValue(assets),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const processingGate = jest.fn().mockResolvedValue({ allowed: true });
+    const promoteOne = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "promoted",
+        message: "Browser master ready.",
+        mediaAsset: { id: "media-browser" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "promoted",
+        message: "iPhone master ready.",
+        mediaAsset: { id: "media-iphone" },
+      });
+
+    const result = await promoteRecordingCaptureGroupToStudioMedia({
+      prisma,
+      roomId: "room-1",
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["browser-master", "iphone-master"],
+      actorUserId: "user-1",
+      actorEmail: "user@example.test",
+      processingGate: processingGate as any,
+      promoteOne: promoteOne as any,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "capture-group-promoted",
+      expectedSourceCount: 2,
+      promotedSourceCount: 2,
+    });
+    expect(processingGate).toHaveBeenCalledTimes(2);
+    expect(promoteOne.mock.calls.map(([call]) => call.recordingAssetId)).toEqual([
+      "browser-master",
+      "iphone-master",
+    ]);
   });
 
   it("returns explicit retry-safe partial truth after a mid-group failure", async () => {

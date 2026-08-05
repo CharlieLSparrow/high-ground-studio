@@ -7494,3 +7494,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   source identities, physical clock evidence, upload, waveform/drift review,
   and editor playback before this becomes a production-qualified claim. See
   `docs/coordination/2026-08-04-session-capture-group-clock.md`.
+
+## 2026-08-05 browser/iPhone take handoff checkpoint
+
+- Made provider room media an enforced optional sync and recovery witness, not
+  a required master or timing authority. Held or unreconciled provider output
+  cannot block protected browser/iPhone masters; a verified provider file can
+  join the handoff, and a receipt placeholder is never mistaken for media.
+- Added the browser's canonical take roster, exact reviewed source-set handoff,
+  purpose-correct Studio destination, and one-click exact capture-group editor
+  focus. Quipsly Capture applies the same required-master and optional-witness
+  contract.
+- Operated a newly created, consented podcast Session through the rendered
+  local product. Two fresh browser sources recorded at different times retained
+  local originals, collected `3/3` clock samples, passed exact-byte
+  verification, reached Studio, and reopened together in one take. The late
+  source joined the same editor focus and final placement stayed review-gated.
+- Four focused suites pass 44 tests, TypeScript 7 typecheck passes, the full iOS
+  simulator build passes, the optimized Quipsly build passes 172 routes, and
+  the source contract smoke passes 101/101 checks.
+- This is real local product operation, not physical iPhone proof or a release.
+  The next acceptance is one retained browser+iPhone Session with independent
+  source/upload IDs, interruption/reconnect, exact-byte readback, editor
+  playback, opening-cue review, and late-drift review. Provider recording may
+  remain disabled. See
+  `docs/coordination/2026-08-05-browser-iphone-take-rendezvous.md`.

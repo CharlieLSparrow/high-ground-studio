@@ -909,6 +909,7 @@ export function LiveSessionRoom({
           captureGroupId={captureGroupId}
           sessionTitle={sessionTitle}
           sessionKind={experience.captureProfile}
+          projectSlug={projectSlug}
           episodeSlug={episodeSlug}
           microphoneId={microphoneId}
           microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}

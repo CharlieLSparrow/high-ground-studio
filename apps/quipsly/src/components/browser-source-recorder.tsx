@@ -4,9 +4,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  ExternalLink,
   HardDrive,
+  Layers3,
   LoaderCircle,
   Mic2,
+  RefreshCw,
   ShieldCheck,
   Square,
   UploadCloud,
@@ -39,6 +42,11 @@ import {
   browserMonotonicNanoseconds,
   measureBrowserCaptureClockBurst,
 } from "@/lib/browser-capture-clock";
+import {
+  browserCaptureStudioHandoff,
+  browserCaptureStudioReviewHref,
+  type BrowserCaptureStudioHandoff,
+} from "@/lib/browser-capture-studio-handoff";
 import {
   analyseStudioAudioFrame,
   appendBrowserCaptureMeterAggregate,
@@ -122,6 +130,7 @@ export function BrowserSourceRecorder({
   captureGroupId,
   sessionTitle,
   sessionKind,
+  projectSlug = null,
   episodeSlug = null,
   microphoneId,
   microphoneLabel,
@@ -133,6 +142,7 @@ export function BrowserSourceRecorder({
   captureGroupId: string;
   sessionTitle: string;
   sessionKind: "coaching" | "episode";
+  projectSlug?: string | null;
   episodeSlug?: string | null;
   microphoneId: string;
   microphoneLabel: string;
@@ -158,6 +168,9 @@ export function BrowserSourceRecorder({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [recoveryRows, setRecoveryRows] = useState<BrowserSourceCaptureLedger[]>([]);
   const [activeLedger, setActiveLedger] = useState<BrowserSourceCaptureLedger | null>(null);
+  const [studioHandoff, setStudioHandoff] = useState<BrowserCaptureStudioHandoff | null>(null);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffMessage, setHandoffMessage] = useState("Loading the canonical source set for this take…");
   const sourceLocked = status === "starting" || status === "recording" || status === "stopping";
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -182,6 +195,41 @@ export function BrowserSourceRecorder({
     const rows = await listBrowserSourceLedgers(callRoomId).catch(() => []);
     setRecoveryRows(rows);
   }, [callRoomId]);
+
+  const refreshStudioHandoff = useCallback(async (announce = true) => {
+    if (announce) setHandoffBusy(true);
+    try {
+      const response = await fetch("/api/mobile/capture/sessions", { cache: "no-store" });
+      const packet = await response.json().catch(() => ({}));
+      if (!response.ok || packet?.ok !== true) {
+        throw new Error(packet?.error || "The canonical Session source set could not be loaded.");
+      }
+      const next = browserCaptureStudioHandoff(packet, callRoomId, captureGroupId);
+      setStudioHandoff(next);
+      if (!next) {
+        setHandoffMessage("This Session is not visible in the signed-in workspace. The protected local source is unchanged.");
+      } else if (next.sourceCount === 0) {
+        setHandoffMessage("No server-verified sources have reached this take yet. Protected browser files remain available above.");
+      } else if (!next.ready) {
+        setHandoffMessage(`${next.verifiedRequiredSourceCount} of ${next.requiredSourceCount} protected masters have exact-byte release evidence. Studio attachment stays held until the required take is ready.`);
+      } else if (next.complete) {
+        setHandoffMessage(`All ${next.requiredSourceCount} required masters are attached to Studio. Provider media remains an optional witness; alignment remains a reviewable proposal.`);
+      } else {
+        setHandoffMessage(`All ${next.requiredSourceCount} required masters are verified. Review this exact set, then attach the complete take to Studio.`);
+      }
+      return next;
+    } catch (error) {
+      setStudioHandoff(null);
+      setHandoffMessage(error instanceof Error ? error.message : "The canonical Session source set could not be loaded.");
+      return null;
+    } finally {
+      if (announce) setHandoffBusy(false);
+    }
+  }, [callRoomId, captureGroupId]);
+
+  useEffect(() => {
+    void refreshStudioHandoff(false);
+  }, [refreshStudioHandoff]);
 
   useEffect(() => {
     let cancelled = false;
@@ -528,7 +576,48 @@ export function BrowserSourceRecorder({
       ? "Exact bytes verified. The local source remains protected and the editor evidence is ready."
       : "The source is durable and server verification is still running. Keep the local source and retry status later.");
     await refreshRecovery();
-  }, [refreshRecovery, sessionKind, updateLedger]);
+    await refreshStudioHandoff(false);
+  }, [refreshRecovery, refreshStudioHandoff, sessionKind, updateLedger]);
+
+  const promoteStudioHandoff = useCallback(async () => {
+    if (!studioHandoff?.ready || studioHandoff.complete || studioHandoff.sources.length === 0) {
+      setHandoffMessage("The exact source set must be fully verified and not already complete before Studio attachment.");
+      return;
+    }
+    const destinationProjectSlug = projectSlug || studioHandoff.projectSlug;
+    if (!destinationProjectSlug) {
+      setHandoffMessage("Choose or bind a Nest before attaching this take to Studio.");
+      return;
+    }
+    setHandoffBusy(true);
+    setHandoffMessage(`Attaching all ${studioHandoff.sources.length} reviewed sources as one take…`);
+    try {
+      const response = await fetch("/api/mobile/capture/recordings/promote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          roomId: callRoomId,
+          captureGroupId,
+          expectedRecordingAssetIds: studioHandoff.sources
+            .filter((source) => source.requiredForStudio || source.verifiedForStudio)
+            .map((source) => source.recordingAssetId),
+          nestSlug: destinationProjectSlug,
+          episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+        }),
+      });
+      const packet = await response.json().catch(() => ({}));
+      const refreshed = await refreshStudioHandoff(false);
+      const resultMessage = String(packet?.message || packet?.error || "Studio handoff returned without a readable receipt.");
+      if (!response.ok || packet?.ok !== true) {
+        throw new Error(`${resultMessage}${refreshed?.promotedSourceCount ? ` ${refreshed.promotedSourceCount} source identities are already reusable; retrying will not duplicate them.` : ""}`);
+      }
+      setHandoffMessage(`${resultMessage} Open the exact take to review clocks, waveforms, drift, and playback before approval.`);
+    } catch (error) {
+      setHandoffMessage(error instanceof Error ? error.message : "The complete take could not be attached to Studio.");
+    } finally {
+      setHandoffBusy(false);
+    }
+  }, [callRoomId, captureGroupId, episodeSlug, projectSlug, refreshStudioHandoff, studioHandoff]);
 
   const retryUploadLedger = useCallback(async (ledger: BrowserSourceCaptureLedger) => {
     try {
@@ -866,6 +955,51 @@ export function BrowserSourceRecorder({
           </span>
         </div>)}</div>
       </div> : null}
+      <section className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4" aria-labelledby={`studio-handoff-${callRoomId}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-violet-800"><Layers3 size={14} /> Session take → Studio</p>
+            <h4 id={`studio-handoff-${callRoomId}`} className="mt-1 font-serif text-xl font-black text-violet-950">Keep every device in the same take</h4>
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-violet-900">This server snapshot includes browser, iPhone, and reconciled provider sources with the exact capture-group identity. Refresh after another device finishes. Quipsly refuses a changed or partially verified source set at the attachment boundary.</p>
+          </div>
+          <button type="button" onClick={() => void refreshStudioHandoff()} disabled={handoffBusy} className="inline-flex min-h-10 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"><RefreshCw size={14} className={handoffBusy ? "animate-spin" : ""} /> Refresh source set</button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
+          <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">Take {captureGroupId.slice(0, 8)}</span>
+          <span className="rounded-full bg-white px-3 py-1.5 text-violet-950">{studioHandoff?.requiredSourceCount ?? 0} required masters</span>
+          <span className={`rounded-full px-3 py-1.5 ${studioHandoff?.ready ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}>{studioHandoff?.verifiedRequiredSourceCount ?? 0}/{studioHandoff?.requiredSourceCount ?? 0} masters verified</span>
+          <span className={`rounded-full px-3 py-1.5 ${studioHandoff?.complete ? "bg-emerald-100 text-emerald-950" : "bg-white text-violet-950"}`}>{studioHandoff?.promotedRequiredSourceCount ?? 0}/{studioHandoff?.requiredSourceCount ?? 0} masters in Studio</span>
+          {studioHandoff?.providerWitnessCount ? <span className="rounded-full bg-sky-100 px-3 py-1.5 text-sky-950">{studioHandoff.providerWitnessCount} provider witness</span> : null}
+        </div>
+
+        {studioHandoff?.sources.length ? <div className="mt-3 space-y-2" aria-label="Exact Session take source roster">
+          {studioHandoff.sources.map((source) => <div key={source.recordingAssetId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-100 bg-white px-3 py-2">
+            <span className="min-w-0 text-xs font-bold text-violet-950"><span className="block truncate">{source.fileName}</span><span className="font-mono text-[10px] text-violet-700">{source.kind.replaceAll("_", " ")} · {source.recordingAssetId.slice(0, 12)}</span></span>
+            <span className="flex flex-wrap items-center gap-1 text-[9px] font-black uppercase tracking-wide">
+              {source.providerWitness ? <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-950">optional witness · never blocks masters</span> : null}
+              <span className={`rounded-full px-2 py-1 ${source.verifiedForStudio ? "bg-emerald-100 text-emerald-950" : "bg-amber-100 text-amber-950"}`}>{source.verifiedForStudio ? "bytes released" : `${source.recordingStatus} · ${source.processingDisposition}`}</span>
+              <span className={`rounded-full px-2 py-1 ${source.promotedToStudio ? "bg-violet-800 text-white" : "bg-violet-100 text-violet-950"}`}>{source.promotedToStudio ? "in Studio" : "not attached"}</span>
+            </span>
+          </div>)}
+        </div> : <p className="mt-3 rounded-xl bg-white px-3 py-3 text-xs font-bold leading-5 text-violet-900">No canonical source rows are visible for this exact take yet. Browser files remain protected in the local vault; upload/verification must finish before Studio attachment.</p>}
+
+        <p role="status" aria-live="polite" className="mt-3 text-xs font-bold leading-5 text-violet-950">{handoffMessage}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {!studioHandoff?.complete ? <button type="button" onClick={() => void promoteStudioHandoff()} disabled={handoffBusy || !studioHandoff?.ready} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40"><UploadCloud size={15} /> Attach complete take</button> : null}
+          {sessionKind === "episode" && studioHandoff?.complete && browserCaptureStudioReviewHref({
+            projectSlug: projectSlug || studioHandoff.projectSlug,
+            episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+            captureGroupId,
+          }) ? <a href={browserCaptureStudioReviewHref({
+            projectSlug: projectSlug || studioHandoff.projectSlug,
+            episodeSlug: episodeSlug || studioHandoff.episodeSlug,
+            captureGroupId,
+          })!} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"><ExternalLink size={15} /> Open exact take in editor</a> : null}
+          {sessionKind === "coaching" && studioHandoff?.complete ? <a href={`/sessions/${encodeURIComponent(callRoomId)}?mode=recordings`} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-[10px] font-black uppercase tracking-wide text-white"><ExternalLink size={15} /> Review Session recordings</a> : null}
+        </div>
+        <p className="mt-3 text-[10px] font-bold leading-4 text-violet-700">Attachment preserves immutable originals and source identities. Network clocks and rough anchors remain proposals; waveform, late-drift, and playback review still decide placement and the approved master.</p>
+      </section>
       {activeLedger?.state === "verified" ? <p className="mt-3 text-[10px] font-bold text-emerald-800">Verified editor evidence: {activeLedger.serverRecordingAssetId || "recording receipt created"}. Session take {activeLedger.captureGroupId.slice(0, 8)} has {activeLedger.sourceProfile.clockSamples?.length ?? 0}/3 network clock samples; waveform and late-drift review still decide final placement. Local deletion remains unavailable by design.</p> : null}
     </section>
   );
