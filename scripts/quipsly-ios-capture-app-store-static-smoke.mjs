@@ -84,6 +84,7 @@ const files = {
   localEngineEpisodeMediaRegistration: path.join(root, "apps/local-engine/src/EpisodeMediaRegistrationService.ts"),
   liveKitJoinTokenHelper: path.join(root, "apps/quipsly/src/lib/server/livekit-join-token.ts"),
   liveKitEgressHelper: path.join(root, "apps/quipsly/src/lib/server/coaching-livekit-egress.ts"),
+  providerRecordingCommand: path.join(root, "apps/quipsly/src/lib/server/provider-recording-command.ts"),
   meetingSpineContract: path.join(root, "packages/quipsly-domain/src/coaching-meeting-spine.ts"),
   readinessDoc: path.join(root, "docs/quipsly/ios-capture-app-store-readiness.md"),
   listingDoc: path.join(root, "docs/quipsly/ios-capture-app-store-listing.md"),
@@ -220,6 +221,7 @@ const localEngineMediaVaultConfigText = read(files.localEngineMediaVaultConfig);
 const localEngineEpisodeMediaRegistrationText = read(files.localEngineEpisodeMediaRegistration);
 const liveKitJoinTokenHelperText = read(files.liveKitJoinTokenHelper);
 const liveKitEgressHelperText = read(files.liveKitEgressHelper);
+const providerRecordingCommandText = read(files.providerRecordingCommand);
 const meetingSpineContractText = read(files.meetingSpineContract);
 const readinessDocText = read(files.readinessDoc);
 const listingDocText = read(files.listingDoc);
@@ -1853,14 +1855,16 @@ requireIncludes(liveKitJoinTokenHelperText, "roomJoin: true", "LiveKit token roo
 requireIncludes(liveKitJoinTokenHelperText, "metadata: JSON.stringify(input.metadata)", "LiveKit token metadata evidence");
 assert(!liveKitJoinTokenHelperText.includes("console.log(input.apiSecret"), "LiveKit helper must not log provider secrets.");
 requireIncludes(mobileCaptureReadinessRouteText, "getQuipslyLiveKitEgressReadiness", "mobile capture uses shared LiveKit egress readiness helper");
-requireIncludes(liveKitEgressHelperText, "MEDIA_VAULT_BUCKET_ENV_NAMES", "LiveKit egress uses shared media-vault bucket env list");
+requireIncludes(providerRecordingCommandText, "MEDIA_VAULT_BUCKET_ENV_NAMES", "LiveKit egress uses shared media-vault bucket env list");
 requireIncludes(liveKitEgressHelperText, "MEDIA_VAULT_PREFIXES.livekitRecording", "LiveKit egress uses shared livekit recording prefix");
-requireIncludes(liveKitEgressHelperText, "LIVEKIT_EGRESS_ENABLED", "LiveKit egress has explicit operator enablement gate");
-requireIncludes(liveKitEgressHelperText, "egressRequested && unsafeLocalOverride", "LiveKit egress requires a second local-only override");
-requireIncludes(liveKitEgressHelperText, "LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV", "LiveKit egress names the unsafe local-only override");
-requireIncludes(liveKitEgressHelperText, "productionStartInterlock: !unsafeLocalOverride", "LiveKit egress exposes the production START interlock");
-requireIncludes(liveKitEgressHelperText, "durableCommandLedgerImplemented: false", "LiveKit readiness admits the durable command ledger is not implemented");
-requireIncludes(liveKitEgressHelperText, "LiveKit provider START is held by the production safety interlock", "LiveKit production START fails closed until durable reconciliation exists");
+requireIncludes(providerRecordingCommandText, "LIVEKIT_EGRESS_ENABLED", "LiveKit egress has explicit operator enablement gate");
+requireIncludes(providerRecordingCommandText, "egressEnabled: egressRequested && missing.length === 0", "LiveKit egress requires enablement and complete configuration");
+requireIncludes(liveKitEgressHelperText, "durableCommandLedgerImplemented: true", "LiveKit readiness exposes the durable command ledger");
+requireIncludes(liveKitEgressHelperText, "authenticatedWebhookLedgerImplemented: true", "LiveKit readiness exposes authenticated webhook receipts");
+requireIncludes(liveKitEgressHelperText, "requestProviderRecordingStart(input)", "LiveKit START enters the durable command path");
+requireIncludes(liveKitEgressHelperText, "requestProviderRecordingStop(input)", "LiveKit STOP enters the durable command path");
+requireIncludes(providerRecordingCommandText, "acquirePrismaAdvisoryTransactionLock", "LiveKit commands serialize at the database boundary");
+requireIncludes(providerRecordingCommandText, '"RECONCILE_REQUIRED"', "Ambiguous LiveKit commands remain reconciliation-required");
 requireIncludes(mediaVaultReadinessRouteText, "mockMediaUploadsAllowed", "media-vault readiness exposes mock upload boundary");
 requireIncludes(mediaVaultReadinessRouteText, "providerSecretsExposed: false", "media-vault readiness does not expose secrets");
 requireIncludes(mediaVaultReadinessRouteText, "RecordingAsset owns call-room evidence first", "media-vault readiness recording-to-editor boundary");
