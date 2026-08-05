@@ -314,6 +314,65 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
     expect(productionJson.episodeRoom.clips).toHaveLength(2);
   });
 
+  it("refreshes an attached source from current Vault metadata and ignores null duration sentinels", async () => {
+    const directAssetId = assetIds[0];
+    await prisma.studioMediaAsset.update({
+      where: { id: directAssetId },
+      data: {
+        duration: null,
+        variants: {
+          create: {
+            kind: "watch-proxy",
+            url: `/qa/${nonce}/direct-source-proxy.mp4`,
+            mimeType: "video/mp4",
+            duration: 55,
+          },
+        },
+      },
+    });
+
+    const refreshed = await applyEpisodeRoomStoreCommand({
+      projectSlug,
+      episodeSlug,
+      input: {
+        type: "IMPORT_VAULT_ASSET",
+        assetId: directAssetId,
+        clientRequestId: `episode-vault-refresh-${nonce}`,
+        expectedRevision: 2,
+      },
+      actor: {
+        email: editorEmail,
+        label: "Episode Vault QA editor",
+      },
+    });
+    const production = await prisma.studioEpisodeProduction.findUniqueOrThrow({
+      where: {
+        projectId_slug: {
+          projectId,
+          slug: episodeSlug,
+        },
+      },
+      select: { productionJson: true },
+    });
+    const productionJson = production.productionJson as Record<string, any>;
+
+    expect(refreshed.room.revision).toBe(3);
+    expect(refreshed.room.clips).toContainEqual(expect.objectContaining({
+      watchId: directAssetId,
+      durationSeconds: 55,
+    }));
+    expect(productionJson.importedMedia).toHaveLength(1);
+    expect(productionJson.importedMedia[0]).toMatchObject({
+      id: directAssetId,
+      sync: {
+        recordingSync: {
+          durationSeconds: 55,
+        },
+      },
+    });
+    expect(productionJson.lastMediaVaultRefreshAt).toEqual(expect.any(String));
+  });
+
   it("does not disclose or attach an asset from another Nest", async () => {
     await expect(applyEpisodeRoomStoreCommand({
       projectSlug,

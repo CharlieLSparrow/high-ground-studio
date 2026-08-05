@@ -498,28 +498,15 @@ async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaCli
           .findUniqueOrThrow({ where });
     }
   }
-  if (
-    production.title !== title
-    || production.boundaryLabel !== title
-    || production.boundaryKind !== "episode"
-    || production.documentId !== document.id
-  ) {
-    production =
-      await prisma.studioEpisodeProduction.update({
-        where: { id: production.id },
-        data: {
-          documentId: document.id,
-          title,
-          boundaryLabel: title,
-          boundaryKind: "episode",
-        },
-      });
-  }
+  // Existing Episode Rooms own their working manuscript and editorial
+  // boundary. Importing media is not authority to replace either with the
+  // Nest's default document or to normalize a human title from the slug.
+  // Only a newly-created legacy production receives those defaults above.
   const productionRoom = await prisma.studioProductionRoom.upsert({
     where: { projectId_slug: { projectId: project.id, slug: episodeSlug } },
     update: {
-      documentId: document.id,
-      title,
+      documentId: production.documentId,
+      title: production.title,
       kind: "episode",
       status: production.status === "published" ? "published" : production.status === "held" ? "held" : "active",
       metadataJson: {
@@ -532,9 +519,9 @@ async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaCli
     },
     create: {
       projectId: project.id,
-      documentId: document.id,
+      documentId: production.documentId,
       slug: episodeSlug,
-      title,
+      title: production.title,
       kind: "episode",
       status: "active",
       metadataJson: {

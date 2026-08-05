@@ -77,6 +77,12 @@ type RoomResponse = {
   updatedAt?: string;
 };
 
+type CollaborationProxyResponse = {
+  ok?: boolean;
+  status?: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
+  error?: string | null;
+};
+
 type CommandDraft = {
   type:
     | "START_SESSION"
@@ -394,6 +400,88 @@ export default function EpisodeRoomClient({
     if (nextRoom) await refreshVault(true);
   }
 
+  async function prepareCandidateForWatch(
+    candidate: Pick<EpisodeRoomImportedCandidate, "assetId" | "sourceId" | "title">,
+    addWhenReady = true,
+  ) {
+    if (!candidate.sourceId) {
+      setError("This video source is missing the identity required to build its collaboration proxy.");
+      setStatus("error");
+      return false;
+    }
+
+    const proxyEndpoint = "/api/episode-production/collaboration-proxy";
+    const coordinates = {
+      projectSlug,
+      episodeSlug,
+      assetId: candidate.assetId,
+      sourceId: candidate.sourceId,
+    };
+    const operate = async (action: "queue" | "reconcile") => {
+      const response = await fetch(proxyEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...coordinates }),
+      });
+      const payload = await response.json().catch(() => ({})) as CollaborationProxyResponse;
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "The collaboration proxy could not be prepared.");
+      }
+      return payload;
+    };
+    const readStatus = async () => {
+      const params = new URLSearchParams(coordinates);
+      const response = await fetch(`${proxyEndpoint}?${params}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({})) as CollaborationProxyResponse;
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "The collaboration proxy status is unavailable.");
+      }
+      return payload;
+    };
+
+    setStatus("uploading");
+    setError("");
+    setNotice(`${candidate.title} is safely uploaded. Preparing dependable Shared Watch playback…`);
+    try {
+      let proxy = await operate("queue");
+      for (let attempt = 0; attempt < 24; attempt += 1) {
+        if (proxy.status === "output-ready") {
+          proxy = await operate("reconcile");
+        }
+        if (proxy.status === "completed") {
+          await refresh(true);
+          if (addWhenReady) {
+            const nextRoom = await sendCommand({
+              type: "ADD_CLIP",
+              assetId: candidate.assetId,
+            }, { success: `${candidate.title} is ready in Watch.` });
+            return Boolean(nextRoom);
+          }
+          setStatus("idle");
+          setNotice(`${candidate.title} is ready for dependable Shared Watch playback.`);
+          return true;
+        }
+        if (proxy.status === "blocked" || proxy.status === "failed") {
+          throw new Error(proxy.error || "The collaboration proxy needs attention before Shared Watch can use it.");
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1_250));
+        proxy = await readStatus();
+      }
+
+      await refresh(true);
+      setStatus("idle");
+      setNotice(`${candidate.title} is safely uploaded and its collaboration proxy is still processing. You can keep working and use Prepare for Watch to check it again.`);
+      return false;
+    } catch (nextError) {
+      await refresh(true);
+      setError(nextError instanceof Error
+        ? nextError.message
+        : "The collaboration proxy could not be prepared.");
+      setStatus("error");
+      return false;
+    }
+  }
+
   useEffect(() => {
     const interval = window.setInterval(() => void refresh(true), 750);
     return () => window.clearInterval(interval);
@@ -464,7 +552,11 @@ export default function EpisodeRoomClient({
     const payload = await response.json().catch(() => ({})) as {
       ok?: boolean;
       error?: string;
-      importedAsset?: { id?: string };
+      importedAsset?: {
+        id?: string;
+        sourceId?: string;
+        kind?: "audio" | "video" | "unknown";
+      };
     };
     if (!response.ok || !payload.ok || !payload.importedAsset?.id) {
       setError(payload.error || "The clip could not be imported.");
@@ -472,6 +564,14 @@ export default function EpisodeRoomClient({
       return;
     }
     await refresh(true);
+    if (payload.importedAsset.kind === "video") {
+      await prepareCandidateForWatch({
+        assetId: payload.importedAsset.id,
+        sourceId: payload.importedAsset.sourceId,
+        title: file.name,
+      });
+      return;
+    }
     await sendCommand({
       type: "ADD_CLIP",
       assetId: payload.importedAsset.id,
@@ -1282,9 +1382,20 @@ export default function EpisodeRoomClient({
                             </p>
                           ) : null}
                         </div>
-                        <button type="button" disabled={!canEdit || !candidate.canAddToWatch} onClick={() => void sendCommand({ type: "ADD_CLIP", assetId: candidate.assetId }, { success: `${candidate.title} is in Watch.` })} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40">
-                          <Plus size={13} /> {candidate.canAddToWatch ? "Add" : "Proxying"}
-                        </button>
+                        {candidate.canAddToWatch ? (
+                          <button type="button" disabled={!canEdit || status === "uploading"} onClick={() => void sendCommand({ type: "ADD_CLIP", assetId: candidate.assetId }, { success: `${candidate.title} is in Watch.` })} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40">
+                            <Plus size={13} /> Add
+                          </button>
+                        ) : candidate.kind === "video" && candidate.sourceId ? (
+                          <button type="button" disabled={!canEdit || status === "uploading"} onClick={() => void prepareCandidateForWatch(candidate)} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40">
+                            {status === "uploading" ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+                            Prepare for Watch
+                          </button>
+                        ) : (
+                          <span className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#40584c] px-3 text-[10px] font-black uppercase tracking-wide text-[#91a298]">
+                            Proxy unavailable
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>

@@ -212,6 +212,8 @@ function text(value: unknown) {
 }
 
 function optionalNumber(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && !value.trim()) return undefined;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -1333,14 +1335,32 @@ export async function applyEpisodeRoomStoreCommand({
             currentProductionJson,
             production.timelineJson,
           ).find((asset) => asset.id === input.assetId);
+          const currentVaultAsset = importedAssetFromVault(
+            vaultRow,
+            projectSlug,
+            episodeSlug,
+            actor.label,
+            acceptedAt,
+          );
           const importedAsset = existingImportedAsset
-            ?? importedAssetFromVault(
-              vaultRow,
-              projectSlug,
-              episodeSlug,
-              actor.label,
-              acceptedAt,
-            );
+            ? {
+                ...existingImportedAsset,
+                ...currentVaultAsset,
+                importedAt: existingImportedAsset.importedAt || currentVaultAsset.importedAt,
+                metadata: {
+                  ...existingImportedAsset.metadata,
+                  ...currentVaultAsset.metadata,
+                },
+                sync: {
+                  ...existingImportedAsset.sync,
+                  ...currentVaultAsset.sync,
+                },
+                proxy: {
+                  ...existingImportedAsset.proxy,
+                  ...currentVaultAsset.proxy,
+                },
+              }
+            : currentVaultAsset;
           const savedClip = input.mediaClipId
             ? vaultRow.asset.clips.find((clip: any) => (
               clip.id === input.mediaClipId
@@ -1351,20 +1371,20 @@ export async function applyEpisodeRoomStoreCommand({
               "This saved Media Vault clip is unavailable in this Nest.",
             );
           }
-          if (!existingImportedAsset) {
-            currentProductionJson = {
-              ...currentProductionJson,
-              importedMedia: [
-                importedAsset,
-                ...importedMedia(
-                  currentProductionJson,
-                  production.timelineJson,
-                ),
-              ],
-              lastMediaImportAt: acceptedAt,
-              source: "quipsly-episode-room-media-vault",
-            };
-          }
+          currentProductionJson = {
+            ...currentProductionJson,
+            importedMedia: [
+              importedAsset,
+              ...importedMedia(
+                currentProductionJson,
+                production.timelineJson,
+              ).filter((asset) => asset.id !== importedAsset.id),
+            ],
+            ...(existingImportedAsset
+              ? { lastMediaVaultRefreshAt: acceptedAt }
+              : { lastMediaImportAt: acceptedAt }),
+            source: "quipsly-episode-room-media-vault",
+          };
           command = {
             type: "ADD_CLIP",
             clientRequestId: input.clientRequestId,

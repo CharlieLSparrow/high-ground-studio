@@ -218,6 +218,35 @@ describe("EpisodeRoomClient shared writing", () => {
     expect(screen.getByRole("button", { name: "Use saved range" })).toBeDisabled();
   });
 
+  it("gives an uploaded video an explicit path from proxy queue to Shared Watch", () => {
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      importedCandidates: [{
+        watchId: "asset-be-curious",
+        assetId: "asset-be-curious",
+        sourceId: "source-be-curious",
+        title: "Be Curious.mp4",
+        kind: "video",
+        playbackUrl: "/api/ingest/media/source-be-curious",
+        importRole: "reference-clip",
+        addedAt: "2026-08-04T19:00:00.000Z",
+        addedBy: "Imported media",
+        attached: false,
+        proxyStatus: "queued",
+        sourceStatus: "source registered",
+        sourceSyncStatus: "ready-to-sync",
+        alignmentStatus: "needs alignment",
+        captureAlignment: null,
+        canAddToWatch: false,
+        readinessLabel: "source registered · proxy queued",
+      }],
+    }} />);
+
+    expect(screen.getByText("Be Curious.mp4")).toBeInTheDocument();
+    expect(screen.getByText("video · source registered · proxy queued")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prepare for Watch" })).toBeEnabled();
+  });
+
   it("shows a bound recording clock without leaking raw Capture-room access", () => {
     render(<EpisodeRoomClient initialPayload={{
       ...initialPayload,

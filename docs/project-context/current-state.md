@@ -1831,3 +1831,48 @@ These should be treated as cleanup candidates later, not as authoritative produc
   an Episode relationship is not required. Coaching Engagement chat remains a
   browser/Nest surface. Real browser/iPhone operation remains the acceptance
   boundary rather than an inferred claim.
+
+### 2026-08-04 capture audio transparency
+
+- Browser call preflight now reports frame RMS, sample peak/hold, clipped-sample
+  observations, sample rate, channel count, and browser processing in physical
+  units. It explicitly does not call those values LUFS, true peak, or retained-
+  source proof.
+- Browser retained recordings prefer a versioned AudioWorklet render-quantum
+  aggregate and persist its method, channel/sample coverage, sequence gaps, and
+  bounded capture-time summary in the exact source profile before upload
+  reservation. A named animation-frame fallback remains available. Both freeze
+  false claims for complete decode, integrated loudness, and true peak so later
+  verified analysis remains authoritative.
+- iPhone Capture exposes recorder average and peak power in dBFS with an
+  accessible signal state. The opaque normalized percentage was removed.
+- Physical MV7i/browser and iPhone capture, listening, and comparison against
+  complete-decode evidence remain required. See
+  `docs/coordination/2026-08-04-capture-audio-transparency.md`.
+
+### 2026-08-04 Episode 9 hybrid rehearsal
+
+- The real Episode 9 Room now uses the exact eight-block `The Swear Jar`
+  manuscript snapshot rather than the broad canonical manuscript. A mistaken
+  source-research rehearsal was retained under a separate explicit slug instead
+  of being deleted or silently reused.
+- Media import no longer rewrites an existing Episode Room's working manuscript,
+  boundary, or human title from Nest defaults. Production Room projections now
+  mirror the canonical Episode production instead.
+- `Ted Lasso Be Curious.mp4` was preserved as an immutable original, processed
+  into a 254.63-second H.264/AAC collaboration proxy, attached to Shared Watch,
+  played and paused against a rehearsal clock, and projected as one current
+  receipt-backed editor span. Null duration sentinels and stale imported Vault
+  metadata can no longer collapse a valid source to zero seconds.
+- A canonical podcast Session is linked to the Episode Room. A rendered retained
+  test operator joined its actual local LiveKit room with fake media hardware;
+  the UI reported one participant, no hidden recording, durable local-source
+  readiness, and MV7i/headphone routing guidance. The 172-route production web
+  build, 306 runnable Nest suites / 1,600 tests, LiveKit-linked Capture simulator
+  build, and focused iPhone audio-evidence UI test pass.
+- Recommended operation is one call-audio owner per person: Charlie's Mac uses
+  the MV7i plus headphones, Scott's laptop owns his call and Shared Watch, and
+  Scott's iPhone records silent local 4K segments in the same capture group.
+  Insta360, DJI, and Canon sources remain independent preserved backups or
+  masters. See
+  `docs/operations/2026-08-04-episode-9-hybrid-recording-runbook.md`.
