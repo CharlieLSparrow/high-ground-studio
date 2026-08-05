@@ -44,7 +44,7 @@ import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-sourc
 import { parseAudioSignalEvidence } from "@/lib/transcript-evidence";
 import { projectSharedWatchTimeline } from "@/lib/episode-production/shared-watch-timeline";
 import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
-import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
+import type { AudioAlignmentEvidence, AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 import {
   captureGroupEditorFocusPlan,
   normalizeCaptureGroupFocusId,
@@ -246,6 +246,22 @@ type AudioSignalProfileClientStatus = {
   error: string | null;
   updatedAt: string | null;
   boundaries: { originalRemainsSourceTruth: true; analysisDoesNotChangeMedia: true; observationsRequireHumanInterpretation: true };
+};
+
+type AudioSourceAlignmentClientStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
+  spineAssetId: string | null;
+  targetAssetId: string | null;
+  evidence: AudioAlignmentEvidence | null;
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: {
+    exactSourceBytesBound: true;
+    sourceBytesImmutable: true;
+    placementApplied: false;
+    placementRequiresSeparateReview: true;
+  };
 };
 
 type StudioSourceTranscriptClientStatus = {
@@ -3265,6 +3281,7 @@ function CloudEditorContent() {
   const [collaborationProxyStatusByAsset, setCollaborationProxyStatusByAsset] = useState<Record<string, EpisodeCollaborationProxyClientStatus>>({});
   const [audioMasteryStatusByAsset, setAudioMasteryStatusByAsset] = useState<Record<string, AudioMasteryClientStatus>>({});
   const [audioSignalProfileStatusByAsset, setAudioSignalProfileStatusByAsset] = useState<Record<string, AudioSignalProfileClientStatus>>({});
+  const [audioSourceAlignmentStatus, setAudioSourceAlignmentStatus] = useState<AudioSourceAlignmentClientStatus | null>(null);
   const [sourceTranscriptStatusByAsset, setSourceTranscriptStatusByAsset] = useState<Record<string, StudioSourceTranscriptClientStatus>>({});
   const [audioTreatmentStatusByAsset, setAudioTreatmentStatusByAsset] = useState<Record<string, AudioTreatmentClientStatus>>({});
   const [mediaImportStatus, setMediaImportStatus] = useState<string | null>(null);
@@ -4616,6 +4633,33 @@ function CloudEditorContent() {
     () => importedAssetDurationSeconds(syncWizardTargetAsset, syncWizardTargetSignalProfile),
     [syncWizardTargetAsset, syncWizardTargetSignalProfile],
   );
+
+  useEffect(() => {
+    let canceled = false;
+    if (!syncWizardTargetAsset) {
+      setAudioSourceAlignmentStatus(null);
+      return () => { canceled = true; };
+    }
+    const query = new URLSearchParams({
+      projectSlug: resolvedProjectSlug,
+      episodeSlug,
+      targetAssetId: syncWizardTargetAsset.id,
+    });
+    void fetch(`/api/media-vault/audio-source-alignment?${query}`, { cache: "no-store" })
+      .then(async (response) => ({ response, payload: await response.json().catch(() => null) as ({ ok?: boolean } & Partial<AudioSourceAlignmentClientStatus>) | null }))
+      .then(({ response, payload }) => {
+        if (canceled || !response.ok || !payload?.ok || !payload.status) return;
+        const status = payload as { ok: true } & AudioSourceAlignmentClientStatus;
+        setAudioSourceAlignmentStatus(
+          status.spineAssetId && syncWizardSpineAsset
+          && status.spineAssetId !== syncWizardSpineAsset.id
+            ? null
+            : status,
+        );
+      })
+      .catch((error) => { if (!canceled) console.warn("Could not hydrate exact-source alignment status.", error); });
+    return () => { canceled = true; };
+  }, [episodeSlug, resolvedProjectSlug, syncWizardSpineAsset, syncWizardTargetAsset]);
 
   const clockProposalMatchesSpine =
     Boolean(syncWizardCaptureAlignment?.baselineRecordingAssetId)
@@ -6060,6 +6104,108 @@ function CloudEditorContent() {
       setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
     }
   }, [resolvedProjectSlug]);
+
+  const loadExactAlignmentEvidence = useCallback((evidence: AudioAlignmentEvidence) => {
+    setSyncWizardPreviousAnchorSeconds(syncWizardAnchorSeconds);
+    setSyncWizardAnchorSeconds(Math.max(0, roundSeconds(evidence.opening.measuredOffsetSeconds)));
+    setSyncReviewIntervalSeconds(String(evidence.drift.observationIntervalSeconds));
+    setSyncReviewResidualMilliseconds(String(evidence.drift.residualDriftMilliseconds));
+    setSyncReviewWaveformConfirmed(false);
+    setSyncReviewDriftConfirmed(false);
+    setSyncReviewHumanApproved(false);
+    setSyncReviewNotes(
+      `Exact-source analyzer ${evidence.analyzer.algorithm}: opening r=${evidence.opening.normalizedCorrelation.toFixed(4)}, later r=${evidence.later.normalizedCorrelation.toFixed(4)}, peak margins ${evidence.opening.peakMargin.toFixed(4)}/${evidence.later.peakMargin.toFixed(4)}.`,
+    );
+    setMediaImportStatus(
+      `Loaded the measured ${formatSyncClock(evidence.opening.measuredOffsetSeconds)} placement and ${evidence.drift.residualDriftMilliseconds.toFixed(3)} ms late residual. Preview and review remain required; no timeline placement changed.`,
+    );
+  }, [syncWizardAnchorSeconds]);
+
+  const operateAudioSourceAlignment = useCallback(async () => {
+    if (!syncWizardSpineAsset || !syncWizardTargetAsset) {
+      setMediaImportStatus("Choose both an immutable spine and target before requesting exact-source alignment.");
+      return;
+    }
+    const duration = syncWizardTargetDurationSeconds;
+    if (duration === null || !Number.isFinite(duration) || duration < 8) {
+      setMediaImportStatus("Exact-source alignment needs at least eight seconds of known target duration. Finish the target signal receipt first.");
+      return;
+    }
+    const windowSeconds = Math.min(6, Math.max(2, Math.floor(duration / 5)));
+    const openingTargetSeconds = Math.min(
+      Math.max(0, roundSeconds(duration * 0.08)),
+      Math.max(0, roundSeconds(duration - windowSeconds * 2 - 0.5)),
+    );
+    const laterTargetSeconds = Math.min(
+      roundSeconds(duration - windowSeconds - 0.05),
+      Math.max(roundSeconds(openingTargetSeconds + windowSeconds + 0.5), roundSeconds(duration * 0.72)),
+    );
+    if (laterTargetSeconds <= openingTargetSeconds) {
+      setMediaImportStatus("The target is too short for two separated alignment windows.");
+      return;
+    }
+    const jobKey = `${syncWizardTargetAsset.id}:audio-alignment`;
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/audio-source-alignment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+          spineAssetId: syncWizardSpineAsset.id,
+          spineSourceId: syncWizardSpineAsset.sourceId,
+          targetAssetId: syncWizardTargetAsset.id,
+          targetSourceId: syncWizardTargetAsset.sourceId,
+          ...(action === "queue" ? {
+            initialOffsetSeconds: Math.max(0, roundSeconds(syncWizardAnchorSeconds)),
+            openingTargetSeconds,
+            laterTargetSeconds,
+            windowSeconds,
+            searchRadiusSeconds: 3,
+            sampleRate: 12_000,
+            minimumCorrelation: 0.78,
+            minimumPeakMargin: 0.04,
+          } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioSourceAlignmentClientStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) throw new Error(payload?.error || `Exact-source alignment returned HTTP ${response.status}.`);
+      const status = payload as { ok: true } & AudioSourceAlignmentClientStatus;
+      setAudioSourceAlignmentStatus(status);
+      return status;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Queueing two-point exact-source alignment for ${syncWizardTargetAsset.originalName}...`);
+    try {
+      let status = await requestAction("queue");
+      for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
+        if (status.status === "failed" || status.status === "blocked") throw new Error(status.error || `Exact-source alignment ${status.status}.`);
+        setMediaImportStatus(
+          status.status === "output-ready"
+            ? "Re-hashing both sources and registering correlation evidence..."
+            : "Comparing two separated decoded-audio windows; both original files remain untouched...",
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        status = await requestAction("reconcile");
+      }
+      if (status.status !== "completed" || !status.evidence) throw new Error("Exact-source alignment is still processing and can be resumed safely.");
+      loadExactAlignmentEvidence(status.evidence);
+    } catch (error) {
+      console.warn("Could not complete exact-source alignment.", error);
+      setMediaImportStatus(error instanceof Error ? error.message : "Could not complete exact-source alignment.");
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [
+    episodeSlug,
+    loadExactAlignmentEvidence,
+    resolvedProjectSlug,
+    syncWizardAnchorSeconds,
+    syncWizardSpineAsset,
+    syncWizardTargetAsset,
+    syncWizardTargetDurationSeconds,
+  ]);
 
   const operateSourceTranscript = useCallback(async (asset: ImportedMediaAsset) => {
     const jobKey = `${asset.id}:source-transcript`;
@@ -9399,7 +9545,7 @@ function CloudEditorContent() {
                     <div className="min-w-0">
                       <div className="font-black text-violet-950">6. Record the review evidence</div>
                       <p className="mt-1 text-[11px] font-bold leading-5 text-violet-900">
-                        “Synced” is a human-reviewed timeline decision. Originals stay untouched, and this receipt can be audited or undone.
+                        “Synced” is a person-reviewed or explicitly delegated timeline decision. Originals stay untouched, and this receipt can be audited or undone.
                       </p>
                     </div>
                     <span className="shrink-0 rounded-full border border-violet-200 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-violet-900">
@@ -9409,6 +9555,49 @@ function CloudEditorContent() {
 
                   {syncWizardSpineAsset && syncWizardTargetAsset && (
                     <>
+                      <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-cyan-950" data-testid="exact-source-audio-alignment-status">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-black">Two-point exact-source alignment</div>
+                            <p className="mt-1 text-[11px] font-bold leading-5">
+                              Decode bounded windows near the opening and later in the take, bind both results to exact source hashes, and measure residual drift. This creates evidence only—it never moves the timeline or changes either source.
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-cyan-200 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                            {audioSourceAlignmentStatus?.status ?? "not queued"}
+                          </span>
+                        </div>
+                        {audioSourceAlignmentStatus?.evidence ? (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Opening peak</div><div className="mt-1 font-mono text-sm font-black">r={audioSourceAlignmentStatus.evidence.opening.normalizedCorrelation.toFixed(4)}</div></div>
+                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Later peak</div><div className="mt-1 font-mono text-sm font-black">r={audioSourceAlignmentStatus.evidence.later.normalizedCorrelation.toFixed(4)}</div></div>
+                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Measured anchor</div><div className="mt-1 font-mono text-sm font-black">{formatSyncClock(audioSourceAlignmentStatus.evidence.opening.measuredOffsetSeconds)}</div></div>
+                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Late residual</div><div className="mt-1 font-mono text-sm font-black">{audioSourceAlignmentStatus.evidence.drift.residualDriftMilliseconds.toFixed(3)} ms</div></div>
+                          </div>
+                        ) : null}
+                        {audioSourceAlignmentStatus?.error ? (
+                          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-950">{audioSourceAlignmentStatus.error}</div>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={queueingMediaJobKeys.has(`${syncWizardTargetAsset.id}:audio-alignment`) || (syncWizardTargetDurationSeconds ?? 0) < 8}
+                            onClick={() => void operateAudioSourceAlignment()}
+                            className="min-h-10 rounded-lg border border-cyan-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-cyan-950 hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {queueingMediaJobKeys.has(`${syncWizardTargetAsset.id}:audio-alignment`) ? "Analyzing exact sources..." : "Analyze exact sources"}
+                          </button>
+                          {audioSourceAlignmentStatus?.evidence ? (
+                            <button
+                              type="button"
+                              onClick={() => loadExactAlignmentEvidence(audioSourceAlignmentStatus.evidence!)}
+                              className="min-h-10 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[10px] font-black uppercase tracking-wide text-emerald-950 hover:bg-emerald-100"
+                            >
+                              Load measured proposal
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
                       <div className="mt-3 grid gap-2 sm:grid-cols-2" data-testid="durable-audio-signal-profile-status">
                         {[
                           { role: "Spine", asset: syncWizardSpineAsset, profile: syncWizardSpineSignalProfile },

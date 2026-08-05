@@ -4,6 +4,25 @@ Date: 2026-08-05
 
 ## Agent-qualified audio alignment checkpoint
 
+- Guided Sync can now create and resume a durable two-source
+  `audio-alignment` processing job. The request binds the exact spine and
+  target asset, provider, locator, generation, SHA-256, size, content type,
+  clock proposal, two analysis windows, correlation thresholds, and immutable
+  safety boundaries. The local media worker leases the job, verifies both
+  authorized source paths and hashes, performs bounded FFmpeg decodes and FFT
+  correlation, then writes an evidence-only result. Reconciliation re-hashes
+  both current sources before registering the receipt. The rendered editor
+  exposes opening/later peaks, measured anchor, late residual, job failure,
+  and a separate **Load measured proposal** action; neither analysis nor
+  loading a proposal checks a review box or changes the timeline.
+- The retained operation queued the real source/proxy pair through the HTTP
+  route, leased it through the PostgreSQL worker, reconciled it, rendered the
+  completed evidence, and loaded the proposal before operating preview,
+  pause, explicit delegated review, and assembled playback. This uncovered
+  and repaired an actual JSONB boundary bug: exact source identity is now
+  compared field-by-field because PostgreSQL may reorder object keys. The GCS
+  request is deliberately retained as `blocked` until its two-source cloud
+  worker/outbox is deployed; production cloud analysis is not claimed yet.
 - Guided Sync no longer forces automation to impersonate a human listener.
   Human approval remains the default, while a signed-in staff delegator can
   authorize one bounded agent qualification backed by exact source hashes and

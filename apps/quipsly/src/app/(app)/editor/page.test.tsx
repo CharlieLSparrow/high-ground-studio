@@ -370,6 +370,11 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByLabelText(/Later event compared/i)).not.toBeChecked();
     expect(screen.getByLabelText(/Approve this reversible placement/i)).not.toBeChecked();
     expect(screen.getByText(/no timeline placement changed/i)).toBeInTheDocument();
+    const exactAlignment = screen.getByTestId("exact-source-audio-alignment-status");
+    expect(within(exactAlignment).getByText("Two-point exact-source alignment")).toBeInTheDocument();
+    expect(within(exactAlignment).getByText(/creates evidence only/i)).toBeInTheDocument();
+    expect(within(exactAlignment).getByRole("button", { name: "Analyze exact sources" })).toBeDisabled();
+    expect(screen.getByLabelText(/Approve this reversible placement/i)).not.toBeChecked();
   });
 
   it("opens the paper edit from the transcript mode control", async () => {

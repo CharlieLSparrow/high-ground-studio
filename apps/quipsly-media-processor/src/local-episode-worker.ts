@@ -49,6 +49,10 @@ import {
   newLocalStudioTranscriptRuntime,
   runOneLocalStudioTranscriptJob,
 } from "./local-studio-transcript-worker.js";
+import {
+  newLocalAudioAlignmentRuntime,
+  runOneLocalAudioAlignmentJob,
+} from "./local-audio-alignment-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -517,6 +521,12 @@ async function main() {
     executable: process.env.QUIPSLY_LOCAL_WHISPER_EXECUTABLE?.trim() || "/opt/homebrew/Caskroom/miniconda/base/bin/whisper",
     device: process.env.QUIPSLY_LOCAL_WHISPER_DEVICE?.trim() || "cpu",
   });
+  const audioAlignment = newLocalAudioAlignmentRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -538,9 +548,12 @@ async function main() {
       const spectralResult = signalResult.disposition === "idle"
         ? await runOneLocalAudioSpectralEvidenceJob(audioSpectral.store, audioSpectral.analyzer, audioSpectral.options)
         : signalResult;
-      const result = spectralResult.disposition === "idle"
+      const transcriptResult = spectralResult.disposition === "idle"
         ? await runOneLocalStudioTranscriptJob(studioTranscript.store, studioTranscript.transcriber, studioTranscript.options)
         : spectralResult;
+      const result = transcriptResult.disposition === "idle"
+        ? await runOneLocalAudioAlignmentJob(audioAlignment.store, audioAlignment.analyzer, audioAlignment.options)
+        : transcriptResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

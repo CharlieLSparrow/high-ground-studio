@@ -61,11 +61,14 @@ external account, render, publication, or physical device was changed.
 ## Verification
 
 - Synthetic shifted/transcoded FFmpeg alignment: 2/2 passed.
+- Durable job/result and lease worker: 2/2 passed, including JSONB-style
+  source-key reordering and exact-hash tamper rejection.
 - Reviewed-alignment and editor suites: 26 focused assertions passed before the
   retained operation, including agent source/drift tamper rejection.
 - Media-processing, media-processor, and Quipsly TypeScript checks passed.
-- Retained rendered operation: passed with zero browser exceptions and no
-  horizontal overflow.
+- Retained rendered operation: queued, leased, reconciled, and rendered the
+  durable job evidence; passed with zero browser exceptions and no horizontal
+  overflow.
 
 ## Remaining release proof
 
@@ -77,3 +80,6 @@ external account, render, publication, or physical device was changed.
   episode use.
 - Deploy and repeat authenticated production readback after the build cadence
   opens.
+- Complete the GCS two-source control-plane worker so production Nest can run
+  the same retained job without downloading cloud originals into the web
+  process.

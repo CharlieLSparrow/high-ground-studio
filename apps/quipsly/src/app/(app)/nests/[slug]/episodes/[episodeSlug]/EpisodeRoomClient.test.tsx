@@ -311,6 +311,8 @@ describe("EpisodeRoomClient shared writing", () => {
       "href",
       `/editor?project=high-ground-odyssey&episode=episode-5&captureGroup=${captureGroupId}#guided-sync-wizard`,
     );
+    expect(screen.getByText(/person or explicitly delegated reviewer/i)).toBeInTheDocument();
+    expect(screen.getByText("Explicit review")).toBeInTheDocument();
     expect(screen.getByText("+0.240s from baseline · ±8.5ms clock uncertainty")).toBeInTheDocument();
   });
 

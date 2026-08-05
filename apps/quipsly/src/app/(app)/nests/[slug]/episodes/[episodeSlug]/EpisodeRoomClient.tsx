@@ -1026,7 +1026,7 @@ export default function EpisodeRoomClient({
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8ad56]">Capture alignment review</p>
                         <h4 className="mt-1 font-serif text-xl font-black">Clock proposals, not locked sync</h4>
                         <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-[#aab9af]">
-                          These offsets come from immutable START receipts and the best device clock sample. Quipsly never calls them sample-accurate until waveform correlation, drift review, and a person approves the result.
+                          These offsets come from immutable START receipts and the best device clock sample. Quipsly never calls them sample-accurate. Exact-source waveform correlation and drift evidence must be reviewed by a person or explicitly delegated reviewer before placement.
                         </p>
                       </div>
                       <Link
@@ -1057,7 +1057,7 @@ export default function EpisodeRoomClient({
                             <div className="mt-2 flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-wide text-[#c9d4cd]">
                               <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><Waves size={11} /> Waveform</span>
                               <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><Gauge size={11} /> Drift</span>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><ShieldCheck size={11} /> Human approval</span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><ShieldCheck size={11} /> Explicit review</span>
                             </div>
                             {alignment.estimatedServerStartedAt ? (
                               <p className="mt-2 truncate font-mono text-[9px] text-[#72847a]">

@@ -7,6 +7,10 @@ import { createRequire } from "node:module";
 
 import { FfmpegAudioAlignmentAnalyzer } from "../apps/quipsly-media-processor/src/audio-alignment-ffmpeg.ts";
 import {
+  PostgresLocalAudioAlignmentStore,
+  runOneLocalAudioAlignmentJob,
+} from "../apps/quipsly-media-processor/src/local-audio-alignment-worker.ts";
+import {
   assertNoHorizontalOverflow,
   clearRenderedSession,
   loadPlaywright,
@@ -46,25 +50,6 @@ async function main() {
     binding(SPINE_ASSET_ID, SPINE_PATH, "video/mp4"),
     binding(TARGET_ASSET_ID, TARGET_PATH, "video/mp4"),
   ]);
-  const evidence = await new FfmpegAudioAlignmentAnalyzer().analyze({
-    spinePath: SPINE_PATH,
-    targetPath: TARGET_PATH,
-    spine,
-    target,
-    options: {
-      initialOffsetSeconds: 0,
-      openingTargetSeconds: 20,
-      laterTargetSeconds: 200,
-      windowSeconds: 6,
-      searchRadiusSeconds: 1,
-      sampleRate: 12_000,
-      minimumCorrelation: 0.78,
-      minimumPeakMargin: 0.04,
-    },
-  });
-  assert(evidence.qualification.qualifiedForAuthorizedAgentReview, `Alignment evidence remained ambiguous: ${JSON.stringify(evidence.qualification)}`);
-  assert(evidence.opening.measuredOffsetSeconds >= 0, "The retained target must not require a negative timeline anchor.");
-
   const pool = new pg.Pool({ connectionString: databaseURL, max: 2 });
   await bindFixtureSources(pool, { spine, target });
 
@@ -79,6 +64,54 @@ async function main() {
     await signInThroughRenderedLogin({ page, baseURL, identity: { role: "agent-alignment-delegator", email: OPERATOR_EMAIL }, password, callbackPath: "/projects" });
     const ensured = await post(page, "/api/episode-production", { action: "ensure", projectSlug: PROJECT_SLUG, episodeSlug: EPISODE_SLUG, title: "Capture Sync Rendezvous QA", boundaryLabel: "Capture Sync Rendezvous QA" });
     assert(ensured.status === 200 && ensured.body?.mode === "database", `Episode readback failed: ${JSON.stringify(ensured)}`);
+    let alignmentStatus = await request(page, "/api/media-vault/audio-source-alignment", "POST", {
+      action: "queue",
+      projectSlug: PROJECT_SLUG,
+      episodeSlug: EPISODE_SLUG,
+      spineAssetId: SPINE_ASSET_ID,
+      spineSourceId: "cmsff8thb009k6qxlcflvhh5x",
+      targetAssetId: TARGET_ASSET_ID,
+      targetSourceId: "cmsffdp3q009o6qxlu3lq6pg4",
+      initialOffsetSeconds: 0,
+      openingTargetSeconds: 20,
+      laterTargetSeconds: 200,
+      windowSeconds: 6,
+      searchRadiusSeconds: 1,
+      sampleRate: 12_000,
+      minimumCorrelation: 0.78,
+      minimumPeakMargin: 0.04,
+    });
+    assert(alignmentStatus.status === 202 || alignmentStatus.status === 200, `Alignment queue failed: ${JSON.stringify(alignmentStatus)}`);
+    if (["queued", "processing"].includes(alignmentStatus.body?.status)) {
+      const workerResult = await runOneLocalAudioAlignmentJob(
+        new PostgresLocalAudioAlignmentStore(pool),
+        new FfmpegAudioAlignmentAnalyzer(),
+        {
+          executionId: randomUUID(),
+          buildId: "retained-local-operation",
+          imageDigest: null,
+          leaseMs: 15 * 60 * 1_000,
+          localMediaRoot: "/var/folders/n8/75lt2yw16752qxw_l6j0khl00000gn/T/quipsly-media-ingest",
+          now: () => new Date(),
+        },
+      );
+      assert(workerResult.disposition === "completed", `Durable alignment worker did not complete: ${JSON.stringify(workerResult)}`);
+    }
+    if (alignmentStatus.body?.status !== "completed") {
+      alignmentStatus = await request(page, "/api/media-vault/audio-source-alignment", "POST", {
+        action: "reconcile",
+        projectSlug: PROJECT_SLUG,
+        episodeSlug: EPISODE_SLUG,
+        spineAssetId: SPINE_ASSET_ID,
+        spineSourceId: "cmsff8thb009k6qxlcflvhh5x",
+        targetAssetId: TARGET_ASSET_ID,
+        targetSourceId: "cmsffdp3q009o6qxlu3lq6pg4",
+      });
+    }
+    assert(alignmentStatus.status === 200 && alignmentStatus.body?.status === "completed", `Alignment reconciliation failed: ${JSON.stringify(alignmentStatus)}`);
+    const evidence = alignmentStatus.body.evidence;
+    assert(evidence?.qualification?.qualifiedForAuthorizedAgentReview, `Alignment evidence remained ambiguous: ${JSON.stringify(evidence?.qualification)}`);
+    assert(evidence.opening.measuredOffsetSeconds >= 0, "The retained target must not require a negative timeline anchor.");
     const currentTarget = media(ensured.body).find((asset) => asset.id === TARGET_ASSET_ID);
     const existingReview = currentTarget?.sync?.alignmentReview;
     if (!existingReview) {
@@ -130,6 +163,12 @@ async function main() {
     await wizard.getByText(AGENT_ID, { exact: false }).waitFor();
     await agentPanel.getByText(DELEGATION_SCOPE, { exact: false }).waitFor();
     await agentPanel.getByText(/source bytes unchanged · not sample-accurate/i).waitFor();
+    const exactAlignmentPanel = wizard.getByTestId("exact-source-audio-alignment-status");
+    await exactAlignmentPanel.getByText("completed", { exact: true }).waitFor({ timeout: 20_000 });
+    await exactAlignmentPanel.getByText(`r=${evidence.opening.normalizedCorrelation.toFixed(4)}`, { exact: true }).waitFor();
+    await exactAlignmentPanel.getByText(`${evidence.drift.residualDriftMilliseconds.toFixed(3)} ms`, { exact: true }).waitFor();
+    await exactAlignmentPanel.getByRole("button", { name: "Load measured proposal" }).click();
+    await page.getByText(/Loaded the measured .* no timeline placement changed/i).waitFor();
 
     await wizard.getByRole("button", { name: "Preview from anchor" }).click();
     await wizard.getByText(/Previewing spine at/i).waitFor();
@@ -198,6 +237,8 @@ async function main() {
       assembledPlaybackOperated: true,
       sourceBytesMutated: false,
       providerRecordingRequired: false,
+      durableAlignmentJobOperated: true,
+      durableAlignmentEvidenceRendered: true,
       browserExceptions: 0,
       horizontalOverflow: false,
     }, null, 2)}\n`);
