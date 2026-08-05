@@ -142,7 +142,19 @@ test("preview deploy mounts internal proxy credentials from Secret Manager", () 
 test("preview deploy keeps provider recording behind the explicit release interlock", () => {
   assert.match(
     deploy,
-    /--update-env-vars="[^"]*LIVEKIT_EGRESS_ENABLED=false/,
+    /ENABLE_LIVEKIT_EGRESS="\$\{ENABLE_LIVEKIT_EGRESS:-0\}"/,
+  );
+  assert.match(
+    deploy,
+    /livekit_egress_enabled_value="false"/,
+  );
+  assert.match(
+    deploy,
+    /if \[\[ "\$\{ENABLE_LIVEKIT_EGRESS\}" == "1" \]\]; then\s+livekit_egress_enabled_value="true"/,
+  );
+  assert.match(
+    deploy,
+    /--update-env-vars="[^"]*LIVEKIT_EGRESS_ENABLED=\$\{livekit_egress_enabled_value\}/,
   );
 });
 
