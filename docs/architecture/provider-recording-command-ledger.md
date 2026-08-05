@@ -1,7 +1,8 @@
 # Optional provider recording command ledger
 
-Status: implemented locally; production configuration, migration, real LiveKit
-egress, authenticated webhook, and release readback remain acceptance gates
+Status: implemented and locally operated; production secrets and destination
+write/read are qualified with START still off; migration, preview release, real
+LiveKit egress, authenticated webhook, and release readback remain gates
 
 Last reviewed: 2026-08-05
 
@@ -84,7 +85,14 @@ them:
 - the configured media-vault bucket and service-account JSON accepted by
   LiveKit's GCP upload output; and
 - an HTTPS production webhook URL, either explicit or derived from the public
-  Quipsly origin.
+  Quipsly origin or canonical `QUIPSLY_APP_HOST`.
+
+The release script declares and privately validates the LiveKit conversation
+and egress secret bindings on every preview. `ENABLE_LIVEKIT_EGRESS` defaults to
+`0`; configured credentials therefore do not imply recording activation. The
+public release-health response exposes only configuration booleans and the
+sync-independence boundary, never provider URLs, keys, bucket names, or service
+account material.
 
 Production rollout must apply the schema migration, deploy the exact committed
 context at zero traffic, exercise a real START/webhook/STOP/storage cycle in a
@@ -106,3 +114,10 @@ provider deliberately unavailable, waits for the authenticated provider-status
 readback, verifies the complete synchronization explanation, and proves by
 database readback that simply opening the call created neither a command nor a
 provider asset.
+
+On 2026-08-05 the production-bound egress service-account secret was privately
+validated, its identity was confirmed enabled, and its target bucket granted
+only object creation and viewing. A uniquely named qualification object was
+written and read back byte-for-byte, then removed by the operator identity
+because the recorder identity correctly lacks delete permission. No provider
+recording was started and no retained media object was touched.

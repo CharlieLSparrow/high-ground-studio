@@ -19,10 +19,25 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{google_calendar_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
+  assert.doesNotMatch(source, /set -x/);
+});
+
+test("preview deploy declares provider secrets while keeping optional egress default-off", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_LIVEKIT_PROVIDER="\$\{ENABLE_LIVEKIT_PROVIDER:-1\}"/);
+  assert.match(source, /CONFIGURE_LIVEKIT_EGRESS="\$\{CONFIGURE_LIVEKIT_EGRESS:-1\}"/);
+  assert.match(source, /ENABLE_LIVEKIT_EGRESS="\$\{ENABLE_LIVEKIT_EGRESS:-0\}"/);
+  assert.match(source, /ENABLE_LIVEKIT_EGRESS=1 requires ENABLE_LIVEKIT_PROVIDER=1 and CONFIGURE_LIVEKIT_EGRESS=1/);
+  assert.match(source, /validate_private_secret "\$\{LIVEKIT_URL_SECRET_NAME\}" "url"/);
+  assert.match(source, /validate_private_secret "\$\{LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME\}" "gcp-credentials"/);
+  assert.match(source, /validate_private_secret "\$\{LIVEKIT_EGRESS_BUCKET_SECRET_NAME\}" "bucket"/);
+  assert.match(source, /LIVEKIT_EGRESS_ENABLED=\$\{livekit_egress_enabled_value\}/);
+  assert.match(source, /Its value was not printed/);
   assert.doesNotMatch(source, /set -x/);
 });
 

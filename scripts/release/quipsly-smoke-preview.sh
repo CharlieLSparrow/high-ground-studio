@@ -5,6 +5,7 @@ TARGET_URL="${1:-${PREVIEW_URL:-}}"
 HOST_HEADER="${HOST_HEADER:-}"
 RECEIPT_HEADER="x-quipsly-release-smoke-receipt"
 EXPECTED_PUBLIC_HOSTS="${QUIPSLY_RELEASE_EXPECTED_HOSTS:-nest.quipsly.com,quipsly.com}"
+EXPECT_LIVEKIT_EGRESS_ENABLED="${QUIPSLY_RELEASE_EXPECT_LIVEKIT_EGRESS_ENABLED:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
@@ -41,6 +42,10 @@ if [[ -z "${QUIPSLY_RELEASE_SMOKE_SECRET:-}" ]]; then
 fi
 if [[ -z "${QUIPSLY_AUTH_SMOKE_EMAIL:-}" || -z "${QUIPSLY_AUTH_SMOKE_PASSWORD:-}" ]]; then
   echo "QUIPSLY_AUTH_SMOKE_EMAIL and QUIPSLY_AUTH_SMOKE_PASSWORD are required for the signed-in readiness gate." >&2
+  exit 2
+fi
+if [[ "${EXPECT_LIVEKIT_EGRESS_ENABLED}" != "0" && "${EXPECT_LIVEKIT_EGRESS_ENABLED}" != "1" ]]; then
+  echo "QUIPSLY_RELEASE_EXPECT_LIVEKIT_EGRESS_ENABLED must be 0 or 1." >&2
   exit 2
 fi
 
@@ -149,6 +154,26 @@ check_public_host() {
 
 check_json_endpoint "/api/health" "health.compatibility"
 check_json_endpoint "/api/healthz" "health.release"
+release_health_file="${TMP_DIR}/_api_healthz.json"
+EXPECTED_EGRESS="${EXPECT_LIVEKIT_EGRESS_ENABLED}" node -e '
+  const fs = require("fs");
+  const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  const provider = body?.config?.providerRecording;
+  const expectedEnabled = process.env.EXPECTED_EGRESS === "1";
+  const valid = provider?.optionalWitness === true
+    && provider?.controlConfigured === true
+    && provider?.storageConfigured === true
+    && provider?.webhookConfigured === true
+    && provider?.configured === true
+    && provider?.startRequested === expectedEnabled
+    && provider?.startEnabled === expectedEnabled
+    && provider?.affectsCaptureGroupSync === false;
+  if (!valid) {
+    console.error("Preview provider-recording configuration boundary did not match the explicit release expectation.");
+    process.exit(1);
+  }
+' "${release_health_file}"
+passed_route_ids+=("provider.recording-config-boundary")
 check_json_endpoint "/api/production-core/readiness" "schema.production-core"
 check_status_endpoint "/api/mac/session-check" "401" "auth.session-boundary"
 check_json_endpoint "/api/mac/firebase-client-config" "auth.firebase-client-config"
@@ -201,7 +226,6 @@ passed_route_ids+=(
   "publishing.runway"
 )
 
-release_health_file="${TMP_DIR}/_api_healthz.json"
 runtime_metadata="$(node -e '
   const fs = require("fs");
   const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));

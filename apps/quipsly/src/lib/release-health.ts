@@ -192,6 +192,30 @@ export function createReleaseOperatorPlan(options: {
 export function createReleaseHealthResponseBody() {
   const serviceName = envValue("K_SERVICE");
   const revisionName = envValue("K_REVISION");
+  const providerControlConfigured = Boolean(
+    envValue("LIVEKIT_URL")
+    && envValue("LIVEKIT_API_KEY")
+    && envValue("LIVEKIT_API_SECRET"),
+  );
+  const providerStorageConfigured = Boolean(
+    (envValue("LIVEKIT_EGRESS_GCS_BUCKET") || envValue("QUIPSLY_MEDIA_BUCKET"))
+    && (
+      envValue("LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON")
+      || envValue("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+      || envValue("GCP_SERVICE_ACCOUNT_JSON")
+    ),
+  );
+  const providerWebhookConfigured = Boolean(
+    envValue("LIVEKIT_EGRESS_WEBHOOK_URL")
+    || envValue("QUIPSLY_PUBLIC_ORIGIN")
+    || envValue("NEXTAUTH_URL")
+    || envValue("AUTH_URL")
+    || envValue("QUIPSLY_APP_HOST"),
+  );
+  const providerRecordingRequested = envValue("LIVEKIT_EGRESS_ENABLED") === "true";
+  const providerRecordingConfigured = providerControlConfigured
+    && providerStorageConfigured
+    && providerWebhookConfigured;
 
   return {
     ok: true,
@@ -229,6 +253,16 @@ export function createReleaseHealthResponseBody() {
       studioCollab: envStatus("STUDIO_COLLAB_URL"),
       publicStudioCollab: envStatus("NEXT_PUBLIC_STUDIO_COLLAB_URL"),
       releaseSmokeSecret: envStatus("QUIPSLY_RELEASE_SMOKE_SECRET"),
+      providerRecording: {
+        optionalWitness: true,
+        controlConfigured: providerControlConfigured,
+        storageConfigured: providerStorageConfigured,
+        webhookConfigured: providerWebhookConfigured,
+        configured: providerRecordingConfigured,
+        startRequested: providerRecordingRequested,
+        startEnabled: providerRecordingConfigured && providerRecordingRequested,
+        affectsCaptureGroupSync: false,
+      },
     },
   };
 }

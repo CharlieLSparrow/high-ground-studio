@@ -23,6 +23,14 @@ IMAGE_PROXY_TOKEN_SECRET_VERSION="${IMAGE_PROXY_TOKEN_SECRET_VERSION:-latest}"
 ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
 ENABLE_ACCOUNT_DELETION_WORKER="${ENABLE_ACCOUNT_DELETION_WORKER:-0}"
+ENABLE_LIVEKIT_PROVIDER="${ENABLE_LIVEKIT_PROVIDER:-1}"
+CONFIGURE_LIVEKIT_EGRESS="${CONFIGURE_LIVEKIT_EGRESS:-1}"
+ENABLE_LIVEKIT_EGRESS="${ENABLE_LIVEKIT_EGRESS:-0}"
+LIVEKIT_URL_SECRET_NAME="${LIVEKIT_URL_SECRET_NAME:-quipsly-livekit-url}"
+LIVEKIT_API_KEY_SECRET_NAME="${LIVEKIT_API_KEY_SECRET_NAME:-quipsly-livekit-api-key}"
+LIVEKIT_API_SECRET_SECRET_NAME="${LIVEKIT_API_SECRET_SECRET_NAME:-quipsly-livekit-api-secret}"
+LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME="${LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME:-quipsly-livekit-egress-gcp-credentials-json}"
+LIVEKIT_EGRESS_BUCKET_SECRET_NAME="${LIVEKIT_EGRESS_BUCKET_SECRET_NAME:-quipsly-livekit-egress-gcs-bucket}"
 ACCOUNT_DELETION_WORKER_SERVICE="${ACCOUNT_DELETION_WORKER_SERVICE:-quipsly-account-deletion-worker}"
 ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT="${ACCOUNT_DELETION_WORKER_SERVICE_ACCOUNT:-quipsly-account-deletion-worker@${PROJECT_ID}.iam.gserviceaccount.com}"
 ACCOUNT_DELETION_WORKER_SECRET_NAME="${ACCOUNT_DELETION_WORKER_SECRET_NAME:-quipsly-account-deletion-worker-shared-secret}"
@@ -71,6 +79,18 @@ fi
 
 if [[ "${ENABLE_ACCOUNT_DELETION_WORKER}" != "0" && "${ENABLE_ACCOUNT_DELETION_WORKER}" != "1" ]]; then
   echo "ENABLE_ACCOUNT_DELETION_WORKER must be 0 or 1." >&2
+  exit 2
+fi
+
+for binary_name in ENABLE_LIVEKIT_PROVIDER CONFIGURE_LIVEKIT_EGRESS ENABLE_LIVEKIT_EGRESS; do
+  binary_value="${!binary_name}"
+  if [[ "${binary_value}" != "0" && "${binary_value}" != "1" ]]; then
+    echo "${binary_name} must be 0 or 1." >&2
+    exit 2
+  fi
+done
+if [[ "${ENABLE_LIVEKIT_EGRESS}" == "1" && ( "${ENABLE_LIVEKIT_PROVIDER}" != "1" || "${CONFIGURE_LIVEKIT_EGRESS}" != "1" ) ]]; then
+  echo "ENABLE_LIVEKIT_EGRESS=1 requires ENABLE_LIVEKIT_PROVIDER=1 and CONFIGURE_LIVEKIT_EGRESS=1." >&2
   exit 2
 fi
 
@@ -131,6 +151,88 @@ echo "Release-smoke signing key passed private byte validation."
 
 google_calendar_oauth_secrets=""
 google_calendar_push_env_vars=""
+
+require_enabled_secret() {
+  local secret_name="$1"
+  if ! gcloud secrets versions describe latest \
+    --secret="${secret_name}" \
+    --project="${PROJECT_ID}" \
+    --format='value(state)' | grep -qx 'ENABLED'; then
+    echo "Required LiveKit secret ${secret_name}:latest is missing or disabled." >&2
+    exit 2
+  fi
+}
+
+validate_private_secret() {
+  local secret_name="$1"
+  local validation_kind="$2"
+  if ! gcloud secrets versions access latest \
+    --secret="${secret_name}" \
+    --project="${PROJECT_ID}" \
+    | VALIDATION_KIND="${validation_kind}" node -e '
+      let value = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk) => { value += chunk; });
+      process.stdin.on("end", () => {
+        const kind = process.env.VALIDATION_KIND;
+        const normalized = kind === "gcp-credentials" ? value.trim() : value;
+        const clean = kind === "gcp-credentials"
+          ? Boolean(normalized) && !/[\u0000\u007f]/.test(normalized)
+          : value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value);
+        let valid = clean;
+        if (kind === "url") {
+          try {
+            const url = new URL(value);
+            valid &&= ["wss:", "ws:", "https:", "http:"].includes(url.protocol) && Boolean(url.hostname);
+          } catch { valid = false; }
+        } else if (kind === "api-key") {
+          valid &&= value.length >= 8 && value.length <= 512;
+        } else if (kind === "api-secret") {
+          valid &&= value.length >= 16 && value.length <= 4096;
+        } else if (kind === "bucket") {
+          valid &&= /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(value);
+        } else if (kind === "gcp-credentials") {
+          try {
+            const parsed = JSON.parse(normalized);
+            valid &&= parsed?.type === "service_account"
+              && typeof parsed?.client_email === "string"
+              && typeof parsed?.private_key === "string"
+              && parsed.private_key.includes("BEGIN PRIVATE KEY");
+          } catch { valid = false; }
+        } else {
+          valid = false;
+        }
+        process.exit(valid ? 0 : 1);
+      });
+    '; then
+    echo "Required LiveKit secret ${secret_name}:latest failed private ${validation_kind} validation. Its value was not printed." >&2
+    exit 2
+  fi
+}
+
+livekit_secret_mounts=""
+livekit_egress_enabled_value="false"
+if [[ "${ENABLE_LIVEKIT_PROVIDER}" == "1" ]]; then
+  require_enabled_secret "${LIVEKIT_URL_SECRET_NAME}"
+  require_enabled_secret "${LIVEKIT_API_KEY_SECRET_NAME}"
+  require_enabled_secret "${LIVEKIT_API_SECRET_SECRET_NAME}"
+  validate_private_secret "${LIVEKIT_URL_SECRET_NAME}" "url"
+  validate_private_secret "${LIVEKIT_API_KEY_SECRET_NAME}" "api-key"
+  validate_private_secret "${LIVEKIT_API_SECRET_SECRET_NAME}" "api-secret"
+  livekit_secret_mounts=",LIVEKIT_URL=${LIVEKIT_URL_SECRET_NAME}:latest,LIVEKIT_API_KEY=${LIVEKIT_API_KEY_SECRET_NAME}:latest,LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET_SECRET_NAME}:latest"
+  echo "LiveKit conversation-provider secrets passed enabled-version and private shape validation."
+fi
+if [[ "${CONFIGURE_LIVEKIT_EGRESS}" == "1" ]]; then
+  require_enabled_secret "${LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME}"
+  require_enabled_secret "${LIVEKIT_EGRESS_BUCKET_SECRET_NAME}"
+  validate_private_secret "${LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME}" "gcp-credentials"
+  validate_private_secret "${LIVEKIT_EGRESS_BUCKET_SECRET_NAME}" "bucket"
+  livekit_secret_mounts="${livekit_secret_mounts},LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON=${LIVEKIT_EGRESS_CREDENTIALS_SECRET_NAME}:latest,LIVEKIT_EGRESS_GCS_BUCKET=${LIVEKIT_EGRESS_BUCKET_SECRET_NAME}:latest"
+  echo "LiveKit egress destination secrets passed enabled-version and private shape validation."
+fi
+if [[ "${ENABLE_LIVEKIT_EGRESS}" == "1" ]]; then
+  livekit_egress_enabled_value="true"
+fi
 if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" == "1" ]]; then
   if [[ ! "${GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT}" =~ ^[a-z0-9][a-z0-9-]{4,28}@[a-z][a-z0-9-]{4,62}\.iam\.gserviceaccount\.com$ ]]; then
     echo "Google Calendar push worker service account is unsafe." >&2
@@ -488,8 +590,8 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
-  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${google_calendar_oauth_secrets}${account_deletion_worker_secret}" \
-  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=false${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${account_deletion_worker_secret}" \
+  --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}" \
   --quiet
 
 echo "Preview revision deployed."

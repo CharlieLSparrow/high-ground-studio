@@ -109,6 +109,9 @@ test("preview smoke orders route and public-host checks before private receipt g
   assert.match(source, /--config "\$\{receipt_curl_config\}"/);
   assert.match(source, /grep -Fqi -- "\$\{required_marker\}"/);
   assert.match(source, /check_json_endpoint "\/api\/mac\/firebase-client-config"/);
+  assert.match(source, /QUIPSLY_RELEASE_EXPECT_LIVEKIT_EGRESS_ENABLED/);
+  assert.match(source, /provider\.recording-config-boundary/);
+  assert.match(source, /provider\?\.affectsCaptureGroupSync === false/);
   assert.match(source, /QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY="\$\{QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY:-\$\{candidate_firebase_api_key\}\}"/);
   assert.match(source, /One source\. Many native outputs\./);
   assert.match(source, /unset receipt_token/);

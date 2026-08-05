@@ -122,11 +122,15 @@ async function serializableTransaction<T>(
 function publicOrigin() {
   const explicit = text(process.env.LIVEKIT_EGRESS_WEBHOOK_URL);
   if (explicit) return explicit;
-  const origin = text(process.env.QUIPSLY_PUBLIC_ORIGIN)
+  const configuredOrigin = text(process.env.QUIPSLY_PUBLIC_ORIGIN)
     || text(process.env.NEXTAUTH_URL)
-    || text(process.env.AUTH_URL);
-  if (!origin) return "";
+    || text(process.env.AUTH_URL)
+    || text(process.env.QUIPSLY_APP_HOST);
+  if (!configuredOrigin) return "";
   try {
+    const origin = configuredOrigin.includes("://")
+      ? configuredOrigin
+      : `https://${configuredOrigin}`;
     return new URL("/api/providers/livekit/webhook", origin).toString();
   } catch {
     return "";

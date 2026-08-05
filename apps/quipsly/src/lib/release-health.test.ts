@@ -4,6 +4,7 @@ import type { ProductionCoreReadiness } from "@/lib/server/production-core-readi
 import {
   BETA_READINESS_STATUSES,
   createBetaReadinessResponseBody,
+  createReleaseHealthResponseBody,
 } from "./release-health";
 import {
   createReleaseSmokeReceiptToken,
@@ -21,6 +22,14 @@ const MANAGED_ENV_KEYS = [
   "QUIPSLY_RELEASE_SMOKE_SECRET",
   "K_SERVICE",
   "K_REVISION",
+  "LIVEKIT_URL",
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
+  "LIVEKIT_EGRESS_GCS_BUCKET",
+  "LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON",
+  "LIVEKIT_EGRESS_ENABLED",
+  "LIVEKIT_EGRESS_WEBHOOK_URL",
+  "QUIPSLY_APP_HOST",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -104,6 +113,34 @@ describe("beta readiness evidence contract", () => {
     });
     expect(readiness.checks.some((check) => (check.status as string) === "ready")).toBe(false);
     expect(readiness.checks.every((check) => BETA_READINESS_STATUSES.includes(check.status))).toBe(true);
+  });
+
+  it("reports provider recording configuration without exposing provider values", () => {
+    process.env.LIVEKIT_URL = "wss://provider.example.test";
+    process.env.LIVEKIT_API_KEY = "private-key";
+    process.env.LIVEKIT_API_SECRET = "private-secret";
+    process.env.LIVEKIT_EGRESS_GCS_BUCKET = "private-bucket";
+    process.env.LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON = "{private-json}";
+    process.env.QUIPSLY_APP_HOST = "nest.quipsly.com";
+    process.env.LIVEKIT_EGRESS_ENABLED = "false";
+
+    const health = createReleaseHealthResponseBody();
+
+    expect(health.config.providerRecording).toEqual({
+      optionalWitness: true,
+      controlConfigured: true,
+      storageConfigured: true,
+      webhookConfigured: true,
+      configured: true,
+      startRequested: false,
+      startEnabled: false,
+      affectsCaptureGroupSync: false,
+    });
+    expect(JSON.stringify(health)).not.toContain("provider.example.test");
+    expect(JSON.stringify(health)).not.toContain("private-key");
+    expect(JSON.stringify(health)).not.toContain("private-secret");
+    expect(JSON.stringify(health)).not.toContain("private-bucket");
+    expect(JSON.stringify(health)).not.toContain("private-json");
   });
 
   it("stays unready when config, runtime identity, and schema exist but feature/public smoke does not", () => {

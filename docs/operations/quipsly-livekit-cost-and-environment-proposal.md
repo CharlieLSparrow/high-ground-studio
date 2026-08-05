@@ -1,16 +1,18 @@
 # Quipsly LiveKit cost and environment proposal
 
-Status: implementation-ready proposal; no provider account or paid plan was created by this change
+Status: provider conversation configuration is live; durable optional-egress
+ledger and destination rail are qualified; real egress remains disabled
 
 Last verified: 2026-08-04
 
 ## Recommendation
 
-Use LiveKit Cloud **Build ($0/month)** for the first real cross-device call
-acceptance and early beta, while running the open-source LiveKit server locally
-for development. Do not enable provider egress yet. Quipsly's protected local
-sources are the production recording plane; the managed provider is initially
-only the low-latency conversation plane.
+Continue using LiveKit Cloud **Build ($0/month)** for cross-device call
+acceptance and early beta, while using the open-source LiveKit server locally
+for development. Keep provider egress disabled until the zero-traffic real
+START/webhook/STOP/storage acceptance below. Quipsly's protected local sources
+remain the production recording plane; the managed provider is initially the
+low-latency conversation plane plus an optional safety witness.
 
 Move to **Ship ($50/month)** only when one of these is true:
 
@@ -29,9 +31,11 @@ limit.
 
 Provider composite recording is deliberately excluded from this estimate.
 Build includes only 60 shared transcode minutes and two concurrent exports.
-Quipsly should not spend those minutes or create a second recording truth until
-the egress outbox, room lock, consent reconciliation, destination policy, and
-provider receipt import are complete.
+Quipsly should not spend those minutes until a controlled acceptance run. The
+egress command outbox, per-room lock, consent recheck, deterministic destination,
+authenticated webhook receipt, provider-off UX, and reconciliation path are now
+implemented. They deliberately preserve the local sources and capture-group
+clock as the only production/synchronization authority.
 
 - [LiveKit Cloud pricing](https://livekit.com/pricing)
 - [LiveKit local server instructions](https://docs.livekit.io/transport/self-hosting/local/)
