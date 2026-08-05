@@ -508,8 +508,11 @@ the viewport, but the test asserted hit-testing before scrolling to them and
 would then have captured a different portion of Account. The journey now
 scrolls until both Privacy policy and Request account deletion are visibly
 hittable and captures that exact surface. A complete five-image rerun passed
-from the current worktree, but remains explicitly ineligible because it is
-dirty, DEBUG fixture evidence rather than an exact signed/TestFlight recapture.
+from clean detached source `9387c6254a1d5a6e78aae2ae01193ab38af72451`
+with a source-isolated receipt under
+`/Users/wall-e/Dev/Quipsly QA Artifacts/Capture App Store Drafts/9387c6254a1d/20260805T193614Z-87685`.
+It remains explicitly ineligible because DEBUG fixture evidence is not an
+exact signed/TestFlight recapture.
 
 Apple still reports zero screenshot sets for the `en-US` version and no App
 Store review submission. The source-backed configuration operator cannot

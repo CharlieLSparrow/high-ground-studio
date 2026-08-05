@@ -7695,3 +7695,33 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   proof-listen/watch, shared-clock sync decision, cloud upload, transcript,
   delivery, or publication. See
   `docs/coordination/2026-08-05-native-mac-retained-take.md`.
+
+## 2026-08-05 Build 28 App Store binding and screenshot checkpoint
+
+- Reconciled the approved external-beta build with the editable App Store
+  record. App Store version 1.0 now names exact Build 28 ID
+  `ed68117d-5604-45c3-b9f7-239e7cd2af4f`; listing copy, reviewer credentials,
+  pricing, availability, ratings, privacy, DSA, and review submission were not
+  changed.
+- Narrowed the provider operator so build-only maintenance requires both an
+  explicit `--assign-build-only` scope and exact
+  `6780995957/1.0/28` confirmation. Immediate readback passed and the guarded
+  submission configuration now plans zero provider mutations.
+- Advanced unreleased Capture source to Build 29. This prevents post-Build-28
+  sound-check and screenshot work from being archived or pictured under an
+  already-consumed Apple build identity without forcing another TestFlight
+  release yet.
+- The exact-Build-28 screenshot journey preserved four private-safe layouts
+  and exposed a real composition bug: the Account test asserted privacy
+  controls before scrolling them into the viewport and then intended to
+  capture the wrong region. The repaired test scrolls until Privacy policy and
+  Request account deletion are both hittable and captures that exact surface.
+- Clean detached source `9387c6254a1d5a6e78aae2ae01193ab38af72451`
+  produced all five 1320x2868 layouts and a source-isolated receipt under
+  `/Users/wall-e/Dev/Quipsly QA Artifacts/Capture App Store Drafts/9387c6254a1d/20260805T193614Z-87685`.
+  These remain DEBUG layout evidence, not approved submission assets.
+- Current App Store gates are five signed/TestFlight screenshots, App Privacy
+  publication, DSA trader verification, Mac/Vision availability opt-out,
+  physical Build 28 Episode 9/capture/recovery/upload/playback acceptance, and
+  disposable production account-deletion proof. No review submission or
+  release was created.
