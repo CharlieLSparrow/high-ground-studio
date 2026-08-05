@@ -30,7 +30,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var currentSegmentOrder: Int = 1
     @Published private(set) var userMarkOffsets: [TimeInterval] = []
     @Published private(set) var inputLevelDB: Float = -160
-    @Published private(set) var normalizedInputLevel: Double = 0
     @Published private(set) var peakInputLevelDB: Float = -160
     @Published private(set) var inputRouteName: String = "No microphone selected"
     @Published private(set) var inputRoutePortType: String?
@@ -1134,7 +1133,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
             // watchdog active while making the input meter visibly quiet.
             inputLevelDB = -160
             peakInputLevelDB = -160
-            normalizedInputLevel = 0
         }
         #else
         stopDurationAndMeterTimer()
@@ -1364,7 +1362,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
         displayDurationTimer = nil
         inputLevelDB = -160
         peakInputLevelDB = -160
-        normalizedInputLevel = 0
     }
 
     private func updateMeters() {
@@ -1373,15 +1370,11 @@ final class AudioCaptureController: NSObject, ObservableObject {
             guard captureState == .recording else {
                 inputLevelDB = -160
                 peakInputLevelDB = -160
-                normalizedInputLevel = 0
                 return
             }
             let snapshot = providerAudioMaster.meterSnapshot
             inputLevelDB = snapshot.averagePowerDB
             peakInputLevelDB = snapshot.peakPowerDB
-            let floorDB: Float = -60
-            let normalized = min(max((snapshot.averagePowerDB - floorDB) / -floorDB, 0), 1)
-            normalizedInputLevel = normalized.isFinite ? Double(normalized) : 0
             if let receivedPCMAt = snapshot.receivedPCMAt,
                Date().timeIntervalSince(receivedPCMAt) > 1.5 {
                 pauseRecording(
@@ -1397,7 +1390,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
         guard let audioRecorder, audioRecorder.isRecording else {
             inputLevelDB = -160
             peakInputLevelDB = -160
-            normalizedInputLevel = 0
             return
         }
 
@@ -1413,9 +1405,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         inputLevelDB = average
         peakInputLevelDB = peak
-        let floorDB: Float = -60
-        let normalized = min(max((average - floorDB) / -floorDB, 0), 1)
-        normalizedInputLevel = normalized.isFinite ? Double(normalized) : 0
     }
 
     private func refreshInputRoute() {

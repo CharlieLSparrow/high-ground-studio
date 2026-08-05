@@ -22,6 +22,8 @@ import {
   browserSourceRecordingSegments,
   chooseBrowserSourceMimeType,
   type BrowserSourceCaptureLedger,
+  type BrowserSourceCaptureMeterSummary,
+  type BrowserSourceCaptureMeterSummaryV2,
   type BrowserSourceKind,
 } from "@high-ground/quipsly-domain";
 import {
@@ -33,6 +35,14 @@ import {
   loadBrowserSourceFile,
   saveBrowserSourceLedger,
 } from "@/lib/browser-source-vault";
+import {
+  analyseStudioAudioFrame,
+  appendBrowserCaptureMeterAggregate,
+  appendBrowserCaptureMeterFrame,
+  createBrowserCaptureMeterSummary,
+  finishBrowserCaptureMeterSummary,
+  parseBrowserMeterWorkletAggregate,
+} from "@/lib/studio-audio-meter";
 
 type ConsentPolicy = {
   version: string;
@@ -56,6 +66,28 @@ function formatBytes(bytes: number | null) {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function formattedDbfs(value: number) {
+  if (!Number.isFinite(value) || value <= -120) return "below −120 dBFS";
+  return `${value.toFixed(1).replace("-", "−")} dBFS`;
+}
+
+function captureMeterDisplayEvidence(meter: BrowserSourceCaptureMeterSummary) {
+  if (meter.contractKind === "quipsly-browser-source-meter-v2") {
+    return {
+      highestObservedRmsDbfs: meter.highestObservedRmsDbfs,
+      nearFullScaleSampleCount: meter.nearFullScaleSampleCount,
+      missingMessageCount: meter.missingMessageCount,
+      tailLabel: meter.tailAggregateFlushed ? "tail flushed" : "tail not acknowledged",
+    };
+  }
+  return {
+    highestObservedRmsDbfs: meter.highestFrameRmsDbfs,
+    nearFullScaleSampleCount: meter.clippedSampleCount,
+    missingMessageCount: meter.missingMessageCount ?? 0,
+    tailLabel: "meter v1 did not record a tail acknowledgement",
+  };
 }
 
 function stoppedFileName(title: string, sourceType: BrowserSourceKind, mimeType: string, captureId: string) {
@@ -128,6 +160,12 @@ export function BrowserSourceRecorder({
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const ledgerRef = useRef<BrowserSourceCaptureLedger | null>(null);
   const timerRef = useRef<number | null>(null);
+  const retainedMeterContextRef = useRef<AudioContext | null>(null);
+  const retainedMeterNodeRef = useRef<AudioNode | null>(null);
+  const retainedMeterFrameRef = useRef<number | null>(null);
+  const retainedMeterSequenceRef = useRef<number | null>(null);
+  const retainedMeterFlushResolverRef = useRef<(() => void) | null>(null);
+  const retainedMeterSummaryRef = useRef<BrowserSourceCaptureMeterSummaryV2 | null>(null);
 
   useEffect(() => {
     onSourceLockChange?.(sourceLocked);
@@ -237,6 +275,129 @@ export function BrowserSourceRecorder({
     await saveBrowserSourceLedger(ledger);
   }, []);
 
+  const startRetainedSourceMeter = useCallback(async (
+    stream: MediaStream,
+    startedAt: string,
+  ) => {
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+    if (retainedMeterFrameRef.current !== null) {
+      cancelAnimationFrame(retainedMeterFrameRef.current);
+    }
+    await retainedMeterContextRef.current?.close().catch(() => undefined);
+
+    const context = new AudioContext();
+    const settings = audioTrack.getSettings();
+    const source = context.createMediaStreamSource(new MediaStream([audioTrack]));
+    const sourceChannelCount = typeof settings.channelCount === "number"
+      ? Math.max(1, Math.round(settings.channelCount))
+      : null;
+    retainedMeterContextRef.current = context;
+    retainedMeterSequenceRef.current = null;
+
+    try {
+      if (!context.audioWorklet || typeof AudioWorkletNode !== "function") {
+        throw new Error("AudioWorklet is unavailable.");
+      }
+      await context.audioWorklet.addModule("/audio/quipsly-capture-meter-worklet-v1.js");
+      const worklet = new AudioWorkletNode(context, "quipsly-capture-meter-v1", {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCountMode: "max",
+      });
+      retainedMeterNodeRef.current = worklet;
+      retainedMeterSummaryRef.current = createBrowserCaptureMeterSummary({
+        startedAt,
+        sampleRateHz: context.sampleRate,
+        sourceChannelCount,
+        measurement: "audio-worklet-render-quantum-aggregate",
+      });
+      worklet.port.onmessage = (event: MessageEvent<unknown>) => {
+        if (
+          event.data
+          && typeof event.data === "object"
+          && "kind" in event.data
+          && event.data.kind === "quipsly-capture-meter-flushed-v1"
+        ) {
+          if (retainedMeterSummaryRef.current) {
+            retainedMeterSummaryRef.current = {
+              ...retainedMeterSummaryRef.current,
+              tailAggregateFlushed: true,
+            };
+          }
+          retainedMeterFlushResolverRef.current?.();
+          retainedMeterFlushResolverRef.current = null;
+          return;
+        }
+        const aggregate = parseBrowserMeterWorkletAggregate(event.data);
+        const current = retainedMeterSummaryRef.current;
+        if (!aggregate || !current) return;
+        retainedMeterSummaryRef.current = appendBrowserCaptureMeterAggregate(
+          current,
+          aggregate,
+          new Date().toISOString(),
+          retainedMeterSequenceRef.current,
+        );
+        retainedMeterSequenceRef.current = aggregate.sequence;
+      };
+      source.connect(worklet);
+    } catch {
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2_048;
+      analyser.channelCount = 1;
+      analyser.channelCountMode = "explicit";
+      source.connect(analyser);
+      retainedMeterNodeRef.current = analyser;
+      retainedMeterSummaryRef.current = createBrowserCaptureMeterSummary({
+        startedAt,
+        sampleRateHz: context.sampleRate,
+        sourceChannelCount,
+        measurement: "analyser-animation-frame-fallback",
+      });
+      const samples = new Float32Array(analyser.fftSize);
+      const tick = () => {
+        analyser.getFloatTimeDomainData(samples);
+        const frame = analyseStudioAudioFrame(samples);
+        const current = retainedMeterSummaryRef.current;
+        if (!current) return;
+        retainedMeterSummaryRef.current = appendBrowserCaptureMeterFrame(
+          current,
+          frame,
+          new Date().toISOString(),
+        );
+        retainedMeterFrameRef.current = requestAnimationFrame(tick);
+      };
+      retainedMeterFrameRef.current = requestAnimationFrame(tick);
+    }
+    await context.resume();
+  }, []);
+
+  const stopRetainedSourceMeter = useCallback(async (stoppedAt: string) => {
+    if (retainedMeterFrameRef.current !== null) {
+      cancelAnimationFrame(retainedMeterFrameRef.current);
+      retainedMeterFrameRef.current = null;
+    }
+    const activeNode = retainedMeterNodeRef.current;
+    if (typeof AudioWorkletNode === "function" && activeNode instanceof AudioWorkletNode) {
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          retainedMeterFlushResolverRef.current = resolve;
+          activeNode.port.postMessage({ kind: "quipsly-capture-meter-flush-v1" });
+        }),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 150)),
+      ]);
+      retainedMeterFlushResolverRef.current = null;
+    }
+    retainedMeterNodeRef.current?.disconnect();
+    retainedMeterNodeRef.current = null;
+    void retainedMeterContextRef.current?.close();
+    retainedMeterContextRef.current = null;
+    retainedMeterSequenceRef.current = null;
+    const summary = retainedMeterSummaryRef.current;
+    retainedMeterSummaryRef.current = null;
+    return finishBrowserCaptureMeterSummary(summary, stoppedAt);
+  }, []);
+
   const uploadLedger = useCallback(async (ledger: BrowserSourceCaptureLedger) => {
     if (!ledger.sha256 || !ledger.stoppedAt || !ledger.recordingConsentId || !ledger.participantId) {
       throw new Error("This take is missing its completed checksum or consent binding.");
@@ -274,7 +435,12 @@ export function BrowserSourceRecorder({
       }),
     });
     const reservation = await manifestResponse.json().catch(() => ({}));
-    if (!manifestResponse.ok || !reservation?.ok) throw new Error(reservation?.error || "Upload reservation failed.");
+    if (!manifestResponse.ok || !reservation?.ok) {
+      const diagnostic = [reservation?.code, reservation?.stage]
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+        .join(" · ");
+      throw new Error(`${reservation?.error || "Upload reservation failed."}${diagnostic ? ` (${diagnostic})` : ""}`);
+    }
     if (reservation.upload) {
       setMessage(`Uploading ${formatBytes(current.sizeBytes)} from the protected local source…`);
       const uploadUrl = new URL(reservation.upload.url, window.location.origin);
@@ -357,6 +523,26 @@ export function BrowserSourceRecorder({
       : "The source is durable and server verification is still running. Keep the local source and retry status later.");
     await refreshRecovery();
   }, [refreshRecovery, sessionKind, updateLedger]);
+
+  const retryUploadLedger = useCallback(async (ledger: BrowserSourceCaptureLedger) => {
+    try {
+      await uploadLedger(ledger);
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message : "Upload retry failed.";
+      const current = ledgerRef.current?.captureId === ledger.captureId
+        ? ledgerRef.current
+        : ledger;
+      await updateLedger({
+        ...current,
+        state: "held",
+        failureReason,
+        updatedAt: new Date().toISOString(),
+      });
+      setStatus("held");
+      setMessage(failureReason);
+      await refreshRecovery();
+    }
+  }, [refreshRecovery, updateLedger, uploadLedger]);
 
   const stop = useCallback((reason?: string) => {
     const recorder = recorderRef.current;
@@ -487,6 +673,13 @@ export function BrowserSourceRecorder({
         updatedAt: startedAt,
       };
       await updateLedger(ledger);
+      try {
+        await startRetainedSourceMeter(stream, startedAt);
+      } catch {
+        // Capture-time metering is supporting evidence. A browser Web Audio
+        // failure must not discard an otherwise valid consented local source.
+        await stopRetainedSourceMeter(startedAt);
+      }
       writeQueueRef.current = Promise.resolve();
       recorder.ondataavailable = (event) => {
         if (!event.data.size) return;
@@ -525,10 +718,21 @@ export function BrowserSourceRecorder({
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
           const stoppedAt = new Date().toISOString();
+          const captureMeter = await stopRetainedSourceMeter(stoppedAt);
           const file = await loadBrowserSourceFile(opfsFileName);
           const hash = await hashBrowserSourceFile(file);
           let current = ledgerRef.current!;
-          current = { ...current, state: "stopped", stoppedAt, sizeBytes: hash.sizeBytes, sha256: hash.sha256, updatedAt: stoppedAt };
+          current = {
+            ...current,
+            state: "stopped",
+            stoppedAt,
+            sizeBytes: hash.sizeBytes,
+            sha256: hash.sha256,
+            sourceProfile: captureMeter
+              ? { ...current.sourceProfile, captureMeter }
+              : current.sourceProfile,
+            updatedAt: stoppedAt,
+          };
           await updateLedger(current);
           try {
             await postRoomReceipt({ callRoomId, action: "STOP_RECORDING", receiptId: stopReceiptId, captureId, occurredAt: stoppedAt });
@@ -565,18 +769,26 @@ export function BrowserSourceRecorder({
       setStatus("recording");
       setMessage("LOCAL SOURCE RECORDING · durable chunks are being written on this device. The call feed remains separate.");
     } catch (error) {
-      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-      else stream?.getTracks().forEach((track) => track.stop());
+      if (recorderRef.current?.state === "recording") {
+        recorderRef.current.stop();
+      } else {
+        await stopRetainedSourceMeter(new Date().toISOString());
+        stream?.getTracks().forEach((track) => track.stop());
+      }
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The browser source could not start.");
     }
-  }, [callRoomId, cameraId, cameraLabel, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, readiness, refreshRecovery, sessionTitle, sourceType, updateLedger, uploadLedger]);
+  }, [callRoomId, cameraId, cameraLabel, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, readiness, refreshRecovery, sessionTitle, sourceType, startRetainedSourceMeter, stopRetainedSourceMeter, updateLedger, uploadLedger]);
 
   useEffect(() => () => {
     if (timerRef.current) window.clearInterval(timerRef.current);
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+    } else {
+      void stopRetainedSourceMeter(new Date().toISOString());
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    }
+  }, [stopRetainedSourceMeter]);
 
   return (
     <section className={`rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`} aria-labelledby={`browser-source-${callRoomId}`}>
@@ -620,13 +832,23 @@ export function BrowserSourceRecorder({
       </div>
       <p role="status" aria-live="assertive" className={`mt-3 rounded-xl px-3 py-2 text-xs font-bold leading-5 ${status === "recording" ? "bg-rose-800 text-white" : status === "error" || status === "held" ? "bg-amber-100 text-amber-950" : "bg-violet-50 text-violet-950"}`}>{message}</p>
 
+      {activeLedger?.sourceProfile.captureMeter ? <section className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950" aria-label="Retained source capture-time meter evidence">
+        <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-[10px] uppercase tracking-wide">Capture-time meter receipt</strong><span className="font-mono text-[10px] font-bold">{(activeLedger.sourceProfile.captureMeter.sampleRateHz / 1_000).toFixed(1)} kHz · {activeLedger.sourceProfile.captureMeter.sourceChannelCount ?? "?"} source ch</span></div>
+        <div className="mt-2 grid gap-2 text-xs font-bold sm:grid-cols-3">
+          <span>Highest observed RMS<br /><span className="font-mono">{formattedDbfs(captureMeterDisplayEvidence(activeLedger.sourceProfile.captureMeter).highestObservedRmsDbfs)}</span></span>
+          <span>Sample peak<br /><span className="font-mono">{formattedDbfs(activeLedger.sourceProfile.captureMeter.samplePeakDbfs)}</span></span>
+          <span>Near-full-scale samples<br /><span className="font-mono">{captureMeterDisplayEvidence(activeLedger.sourceProfile.captureMeter).nearFullScaleSampleCount.toLocaleString()}</span></span>
+        </div>
+        <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">{activeLedger.sourceProfile.captureMeter.measurement === "audio-worklet-render-quantum-aggregate" ? "Audio-render observations" : "Animation-frame fallback observations"} are stored with this source profile · {captureMeterDisplayEvidence(activeLedger.sourceProfile.captureMeter).missingMessageCount} sequence gaps · {captureMeterDisplayEvidence(activeLedger.sourceProfile.captureMeter).tailLabel}. This is not a complete decode, integrated loudness, or true-peak result; those belong to verified post-capture analysis.</p>
+      </section> : null}
+
       {recoveryRows.length ? <div className="mt-4 border-t border-[#e5d8c0] pt-3">
         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#5b472f]"><HardDrive size={14} /> Protected takes on this browser · {recoveryRows.length}</div>
         <div className="mt-2 space-y-2">{recoveryRows.slice(0, 6).map((ledger) => <div key={ledger.captureId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#fffaf0] px-3 py-2 text-xs font-bold text-[#5b472f]">
           <span className="min-w-0"><span className="block truncate">{ledger.fileName}</span><span className="text-[10px] text-[#8a7354]">{ledger.state} · {formatBytes(ledger.sizeBytes)} · {new Date(ledger.startedAt).toLocaleString()}</span></span>
           <span className="flex gap-2">
             <button type="button" onClick={() => void downloadBrowserSource(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border bg-white px-3 text-[10px] uppercase"><Download size={13} /> Download</button>
-            {["stopped", "held", "failed", "verifying"].includes(ledger.state) && ledger.sha256 ? <button type="button" onClick={() => void uploadLedger(ledger).catch((error) => { setStatus("held"); setMessage(error instanceof Error ? error.message : "Upload retry failed."); })} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"><UploadCloud size={13} /> Retry handoff</button> : null}
+            {["stopped", "held", "failed", "uploading", "verifying"].includes(ledger.state) && ledger.sha256 ? <button type="button" onClick={() => void retryUploadLedger(ledger)} className="inline-flex min-h-9 items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-3 text-[10px] uppercase text-violet-950"><UploadCloud size={13} /> Retry handoff</button> : null}
             {ledger.state === "verified" ? <CheckCircle2 size={18} className="text-emerald-700" aria-label="Verified" /> : ledger.state === "recording" || ledger.state === "preparing" ? <AlertTriangle size={18} className="text-amber-700" aria-label="Interrupted take needs recovery" /> : null}
           </span>
         </div>)}</div>

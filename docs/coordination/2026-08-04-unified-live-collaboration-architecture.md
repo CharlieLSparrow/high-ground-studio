@@ -190,10 +190,14 @@ behavior, and the absence of a surrounding Nest grant.
    coaching Session with external browser hardware and an iPhone participant;
    move among Watch, transcript, notes, commitments, and editor while proving
    the provider room, remote media, chat hints, and retained source remain live.
-2. **Studio monitoring.** Add calibrated input level, clipping/true-peak risk,
-   channel mapping, sample-rate/profile readback, headphone/output confidence,
-   and a short recorded confidence take. Never replace post-capture waveform,
-   loudness, spectral, sync, and drift analysis with a decorative meter.
+2. **Studio monitoring.** Browser and iPhone now expose measured dBFS input
+   evidence instead of decorative percentages, and browser retained sources
+   carry a render-thread capture-time meter receipt with sequence-gap evidence
+   and a named compatibility fallback. Next add physical MV7i/iPhone
+   acceptance, channel mapping, headphone/output confidence, and a short
+   recorded confidence take with local playback. Never replace post-capture
+   waveform, loudness, true-peak, spectral, sync, and drift analysis with the
+   lightweight capture-time meter.
 3. **Multi-source recording contract.** Represent call audio, isolated local
    audio, camera video, screen/shared media, and provider safety recording as
    distinct source tracks with one Session clock and explicit alignment

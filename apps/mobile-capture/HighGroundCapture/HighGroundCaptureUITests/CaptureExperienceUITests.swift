@@ -79,6 +79,25 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testRecorderNamesItsAudioEvidenceInsteadOfShowingAnOpaquePercentage() {
+        app.tabBars.buttons["Record"].tap()
+
+        let evidence = app.descendants(matching: .any)[
+            "CaptureRecorderInputEvidence"
+        ]
+        reveal(evidence)
+        XCTAssertTrue(
+            evidence.waitForExistence(timeout: 5),
+            "The primary recorder should expose inspectable audio evidence beside its record action."
+        )
+        XCTAssertEqual(evidence.label, "Recorder input evidence")
+        XCTAssertEqual(evidence.value as? String, "Inactive")
+        XCTAssertFalse(
+            evidence.label.localizedCaseInsensitiveContains("percent"),
+            "A percentage without a physical unit must not stand in for audio level truth."
+        )
+    }
+
     func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
         app.tabBars.buttons["Record"].tap()
 

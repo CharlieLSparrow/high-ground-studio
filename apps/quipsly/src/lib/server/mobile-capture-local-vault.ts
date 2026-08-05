@@ -33,8 +33,17 @@ function localDatabaseConfigured() {
 }
 
 export function getMobileCaptureLocalVaultConfig() {
-  const configuredRoot = process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim();
-  const configuredOrigin = process.env.QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN?.trim();
+  const developmentLoopbackDefault = process.env.NODE_ENV === "development"
+    && localDatabaseConfigured();
+  const configuredRoot = process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT?.trim()
+    || (developmentLoopbackDefault
+      ? path.join(os.tmpdir(), "quipsly-media-ingest", "capture-vault")
+      : "");
+  const configuredPort = /^\d{2,5}$/.test(process.env.PORT?.trim() || "")
+    ? process.env.PORT!.trim()
+    : "3012";
+  const configuredOrigin = process.env.QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN?.trim()
+    || (developmentLoopbackDefault ? `http://127.0.0.1:${configuredPort}` : "");
   if (!configuredRoot && !configuredOrigin) return null;
   if (process.env.NODE_ENV === "production") {
     throw new Error("The local Capture vault is disabled in production.");

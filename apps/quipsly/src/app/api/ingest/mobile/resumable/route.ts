@@ -82,6 +82,18 @@ function jsonNoStore(body: unknown, status = 200, headers?: Record<string, strin
   });
 }
 
+function developmentFailureCode(error: unknown) {
+  if (process.env.NODE_ENV !== "development" || !error || typeof error !== "object") return null;
+  const candidate = "code" in error && typeof error.code === "string"
+    ? error.code
+    : "name" in error && typeof error.name === "string"
+      ? error.name
+      : null;
+  return candidate && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(candidate)
+    ? candidate
+    : "UNEXPECTED_CAPTURE_SESSION_ERROR";
+}
+
 function text(value: unknown, maxLength = 512) {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -531,6 +543,7 @@ export async function POST(request: Request) {
   const parsed = parseCreatePayload(body);
   if (!parsed.ok) return jsonNoStore({ ok: false, error: parsed.error }, 400);
 
+  let developmentStage = "parse-source-profile";
   try {
     const payload = parsed.payload;
     const parsedSourceProfile = payload.sourceProfileJson
@@ -540,6 +553,7 @@ export async function POST(request: Request) {
     if (parsedSourceProfile?.clientKind === "web" && !uploadOrigin) {
       return jsonNoStore({ ok: false, error: "Browser source uploads require an exact HTTP Origin binding." }, 400);
     }
+    developmentStage = "validate-canonical-references";
     const references = await assertMobileCaptureUploadReferences({
       prisma,
       actorUserId: session.user.id,
@@ -568,6 +582,7 @@ export async function POST(request: Request) {
     if (!references.participant || !references.consent) {
       return jsonNoStore({ ok: false, error: "Canonical uploads require an actor-owned participant and consent receipt." }, 409);
     }
+    developmentStage = "resolve-room-project";
     const resolvedProject = await resolveRoomBoundProject(session, prisma, references.room);
     if (!resolvedProject) {
       return jsonNoStore({ ok: false, error: "Capture room is not bound to a valid Nest project." }, 409);
@@ -604,6 +619,7 @@ export async function POST(request: Request) {
       recordingSegmentsJson: payload.recordingSegmentsJson,
     };
 
+    developmentStage = "load-resumable-manifest";
     const existing = await loadMobileCaptureResumableManifest(payload.uploadSessionId);
     if (existing) {
       const mismatch = mobileCaptureResumableBindingMismatch(existing.manifest, binding);
@@ -623,6 +639,7 @@ export async function POST(request: Request) {
       return jsonNoStore(responseFor(recovered, false, objectExists, reservation));
     }
 
+    developmentStage = "evaluate-room-readiness";
     const roomReadiness = await evaluateMobileCaptureRoomReadiness({
       prisma,
       roomId: payload.callRoomId,
@@ -654,6 +671,7 @@ export async function POST(request: Request) {
       }, 409);
     }
     const { bucketName } = storageTarget;
+    developmentStage = "reserve-vault-capacity";
     const reservation = await reserveMediaVaultUploadCapacity({
       prisma,
       lane: MEDIA_VAULT_UPLOAD_RESERVATION_LANES.mobileCaptureResumable,
@@ -674,6 +692,7 @@ export async function POST(request: Request) {
         source: "mobile-capture-resumable",
       },
     });
+    developmentStage = "create-resumable-manifest";
     const created = await createMobileCaptureResumableManifest({
       ...binding,
       ...storageTarget,
@@ -724,6 +743,11 @@ export async function POST(request: Request) {
       return jsonNoStore({ ok: false, error: error.message }, status);
     }
     console.error("[Mobile Capture Resumable] Create failed", error);
-    return jsonNoStore({ ok: false, error: "Unable to create the durable Capture upload session." }, 503);
+    return jsonNoStore({
+      ok: false,
+      error: "Unable to create the durable Capture upload session.",
+      ...(developmentFailureCode(error) ? { code: developmentFailureCode(error) } : {}),
+      ...(process.env.NODE_ENV === "development" ? { stage: developmentStage } : {}),
+    }, 503);
   }
 }

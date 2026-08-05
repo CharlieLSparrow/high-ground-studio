@@ -47,6 +47,14 @@ import {
   parseChatPersistedLiveHint,
   sessionChatThreadKey,
 } from "@/lib/live-collaboration/chat-live-hint";
+import {
+  analyseStudioAudioFrame,
+  STUDIO_AUDIO_DISPLAY_FLOOR_DBFS,
+  studioAudioDbfsPercent,
+  studioAudioMeterEvidence,
+  studioAudioSignalLabel,
+  type StudioAudioMeterEvidence,
+} from "@/lib/studio-audio-meter";
 
 type DeviceOption = { deviceId: string; label: string };
 type PreferredDevices = {
@@ -142,6 +150,69 @@ function preferredDeviceId(
   return options[0]?.deviceId || "";
 }
 
+function formattedDbfs(value: number) {
+  if (!Number.isFinite(value) || value <= -120) return "below −120 dBFS";
+  return `${value.toFixed(1).replace("-", "−")} dBFS`;
+}
+
+function StudioInputEvidenceMeter({ evidence }: { evidence: StudioAudioMeterEvidence | null }) {
+  const signalState = evidence?.state ?? "inactive";
+  const stateStyles = signalState === "clipping-risk"
+    ? "border-rose-300 bg-rose-50 text-rose-950"
+    : signalState === "hot"
+      ? "border-amber-300 bg-amber-50 text-amber-950"
+      : signalState === "ready"
+        ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+        : "border-[#d8c7a7] bg-white text-[#5b472f]";
+  const rmsPercent = studioAudioDbfsPercent(evidence?.rmsDbfs ?? STUDIO_AUDIO_DISPLAY_FLOOR_DBFS);
+  const peakPercent = studioAudioDbfsPercent(evidence?.samplePeakDbfs ?? STUDIO_AUDIO_DISPLAY_FLOOR_DBFS);
+  const processing = evidence
+    ? [
+        evidence.echoCancellation === true ? "echo cancellation" : null,
+        evidence.noiseSuppression === true ? "noise suppression" : null,
+        evidence.autoGainControl === true ? "automatic gain" : null,
+      ].filter(Boolean)
+    : [];
+
+  return (
+    <section className={`rounded-xl border p-3 ${stateStyles}`} aria-label="Call-path microphone evidence">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wide">Call-path input evidence</p>
+          <p className="mt-1 text-sm font-black">{studioAudioSignalLabel(signalState)}</p>
+        </div>
+        <p className="text-right font-mono text-[10px] font-black">
+          {evidence
+            ? `${evidence.sampleRateHz ? `${(evidence.sampleRateHz / 1_000).toFixed(1)} kHz` : "rate unavailable"} · ${evidence.channelCount ? `${evidence.channelCount} ch` : "channels unavailable"}`
+            : "Run selected setup"}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        <div>
+          <div className="flex items-center justify-between gap-3 text-[10px] font-bold"><span>Frame RMS</span><span className="font-mono">{evidence ? formattedDbfs(evidence.rmsDbfs) : "—"}</span></div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/10" role="meter" aria-label="Microphone frame RMS" aria-valuemin={STUDIO_AUDIO_DISPLAY_FLOOR_DBFS} aria-valuemax={0} aria-valuenow={evidence ? Math.max(STUDIO_AUDIO_DISPLAY_FLOOR_DBFS, evidence.rmsDbfs) : STUDIO_AUDIO_DISPLAY_FLOOR_DBFS} aria-valuetext={evidence ? formattedDbfs(evidence.rmsDbfs) : "Waiting for setup test"}>
+            <div className="h-full rounded-full bg-emerald-600 transition-[width]" style={{ width: `${rmsPercent}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-3 text-[10px] font-bold"><span>Sample peak</span><span className="font-mono">{evidence ? formattedDbfs(evidence.samplePeakDbfs) : "—"}</span></div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/10" role="meter" aria-label="Microphone sample peak" aria-valuemin={STUDIO_AUDIO_DISPLAY_FLOOR_DBFS} aria-valuemax={0} aria-valuenow={evidence ? Math.max(STUDIO_AUDIO_DISPLAY_FLOOR_DBFS, evidence.samplePeakDbfs) : STUDIO_AUDIO_DISPLAY_FLOOR_DBFS} aria-valuetext={evidence ? formattedDbfs(evidence.samplePeakDbfs) : "Waiting for setup test"}>
+            <div className={`h-full rounded-full transition-[width] ${signalState === "clipping-risk" ? "bg-rose-600" : signalState === "hot" ? "bg-amber-600" : "bg-violet-700"}`} style={{ width: `${peakPercent}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {evidence ? <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold">
+        <span>Peak hold {formattedDbfs(evidence.peakHoldDbfs)}</span>
+        <span>{evidence.clippedSampleCountSinceStart.toLocaleString()} clipped samples observed</span>
+        <span>{processing.length ? `Browser call processing: ${processing.join(", ")}` : "Browser call processing not reported"}</span>
+      </div> : null}
+      <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">These are frame RMS and sample-peak observations from the browser call path—not LUFS, true peak, or proof of the retained source. Quipsly analyzes each preserved source independently after capture.</p>
+    </section>
+  );
+}
+
 export function LiveSessionRoom({
   callRoomId,
   sessionTitle,
@@ -185,7 +256,7 @@ export function LiveSessionRoom({
   const [participants, setParticipants] = useState<Array<{ identity: string; name: string; speaking: boolean }>>([]);
   const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
   const [recordingConsentStatus, setRecordingConsentStatus] = useState("not checked");
-  const [level, setLevel] = useState(0);
+  const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
@@ -351,26 +422,48 @@ export function LiveSessionRoom({
         await localVideoRef.current.play().catch(() => undefined);
       }
       const context = new AudioContext();
+      await context.resume().catch(() => undefined);
       const analyser = context.createAnalyser();
-      analyser.fftSize = 512;
+      analyser.fftSize = 2_048;
       context.createMediaStreamSource(new MediaStream(stream.getAudioTracks())).connect(analyser);
-      const samples = new Uint8Array(analyser.frequencyBinCount);
+      const samples = new Float32Array(analyser.fftSize);
+      const audioTrack = stream.getAudioTracks()[0];
+      const trackSettings = audioTrack?.getSettings() ?? {};
+      let peakHoldDbfs = -120;
+      let clippedSampleCountSinceStart = 0;
+      let lastPublishedAt = 0;
       let frame = 0;
-      const tick = () => {
-        analyser.getByteTimeDomainData(samples);
-        let sum = 0;
-        for (const value of samples) {
-          const normalized = (value - 128) / 128;
-          sum += normalized * normalized;
+      const tick = (timestamp: number) => {
+        analyser.getFloatTimeDomainData(samples);
+        const frameEvidence = analyseStudioAudioFrame(samples);
+        peakHoldDbfs = Math.max(peakHoldDbfs, frameEvidence.samplePeakDbfs);
+        clippedSampleCountSinceStart += frameEvidence.clippedSampleCount;
+        if (timestamp - lastPublishedAt >= 100) {
+          setMeterEvidence(studioAudioMeterEvidence(frameEvidence, {
+            previousPeakHoldDbfs: peakHoldDbfs,
+            previousClippedSampleCount:
+              clippedSampleCountSinceStart - frameEvidence.clippedSampleCount,
+            sampleRateHz: context.sampleRate,
+            channelCount: trackSettings.channelCount ?? 1,
+            echoCancellation: typeof trackSettings.echoCancellation === "boolean"
+              ? trackSettings.echoCancellation
+              : null,
+            noiseSuppression: typeof trackSettings.noiseSuppression === "boolean"
+              ? trackSettings.noiseSuppression
+              : null,
+            autoGainControl: typeof trackSettings.autoGainControl === "boolean"
+              ? trackSettings.autoGainControl
+              : null,
+          }));
+          lastPublishedAt = timestamp;
         }
-        setLevel(Math.min(1, Math.sqrt(sum / samples.length) * 4));
         frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
       meterCleanupRef.current = () => {
         cancelAnimationFrame(frame);
         void context.close();
-        setLevel(0);
+        setMeterEvidence(null);
       };
       setStatus("ready");
       setMessage("Preview is live. This is a device check only—nothing is sent or recorded.");
@@ -769,11 +862,7 @@ export function LiveSessionRoom({
             </div>}
           </div>
 
-          <div className="rounded-xl border border-[#d8c7a7] bg-white p-3">
-            <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wide text-[#5b472f]"><span>Mic confidence meter</span><span>{Math.round(level * 100)}%</span></div>
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#eee4d2]" role="meter" aria-label="Microphone input level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}><div className={`h-full rounded-full transition-[width] ${level > 0.92 ? "bg-rose-600" : level > 0.08 ? "bg-emerald-600" : "bg-amber-500"}`} style={{ width: `${Math.max(2, level * 100)}%` }} /></div>
-            <p className="mt-2 text-[10px] font-bold leading-4 text-[#8a7354]">This meter is confidence, not a production loudness measurement. The retained source gets waveform, loudness, clipping, and spectral review after capture.</p>
-          </div>
+          <StudioInputEvidenceMeter evidence={meterEvidence} />
 
           <div className="flex flex-wrap gap-2">
             {!connected ? <>

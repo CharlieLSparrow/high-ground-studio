@@ -626,6 +626,10 @@ requireIncludes(providerRoomText, "MobileChatPersistedLiveHint.decodeStrict(data
 requireIncludes(capturePhoneShellText, "publishChatPersistedHint(hint)", "the shipping Capture shell publishes only post-persistence chat hints");
 requireIncludes(capturePhoneShellText, "episodeChat.receiveLiveHint", "the shipping Capture shell refreshes the episode thread from received hints");
 requireIncludes(capturePhoneShellText, "sessionChat.receiveLiveHint", "the shipping Capture shell refreshes only the exact Session thread from received hints");
+requireIncludes(capturePhoneShellText, "CaptureRecorderInputEvidence", "the primary recorder exposes inspectable audio evidence instead of an opaque percentage");
+requireIncludes(capturePhoneShellText, "Recorder average and peak power in dBFS—not LUFS or true peak.", "native audio metering names the AVAudioRecorder measurements and analysis limits");
+requireIncludes(capturePhoneShellText, "averagePowerDB: audioCapture.inputLevelDB", "the recorder renders the measured average-power value");
+requireIncludes(capturePhoneShellText, "peakPowerDB: audioCapture.peakInputLevelDB", "the recorder renders the measured sample-peak value");
 requireIncludes(nestChatRouteText, "studioEpisodeProduction.findUnique", "episode chat validates the canonical parent episode");
 requireIncludes(nestChatRouteText, "sessionConversationAccessWhere", "Session chat reads use canonical participant and project access rules");
 requireIncludes(nestChatRouteText, "sessionMutationAccessWhere", "Session chat writes use canonical participant mutation rules");

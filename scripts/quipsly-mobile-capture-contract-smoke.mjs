@@ -348,6 +348,7 @@ function checkMeetingSpineContractSources() {
   );
   const providerRoomText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomController.swift");
   const authManagerText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift");
+  const audioCaptureText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AudioCaptureController.swift");
   const authenticatedDataBoundary = authManagerText.slice(
     authManagerText.indexOf("func authenticatedData("),
     authManagerText.indexOf("/// Downloads a potentially large authenticated source"),
@@ -465,6 +466,17 @@ function checkMeetingSpineContractSources() {
       && episodeChatText.includes("guard !self.pollingDisabledForMissingThread else { return }"),
     "nativeMissingEpisodeThreadStopsBackgroundPolling",
     "A missing canonical Episode or Session thread stops background polling after the terminal 404 while preserving explicit manual refresh.",
+  );
+  expect(
+    audioCaptureText.includes("@Published private(set) var inputLevelDB")
+      && audioCaptureText.includes("@Published private(set) var peakInputLevelDB")
+      && capturePhoneShellText.includes("CaptureRecorderInputEvidence")
+      && capturePhoneShellText.includes("averagePowerDB: audioCapture.inputLevelDB")
+      && capturePhoneShellText.includes("peakPowerDB: audioCapture.peakInputLevelDB")
+      && capturePhoneShellText.includes("not LUFS or true peak")
+      && !capturePhoneShellText.includes('accessibilityLabel("Microphone level")'),
+    "nativeRecorderExposesMeasuredAudioEvidence",
+    "Capture exposes recorder average and peak power in dBFS, with explicit LUFS and true-peak limits, instead of an unexplained percentage.",
   );
   expect(
     episodeChatText.includes("enum MobileCollaborationChatScope")

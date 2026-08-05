@@ -44,6 +44,9 @@ describe("LiveSessionRoom", () => {
     expect(await screen.findByRole("option", { name: "Shure MV7i" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Conversation is not recording" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
+    expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
+    expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
     expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();

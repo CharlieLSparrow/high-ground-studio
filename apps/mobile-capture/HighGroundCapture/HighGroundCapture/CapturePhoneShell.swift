@@ -5865,7 +5865,8 @@ private struct CaptureRecorderView: View {
                             session: session,
                             captureState: audioCapture.captureState,
                             duration: audioCapture.currentDuration,
-                            inputLevel: audioCapture.normalizedInputLevel,
+                            averagePowerDB: audioCapture.inputLevelDB,
+                            peakPowerDB: audioCapture.peakInputLevelDB,
                             inputRoute: audioCapture.inputRouteName,
                             capturePipeline: audioCapture.capturePipelineLabel,
                             userMarkOffsets: audioCapture.userMarkOffsets,
@@ -5960,7 +5961,8 @@ private struct CaptureRecorderView: View {
                             CoordinatedPodcastAudioStatus(
                                 captureState: audioCapture.captureState,
                                 duration: audioCapture.currentDuration,
-                                inputLevel: audioCapture.normalizedInputLevel,
+                                averagePowerDB: audioCapture.inputLevelDB,
+                                peakPowerDB: audioCapture.peakInputLevelDB,
                                 inputRoute: audioCapture.inputRouteName,
                                 capturePipeline: audioCapture.capturePipelineLabel,
                                 markCount: audioCapture.userMarkOffsets.count,
@@ -10153,7 +10155,8 @@ private struct VideoRecorderHero: View {
 private struct CoordinatedPodcastAudioStatus: View {
     let captureState: AudioCaptureState
     let duration: TimeInterval
-    let inputLevel: Double
+    let averagePowerDB: Float
+    let peakPowerDB: Float
     let inputRoute: String
     let capturePipeline: String
     let markCount: Int
@@ -10171,7 +10174,8 @@ private struct CoordinatedPodcastAudioStatus: View {
             }
 
             InputLevelMeter(
-                level: inputLevel,
+                averagePowerDB: averagePowerDB,
+                peakPowerDB: peakPowerDB,
                 isActive: captureState == .recording
             )
 
@@ -10237,7 +10241,8 @@ private struct RecorderHero: View {
     let session: MobileCaptureSession
     let captureState: AudioCaptureState
     let duration: TimeInterval
-    let inputLevel: Double
+    let averagePowerDB: Float
+    let peakPowerDB: Float
     let inputRoute: String
     let capturePipeline: String
     let userMarkOffsets: [TimeInterval]
@@ -10262,7 +10267,11 @@ private struct RecorderHero: View {
                     .accessibilityIdentifier("CaptureElapsedTime")
             }
 
-            InputLevelMeter(level: inputLevel, isActive: isActuallyRecording)
+            InputLevelMeter(
+                averagePowerDB: averagePowerDB,
+                peakPowerDB: peakPowerDB,
+                isActive: isActuallyRecording
+            )
 
             Button(action: onPrimaryAction) {
                 ZStack {
@@ -10406,43 +10415,130 @@ private struct RecorderHero: View {
 
 private struct InputLevelMeter: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let level: Double
+    let averagePowerDB: Float
+    let peakPowerDB: Float
     let isActive: Bool
 
-    private var safeLevel: Double {
-        guard level.isFinite else { return 0 }
-        return min(max(level, 0), 1)
+    private let displayFloorDB: Float = -60
+
+    private var safeAverageDB: Float {
+        guard averagePowerDB.isFinite else { return -160 }
+        return min(max(averagePowerDB, -160), 0)
+    }
+
+    private var safePeakDB: Float {
+        guard peakPowerDB.isFinite else { return -160 }
+        return min(max(peakPowerDB, -160), 0)
+    }
+
+    private var averageLevel: Double {
+        normalized(safeAverageDB)
+    }
+
+    private var peakLevel: Double {
+        normalized(safePeakDB)
+    }
+
+    private var signalState: String {
+        guard isActive else { return "Meter inactive" }
+        if safePeakDB >= -1 { return "Clipping risk" }
+        if safePeakDB >= -3 || safeAverageDB >= -12 { return "Hot input" }
+        if safeAverageDB < -60 && safePeakDB < -54 { return "No useful signal" }
+        if safeAverageDB < -42 { return "Low input" }
+        return "Healthy speech range"
+    }
+
+    private var signalTint: Color {
+        switch signalState {
+        case "Clipping risk": .red
+        case "Hot input", "Low input": .orange
+        case "Healthy speech range": .green
+        default: .secondary
+        }
     }
 
     var body: some View {
-        ZStack {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Recorder input evidence")
+                    .font(.caption2.weight(.bold))
+                    .textCase(.uppercase)
+                Spacer()
+                Text(signalState)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(signalTint)
+            }
+
+            meterLane(
+                label: "Average power",
+                decibels: safeAverageDB,
+                level: averageLevel,
+                tint: .green
+            )
+            meterLane(
+                label: "Peak power",
+                decibels: safePeakDB,
+                level: peakLevel,
+                tint: safePeakDB >= -1 ? .red : safePeakDB >= -3 ? .orange : .purple
+            )
+
+            Text("Recorder average and peak power in dBFS—not LUFS or true peak. Preserved-source analysis follows after capture.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Recorder input evidence")
+        .accessibilityValue(
+            isActive
+                ? "\(signalState), average power \(formatted(safeAverageDB)), peak power \(formatted(safePeakDB)). Not LUFS or true peak."
+                : "Inactive"
+        )
+        .accessibilityIdentifier("CaptureRecorderInputEvidence")
+    }
+
+    private func normalized(_ decibels: Float) -> Double {
+        guard decibels.isFinite else { return 0 }
+        let bounded = min(max(decibels, displayFloorDB), 0)
+        return Double((bounded - displayFloorDB) / -displayFloorDB)
+    }
+
+    private func formatted(_ decibels: Float) -> String {
+        guard decibels > -120 else { return "below minus 120 dBFS" }
+        return String(format: "%.1f dBFS", decibels)
+    }
+
+    private func meterLane(
+        label: String,
+        decibels: Float,
+        level: Double,
+        tint: Color
+    ) -> some View {
+        VStack(spacing: 3) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text(isActive ? formatted(decibels) : "—")
+                    .monospacedDigit()
+            }
+            .font(.caption2.weight(.semibold))
             GeometryReader { proxy in
                 let availableWidth = proxy.size.width.isFinite
                     ? max(0, proxy.size.width)
                     : 0
-                let minimumVisibleWidth = min(8, availableWidth)
-                let fillWidth = min(
-                    availableWidth,
-                    max(minimumVisibleWidth, availableWidth * safeLevel)
-                )
                 ZStack(alignment: .leading) {
                     Capsule().fill(.secondary.opacity(0.14))
                     Capsule()
-                        .fill(isActive ? CapturePalette.meterGradient : LinearGradient(colors: [.secondary.opacity(0.35)], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: fillWidth)
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: safeLevel)
+                        .fill(isActive ? tint : .secondary.opacity(0.35))
+                        .frame(width: min(availableWidth, availableWidth * level))
+                        .animation(
+                            reduceMotion ? nil : .easeOut(duration: 0.1),
+                            value: level
+                        )
                 }
             }
-            .frame(height: 9)
+            .frame(height: 7)
         }
-        // VoiceOver treats this value-bearing meter as one inspectable element.
-        // Keep its visual weight slim while giving the semantic element the same
-        // comfortable 44-point target used by nearby controls.
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .accessibilityElement()
-        .accessibilityLabel("Microphone level")
-        .accessibilityValue(isActive ? "\(Int((safeLevel * 100).rounded())) percent" : "Inactive")
     }
 }
 

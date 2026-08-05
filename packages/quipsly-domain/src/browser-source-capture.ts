@@ -23,6 +23,55 @@ export type BrowserSourceCaptureChunk = {
   readonly receivedAt: string;
 };
 
+export type BrowserSourceCaptureMeterSummaryLegacy = {
+  readonly contractKind: "quipsly-browser-source-meter-v1";
+  readonly measurement: string;
+  readonly coverage: string;
+  readonly startedAt: string;
+  readonly stoppedAt: string;
+  readonly sampleRateHz: number;
+  readonly sourceChannelCount: number | null;
+  readonly analysisChannelCount: number;
+  readonly observedFrameCount: number;
+  readonly observedSampleCount: number;
+  readonly meterMessageCount?: number;
+  readonly missingMessageCount?: number;
+  readonly highestFrameRmsDbfs: number;
+  readonly samplePeakDbfs: number;
+  readonly clippedSampleCount: number;
+  readonly completeDecodePerformed: false;
+  readonly integratedLoudnessMeasured: false;
+  readonly truePeakMeasured: false;
+};
+
+export type BrowserSourceCaptureMeterSummaryV2 = {
+  readonly contractKind: "quipsly-browser-source-meter-v2";
+  readonly measurement:
+    | "audio-worklet-render-quantum-aggregate"
+    | "analyser-animation-frame-fallback";
+  readonly coverage: "realtime-observation-not-complete-decode";
+  readonly startedAt: string;
+  readonly stoppedAt: string;
+  readonly sampleRateHz: number;
+  readonly sourceChannelCount: number | null;
+  readonly analysisChannelCount: number;
+  readonly observedBlockCount: number;
+  readonly observedSampleCount: number;
+  readonly meterMessageCount: number;
+  readonly missingMessageCount: number;
+  readonly tailAggregateFlushed: boolean;
+  readonly highestObservedRmsDbfs: number;
+  readonly samplePeakDbfs: number;
+  readonly nearFullScaleSampleCount: number;
+  readonly completeDecodePerformed: false;
+  readonly integratedLoudnessMeasured: false;
+  readonly truePeakMeasured: false;
+};
+
+export type BrowserSourceCaptureMeterSummary =
+  | BrowserSourceCaptureMeterSummaryLegacy
+  | BrowserSourceCaptureMeterSummaryV2;
+
 export type BrowserSourceCaptureProfile = {
   readonly contractKind: typeof QUIPSLY_BROWSER_SOURCE_CAPTURE_KIND;
   readonly clientKind: "web";
@@ -37,6 +86,7 @@ export type BrowserSourceCaptureProfile = {
     readonly noiseSuppression: boolean | null;
     readonly autoGainControl: boolean | null;
   };
+  readonly captureMeter?: BrowserSourceCaptureMeterSummary;
   readonly headphonesAttested: boolean;
   readonly localVault: "opfs";
   readonly localRetentionRequired: true;

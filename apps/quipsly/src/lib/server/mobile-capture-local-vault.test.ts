@@ -52,6 +52,21 @@ describe("development-only local Capture vault", () => {
     expect(() => getMobileCaptureLocalVaultConfig()).toThrow("below the operating-system temporary directory");
   });
 
+  it("gives an ordinary loopback development server a confined local vault", () => {
+    Reflect.set(process.env, "NODE_ENV", "development");
+    delete process.env.QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT;
+    delete process.env.QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN;
+    process.env.PORT = "3012";
+
+    const config = getMobileCaptureLocalVaultConfig();
+    expect(config).toMatchObject({
+      origin: "http://127.0.0.1:3012",
+      bucketName: "quipsly-local-development-vault",
+    });
+    expect(config?.root.startsWith(os.tmpdir())).toBe(true);
+    expect(config?.root.endsWith(path.join("quipsly-media-ingest", "capture-vault"))).toBe(true);
+  });
+
   it("issues a secret same-origin capability and stores only its SHA-256 binding", () => {
     const capability = createLocalMobileCaptureUploadCapability(UPLOAD_SESSION_ID);
     expect(capability).not.toBeNull();
