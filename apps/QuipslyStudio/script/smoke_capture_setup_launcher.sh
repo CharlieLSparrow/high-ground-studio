@@ -29,7 +29,10 @@ import sys
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     status = json.load(handle)
-if status.get("launchStage") == "capture_setup_ready":
+if (
+    status.get("launchStage") == "capture_setup_ready"
+    and status.get("agentListenerState") == "ready"
+):
     print(status.get("capture", {}).get("captureGroupID", ""))
 PY
   )"
@@ -108,6 +111,11 @@ checks = {
         and "canonicalPids=" in app_text
     ),
     "agentHealthy": health.get("status") == "ok",
+    "listenerRecoveredAndReady": (
+        status.get("agentListenerState") == "ready"
+        and status.get("agentListenerLastError") == ""
+        and status_after.get("agentListenerState") == "ready"
+    ),
     "routesAdvertised": (
         "GET /capture_open_setup" in commands.get("commands", [])
         and "GET /capture_status" in commands.get("commands", [])

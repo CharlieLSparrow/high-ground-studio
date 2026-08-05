@@ -39,9 +39,14 @@ still does not start retained recording or optional provider egress.
 
 ## Remaining proof
 
-The in-app browser policy refused loopback navigation even though local Nest
-health returned HTTP 200, so this checkpoint does not claim a rendered local
-browser operation. The next signed preview/production operation should select
-EOS Webcam Utility, Shure MV7i, and the MV7i headphone output, speak through a
-real level check, join the room, start a separately visible retained source,
-and then inspect the exact Session asset in the editor.
+The later signed native operation selected EOS Webcam Utility, the direct Shure
+MV7i input, and the MV7i headphone output, then retained and audited both local
+sources and opened the exact two-lane working session in Studio. That result is
+recorded in
+`docs/coordination/2026-08-05-native-mac-retained-take.md`.
+
+The in-app browser policy still refuses loopback navigation even though local
+Nest health returns HTTP 200, so neither checkpoint claims a rendered browser
+operation. Normal-spoken-level monitoring, a real Session/shared clock,
+browser/iPhone exact-byte upload, reviewed waveform/drift, and assembled
+cross-device playback remain the next physical boundaries.

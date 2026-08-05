@@ -350,8 +350,11 @@ launch_capture_acceptance() {
   for _ in {1..120}; do
     local status
     status="$("$ROOT_DIR/script/agentctl.sh" capture-status 2>/dev/null || true)"
-    if [[ "$status" == *'"projectTitle" : "Episode Capture Setup"'* ]] \
-      || [[ "$status" == *'"projectTitle":"Episode Capture Setup"'* ]]; then
+    if printf '%s' "$status" | jq -e '
+      .projectTitle == "Episode Capture Setup"
+      and .launchStage == "capture_setup_ready"
+      and .agentListenerState == "ready"
+    ' >/dev/null 2>&1; then
       warn_duplicates
       printf '%s\n' "$status"
       return 0
@@ -360,7 +363,7 @@ launch_capture_acceptance() {
   done
 
   echo "error=capture_acceptance_state_unavailable" >&2
-  echo "hint=The canonical app launched but /capture_status never published Episode Capture Setup." >&2
+  echo "hint=The canonical app launched but /capture_status never reached a ready listener and hardware inventory." >&2
   warn_duplicates >&2
   return 1
 }

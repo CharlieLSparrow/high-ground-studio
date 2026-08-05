@@ -3332,7 +3332,7 @@ struct EpisodeCaptureSetupView: View {
                         )
                         .font(.headline)
                         Text(
-                            "This is a silent local movie from the selected macOS camera route. With the Canon R8 USB feed it is a 1080p/30 framing and sync reference; the internally recorded camera-card file remains the authoritative 4K master."
+                            "This is a silent local movie at the exact format negotiated by the selected macOS camera route. For the Canon R8, keep the internal camera master at 4K UHD / 23.98 fps; the USB feed is only a framing and sync reference, and the camera-card original remains authoritative."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)

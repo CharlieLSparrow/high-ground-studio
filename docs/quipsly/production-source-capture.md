@@ -1307,3 +1307,25 @@ The production transcription continuation is specified in
 [capture-transcript-worker.md](./capture-transcript-worker.md). It preserves
 the same immutable recording identity through background processing, Nest
 correction, stable word anchors, and a fail-closed QuipslyStudio import.
+
+## Implementation checkpoint — August 5, 2026 (R8 and MV7i retained Episode 9 take)
+
+The signed current-source Mac app operated the direct Shure MV7i and EOS Webcam
+Utility as one local-only Episode 9 capture group. It finalized a 12.300-second
+stereo 48 kHz/24-bit WAV and a 12.586-second silent 1280x720 H.264 reference,
+freshly re-read both byte counts and hashes, wrote a zero-hold take audit, and
+atomically saved/reloaded the exact two-lane Studio session before opening it in
+the editor. The camera carried a fresh `agent-visual-review` receipt after three
+changing live frames proved the exact route was not Canon's disconnected slate.
+
+The audio was ambient and quiet rather than a spoken gain test, and local-only
+mode had no shared clock samples. The disposition therefore remains
+`machine-pass-human-review-required`; waveform, late-drift, proof-listen/watch,
+Canon 4K/23.98 camera-card import, and physical browser/iPhone Session operation
+remain open.
+
+The same operation exposed and repaired an asynchronous loopback-listener race
+during rapid canonical relaunch. Listener state, last error, and retry attempt
+are now observable, and bounded exponential retry recovered from the reproduced
+port-ownership transition without a manual delayed launch. Full evidence is in
+`docs/coordination/2026-08-05-native-mac-retained-take.md`.

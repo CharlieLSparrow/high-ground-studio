@@ -7671,3 +7671,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   policy blocks loopback even though Nest health is 200. A signed deployed
   preview is the next honest UI boundary. See
   `docs/coordination/2026-08-05-canon-r8-mv7i-mac-preflight.md`.
+
+## 2026-08-05 native Mac retained Episode 9 checkpoint
+
+- Closed the Mac acceptance-launch race at its owner: `AgentServer` now
+  observes asynchronous listener failures, exposes recovery state, and retries
+  with bounded exponential backoff. The exact rapid relaunch reproduced
+  `Address already in use`, then recovered to the sole port-8080 listener and
+  real hardware-ready capture state without a delayed manual launch.
+- Operated the signed current-source app with the physical MV7i as exact stereo
+  48 kHz input/output and the live Canon R8 virtual route. Three distinct frames
+  were visually reviewed before Quipsly wrote the exact-device
+  `agent-visual-review` preflight receipt.
+- Finalized, independently probed, and hash-verified a 12.300-second 24-bit WAV
+  and 12.586-second silent H.264 reference in one Episode 9 capture group. The
+  app audit recorded zero holds, honest quiet-audio and no-shared-clock warnings,
+  and an 83 ms first-placement clue.
+- Atomically saved/reloaded both capture lanes and opened the exact working
+  session in Studio. The Mac UI now describes the negotiated USB format instead
+  of claiming 1080p and carries the preferred Canon internal-master profile:
+  4K UHD / 23.98 fps.
+- This is retained local source and durable-editor proof, not a human
+  proof-listen/watch, shared-clock sync decision, cloud upload, transcript,
+  delivery, or publication. See
+  `docs/coordination/2026-08-05-native-mac-retained-take.md`.

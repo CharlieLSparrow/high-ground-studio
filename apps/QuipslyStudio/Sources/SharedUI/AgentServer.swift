@@ -58,6 +58,10 @@ public class AgentServer: ObservableObject {
     private var projectedShortSelectionOverlay: [String: Any]?
 
     private var listener: NWListener?
+    private var listenerRetryTask: Task<Void, Never>?
+    private var listenerRetryAttempt = 0
+    private var listenerState = "not-started"
+    private var listenerLastError = ""
     public let port: UInt16 = 8080
     private nonisolated static let cachedStatusLock = NSLock()
     private nonisolated(unsafe) static var cachedStatusData: Data?
@@ -96,20 +100,82 @@ public class AgentServer: ObservableObject {
                 host: "127.0.0.1",
                 port: port
             )
-            listener = try NWListener(using: parameters)
+            let candidate = try NWListener(using: parameters)
+            listener = candidate
+            listenerState = "starting"
+            listenerLastError = ""
 
-            listener?.newConnectionHandler = { [weak self] connection in
+            candidate.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
 
-            listener?.start(queue: .global(qos: .userInitiated))
-            print("AgentServer listening on loopback port \(self.port)")
+            candidate.stateUpdateHandler = {
+                [weak self, weak candidate] state in
+                Task { @MainActor [weak self, weak candidate] in
+                    guard let self, let candidate else { return }
+                    self.handleListenerState(state, candidate: candidate)
+                }
+            }
+            candidate.start(queue: .global(qos: .userInitiated))
+            print("AgentServer starting on loopback port \(self.port)")
         } catch {
-            print("Failed to start AgentServer: \(error)")
-            writeStatus([
-                "agentServer": "failed",
-                "error": "\(error)"
-            ])
+            listenerState = "failed"
+            listenerLastError = "\(error)"
+            print("Failed to create AgentServer listener: \(error)")
+            scheduleListenerRetry()
+        }
+    }
+
+    private func handleListenerState(
+        _ state: NWListener.State,
+        candidate: NWListener
+    ) {
+        guard listener === candidate else { return }
+        switch state {
+        case .ready:
+            listenerState = "ready"
+            listenerLastError = ""
+            listenerRetryAttempt = 0
+            listenerRetryTask?.cancel()
+            listenerRetryTask = nil
+            print("AgentServer listening on loopback port \(port)")
+        case let .failed(error):
+            listenerState = "failed"
+            listenerLastError = "\(error)"
+            candidate.stateUpdateHandler = nil
+            candidate.cancel()
+            listener = nil
+            print(
+                "AgentServer listener failed on loopback port \(port): \(error)"
+            )
+            scheduleListenerRetry()
+        case .cancelled:
+            listenerState = "cancelled"
+            candidate.stateUpdateHandler = nil
+            listener = nil
+            scheduleListenerRetry()
+        case .setup:
+            listenerState = "setup"
+        case .waiting(let error):
+            listenerState = "waiting"
+            listenerLastError = "\(error)"
+        @unknown default:
+            listenerState = "unknown"
+        }
+    }
+
+    private func scheduleListenerRetry() {
+        guard listenerRetryTask == nil else { return }
+        let attempt = listenerRetryAttempt
+        listenerRetryAttempt += 1
+        let delayMilliseconds = min(5_000, 250 * (1 << min(attempt, 4)))
+        listenerRetryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64(delayMilliseconds) * 1_000_000
+            )
+            guard !Task.isCancelled, let self else { return }
+            self.listenerRetryTask = nil
+            self.start()
         }
     }
 
@@ -4731,6 +4797,9 @@ public class AgentServer: ObservableObject {
         }
         enriched["agentServer"] = "running"
         enriched["agentPort"] = port
+        enriched["agentListenerState"] = listenerState
+        enriched["agentListenerLastError"] = listenerLastError
+        enriched["agentListenerRetryAttempt"] = listenerRetryAttempt
         enriched["agentPendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
         enriched["agentCommandExecutorRegistered"] = commandExecutor != nil
         enriched["agentLastCommandReceipt"] = lastCommandReceipt
@@ -4748,6 +4817,9 @@ public class AgentServer: ObservableObject {
         var enriched = status
         enriched["agentServer"] = "running"
         enriched["agentPort"] = port
+        enriched["agentListenerState"] = listenerState
+        enriched["agentListenerLastError"] = listenerLastError
+        enriched["agentListenerRetryAttempt"] = listenerRetryAttempt
         enriched["agentPendingCommandCount"] =
             pendingCommandRequests.count + Self.httpCommandCount()
         enriched["agentCommandExecutorRegistered"] =
