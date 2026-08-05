@@ -58,6 +58,12 @@ import {
   studioAudioSignalLabel,
   type StudioAudioMeterEvidence,
 } from "@/lib/studio-audio-meter";
+import {
+  isCanonWebcamUtility,
+  studioCameraFormatLabel,
+  studioCameraInputEvidence,
+  type StudioCameraInputEvidence,
+} from "@/lib/studio-camera-input";
 
 type DeviceOption = { deviceId: string; label: string };
 type PreferredDevices = {
@@ -246,6 +252,36 @@ function StudioInputEvidenceMeter({ evidence }: { evidence: StudioAudioMeterEvid
   );
 }
 
+function StudioCameraEvidence({
+  cameraLabel,
+  evidence,
+}: {
+  cameraLabel: string;
+  evidence: StudioCameraInputEvidence | null;
+}) {
+  const canonVirtualCamera = isCanonWebcamUtility(cameraLabel);
+  return (
+    <section className={`rounded-xl border p-3 ${canonVirtualCamera ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-sky-50 text-sky-950"}`} aria-label="Call-path camera evidence">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-wide">Call-path camera evidence</p>
+          <p className="mt-1 text-sm font-black">{cameraLabel || "No camera selected"}</p>
+        </div>
+        <p className="font-mono text-[10px] font-black">{evidence ? studioCameraFormatLabel(evidence) : "Run selected setup"}</p>
+      </div>
+      {canonVirtualCamera ? (
+        <div className="mt-3 rounded-lg border border-amber-300 bg-white/80 p-3 text-xs font-bold leading-5">
+          <p className="font-black">Canon handoff check</p>
+          <p className="mt-1">If the preview shows Canon&apos;s USB cable slate, quit both <span className="font-mono">EOS Utility</span> and <span className="font-mono">EOS Utility 3</span>, leave the R8 connected and in movie mode, then run this test again. Canon&apos;s background launcher can own the camera while still advertising this virtual source.</p>
+        </div>
+      ) : null}
+      <p className="mt-2 text-[10px] font-bold leading-4 opacity-75">{canonVirtualCamera
+        ? "This describes the browser call/reference feed only. Record the R8's 4K master on-camera and let Quipsly align that protected source to the Session capture group."
+        : "This describes the browser call/reference feed only. Quipsly measures each protected retained source independently after capture."}</p>
+    </section>
+  );
+}
+
 export function LiveSessionRoom({
   callRoomId,
   captureGroupId,
@@ -292,6 +328,7 @@ export function LiveSessionRoom({
   const [recordingConsentGranted, setRecordingConsentGranted] = useState(false);
   const [recordingConsentStatus, setRecordingConsentStatus] = useState("not checked");
   const [meterEvidence, setMeterEvidence] = useState<StudioAudioMeterEvidence | null>(null);
+  const [cameraEvidence, setCameraEvidence] = useState<StudioCameraInputEvidence | null>(null);
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
@@ -535,6 +572,13 @@ export function LiveSessionRoom({
         localVideoRef.current.srcObject = stream;
         await localVideoRef.current.play().catch(() => undefined);
       }
+      const videoTrack = stream.getVideoTracks()[0];
+      setCameraEvidence(videoTrack
+        ? studioCameraInputEvidence(
+            cameras.find((device) => device.deviceId === cameraId)?.label || videoTrack.label || "Selected camera",
+            videoTrack.getSettings(),
+          )
+        : null);
       const context = new AudioContext();
       await context.resume().catch(() => undefined);
       const analyser = context.createAnalyser();
@@ -583,9 +627,10 @@ export function LiveSessionRoom({
       setMessage("Preview is live. This is a device check only—nothing is sent or recorded.");
     } catch (error) {
       setStatus("error");
+      setCameraEvidence(null);
       setMessage(error instanceof Error ? `Selected device could not start: ${error.message}` : "Selected device could not start.");
     }
-  }, [cameraId, cameraWanted, microphoneId]);
+  }, [cameraId, cameraWanted, cameras, microphoneId]);
 
   const leave = useCallback(async () => {
     meterCleanupRef.current?.();
@@ -861,6 +906,7 @@ export function LiveSessionRoom({
         }
       }
       setCameraId(nextId);
+      setCameraEvidence(null);
       const label = cameras.find((device) => device.deviceId === nextId)?.label || "selected camera";
       setMessage(connected ? `Live camera switched to ${label}. This does not alter or restart retained recording.` : `Camera selected: ${label}. Run the preview before joining.`);
     } catch (error) {
@@ -983,6 +1029,7 @@ export function LiveSessionRoom({
           </div>
 
           <StudioInputEvidenceMeter evidence={meterEvidence} />
+          {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
 
           <div className="flex flex-wrap gap-2">
             {!connected ? <>

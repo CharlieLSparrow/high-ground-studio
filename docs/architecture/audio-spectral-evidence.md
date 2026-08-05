@@ -1,7 +1,7 @@
 # High-resolution audio spectral evidence
 
-Date: 2026-08-04
-Status: local production lane implemented and operated on retained podcast and coaching media
+Date: 2026-08-05
+Status: local and exact-generation cloud lanes implemented; retained local and credentialed GCS fixtures operated
 
 Quipsly's high-resolution spectral view is a source-bound evidence system, not
 an image export and not an automatic equalizer. It lets a reviewer inspect
@@ -54,6 +54,16 @@ the floor or ceiling number of frames for a fractional tail; when it emits only
 complete intervals, Quipsly separately decodes that exact tail with
 `showspectrumpic` and appends one verified tile. Any other count fails closed as
 source-clock drift.
+
+The cloud lane uses the same analyzer and pack contract through a separate
+create-once control plane. Nest binds every request to an exact GCS object
+generation, SHA-256, byte size, content type, project, and Studio asset. The
+processor downloads that generation, rehashes it, writes the pack with an
+object-generation precondition, then reads the stored generation back in full
+before publishing a result. Nest repeats source and pack inspection before it
+registers the pack. Tile delivery stays behind the authenticated route and
+uses both the exact pack generation and a bounded byte range; neither a bucket
+path nor a signed/public object URL crosses the client boundary.
 
 ## Access and UX
 
@@ -117,7 +127,7 @@ receipt.
 
 ## Current proof
 
-The retained operation generated and reverified:
+The retained local operation generated and reverified:
 
 - High Ground Odyssey `Ted Lasso Be Curious.mp4`: 254.630023 seconds, 44.1 kHz
   stereo, 61 tiles, 5,996,544-byte pack;
@@ -138,6 +148,17 @@ categories; the retained Be Curious asset currently has no completed mastery or
 source-bound edit proposal, so the real-media browser proof does not claim
 those absent records.
 
+The credentialed cloud fixture then generated and independently read back a
+three-level pack from an 11-second exact-generation GCS source: one 300-second
+overview tile, one 30-second browse tile, and three five-second detail tiles.
+The 491,520-byte pack matched its declared SHA-256 in a full exact-generation
+read and returned the expected bytes through a bounded range read. Source
+generation and hash remained unchanged, result replay was create-once, and an
+independent all-version listing proved cleanup of source, control, and pack
+fixtures. The least-privilege readback confirms that Nest can read but cannot
+rewrite spectral outputs, while the processor can create and read but cannot
+mutate an existing pack.
+
 ## Next qualified layer
 
 1. Add deterministic spectral candidate detectors with a labeled evaluation
@@ -145,5 +166,6 @@ those absent records.
 2. Add source/candidate difference views and loudness-matched A/B playback.
 3. Add channel-select and mid/side evidence without discarding the mono
    diagnostic projection.
-4. Materialize the same source-bound contract in the cloud worker without
-   weakening private tile authorization or immutable generation checks.
+4. Operate a retained physical browser/iPhone take through the deployed worker
+   and review its opening cue, later drift, private tiles, and assembled
+   playback before calling the release boundary complete.

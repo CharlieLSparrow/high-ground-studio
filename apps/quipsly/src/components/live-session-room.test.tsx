@@ -143,6 +143,29 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeDisabled();
   });
 
+  it("turns the Canon virtual-camera ownership failure into explicit preflight guidance", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+          { kind: "videoinput", deviceId: "canon-virtual", label: "EOS Webcam Utility" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-canon" captureGroupId="55555555-5555-4555-8555-555555555550" sessionTitle="Canon preflight" kind="episode" />);
+    });
+
+    expect(await screen.findByRole("region", { name: "Call-path camera evidence" })).toBeInTheDocument();
+    expect(screen.getByText("Canon handoff check")).toBeInTheDocument();
+    expect(screen.getByText(/background launcher can own the camera/i)).toBeInTheDocument();
+    expect(screen.getByText(/Record the R8's 4K master on-camera/i)).toBeInTheDocument();
+  });
+
   it("locks call device identity while a retained local source is active", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,

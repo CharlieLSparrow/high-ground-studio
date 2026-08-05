@@ -7638,3 +7638,36 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   followed by a retained physical multi-device recording, opening/later drift
   review, and assembled playback. Provider recording remains optional. See
   `docs/coordination/2026-08-05-cloud-audio-signal-profile.md`.
+
+## 2026-08-05 exact-generation cloud spectral checkpoint
+
+- Added the private cloud counterpart to the retained local spectral evidence
+  pyramid. Request, queue, result, retry, dead-letter, and pack metadata bind
+  exact GCS generations and hashes; the processor and Nest each perform their
+  own full readback before the UI can fetch a bounded tile.
+- The credentialed fixture produced a 491,520-byte three-level pack from an
+  11-second source, passed full-hash and exact-range reads, preserved the source,
+  replayed idempotently, and left no fixture object versions after cleanup.
+- Least-privilege readback passed for the new control and output managed
+  folders. Processing stays request-driven, Cloud Scheduler stays disabled,
+  and provider recording remains optional.
+- This exact committed code is not yet the deployed image. See
+  `docs/coordination/2026-08-05-cloud-audio-spectral-evidence.md`.
+
+## 2026-08-05 Canon R8 and MV7i Mac preflight checkpoint
+
+- Proved the actual USB boundary: MV7i is the default 48 kHz two-channel input
+  and output, and EOS Utility 3 receives a real R8 4K UHD / 23.98 fps IPB live
+  view. The initial virtual-camera USB slate was not a bad cable or Quipsly
+  selector; Canon's background EOS Utility launcher still owned the camera.
+- After releasing only that process, a local synchronized sample contained live
+  R8 reference video at 1280 by 720 / about 28.75 fps plus two-channel 48 kHz
+  MV7i audio. No sample was uploaded or published.
+- The live-room preflight now exposes browser-reported camera format, keeps it
+  separate from retained-master quality, and gives the exact Canon ownership
+  repair when EOS Webcam Utility is selected. Focused tests and Quipsly
+  TypeScript pass.
+- Rendered local browser operation remains unclaimed because the in-app browser
+  policy blocks loopback even though Nest health is 200. A signed deployed
+  preview is the next honest UI boundary. See
+  `docs/coordination/2026-08-05-canon-r8-mv7i-mac-preflight.md`.
