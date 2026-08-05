@@ -2052,7 +2052,7 @@ model CallParticipantAccessReceipt {
 
   @@index([roomId, createdAt])
   @@index([participantId, createdAt])
-  @@index([participantId, accessRevision, createdAt])
+  @@index([participantId, accessRevision, createdAt], map: "CallAccessReceipt_participant_revision_created_idx")
   @@index([providerStatus, createdAt])
 }
 
@@ -2075,8 +2075,8 @@ model CallParticipantProviderGrantReceipt {
   participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([participantId, expiresAt])
-  @@index([roomId, providerIdentity, expiresAt])
-  @@index([providerRoomId, expiresAt])
+  @@index([roomId, providerIdentity, expiresAt], map: "CallProviderGrant_room_identity_expires_idx")
+  @@index([providerRoomId, expiresAt], map: "CallProviderGrant_provider_room_expires_idx")
 }
 
 model CallRoomInvitation {
