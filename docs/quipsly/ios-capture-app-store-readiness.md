@@ -459,11 +459,12 @@ remain red until approved screenshots and every delivery-layer proof exist.
 
 The canonical TestFlight distribution target is now **Quipsly Capture 1.0
 (28)**, provider build `ed68117d-5604-45c3-b9f7-239e7cd2af4f`. Apple reports
-the build identity, while the editable App Store 1.0 version still has Build 26
-assigned and therefore remains blocked from submission. Build 28 is the public
-TestFlight rehearsal target; physical-iPhone acceptance remains open. Build
-6/8/9 sections below are historical evidence, not current installation
-instructions.
+the build identity and the editable App Store 1.0 version now has that exact
+Build 28 ID assigned. Build 28 is the public TestFlight rehearsal target;
+physical-iPhone acceptance remains open. The unreleased source build number is
+29 so post-Build-28 work cannot be archived or pictured under an already-used
+provider identity. Build 6/8/9 sections below are historical evidence, not
+current installation instructions.
 
 The credentialed read-only submission audit is:
 
@@ -482,8 +483,8 @@ separate proofs. The operator has no mutation or submit mode and never prints
 review contact details, demo credentials, screenshot upload capabilities, or
 API-key material.
 
-Live configuration and independent readback through 2026-08-02 prove the safe
-listing, App Review detail, exact Build 26 assignment, manual release type, and
+Live configuration and independent readback through 2026-08-05 prove the safe
+listing, App Review detail, exact Build 28 assignment, manual release type, and
 editable 1.0 record. The bounded operator configured and Apple read back:
 
 - `USES_THIRD_PARTY_CONTENT` content rights;
@@ -494,11 +495,21 @@ editable 1.0 record. The bounded operator configured and Apple read back:
   automatic future-territory enablement off, and no blocking status for the
   available territory.
 
-The latest provider receipt is
-`/Volumes/My Passport/Quipsly QA Artifacts/Build 26/App Store Connect/submission-readiness-20260802T141950Z.json`.
-It reports the exact Build 26 ID assigned and all machine-verifiable checks
-passing except the five absent approved screenshots. The remaining legal and
+The latest provider receipts are owner-only files at
+`/private/tmp/quipsly-app-store-build28-assignment.json` and
+`/private/tmp/quipsly-app-store-build28-readiness.json`. They report the exact
+Build 28 ID assigned and every machine-verifiable configuration check passing
+except the five absent approved screenshots. The remaining legal and
 real-device gates below stay deliberately manual.
+
+The first exact-Build-28 screenshot run preserved four complete 1320x2868
+drafts and exposed a fifth-journey defect: the privacy controls existed below
+the viewport, but the test asserted hit-testing before scrolling to them and
+would then have captured a different portion of Account. The journey now
+scrolls until both Privacy policy and Request account deletion are visibly
+hittable and captures that exact surface. A complete five-image rerun passed
+from the current worktree, but remains explicitly ineligible because it is
+dirty, DEBUG fixture evidence rather than an exact signed/TestFlight recapture.
 
 Apple still reports zero screenshot sets for the `en-US` version and no App
 Store review submission. The source-backed configuration operator cannot
@@ -516,14 +527,15 @@ The remaining release gates are therefore:
    Quipsly and integrated third parties across every platform; the public API
    does not expose a trustworthy publication readback for this gate.
 3. Capture, visually approve, and upload all five planned largest-iPhone
-   screenshots from the exact Build 26 experience with synthetic/private-safe
+   screenshots from the exact Build 28 experience with synthetic/private-safe
    content. Draft simulator compositions remain layout evidence only.
 4. In App Store Connect **Pricing and Availability**, deselect **Make this app
    available** under **iPhone and iPad Apps on Apple Silicon Mac**, deselect
    **Make this app available on Apple Vision Pro**, save, reload, and preserve
    readback of both unchecked controls. Source and packaged device-family gates
    do not prove these separate app-level choices.
-5. Install Build 26 from TestFlight on a physical iPhone and prove microphone
+5. Install Build 28 from TestFlight on a physical iPhone and prove the Episode
+   9 workspace opens without the prior crash, then prove microphone
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,
    assembled playback, timeline alignment, and same-ID Nest/Studio readback.

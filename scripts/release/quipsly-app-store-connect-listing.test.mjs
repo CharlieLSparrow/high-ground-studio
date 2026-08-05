@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseArguments } from "./quipsly-app-store-connect-listing.mjs";
+import {
+  parseArguments,
+  validateMutationTarget,
+} from "./quipsly-app-store-connect-listing.mjs";
 
 test("listing operator is read-only unless apply is explicit", () => {
   const options = parseArguments(["--api-key-path", "/private/key.json"]);
@@ -32,4 +35,27 @@ test("listing operator rejects unknown flags", () => {
 
 test("listing operator tolerates the package-runner separator", () => {
   assert.equal(parseArguments(["--", "--apply"]).apply, true);
+});
+
+test("build-only apply requires the exact provider target", () => {
+  const options = parseArguments([
+    "--apply",
+    "--assign-build-only",
+    "--confirm-target", "6780995957/1.0/28",
+  ]);
+  assert.equal(options.assignBuildOnly, true);
+  assert.doesNotThrow(() => validateMutationTarget(options));
+});
+
+test("apply rejects a missing or stale provider confirmation", () => {
+  assert.throws(
+    () => validateMutationTarget(parseArguments(["--apply", "--build", "28"])),
+    /--confirm-target 6780995957\/1\.0\/28/,
+  );
+  assert.throws(
+    () => validateMutationTarget(parseArguments([
+      "--apply", "--build", "28", "--confirm-target", "6780995957/1.0/27",
+    ])),
+    /--confirm-target 6780995957\/1\.0\/28/,
+  );
 });

@@ -31,6 +31,8 @@ function requiredValue(argv, index, flag) {
 export function parseArguments(argv) {
   const options = {
     apply: false,
+    assignBuildOnly: false,
+    confirmTarget: "",
     apiKeyPath: process.env.APP_STORE_CONNECT_API_KEY_PATH || "",
     metadataPath: defaultMetadataPath,
     appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
@@ -53,6 +55,8 @@ export function parseArguments(argv) {
     switch (argument) {
       case "--": break;
       case "--apply": options.apply = true; break;
+      case "--assign-build-only": options.assignBuildOnly = true; break;
+      case "--confirm-target": options.confirmTarget = requiredValue(argv, index, argument); index += 1; break;
       case "--api-key-path": options.apiKeyPath = requiredValue(argv, index, argument); index += 1; break;
       case "--metadata": options.metadataPath = path.resolve(requiredValue(argv, index, argument)); index += 1; break;
       case "--app-id": options.appId = requiredValue(argv, index, argument); index += 1; break;
@@ -81,8 +85,16 @@ function usage() {
 Default mode is a read-only plan. Add --apply to update safe, non-legal listing
 metadata, assign the validated build, and create/update App Review details.
 
+Use --assign-build-only when the listing and reviewer details are already
+correct and only the editable App Store version's build relationship should
+change. Every --apply operation requires an exact --confirm-target value in
+the form <app-id>/<version>/<build>.
+
 Required for --apply:
   --api-key-path <path>
+  --confirm-target <app-id/version/build>
+
+Required for a full listing apply (not --assign-build-only):
   --review-contact-first-name <name>
   --review-contact-last-name <name>
   --review-contact-email <email>
@@ -92,6 +104,14 @@ The demo password is read from macOS Keychain and is never written to the
 receipt. Use --password-keychain-service and --password-keychain-account to
 override the default reviewer credential identity.
 `;
+}
+
+export function validateMutationTarget(options) {
+  if (!options.apply) return;
+  const expected = `${options.appId}/${options.version}/${options.build}`;
+  if (options.confirmTarget !== expected) {
+    fail(`--apply requires --confirm-target ${expected}.`);
+  }
 }
 
 function base64url(value) {
@@ -236,6 +256,16 @@ async function keychainPassword(service, account) {
 }
 
 async function applyListing({ token, current, desired, metadata, options }) {
+  const assignedBuildId = current.version.relationships?.build?.data?.id || null;
+  if (options.assignBuildOnly) {
+    if (assignedBuildId === current.build.id) return;
+    await requestJson({
+      token, method: "PATCH", requestPath: `/v1/appStoreVersions/${current.version.id}/relationships/build`,
+      body: { data: { type: "builds", id: current.build.id } },
+    });
+    return;
+  }
+
   for (const [value, label] of [
     [options.reviewContactFirstName, "review contact first name"],
     [options.reviewContactLastName, "review contact last name"],
@@ -313,10 +343,14 @@ function summarize({ current, desired, options, applied, auditedAt }) {
     reviewDetailPresent: Boolean(current.reviewDetail),
     reviewDemoAccountRequired: current.reviewDetail?.attributes?.demoAccountRequired === true,
   };
+  const requiredChecks = options.assignBuildOnly
+    ? { buildAssigned: checks.buildAssigned }
+    : checks;
   return {
     schema: "quipsly-app-store-connect-listing-v1",
     auditedAt,
     mode: applied ? "applied-and-read-back" : "read-only-plan",
+    actionScope: options.assignBuildOnly ? "assign-build-only" : "full-listing",
     appId: options.appId,
     appInfoId: current.appInfo.id,
     versionId: current.version.id,
@@ -333,7 +367,8 @@ function summarize({ current, desired, options, applied, auditedAt }) {
       passwordPrinted: false,
     },
     checks,
-    passed: Object.values(checks).every(Boolean),
+    requiredChecks,
+    passed: Object.values(requiredChecks).every(Boolean),
     legalDeclarationsUntouched: [
       "age rating", "content rights", "App Privacy answers", "EU DSA trader status",
       "pricing and territory availability", "IDFA declaration",
@@ -349,6 +384,7 @@ async function writeReceipt(outputPath, receipt) {
 }
 
 export async function run(options) {
+  validateMutationTarget(options);
   const metadata = readAppStoreMetadata(options.metadataPath);
   const validation = validateAppStoreMetadata(metadata, { root: repositoryRoot });
   if (!validation.ok) fail(`Canonical App Store metadata failed validation: ${validation.errors.join(" ")}`);

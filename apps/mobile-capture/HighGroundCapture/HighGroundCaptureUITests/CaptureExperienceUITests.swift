@@ -2797,11 +2797,24 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
             app.descendants(matching: .any)["CaptureAccountControlCard"]
                 .waitForExistence(timeout: 5)
         )
-        XCTAssertTrue(app.staticTexts["Privacy policy"].waitForExistence(timeout: 5))
+        let privacyPolicy = app.staticTexts["Privacy policy"]
+        let deletionRequest = app.buttons["Request account deletion"]
+        XCTAssertTrue(privacyPolicy.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Account deletion information"].exists)
-        XCTAssertTrue(app.buttons["Request account deletion"].exists)
-        XCTAssertTrue(app.staticTexts["Privacy policy"].isHittable)
-        XCTAssertTrue(app.buttons["Request account deletion"].isHittable)
+        XCTAssertTrue(deletionRequest.exists)
+        for _ in 0..<8
+        where !privacyPolicy.isHittable || !deletionRequest.isHittable {
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        XCTAssertTrue(
+            privacyPolicy.isHittable,
+            "The privacy policy must be visible in the screenshot that promises reachable privacy controls."
+        )
+        XCTAssertTrue(
+            deletionRequest.isHittable,
+            "The account-deletion request must be visible in the screenshot that promises reachable privacy controls."
+        )
         XCTAssertTrue(app.staticTexts["Alex Morgan"].exists)
         XCTAssertTrue(app.staticTexts["alex@example.com"].exists)
         XCTAssertFalse(app.staticTexts["preview@quipsly.local"].exists)
@@ -2810,7 +2823,6 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.switches["Upload using cellular"].exists)
         XCTAssertTrue(app.switches["Upload on metered networks"].exists)
         XCTAssertTrue(app.switches["Upload in Low Data Mode"].exists)
-        for _ in 0..<5 { app.swipeDown() }
         Thread.sleep(forTimeInterval: 2.0)
         keepScreenshot("05-account.png")
     }
