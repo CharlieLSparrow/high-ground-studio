@@ -28,10 +28,16 @@ export type EncodedAudioDelivery = {
 };
 
 export class FfmpegAudioDeliveryEncoder {
+  private readonly ffmpegPath: string;
+  private readonly ffprobePath: string;
+
   constructor(
-    private readonly ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg",
-    private readonly ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe",
-  ) {}
+    ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg",
+    ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe",
+  ) {
+    this.ffmpegPath = ffmpegPath;
+    this.ffprobePath = ffprobePath;
+  }
 
   async encode(inputPath: string, outputPath: string, job: AudioDeliveryJob): Promise<EncodedAudioDelivery> {
     await run(this.ffmpegPath, [

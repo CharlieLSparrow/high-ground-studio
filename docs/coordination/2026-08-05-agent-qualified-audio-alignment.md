@@ -90,3 +90,6 @@ external account, render, publication, or physical device was changed.
   opens.
 - Deploy the GCS two-source control plane and repeat a credentialed fixture
   against the exact processor image before enabling production UI claims.
+- Deploy the same processor revision's GCS audio-mastery lane and repeat its
+  credentialed complete-decode, independent-verification, immutable-source,
+  and unpromoted-preview fixture against the exact deployed image.

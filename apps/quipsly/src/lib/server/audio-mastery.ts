@@ -8,13 +8,18 @@ import path from "node:path";
 import type { Prisma } from "@prisma/client";
 import {
   buildAudioMasteryTargetLocator,
+  buildAudioMasteryCloudManifestObjectName,
+  buildAudioMasteryCloudResultObjectName,
   newAudioMasteryJob,
+  parseAudioMasteryCloudManifest,
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   type AudioMasteryProfileId,
 } from "@high-ground/quipsly-media-processing";
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { ensureAudioMasteryCloudQueued } from "@/lib/server/audio-mastery-cloud";
+import { getMediaBucket } from "@/lib/server/gcs";
 import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
 import { readAudioMasterReviewSummary } from "@/lib/server/audio-mastery-review";
 import {
@@ -32,7 +37,7 @@ const JOB_TYPE = "audio-mastery";
 
 export type PublicAudioMasteryStatus = {
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   profileId: AudioMasteryProfileId | null;
   sourceMeasurement: null | {
     measuredAt: string;
@@ -81,25 +86,32 @@ export async function queueAudioMastery(input: {
 }) {
   const context = await loadContext(input);
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
-  if (evidence.provider !== "local") {
-    throw new Error("Cloud audio mastery is not qualified yet. This release accepts local Nest media only.");
-  }
   const existing = await input.prisma.studioAssetProcessingJob.findFirst({
     where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
   });
+  let matchingExisting: ReturnType<typeof parseAudioMasteryJob> | null = null;
   if (existing) {
     try {
       const current = parseAudioMasteryJob(existing.inputJson, existing.id);
       if (current.source.sha256 === evidence.sha256 && current.profileId === input.profileId && existing.status !== "failed") {
         const existingStatus = toPublicAudioMasteryStatus(existing);
         if (existingStatus.status !== "failed" && !(existingStatus.status === "completed" && existingStatus.signalDiagnosis === null)) {
-          return existingStatus;
+          matchingExisting = current;
         }
       }
     } catch {
       // A legacy or malformed row does not own the new source-bound request.
     }
+  }
+  if (existing && matchingExisting) {
+    if (matchingExisting.source.provider !== "gcs") return toPublicAudioMasteryStatus(existing);
+    const cloud = await ensureAudioMasteryCloudQueued({ prisma: input.prisma, processingJob: existing });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: existing.id } });
+    const status = toPublicAudioMasteryStatus(refreshed ?? existing);
+    return cloud.status === "configuration-required"
+      ? { ...status, status: "blocked" as const, error: "Cloud audio mastery is retained, but the media processor execution control is not configured." }
+      : status;
   }
   const jobId = `audio_mastery_${randomUUID().replaceAll("-", "")}`;
   const job = newAudioMasteryJob({
@@ -113,7 +125,7 @@ export async function queueAudioMastery(input: {
     },
     profileId: input.profileId,
     target: {
-      provider: "local",
+      provider: evidence.provider,
       locator: buildAudioMasteryTargetLocator({
         assetId: context.asset.id,
         sourceSha256: evidence.sha256,
@@ -136,6 +148,14 @@ export async function queueAudioMastery(input: {
       inputJson: toPrismaJson(job),
     },
   });
+  if (evidence.provider === "gcs") {
+    const cloud = await ensureAudioMasteryCloudQueued({ prisma: input.prisma, processingJob: saved });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: saved.id } });
+    const status = toPublicAudioMasteryStatus(refreshed ?? saved);
+    return cloud.status === "configuration-required"
+      ? { ...status, status: "blocked" as const, error: "Cloud audio mastery is retained, but the media processor execution control is not configured." }
+      : status;
+  }
   return toPublicAudioMasteryStatus(saved);
 }
 
@@ -179,8 +199,10 @@ export async function reconcileAudioMastery(input: {
     where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
   });
-  if (!row || row.status !== "output-ready") return row ? toPublicAudioMasteryStatus(row) : emptyStatus();
+  if (!row) return emptyStatus();
   const job = parseAudioMasteryJob(row.inputJson, row.id);
+  if (job.source.provider === "gcs") return reconcileCloudAudioMastery(input.prisma, row, job, context);
+  if (row.status !== "output-ready") return toPublicAudioMasteryStatus(row);
   const envelope = jsonObject(row.resultJson);
   const result = parseAudioMasteryResult(envelope.receipt, job);
   const current = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
@@ -237,6 +259,141 @@ export async function reconcileAudioMastery(input: {
   return toPublicAudioMasteryStatus(updated);
 }
 
+async function reconcileCloudAudioMastery(
+  prisma: any,
+  row: any,
+  job: ReturnType<typeof parseAudioMasteryJob>,
+  context: Awaited<ReturnType<typeof loadContext>>,
+) {
+  const cloud = await ensureAudioMasteryCloudQueued({ prisma, processingJob: row });
+  const refreshed = await prisma.studioAssetProcessingJob.findUnique({ where: { id: row.id } });
+  const currentRow = refreshed ?? row;
+  if (cloud.status === "configuration-required") {
+    return { ...toPublicAudioMasteryStatus(currentRow), status: "blocked" as const, error: "Cloud audio mastery is retained, but the media processor execution control is not configured." };
+  }
+  if (cloud.status === "failed") return toPublicAudioMasteryStatus(currentRow);
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadGcsJsonIfPresent(bucket, buildAudioMasteryCloudManifestObjectName(job.jobId));
+  if (!storedManifest) return toPublicAudioMasteryStatus(currentRow);
+  const manifest = parseAudioMasteryCloudManifest(storedManifest.value, job.jobId);
+  if (manifest.status === "failed-terminal") {
+    const failed = await prisma.studioAssetProcessingJob.update({
+      where: { id: job.jobId },
+      data: {
+        status: "failed",
+        error: `${manifest.failure?.code || "audio-mastery-worker-failed"}: ${manifest.failure?.message || "Cloud audio mastery failed terminal."}`.slice(0, 4_000),
+        completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
+      },
+    });
+    return toPublicAudioMasteryStatus(failed);
+  }
+  if (manifest.status !== "completed") return toPublicAudioMasteryStatus(currentRow);
+  const storedResult = await loadGcsJsonIfPresent(bucket, buildAudioMasteryCloudResultObjectName(job.jobId));
+  if (!storedResult) return toPublicAudioMasteryStatus(currentRow);
+  const result = parseAudioMasteryResult(storedResult.value, job);
+  const currentSource = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
+  if (
+    currentSource.provider !== "gcs"
+    || currentSource.locator !== job.source.locator
+    || currentSource.sha256 !== job.source.sha256
+    || currentSource.generation !== job.source.generation
+    || currentSource.sizeBytes !== job.source.sizeBytes
+  ) throw new Error("The immutable cloud source changed before audio mastery registration.");
+
+  let playbackUrl: string | null = null;
+  let providerSourceId: string | null = null;
+  if (result.derivative) {
+    const outputLocation = exactGcsLocation(result.derivative.locator, result.derivative.generation);
+    if (outputLocation.bucketName !== cloud.bucketName || outputLocation.objectName !== job.target.locator) throw new Error("Cloud audio mastery output escaped its deterministic target binding.");
+    const outputEvidence = await inspectImmutableStudioMediaSource(result.derivative.locator, "audio/wav");
+    const [metadata] = await bucket.file(outputLocation.objectName, { generation: outputLocation.generation }).getMetadata();
+    const custom = Object.fromEntries(Object.entries(metadata.metadata ?? {}).map(([key, value]) => [key, String(value)]));
+    if (
+      outputEvidence.provider !== "gcs"
+      || outputEvidence.locator !== result.derivative.locator
+      || outputEvidence.generation !== result.derivative.generation
+      || outputEvidence.sha256 !== result.derivative.sha256
+      || outputEvidence.sizeBytes !== result.derivative.sizeBytes
+      || custom.quipslyKind !== "audio-mastery-preview-v1"
+      || custom.quipslyMasteryJobId !== job.jobId
+      || custom.quipslySourceGeneration !== job.source.generation
+      || custom.quipslySourceSha256 !== job.source.sha256
+      || custom.quipslyOutputSha256 !== result.derivative.sha256
+      || custom.quipslyOutputSizeBytes !== String(result.derivative.sizeBytes)
+      || custom.quipslyOriginalRemainsSourceTruth !== "true"
+      || custom.quipslyPromotionRequiresExplicitApproval !== "true"
+    ) throw new Error("Cloud audio mastery output no longer matches its worker and object receipts.");
+    providerSourceId = result.derivative.locator;
+    let derivedSource = await prisma.studioVideoSource.findFirst({ where: { providerSourceId } });
+    if (!derivedSource) {
+      derivedSource = await prisma.studioVideoSource.create({
+        data: { provider: "audio-mastery-worker", providerSourceId, url: "/api/ingest/media/pending", title: `${context.asset.filename} mastered preview` },
+      });
+    }
+    playbackUrl = `/api/ingest/media/${derivedSource.id}`;
+    if (derivedSource.url !== playbackUrl) await prisma.studioVideoSource.update({ where: { id: derivedSource.id }, data: { url: playbackUrl } });
+    await prisma.studioAssetVariant.upsert({
+      where: { assetId_kind_url: { assetId: context.asset.id, kind: "audio-master-preview", url: playbackUrl } },
+      create: {
+        assetId: context.asset.id,
+        kind: "audio-master-preview",
+        url: playbackUrl,
+        mimeType: "audio/wav",
+        duration: result.derivative.verificationMeasurement.durationSeconds,
+        sizeBytes: BigInt(result.derivative.sizeBytes),
+        metadataJson: toPrismaJson(registrationMetadata(result, derivedSource.id, providerSourceId)),
+      },
+      update: {
+        duration: result.derivative.verificationMeasurement.durationSeconds,
+        sizeBytes: BigInt(result.derivative.sizeBytes),
+        metadataJson: toPrismaJson(registrationMetadata(result, derivedSource.id, providerSourceId)),
+      },
+    });
+  }
+  const completed = await prisma.studioAssetProcessingJob.update({
+    where: { id: job.jobId },
+    data: {
+      status: "completed",
+      error: null,
+      completedAt: new Date(result.completedAt),
+      resultJson: toPrismaJson({
+        state: "completed",
+        receipt: result,
+        registration: {
+          playbackUrl,
+          providerSourceId,
+          originalRemainsSourceTruth: true,
+          outputIsUnpromotedPreview: true,
+          cloudManifestObjectName: cloud.manifestObjectName,
+          cloudManifestGeneration: storedManifest.generation,
+          cloudResultObjectName: cloud.resultObjectName,
+          cloudResultGeneration: storedResult.generation,
+        },
+      }),
+    },
+  });
+  return toPublicAudioMasteryStatus(completed);
+}
+
+async function loadGcsJsonIfPresent(bucket: any, objectName: string) {
+  try {
+    const [metadata] = await bucket.file(objectName).getMetadata();
+    const generation = String(metadata.generation ?? "");
+    if (!/^[1-9][0-9]*$/.test(generation)) throw new Error("Audio mastery cloud object lacks an immutable generation.");
+    const [raw] = await bucket.file(objectName, { generation }).download({ validation: "crc32c" });
+    return { value: JSON.parse(raw.toString("utf8")) as unknown, generation };
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 404) return null;
+    throw error;
+  }
+}
+
+function exactGcsLocation(locator: string, generation: string) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+  if (!match || match[3] !== generation || match[2].split("/").some((part) => !part || part === "." || part === "..")) throw new Error("Audio mastery output is not generation-bound to the media vault.");
+  return { bucketName: match[1], objectName: match[2], generation: match[3] };
+}
+
 async function loadContext(input: { prisma: any; projectSlug: string; assetId: string; sourceId: string }) {
   const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true, slug: true } });
   if (!project) throw new Error("Nest not found for audio mastery.");
@@ -268,7 +425,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
     if (envelope.receipt && contract) result = parseAudioMasteryResult(envelope.receipt, contract);
   } catch { /* incomplete worker state has no public receipt */ }
   const registration = jsonObject(jsonObject(job.resultJson).registration);
-  const declaredStatus = ["queued", "processing", "output-ready", "completed", "failed"].includes(job.status)
+  const declaredStatus = ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(job.status)
     ? job.status as PublicAudioMasteryStatus["status"]
     : "failed";
   const integrityFailure = !contract || ((declaredStatus === "output-ready" || declaredStatus === "completed") && !result);

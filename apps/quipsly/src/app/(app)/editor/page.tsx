@@ -211,7 +211,7 @@ type EpisodeCollaborationProxyClientStatus = {
 
 type AudioMasteryClientStatus = {
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   profileId: "apple-podcasts-dialogue-v1" | "ebu-r128-broadcast-v1" | null;
   sourceMeasurement: AudioMasteryMeasurement | null;
   signalDiagnosis: AudioSignalDiagnosisSummary | null;
@@ -6325,7 +6325,7 @@ function CloudEditorContent() {
     try {
       let status = await requestAction("queue");
       for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
-        if (status.status === "failed") throw new Error(status.error || "Audio mastery failed.");
+        if (status.status === "failed" || status.status === "blocked") throw new Error(status.error || `Audio mastery ${status.status}.`);
         setMediaImportStatus(
           status.status === "output-ready"
             ? `Independently verifying and registering the mastered preview for ${asset.originalName}...`

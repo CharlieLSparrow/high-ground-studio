@@ -46,7 +46,8 @@ export type LocalAudioDeliveryWorkerResult =
   | { disposition: "failed"; jobId: string; code: string };
 
 class TerminalAudioDeliveryError extends Error {
-  constructor(readonly code: string, message: string) { super(message); this.name = "TerminalAudioDeliveryError"; }
+  readonly code: string;
+  constructor(code: string, message: string) { super(message); this.name = "TerminalAudioDeliveryError"; this.code = code; }
 }
 
 export async function runOneLocalAudioDeliveryJob(store: LocalAudioDeliveryStore, encoder: LocalAudioDeliveryEncoder, measurer: LocalAudioDeliveryMeasurer, options: LocalAudioDeliveryWorkerOptions): Promise<LocalAudioDeliveryWorkerResult> {
@@ -131,7 +132,8 @@ export async function runOneLocalAudioDeliveryJob(store: LocalAudioDeliveryStore
 }
 
 export class PostgresLocalAudioDeliveryStore implements LocalAudioDeliveryStore {
-  constructor(private readonly pool: InstanceType<typeof Pool>) {}
+  private readonly pool: InstanceType<typeof Pool>;
+  constructor(pool: InstanceType<typeof Pool>) { this.pool = pool; }
   async claim(input: { executionId: string; leaseMs: number; now: Date }) {
     const client = await this.pool.connect();
     try {

@@ -30,6 +30,13 @@ Date: 2026-08-05
   before the selected spine, Quipsly preserves that measured relationship and
   normalizes it into target-source trim plus a nonnegative timeline start;
   the prior zero clamp could have hidden a real early source and is removed.
+- Production audio mastery no longer stops at the GCS boundary. Exact cloud
+  sources now use a create-once manifest/queue/result control plane, complete-
+  decode loudness and signal analysis, deterministic generation-bound preview
+  rendering when needed, independent output verification, and an explicit
+  unpromoted review state. The processor and Nest changes still require the
+  next cost-aware deployment and deployed-image readback before production is
+  claimed.
 - Guided Sync no longer forces automation to impersonate a human listener.
   Human approval remains the default, while a signed-in staff delegator can
   authorize one bounded agent qualification backed by exact source hashes and

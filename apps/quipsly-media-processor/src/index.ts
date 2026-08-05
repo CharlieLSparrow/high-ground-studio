@@ -4,6 +4,8 @@ import { runCaptureProxyWorker } from "./worker.js";
 import { runEpisodeCloudProxyWorker } from "./episode-cloud-worker.js";
 import { FfmpegAudioAlignmentAnalyzer } from "./audio-alignment-ffmpeg.js";
 import { runAudioAlignmentCloudWorker } from "./audio-alignment-cloud-worker.js";
+import { FfmpegAudioMasteringEngine } from "./audio-mastering-ffmpeg.js";
+import { runAudioMasteryCloudWorker } from "./audio-mastery-cloud-worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
@@ -66,16 +68,29 @@ try {
     },
     jobLimit,
   );
+  const masteryResults = await runAudioMasteryCloudWorker(
+    storage,
+    new FfmpegAudioMasteringEngine(),
+    {
+      executionId,
+      buildId,
+      imageDigest,
+      leaseDurationMs,
+      now: () => new Date(),
+    },
+    jobLimit,
+  );
   console.log(JSON.stringify({
     severity: "INFO",
     message: "Quipsly capture proxy processor completed.",
     executionId,
     buildId,
     elapsedMs: Date.now() - startedAt,
-    resultCount: captureResults.length + episodeResults.length + alignmentResults.length,
+    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length,
     captureResults,
     episodeResults,
     alignmentResults,
+    masteryResults,
   }));
 } catch (error) {
   console.error(JSON.stringify({

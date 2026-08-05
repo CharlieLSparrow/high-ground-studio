@@ -5,6 +5,13 @@ export const AUDIO_MASTERY_MEASUREMENT_KIND = "quipsly-audio-measurement-v1" as 
 export const AUDIO_MASTERY_PROPOSAL_KIND = "quipsly-audio-mastery-proposal-v1" as const;
 export const AUDIO_MASTERY_JOB_KIND = "quipsly-audio-mastery-job-v1" as const;
 export const AUDIO_MASTERY_RESULT_KIND = "quipsly-audio-mastery-result-v1" as const;
+export const AUDIO_MASTERY_CLOUD_MANIFEST_KIND = "quipsly-audio-mastery-cloud-manifest-v1" as const;
+export const AUDIO_MASTERY_CLOUD_QUEUE_KIND = "quipsly-audio-mastery-cloud-queue-v1" as const;
+export const AUDIO_MASTERY_CLOUD_CONTROL_PREFIX = "media-vault/control/audio-mastery" as const;
+export const AUDIO_MASTERY_CLOUD_MANIFEST_PREFIX = `${AUDIO_MASTERY_CLOUD_CONTROL_PREFIX}/manifests` as const;
+export const AUDIO_MASTERY_CLOUD_QUEUE_PREFIX = `${AUDIO_MASTERY_CLOUD_CONTROL_PREFIX}/queue` as const;
+export const AUDIO_MASTERY_CLOUD_RESULT_PREFIX = `${AUDIO_MASTERY_CLOUD_CONTROL_PREFIX}/results` as const;
+export const AUDIO_MASTERY_CLOUD_DEAD_LETTER_PREFIX = `${AUDIO_MASTERY_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
 
 export type AudioMasteryProfileId =
   | "apple-podcasts-dialogue-v1"
@@ -175,6 +182,33 @@ export type AudioMasteryResult = {
   };
 };
 
+export type AudioMasteryCloudManifest = {
+  kind: typeof AUDIO_MASTERY_CLOUD_MANIFEST_KIND;
+  version: 1;
+  job: AudioMasteryJob;
+  status: "queued" | "processing" | "completed" | "failed-terminal";
+  queuedAt: string;
+  updatedAt: string;
+  lease: null | {
+    id: string;
+    executionId: string;
+    claimedAt: string;
+    expiresAt: string;
+    attempt: number;
+  };
+  resultObjectName: string | null;
+  failure: null | { code: string; message: string; failedAt: string };
+};
+
+export type AudioMasteryCloudQueueReceipt = {
+  kind: typeof AUDIO_MASTERY_CLOUD_QUEUE_KIND;
+  version: 1;
+  jobId: string;
+  manifestObjectName: string;
+  manifestGeneration: string;
+  enqueuedAt: string;
+};
+
 const SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_ID = /^[A-Za-z0-9_-]{8,160}$/;
 
@@ -288,6 +322,187 @@ export function newAudioMasteryJob(input: Omit<AudioMasteryJob, "kind" | "versio
     kind: AUDIO_MASTERY_JOB_KIND,
     version: AUDIO_MASTERY_CONTRACT_VERSION,
   });
+}
+
+export function buildAudioMasteryCloudManifestObjectName(jobId: string) {
+  return `${AUDIO_MASTERY_CLOUD_MANIFEST_PREFIX}/${requiredId(jobId, "jobId")}.json`;
+}
+
+export function buildAudioMasteryCloudQueueObjectName(jobId: string) {
+  return `${AUDIO_MASTERY_CLOUD_QUEUE_PREFIX}/${requiredId(jobId, "jobId")}.json`;
+}
+
+export function buildAudioMasteryCloudResultObjectName(jobId: string) {
+  return `${AUDIO_MASTERY_CLOUD_RESULT_PREFIX}/${requiredId(jobId, "jobId")}.json`;
+}
+
+export function buildAudioMasteryCloudDeadLetterObjectName(jobId: string) {
+  return `${AUDIO_MASTERY_CLOUD_DEAD_LETTER_PREFIX}/${requiredId(jobId, "jobId")}.json`;
+}
+
+export function newAudioMasteryCloudManifest(jobValue: AudioMasteryJob | unknown): AudioMasteryCloudManifest {
+  const job = parseAudioMasteryJob(jobValue);
+  if (job.source.provider !== "gcs" || job.target.provider !== "gcs" || !validGenerationBoundGcsMasterySource(job.source)) {
+    throw new Error("Cloud audio mastery requires one generation-bound GCS source and target.");
+  }
+  return parseAudioMasteryCloudManifest({
+    kind: AUDIO_MASTERY_CLOUD_MANIFEST_KIND,
+    version: 1,
+    job,
+    status: "queued",
+    queuedAt: job.queuedAt,
+    updatedAt: job.queuedAt,
+    lease: null,
+    resultObjectName: null,
+    failure: null,
+  }, job.jobId);
+}
+
+export function parseAudioMasteryCloudQueueReceipt(value: unknown): AudioMasteryCloudQueueReceipt {
+  const row = record(value);
+  const jobId = requiredId(row.jobId, "jobId");
+  const parsed: AudioMasteryCloudQueueReceipt = {
+    kind: row.kind as AudioMasteryCloudQueueReceipt["kind"],
+    version: Number(row.version) as 1,
+    jobId,
+    manifestObjectName: requiredText(row.manifestObjectName, "manifestObjectName"),
+    manifestGeneration: requiredText(row.manifestGeneration, "manifestGeneration"),
+    enqueuedAt: requiredIsoDate(row.enqueuedAt, "enqueuedAt"),
+  };
+  if (
+    parsed.kind !== AUDIO_MASTERY_CLOUD_QUEUE_KIND
+    || parsed.version !== 1
+    || parsed.manifestObjectName !== buildAudioMasteryCloudManifestObjectName(jobId)
+    || !/^[1-9][0-9]*$/.test(parsed.manifestGeneration)
+  ) throw new Error("Audio mastery cloud queue receipt is invalid.");
+  return parsed;
+}
+
+export function parseAudioMasteryCloudManifest(value: unknown, expectedJobId?: string): AudioMasteryCloudManifest {
+  const row = record(value);
+  const job = parseAudioMasteryJob(row.job, expectedJobId);
+  const status = requiredText(row.status, "status") as AudioMasteryCloudManifest["status"];
+  const lease = row.lease == null ? null : parseMasteryCloudLease(row.lease);
+  const failure = row.failure == null ? null : parseMasteryCloudFailure(row.failure);
+  const resultObjectName = row.resultObjectName == null ? null : requiredText(row.resultObjectName, "resultObjectName");
+  const parsed: AudioMasteryCloudManifest = {
+    kind: row.kind as AudioMasteryCloudManifest["kind"],
+    version: Number(row.version) as 1,
+    job,
+    status,
+    queuedAt: requiredIsoDate(row.queuedAt, "queuedAt"),
+    updatedAt: requiredIsoDate(row.updatedAt, "updatedAt"),
+    lease,
+    resultObjectName,
+    failure,
+  };
+  if (
+    parsed.kind !== AUDIO_MASTERY_CLOUD_MANIFEST_KIND
+    || parsed.version !== 1
+    || job.source.provider !== "gcs"
+    || job.target.provider !== "gcs"
+    || !validGenerationBoundGcsMasterySource(job.source)
+    || parsed.queuedAt !== job.queuedAt
+    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
+    || (status === "processing") !== Boolean(lease)
+    || (status === "completed" ? resultObjectName !== buildAudioMasteryCloudResultObjectName(job.jobId) : resultObjectName !== null)
+    || (status === "failed-terminal") !== Boolean(failure)
+  ) throw new Error("Audio mastery cloud manifest is invalid.");
+  return parsed;
+}
+
+export function claimAudioMasteryCloudManifest(input: {
+  manifest: AudioMasteryCloudManifest;
+  leaseId: string;
+  executionId: string;
+  now: Date;
+  leaseDurationMs: number;
+}) {
+  if (input.manifest.status === "completed" || input.manifest.status === "failed-terminal") return null;
+  if (input.manifest.status === "processing" && input.manifest.lease && Date.parse(input.manifest.lease.expiresAt) > input.now.getTime()) return null;
+  if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs < 60_000) throw new Error("Audio mastery cloud lease duration is invalid.");
+  return parseAudioMasteryCloudManifest({
+    ...input.manifest,
+    status: "processing",
+    updatedAt: input.now.toISOString(),
+    lease: {
+      id: requiredId(input.leaseId, "leaseId"),
+      executionId: requiredId(input.executionId, "executionId"),
+      claimedAt: input.now.toISOString(),
+      expiresAt: new Date(input.now.getTime() + input.leaseDurationMs).toISOString(),
+      attempt: (input.manifest.lease?.attempt ?? 0) + 1,
+    },
+    resultObjectName: null,
+    failure: null,
+  }, input.manifest.job.jobId);
+}
+
+export function releaseAudioMasteryCloudLease(input: { manifest: AudioMasteryCloudManifest; leaseId: string; now: Date }) {
+  assertMasteryCloudLease(input.manifest, input.leaseId);
+  return parseAudioMasteryCloudManifest({
+    ...input.manifest,
+    status: "queued",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+  }, input.manifest.job.jobId);
+}
+
+export function completeAudioMasteryCloudManifest(input: { manifest: AudioMasteryCloudManifest; leaseId: string; result: AudioMasteryResult; now: Date }) {
+  assertMasteryCloudLease(input.manifest, input.leaseId);
+  parseAudioMasteryResult(input.result, input.manifest.job);
+  return parseAudioMasteryCloudManifest({
+    ...input.manifest,
+    status: "completed",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: buildAudioMasteryCloudResultObjectName(input.manifest.job.jobId),
+    failure: null,
+  }, input.manifest.job.jobId);
+}
+
+export function failAudioMasteryCloudManifest(input: { manifest: AudioMasteryCloudManifest; leaseId: string; code: string; message: string; now: Date }) {
+  assertMasteryCloudLease(input.manifest, input.leaseId);
+  return parseAudioMasteryCloudManifest({
+    ...input.manifest,
+    status: "failed-terminal",
+    updatedAt: input.now.toISOString(),
+    lease: null,
+    resultObjectName: null,
+    failure: {
+      code: requiredText(input.code, "failure.code"),
+      message: requiredText(input.message, "failure.message"),
+      failedAt: input.now.toISOString(),
+    },
+  }, input.manifest.job.jobId);
+}
+
+function assertMasteryCloudLease(manifest: AudioMasteryCloudManifest, leaseId: string) {
+  if (manifest.status !== "processing" || !manifest.lease || manifest.lease.id !== leaseId) throw new Error("Audio mastery cloud lease is no longer active.");
+}
+
+function parseMasteryCloudLease(value: unknown) {
+  const row = record(value);
+  return {
+    id: requiredId(row.id, "lease.id"),
+    executionId: requiredId(row.executionId, "lease.executionId"),
+    claimedAt: requiredIsoDate(row.claimedAt, "lease.claimedAt"),
+    expiresAt: requiredIsoDate(row.expiresAt, "lease.expiresAt"),
+    attempt: positiveInteger(row.attempt, "lease.attempt"),
+  };
+}
+
+function parseMasteryCloudFailure(value: unknown) {
+  const row = record(value);
+  return {
+    code: requiredText(row.code, "failure.code"),
+    message: requiredText(row.message, "failure.message"),
+    failedAt: requiredIsoDate(row.failedAt, "failure.failedAt"),
+  };
+}
+
+function validGenerationBoundGcsMasterySource(source: AudioMasterySourceBinding) {
+  const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(source.locator);
+  return Boolean(match && match[3] === source.generation && !match[2].split("/").some((part) => !part || part === "." || part === ".."));
 }
 
 export function parseAudioMasteryJob(value: unknown, expectedJobId?: string): AudioMasteryJob {
@@ -407,7 +622,7 @@ export function parseAudioMasteryResult(value: unknown, expectedJob?: AudioMaste
       || verification.profileId !== proposal.profile.id
       || verification.passes !== true
       || canonicalJson(verification) !== canonicalJson(expectedVerification)
-      || (job && locator !== job.target.locator)
+      || (job && !audioMasteryDerivativeMatchesTarget(outputProvider, locator, job.target.locator))
     ) {
       throw new Error("Audio mastery derivative or independent verification is invalid.");
     }
@@ -449,6 +664,14 @@ export function parseAudioMasteryResult(value: unknown, expectedJob?: AudioMaste
       promotionRequiresExplicitApproval: true,
     },
   };
+}
+
+function audioMasteryDerivativeMatchesTarget(provider: "local" | "gcs", locator: string, targetLocator: string) {
+  if (provider === "gcs") {
+    const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(locator);
+    return Boolean(match && match[2] === targetLocator && !match[2].split("/").some((part) => !part || part === "." || part === ".."));
+  }
+  return locator === targetLocator;
 }
 
 export function parseAudioMasteryMeasurement(value: unknown): AudioMasteryMeasurement {
