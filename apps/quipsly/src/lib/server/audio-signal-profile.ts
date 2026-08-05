@@ -4,19 +4,27 @@ import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
 import {
+  buildAudioSignalProfileCloudManifestObjectName,
+  buildAudioSignalProfileCloudResultObjectName,
   newAudioSignalProfileJob,
+  parseAudioSignalProfileCloudManifest,
   parseAudioSignalProfileJob,
   parseAudioSignalProfileResult,
   type AudioSignalProfile,
 } from "@high-ground/quipsly-media-processing";
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { getMediaBucket } from "@/lib/server/gcs";
+import {
+  ensureAudioSignalProfileCloudQueued,
+  loadAudioSignalProfileCloudJsonIfPresent,
+} from "@/lib/server/audio-signal-profile-cloud";
 
 const JOB_TYPE = "audio-signal-profile";
 
 export type PublicAudioSignalProfileStatus = {
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   media: null | {
     container: string;
     codec: string;
@@ -54,25 +62,33 @@ export async function queueAudioSignalProfile(input: {
 }) {
   const context = await loadContext(input);
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
-  if (evidence.provider !== "local") throw new Error("Cloud signal profiling is not qualified yet. This release accepts local Nest media only.");
   const existing = await input.prisma.studioAssetProcessingJob.findFirst({
     where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
   });
   if (existing) {
+    let current: ReturnType<typeof parseAudioSignalProfileJob> | null = null;
     try {
-      const current = parseAudioSignalProfileJob(existing.inputJson, existing.id);
-      if (
-        current.source.sha256 === evidence.sha256
-        && current.source.generation === evidence.generation
-        && current.source.sizeBytes === evidence.sizeBytes
-        && current.analyzer.frequencyAnalysis
-        && existing.status !== "failed"
-      ) {
-        return toPublicAudioSignalProfileStatus(existing);
-      }
+      current = parseAudioSignalProfileJob(existing.inputJson, existing.id);
     } catch {
       // Legacy or malformed rows do not own a new source-bound analysis request.
+    }
+    if (
+      current
+      && current.source.sha256 === evidence.sha256
+      && current.source.generation === evidence.generation
+      && current.source.sizeBytes === evidence.sizeBytes
+      && current.analyzer.frequencyAnalysis
+      && existing.status !== "failed"
+    ) {
+      if (existing.status === "completed") return toPublicAudioSignalProfileStatus(existing);
+      if (evidence.provider === "gcs") {
+        const cloud = await ensureAudioSignalProfileCloudQueued({ prisma: input.prisma, processingJob: existing });
+        const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: existing.id } }) ?? existing;
+        if (cloud.status === "configuration-required") return { ...toPublicAudioSignalProfileStatus(refreshed), status: "blocked" as const, error: "Cloud waveform analysis is retained, but the media processor execution control is not configured." };
+        return toPublicAudioSignalProfileStatus(refreshed);
+      }
+      return toPublicAudioSignalProfileStatus(existing);
     }
   }
   const job = newAudioSignalProfileJob({
@@ -93,6 +109,12 @@ export async function queueAudioSignalProfile(input: {
       inputJson: toPrismaJson(job),
     },
   });
+  if (evidence.provider === "gcs") {
+    const cloud = await ensureAudioSignalProfileCloudQueued({ prisma: input.prisma, processingJob: saved });
+    const refreshed = await input.prisma.studioAssetProcessingJob.findUnique({ where: { id: saved.id } }) ?? saved;
+    if (cloud.status === "configuration-required") return { ...toPublicAudioSignalProfileStatus(refreshed), status: "blocked" as const, error: "Cloud waveform analysis is retained, but the media processor execution control is not configured." };
+    return toPublicAudioSignalProfileStatus(refreshed);
+  }
   return toPublicAudioSignalProfileStatus(saved);
 }
 
@@ -117,8 +139,11 @@ export async function reconcileAudioSignalProfile(input: { prisma: any; projectS
     where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
     orderBy: { createdAt: "desc" },
   });
-  if (!row || row.status !== "output-ready") return row ? toPublicAudioSignalProfileStatus(row) : emptyStatus();
+  if (!row) return emptyStatus();
   const job = parseAudioSignalProfileJob(row.inputJson, row.id);
+  if (row.status === "completed" || row.status === "failed") return toPublicAudioSignalProfileStatus(row);
+  if (job.source.provider === "gcs") return reconcileCloudAudioSignalProfile(input.prisma, row, job, context);
+  if (row.status !== "output-ready") return toPublicAudioSignalProfileStatus(row);
   const result = parseAudioSignalProfileResult(jsonObject(row.resultJson).receipt, job);
   const current = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
   if (current.sha256 !== job.source.sha256 || current.generation !== job.source.generation || current.sizeBytes !== job.source.sizeBytes) {
@@ -137,6 +162,69 @@ export async function reconcileAudioSignalProfile(input: { prisma: any; projectS
     },
   });
   return toPublicAudioSignalProfileStatus(updated);
+}
+
+async function reconcileCloudAudioSignalProfile(
+  prisma: any,
+  row: any,
+  job: ReturnType<typeof parseAudioSignalProfileJob>,
+  context: Awaited<ReturnType<typeof loadContext>>,
+) {
+  const cloud = await ensureAudioSignalProfileCloudQueued({ prisma, processingJob: row });
+  const refreshed = await prisma.studioAssetProcessingJob.findUnique({ where: { id: row.id } }) ?? row;
+  if (cloud.status === "configuration-required") {
+    return { ...toPublicAudioSignalProfileStatus(refreshed), status: "blocked" as const, error: "Cloud waveform analysis is retained, but the media processor execution control is not configured." };
+  }
+  if (cloud.status === "failed") return toPublicAudioSignalProfileStatus(refreshed);
+  const bucket = getMediaBucket(cloud.bucketName);
+  const storedManifest = await loadAudioSignalProfileCloudJsonIfPresent(bucket, buildAudioSignalProfileCloudManifestObjectName(job.jobId));
+  if (!storedManifest) return toPublicAudioSignalProfileStatus(refreshed);
+  const manifest = parseAudioSignalProfileCloudManifest(storedManifest.value, job.jobId);
+  if (manifest.status === "failed-terminal") {
+    const failed = await prisma.studioAssetProcessingJob.update({
+      where: { id: job.jobId },
+      data: {
+        status: "failed",
+        error: `${manifest.failure?.code || "audio-signal-worker-failed"}: ${manifest.failure?.message || "Cloud audio signal profiling failed terminal."}`.slice(0, 4_000),
+        completedAt: new Date(manifest.failure?.failedAt || manifest.updatedAt),
+      },
+    });
+    return toPublicAudioSignalProfileStatus(failed);
+  }
+  if (manifest.status !== "completed") return toPublicAudioSignalProfileStatus(refreshed);
+  const storedResult = await loadAudioSignalProfileCloudJsonIfPresent(bucket, buildAudioSignalProfileCloudResultObjectName(job.jobId));
+  if (!storedResult) return toPublicAudioSignalProfileStatus(refreshed);
+  const result = parseAudioSignalProfileResult(storedResult.value, job);
+  const current = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
+  if (
+    current.provider !== "gcs"
+    || current.locator !== job.source.locator
+    || current.sha256 !== job.source.sha256
+    || current.generation !== job.source.generation
+    || current.sizeBytes !== job.source.sizeBytes
+  ) throw new Error("The immutable cloud source changed before signal-profile registration.");
+  const completed = await prisma.studioAssetProcessingJob.update({
+    where: { id: job.jobId },
+    data: {
+      status: "completed",
+      error: null,
+      completedAt: new Date(result.completedAt),
+      resultJson: toPrismaJson({
+        state: "completed",
+        receipt: result,
+        processingControl: {
+          provider: "gcs",
+          bucketName: cloud.bucketName,
+          manifestObjectName: cloud.manifestObjectName,
+          manifestGeneration: storedManifest.generation,
+          resultObjectName: cloud.resultObjectName,
+          resultGeneration: storedResult.generation,
+        },
+        registration: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true },
+      }),
+    },
+  });
+  return toPublicAudioSignalProfileStatus(completed);
 }
 
 async function loadContext(input: { prisma: any; projectSlug: string; assetId: string; sourceId: string }) {
@@ -164,7 +252,7 @@ export function toPublicAudioSignalProfileStatus(job: any): PublicAudioSignalPro
   let result: ReturnType<typeof parseAudioSignalProfileResult> | null = null;
   try { contract = parseAudioSignalProfileJob(job.inputJson, job.id); } catch { /* malformed rows fail closed */ }
   try { if (contract) result = parseAudioSignalProfileResult(jsonObject(job.resultJson).receipt, contract); } catch { /* incomplete receipt stays private */ }
-  const declaredStatus = ["queued", "processing", "output-ready", "completed", "failed"].includes(job.status)
+  const declaredStatus = ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(job.status)
     ? job.status as PublicAudioSignalProfileStatus["status"]
     : "failed";
   const integrityFailure = !contract || ((declaredStatus === "output-ready" || declaredStatus === "completed") && !result);

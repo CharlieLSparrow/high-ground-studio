@@ -5,6 +5,13 @@ export const AUDIO_SIGNAL_PROFILE_JOB_KIND = "quipsly-audio-signal-profile-job-v
 export const AUDIO_SIGNAL_PROFILE_RESULT_KIND = "quipsly-audio-signal-profile-result-v1" as const;
 export const AUDIO_SIGNAL_PROFILE_ALGORITHM = "quipsly-audio-signal-window-v1" as const;
 export const AUDIO_FREQUENCY_PROFILE_ALGORITHM = "quipsly-audio-broad-band-rms-v1" as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_KIND = "quipsly-audio-signal-profile-cloud-manifest-v1" as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_KIND = "quipsly-audio-signal-profile-cloud-queue-v1" as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX = "media-vault/control/audio-signal-profile" as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_PREFIX = `${AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX}/manifests` as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_PREFIX = `${AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX}/queue` as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_RESULT_PREFIX = `${AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX}/results` as const;
+export const AUDIO_SIGNAL_PROFILE_CLOUD_DEAD_LETTER_PREFIX = `${AUDIO_SIGNAL_PROFILE_CLOUD_CONTROL_PREFIX}/dead-letter` as const;
 
 export type AudioFrequencyBandId = "rumble" | "warmth" | "body" | "speech" | "presence" | "air";
 
@@ -138,6 +145,27 @@ export type AudioSignalProfileResult = {
   };
 };
 
+export type AudioSignalProfileCloudManifest = {
+  kind: typeof AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_KIND;
+  version: 1;
+  job: AudioSignalProfileJob;
+  status: "queued" | "processing" | "completed" | "failed-terminal";
+  queuedAt: string;
+  updatedAt: string;
+  lease: null | { id: string; executionId: string; claimedAt: string; expiresAt: string; attempt: number };
+  resultObjectName: string | null;
+  failure: null | { code: string; message: string; failedAt: string };
+};
+
+export type AudioSignalProfileCloudQueueReceipt = {
+  kind: typeof AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_KIND;
+  version: 1;
+  jobId: string;
+  manifestObjectName: string;
+  manifestGeneration: string;
+  enqueuedAt: string;
+};
+
 const SAFE_ID = /^[A-Za-z0-9_-]{8,160}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -159,6 +187,79 @@ export function newAudioSignalProfileJob(input: Omit<AudioSignalProfileJob, "kin
     },
   });
 }
+
+export function buildAudioSignalProfileCloudManifestObjectName(jobId: string) { return `${AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_PREFIX}/${requiredId(jobId, "jobId")}.json`; }
+export function buildAudioSignalProfileCloudQueueObjectName(jobId: string) { return `${AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_PREFIX}/${requiredId(jobId, "jobId")}.json`; }
+export function buildAudioSignalProfileCloudResultObjectName(jobId: string) { return `${AUDIO_SIGNAL_PROFILE_CLOUD_RESULT_PREFIX}/${requiredId(jobId, "jobId")}.json`; }
+export function buildAudioSignalProfileCloudDeadLetterObjectName(jobId: string) { return `${AUDIO_SIGNAL_PROFILE_CLOUD_DEAD_LETTER_PREFIX}/${requiredId(jobId, "jobId")}.json`; }
+
+export function newAudioSignalProfileCloudManifest(jobValue: AudioSignalProfileJob | unknown): AudioSignalProfileCloudManifest {
+  const job = parseAudioSignalProfileJob(jobValue);
+  if (job.source.provider !== "gcs" || !validGenerationBoundGcsSignalSource(job.source)) throw new Error("Cloud signal profiling requires one generation-bound GCS source.");
+  return parseAudioSignalProfileCloudManifest({ kind: AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_KIND, version: 1, job, status: "queued", queuedAt: job.queuedAt, updatedAt: job.queuedAt, lease: null, resultObjectName: null, failure: null }, job.jobId);
+}
+
+export function parseAudioSignalProfileCloudQueueReceipt(value: unknown): AudioSignalProfileCloudQueueReceipt {
+  const row = record(value);
+  const jobId = requiredId(row.jobId, "jobId");
+  const parsed: AudioSignalProfileCloudQueueReceipt = {
+    kind: row.kind as AudioSignalProfileCloudQueueReceipt["kind"],
+    version: Number(row.version) as 1,
+    jobId,
+    manifestObjectName: requiredText(row.manifestObjectName, "manifestObjectName"),
+    manifestGeneration: requiredText(row.manifestGeneration, "manifestGeneration"),
+    enqueuedAt: isoDate(row.enqueuedAt, "enqueuedAt"),
+  };
+  if (parsed.kind !== AUDIO_SIGNAL_PROFILE_CLOUD_QUEUE_KIND || parsed.version !== 1 || parsed.manifestObjectName !== buildAudioSignalProfileCloudManifestObjectName(jobId) || !/^[1-9][0-9]*$/.test(parsed.manifestGeneration)) throw new Error("Audio signal profile cloud queue receipt is invalid.");
+  return parsed;
+}
+
+export function parseAudioSignalProfileCloudManifest(value: unknown, expectedJobId?: string): AudioSignalProfileCloudManifest {
+  const row = record(value);
+  const job = parseAudioSignalProfileJob(row.job, expectedJobId);
+  const status = requiredText(row.status, "status") as AudioSignalProfileCloudManifest["status"];
+  const lease = row.lease == null ? null : parseSignalCloudLease(row.lease);
+  const failure = row.failure == null ? null : parseSignalCloudFailure(row.failure);
+  const resultObjectName = row.resultObjectName == null ? null : requiredText(row.resultObjectName, "resultObjectName");
+  const parsed: AudioSignalProfileCloudManifest = { kind: row.kind as AudioSignalProfileCloudManifest["kind"], version: Number(row.version) as 1, job, status, queuedAt: isoDate(row.queuedAt, "queuedAt"), updatedAt: isoDate(row.updatedAt, "updatedAt"), lease, resultObjectName, failure };
+  if (
+    parsed.kind !== AUDIO_SIGNAL_PROFILE_CLOUD_MANIFEST_KIND || parsed.version !== 1 || job.source.provider !== "gcs"
+    || !validGenerationBoundGcsSignalSource(job.source) || parsed.queuedAt !== job.queuedAt
+    || !["queued", "processing", "completed", "failed-terminal"].includes(status)
+    || (status === "processing") !== Boolean(lease)
+    || (status === "completed" ? resultObjectName !== buildAudioSignalProfileCloudResultObjectName(job.jobId) : resultObjectName !== null)
+    || (status === "failed-terminal") !== Boolean(failure)
+  ) throw new Error("Audio signal profile cloud manifest is invalid.");
+  return parsed;
+}
+
+export function claimAudioSignalProfileCloudManifest(input: { manifest: AudioSignalProfileCloudManifest; leaseId: string; executionId: string; now: Date; leaseDurationMs: number }) {
+  if (input.manifest.status === "completed" || input.manifest.status === "failed-terminal") return null;
+  if (input.manifest.status === "processing" && input.manifest.lease && Date.parse(input.manifest.lease.expiresAt) > input.now.getTime()) return null;
+  if (!Number.isSafeInteger(input.leaseDurationMs) || input.leaseDurationMs < 60_000) throw new Error("Audio signal profile cloud lease duration is invalid.");
+  return parseAudioSignalProfileCloudManifest({ ...input.manifest, status: "processing", updatedAt: input.now.toISOString(), lease: { id: requiredId(input.leaseId, "lease.id"), executionId: requiredId(input.executionId, "lease.executionId"), claimedAt: input.now.toISOString(), expiresAt: new Date(input.now.getTime() + input.leaseDurationMs).toISOString(), attempt: (input.manifest.lease?.attempt ?? 0) + 1 }, resultObjectName: null, failure: null }, input.manifest.job.jobId);
+}
+
+export function releaseAudioSignalProfileCloudLease(input: { manifest: AudioSignalProfileCloudManifest; leaseId: string; now: Date }) {
+  assertSignalCloudLease(input.manifest, input.leaseId);
+  return parseAudioSignalProfileCloudManifest({ ...input.manifest, status: "queued", updatedAt: input.now.toISOString(), lease: null }, input.manifest.job.jobId);
+}
+
+export function completeAudioSignalProfileCloudManifest(input: { manifest: AudioSignalProfileCloudManifest; leaseId: string; result: AudioSignalProfileResult; now: Date }) {
+  assertSignalCloudLease(input.manifest, input.leaseId);
+  parseAudioSignalProfileResult(input.result, input.manifest.job);
+  return parseAudioSignalProfileCloudManifest({ ...input.manifest, status: "completed", updatedAt: input.now.toISOString(), lease: null, resultObjectName: buildAudioSignalProfileCloudResultObjectName(input.manifest.job.jobId), failure: null }, input.manifest.job.jobId);
+}
+
+export function failAudioSignalProfileCloudManifest(input: { manifest: AudioSignalProfileCloudManifest; leaseId: string; code: string; message: string; now: Date }) {
+  assertSignalCloudLease(input.manifest, input.leaseId);
+  return parseAudioSignalProfileCloudManifest({ ...input.manifest, status: "failed-terminal", updatedAt: input.now.toISOString(), lease: null, resultObjectName: null, failure: { code: requiredText(input.code, "failure.code"), message: requiredText(input.message, "failure.message"), failedAt: input.now.toISOString() } }, input.manifest.job.jobId);
+}
+
+function assertSignalCloudLease(manifest: AudioSignalProfileCloudManifest, leaseId: string) { if (manifest.status !== "processing" || !manifest.lease || manifest.lease.id !== leaseId) throw new Error("Audio signal profile cloud lease is no longer active."); }
+function parseSignalCloudLease(value: unknown) { const row = record(value); return { id: requiredId(row.id, "lease.id"), executionId: requiredId(row.executionId, "lease.executionId"), claimedAt: isoDate(row.claimedAt, "lease.claimedAt"), expiresAt: isoDate(row.expiresAt, "lease.expiresAt"), attempt: positiveInteger(row.attempt, "lease.attempt") }; }
+function parseSignalCloudFailure(value: unknown) { const row = record(value); return { code: requiredText(row.code, "failure.code"), message: requiredText(row.message, "failure.message"), failedAt: isoDate(row.failedAt, "failure.failedAt") }; }
+function validGenerationBoundGcsSignalSource(source: AudioMasterySourceBinding) { const match = /^gcs:\/\/([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\/(media-vault\/.+)\?generation=([1-9][0-9]*)$/.exec(source.locator); return Boolean(match && match[3] === source.generation && !match[2].split("/").some((part) => !part || part === "." || part === "..")); }
 
 export function parseAudioSignalProfileJob(value: unknown, expectedJobId?: string): AudioSignalProfileJob {
   const row = record(value);

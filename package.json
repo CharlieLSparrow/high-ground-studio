@@ -193,6 +193,8 @@
     "quipsly:audio-alignment:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-alignment-gcs-fixture.mjs",
     "quipsly:retained:agent-alignment": "QUIPSLY_RETAINED_AGENT_ALIGNMENT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-agent-qualified-alignment-operation.mjs",
     "quipsly:audio-signal-profile:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-signal-profile.test.mjs",
+    "quipsly:audio-signal-profile-cloud:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-signal-profile-cloud-worker.test.mjs",
+    "quipsly:audio-signal-profile:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-signal-profile-gcs-fixture.mjs",
     "quipsly:audio-diagnosis-evaluation:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-diagnosis-evaluation.test.mjs",
     "quipsly:audio-diagnosis-corpus": "QUIPSLY_AUDIO_DIAGNOSIS_CORPUS_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-audio-diagnosis-corpus-operation.mjs",
     "quipsly:audio-spectral-evidence:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-evidence.test.mjs",

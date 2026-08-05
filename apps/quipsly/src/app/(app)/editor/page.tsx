@@ -239,7 +239,7 @@ type AudioMasteryClientStatus = {
 
 type AudioSignalProfileClientStatus = {
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   media: null | { container: string; codec: string; sampleRate: number; channelCount: number; durationSeconds: number };
   audioSignal: Record<string, unknown> | null;
   analyzer: null | { algorithm: "quipsly-audio-signal-window-v1"; completeDecode: true; maximumWindows: 1_200 };
@@ -6092,7 +6092,7 @@ function CloudEditorContent() {
     try {
       let status = await requestAction("queue");
       for (let attempt = 0; attempt < 300 && status.status !== "completed"; attempt += 1) {
-        if (status.status === "failed") throw new Error(status.error || "Audio signal profiling failed.");
+        if (status.status === "failed" || status.status === "blocked") throw new Error(status.error || "Audio signal profiling failed.");
         if (!options?.quiet) setMediaImportStatus(status.status === "output-ready" ? `Verifying the immutable source receipt for ${asset.originalName}...` : `Decoding ${asset.originalName} into bounded signal windows; the source remains untouched...`);
         await new Promise((resolve) => window.setTimeout(resolve, 2_000));
         status = await requestAction("reconcile");

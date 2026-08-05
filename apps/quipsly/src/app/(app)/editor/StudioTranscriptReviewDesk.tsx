@@ -98,7 +98,7 @@ export function StudioTranscriptReviewDesk({
   assetId: string;
   sourceId: string;
   audioSignal?: NonNullable<AudioTranscriptEvidence["audio"]["signal"]> | null;
-  audioSignalStatus?: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  audioSignalStatus?: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   audioSignalError?: string | null;
   isAudioSignalWorking?: boolean;
   onRequestAudioSignal?: () => void;
@@ -412,7 +412,7 @@ export function StudioTranscriptReviewDesk({
               <p className="mt-1 text-[10px] font-bold leading-4 text-sky-950">The transcript is timed, but its complete-decode RMS, sample-peak, clipping, silence, and dropout lanes are not ready yet. Quipsly will not infer those conditions from transcript probability.</p>
               {audioSignalError ? <p className="mt-2 text-[10px] font-black text-rose-900">{audioSignalError}</p> : null}
             </div>
-            {onRequestAudioSignal ? <button type="button" disabled={isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus)} onClick={onRequestAudioSignal} className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-[10px] font-black text-sky-950 hover:bg-sky-100 disabled:cursor-wait disabled:opacity-60">{isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus) ? "Decoding exact source…" : audioSignalStatus === "failed" ? "Retry decoded audio map" : "Build decoded audio map"}</button> : null}
+            {onRequestAudioSignal ? <button type="button" disabled={isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus)} onClick={onRequestAudioSignal} className="rounded-lg border border-sky-300 bg-white px-3 py-2 text-[10px] font-black text-sky-950 hover:bg-sky-100 disabled:cursor-wait disabled:opacity-60">{isAudioSignalWorking || ["queued", "processing", "output-ready"].includes(audioSignalStatus) ? "Decoding exact source…" : audioSignalStatus === "failed" || audioSignalStatus === "blocked" ? "Retry decoded audio map" : "Build decoded audio map"}</button> : null}
           </div>
         </section>
       )}

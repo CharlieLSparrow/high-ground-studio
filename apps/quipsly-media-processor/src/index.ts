@@ -6,6 +6,8 @@ import { FfmpegAudioAlignmentAnalyzer } from "./audio-alignment-ffmpeg.js";
 import { runAudioAlignmentCloudWorker } from "./audio-alignment-cloud-worker.js";
 import { FfmpegAudioMasteringEngine } from "./audio-mastering-ffmpeg.js";
 import { runAudioMasteryCloudWorker } from "./audio-mastery-cloud-worker.js";
+import { FfmpegAudioSignalProfiler } from "./audio-signal-profile-ffmpeg.js";
+import { runAudioSignalProfileCloudWorker } from "./audio-signal-profile-cloud-worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
@@ -32,66 +34,67 @@ const startedAt = Date.now();
 try {
   const storage = new GcsCaptureProxyWorkerStorage(bucketName);
   const transcoder = new FfmpegCaptureProxyTranscoder();
-  const captureResults = await runCaptureProxyWorker(
+  const failures: Array<{ lane: string; reason: string }> = [];
+  const runLane = async <Result>(lane: string, operation: () => Promise<Result[]>): Promise<Result[]> => {
+    try {
+      return await operation();
+    } catch (error) {
+      failures.push({ lane, reason: error instanceof Error ? error.message : "unknown" });
+      return [];
+    }
+  };
+  const workerOptions = {
+    executionId,
+    buildId,
+    imageDigest,
+    leaseDurationMs,
+    now: () => new Date(),
+  };
+  const captureResults = await runLane("capture-proxy", () => runCaptureProxyWorker(
     storage,
     transcoder,
-    {
-      executionId,
-      buildId,
-      imageDigest,
-      leaseDurationMs,
-      now: () => new Date(),
-    },
+    workerOptions,
     jobLimit,
-  );
-  const episodeResults = await runEpisodeCloudProxyWorker(
+  ));
+  const episodeResults = await runLane("episode-proxy", () => runEpisodeCloudProxyWorker(
     storage,
     transcoder,
-    {
-      executionId,
-      buildId,
-      imageDigest,
-      leaseDurationMs,
-      now: () => new Date(),
-    },
+    workerOptions,
     jobLimit,
-  );
-  const alignmentResults = await runAudioAlignmentCloudWorker(
+  ));
+  const alignmentResults = await runLane("audio-alignment", () => runAudioAlignmentCloudWorker(
     storage,
     new FfmpegAudioAlignmentAnalyzer(),
-    {
-      executionId,
-      buildId,
-      imageDigest,
-      leaseDurationMs,
-      now: () => new Date(),
-    },
+    workerOptions,
     jobLimit,
-  );
-  const masteryResults = await runAudioMasteryCloudWorker(
+  ));
+  const masteryResults = await runLane("audio-mastery", () => runAudioMasteryCloudWorker(
     storage,
     new FfmpegAudioMasteringEngine(),
-    {
-      executionId,
-      buildId,
-      imageDigest,
-      leaseDurationMs,
-      now: () => new Date(),
-    },
+    workerOptions,
     jobLimit,
-  );
+  ));
+  const signalProfileResults = await runLane("audio-signal-profile", () => runAudioSignalProfileCloudWorker(
+    storage,
+    new FfmpegAudioSignalProfiler(),
+    workerOptions,
+    jobLimit,
+  ));
   console.log(JSON.stringify({
-    severity: "INFO",
-    message: "Quipsly capture proxy processor completed.",
+    severity: failures.length ? "ERROR" : "INFO",
+    message: failures.length ? "Quipsly media processor completed with lanes needing retry." : "Quipsly media processor completed.",
     executionId,
     buildId,
     elapsedMs: Date.now() - startedAt,
-    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length,
+    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length + signalProfileResults.length,
     captureResults,
     episodeResults,
     alignmentResults,
     masteryResults,
+    signalProfileResults,
+    failures,
   }));
+  if (failures.length) process.exitCode = 1;
 } catch (error) {
   console.error(JSON.stringify({
     severity: "ERROR",
