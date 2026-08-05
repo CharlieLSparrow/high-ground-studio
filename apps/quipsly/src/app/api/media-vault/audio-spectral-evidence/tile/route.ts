@@ -2,6 +2,7 @@ import { open } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { getMediaBucket } from "@/lib/server/gcs";
 import { resolveAudioSpectralTile } from "@/lib/server/audio-spectral-evidence";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 
@@ -20,12 +21,19 @@ export async function GET(request: NextRequest) {
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status, headers: { "Cache-Control": "private, no-store" } });
     const tile = await resolveAudioSpectralTile({ prisma, projectSlug, assetId, jobId, levelId, tileIndex });
     if (!tile) return NextResponse.json({ ok: false, error: "Spectral tile is unavailable." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
-    const file = await open(tile.path, "r");
-    try {
-      const bytes = Buffer.alloc(tile.byteLength);
+    let bytes: Buffer;
+    if (tile.provider === "gcs") {
+      [bytes] = await getMediaBucket(tile.bucketName).file(tile.objectName, { generation: tile.generation }).download({ start: tile.offset, end: tile.offset + tile.byteLength - 1 });
+      if (bytes.length !== tile.byteLength) throw new Error("Cloud spectral tile pack ended before the requested tile.");
+    } else {
+      const file = await open(tile.path, "r");
+      try {
+        bytes = Buffer.alloc(tile.byteLength);
       const read = await file.read(bytes, 0, bytes.length, tile.offset);
       if (read.bytesRead !== bytes.length) throw new Error("Spectral tile pack ended before the requested tile.");
-      return new Response(bytes, { status: 200, headers: {
+      } finally { await file.close(); }
+    }
+    return new Response(new Uint8Array(bytes), { status: 200, headers: {
         "Cache-Control": "private, max-age=300, immutable",
         "Content-Length": String(bytes.length),
         "Content-Type": "application/vnd.quipsly.spectral-tile; format=gray8",
@@ -34,7 +42,6 @@ export async function GET(request: NextRequest) {
         "X-Quipsly-Tile-Duration-Seconds": String(tile.durationSeconds),
         Vary: "Authorization, Cookie",
       } });
-    } finally { await file.close(); }
   } catch (error) {
     console.error("[audio spectral tile] failed", error);
     return NextResponse.json({ ok: false, error: "Unable to read the protected spectral tile." }, { status: 500, headers: { "Cache-Control": "private, no-store" } });

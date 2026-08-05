@@ -17,7 +17,7 @@ type LevelId = "overview" | "browse" | "detail";
 type SpectralStatus = {
   ok?: boolean;
   jobId: string | null;
-  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
   media: null | { sampleRate: number; channelCount: number; durationSeconds: number; minimumFrequencyHz: number; maximumFrequencyHz: number };
   pyramid: null | {
     tileWidth: 512;
@@ -95,7 +95,7 @@ export function SpectralEvidenceViewer({
   const readStatus = useCallback(async () => {
     const response = await fetch(`/api/media-vault/audio-spectral-evidence?${query.toString()}`, { cache: "no-store" });
     const payload = await response.json().catch(() => null) as (SpectralStatus & { error?: string }) | null;
-    if (!response.ok || !payload?.ok || !payload.status || !["not-queued", "queued", "processing", "output-ready", "completed", "failed"].includes(payload.status)) throw new Error(payload?.error || `Spectral status returned HTTP ${response.status}.`);
+    if (!response.ok || !payload?.ok || !payload.status || !["not-queued", "queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(payload.status)) throw new Error(payload?.error || `Spectral status returned HTTP ${response.status}.`);
     setStatus(payload);
     return payload;
   }, [query]);
@@ -111,18 +111,18 @@ export function SpectralEvidenceViewer({
 
   const operate = useCallback(async () => {
     setWorking(true);
-    setMessage("Starting native complete-decode spectral analysis…");
+    setMessage("Starting complete-decode spectral analysis…");
     try {
       const request = async (action: "queue" | "reconcile") => {
         const response = await fetch("/api/media-vault/audio-spectral-evidence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, projectSlug, assetId, sourceId }) });
         const payload = await response.json().catch(() => null) as (SpectralStatus & { error?: string }) | null;
-        if (!response.ok || !payload?.ok || !payload.status || !["not-queued", "queued", "processing", "output-ready", "completed", "failed"].includes(payload.status)) throw new Error(payload?.error || `Spectral operation returned HTTP ${response.status}.`);
+        if (!response.ok || !payload?.ok || !payload.status || !["not-queued", "queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(payload.status)) throw new Error(payload?.error || `Spectral operation returned HTTP ${response.status}.`);
         setStatus(payload);
         return payload;
       };
       let next = await request("queue");
       for (let attempt = 0; attempt < 600 && next.status !== "completed"; attempt += 1) {
-        if (next.status === "failed") throw new Error(next.error || "Spectral analysis failed.");
+        if (next.status === "failed" || next.status === "blocked") throw new Error(next.error || "Spectral analysis failed.");
         setMessage(next.status === "output-ready" ? "Verifying the source and tile-pack byte receipts…" : "Building logarithmic source-clock tiles; original media remains untouched…");
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         next = await request("reconcile");

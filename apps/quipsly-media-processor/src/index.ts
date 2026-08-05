@@ -8,6 +8,8 @@ import { FfmpegAudioMasteringEngine } from "./audio-mastering-ffmpeg.js";
 import { runAudioMasteryCloudWorker } from "./audio-mastery-cloud-worker.js";
 import { FfmpegAudioSignalProfiler } from "./audio-signal-profile-ffmpeg.js";
 import { runAudioSignalProfileCloudWorker } from "./audio-signal-profile-cloud-worker.js";
+import { FfmpegAudioSpectralAnalyzer } from "./audio-spectral-evidence-ffmpeg.js";
+import { runAudioSpectralCloudWorker } from "./audio-spectral-cloud-worker.js";
 
 const bucketName = requiredEnv("QUIPSLY_MEDIA_BUCKET");
 const buildId = requiredEnv("QUIPSLY_WORKER_BUILD_ID");
@@ -80,18 +82,25 @@ try {
     workerOptions,
     jobLimit,
   ));
+  const spectralResults = await runLane("audio-spectral-evidence", () => runAudioSpectralCloudWorker(
+    storage,
+    new FfmpegAudioSpectralAnalyzer(),
+    workerOptions,
+    jobLimit,
+  ));
   console.log(JSON.stringify({
     severity: failures.length ? "ERROR" : "INFO",
     message: failures.length ? "Quipsly media processor completed with lanes needing retry." : "Quipsly media processor completed.",
     executionId,
     buildId,
     elapsedMs: Date.now() - startedAt,
-    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length + signalProfileResults.length,
+    resultCount: captureResults.length + episodeResults.length + alignmentResults.length + masteryResults.length + signalProfileResults.length + spectralResults.length,
     captureResults,
     episodeResults,
     alignmentResults,
     masteryResults,
     signalProfileResults,
+    spectralResults,
     failures,
   }));
   if (failures.length) process.exitCode = 1;

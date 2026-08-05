@@ -198,6 +198,8 @@
     "quipsly:audio-diagnosis-evaluation:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-diagnosis-evaluation.test.mjs",
     "quipsly:audio-diagnosis-corpus": "QUIPSLY_AUDIO_DIAGNOSIS_CORPUS_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-audio-diagnosis-corpus-operation.mjs",
     "quipsly:audio-spectral-evidence:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-evidence.test.mjs",
+    "quipsly:audio-spectral-cloud:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-spectral-cloud-worker.test.mjs",
+    "quipsly:audio-spectral:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-spectral-gcs-fixture.mjs",
     "quipsly:transcript-worker:build": "pnpm --filter quipsly-transcript-worker build",
     "quipsly:transcript-worker:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-capture-transcript-worker.test.mjs scripts/quipsly-capture-transcript-cloud-fixture.test.mjs scripts/release/quipsly-transcript-worker-deploy.test.mjs",
     "quipsly:transcript-worker:deploy": "bash scripts/release/quipsly-transcript-worker-deploy.sh",

@@ -56,7 +56,8 @@ node --experimental-strip-types \
   "${repo_root}/scripts/quipsly-episode-collaboration-proxy-cloud-control.test.mjs" \
   "${repo_root}/scripts/quipsly-audio-alignment-cloud-worker.test.mjs" \
   "${repo_root}/scripts/quipsly-audio-mastery-cloud-worker.test.mjs" \
-  "${repo_root}/scripts/quipsly-audio-signal-profile-cloud-worker.test.mjs"
+  "${repo_root}/scripts/quipsly-audio-signal-profile-cloud-worker.test.mjs" \
+  "${repo_root}/scripts/quipsly-audio-spectral-cloud-worker.test.mjs"
 
 gcloud builds submit "${release_context}" \
   --project="${project_id}" \
