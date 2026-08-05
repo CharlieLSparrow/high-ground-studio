@@ -188,8 +188,10 @@ playhead when they need to judge the verified final output level.
 ## Next qualified layers
 
 1. generation-bound GCS manifest/outbox and database-free cloud execution;
-2. export-recipe selection, delivery encoding, proof-listen, and publisher
-   handoff as separate receipt-bearing stages;
+2. output-packet selection, enclosure upload, and publisher handoff as
+   separate receipt-bearing stages; delivery encoding and encoded-byte
+   proof-listen are now implemented in
+   [Podcast audio delivery artifacts](./audio-delivery-artifacts.md);
 3. evaluated dialogue-aware spectral diagnosis proposals for noise, hum, clipping, plosives,
    sibilance, room tone, and speaker-to-speaker loudness consistency;
 4. A/B and loudness-matched listening so “better” is never just “louder”;

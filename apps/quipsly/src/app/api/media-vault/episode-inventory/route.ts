@@ -6,6 +6,7 @@ import {
 } from "@/lib/episode-production/imported-media";
 import { getPrismaClient } from "@/lib/prisma";
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
+import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import {
@@ -143,6 +144,11 @@ function publicAsset(asset: any, proxies: any[] = []): any {
   const audioMasterDeliveryCandidate = episodeInventoryAudioMasterCandidate(
     audioMasterPromotionEvents,
   );
+  const audioDeliveryArtifact = episodeInventoryAudioDeliveryArtifact({
+    jobs: Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
+    variants: Array.isArray(asset.variants) ? asset.variants : [],
+    promotionEvents: audioMasterPromotionEvents,
+  });
   const proxyAssets: any[] = proxies.map((proxy) => publicAsset(proxy, [])).filter(Boolean);
   const hasProxy =
     proxyAssets.length > 0 ||
@@ -168,6 +174,7 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     jobs,
     proxyAssets,
     audioMasterDeliveryCandidate,
+    audioDeliveryArtifact,
     readiness: {
       sourceSafe: asset.isProxy !== true,
       hasProxy,
@@ -175,6 +182,8 @@ function publicAsset(asset: any, proxies: any[] = []): any {
       hasThumbnail: Boolean(asset.thumbnailUrl) || variants.some((variant: any) => String(variant.kind || "").toLowerCase().includes("thumb")),
       hasWorkflowJobs: jobs.length > 0,
       hasActiveAudioMasterCandidate: audioMasterDeliveryCandidate?.active === true,
+      hasVerifiedAudioDeliveryArtifact: audioDeliveryArtifact?.readiness.encodedAndVerified === true,
+      hasApprovedAudioDeliveryArtifact: audioDeliveryArtifact?.readiness.proofListenApproved === true,
     },
   };
 }
@@ -414,6 +423,12 @@ export async function GET(request: Request) {
           orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
           take: 20,
         },
+        processingJobs: {
+          where: { type: "audio-delivery" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 5,
+          include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },
+        },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },
           orderBy: { updatedAt: "desc" },
@@ -439,6 +454,12 @@ export async function GET(request: Request) {
           where: { projectId: project.id },
           orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
           take: 20,
+        },
+        processingJobs: {
+          where: { type: "audio-delivery" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 5,
+          include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },
         },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },
@@ -524,6 +545,13 @@ export async function GET(request: Request) {
   const activeAudioMasterCandidateCount = rawAssets.filter((asset: any) => (
     asset.audioMasterPromotions?.[0]?.operation === "PROMOTE"
   )).length;
+  const audioDeliveryArtifacts = rawAssets.map((asset: any) => episodeInventoryAudioDeliveryArtifact({
+    jobs: asset.processingJobs || [],
+    variants: asset.variants || [],
+    promotionEvents: asset.audioMasterPromotions || [],
+  })).filter(Boolean);
+  const verifiedAudioDeliveryArtifactCount = audioDeliveryArtifacts.filter((artifact: any) => artifact.readiness.encodedAndVerified).length;
+  const approvedAudioDeliveryArtifactCount = audioDeliveryArtifacts.filter((artifact: any) => artifact.readiness.proofListenApproved).length;
   const mediaHeldCount = recordingEvidence.length - releasedRecordingEvidence.length;
   const transcriptHeldCount = recordingEvidence.length - transcriptReleasedRecordingEvidence.length;
 
@@ -537,6 +565,12 @@ export async function GET(request: Request) {
       : null,
     transcriptReleasedRecordingEvidence.length > 0 && completedTranscriptJobCount === 0
       ? "Run or repair transcription only for the explicitly released recording evidence."
+      : null,
+    activeAudioMasterCandidateCount > verifiedAudioDeliveryArtifactCount
+      ? "Encode each active promoted master as a separately verified podcast delivery artifact."
+      : null,
+    verifiedAudioDeliveryArtifactCount > approvedAudioDeliveryArtifactCount
+      ? "Proof-listen the actual encoded AAC bytes before creating any output packet or enclosure upload."
       : null,
     "Use this inventory as read-only truth before upload, proxy, transcript, edit, review, or publishing actions.",
   ].filter(Boolean);
@@ -577,6 +611,8 @@ export async function GET(request: Request) {
       unresolvedRecordingReferenceCount,
       attachedAssetCount: rawAssets.length,
       activeAudioMasterCandidateCount,
+      verifiedAudioDeliveryArtifactCount,
+      approvedAudioDeliveryArtifactCount,
     },
     safeNextActions,
     actions: {
@@ -586,6 +622,8 @@ export async function GET(request: Request) {
       promoteRecording: "/api/mobile/capture/recordings/promote",
       transcriptRun: "/api/mobile/capture/transcripts/run",
       packetBuild: "/api/mobile/capture/transcripts/packet",
+      audioDelivery: "/api/media-vault/audio-delivery",
+      audioDeliveryReview: "/api/media-vault/audio-delivery/review",
     },
     boundaries: {
       sideEffectFree: true,

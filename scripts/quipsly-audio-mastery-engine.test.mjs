@@ -6,11 +6,15 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA,
+  audioDeliveryReviewCoverage,
   assessAudioMastery,
+  buildAudioDeliveryTargetLocator,
   buildAudioTreatmentTargetLocator,
   buildAudioSignalObservations,
   buildAudioMasteryTargetLocator,
   newAudioMasteryJob,
+  newAudioDeliveryJob,
   newAudioMasteryProposal,
   newAudioTreatmentProposal,
   newAudioTreatmentJob,
@@ -19,13 +23,16 @@ import {
   parseAudioMasteryJob,
   parseAudioMasteryResult,
   parseAudioMasteryMeasurement,
+  parseAudioDeliveryResult,
 } from "../packages/quipsly-media-processing/src/index.ts";
+import { FfmpegAudioDeliveryEncoder } from "../apps/quipsly-media-processor/src/audio-delivery-ffmpeg.ts";
 import {
   FfmpegAudioMasteringEngine,
   parseLoudnormReading,
 } from "../apps/quipsly-media-processor/src/audio-mastering-ffmpeg.ts";
 import { sha256File } from "../apps/quipsly-media-processor/src/transcoder.ts";
 import { runOneLocalAudioMasteryJob } from "../apps/quipsly-media-processor/src/local-audio-mastery-worker.ts";
+import { runOneLocalAudioDeliveryJob } from "../apps/quipsly-media-processor/src/local-audio-delivery-worker.ts";
 import { runOneLocalAudioTreatmentJob } from "../apps/quipsly-media-processor/src/local-audio-treatment-worker.ts";
 
 test("mastery proposal is a reversible source-bound graph", () => {
@@ -386,6 +393,59 @@ test("real FFmpeg measurement, double-pass PCM render, and independent verificat
   assert.equal(verification.passes, true);
   assert.ok(verified.integratedLufs >= -17 && verified.integratedLufs <= -15);
   assert.ok(verified.truePeakDbtp <= -1);
+});
+
+test("delivery evidence requires beginning, midpoint, and ending playback", () => {
+  const evidence = { schema: AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA, listenedSecondBins: [0, 1, 4, 5, 6, 9], completedAt: new Date().toISOString() };
+  const incomplete = audioDeliveryReviewCoverage(evidence, 10);
+  assert.equal(incomplete.approvalReady, false);
+  assert.deepEqual(incomplete.missingSecondBins, [8]);
+  const complete = audioDeliveryReviewCoverage({ ...evidence, listenedSecondBins: [...evidence.listenedSecondBins, 8] }, 10);
+  assert.equal(complete.approvalReady, true);
+});
+
+test("real AAC delivery worker preserves the promoted WAV and verifies encoded bytes", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-audio-delivery-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sourcePath = path.join(root, "media-vault", "mastering", "promoted-master.wav");
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "sine=frequency=330:duration=8:sample_rate=48000",
+    "-filter:a", "volume=1.8", "-c:a", "pcm_s24le", sourcePath,
+  ]);
+  const engine = new FfmpegAudioMasteringEngine();
+  const sourceStat = await stat(sourcePath);
+  const sourceSha = await sha256File(sourcePath);
+  const unmasteredBinding = { assetId: "asset_delivery_real_001", provider: "local", locator: sourcePath, generation: `sha256:${sourceSha}`, sha256: sourceSha, sizeBytes: sourceStat.size, contentType: "audio/wav" };
+  const measured = await engine.measure(sourcePath, { source: unmasteredBinding, profileId: "apple-podcasts-dialogue-v1", measurementId: "measurement_delivery_source_001", measuredAt: "2026-08-05T19:30:00.000Z" });
+  assert.equal(assessAudioMastery(measured, "apple-podcasts-dialogue-v1").passes, true);
+  const source = { ...unmasteredBinding, durationSeconds: measured.durationSeconds, masteryJobId: "audio_mastery_delivery_001", masterReviewReceiptId: "review_delivery_master_001", promotionReceiptId: "promotion_delivery_001" };
+  const profileId = "apple-podcasts-aac-stereo-v1";
+  const job = newAudioDeliveryJob({
+    jobId: "audio_delivery_real_001", projectId: "project_delivery_real_001", requestedByEmail: "delivery@example.test", queuedAt: "2026-08-05T19:30:00.000Z",
+    source, masteryProfileId: "apple-podcasts-dialogue-v1", profileId,
+    target: { provider: "local", locator: buildAudioDeliveryTargetLocator({ assetId: source.assetId, candidateSha256: source.sha256, profileId }), contentType: "audio/mp4", codec: "aac", codecProfile: "LC", sampleRateHz: 48_000, channels: 2, bitrateBps: 128_000, fastStartRequired: true, variantKind: "audio-delivery-artifact" },
+  });
+  const store = new FakeMasteryStore(job);
+  const result = await runOneLocalAudioDeliveryJob(store, new FfmpegAudioDeliveryEncoder(), engine, { executionId: "execution_delivery_real_001", buildId: "test-build", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-05T19:31:00.000Z") });
+  assert.equal(result.disposition, "completed", JSON.stringify(store.retried));
+  assert.equal(result.recoveredExistingOutput, false);
+  const receipt = parseAudioDeliveryResult(store.completed[0].receipt, job);
+  assert.equal(receipt.output.codec, "aac");
+  assert.equal(receipt.output.codecProfile, "LC");
+  assert.equal(receipt.output.fastStart, true);
+  assert.equal(receipt.output.completeDecode, true);
+  assert.equal(receipt.output.verification.passes, true);
+  assert.equal(receipt.boundaries.proofListenRequiredBeforeOutputPacket, true);
+  assert.equal(await sha256File(sourcePath), sourceSha);
+  assert.throws(() => parseAudioDeliveryResult({ ...receipt, output: { ...receipt.output, fastStart: false } }, job), /safety boundary|verification/);
+
+  const recovery = new FakeMasteryStore(job);
+  const recovered = await runOneLocalAudioDeliveryJob(recovery, new FfmpegAudioDeliveryEncoder(), engine, { executionId: "execution_delivery_real_002", buildId: "test-build", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-05T19:32:00.000Z") });
+  assert.equal(recovered.disposition, "completed");
+  assert.equal(recovered.recoveredExistingOutput, true);
+  parseAudioDeliveryResult(recovery.completed[0].receipt, job);
 });
 
 test("real FFmpeg DC and rumble experiment is source-bound, reversible, and independently diagnosable", async (context) => {

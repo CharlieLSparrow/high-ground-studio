@@ -30,6 +30,10 @@ import {
   runOneLocalAudioMasteryJob,
 } from "./local-audio-mastery-worker.js";
 import {
+  newLocalAudioDeliveryRuntime,
+  runOneLocalAudioDeliveryJob,
+} from "./local-audio-delivery-worker.js";
+import {
   newLocalAudioTreatmentRuntime,
   runOneLocalAudioTreatmentJob,
 } from "./local-audio-treatment-worker.js";
@@ -481,6 +485,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const audioDelivery = newLocalAudioDeliveryRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const audioTreatment = newLocalAudioTreatmentRuntime({
     pool,
     localMediaRoot,
@@ -516,9 +526,12 @@ async function main() {
       const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
         : proxyResult;
-      const treatmentResult = masteryResult.disposition === "idle"
-        ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
+      const deliveryResult = masteryResult.disposition === "idle"
+        ? await runOneLocalAudioDeliveryJob(audioDelivery.store, audioDelivery.encoder, audioDelivery.measurer, audioDelivery.options)
         : masteryResult;
+      const treatmentResult = deliveryResult.disposition === "idle"
+        ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
+        : deliveryResult;
       const signalResult = treatmentResult.disposition === "idle"
         ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
         : treatmentResult;

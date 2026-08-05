@@ -1,6 +1,7 @@
 export const CAPTURE_PROXY_CONTRACT_VERSION = 1 as const;
 export * from "./audio-mastery.js";
 export * from "./audio-mastery-review.js";
+export * from "./audio-delivery.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";

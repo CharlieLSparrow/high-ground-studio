@@ -22,6 +22,11 @@ import {
   readAudioMasterPromotionSummary,
   type PublicAudioMasterPromotionSummary,
 } from "@/lib/server/audio-mastery-promotion";
+import {
+  emptyAudioDeliveryStatus,
+  readAudioDeliveryStatus,
+  type PublicAudioDeliveryStatus,
+} from "@/lib/server/audio-delivery";
 
 const JOB_TYPE = "audio-mastery";
 
@@ -56,6 +61,7 @@ export type PublicAudioMasteryStatus = {
     rejectionCount: number;
   };
   promotion: PublicAudioMasterPromotionSummary;
+  delivery: PublicAudioDeliveryStatus;
   error: string | null;
   updatedAt: string | null;
   boundaries: {
@@ -152,6 +158,11 @@ export async function readAudioMasteryStatus(input: { prisma: any; projectSlug: 
     promotion: await readAudioMasterPromotionSummary({
       prisma: input.prisma,
       projectId: project.id,
+      assetId: input.assetId,
+    }),
+    delivery: await readAudioDeliveryStatus({
+      prisma: input.prisma,
+      projectSlug: input.projectSlug,
       assetId: input.assetId,
     }),
   };
@@ -285,6 +296,7 @@ export function toPublicAudioMasteryStatus(job: any): PublicAudioMasteryStatus {
     } : null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
     promotion: emptyAudioMasterPromotionSummary(),
+    delivery: emptyAudioDeliveryStatus(),
     error: integrityFailure
       ? "Audio mastery evidence failed integrity validation."
       : typeof job.error === "string" ? job.error : null,
@@ -353,6 +365,7 @@ function emptyStatus(): PublicAudioMasteryStatus {
     derivative: null,
     review: { latest: null, approvalCount: 0, rejectionCount: 0 },
     promotion: emptyAudioMasterPromotionSummary(),
+    delivery: emptyAudioDeliveryStatus(),
     error: null,
     updatedAt: null,
     boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedPreview: true, explicitApprovalStillRequired: true },

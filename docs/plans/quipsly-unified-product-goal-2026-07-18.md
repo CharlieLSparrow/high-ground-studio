@@ -7546,3 +7546,37 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   promotion, then a separately verified export recipe and encoded delivery
   artifact. See
   `docs/coordination/2026-08-05-audio-master-delivery-candidate.md`.
+
+## 2026-08-05 podcast audio delivery-artifact checkpoint
+
+- Added the receipt-bearing stage after master promotion: exact promoted WAV
+  candidate -> deterministic AAC-LC/M4A artifact -> post-encode verification
+  -> separate encoded-byte proof-listen. Output packet, enclosure upload, and
+  publication remain later explicit states.
+- The worker binds the mastery job, master review, promotion, candidate hash,
+  generation, size, duration, mastering profile, and delivery recipe. It uses
+  atomic partial output and exact leases, verifies AAC-LC/48 kHz/stereo/nominal
+  128 kb/s, fast-start atom order, full decode, duration, SHA-256, and BS.1770
+  loudness after lossy encoding, then rehashes after measurement.
+- Nest exposes private queue/reconcile and encoded-byte review routes. The
+  Episode editor explains the boundaries, plays the exact AAC bytes, tracks
+  beginning/midpoint/ending neighborhoods, and will not allow approval while
+  coverage is incomplete or the promotion is stale. Browser progress is not
+  represented as proof of audibility.
+- Episode inventory separately reports active master candidate, verified
+  delivery artifact, proof-listen approval, future packet eligibility, upload,
+  and publication. Withdrawing a promotion makes historical delivery approval
+  ineligible without deleting bytes or history.
+- Local PostgreSQL migration 67 is current. Real FFmpeg qualification and the
+  signed-in Episode 8 browser gate passed. Episode 8 correctly withheld
+  encoding because no genuine human approval/promotion exists; no fake HGO
+  receipt, output packet, upload, publication, production schema write, deploy,
+  or traffic mutation occurred.
+- Architecture and remaining gates are recorded in
+  `docs/architecture/audio-delivery-artifacts.md` and
+  `docs/coordination/2026-08-05-podcast-audio-delivery-artifact.md`.
+- Verification passes: six focused Jest suites / 24 tests, 15 shared
+  audio-engine tests with real FFmpeg encoding, all 317 Quipsly suites / 1,643
+  tests with 40 suites / 123 tests intentionally opt-in, all three TypeScript
+  boundaries, Prisma validation and local migration 67, media package and
+  worker builds, optimized Nest build with 175 static pages, and diff checks.

@@ -3330,6 +3330,7 @@ model StudioProject {
   assetProcessingJobs   StudioAssetProcessingJob[]
   audioMasterReviews    StudioAudioMasterReviewReceipt[]
   audioMasterPromotions StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews  StudioAudioDeliveryReviewReceipt[]
   sourceUnits           StudioSourceUnit[]
   personalSourceFilings StudioPersonalSourceFiling[]
   sourceAnnotations     StudioSourceAnnotation[]
@@ -3673,6 +3674,7 @@ model StudioAssetProcessingJob {
   asset                 StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   audioMasterReviews    StudioAudioMasterReviewReceipt[]
   audioMasterPromotions StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews  StudioAudioDeliveryReviewReceipt[]
 
   @@index([assetId, status, createdAt])
   @@index([projectId, status])
@@ -3744,15 +3746,49 @@ model StudioAudioMasterPromotionReceipt {
   occurredAt       DateTime
   createdAt        DateTime                            @default(now())
 
-  project       StudioProject                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  asset         StudioMediaAsset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  masteryJob    StudioAssetProcessingJob        @relation(fields: [masteryJobId], references: [id], onDelete: Cascade)
-  reviewReceipt StudioAudioMasterReviewReceipt? @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+  project         StudioProject                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset           StudioMediaAsset                   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  masteryJob      StudioAssetProcessingJob           @relation(fields: [masteryJobId], references: [id], onDelete: Cascade)
+  reviewReceipt   StudioAudioMasterReviewReceipt?    @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+  deliveryReviews StudioAudioDeliveryReviewReceipt[]
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudioMasterPromotion_project_actor_request_key")
   @@index([masteryJobId, occurredAt], map: "StudioAudioMasterPromotion_job_occurred_idx")
   @@index([projectId, assetId, occurredAt], map: "StudioAudioMasterPromotion_project_asset_occurred_idx")
   @@index([reviewReceiptId], map: "StudioAudioMasterPromotion_review_idx")
+}
+
+// Delivery review is separate from mastering review because the lossy encoded
+// bytes are a different listening subject. It is append-only and never creates
+// an output packet, uploads an enclosure, or publishes.
+model StudioAudioDeliveryReviewReceipt {
+  id                 String                          @id @default(cuid())
+  projectId          String
+  assetId            String
+  deliveryJobId      String
+  promotionReceiptId String
+  actorUserId        String?
+  actorEmail         String
+  clientRequestId    String
+  decision           StudioAudioMasterReviewDecision
+  deliveryProfileId  String
+  candidateSha256    String
+  deliverySha256     String
+  requestSha256      String
+  evidenceJson       Json
+  note               String?
+  occurredAt         DateTime
+  createdAt          DateTime                        @default(now())
+
+  project          StudioProject                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset            StudioMediaAsset                  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  deliveryJob      StudioAssetProcessingJob          @relation(fields: [deliveryJobId], references: [id], onDelete: Cascade)
+  promotionReceipt StudioAudioMasterPromotionReceipt @relation(fields: [promotionReceiptId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudioDeliveryReview_project_actor_request_key")
+  @@index([deliveryJobId, occurredAt], map: "StudioAudioDeliveryReview_job_occurred_idx")
+  @@index([projectId, assetId, occurredAt], map: "StudioAudioDeliveryReview_project_asset_occurred_idx")
+  @@index([promotionReceiptId], map: "StudioAudioDeliveryReview_promotion_idx")
 }
 
 model StudioSourceUnit {
@@ -4951,6 +4987,7 @@ model StudioMediaAsset {
   processingJobs          StudioAssetProcessingJob[]
   audioMasterReviews      StudioAudioMasterReviewReceipt[]
   audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
   sourceUnits             StudioSourceUnit[]
   workflowJobs            StudioWorkflowJob[]
   transcriptJobs          TranscriptJob[]

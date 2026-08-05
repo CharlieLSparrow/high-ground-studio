@@ -4,12 +4,35 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
+  AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA,
   AUDIO_MASTERY_REVIEW_EVIDENCE_SCHEMA,
+  audioDeliveryReviewCoverage,
   audioMasteryReviewCoverage,
   audioMasteryReviewMoments as sharedAudioMasteryReviewMoments,
   type AudioMasteryPlaybackReviewEvidence,
   type AudioMasteryReviewMoment,
 } from "@high-ground/quipsly-media-processing";
+
+export type AudioDeliveryStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  masteryJobId: string | null;
+  promotionReceiptId: string | null;
+  profileId: "apple-podcasts-aac-stereo-v1" | null;
+  output: null | { playbackUrl: string | null; sha256: string; sizeBytes: number; durationSeconds: number; codec: "aac"; codecProfile: "LC"; sampleRateHz: 48_000; channels: 2; bitrateBps: number; integratedLufs: number; truePeakDbtp: number; fastStart: true; completeDecode: true };
+  review: AudioMasteryReviewSummary;
+  promotionStillActive: boolean;
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: { originalRemainsSourceTruth: true; outputIsUnapprovedDeliveryArtifact: true; proofListenRequiredBeforeOutputPacket: true; uploadNotStarted: true; publicationNotStarted: true };
+};
+
+const EMPTY_AUDIO_DELIVERY: AudioDeliveryStatus = {
+  jobId: null, status: "not-queued", masteryJobId: null, promotionReceiptId: null, profileId: null,
+  output: null, review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotionStillActive: false,
+  error: null, updatedAt: null,
+  boundaries: { originalRemainsSourceTruth: true, outputIsUnapprovedDeliveryArtifact: true, proofListenRequiredBeforeOutputPacket: true, uploadNotStarted: true, publicationNotStarted: true },
+};
 
 import { AudioProcessingChangeMap } from "./AudioProcessingChangeMap";
 
@@ -234,10 +257,14 @@ export function AudioMasteryAudition({
   diagnosis,
   review = { latest: null, approvalCount: 0, rejectionCount: 0 },
   promotion = EMPTY_AUDIO_MASTER_PROMOTION,
+  delivery = EMPTY_AUDIO_DELIVERY,
   isReviewing = false,
   isPromoting = false,
+  isDelivering = false,
   onReview,
   onPromotion,
+  onDelivery,
+  onDeliveryReview,
 }: {
   masteryJobId?: string | null;
   sourceUrl: string;
@@ -249,10 +276,14 @@ export function AudioMasteryAudition({
   diagnosis: AudioSignalDiagnosisSummary | null;
   review?: AudioMasteryReviewSummary;
   promotion?: AudioMasterPromotionSummary;
+  delivery?: AudioDeliveryStatus;
   isReviewing?: boolean;
   isPromoting?: boolean;
+  isDelivering?: boolean;
   onReview?: (decision: "approved" | "rejected", evidence: AudioMasteryPlaybackReviewEvidence, note: string | null) => Promise<void>;
   onPromotion?: (operation: "promote" | "withdraw", reviewReceiptId: string | null, reason: string | null) => Promise<void>;
+  onDelivery?: () => Promise<void>;
+  onDeliveryReview?: (decision: "approved" | "rejected", evidence: { schema: typeof AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA; listenedSecondBins: number[]; completedAt: string }, note: string | null) => Promise<void>;
 }) {
   const sourceRef = useRef<HTMLAudioElement>(null);
   const masteredRef = useRef<HTMLAudioElement>(null);
@@ -268,6 +299,9 @@ export function AudioMasteryAudition({
   const [reviewMessage, setReviewMessage] = useState("");
   const [withdrawalReason, setWithdrawalReason] = useState("");
   const [promotionMessage, setPromotionMessage] = useState("");
+  const [deliveryListenedSecondBins, setDeliveryListenedSecondBins] = useState<number[]>([]);
+  const [deliveryReviewNote, setDeliveryReviewNote] = useState("");
+  const [deliveryMessage, setDeliveryMessage] = useState("");
   const duration = Math.max(source.durationSeconds, mastered.durationSeconds, 0.001);
   const thisPreviewPromoted = Boolean(
     promotion.active
@@ -286,6 +320,11 @@ export function AudioMasteryAudition({
     masteredListenedSecondBins,
     monitorModes: observedMonitorModes,
   }), [mastered, masteredListenedSecondBins, observedMonitorModes, source, sourceListenedSecondBins]);
+  const deliveryCoverage = useMemo(() => audioDeliveryReviewCoverage({
+    schema: AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA,
+    listenedSecondBins: deliveryListenedSecondBins,
+    completedAt: new Date().toISOString(),
+  }, delivery.output?.durationSeconds || 0.001), [delivery.output?.durationSeconds, deliveryListenedSecondBins]);
 
   useEffect(() => {
     if (sourceRef.current) sourceRef.current.volume = auditionGains.sourceGain;
@@ -386,6 +425,28 @@ export function AudioMasteryAudition({
       if (operation === "withdraw") setWithdrawalReason("");
     } catch (error) {
       setPromotionMessage(error instanceof Error ? error.message : "The mastering promotion could not be changed.");
+    }
+  };
+
+  const createDeliveryArtifact = async () => {
+    if (!onDelivery) return;
+    setDeliveryMessage("Encoding a source-bound AAC-LC artifact and verifying the lossy bytes…");
+    try {
+      await onDelivery();
+      setDeliveryMessage("Encoded artifact ready. Proof-listen the actual AAC bytes before an output packet can exist.");
+    } catch (error) {
+      setDeliveryMessage(error instanceof Error ? error.message : "The delivery artifact could not be prepared.");
+    }
+  };
+
+  const saveDeliveryReview = async (decision: "approved" | "rejected") => {
+    if (!onDeliveryReview) return;
+    setDeliveryMessage(decision === "approved" ? "Saving the encoded-byte proof-listen receipt…" : "Saving the encoded-byte rejection receipt…");
+    try {
+      await onDeliveryReview(decision, { schema: AUDIO_DELIVERY_REVIEW_EVIDENCE_SCHEMA, listenedSecondBins: deliveryListenedSecondBins, completedAt: new Date().toISOString() }, deliveryReviewNote.trim() || null);
+      setDeliveryMessage(decision === "approved" ? "Encoded bytes approved as heard. Upload, output packet, and publication remain separate." : "Encoded bytes rejected as heard. Candidate and artifact history remain intact.");
+    } catch (error) {
+      setDeliveryMessage(error instanceof Error ? error.message : "The delivery review could not be saved.");
     }
   };
 
@@ -615,7 +676,7 @@ export function AudioMasteryAudition({
           <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${thisPreviewPromoted ? "border-emerald-600 bg-emerald-950 text-emerald-200" : promotion.active ? "border-amber-700 bg-slate-950 text-amber-200" : "border-sky-700 bg-slate-950 text-sky-200"}`}>{thisPreviewPromoted ? "This preview active" : promotion.active ? "Another preview active" : "Not promoted"}</span>
         </div>
         {promotion.active ? <>
-          <p className={`mt-3 rounded-lg border bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 ${thisPreviewPromoted ? "border-emerald-800 text-emerald-200" : "border-amber-800 text-amber-200"}`}>{thisPreviewPromoted ? "This preview is" : `Mastering job ${promotion.activePromotion?.jobId.slice(0, 12) || "unknown"} is`} promoted from listening receipt {promotion.activePromotion?.reviewReceiptId?.slice(0, 12) || "unknown"}. It is ready to be selected by a later export recipe; no delivery artifact exists yet.</p>
+          <p className={`mt-3 rounded-lg border bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 ${thisPreviewPromoted ? "border-emerald-800 text-emerald-200" : "border-amber-800 text-amber-200"}`}>{thisPreviewPromoted ? "This preview is" : `Mastering job ${promotion.activePromotion?.jobId.slice(0, 12) || "unknown"} is`} promoted from listening receipt {promotion.activePromotion?.reviewReceiptId?.slice(0, 12) || "unknown"}. {delivery.output ? "A separately verified encoded artifact exists below; promotion itself did not create it." : "It is ready for a later source-bound delivery recipe; no encoded artifact exists yet."}</p>
           <label className="mt-3 block text-[9px] font-black text-slate-300">Why withdraw this candidate?
             <textarea value={withdrawalReason} onChange={(event) => setWithdrawalReason(event.target.value)} rows={2} placeholder="Required. For example: heard pumping in the final section." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[10px] text-white focus:border-rose-400 focus:outline-none" />
           </label>
@@ -623,6 +684,44 @@ export function AudioMasteryAudition({
         </> : review.latest?.decision === "approved" ? <button type="button" disabled={isPromoting} onClick={() => void changePromotion("promote")} className="mt-3 w-full rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:opacity-50">Promote approved preview<span className="mt-1 block text-[9px] opacity-75">Creates the active delivery-candidate receipt. Source, timeline, encoding, upload, and publication remain untouched.</span></button> : <p className="mt-3 rounded-lg border border-amber-800 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-amber-200">Complete the playback comparison and make the latest decision an approval before promotion is available.</p>}
         {promotion.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest promotion event {promotion.latest.id.slice(0, 12)} · {promotion.promoteCount} promotion{promotion.promoteCount === 1 ? "" : "s"} · {promotion.withdrawalCount} withdrawal{promotion.withdrawalCount === 1 ? "" : "s"}. History is append-only.</p> : null}
         {promotionMessage ? <p role="status" className="mt-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{promotionMessage}</p> : null}
+      </section> : null}
+      {onDelivery ? <section className={`mt-3 rounded-xl border p-3 ${delivery.review.latest?.decision === "approved" ? "border-emerald-700 bg-emerald-950/40" : delivery.output ? "border-violet-700 bg-violet-950/30" : "border-slate-700 bg-slate-900"}`} aria-label="Podcast delivery artifact">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-black">Podcast delivery artifact</div>
+            <p className="mt-1 max-w-3xl text-[9px] font-bold leading-4 text-slate-300">AAC-LC · MP4/M4A · 48 kHz stereo · 128 kb/s · fast-start. Encoding remeasures the actual lossy bytes. It never replaces the WAV candidate and cannot create an output packet, upload, or publish.</p>
+          </div>
+          <span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-wide ${delivery.review.latest?.decision === "approved" ? "border-emerald-600 bg-emerald-950 text-emerald-200" : delivery.output ? "border-violet-600 bg-slate-950 text-violet-200" : "border-slate-600 bg-slate-950 text-slate-300"}`}>{delivery.review.latest?.decision === "approved" ? "Proof-listen approved" : delivery.status === "not-queued" ? "Not encoded" : delivery.status}</span>
+        </div>
+        {!thisPreviewPromoted ? <p className="mt-3 rounded-lg border border-amber-800 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-amber-200">Promote this exact mastered preview before encoding a delivery artifact. Withdrawing or replacing the promotion holds proof-listen approval.</p> : null}
+        {thisPreviewPromoted && !delivery.output ? <button type="button" disabled={isDelivering} onClick={() => void createDeliveryArtifact()} className="mt-3 w-full rounded-lg border border-violet-500 bg-violet-950 px-3 py-2 text-left text-[10px] font-black text-violet-100 hover:bg-violet-900 disabled:cursor-wait disabled:border-slate-700 disabled:bg-slate-950 disabled:text-slate-500">{isDelivering || ["queued", "processing", "output-ready"].includes(delivery.status) ? "Encoding and verifying AAC artifact…" : delivery.status === "failed" ? "Retry AAC delivery artifact" : "Prepare AAC delivery artifact"}<span className="mt-1 block text-[9px] opacity-75">Uses only the active promoted bytes; the immutable source and WAV candidate stay untouched.</span></button> : null}
+        {delivery.output?.playbackUrl ? <div className="mt-3 rounded-lg border border-violet-800 bg-slate-950 p-3">
+          <div className="grid grid-cols-2 gap-2 text-center text-[9px] font-bold sm:grid-cols-5">
+            <div className="rounded-md bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-violet-200">AAC-LC</div><div className="text-slate-400">Codec</div></div>
+            <div className="rounded-md bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-violet-200">{Math.round(delivery.output.bitrateBps / 1_000)}k</div><div className="text-slate-400">bit/s</div></div>
+            <div className="rounded-md bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-200">{delivery.output.integratedLufs.toFixed(1)}</div><div className="text-slate-400">Post-encode LUFS</div></div>
+            <div className="rounded-md bg-slate-900 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-200">{delivery.output.truePeakDbtp.toFixed(1)}</div><div className="text-slate-400">Post-encode dBTP</div></div>
+            <div className="col-span-2 rounded-md bg-slate-900 px-2 py-2 sm:col-span-1"><div className="font-mono text-sm font-black text-sky-200">fast-start ✓</div><div className="text-slate-400">Complete decode</div></div>
+          </div>
+          <audio controls preload="metadata" src={delivery.output.playbackUrl} className="mt-3 w-full" aria-label="Encoded podcast delivery artifact" onTimeUpdate={(event) => {
+            if (event.currentTarget.paused) return;
+            const bin = Math.max(0, Math.floor(event.currentTarget.currentTime));
+            setDeliveryListenedSecondBins((current) => current.includes(bin) ? current : [...current, bin].sort((left, right) => left - right));
+          }} />
+          <div className="mt-2 grid grid-cols-3 gap-2 text-[9px] font-black">
+            {[{ label: "Beginning", anchor: 0 }, { label: "Midpoint", anchor: Math.floor(delivery.output.durationSeconds / 2) }, { label: "Ending", anchor: Math.max(0, Math.floor(delivery.output.durationSeconds - 0.001)) }].map((moment) => {
+              const covered = [moment.anchor - 1, moment.anchor, moment.anchor + 1].filter((bin) => bin >= 0 && bin < delivery.output!.durationSeconds).every((bin) => deliveryListenedSecondBins.includes(bin));
+              return <div key={moment.label} className={`rounded-lg border px-2 py-2 text-center ${covered ? "border-emerald-700 bg-emerald-950 text-emerald-200" : "border-slate-700 bg-slate-900 text-slate-400"}`}>{moment.label} {covered ? "✓" : "○"}<span className="mt-1 block font-mono text-[8px]">{clock(moment.anchor)}</span></div>;
+            })}
+          </div>
+          <label className="mt-3 block text-[9px] font-black text-slate-300">Encoded-byte review note
+            <textarea value={deliveryReviewNote} onChange={(event) => setDeliveryReviewNote(event.target.value)} rows={2} placeholder="Optional for approval; required to reject." className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] text-white focus:border-violet-300 focus:outline-none" />
+          </label>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" disabled={isDelivering || !deliveryCoverage.approvalReady || !delivery.promotionStillActive} onClick={() => void saveDeliveryReview("approved")} className="rounded-lg border border-emerald-600 bg-emerald-950 px-3 py-2 text-left text-[10px] font-black text-emerald-100 hover:bg-emerald-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500">Approve encoded bytes as heard<span className="mt-1 block text-[9px] opacity-75">Receipt only; output packet, enclosure upload, and publication stay separate.</span></button><button type="button" disabled={isDelivering || deliveryListenedSecondBins.length === 0 || deliveryReviewNote.trim().length < 3} onClick={() => void saveDeliveryReview("rejected")} className="rounded-lg border border-rose-700 bg-rose-950 px-3 py-2 text-left text-[10px] font-black text-rose-100 hover:bg-rose-900 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500">Reject encoded bytes<span className="mt-1 block text-[9px] opacity-75">Preserves the candidate, artifact, and append-only review history.</span></button></div>
+          {delivery.review.latest ? <p className="mt-2 text-[8px] font-bold leading-4 text-slate-500">Latest encoded-byte decision {delivery.review.latest.id.slice(0, 12)} · {delivery.review.approvalCount} approval{delivery.review.approvalCount === 1 ? "" : "s"} · {delivery.review.rejectionCount} rejection{delivery.review.rejectionCount === 1 ? "" : "s"}.</p> : null}
+        </div> : null}
+        {delivery.error ? <p className="mt-2 rounded-lg border border-rose-800 bg-rose-950 px-3 py-2 text-[9px] font-bold text-rose-200">{delivery.error}</p> : null}
+        {deliveryMessage ? <p role="status" className="mt-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-[9px] font-bold leading-4 text-slate-300">{deliveryMessage}</p> : null}
       </section> : null}
       <p className="mt-3 text-[9px] font-bold leading-4 text-slate-400">
         Both curves come from complete BS.1770 decodes at one-second display resolution. The preview is a separate 24-bit WAV and has not replaced or modified the source.

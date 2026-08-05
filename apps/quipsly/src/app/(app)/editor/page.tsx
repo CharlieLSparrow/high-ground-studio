@@ -27,7 +27,7 @@ import {
 import { RemotionComposition } from "./RemotionComposition";
 import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
-import { AudioMasteryAudition, type AudioMasterPromotionSummary, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
+import { AudioMasteryAudition, type AudioDeliveryStatus, type AudioMasterPromotionSummary, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
@@ -231,6 +231,7 @@ type AudioMasteryClientStatus = {
     rejectionCount: number;
   };
   promotion: AudioMasterPromotionSummary;
+  delivery: AudioDeliveryStatus;
   error: string | null;
   updatedAt: string | null;
   boundaries: { originalRemainsSourceTruth: true; outputIsUnpromotedPreview: true; explicitApprovalStillRequired: true };
@@ -6265,6 +6266,65 @@ function CloudEditorContent() {
     }
   }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
 
+  const operateAudioDelivery = useCallback(async (asset: ImportedMediaAsset) => {
+    const current = audioMasteryStatusByAsset[asset.id] ?? audioMasteryStatusByAsset[asset.sourceId];
+    if (!current?.jobId || !current.promotion.active || current.promotion.activePromotion?.jobId !== current.jobId) throw new Error("Promote this exact approved mastering preview before delivery encoding.");
+    const jobKey = `${asset.id}:audio-delivery`;
+    const updateDelivery = (delivery: AudioDeliveryStatus) => setAudioMasteryStatusByAsset((previous) => {
+      const existing = previous[asset.id] ?? previous[asset.sourceId] ?? current;
+      const next = { ...existing, delivery };
+      return { ...previous, [asset.id]: next, [asset.sourceId]: next };
+    });
+    const requestAction = async (action: "queue" | "reconcile") => {
+      const response = await fetch("/api/media-vault/audio-delivery", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, projectSlug: resolvedProjectSlug, assetId: asset.id, sourceId: asset.sourceId, masteryJobId: current.jobId, profileId: "apple-podcasts-aac-stereo-v1" }),
+      });
+      const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioDeliveryStatus>) | null;
+      if (!response.ok || !payload?.ok || !payload.status) throw new Error(payload?.error || `Audio delivery returned HTTP ${response.status}.`);
+      const delivery = payload as { ok: true } & AudioDeliveryStatus;
+      updateDelivery(delivery);
+      return delivery;
+    };
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    setMediaImportStatus(`Encoding ${asset.originalName} as a source-bound AAC delivery artifact…`);
+    try {
+      let delivery = await requestAction("queue");
+      for (let attempt = 0; attempt < 300 && delivery.status !== "completed"; attempt += 1) {
+        if (delivery.status === "failed") throw new Error(delivery.error || "Audio delivery encoding failed.");
+        setMediaImportStatus(delivery.status === "output-ready" ? `Verifying and registering the exact encoded bytes for ${asset.originalName}…` : `Encoding AAC-LC for ${asset.originalName}; source and promoted WAV remain untouched…`);
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+        delivery = await requestAction("reconcile");
+      }
+      if (delivery.status !== "completed") throw new Error("Audio delivery is still processing. Resume it safely from this media card.");
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(`Verified AAC delivery artifact ready for ${asset.originalName}. Proof-listen the actual encoded bytes before output packaging.`);
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
+
+  const operateAudioDeliveryReview = useCallback(async (asset: ImportedMediaAsset, decision: "approved" | "rejected", playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1"; listenedSecondBins: number[]; completedAt: string }, note: string | null) => {
+    const current = audioMasteryStatusByAsset[asset.id] ?? audioMasteryStatusByAsset[asset.sourceId];
+    if (!current?.delivery.jobId) throw new Error("The verified encoded artifact is unavailable. Refresh before reviewing it.");
+    const jobKey = `${asset.id}:audio-delivery-review`;
+    setQueueingMediaJobKeys((previous) => new Set(previous).add(jobKey));
+    try {
+      const response = await fetch("/api/media-vault/audio-delivery/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectSlug: resolvedProjectSlug, assetId: asset.id, sourceId: asset.sourceId, deliveryJobId: current.delivery.jobId, clientRequestId: crypto.randomUUID(), decision, playbackEvidence, note }) });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; review?: AudioDeliveryStatus["review"] } | null;
+      if (!response.ok || !payload?.ok || !payload.review) throw new Error(payload?.error || `Audio delivery review returned HTTP ${response.status}.`);
+      setAudioMasteryStatusByAsset((previous) => {
+        const existing = previous[asset.id] ?? previous[asset.sourceId] ?? current;
+        const next = { ...existing, delivery: { ...existing.delivery, review: payload.review! } };
+        return { ...previous, [asset.id]: next, [asset.sourceId]: next };
+      });
+      setEpisodeMediaTruthRefreshToken((token) => token + 1);
+      setMediaImportStatus(`${decision === "approved" ? "Approved" : "Rejected"} the actual AAC delivery bytes as heard. Output packet, upload, and publication remain separate.`);
+    } finally {
+      setQueueingMediaJobKeys((previous) => { const next = new Set(previous); next.delete(jobKey); return next; });
+    }
+  }, [audioMasteryStatusByAsset, resolvedProjectSlug]);
+
   const operateAudioTreatment = useCallback(async (asset: ImportedMediaAsset) => {
     const jobKey = `${asset.id}:audio-treatment`;
     const updateStatus = (status: AudioTreatmentClientStatus) => setAudioTreatmentStatusByAsset((previous) => ({ ...previous, [asset.id]: status, [asset.sourceId]: status }));
@@ -9763,6 +9823,7 @@ function CloudEditorContent() {
                 const isAudioMasteryWorking = queueingMediaJobKeys.has(`${asset.id}:audio-mastery`);
                 const isAudioMasteryReviewing = queueingMediaJobKeys.has(`${asset.id}:audio-mastery-review`);
                 const isAudioMasteryPromoting = queueingMediaJobKeys.has(`${asset.id}:audio-mastery-promotion`);
+                const isAudioDelivering = queueingMediaJobKeys.has(`${asset.id}:audio-delivery`) || queueingMediaJobKeys.has(`${asset.id}:audio-delivery-review`);
                 const isAudioTreatmentWorking = queueingMediaJobKeys.has(`${asset.id}:audio-treatment`);
                 const isAudioSignalProfileWorking = queueingMediaJobKeys.has(`${asset.id}:audio-signal-profile`);
                 const isSourceTranscriptWorking = queueingMediaJobKeys.has(`${asset.id}:source-transcript`);
@@ -10088,10 +10149,14 @@ function CloudEditorContent() {
                               diagnosis={audioMasteryStatus.signalDiagnosis}
                               review={audioMasteryStatus.review}
                               promotion={audioMasteryStatus.promotion}
+                              delivery={audioMasteryStatus.delivery}
                               isReviewing={isAudioMasteryReviewing}
                               isPromoting={isAudioMasteryPromoting}
+                              isDelivering={isAudioDelivering}
                               onReview={(decision, evidence, note) => operateAudioMasteryReview(asset, decision, evidence, note)}
                               onPromotion={(operation, reviewReceiptId, reason) => operateAudioMasteryPromotion(asset, operation, reviewReceiptId, reason)}
+                              onDelivery={() => operateAudioDelivery(asset)}
+                              onDeliveryReview={(decision, evidence, note) => operateAudioDeliveryReview(asset, decision, evidence, note)}
                             />
                           )}
                         </div>
