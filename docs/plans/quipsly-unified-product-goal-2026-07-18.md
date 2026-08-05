@@ -7745,3 +7745,27 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   answers and App Store Connect readback confirms them. Production disposable
   account deletion, DSA, compatibility opt-out, physical Build 28 operation,
   and signed/TestFlight screenshots remain open.
+
+## 2026-08-05 iPhone-only provider availability checkpoint
+
+- Operated the signed-in App Store Connect **Pricing and Availability** surface
+  because Apple does not expose the two app-level compatibility choices in its
+  supported API. The first unloaded accessibility snapshot was rejected as
+  stale; the rendered page showed both choices still enabled.
+- Deselected Apple Silicon Mac and Apple Vision Pro availability, saved, then
+  reloaded the page and independently read both controls as unchecked. The
+  exact visual receipt is owner-only at
+  `/Users/wall-e/Dev/Quipsly QA Artifacts/Capture Build 28/provider/app-store-iphone-only-availability-readback-20260805T2008Z.jpeg`
+  with SHA-256
+  `6b2e473fac7085c470c97c9df38b94e0785f3c26767210d3c5c1d7a1b368f3fd`.
+- The canonical metadata validator now requires saved/reloaded provider facts,
+  exact desired booleans, a timestamp, evidence identity, and evidence hash
+  before compatibility can be complete. The submission auditor consumes that
+  proof and no longer reports the compatibility blocker.
+- Empty editable macOS and visionOS 1.0 records remain optional cleanup. Apple
+  documents that platform versions are submitted separately and one platform's
+  status does not influence another; no deletion was performed autonomously.
+- Remaining first-release gates are DSA determination, accurate App Privacy
+  publication, five approved signed/TestFlight screenshots, physical Build 28
+  capture/failure-recovery/upload/playback proof, LiveKit separation, and
+  disposable production account-deletion proof.

@@ -34,7 +34,7 @@ test("canonical App Store metadata passes its source contract", () => {
   assert.equal(result.submissionReadiness, "blocked");
   assert.equal(
     canonicalMetadata().compliance.compatibility.status,
-    "source-correct-provider-opt-out-required",
+    "complete",
   );
 });
 
@@ -68,6 +68,22 @@ test("provider-complete status fails closed without exact readback evidence", ()
   assert.match(result.errors.join("\n"), /exact Quipsly Capture Build 28/);
   assert.match(result.errors.join("\n"), /prove USES_THIRD_PARTY_CONTENT/);
   assert.match(result.errors.join("\n"), /prove Free pricing/);
+});
+
+test("iPhone-only compatibility completion fails closed without saved provider evidence", () => {
+  const metadata = canonicalMetadata();
+  metadata.compliance.compatibility.providerReadback.appleVisionProAvailable = true;
+  metadata.compliance.compatibility.providerReadback.evidenceSha256 = "not-a-hash";
+
+  const result = validateAppStoreMetadata(metadata, {
+    root: repositoryRoot,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(
+    result.errors.join("\n"),
+    /saved-and-reloaded iPhone-only App Store provider state/,
+  );
 });
 
 test("submission mode requires approved assets and zero blockers", () => {

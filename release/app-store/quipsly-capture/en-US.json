@@ -103,7 +103,16 @@
       "iphone": true,
       "appleSiliconMac": false,
       "appleVisionPro": false,
-      "status": "source-correct-provider-opt-out-required"
+      "status": "complete",
+      "providerReadback": {
+        "checkedAt": "2026-08-05T20:05:05Z",
+        "surface": "App Store Connect Pricing and Availability",
+        "saveReloadReadback": true,
+        "appleSiliconMacAvailable": false,
+        "appleVisionProAvailable": false,
+        "evidenceArtifact": "Capture Build 28/provider/app-store-iphone-only-availability-readback-20260805T2008Z.jpeg",
+        "evidenceSha256": "6b2e473fac7085c470c97c9df38b94e0785f3c26767210d3c5c1d7a1b368f3fd"
+      }
     }
   },
   "screenshots": {
@@ -161,7 +170,7 @@
   "submission": {
     "readiness": "blocked",
     "blockers": [
-      "Complete the account-level DSA trader determination and confirm iPhone-only compatibility in App Store Connect.",
+      "Complete the account-level DSA trader determination in App Store Connect.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
       "Install Build 28 from TestFlight on a physical iPhone, then prove Episode 9 opens without the prior layout crash plus audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."

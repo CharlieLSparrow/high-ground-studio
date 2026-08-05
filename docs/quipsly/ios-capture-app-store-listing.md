@@ -60,17 +60,25 @@ Build 28, and App Review details are now applied and read back in App Store
 Connect. Content rights, all current age-rating questions, IDFA false, Free
 pricing, and USA-only availability also have provider readback. App Privacy
 publication, the account-level DSA determination, approved screenshots,
-physical-device acceptance, account-deletion proof, and iPhone-only provider
-compatibility remain open before submission.
+physical-device acceptance, and account-deletion proof remain open before
+submission. The iPhone-only provider compatibility gate is complete.
 
-The source now resolves `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO` alongside
-the existing iPhone-only family and Mac opt-out settings, and signed Build 28
-proves `UIDeviceFamily=[1]`. Apple still computes Build 28 as capable of running
-on Apple silicon Mac. That does not mean it should be offered there: use
-**Pricing and Availability** to deselect both the Apple Silicon Mac and Apple
-Vision Pro availability controls, save, reload, and preserve visual readback.
-The supported App Store Connect API exposes the computed build compatibility
-but not these two app-level choices.
+The source resolves `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO` alongside the
+iPhone-only family and Mac opt-out settings, and signed Build 28 proves
+`UIDeviceFamily=[1]`. Apple still computes the binary as capable of running on
+Apple silicon Mac, but the separate app-level choices are now saved and read
+back as unavailable for both Apple Silicon Mac and Apple Vision Pro. The
+supported App Store Connect API exposes computed build compatibility but not
+these choices, so the exact signed-in UI was saved, reloaded, checked through
+the accessibility tree, and preserved visually at
+`/Users/wall-e/Dev/Quipsly QA Artifacts/Capture Build 28/provider/app-store-iphone-only-availability-readback-20260805T2008Z.jpeg`
+(SHA-256 `6b2e473fac7085c470c97c9df38b94e0785f3c26767210d3c5c1d7a1b368f3fd`).
+
+Empty editable macOS and visionOS 1.0 platform records remain visible in the
+sidebar. They are not part of the iOS submission: Apple reviews app versions
+per platform and says one platform's version status does not influence another.
+Deleting those unused platform records is optional cleanup, not an iPhone
+release gate.
 
 Apple permits 1–10 screenshots. The canonical plan uses five portrait
 screenshots in one accepted 6.9-inch size, `1320 x 2868`, so App Store Connect
@@ -152,3 +160,6 @@ the JSON alone is not evidence.
 - [Current screenshot dimensions](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)
 - [App privacy management](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)
 - [Account deletion guidance](https://developer.apple.com/support/offering-account-deletion-in-your-app)
+- [Manage iPhone and iPad app availability on Apple Vision Pro](https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-apple-vision-pro/)
+- [Add or delete platform records](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms)
+- [Per-platform App Review submissions](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/overview-of-submitting-for-review)

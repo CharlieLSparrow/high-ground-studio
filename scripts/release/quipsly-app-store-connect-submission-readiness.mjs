@@ -408,7 +408,10 @@ export function summarizeSubmissionReadiness({
       visionAvailabilityApiVerifiable: false,
       desiredMacAvailability: metadata.compliance.compatibility.appleSiliconMac,
       desiredVisionAvailability: metadata.compliance.compatibility.appleVisionPro,
-      status: "manual-app-level-opt-out-required",
+      status: metadata.compliance.compatibility.status === "complete"
+        ? "complete-manual-ui-readback"
+        : "manual-app-level-opt-out-required",
+      providerReadback: metadata.compliance.compatibility.providerReadback || null,
     },
     version: {
       id: version.id,

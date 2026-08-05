@@ -381,13 +381,27 @@ export function validateAppStoreMetadata(
     errors.push("compliance.digitalServicesAct.status must remain requires-account-holder-approval until account-level verification is proved.");
   }
   const compatibility = isRecord(compliance.compatibility) ? compliance.compatibility : {};
+  const compatibilityReadback = isRecord(compatibility.providerReadback)
+    ? compatibility.providerReadback
+    : {};
   if (
     compatibility.iphone !== true
     || compatibility.appleSiliconMac !== false
     || compatibility.appleVisionPro !== false
-    || compatibility.status !== "source-correct-provider-opt-out-required"
+    || compatibility.status !== "complete"
+    || !Number.isFinite(Date.parse(compatibilityReadback.checkedAt))
+    || compatibilityReadback.surface !== "App Store Connect Pricing and Availability"
+    || compatibilityReadback.saveReloadReadback !== true
+    || compatibilityReadback.appleSiliconMacAvailable !== false
+    || compatibilityReadback.appleVisionProAvailable !== false
+    || typeof compatibilityReadback.evidenceArtifact !== "string"
+    || !/^Capture Build 28\/provider\/app-store-iphone-only-availability-readback-[0-9TZ]+\.jpeg$/.test(
+      compatibilityReadback.evidenceArtifact,
+    )
+    || typeof compatibilityReadback.evidenceSha256 !== "string"
+    || !/^[a-f0-9]{64}$/.test(compatibilityReadback.evidenceSha256)
   ) {
-    errors.push("compliance.compatibility must preserve the iPhone-only first-release posture until provider cleanup is proved.");
+    errors.push("compliance.compatibility must prove the saved-and-reloaded iPhone-only App Store provider state with exact visual evidence.");
   }
 
   if (screenshots.deviceClass !== "iPhone 6.9-inch") {

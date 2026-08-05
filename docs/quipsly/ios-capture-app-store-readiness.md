@@ -484,10 +484,11 @@ pnpm quipsly:capture:app-store-submission-readiness -- \
 
 Exit `2` means the read succeeded but submission is still blocked. This first
 auditor deliberately preserves the legal, privacy, physical-device, deletion,
-and compatibility gates as manual blockers even after every machine-readable
-provider check is green; it cannot itself authorize submission. Exit `0` is
-therefore reserved for a future evidence-complete contract that consumes those
-separate proofs. The operator has no mutation or submit mode and never prints
+and other manual gates even after every machine-readable provider check is
+green; it cannot itself authorize submission. The separately saved and
+reloaded compatibility receipt is now consumed as completed evidence. Exit `0`
+is therefore reserved for a future evidence-complete contract that consumes
+those separate proofs. The operator has no mutation or submit mode and never prints
 review contact details, demo credentials, screenshot upload capabilities, or
 API-key material.
 
@@ -503,12 +504,16 @@ editable 1.0 record. The bounded operator configured and Apple read back:
   automatic future-territory enablement off, and no blocking status for the
   available territory.
 
-The latest provider receipts are owner-only files at
+The latest API provider receipts are owner-only files at
 `/private/tmp/quipsly-app-store-build28-assignment.json` and
 `/private/tmp/quipsly-app-store-build28-readiness.json`. They report the exact
 Build 28 ID assigned and every machine-verifiable configuration check passing
-except the five absent approved screenshots. The remaining legal and
-real-device gates below stay deliberately manual.
+except the five absent approved screenshots. The provider-only Mac/Vision
+choices were independently saved and reloaded through App Store Connect on
+August 5; their owner-only visual receipt is
+`/Users/wall-e/Dev/Quipsly QA Artifacts/Capture Build 28/provider/app-store-iphone-only-availability-readback-20260805T2008Z.jpeg`
+at SHA-256 `6b2e473fac7085c470c97c9df38b94e0785f3c26767210d3c5c1d7a1b368f3fd`.
+The remaining legal and real-device gates below stay deliberately manual.
 
 The first exact-Build-28 screenshot run preserved four complete 1320x2868
 drafts and exposed a fifth-journey defect: the privacy controls existed below
@@ -540,24 +545,19 @@ The remaining release gates are therefore:
 3. Capture, visually approve, and upload all five planned largest-iPhone
    screenshots from the exact Build 28 experience with synthetic/private-safe
    content. Draft simulator compositions remain layout evidence only.
-4. In App Store Connect **Pricing and Availability**, deselect **Make this app
-   available** under **iPhone and iPad Apps on Apple Silicon Mac**, deselect
-   **Make this app available on Apple Vision Pro**, save, reload, and preserve
-   readback of both unchecked controls. Source and packaged device-family gates
-   do not prove these separate app-level choices.
-5. Install Build 28 from TestFlight on a physical iPhone and prove the Episode
+4. Install Build 28 from TestFlight on a physical iPhone and prove the Episode
    9 workspace opens without the prior crash, then prove microphone
    and camera permission/fidelity, front/back switching, pause/resume,
    interruptions, route loss, force-quit and offline recovery, direct upload,
    assembled playback, timeline alignment, and same-ID Nest/Studio readback.
-6. Join a Nest-issued LiveKit room and prove provider transport, CallKit audio
+5. Join a Nest-issued LiveKit room and prove provider transport, CallKit audio
    activation, and local recording stay visibly separate through failure and
    recovery. Provider egress must remain interlocked unless it explicitly
    enters release scope.
-7. Operate production account deletion with a disposable eligible account and
+6. Operate production account deletion with a disposable eligible account and
    independently read back Firebase, database, storage, email confirmation,
    retention, and completion evidence. A request row is not completion.
-8. Reconcile the signed archive privacy report, production Terms/Privacy/
+7. Reconcile the signed archive privacy report, production Terms/Privacy/
    deletion pages, reviewer notes, and published App Privacy answers before
    creating the review submission.
 

@@ -168,6 +168,8 @@ test("complete provider state still preserves manual legal and physical gates", 
   assert.equal(receipt.availability.complete, true);
   assert.equal(receipt.compatibility.iosBuildMacAppStoreCompatible, true);
   assert.equal(receipt.compatibility.macAvailabilityApiVerifiable, false);
+  assert.equal(receipt.compatibility.status, "complete-manual-ui-readback");
+  assert.equal(receipt.compatibility.providerReadback.saveReloadReadback, true);
   assert.deepEqual(
     receipt.blockers.map(({ code }) => code),
     [
@@ -175,8 +177,22 @@ test("complete provider state still preserves manual legal and physical gates", 
       "dsa-trader-manual-verification",
       "physical-build28-acceptance",
       "production-account-deletion-proof",
-      "device-compatibility-provider-cleanup",
     ],
+  );
+});
+
+test("preserves the compatibility blocker until manual provider evidence is complete", () => {
+  const fixture = completeFixture();
+  fixture.metadata = structuredClone(metadata);
+  fixture.metadata.compliance.compatibility.status = "source-correct-provider-opt-out-required";
+  delete fixture.metadata.compliance.compatibility.providerReadback;
+
+  const receipt = summarizeSubmissionReadiness(fixture);
+
+  assert.equal(receipt.compatibility.status, "manual-app-level-opt-out-required");
+  assert.equal(
+    receipt.blockers.some(({ code }) => code === "device-compatibility-provider-cleanup"),
+    true,
   );
 });
 
