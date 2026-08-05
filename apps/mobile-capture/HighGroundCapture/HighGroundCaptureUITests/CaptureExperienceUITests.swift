@@ -2437,12 +2437,12 @@ final class CaptureExperienceUITests: XCTestCase {
         chooseSession("preview-studio-group-ready")
         assertHandoff(
             sessionID: "preview-studio-group-ready",
-            expectedStatus: "2 sources ready",
+            expectedStatus: "2 masters ready",
             expectedActionIdentifier:
                 "CaptureAttachToStudioButton_preview-studio-group-ready",
             expectedActionLabel: "Attach group",
             expectedActionEnabled: true,
-            expectedDetail: "All 2 sources in this capture group passed exact-byte verification and can move to Studio together."
+            expectedDetail: "All 2 protected masters passed exact-byte verification and can move to Studio together."
         )
         app.buttons["CaptureAttachToStudioButton_preview-studio-group-ready"].tap()
         XCTAssertTrue(app.staticTexts["Preview mode shows the Studio handoff without changing media."].exists)
@@ -2450,23 +2450,23 @@ final class CaptureExperienceUITests: XCTestCase {
         chooseSession("preview-studio-group-partial")
         assertHandoff(
             sessionID: "preview-studio-group-partial",
-            expectedStatus: "1 of 2 in Studio",
+            expectedStatus: "1 of 2 masters in Studio",
             expectedActionIdentifier:
                 "CaptureAttachToStudioButton_preview-studio-group-partial",
             expectedActionLabel: "Attach group",
             expectedActionEnabled: true,
-            expectedDetail: "1 of 2 capture-group sources reached Studio. Retry safely to continue the exact same handoff."
+            expectedDetail: "1 of 2 protected masters reached Studio. Retry safely to continue the exact same handoff."
         )
 
         chooseSession("preview-studio-group-complete")
         assertHandoff(
             sessionID: "preview-studio-group-complete",
-            expectedStatus: "2 sources in Studio",
+            expectedStatus: "2 masters in Studio",
             expectedActionIdentifier:
                 "CaptureOpenStudioReviewLink_preview-studio-group-complete",
             expectedActionLabel: "Review group sync",
             expectedActionEnabled: true,
-            expectedDetail: "The complete 2-source capture group is attached to Studio. Every original remains immutable capture evidence."
+            expectedDetail: "The complete 2-master capture group is attached to Studio. Every original remains immutable capture evidence."
         )
     }
 

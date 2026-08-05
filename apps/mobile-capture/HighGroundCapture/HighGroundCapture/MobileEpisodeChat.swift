@@ -4,7 +4,10 @@ import SwiftUI
 
 struct MobileChatPersistedLiveHint: Codable, Hashable {
     static let schemaVersion = "quipsly-chat-persisted-hint.v1"
-    static let topic = "quipsly.chat.persisted.v1"
+    // LiveKit delivers data messages through a nonisolated delegate callback.
+    // This immutable wire identifier is safe to read there without hopping to
+    // the UI actor; decoding and published state updates still occur on MainActor.
+    nonisolated static let topic = "quipsly.chat.persisted.v1"
     private static let allowedKeys: Set<String> = [
         "schema", "threadKey", "messageId", "persistedAt",
     ]
