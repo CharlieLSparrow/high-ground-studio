@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -34,17 +37,22 @@ test("HGO Cloud Build is normalized, immutable, cached, and digest-verified", ()
 });
 
 test("HGO context contains every manifest input and excludes other products", () => {
-  const manifest = JSON.parse(
-    readFileSync("release/manifests/hgo-web.json", "utf8"),
-  );
-  assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.id, "hgo-web");
-  assert.equal(manifest.artifact.provenanceReceipt, "hgo-web-release-source.json");
-  for (const requiredPath of manifest.releaseContext.requiredPaths) {
-    assert.equal(existsSync(requiredPath), true, `missing ${requiredPath}`);
+  const testRoot = mkdtempSync(path.join(tmpdir(), "hgo-web-context-readiness-"));
+  const context = path.join(testRoot, "context");
+  try {
+    execFileSync("bash", ["scripts/release/materialize-release-context.sh", "hgo-web", "HEAD", context], { stdio: "pipe" });
+    const manifest = JSON.parse(readFileSync(path.join(context, "release/manifests/hgo-web.json"), "utf8"));
+    assert.equal(manifest.schemaVersion, 1);
+    assert.equal(manifest.id, "hgo-web");
+    assert.equal(manifest.artifact.provenanceReceipt, "hgo-web-release-source.json");
+    for (const requiredPath of manifest.releaseContext.requiredPaths) {
+      assert.equal(existsSync(path.join(context, requiredPath)), true, `missing ${requiredPath}`);
+    }
+    assert.equal(existsSync(path.join(context, ".git")), false);
+    assert.equal(existsSync(path.join(context, "apps/quipsly/src")), false);
+    assert.equal(existsSync(path.join(context, "apps/QuipslyStudio")), false);
+    assert.equal(existsSync(path.join(context, "apps/mobile-capture")), false);
+  } finally {
+    if (existsSync(path.join(context, ".quipsly-release-context"))) rmSync(testRoot, { recursive: true, force: true });
   }
-  assert.equal(existsSync(".git"), false);
-  assert.equal(existsSync("apps/quipsly/src"), false);
-  assert.equal(existsSync("apps/QuipslyStudio"), false);
-  assert.equal(existsSync("apps/mobile-capture"), false);
 });

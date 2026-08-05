@@ -1759,9 +1759,9 @@ function checkTranscriptCorrectionContractSources() {
       && captureGroupEditorFocusText.includes("No placement or episode-spine decision has been made.")
       && captureGroupEditorFocusText.includes("captureGroupEditorFocusPlan")
       && captureUITestText.includes("testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates")
-      && captureUITestText.includes('expectedStatus: "2 sources ready"')
-      && captureUITestText.includes('expectedStatus: "1 of 2 in Studio"')
-      && captureUITestText.includes('expectedStatus: "2 sources in Studio"'),
+      && captureUITestText.includes('expectedStatus: "2 masters ready"')
+      && captureUITestText.includes('expectedStatus: "1 of 2 masters in Studio"')
+      && captureUITestText.includes('expectedStatus: "2 masters in Studio"'),
     "completeCaptureGroupStudioHandoff",
     "iPhone and Nest attach every required protected master from the newest podcast take as one exact source-set snapshot, preserve every original, optionally include only reconciled provider media as a non-blocking sync and recovery witness, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
   );
