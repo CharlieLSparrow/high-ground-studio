@@ -139,6 +139,13 @@ test("preview deploy mounts internal proxy credentials from Secret Manager", () 
   );
 });
 
+test("preview deploy keeps provider recording behind the explicit release interlock", () => {
+  assert.match(
+    deploy,
+    /--update-env-vars="[^"]*LIVEKIT_EGRESS_ENABLED=false/,
+  );
+});
+
 test("manual Studio workflow installs pinned tooling and preserves the exact-source preview boundary", () => {
   assert.match(
     cloudRunWorkflow,
