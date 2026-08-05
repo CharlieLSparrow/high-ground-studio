@@ -53,6 +53,17 @@ test("every Episode receives a dedicated manuscript document", () => {
   assert.match(source, /ensureDocument: !episodeDocument/);
 });
 
+test("verified Google linking is independent from rehearsal artifact repair", () => {
+  assert.match(
+    source,
+    /state\.guest\?\.isActive\s*&&\s*!guestFirebaseLinked/,
+  );
+  assert.doesNotMatch(
+    source,
+    /guestJustInTimeGoogleLinkReady[\s\S]{0,240}Object\.values\(plan\)/,
+  );
+});
+
 test("staging recognizes only the exact seed for the current Episode title", () => {
   assert.match(
     stagingSource,

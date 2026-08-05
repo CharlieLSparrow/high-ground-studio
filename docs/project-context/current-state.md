@@ -2,6 +2,19 @@
 
 Date: 2026-08-05
 
+## Rehearsal authentication and Mac signing checkpoint
+
+- Guest Google-link readiness is now independent from Episode artifact staging:
+  an active pre-created guest without a Firebase binding reports
+  `AWAITING_FIRST_VERIFIED_GOOGLE_SIGN_IN` even while a manuscript document or
+  other rehearsal artifact still needs repair. Firebase still requires the
+  first real Google token to carry the exact verified invited email before the
+  identity is bound; Quipsly does not send another verification email. The
+  canonical Quipsly Studio Mac build now declares and verifies its signed
+  data-protection Keychain group, and the rebuilt native account agent passed
+  all boundary checks. See
+  `docs/coordination/2026-08-05-rehearsal-auth-and-mac-signing.md`.
+
 ## Audio master delivery-candidate checkpoint
 
 - Verified local mastery previews now have a separate append-only promotion and

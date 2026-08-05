@@ -880,8 +880,7 @@ function receipt(options, state, mode, operations, liveApi) {
   const guestFirebaseLinked = Boolean(state.guest?.firebaseUid);
   const guestJustInTimeGoogleLinkReady = Boolean(
     state.guest?.isActive
-      && !guestFirebaseLinked
-      && Object.values(plan).every((operationRequired) => !operationRequired),
+      && !guestFirebaseLinked,
   );
   const hostParticipant = state.room?.participants.find(
     (participant) => participant.userId === state.host?.id,

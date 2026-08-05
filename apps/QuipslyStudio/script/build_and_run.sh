@@ -68,6 +68,8 @@ verify_app_signature() {
 
   local signing_info
   local actual_team_id
+  local actual_keychain_group
+  local expected_keychain_group="$EXPECTED_TEAM_ID.$APP_BUNDLE_ID"
   signing_info="$(codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1)"
   actual_team_id="$(
     printf '%s\n' "$signing_info" \
@@ -80,7 +82,18 @@ verify_app_signature() {
     return 1
   fi
 
-  echo "$APP_DISPLAY_NAME signature verified for Team $actual_team_id."
+  actual_keychain_group="$(
+    codesign -d --entitlements :- "$APP_BUNDLE" 2>/dev/null \
+      | plutil -extract 'keychain-access-groups.0' raw -o - - 2>/dev/null \
+      || true
+  )"
+  if [[ "$actual_keychain_group" != "$expected_keychain_group" ]]; then
+    echo "$APP_DISPLAY_NAME must carry data-protection Keychain group $expected_keychain_group; observed ${actual_keychain_group:-missing}." >&2
+    echo "Regenerate the Xcode project from project.yml or repair CODE_SIGN_ENTITLEMENTS before trusting native account continuity." >&2
+    return 1
+  fi
+
+  echo "$APP_DISPLAY_NAME signature and Keychain group verified for Team $actual_team_id."
 }
 
 open_app() {

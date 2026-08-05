@@ -21,6 +21,12 @@ const captureLauncherSmokeShell = await readFile(
   ),
   "utf8",
 );
+const [studioProjectSpec, studioProjectFile, studioBuildShell, nativeAccountSmokeShell] = await Promise.all([
+  readFile(new URL("../apps/QuipslyStudio/project.yml", import.meta.url), "utf8"),
+  readFile(new URL("../apps/QuipslyStudio/QuipslyStudio.xcodeproj/project.pbxproj", import.meta.url), "utf8"),
+  readFile(new URL("../apps/QuipslyStudio/script/build_and_run.sh", import.meta.url), "utf8"),
+  readFile(new URL("../apps/QuipslyStudio/script/smoke_native_account_control.sh", import.meta.url), "utf8"),
+]);
 
 function fixture(overrides = {}) {
   const base = {
@@ -166,6 +172,20 @@ test("pnpm argument separator reaches the live preflight harmlessly", () => {
     livePreflightShell,
     /case "\$1" in\s+--\)\s+shift\s+;;/,
   );
+});
+
+test("canonical Mac generation and build preserve the native-account Keychain group", () => {
+  assert.match(
+    studioProjectSpec,
+    /CODE_SIGN_ENTITLEMENTS: Sources\/QuipslyMac\/QuipslyMac\.entitlements/,
+  );
+  assert.equal(
+    (studioProjectFile.match(/CODE_SIGN_ENTITLEMENTS = Sources\/QuipslyMac\/QuipslyMac\.entitlements;/g) ?? []).length,
+    2,
+  );
+  assert.match(studioBuildShell, /expected_keychain_group="\$EXPECTED_TEAM_ID\.\$APP_BUNDLE_ID"/);
+  assert.match(studioBuildShell, /keychain-access-groups\.0/);
+  assert.match(nativeAccountSmokeShell, /dataProtectionKeychainEntitled/);
 });
 
 test("open public beta plus staged room is ready to begin human rehearsal", () => {

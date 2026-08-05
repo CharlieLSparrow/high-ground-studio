@@ -32,6 +32,7 @@ targets:
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
         GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_ENTITLEMENTS: Sources/QuipslyMac/QuipslyMac.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Quipsly Studio
         INFOPLIST_KEY_CFBundleName: Quipsly Studio
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
