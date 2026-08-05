@@ -26,6 +26,10 @@ Date: 2026-08-05
   and exact-source database reconciliation. The cloud fixture is green, but
   the new processor image and Nest route are not deployed yet; production
   cloud analysis is therefore not claimed yet.
+- Guided Sync now treats source offset as signed. If a phone or camera began
+  before the selected spine, Quipsly preserves that measured relationship and
+  normalizes it into target-source trim plus a nonnegative timeline start;
+  the prior zero clamp could have hidden a real early source and is removed.
 - Guided Sync no longer forces automation to impersonate a human listener.
   Human approval remains the default, while a signed-in staff delegator can
   authorize one bounded agent qualification backed by exact source hashes and

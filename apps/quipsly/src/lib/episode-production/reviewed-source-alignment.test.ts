@@ -234,6 +234,40 @@ describe("reviewed source alignment", () => {
     expect(reviewedSourceAlignment({ sync: { alignmentReview: review } })).toEqual(review);
   });
 
+  it("normalizes a negative exact-source offset into source trim without losing its sign", () => {
+    const evidence = delegatedAgentEvidence();
+    evidence.opening.expectedSpineStartSeconds = 9.65;
+    evidence.opening.measuredSpineStartSeconds = 9.65;
+    evidence.opening.measuredOffsetSeconds = -0.35;
+    evidence.later.expectedSpineStartSeconds = 1_809.65;
+    evidence.later.measuredSpineStartSeconds = 1_809.686;
+    evidence.later.measuredOffsetSeconds = -0.314;
+    const review = buildReviewedSourceAlignment(reviewInput({
+      anchorTimelineSeconds: 0,
+      targetSourceSeconds: 0.35,
+      signedOffsetSeconds: -0.35,
+      humanApprovalConfirmed: false,
+      authorizedAgentQualificationConfirmed: true,
+      approvalAuthority: {
+        kind: "authorized-agent",
+        agentId: "codex-quipsly-media-review",
+        delegationScope: "Exact-source reversible alignment for this retained QA take only.",
+        qualificationMethod: "normalized-fft-cross-correlation-v1",
+        evidence,
+      },
+    }));
+
+    expect(review).toMatchObject({
+      schema: "quipsly-reviewed-source-alignment-v3",
+      placement: {
+        anchorTimelineSeconds: 0,
+        targetSourceSeconds: 0.35,
+        signedOffsetSeconds: -0.35,
+      },
+    });
+    expect(reviewedSourceAlignment({ sync: { alignmentReview: review } })).toEqual(review);
+  });
+
   it("rejects agent qualification when evidence source bytes or drift are changed", () => {
     const evidence = delegatedAgentEvidence();
     expect(() => buildReviewedSourceAlignment(reviewInput({

@@ -130,7 +130,7 @@ export function parseAudioAlignmentJob(value: unknown, expectedJobId?: string): 
     spine,
     target,
     proposal: {
-      initialOffsetSeconds: bounded(proposal.initialOffsetSeconds, 0, 86_400, "initialOffsetSeconds"),
+      initialOffsetSeconds: bounded(proposal.initialOffsetSeconds, -86_400, 86_400, "initialOffsetSeconds"),
       openingTargetSeconds: bounded(proposal.openingTargetSeconds, 0, 86_400, "openingTargetSeconds"),
       laterTargetSeconds: bounded(proposal.laterTargetSeconds, 0, 86_400, "laterTargetSeconds"),
       windowSeconds: bounded(proposal.windowSeconds, 1, 30, "windowSeconds"),

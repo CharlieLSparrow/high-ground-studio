@@ -66,6 +66,11 @@ external account, render, publication, or physical device was changed.
 - GCS two-source manifest/queue worker fixture: 2/2 passed, including
   generation-bound materialization, evidence-only completion, queue removal,
   and terminal failure when one immutable generation is unavailable.
+- A credentialed bucket fixture exposed and repaired a signed-offset boundary:
+  sources that started before the spine now retain their negative measured
+  relationship, preview from a normalized source seek, and become a
+  nonnegative timeline clip with explicit leading-source trim. They are never
+  silently clamped to zero.
 - Reviewed-alignment and editor suites: 26 focused assertions passed before the
   retained operation, including agent source/drift tamper rejection.
 - Media-processing, media-processor, and Quipsly TypeScript checks passed.

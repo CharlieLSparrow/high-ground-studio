@@ -1117,7 +1117,12 @@ function clipOverlapsRange(clip: TimelineClip, startIn: number, duration: number
 function smartImportedAssetPlacement(asset: ImportedMediaAsset, clips: TimelineClip[], playheadSeconds: number) {
   const kind = importedAssetKind(asset);
   const startIn = roundSeconds(Math.max(0, playheadSeconds));
-  const duration = 30;
+  const reviewedPlacement = asObject(asObject(asset.sync?.alignmentReview)?.placement);
+  const reviewedTargetSourceSeconds = Number(reviewedPlacement?.targetSourceSeconds);
+  const sourceStart = Number.isFinite(reviewedTargetSourceSeconds)
+    ? Math.max(0, roundSeconds(reviewedTargetSourceSeconds))
+    : 0;
+  const duration = Math.max(0.05, roundSeconds(30 - sourceStart));
   const suggestedTrackId = normalizeSuggestedTrackId(asset.sync?.suggestedTrackId);
   const existingCompatibleTrackIds = sortedUniqueTrackIds(
     clips
@@ -1144,6 +1149,7 @@ function smartImportedAssetPlacement(asset: ImportedMediaAsset, clips: TimelineC
     trackId,
     startIn,
     duration,
+    sourceStart,
     name: cleanImportedClipName(asset),
     avoidedOverlap: trackId !== suggestedTrackId && trackId !== defaultTrackId,
   };
@@ -1981,6 +1987,11 @@ function formatSyncClock(seconds: number) {
   return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
     .toString()
     .padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
+}
+
+function formatSignedSyncOffset(seconds: number) {
+  const safe = Number.isFinite(seconds) ? seconds : 0;
+  return `${safe < 0 ? "−" : "+"}${formatSyncClock(Math.abs(safe))}`;
 }
 
 function humanizeSlug(value: string) {
@@ -5364,8 +5375,8 @@ function CloudEditorContent() {
       trackId: placement.trackId,
       startIn: placement.startIn,
       duration: placement.duration,
-      sourceStart: 0,
-      sourceEnd: placement.duration,
+      sourceStart: placement.sourceStart,
+      sourceEnd: placement.sourceStart + placement.duration,
       name: placement.name,
       color: importedAssetColor(asset),
     };
@@ -5475,7 +5486,7 @@ function CloudEditorContent() {
   const nudgeSyncWizardAnchor = useCallback((deltaSeconds: number) => {
     setSyncWizardAnchorSeconds((value) => {
       setSyncWizardPreviousAnchorSeconds(value);
-      return Math.max(0, roundSeconds(value + deltaSeconds));
+      return Math.max(-86_400, Math.min(86_400, roundSeconds(value + deltaSeconds)));
     });
   }, []);
 
@@ -5506,9 +5517,11 @@ function CloudEditorContent() {
     spine?.pause();
     target?.pause();
     if (spine) spine.currentTime = Math.max(0, roundSeconds(syncWizardAnchorSeconds));
-    if (target) target.currentTime = 0;
+    if (target) target.currentTime = Math.max(0, roundSeconds(-syncWizardAnchorSeconds));
     setSyncPreviewState("ready");
-    setSyncPreviewMessage(`Reset to spine ${formatSyncClock(syncWizardAnchorSeconds)} + target 00:00.000.`);
+    setSyncPreviewMessage(
+      `Reset to signed offset ${formatSignedSyncOffset(syncWizardAnchorSeconds)}: spine ${formatSyncClock(Math.max(0, syncWizardAnchorSeconds))} + target ${formatSyncClock(Math.max(0, -syncWizardAnchorSeconds))}.`,
+    );
   }, [syncWizardAnchorSeconds]);
 
   const previewSyncFromAnchor = useCallback(async () => {
@@ -5531,7 +5544,7 @@ function CloudEditorContent() {
       spine.pause();
       target.pause();
       spine.currentTime = Math.max(0, roundSeconds(syncWizardAnchorSeconds));
-      target.currentTime = 0;
+      target.currentTime = Math.max(0, roundSeconds(-syncWizardAnchorSeconds));
 
       const results = await Promise.allSettled([spine.play(), target.play()]);
       const rejected = results.find((result) => result.status === "rejected");
@@ -5547,7 +5560,7 @@ function CloudEditorContent() {
 
       setSyncPreviewState("playing");
       setSyncPreviewMessage(
-        `Previewing spine at ${formatSyncClock(syncWizardAnchorSeconds)} against target at 00:00.000. If the target feels early or late, use the nudge buttons.`
+        `Previewing signed offset ${formatSignedSyncOffset(syncWizardAnchorSeconds)}: spine ${formatSyncClock(Math.max(0, syncWizardAnchorSeconds))} against target ${formatSyncClock(Math.max(0, -syncWizardAnchorSeconds))}. If the target feels early or late, use the nudge buttons.`
       );
     } catch (error) {
       console.warn("Sync preview failed.", error);
@@ -5571,7 +5584,9 @@ function CloudEditorContent() {
     }
 
     setIsSavingAlignmentReview(true);
-    setMediaImportStatus(`Saving the reviewed placement for ${syncWizardTargetAsset.originalName} at ${formatSyncClock(syncWizardAnchorSeconds)}...`);
+    const targetTimelineSeconds = Math.max(0, roundSeconds(syncWizardAnchorSeconds));
+    const targetSourceSeconds = Math.max(0, roundSeconds(-syncWizardAnchorSeconds));
+    setMediaImportStatus(`Saving the reviewed ${formatSignedSyncOffset(syncWizardAnchorSeconds)} source relationship for ${syncWizardTargetAsset.originalName}...`);
 
     try {
       const response = await fetch("/api/episode-production/import-media", {
@@ -5585,7 +5600,7 @@ function CloudEditorContent() {
           assetId: syncWizardTargetAsset.id,
           spineAssetId: syncWizardSpineAsset.id,
           status: "synced",
-          anchorTimelineSeconds: roundSeconds(syncWizardAnchorSeconds),
+          anchorTimelineSeconds: targetTimelineSeconds,
           targetClipId: selectedClip?.id,
           alignmentReview: {
             waveformCorrelationConfirmed: syncReviewWaveformConfirmed,
@@ -5595,6 +5610,8 @@ function CloudEditorContent() {
               parsedSyncReviewIntervalSeconds,
             residualDriftMilliseconds:
               parsedSyncReviewResidualMilliseconds,
+            signedOffsetSeconds: roundSeconds(syncWizardAnchorSeconds),
+            targetSourceSeconds,
             notes: syncReviewNotes,
           },
         }),
@@ -5611,8 +5628,8 @@ function CloudEditorContent() {
           updatedAt: payload.updatedAt ?? previous.updatedAt,
         }
         : previous);
-      setCurrentTime(roundSeconds(syncWizardAnchorSeconds));
-      setMediaImportStatus(`${syncWizardTargetAsset.originalName} has a reviewer-bound, reversible placement at ${formatSyncClock(syncWizardAnchorSeconds)}.`);
+      setCurrentTime(targetTimelineSeconds);
+      setMediaImportStatus(`${syncWizardTargetAsset.originalName} has a reviewer-bound, reversible ${formatSignedSyncOffset(syncWizardAnchorSeconds)} relationship; its normalized timeline start is ${formatSyncClock(targetTimelineSeconds)} with ${formatSyncClock(targetSourceSeconds)} source trim.`);
     } catch (error) {
       console.warn("Could not save guided sync alignment.", error);
       setMediaImportStatus(error instanceof Error ? error.message : "Could not save guided sync alignment.");
@@ -6107,7 +6124,7 @@ function CloudEditorContent() {
 
   const loadExactAlignmentEvidence = useCallback((evidence: AudioAlignmentEvidence) => {
     setSyncWizardPreviousAnchorSeconds(syncWizardAnchorSeconds);
-    setSyncWizardAnchorSeconds(Math.max(0, roundSeconds(evidence.opening.measuredOffsetSeconds)));
+    setSyncWizardAnchorSeconds(roundSeconds(evidence.opening.measuredOffsetSeconds));
     setSyncReviewIntervalSeconds(String(evidence.drift.observationIntervalSeconds));
     setSyncReviewResidualMilliseconds(String(evidence.drift.residualDriftMilliseconds));
     setSyncReviewWaveformConfirmed(false);
@@ -6117,7 +6134,7 @@ function CloudEditorContent() {
       `Exact-source analyzer ${evidence.analyzer.algorithm}: opening r=${evidence.opening.normalizedCorrelation.toFixed(4)}, later r=${evidence.later.normalizedCorrelation.toFixed(4)}, peak margins ${evidence.opening.peakMargin.toFixed(4)}/${evidence.later.peakMargin.toFixed(4)}.`,
     );
     setMediaImportStatus(
-      `Loaded the measured ${formatSyncClock(evidence.opening.measuredOffsetSeconds)} placement and ${evidence.drift.residualDriftMilliseconds.toFixed(3)} ms late residual. Preview and review remain required; no timeline placement changed.`,
+      `Loaded the measured ${formatSignedSyncOffset(evidence.opening.measuredOffsetSeconds)} source relationship and ${evidence.drift.residualDriftMilliseconds.toFixed(3)} ms late residual. Preview and review remain required; no timeline placement changed.`,
     );
   }, [syncWizardAnchorSeconds]);
 
@@ -6158,7 +6175,7 @@ function CloudEditorContent() {
           targetAssetId: syncWizardTargetAsset.id,
           targetSourceId: syncWizardTargetAsset.sourceId,
           ...(action === "queue" ? {
-            initialOffsetSeconds: Math.max(0, roundSeconds(syncWizardAnchorSeconds)),
+            initialOffsetSeconds: roundSeconds(syncWizardAnchorSeconds),
             openingTargetSeconds,
             laterTargetSeconds,
             windowSeconds,
@@ -9324,9 +9341,9 @@ function CloudEditorContent() {
                 <div className="rounded-lg border border-[#e8dcc4] bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="font-black text-[#3d3122]">3. Rough timeline anchor</div>
+                      <div className="font-black text-[#3d3122]">3. Rough signed source offset</div>
                       <div className="mt-1 font-mono text-[11px] text-[#8c6b4a]">
-                        Target starts at {formatSyncClock(syncWizardAnchorSeconds)}. Playhead is {formatSyncClock(currentTime)}.
+                        Spine time minus target time: {formatSignedSyncOffset(syncWizardAnchorSeconds)}. Playhead is {formatSyncClock(currentTime)}.
                       </div>
                     </div>
                     <button
@@ -9342,12 +9359,13 @@ function CloudEditorContent() {
                   </div>
                   <input
                     type="number"
-                    min="0"
+                    min="-86400"
+                    max="86400"
                     step="0.1"
                     value={syncWizardAnchorSeconds}
                     onChange={(event) => {
                       setSyncWizardPreviousAnchorSeconds(syncWizardAnchorSeconds);
-                      setSyncWizardAnchorSeconds(Math.max(0, roundSeconds(Number(event.target.value) || 0)));
+                      setSyncWizardAnchorSeconds(Math.max(-86_400, Math.min(86_400, roundSeconds(Number(event.target.value) || 0))));
                     }}
                     className="mt-3 w-full rounded-lg border border-[#d8b777] bg-white px-3 py-2 font-mono text-[#3d3122]"
                   />
@@ -9376,21 +9394,21 @@ function CloudEditorContent() {
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] p-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Spine starts</div>
-                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(syncWizardAnchorSeconds)}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Spine preview seeks</div>
+                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(Math.max(0, syncWizardAnchorSeconds))}</div>
                     </div>
                     <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] p-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Target starts</div>
-                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(0)}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Target preview seeks</div>
+                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(Math.max(0, -syncWizardAnchorSeconds))}</div>
                     </div>
                     <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-800">Current offset</div>
-                      <div className="mt-1 font-mono text-xl font-black text-sky-950">+{formatSyncClock(syncWizardAnchorSeconds)}</div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-800">Signed offset</div>
+                      <div className="mt-1 font-mono text-xl font-black text-sky-950">{formatSignedSyncOffset(syncWizardAnchorSeconds)}</div>
                     </div>
                   </div>
 
                   <div className="mt-2 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2 text-[11px] font-bold leading-5 text-[#6f5336]">
-                    Translation: when you click preview, the spine jumps to {formatSyncClock(syncWizardAnchorSeconds)} and the target starts at 00:00.000. If the target moment sounds late, move it earlier. If it sounds early, move it later.
+                    Positive means the target begins later on the spine timeline. Negative means the target started first, so preview trims its leading source time instead of inventing a negative timeline clip. If the target moment sounds late, move it earlier; if it sounds early, move it later.
                   </div>
 
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -9571,7 +9589,7 @@ function CloudEditorContent() {
                           <div className="mt-3 grid gap-2 sm:grid-cols-4">
                             <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Opening peak</div><div className="mt-1 font-mono text-sm font-black">r={audioSourceAlignmentStatus.evidence.opening.normalizedCorrelation.toFixed(4)}</div></div>
                             <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Later peak</div><div className="mt-1 font-mono text-sm font-black">r={audioSourceAlignmentStatus.evidence.later.normalizedCorrelation.toFixed(4)}</div></div>
-                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Measured anchor</div><div className="mt-1 font-mono text-sm font-black">{formatSyncClock(audioSourceAlignmentStatus.evidence.opening.measuredOffsetSeconds)}</div></div>
+                            <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Signed offset</div><div className="mt-1 font-mono text-sm font-black">{formatSignedSyncOffset(audioSourceAlignmentStatus.evidence.opening.measuredOffsetSeconds)}</div></div>
                             <div className="rounded-lg border border-cyan-200 bg-white p-2"><div className="text-[9px] font-black uppercase tracking-wide text-cyan-700">Late residual</div><div className="mt-1 font-mono text-sm font-black">{audioSourceAlignmentStatus.evidence.drift.residualDriftMilliseconds.toFixed(3)} ms</div></div>
                           </div>
                         ) : null}
@@ -9644,7 +9662,7 @@ function CloudEditorContent() {
                       <div className="mt-1">
                         {syncWizardSavedReview.approvalAuthority?.kind === "authorized-agent"
                           ? `${syncWizardSavedReview.approvalAuthority.agentId} qualified`
-                          : `${syncWizardSavedReview.reviewer.name} approved`} {formatSyncClock(syncWizardSavedReview.placement.anchorTimelineSeconds)}
+                          : `${syncWizardSavedReview.reviewer.name} approved`} {formatSignedSyncOffset(syncWizardSavedReview.placement.signedOffsetSeconds ?? syncWizardSavedReview.placement.anchorTimelineSeconds)}
                         {" "}on {new Date(syncWizardSavedReview.reviewedAt).toLocaleString()} using {syncWizardSavedReview.sourceEvidence.strength === "sha256-pair" ? "two verified SHA-256 identities" : "stable source identities"}.
                       </div>
                       {syncWizardSavedReview.approvalAuthority?.kind === "authorized-agent" && (

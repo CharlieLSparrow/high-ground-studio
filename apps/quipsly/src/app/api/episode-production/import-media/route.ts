@@ -410,7 +410,11 @@ function buildTimelineClipForAsset(
   requestedPlayheadSeconds: number | undefined,
 ) {
   const kind = clipKindForAsset(asset);
-  const duration = durationForTimelineAsset(asset);
+  const reviewedPlacement = asRecord(asRecord(asRecord(asset.sync).alignmentReview).placement);
+  const reviewedTargetSourceSeconds = numericSyncField(reviewedPlacement, "targetSourceSeconds");
+  const sourceStart = Math.max(0, reviewedTargetSourceSeconds ?? 0);
+  const sourceDuration = durationForTimelineAsset(asset);
+  const duration = Math.max(0.05, sourceDuration - sourceStart);
   const preferredTrackId = requestedTrackId ?? defaultTrackForKind(kind, clips);
   const afterLast = placement === "after-last";
   const startIn = afterLast
@@ -429,8 +433,8 @@ function buildTimelineClipForAsset(
     trackId,
     startIn: Number(startIn.toFixed(3)),
     duration: Number(duration.toFixed(3)),
-    sourceStart: 0,
-    sourceEnd: Number(duration.toFixed(3)),
+    sourceStart: Number(sourceStart.toFixed(3)),
+    sourceEnd: Number((sourceStart + duration).toFixed(3)),
     name: optionalString(asset.originalName) ?? `${kind === "audio" ? "Audio" : "Video"} import`,
     color: kind === "audio" ? "#4f8f72" : "#4178be",
     kind,
@@ -1555,6 +1559,8 @@ export async function PATCH(request: Request) {
           spineAsset,
           targetClipId,
           anchorTimelineSeconds,
+          targetSourceSeconds: review.targetSourceSeconds,
+          signedOffsetSeconds: review.signedOffsetSeconds,
           waveformCorrelationConfirmed:
             review.waveformCorrelationConfirmed,
           driftReviewConfirmed: review.driftReviewConfirmed,

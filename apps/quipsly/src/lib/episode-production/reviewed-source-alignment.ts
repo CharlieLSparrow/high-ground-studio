@@ -9,13 +9,14 @@ import {
 
 const REVIEW_SCHEMA = "quipsly-reviewed-source-alignment-v1";
 const AGENT_REVIEW_SCHEMA = "quipsly-reviewed-source-alignment-v2";
+const NORMALIZED_OFFSET_REVIEW_SCHEMA = "quipsly-reviewed-source-alignment-v3";
 const REVIEW_METHOD = "human-waveform-and-drift-review-v1";
 const AGENT_REVIEW_METHOD = "authorized-agent-waveform-and-drift-qualification-v1";
 
 type JsonRecord = Record<string, unknown>;
 
 export type ReviewedSourceAlignment = {
-  schema: typeof REVIEW_SCHEMA | typeof AGENT_REVIEW_SCHEMA;
+  schema: typeof REVIEW_SCHEMA | typeof AGENT_REVIEW_SCHEMA | typeof NORMALIZED_OFFSET_REVIEW_SCHEMA;
   reviewId: string;
   status: "placement-approved";
   method: typeof REVIEW_METHOD | typeof AGENT_REVIEW_METHOD;
@@ -28,7 +29,8 @@ export type ReviewedSourceAlignment = {
   };
   placement: {
     anchorTimelineSeconds: number;
-    targetSourceSeconds: 0;
+    targetSourceSeconds: number;
+    signedOffsetSeconds?: number;
     targetClipId: string | null;
   };
   sourceEvidence: {
@@ -190,6 +192,8 @@ export function buildReviewedSourceAlignment(input: {
   spineAsset: unknown;
   targetClipId?: unknown;
   anchorTimelineSeconds: unknown;
+  targetSourceSeconds?: unknown;
+  signedOffsetSeconds?: unknown;
   waveformCorrelationConfirmed: unknown;
   driftReviewConfirmed: unknown;
   humanApprovalConfirmed: unknown;
@@ -238,6 +242,10 @@ export function buildReviewedSourceAlignment(input: {
   }
 
   const anchorTimelineSeconds = finiteNumber(input.anchorTimelineSeconds);
+  const targetSourceSeconds = finiteNumber(input.targetSourceSeconds ?? 0);
+  const signedOffsetSeconds = finiteNumber(
+    input.signedOffsetSeconds ?? anchorTimelineSeconds,
+  );
   const observationIntervalSeconds = finiteNumber(
     input.driftObservationIntervalSeconds,
   );
@@ -248,6 +256,12 @@ export function buildReviewedSourceAlignment(input: {
     anchorTimelineSeconds === null
     || anchorTimelineSeconds < 0
     || anchorTimelineSeconds > 86_400
+    || targetSourceSeconds === null
+    || targetSourceSeconds < 0
+    || targetSourceSeconds > 86_400
+    || signedOffsetSeconds === null
+    || Math.abs(signedOffsetSeconds) > 86_400
+    || Math.abs(anchorTimelineSeconds - targetSourceSeconds - signedOffsetSeconds) > 0.001
   ) {
     throw new ReviewedSourceAlignmentError(
       "The reviewed timeline anchor must be between 0 and 24 hours.",
@@ -317,7 +331,7 @@ export function buildReviewedSourceAlignment(input: {
       || evidence.target.sha256 !== target.sha256
       || Math.abs(evidence.drift.observationIntervalSeconds - observationIntervalSeconds) > 0.000001
       || Math.abs(evidence.drift.residualDriftMilliseconds - residualDriftMilliseconds) > 0.000001
-      || Math.abs(evidence.opening.measuredOffsetSeconds - anchorTimelineSeconds) > 0.001
+      || Math.abs(evidence.opening.measuredOffsetSeconds - signedOffsetSeconds) > 0.001
     ) {
       throw new ReviewedSourceAlignmentError(
         "Authorized agent evidence does not match the selected sources, reviewed placement, drift measurement, or delegation scope.",
@@ -340,8 +354,13 @@ export function buildReviewedSourceAlignment(input: {
   }
 
   const notes = text(input.notes).slice(0, 2_000) || null;
+  const normalizedSignedPlacement = targetSourceSeconds > 0 || signedOffsetSeconds < 0;
   return {
-    schema: isAuthorizedAgent ? AGENT_REVIEW_SCHEMA : REVIEW_SCHEMA,
+    schema: normalizedSignedPlacement
+      ? NORMALIZED_OFFSET_REVIEW_SCHEMA
+      : isAuthorizedAgent
+        ? AGENT_REVIEW_SCHEMA
+        : REVIEW_SCHEMA,
     reviewId,
     status: "placement-approved",
     method: isAuthorizedAgent ? AGENT_REVIEW_METHOD : REVIEW_METHOD,
@@ -352,7 +371,10 @@ export function buildReviewedSourceAlignment(input: {
     },
     placement: {
       anchorTimelineSeconds: rounded(anchorTimelineSeconds),
-      targetSourceSeconds: 0,
+      targetSourceSeconds: rounded(targetSourceSeconds),
+      ...(normalizedSignedPlacement
+        ? { signedOffsetSeconds: rounded(signedOffsetSeconds) }
+        : {}),
       targetClipId: text(input.targetClipId) || null,
     },
     sourceEvidence: {
@@ -429,6 +451,10 @@ export function reviewedSourceAlignment(
   const anchorTimelineSeconds = finiteNumber(
     placement.anchorTimelineSeconds,
   );
+  const targetSourceSeconds = finiteNumber(placement.targetSourceSeconds);
+  const signedOffsetSeconds = finiteNumber(
+    placement.signedOffsetSeconds ?? anchorTimelineSeconds,
+  );
   const observationIntervalSeconds = finiteNumber(
     driftReview.observationIntervalSeconds,
   );
@@ -485,7 +511,12 @@ export function reviewedSourceAlignment(
     ) <= 0.000001;
   const isPersonReview = review.schema === REVIEW_SCHEMA && review.method === REVIEW_METHOD;
   const isAgentReview = review.schema === AGENT_REVIEW_SCHEMA && review.method === AGENT_REVIEW_METHOD;
-  const personAuthorityValid = isPersonReview
+  const isNormalizedReview = review.schema === NORMALIZED_OFFSET_REVIEW_SCHEMA
+    && (review.method === REVIEW_METHOD || review.method === AGENT_REVIEW_METHOD);
+  const personAuthorityValid = (
+    isPersonReview
+    || (isNormalizedReview && review.method === REVIEW_METHOD)
+  )
     && checks.humanApprovalConfirmed === true
     && checks.authorizedAgentQualificationConfirmed !== true
     && (
@@ -496,7 +527,7 @@ export function reviewedSourceAlignment(
       )
     );
   let agentAuthorityValid = false;
-  if (isAgentReview) {
+  if (isAgentReview || (isNormalizedReview && review.method === AGENT_REVIEW_METHOD)) {
     try {
       const evidence = parseAudioAlignmentEvidence(approvalAuthority.evidence);
       agentAuthorityValid =
@@ -510,7 +541,7 @@ export function reviewedSourceAlignment(
         && evidence.target.assetId === targetAssetId
         && evidence.spine.sha256 === validSha256(spine.sha256)
         && evidence.target.sha256 === validSha256(target.sha256)
-        && Math.abs(evidence.opening.measuredOffsetSeconds - (anchorTimelineSeconds ?? Number.NaN)) <= 0.001
+        && Math.abs(evidence.opening.measuredOffsetSeconds - (signedOffsetSeconds ?? Number.NaN)) <= 0.001
         && Math.abs(evidence.drift.observationIntervalSeconds - (observationIntervalSeconds ?? Number.NaN)) <= 0.000001
         && Math.abs(evidence.drift.residualDriftMilliseconds - (residualDriftMilliseconds ?? Number.NaN)) <= 0.000001
         && checks.humanApprovalConfirmed === false
@@ -520,7 +551,7 @@ export function reviewedSourceAlignment(
     }
   }
   if (
-    (!isPersonReview && !isAgentReview)
+    (!isPersonReview && !isAgentReview && !isNormalizedReview)
     || review.status !== "placement-approved"
     || !text(review.reviewId)
     || !reviewedAt
@@ -531,7 +562,12 @@ export function reviewedSourceAlignment(
     || anchorTimelineSeconds === null
     || anchorTimelineSeconds < 0
     || anchorTimelineSeconds > 86_400
-    || placement.targetSourceSeconds !== 0
+    || targetSourceSeconds === null
+    || targetSourceSeconds < 0
+    || targetSourceSeconds > 86_400
+    || signedOffsetSeconds === null
+    || Math.abs(signedOffsetSeconds) > 86_400
+    || Math.abs(anchorTimelineSeconds - targetSourceSeconds - signedOffsetSeconds) > 0.001
     || !sourceEvidenceValid
     || !clockProposalValid
     || checks.waveformCorrelationConfirmed !== true

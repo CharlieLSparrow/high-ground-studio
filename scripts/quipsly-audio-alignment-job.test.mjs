@@ -107,6 +107,10 @@ test("job and result preserve two exact source bindings and evidence-only bounda
     worker: { executionId: "execution_123456", buildId: "test-build", imageDigest: null, attempt: 1 },
   });
   assert.equal(parseAudioAlignmentJob(job, job.jobId).target.sha256, job.target.sha256);
+  assert.equal(parseAudioAlignmentJob({
+    ...job,
+    proposal: { ...job.proposal, initialOffsetSeconds: -0.35 },
+  }, job.jobId).proposal.initialOffsetSeconds, -0.35);
   assert.equal(parseAudioAlignmentResult(result, job).boundaries.placementApplied, false);
   const reordered = JSON.parse(JSON.stringify(result));
   reordered.evidence.spine = Object.fromEntries(Object.entries(reordered.evidence.spine).reverse());
