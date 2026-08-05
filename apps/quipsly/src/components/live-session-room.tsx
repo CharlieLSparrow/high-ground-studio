@@ -3,6 +3,9 @@
 import {
   Camera,
   CameraOff,
+  CircleAlert,
+  Cloud,
+  CloudOff,
   Headphones,
   LoaderCircle,
   Mic,
@@ -76,6 +79,36 @@ type JoinPacket = {
   recordingConsentGranted?: boolean;
   recordingConsentStatus?: string;
   nextAction?: string;
+};
+
+type ProviderRecordingState = {
+  state: "off" | "starting" | "recording" | "stopping" | "needs-review" | "held";
+  optionalWitness: true;
+  affectsCaptureGroupSync: false;
+  syncAuthority: string;
+  canOperate: boolean;
+  configured: boolean;
+  enabled: boolean;
+  paymentHeld: boolean;
+  nextAction: string;
+  activeRecordingAssetId: string | null;
+  latestCommand: {
+    id: string;
+    action: "START" | "STOP";
+    status: string;
+    errorCode: string | null;
+    message: string | null;
+    updatedAt: string;
+  } | null;
+};
+
+type ProviderRecordingPacket = {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  providerRecording?: ProviderRecordingState & {
+    currentStatus?: string;
+  };
 };
 
 export type LiveSessionRoomStatus = "preflight" | "checking" | "ready" | "joining" | "connected" | "reconnecting" | "ended" | "error";
@@ -262,6 +295,12 @@ export function LiveSessionRoom({
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
+  const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
+  const [providerRecordingBusy, setProviderRecordingBusy] = useState(false);
+  const [providerRecordingMessage, setProviderRecordingMessage] = useState(
+    "Provider safety recording is optional and never supplies the Session sync clock.",
+  );
+  const [providerStartArmed, setProviderStartArmed] = useState(false);
 
   const roomRef = useRef<Room | null>(null);
   const cameraWantedRef = useRef(cameraWanted);
@@ -270,9 +309,17 @@ export function LiveSessionRoom({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteMediaRef = useRef<HTMLDivElement | null>(null);
   const meterCleanupRef = useRef<(() => void) | null>(null);
+  const providerRecordingRequestIdsRef = useRef<Record<"START_EGRESS" | "STOP_EGRESS", string | undefined>>({
+    START_EGRESS: undefined,
+    STOP_EGRESS: undefined,
+  });
 
   const connected = status === "connected" || status === "reconnecting";
   const statusLabel = useMemo(() => status.replace(/\b\w/g, (letter) => letter.toUpperCase()), [status]);
+  const providerRecordingState = providerRecording?.state || "off";
+  const providerRecordingStateLabel = providerRecordingState === "needs-review"
+    ? "Needs review"
+    : providerRecordingState.replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   useEffect(() => {
     cameraWantedRef.current = cameraWanted;
@@ -301,6 +348,71 @@ export function LiveSessionRoom({
   const clearRemoteMedia = useCallback(() => {
     remoteMediaRef.current?.replaceChildren();
   }, []);
+
+  const refreshProviderRecording = useCallback(async (announceFailure = false) => {
+    try {
+      const response = await fetch(
+        `/api/mobile/capture/rooms/provider-recording?callRoomId=${encodeURIComponent(callRoomId)}`,
+        { cache: "no-store" },
+      );
+      const packet = await response.json().catch(() => ({})) as ProviderRecordingPacket;
+      if (!response.ok || !packet.ok || !packet.providerRecording) {
+        throw new Error(packet.error || "Provider safety-copy status is unavailable.");
+      }
+      setProviderRecording(packet.providerRecording);
+      setProviderRecordingMessage(packet.providerRecording.nextAction);
+    } catch (error) {
+      if (announceFailure) {
+        setProviderRecordingMessage(
+          `${error instanceof Error ? error.message : "Provider safety-copy status is unavailable."} Local protected capture and Session synchronization are unaffected.`,
+        );
+      }
+    }
+  }, [callRoomId]);
+
+  const runProviderRecordingAction = useCallback(async (action: "START_EGRESS" | "STOP_EGRESS") => {
+    const requestId = providerRecordingRequestIdsRef.current[action] || crypto.randomUUID();
+    providerRecordingRequestIdsRef.current[action] = requestId;
+    setProviderRecordingBusy(true);
+    setProviderRecordingMessage(action === "START_EGRESS"
+      ? "Submitting one durable provider START command…"
+      : "Submitting one durable provider STOP command…");
+    try {
+      const response = await fetch("/api/mobile/capture/rooms/provider-recording", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ callRoomId, action, requestId }),
+      });
+      const packet = await response.json().catch(() => ({})) as ProviderRecordingPacket;
+      if (response.status < 500) providerRecordingRequestIdsRef.current[action] = undefined;
+      setProviderRecordingMessage(
+        packet.providerRecording?.nextAction
+        || packet.message
+        || packet.error
+        || `Provider ${action === "START_EGRESS" ? "START" : "STOP"} returned HTTP ${response.status}.`,
+      );
+      if (response.ok && packet.providerRecording?.currentStatus) {
+        setProviderRecording((current) => current ? {
+          ...current,
+          state: packet.providerRecording!.currentStatus === "started"
+            ? "recording"
+            : packet.providerRecording!.currentStatus === "stopped"
+              ? "off"
+              : packet.providerRecording!.currentStatus === "reconcile-required"
+                ? "needs-review"
+                : current.state,
+        } : current);
+      }
+      await refreshProviderRecording(false);
+    } catch (error) {
+      setProviderRecordingMessage(
+        `${error instanceof Error ? error.message : "Provider command response was lost."} Retry uses the same request ID, so Quipsly will not create a duplicate command.`,
+      );
+    } finally {
+      setProviderStartArmed(false);
+      setProviderRecordingBusy(false);
+    }
+  }, [callRoomId, refreshProviderRecording]);
 
   const routeAudioOutput = useCallback(async (element: HTMLMediaElement) => {
     const sinkElement = element as HTMLMediaElement & { setSinkId?: (deviceId: string) => Promise<void> };
@@ -817,6 +929,12 @@ export function LiveSessionRoom({
     remoteMediaRef.current?.querySelectorAll("audio").forEach((element) => void routeAudioOutput(element));
   }, [connected, outputId, routeAudioOutput]);
 
+  useEffect(() => {
+    void refreshProviderRecording(false);
+    const interval = window.setInterval(() => void refreshProviderRecording(false), 12_000);
+    return () => window.clearInterval(interval);
+  }, [refreshProviderRecording]);
+
   return (
     <section className={`overflow-hidden rounded-[1.75rem] border border-[#d8c7a7] bg-[#fffdf8] shadow-sm ${compact ? "p-4" : "p-5 sm:p-7"}`} aria-labelledby={`live-room-${callRoomId}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -888,6 +1006,42 @@ export function LiveSessionRoom({
             <h3 className="mt-2 font-serif text-xl font-black text-emerald-950">Conversation is not recording</h3>
             <p className="mt-2 text-xs font-bold leading-5 text-emerald-900">Joining publishes call media to participants. It does not start browser recording, iPhone local capture, or provider egress.</p>
             <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black uppercase tracking-wide text-emerald-950">Consent: {recordingConsentGranted ? "ready for a separate visible record action" : recordingConsentStatus}</p>
+          </div>
+          <div className={`rounded-2xl border p-4 ${providerRecordingState === "recording" ? "border-rose-300 bg-rose-50 text-rose-950" : providerRecordingState === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-sky-200 bg-sky-50 text-sky-950"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                {providerRecordingState === "recording" ? <Cloud className="text-rose-800" aria-hidden="true" /> : providerRecordingState === "needs-review" ? <CircleAlert className="text-amber-800" aria-hidden="true" /> : <CloudOff className="text-sky-800" aria-hidden="true" />}
+                <h3 className="mt-2 font-serif text-xl font-black">Provider safety copy: {providerRecordingStateLabel}</h3>
+              </div>
+              <span className="rounded-full border border-current/20 bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide">Optional witness</span>
+            </div>
+            <p className="mt-2 text-xs font-bold leading-5">{providerRecordingMessage}</p>
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-[10px] font-black leading-4">Turning this copy off cannot change take synchronization. Alignment comes from the shared capture group, device clock and START receipts, protected local masters, and waveform/drift review.</p>
+
+            {providerRecording?.canOperate && providerRecordingState === "recording" ? (
+              <button type="button" disabled={providerRecordingBusy} onClick={() => void runProviderRecordingAction("STOP_EGRESS")} className="mt-3 min-h-10 rounded-full bg-rose-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">
+                {providerRecordingBusy ? "Stopping safely…" : "Stop provider safety copy"}
+              </button>
+            ) : null}
+
+            {providerRecording?.canOperate && !["recording", "starting", "stopping", "needs-review"].includes(providerRecordingState) && providerRecording.configured && providerRecording.enabled ? (
+              providerStartArmed ? (
+                <div className="mt-3 rounded-xl border border-sky-300 bg-white p-3">
+                  <p className="text-xs font-black">Start the optional provider room composite?</p>
+                  <p className="mt-1 text-[10px] font-bold leading-4">This creates a safety reference only. It does not replace or synchronize the retained local masters.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" disabled={providerRecordingBusy} onClick={() => void runProviderRecordingAction("START_EGRESS")} className="min-h-10 rounded-full bg-sky-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{providerRecordingBusy ? "Starting safely…" : "Start provider copy"}</button>
+                    <button type="button" disabled={providerRecordingBusy} onClick={() => setProviderStartArmed(false)} className="min-h-10 rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setProviderStartArmed(true)} className="mt-3 min-h-10 rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-950">Review provider safety copy</button>
+              )
+            ) : null}
+
+            {providerRecording?.canOperate && (!providerRecording.configured || !providerRecording.enabled) ? (
+              <p className="mt-3 text-[10px] font-black uppercase tracking-wide">Provider copy is deliberately unavailable. Local recording remains fully usable.</p>
+            ) : null}
           </div>
           <div className="rounded-2xl border border-[#d8c7a7] bg-white p-4">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-[#5b472f]"><Users size={15} /> In this room · {participants.length}</div>

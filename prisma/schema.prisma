@@ -299,6 +299,20 @@ enum RecordingAssetStatus {
   HELD
 }
 
+enum ProviderRecordingCommandAction {
+  START
+  STOP
+}
+
+enum ProviderRecordingCommandStatus {
+  QUEUED
+  PROCESSING
+  APPLIED
+  RECONCILE_REQUIRED
+  HELD
+  FAILED
+}
+
 enum UploadChunkStatus {
   QUEUED
   UPLOADING
@@ -1826,6 +1840,8 @@ model CallRoom {
   episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
   stateReceipts                 CaptureRoomStateReceipt[]
+  providerRecordingCommands     ProviderRecordingCommand[]
+  providerRecordingEvents       ProviderRecordingEventReceipt[]
   recordingAssets               RecordingAsset[]
   transcriptJobs                TranscriptJob[]
   transcriptCorrections         TranscriptCorrection[]
@@ -2167,10 +2183,90 @@ model RecordingAsset {
   transcriptVerifications       TranscriptSegmentVerification[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
   transcriptEvaluationWindows   TranscriptEvaluationWindow[]
+  providerRecordingCommands     ProviderRecordingCommand[]
+  providerRecordingEvents       ProviderRecordingEventReceipt[]
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
   @@index([kind, status, createdAt])
+}
+
+// Durable intent and provider acknowledgement for one explicit provider
+// recording action. The request UUID makes a repeated tap/retry idempotent;
+// the expected object path lets reconciliation recover a START whose response
+// was lost without blindly creating a second provider recording.
+model ProviderRecordingCommand {
+  id                        String                         @id @default(cuid())
+  requestId                 String                         @unique @db.Uuid
+  roomId                    String
+  actorUserId               String
+  action                    ProviderRecordingCommandAction
+  status                    ProviderRecordingCommandStatus @default(QUEUED)
+  provider                  String                         @default("livekit")
+  providerRoomId            String
+  captureGroupId            String                         @db.Uuid
+  recordingAssetId          String?
+  providerEgressId          String?
+  expectedStorageBucket     String?
+  expectedStorageObjectPath String?
+  consentVersion            String?
+  consentSnapshotJson       Json                           @default("{}")
+  requestJson               Json                           @default("{}")
+  providerResponseJson      Json                           @default("{}")
+  attemptCount              Int                            @default(0)
+  leaseToken                String?                        @db.Uuid
+  leaseExpiresAt            DateTime?
+  lastAttemptAt             DateTime?
+  dispatchedAt              DateTime?
+  appliedAt                 DateTime?
+  reconciledAt              DateTime?
+  heldAt                    DateTime?
+  failedAt                  DateTime?
+  errorCode                 String?
+  errorMessage              String?
+  createdAt                 DateTime                       @default(now())
+  updatedAt                 DateTime                       @updatedAt
+
+  room           CallRoom                        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  recordingAsset RecordingAsset?                 @relation(fields: [recordingAssetId], references: [id], onDelete: SetNull)
+  events         ProviderRecordingEventReceipt[]
+
+  @@index([roomId, createdAt])
+  @@index([roomId, status, createdAt])
+  @@index([status, leaseExpiresAt])
+  @@index([recordingAssetId, createdAt])
+  @@index([providerEgressId, createdAt])
+  @@index([expectedStorageBucket, expectedStorageObjectPath])
+}
+
+// Authenticated LiveKit webhook events are append-only evidence. Event IDs are
+// provider-unique, so webhook retries converge before any room or asset state
+// changes. The raw payload is retained for audit/recovery, not treated as the
+// source-media or transcript authority.
+model ProviderRecordingEventReceipt {
+  id                String    @id @default(cuid())
+  providerEventId   String    @unique
+  provider          String    @default("livekit")
+  eventType         String
+  roomId            String
+  commandId         String?
+  recordingAssetId  String?
+  providerEgressId  String?
+  providerCreatedAt DateTime?
+  payloadJson       Json
+  applied           Boolean   @default(false)
+  applyMessage      String?
+  receivedAt        DateTime  @default(now())
+  appliedAt         DateTime?
+
+  room           CallRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  command        ProviderRecordingCommand? @relation(fields: [commandId], references: [id], onDelete: SetNull)
+  recordingAsset RecordingAsset?           @relation(fields: [recordingAssetId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, receivedAt])
+  @@index([providerEgressId, receivedAt])
+  @@index([commandId, receivedAt])
+  @@index([recordingAssetId, receivedAt])
 }
 
 model UploadChunk {

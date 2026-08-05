@@ -82,7 +82,9 @@ const coordinatedStart = model.slice(
   model.indexOf("func startCoordinatedPodcastCapture("),
   model.indexOf("func stopCoordinatedPodcastCapture("),
 );
-const groupAllocation = coordinatedStart.indexOf("let captureGroupID = UUID()");
+const groupAllocation = coordinatedStart.indexOf(
+  "let captureGroupID = selectedSession?.captureGroupId ?? UUID()",
+);
 const videoStart = coordinatedStart.indexOf("await startVideoCapture(");
 const videoConfirmation = coordinatedStart.indexOf(
   "await videoCapture.waitUntilRecording()",
@@ -92,7 +94,7 @@ const successClaim = coordinatedStart.indexOf(
   "Recording two local masters:",
 );
 check(
-  "one capture group is allocated before either local source",
+  "one canonical Session capture group is resolved before either local source",
   groupAllocation >= 0
     && groupAllocation < videoStart
     && coordinatedStart.includes("captureGroupID: captureGroupID"),

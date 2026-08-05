@@ -118,6 +118,15 @@ export function buildLiveKitRecordingObjectName(callRoomId: unknown, timestamp =
   return `${MEDIA_VAULT_PREFIXES.livekitRecording}/${room}/${safeTimestamp(timestamp)}-room-composite.mp4`;
 }
 
+export function buildLiveKitRecordingObjectNameForRequest(
+  callRoomId: unknown,
+  requestId: unknown,
+) {
+  const room = cleanMediaVaultPathPart(callRoomId, "unassigned-room");
+  const request = cleanMediaVaultPathPart(requestId, "missing-request");
+  return `${MEDIA_VAULT_PREFIXES.livekitRecording}/${room}/commands/${request}-room-composite.mp4`;
+}
+
 export function buildMobileRecordingObjectName(input: {
   callRoomId?: unknown;
   participantOrDevice?: unknown;

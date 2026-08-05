@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Calendar as CalendarIcon,
@@ -253,6 +253,11 @@ type CoachingRunway = {
     providerRecordingReceiptStatus: string | null;
     providerRecordingActiveAssetId: string | null;
     providerRecordingActiveStatus: string | null;
+    providerRecordingState: "off" | "starting" | "recording" | "stopping" | "needs-review" | "held";
+    providerRecordingCommandId: string | null;
+    providerRecordingCommandStatus: string | null;
+    providerRecordingCommandAction: string | null;
+    providerRecordingCommandErrorCode: string | null;
     providerRecordingNextAction: string;
     latestRecordingAssetId: string | null;
     latestRecordingAssetStatus: string | null;
@@ -637,6 +642,7 @@ export default function CoachingPage() {
   const [bookingBusyById, setBookingBusyById] = useState<Record<string, boolean>>({});
   const [providerRecordingStatusByRoom, setProviderRecordingStatusByRoom] = useState<Record<string, string>>({});
   const [providerRecordingBusyByRoom, setProviderRecordingBusyByRoom] = useState<Record<string, boolean>>({});
+  const providerRecordingRequestIds = useRef<Record<string, string>>({});
   const [transcriptStatusByRoom, setTranscriptStatusByRoom] = useState<Record<string, string>>({});
   const [transcriptBusyByRoom, setTranscriptBusyByRoom] = useState<Record<string, boolean>>({});
   const [packetStatusByRoom, setPacketStatusByRoom] = useState<Record<string, string>>({});
@@ -936,11 +942,11 @@ export default function CoachingPage() {
 
   async function runProviderRecordingAction(
     room: NonNullable<CoachingRunway["captureRooms"]>[number],
-    action: "PREPARE_RECEIPT_SLOT" | "START_EGRESS" | "STOP_EGRESS" | "RECONCILE_PROVIDER_FILE",
+    action: "START_EGRESS" | "STOP_EGRESS" | "RECONCILE_COMMAND" | "RECONCILE_PROVIDER_FILE",
   ) {
     if (action === "START_EGRESS") {
       const confirmed = window.confirm(
-        "Start provider/server recording for this room? This must only happen after every participant knows recording is active and has consented.",
+        "Start the optional provider safety copy? Everyone must know recording is active and consent first. Protected local masters and capture-group timing remain the production sync authority.",
       );
       if (!confirmed) return;
     }
@@ -949,14 +955,21 @@ export default function CoachingPage() {
     setProviderRecordingStatusByRoom((current) => ({
       ...current,
       [room.id]:
-        action === "PREPARE_RECEIPT_SLOT"
-          ? "Preparing provider recording receipt slot..."
-          : action === "START_EGRESS"
+        action === "START_EGRESS"
             ? "Starting visible provider egress..."
             : action === "STOP_EGRESS"
               ? "Stopping provider egress..."
-              : "Reconciling provider recording file evidence...",
+              : action === "RECONCILE_COMMAND"
+                ? "Reconciling the uncertain provider command..."
+                : "Reconciling provider recording file evidence...",
     }));
+
+    const commandUsesIdempotency = action === "START_EGRESS" || action === "STOP_EGRESS";
+    const requestKey = `${room.id}:${action}`;
+    const requestId = commandUsesIdempotency
+      ? providerRecordingRequestIds.current[requestKey] || crypto.randomUUID()
+      : undefined;
+    if (requestId) providerRecordingRequestIds.current[requestKey] = requestId;
 
     try {
       const response = await fetch("/api/mobile/capture/rooms/provider-recording", {
@@ -965,12 +978,27 @@ export default function CoachingPage() {
         body: JSON.stringify({
           callRoomId: room.id,
           action,
+          requestId,
+          commandId: room.providerRecordingCommandId,
           recordingAssetId: room.providerRecordingActiveAssetId || room.providerRecordingReceiptSlotId,
         }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
+        // A 5xx can arrive after an external dispatch but before the browser
+        // receives the durable acknowledgement. Keep the UUID for safe replay.
+        if (requestId && response.status < 500) {
+          delete providerRecordingRequestIds.current[requestKey];
+        }
+        await loadRunway();
         throw new Error(payload.error || payload.message || `Provider recording returned HTTP ${response.status}.`);
+      }
+
+      if (
+        requestId
+        && ["started", "stopped", "held", "failed"].includes(payload.command?.status)
+      ) {
+        delete providerRecordingRequestIds.current[requestKey];
       }
 
       setProviderRecordingStatusByRoom((current) => ({
@@ -983,6 +1011,8 @@ export default function CoachingPage() {
       }));
       await loadRunway();
     } catch (cause) {
+      // Transport loss, invalid success payloads, and 5xx responses are all
+      // ambiguous. Preserve the UUID so a retry replays the durable command.
       setProviderRecordingStatusByRoom((current) => ({
         ...current,
         [room.id]: cause instanceof Error ? cause.message : "Provider recording action could not finish safely.",
@@ -1840,15 +1870,15 @@ export default function CoachingPage() {
                     </div>
                     <div className="mt-3 rounded-2xl border border-[#ead8b4] bg-white/80 p-3">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <StatusPill label="provider recording" tone="blue" />
+                        <StatusPill label="optional provider safety copy" tone="blue" />
                         <StatusPill
-                          label={room.providerRecordingActiveStatus ? normalize(room.providerRecordingActiveStatus) : room.providerRecordingReceiptStatus ? `slot ${normalize(room.providerRecordingReceiptStatus)}` : "no slot"}
-                          tone={room.providerRecordingActiveStatus === "UPLOADING" ? "warn" : room.providerRecordingReceiptSlotId ? "good" : "warm"}
+                          label={normalize(room.providerRecordingState)}
+                          tone={room.providerRecordingState === "recording" ? "warn" : room.providerRecordingState === "needs-review" ? "bad" : room.providerRecordingState === "off" ? "warm" : "good"}
                         />
                         <StatusPill label={readiness?.liveKitEgressConfigured ? "egress configured" : "local-first"} tone={readiness?.liveKitEgressConfigured ? "good" : "warm"} />
                       </div>
                       <p className="text-xs font-bold leading-relaxed text-[#5d4930]">
-                        Provider/server recording is separate from joining the room and separate from local iOS capture. It needs explicit consent, visible operator action, storage receipt proof, then reconciliation before transcript work.
+                        This provider copy is separate from the call and local iPhone/browser capture. Turning it off cannot change take synchronization. A durable reservation is created automatically when you start it; protected local masters, device clock receipts, and capture-group timing remain authoritative.
                       </p>
                       <p className="mt-2 text-xs font-black text-[#3d3122]">{room.providerRecordingNextAction}</p>
                       {providerRecordingStatusByRoom[room.id] && (
@@ -1860,34 +1890,36 @@ export default function CoachingPage() {
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           <button
                             type="button"
-                            onClick={() => void runProviderRecordingAction(room, "PREPARE_RECEIPT_SLOT")}
-                            disabled={providerRecordingBusyByRoom[room.id] || Boolean(room.providerRecordingReceiptSlotId)}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Receipt size={14} /> Prepare slot
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => void runProviderRecordingAction(room, "START_EGRESS")}
                             disabled={
                               providerRecordingBusyByRoom[room.id] ||
                               readiness?.liveKitEgressConfigured !== true ||
                               room.participantCount < 1 ||
                               room.consentGrantedCount < room.participantCount ||
-                              room.providerRecordingActiveStatus === "UPLOADING"
+                              ["starting", "recording", "stopping", "needs-review"].includes(room.providerRecordingState)
                             }
                             className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <Video size={14} /> Start egress
+                            <Video size={14} /> Start safety copy
                           </button>
                           <button
                             type="button"
                             onClick={() => void runProviderRecordingAction(room, "STOP_EGRESS")}
-                            disabled={providerRecordingBusyByRoom[room.id] || room.providerRecordingActiveStatus !== "UPLOADING"}
+                            disabled={providerRecordingBusyByRoom[room.id] || room.providerRecordingState !== "recording"}
                             className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <AlertCircle size={14} /> Stop egress
+                            <AlertCircle size={14} /> Stop safety copy
                           </button>
+                          {room.providerRecordingState === "needs-review" && (
+                            <button
+                              type="button"
+                              onClick={() => void runProviderRecordingAction(room, "RECONCILE_COMMAND")}
+                              disabled={providerRecordingBusyByRoom[room.id] || !room.providerRecordingCommandId}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <ShieldCheck size={14} /> Resolve command
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => void runProviderRecordingAction(room, "RECONCILE_PROVIDER_FILE")}
@@ -1898,7 +1930,7 @@ export default function CoachingPage() {
                             }
                             className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#d6c5a5] bg-[#fffaf1] px-3 py-2 text-xs font-black uppercase tracking-wide text-[#7b5c3b] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <ShieldCheck size={14} /> Reconcile
+                            <ShieldCheck size={14} /> Verify provider file
                           </button>
                         </div>
                       )}

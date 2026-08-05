@@ -1,6 +1,6 @@
 # Quipsly collaboration and live-session model
 
-Status: adopted architecture; browser conversation and retained-source clients implemented; provider configuration and physical cross-device acceptance remain deployment gates
+Status: adopted architecture; browser conversation, retained-source clients, and optional-provider command ledger implemented; provider configuration and physical cross-device acceptance remain deployment gates
 
 Last reviewed: 2026-08-04
 
@@ -127,11 +127,15 @@ be retired or migrated onto the Session recorder before it can be a release
 surface.
 
 Provider egress is optional safety/reference media. It never silently becomes
-the only master. Starting provider recording remains a separate, consent-gated,
-visible command with durable idempotency and reconciliation requirements.
+the only master. Starting provider recording is a separate, consent-gated,
+visible command backed by a durable idempotent command ledger, deterministic
+output path, authenticated webhook receipt ledger, and no-blind-retry
+reconciliation. The canonical Live Session exposes off, active, processing,
+held, and uncertain states separately from call and retained-source state.
 It can assist waveform correlation when present, but the Session's canonical
 capture group, per-source clock evidence, and explicit alignment review do not
 depend on provider egress. See
+`docs/architecture/provider-recording-command-ledger.md` and
 `docs/coordination/2026-08-04-session-capture-group-clock.md`.
 
 ## Identity and simultaneous devices
@@ -288,6 +292,11 @@ Implemented in the browser:
 - Episode Room creation/binding of a Podcast Session and direct Live Room
   handoff;
 - explicit language that a connected conversation is not recording.
+- a separate optional-provider safety-copy status and staff control surface
+  whose START and STOP retries retain stable request IDs;
+- a durable provider command/event ledger that rechecks current consent before
+  first dispatch, reconciles ambiguous responses, and cannot promote provider
+  bytes to verified source media by webhook alone;
 - a separate visible retained-source recorder for studio audio or camera plus
   audio, with headphones attestation and actual device/profile evidence;
 - OPFS media plus an IndexedDB recovery ledger, regular chunk flushing,

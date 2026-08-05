@@ -5,6 +5,7 @@ import {
   isUnreviewedTranscriptActionItemSource,
 } from "@high-ground/quipsly-domain/coaching-packet";
 
+import { projectProviderRecordingState } from "@/lib/provider-recording-state";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   canManageCoachingCalendarEvidence,
@@ -211,15 +212,6 @@ function activeProviderRecordingAsset(room: any) {
         return asset?.kind === "SERVER_MIX" && ["UPLOADING", "UPLOADED", "HELD", "FAILED"].includes(text(asset?.status).toUpperCase());
       }) || null
     : null;
-}
-
-function providerRecordingNextAction(room: any, receiptSlot: any, activeAsset: any) {
-  const status = text(activeAsset?.status).toUpperCase();
-  if (status === "UPLOADING") return "Provider egress appears active. Stop it from a visible operator action when the room is done.";
-  if (status === "UPLOADED") return "Provider egress stopped. Reconcile cloud storage before transcription or packet work.";
-  if (status === "FAILED" || status === "HELD") return text(activeAsset?.errorMessage) || "Provider recording needs operator recovery before transcript work.";
-  if (receiptSlot) return "Receipt slot exists. Start provider egress only from a visible operator action after consent and payment evidence are clear.";
-  return "Prepare a provider recording receipt slot before starting provider egress.";
 }
 
 function calendarLinkHasReceipt(link: any) {
@@ -753,7 +745,9 @@ export async function GET(request: Request) {
       }),
       prisma.callRoom.findMany({
         where: userRoomWhere,
-        orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
+        // This is an operating/review runway, not the upcoming calendar. Surface
+        // rooms with recent capture or review activity before applying the bound.
+        orderBy: [{ updatedAt: "desc" }, { scheduledStart: "asc" }],
         take: 30,
         include: {
           booking: {
@@ -768,6 +762,21 @@ export async function GET(request: Request) {
           participants: { where: { accessStatus: "ACTIVE" } },
           recordingConsents: true,
           recordingAssets: true,
+          providerRecordingCommands: {
+            orderBy: { createdAt: "desc" },
+            take: 20,
+            select: {
+              id: true,
+              action: true,
+              status: true,
+              providerEgressId: true,
+              recordingAssetId: true,
+              errorCode: true,
+              errorMessage: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
           transcriptJobs: {
             orderBy: { createdAt: "desc" },
             take: 3,
@@ -837,7 +846,8 @@ export async function GET(request: Request) {
           isTranscriptPacketProjection(note.sourceJson, latestTranscript?.id),
       ) || null;
     const receiptSlot = providerRecordingReceiptSlot(room);
-    const activeProviderAsset = activeProviderRecordingAsset(room);
+    const providerProjection = projectProviderRecordingState(room);
+    const activeProviderAsset = providerProjection.activeAsset || activeProviderRecordingAsset(room);
     const recordingAssetsForTranscript = transcribableRecordingAssets(room, finalizationReceipts);
     const recordingCount = safeCount(allRecordingAssets.length);
     const lifecycle = buildQuipslyCoachingLifecycle({
@@ -882,7 +892,12 @@ export async function GET(request: Request) {
       providerRecordingReceiptStatus: receiptSlot?.status || null,
       providerRecordingActiveAssetId: activeProviderAsset?.id || null,
       providerRecordingActiveStatus: activeProviderAsset?.status || null,
-      providerRecordingNextAction: providerRecordingNextAction(room, receiptSlot, activeProviderAsset),
+      providerRecordingState: providerProjection.state,
+      providerRecordingCommandId: providerProjection.unresolved?.id || providerProjection.latest?.id || null,
+      providerRecordingCommandStatus: providerProjection.unresolved?.status || providerProjection.latest?.status || null,
+      providerRecordingCommandAction: providerProjection.unresolved?.action || providerProjection.latest?.action || null,
+      providerRecordingCommandErrorCode: providerProjection.unresolved?.errorCode || providerProjection.latest?.errorCode || null,
+      providerRecordingNextAction: providerProjection.nextAction,
       latestRecordingAssetId: latestRecordingAsset?.id || null,
       latestRecordingAssetStatus: latestRecordingAsset?.status || null,
       latestTranscriptJobId: latestTranscript?.id || null,

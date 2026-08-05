@@ -360,6 +360,8 @@ function checkMeetingSpineContractSources() {
   const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
   const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
+  const providerRecordingCommandText = sourceText("apps/quipsly/src/lib/server/provider-recording-command.ts");
+  const liveKitWebhookText = sourceText("apps/quipsly/src/app/api/providers/livekit/webhook/route.ts");
   const runtimeUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift");
   const runtimeRunnerText = sourceText("apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh");
 
@@ -413,15 +415,22 @@ function checkMeetingSpineContractSources() {
   );
   expect(
     readinessText.includes("getQuipslyLiveKitEgressReadiness")
-      && liveKitEgressText.includes("MEDIA_VAULT_BUCKET_ENV_NAMES")
       && liveKitEgressText.includes("MEDIA_VAULT_PREFIXES.livekitRecording")
-      && liveKitEgressText.includes("LIVEKIT_EGRESS_ENABLED")
-      && liveKitEgressText.includes("egressRequested && unsafeLocalOverride")
+      && providerRecordingCommandText.includes("MEDIA_VAULT_BUCKET_ENV_NAMES")
+      && providerRecordingCommandText.includes("LIVEKIT_EGRESS_ENABLED")
+      && providerRecordingCommandText.includes("requestProviderRecordingStart")
+      && providerRecordingCommandText.includes("acquirePrismaAdvisoryTransactionLock")
+      && providerRecordingCommandText.includes("PROVIDER_START_OUTCOME_UNKNOWN")
+      && providerRecordingCommandText.includes("will not risk a duplicate retry")
+      && providerRecordingCommandText.includes("providerRecordingIsOptionalWitness: true")
+      && liveKitWebhookText.includes("verifyLiveKitWebhook")
+      && liveKitWebhookText.includes("application/webhook+json")
       && liveKitEgressText.includes("productionStartInterlock")
-      && liveKitEgressText.includes("durableCommandLedgerImplemented: false")
+      && liveKitEgressText.includes("durableCommandLedgerImplemented: true")
+      && liveKitEgressText.includes("authenticatedWebhookLedgerImplemented: true")
       && liveKitEgressText.includes("CallRoom, RecordingAsset, TranscriptJob, packets, and receipts own meaning"),
     "liveKitEgressUsesSharedMediaVaultReadiness",
-    "LiveKit provider recording readiness uses the shared media-vault bucket policy and an explicit operator-enabled start gate.",
+    "LiveKit provider recording uses the shared vault, durable idempotent commands, per-room serialization, deterministic recovery, authenticated webhook receipts, and an explicit operator-enabled start gate.",
   );
   expect(
     bridgeText.includes("liveKitEgressStartEnabled")

@@ -1,5 +1,3 @@
-import { createHmac } from "crypto";
-
 import { Storage } from "@google-cloud/storage";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -8,21 +6,17 @@ import {
   mobileCaptureConsentVersion,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import {
-  buildLiveKitRecordingObjectName,
   chooseConfiguredMediaVaultBucket,
-  MEDIA_VAULT_BUCKET_ENV_NAMES,
   MEDIA_VAULT_PREFIXES,
 } from "@/lib/server/media-vault";
+import {
+  getProviderRecordingEnvironment,
+  requestProviderRecordingStart,
+  requestProviderRecordingStop,
+  type ProviderRecordingCommandResult,
+} from "@/lib/server/provider-recording-command";
 
-type ProviderEgressAction = "START" | "STOP";
-
-export type QuipslyProviderEgressResult = {
-  status: "started" | "stopped" | "held";
-  callRoomId: string;
-  recordingAssetId?: string;
-  egressId?: string;
-  message: string;
-};
+export type QuipslyProviderEgressResult = ProviderRecordingCommandResult;
 
 export type QuipslyProviderEgressReconciliationResult = {
   status: "verified" | "held" | "failed";
@@ -40,7 +34,9 @@ export type QuipslyLiveKitEgressReadiness = {
   operatorEgressEnabled: boolean;
   operatorEgressRequested: boolean;
   productionStartInterlock: boolean;
-  durableCommandLedgerImplemented: false;
+  durableCommandLedgerImplemented: true;
+  authenticatedWebhookLedgerImplemented: true;
+  webhookConfigured: boolean;
   liveKitControlConfigured: boolean;
   mediaVaultBucketConfigured: boolean;
   storageCredentialConfigured: boolean;
@@ -57,10 +53,6 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function base64url(value: Buffer | string) {
-  return Buffer.from(value).toString("base64url");
-}
-
 function parseCredentials(credentialsJson?: string | null) {
   if (!credentialsJson?.trim()) return null;
 
@@ -71,84 +63,13 @@ function parseCredentials(credentialsJson?: string | null) {
   }
 }
 
-function signLiveKitAdminToken(input: {
-  apiKey: string;
-  apiSecret: string;
-  roomName: string;
-  subject: string;
-}) {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const header = { alg: "HS256", typ: "JWT" };
-  const payload = {
-    exp: nowSeconds + 10 * 60,
-    iss: input.apiKey,
-    sub: input.subject,
-    nbf: nowSeconds - 5,
-    video: {
-      room: input.roomName,
-      roomRecord: true,
-    },
-  };
-  const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
-  const signature = createHmac("sha256", input.apiSecret).update(unsigned).digest();
-  return `${unsigned}.${base64url(signature)}`;
-}
-
-function getLiveKitEgressConfig() {
-  const livekitUrl = text(process.env.LIVEKIT_URL).replace(/\/+$/, "");
-  const apiKey = text(process.env.LIVEKIT_API_KEY);
-  const apiSecret = text(process.env.LIVEKIT_API_SECRET);
-  const configuredBucket = chooseConfiguredMediaVaultBucket();
-  const bucket = configuredBucket.bucketName;
-  const credentials =
-    text(process.env.LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON) ||
-    text(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) ||
-    text(process.env.GCP_SERVICE_ACCOUNT_JSON);
-  const liveKitControlConfigured = Boolean(livekitUrl && apiKey && apiSecret);
-  const mediaVaultBucketConfigured = Boolean(bucket);
-  const storageCredentialConfigured = Boolean(credentials);
-  const egressRequested = process.env.LIVEKIT_EGRESS_ENABLED === "true";
-  // The legacy provider call is not backed by an idempotent durable
-  // command/outbox and provider reconciliation lock yet. Keep START impossible
-  // in production even if a stale environment variable is present. STOP and
-  // reconciliation remain available so operators can make an existing provider
-  // recording safe. Local integration testing needs two explicit flags.
-  const unsafeLocalOverride =
-    process.env.NODE_ENV !== "production"
-    && process.env.LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV === "true";
-  const egressEnabled = egressRequested && unsafeLocalOverride;
-
-  const missing = [
-    livekitUrl ? null : "LIVEKIT_URL",
-    apiKey ? null : "LIVEKIT_API_KEY",
-    apiSecret ? null : "LIVEKIT_API_SECRET",
-    bucket ? null : `one media-vault bucket env (${MEDIA_VAULT_BUCKET_ENV_NAMES.join(", ")})`,
-    credentials ? null : "LIVEKIT_EGRESS_GCP_CREDENTIALS_JSON or service account JSON",
-  ].filter(Boolean) as string[];
-
-  return {
-    livekitUrl,
-    apiKey,
-    apiSecret,
-    bucket,
-    bucketEnvName: configuredBucket.envName,
-    credentials,
-    egressRequested,
-    egressEnabled,
-    productionStartInterlock: !unsafeLocalOverride,
-    liveKitControlConfigured,
-    mediaVaultBucketConfigured,
-    storageCredentialConfigured,
-    missing,
-  };
-}
-
 export function getQuipslyLiveKitEgressReadiness(): QuipslyLiveKitEgressReadiness {
-  const config = getLiveKitEgressConfig();
+  const config = getProviderRecordingEnvironment();
   const liveKitEgressConfigured =
     config.liveKitControlConfigured &&
     config.mediaVaultBucketConfigured &&
-    config.storageCredentialConfigured;
+    config.storageCredentialConfigured &&
+    config.webhookConfigured;
   const liveKitEgressStartEnabled = liveKitEgressConfigured && config.egressEnabled;
 
   return {
@@ -158,8 +79,10 @@ export function getQuipslyLiveKitEgressReadiness(): QuipslyLiveKitEgressReadines
     liveKitEgressStartEnabled,
     operatorEgressEnabled: config.egressEnabled,
     operatorEgressRequested: config.egressRequested,
-    productionStartInterlock: config.productionStartInterlock,
-    durableCommandLedgerImplemented: false,
+    productionStartInterlock: false,
+    durableCommandLedgerImplemented: true,
+    authenticatedWebhookLedgerImplemented: true,
+    webhookConfigured: config.webhookConfigured,
     liveKitControlConfigured: config.liveKitControlConfigured,
     mediaVaultBucketConfigured: config.mediaVaultBucketConfigured,
     storageCredentialConfigured: config.storageCredentialConfigured,
@@ -177,8 +100,8 @@ export function getQuipslyLiveKitEgressReadiness(): QuipslyLiveKitEgressReadines
         : !config.storageCredentialConfigured
           ? "Configure service-account JSON for LiveKit egress storage writes."
           : !config.egressEnabled
-            ? "Provider START is interlocked until Quipsly has an idempotent durable command/outbox, per-room lock, and provider reconciliation. Local integration testing requires LIVEKIT_EGRESS_ENABLED=true plus LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV=true."
-            : "Unsafe local-only LiveKit egress testing is enabled; production START remains interlocked.",
+            ? "The durable provider command path is ready, but provider START remains deliberately disabled until LIVEKIT_EGRESS_ENABLED=true. Local protected masters are unaffected."
+            : "Durable provider START/STOP, active-provider reconciliation, deterministic storage recovery, and authenticated webhook receipts are enabled.",
   };
 }
 
@@ -198,76 +121,11 @@ function getStorageClient(credentialsJson: string) {
   return credentials ? new Storage({ credentials }) : new Storage();
 }
 
-function providerEndpoint(livekitUrl: string, method: string) {
-  return `${livekitUrl}/twirp/livekit.Egress/${method}`;
-}
-
-function recordingPath(roomId: string) {
-  return buildLiveKitRecordingObjectName(roomId);
-}
-
 function readManifestObject(asset: any) {
   const manifest = asset?.localManifestJson;
   return manifest && typeof manifest === "object" && !Array.isArray(manifest)
     ? (manifest as Record<string, unknown>)
     : {};
-}
-
-function readManifestValue(asset: any, key: string) {
-  const manifest = readManifestObject(asset);
-  const livekit = manifest.livekit;
-  if (!livekit || typeof livekit !== "object" || Array.isArray(livekit)) return "";
-  const value = (livekit as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : "";
-}
-
-async function createHeldAsset(input: {
-  room: any;
-  action: ProviderEgressAction;
-  reason: string;
-  operatorUserId: string;
-}) {
-  const prisma = getPrismaClient() as any;
-  const now = new Date();
-  return prisma.recordingAsset.create({
-    data: {
-      roomId: input.room.id,
-      kind: "SERVER_MIX",
-      status: "HELD",
-      fileName: `${input.room.id}-livekit-${input.action.toLowerCase()}-held.txt`,
-      errorMessage: input.reason,
-      recordedStartedAt: input.action === "START" ? now : null,
-      localManifestJson: {
-        provider: "livekit",
-        captureGroupId: input.room.captureGroupId,
-        action: input.action,
-        heldAt: now.toISOString(),
-        heldByUserId: input.operatorUserId,
-        reason: input.reason,
-      },
-    },
-  });
-}
-
-async function loadRoom(callRoomId: string) {
-  const prisma = getPrismaClient() as any;
-  const room = await prisma.callRoom.findUnique({
-    where: { id: callRoomId },
-    include: {
-      participants: { where: { accessStatus: "ACTIVE" } },
-      recordingConsents: true,
-      recordingAssets: {
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      },
-    },
-  });
-
-  if (!room) {
-    throw new Error("Call room was not found.");
-  }
-
-  return room;
 }
 
 export function providerCompositeConsentReadiness(room: any) {
@@ -276,279 +134,23 @@ export function providerCompositeConsentReadiness(room: any) {
   return buildMobileCaptureProviderCompositeReadiness({ participants, consents });
 }
 
-function providerCompositeConsentReason(readiness: ReturnType<typeof providerCompositeConsentReadiness>) {
-  if (readiness.consentVersions.length === 0) {
-    return "No signed-in, non-observer participants are attached to this room yet.";
-  }
-  if (!readiness.allPartiesAudioReady || !readiness.allPartiesVideoReady) {
-    return "Provider room-composite recording requires every signed-in, non-observer participant to grant current audio and video recording consent.";
-  }
-  return "";
-}
-
+// Public control always enters through the durable command ledger. The legacy
+// direct-call path has been removed so routes cannot bypass idempotency,
+// per-room serialization, or provider reconciliation.
 export async function startQuipslyLiveKitRoomCompositeEgress(input: {
   callRoomId: string;
   operatorUserId: string;
+  requestId: string;
 }): Promise<QuipslyProviderEgressResult> {
-  const prisma = getPrismaClient() as any;
-  const room = await loadRoom(input.callRoomId);
-  const provider = text(room.provider).toLowerCase();
-  const roomName = text(room.providerRoomId) || room.id;
-
-  if (provider !== "livekit") {
-    const reason = "Prepare this room for LiveKit before starting provider egress.";
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  if (["CANCELED", "ENDED", "FAILED"].includes(room.status)) {
-    const reason = "Closed rooms cannot start provider recording.";
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  const alreadyActive = room.recordingAssets.find((asset: any) => {
-    return asset.kind === "SERVER_MIX" && asset.status === "UPLOADING" && readManifestValue(asset, "egressId");
-  });
-
-  if (alreadyActive) {
-    const reason = "This room already has an active provider recording. Stop it before starting another.";
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  const consentReadiness = providerCompositeConsentReadiness(room);
-  const consentReason = providerCompositeConsentReason(consentReadiness);
-  if (consentReason) {
-    const asset = await createHeldAsset({ room, action: "START", reason: consentReason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: consentReason };
-  }
-
-  const config = getLiveKitEgressConfig();
-  if (config.missing.length > 0) {
-    const reason = `LiveKit provider recording is not configured: missing ${config.missing.join(", ")}.`;
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  if (!config.egressEnabled) {
-    const reason =
-      "LiveKit provider START is held by the production safety interlock until an idempotent durable command/outbox, per-room lock, and provider reconciliation are implemented.";
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  const filepath = recordingPath(room.id);
-  const token = signLiveKitAdminToken({
-    apiKey: config.apiKey,
-    apiSecret: config.apiSecret,
-    roomName,
-    subject: `quipsly-egress-${room.id}`,
-  });
-
-  const response = await fetch(providerEndpoint(config.livekitUrl, "StartRoomCompositeEgress"), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      room_name: roomName,
-      layout: "speaker",
-      file_outputs: [
-        {
-          file_type: "MP4",
-          filepath,
-          gcp: {
-            bucket: config.bucket,
-            credentials: config.credentials,
-          },
-        },
-      ],
-    }),
-  });
-
-  const raw = await response.text();
-  let payload: Record<string, unknown> = {};
-  try {
-    payload = raw ? JSON.parse(raw) : {};
-  } catch {
-    payload = { raw };
-  }
-
-  if (!response.ok) {
-    const reason = `LiveKit egress start failed (${response.status}): ${raw || response.statusText}`;
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  const egressId = text(payload.egress_id) || text(payload.egressId);
-  if (!egressId) {
-    const reason = "LiveKit accepted the egress request without returning an immutable egress ID. Provider recording remains held for operator reconciliation.";
-    const asset = await createHeldAsset({ room, action: "START", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-  const now = new Date();
-  const asset = await prisma.recordingAsset.create({
-    data: {
-      roomId: room.id,
-      kind: "SERVER_MIX",
-      status: "UPLOADING",
-      fileName: filepath.split("/").pop() || "livekit-room-composite.mp4",
-      contentType: "video/mp4",
-      storageBucket: config.bucket,
-      storageObjectPath: filepath,
-      recordedStartedAt: now,
-      localManifestJson: {
-        provider: "livekit",
-        captureGroupId: room.captureGroupId,
-        providerProcessingDisposition: "PENDING",
-        providerTranscriptDisposition: consentReadiness.allPartiesAllowTranscription
-          ? "PENDING"
-          : "HELD",
-        providerConsentBinding: {
-          version: 1,
-          sourceTypes: ["audio", "video"],
-          consentVersion: consentReadiness.consentVersion,
-          consentVersions: consentReadiness.consentVersions,
-          allPartiesAllowTranscriptionAtStart:
-            consentReadiness.allPartiesAllowTranscription,
-          capturedAt: now.toISOString(),
-          capturedByUserId: input.operatorUserId,
-        },
-        livekit: {
-          egressId,
-          roomName,
-          filepath,
-          startedAt: now.toISOString(),
-          startedByUserId: input.operatorUserId,
-          response: payload,
-        },
-      },
-    },
-  });
-
-  await prisma.callRoom.update({
-    where: { id: room.id },
-    data: {
-      status: "RECORDING",
-      recordingStartedAt: now,
-      metadataJson: {
-        ...(room.metadataJson || {}),
-        activeLiveKitEgressId: egressId,
-        activeProviderRecordingAssetId: asset.id,
-        providerRecordingStartedAt: now.toISOString(),
-        providerRecordingStartedByUserId: input.operatorUserId,
-      },
-    },
-  });
-
-  return {
-    status: "started",
-    callRoomId: room.id,
-    recordingAssetId: asset.id,
-    egressId,
-    message: "LiveKit provider recording started.",
-  };
+  return requestProviderRecordingStart(input);
 }
 
 export async function stopQuipslyLiveKitRoomCompositeEgress(input: {
   callRoomId: string;
   operatorUserId: string;
+  requestId: string;
 }): Promise<QuipslyProviderEgressResult> {
-  const prisma = getPrismaClient() as any;
-  const room = await loadRoom(input.callRoomId);
-  const roomName = text(room.providerRoomId) || room.id;
-  const activeAsset = room.recordingAssets.find((asset: any) => {
-    return asset.kind === "SERVER_MIX" && asset.status === "UPLOADING" && readManifestValue(asset, "egressId");
-  });
-  const egressId = readManifestValue(activeAsset, "egressId");
-
-  if (!egressId) {
-    const reason = "No active LiveKit egress recording was found for this room.";
-    const asset = await createHeldAsset({ room, action: "STOP", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, message: reason };
-  }
-
-  const config = getLiveKitEgressConfig();
-  if (config.missing.some((item) => item.startsWith("LIVEKIT_"))) {
-    const reason = `LiveKit provider recording cannot be stopped from Quipsly: missing ${config.missing.join(", ")}.`;
-    const asset = await createHeldAsset({ room, action: "STOP", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, egressId, message: reason };
-  }
-
-  const token = signLiveKitAdminToken({
-    apiKey: config.apiKey,
-    apiSecret: config.apiSecret,
-    roomName,
-    subject: `quipsly-egress-stop-${room.id}`,
-  });
-
-  const response = await fetch(providerEndpoint(config.livekitUrl, "StopEgress"), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ egress_id: egressId }),
-  });
-
-  const raw = await response.text();
-  let payload: Record<string, unknown> = {};
-  try {
-    payload = raw ? JSON.parse(raw) : {};
-  } catch {
-    payload = { raw };
-  }
-
-  if (!response.ok) {
-    const reason = `LiveKit egress stop failed (${response.status}): ${raw || response.statusText}`;
-    const asset = await createHeldAsset({ room, action: "STOP", reason, operatorUserId: input.operatorUserId });
-    return { status: "held", callRoomId: room.id, recordingAssetId: asset.id, egressId, message: reason };
-  }
-
-  const now = new Date();
-  await prisma.recordingAsset.update({
-    where: { id: activeAsset.id },
-    data: {
-      status: "UPLOADED",
-      recordedStoppedAt: now,
-      uploadedAt: now,
-      localManifestJson: {
-        ...(activeAsset.localManifestJson || {}),
-        livekit: {
-          ...((activeAsset.localManifestJson || {}).livekit || {}),
-          stoppedAt: now.toISOString(),
-          stoppedByUserId: input.operatorUserId,
-          stopResponse: payload,
-        },
-      },
-    },
-  });
-
-  await prisma.callRoom.update({
-    where: { id: room.id },
-    data: {
-      status: "OPEN",
-      metadataJson: {
-        ...(room.metadataJson || {}),
-        lastLiveKitEgressId: egressId,
-        lastProviderRecordingAssetId: activeAsset.id,
-        providerRecordingStoppedAt: now.toISOString(),
-        providerRecordingStoppedByUserId: input.operatorUserId,
-        activeLiveKitEgressId: null,
-        activeProviderRecordingAssetId: null,
-      },
-    },
-  });
-
-  return {
-    status: "stopped",
-    callRoomId: room.id,
-    recordingAssetId: activeAsset.id,
-    egressId,
-    message: "LiveKit provider recording stopped and marked uploaded pending verification.",
-  };
+  return requestProviderRecordingStop(input);
 }
 
 function providerConsentBindingDecision(asset: any) {

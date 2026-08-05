@@ -43,11 +43,28 @@ required masters plus only provider witnesses that are actually verified. Its
 status counts describe masters, while any provider source is labeled as an
 optional witness that cannot block them.
 
+The optional LiveKit witness now has its own durable START/STOP command ledger
+and authenticated webhook receipt ledger. Ambiguous START never triggers a
+blind second START; it reconciles by exact egress ID or deterministic object
+path and otherwise remains visibly held for review. The Live Session UI states
+that provider-off does not change capture-group synchronization and retains the
+same request UUID across an ambiguous browser retry.
+
 The editor continues to open one exact capture group, preserve each original,
 show clock uncertainty and placement offsets, and keep final approval disabled
 until the sync review is complete.
 
 ## Operated local evidence
+
+The retained media operator also created
+`QA Provider-Off Sync Boundary 2026-08-05` through the rendered coaching
+appointment workflow and opened its canonical Live Session. Room
+`cmsftwst3000p1yxlg2a50m50` retained capture group
+`b3197bc0-01d7-44f4-b13a-96fc3e895234` while provider recording remained off.
+The rendered room showed the optional-witness label and the full capture-group,
+clock-receipt, local-master, and waveform/drift explanation. Opening the room
+created zero provider commands and zero provider assets, and the browser raised
+no client exception.
 
 The signed-in retained test user created and consented to the planned podcast
 Session `cmsfpfwrt000db9xld8ppuon4` through the rendered product UI. Two fresh

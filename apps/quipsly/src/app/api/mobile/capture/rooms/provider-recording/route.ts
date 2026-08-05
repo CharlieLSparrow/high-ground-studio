@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { buildQuipslyProviderRecordingReceiptSlotManifest } from "@high-ground/quipsly-domain/coaching-meeting-spine";
 
+import { projectProviderRecordingState } from "@/lib/provider-recording-state";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   reconcileQuipslyLiveKitEgressRecording,
   startQuipslyLiveKitRoomCompositeEgress,
   stopQuipslyLiveKitRoomCompositeEgress,
 } from "@/lib/server/coaching-livekit-egress";
+import {
+  getProviderRecordingEnvironment,
+  processProviderRecordingCommand,
+  ProviderRecordingCommandError,
+} from "@/lib/server/provider-recording-command";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   latestMobileCaptureConsentForParticipant,
@@ -52,7 +58,7 @@ async function readJson(request: Request) {
 
 function normalizeAction(value: unknown) {
   const action = text(value).toUpperCase();
-  return ["PREPARE_RECEIPT_SLOT", "START_EGRESS", "STOP_EGRESS", "RECONCILE_PROVIDER_FILE"].includes(action) ? action : "";
+  return ["PREPARE_RECEIPT_SLOT", "START_EGRESS", "STOP_EGRESS", "RECONCILE_COMMAND", "RECONCILE_PROVIDER_FILE"].includes(action) ? action : "";
 }
 
 function consentGrantedForParticipant(participant: any, consents: any[]) {
@@ -91,6 +97,111 @@ function providerRecordingManifest(input: {
   });
 }
 
+function roomAccessWhere(callRoomId: string, user: { id: string; isStaff?: boolean }) {
+  return user.isStaff
+    ? { id: callRoomId }
+    : {
+        id: callRoomId,
+        OR: [
+          { createdByUserId: user.id },
+          { participants: { some: { userId: user.id, accessStatus: "ACTIVE" } } },
+          { booking: { clientUserId: user.id } },
+          { booking: { coachUserId: user.id } },
+        ],
+      };
+}
+
+export async function GET(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in before reading provider recording evidence." },
+      { status: 401 },
+    );
+  }
+  const callRoomId = text(new URL(request.url).searchParams.get("callRoomId"));
+  if (!callRoomId) {
+    return NextResponse.json(
+      { ok: false, error: "Choose a Quipsly capture room before reading provider recording evidence." },
+      { status: 400 },
+    );
+  }
+  const prisma = getPrismaClient() as any;
+  const room = await prisma.callRoom.findFirst({
+    where: roomAccessWhere(callRoomId, session.user),
+    select: {
+      id: true,
+      status: true,
+      provider: true,
+      captureGroupId: true,
+      metadataJson: true,
+      booking: { include: { paymentRecord: true } },
+      providerRecordingCommands: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          action: true,
+          status: true,
+          providerEgressId: true,
+          recordingAssetId: true,
+          errorCode: true,
+          errorMessage: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      recordingAssets: {
+        where: { kind: "SERVER_MIX" },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          localManifestJson: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+  if (!room) {
+    return NextResponse.json(
+      { ok: false, error: "You do not have access to this capture room." },
+      { status: 404 },
+    );
+  }
+  const environment = getProviderRecordingEnvironment();
+  const projection = projectProviderRecordingState(room);
+  const paymentHold = paymentHoldForRoom(room);
+  return NextResponse.json({
+    ok: true,
+    providerRecording: {
+      state: projection.state,
+      optionalWitness: true,
+      affectsCaptureGroupSync: false,
+      syncAuthority: "server-owned capture group, device clock receipts, protected local masters, and waveform/drift review",
+      canOperate: Boolean(session.user.isStaff),
+      configured: environment.missing.length === 0,
+      enabled: environment.egressEnabled,
+      paymentHeld: paymentHold.blocked,
+      nextAction: projection.nextAction,
+      activeRecordingAssetId: projection.activeAsset?.id || projection.activeStart?.recordingAssetId || null,
+      latestCommand: projection.latest
+        ? {
+            id: projection.latest.id,
+            action: projection.latest.action,
+            status: projection.latest.status,
+            errorCode: projection.latest.errorCode,
+            message: projection.latest.errorMessage,
+            updatedAt: projection.latest.updatedAt,
+          }
+        : null,
+    },
+  });
+}
+
 export async function POST(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
 
@@ -105,6 +216,8 @@ export async function POST(request: Request) {
   const callRoomId = text(body.callRoomId);
   const action = normalizeAction(body.action);
   const recordingAssetId = text(body.recordingAssetId);
+  const commandId = text(body.commandId);
+  const requestId = text(body.requestId);
 
   if (!callRoomId) {
     return NextResponse.json(
@@ -115,7 +228,18 @@ export async function POST(request: Request) {
 
   if (!action) {
     return NextResponse.json(
-      { ok: false, error: "Choose a valid provider recording action: PREPARE_RECEIPT_SLOT, START_EGRESS, STOP_EGRESS, or RECONCILE_PROVIDER_FILE." },
+      { ok: false, error: "Choose a valid provider recording action: PREPARE_RECEIPT_SLOT, START_EGRESS, STOP_EGRESS, RECONCILE_COMMAND, or RECONCILE_PROVIDER_FILE." },
+      { status: 400 },
+    );
+  }
+
+  if (["START_EGRESS", "STOP_EGRESS"].includes(action) && !requestId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "PROVIDER_RECORDING_REQUEST_ID_REQUIRED",
+        error: "Provider START and STOP require a stable UUID requestId so retries cannot duplicate external recording actions.",
+      },
       { status: 400 },
     );
   }
@@ -142,17 +266,7 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const room = await prisma.callRoom.findFirst({
-    where: session.user.isStaff
-      ? { id: callRoomId }
-      : {
-          id: callRoomId,
-          OR: [
-            { createdByUserId: userId },
-            { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-            { booking: { clientUserId: userId } },
-            { booking: { coachUserId: userId } },
-          ],
-        },
+    where: roomAccessWhere(callRoomId, session.user),
     include: {
       booking: { include: { paymentRecord: true } },
       participants: { where: { accessStatus: "ACTIVE" } },
@@ -168,11 +282,69 @@ export async function POST(request: Request) {
     );
   }
 
-  if (["ENDED", "CANCELED", "FAILED"].includes(room.status)) {
+  if (
+    ["PREPARE_RECEIPT_SLOT", "START_EGRESS"].includes(action)
+    && ["ENDED", "CANCELED", "FAILED"].includes(room.status)
+  ) {
     return NextResponse.json(
       { ok: false, error: "This capture room is closed. Create a new room before preparing provider recording." },
       { status: 409 },
     );
+  }
+
+  if (action === "RECONCILE_COMMAND") {
+    if (!commandId) {
+      return NextResponse.json(
+        { ok: false, error: "Choose the durable provider command that needs reconciliation." },
+        { status: 400 },
+      );
+    }
+    const command = await prisma.providerRecordingCommand.findFirst({
+      where: { id: commandId, roomId: room.id },
+      select: { id: true, status: true },
+    });
+    if (!command) {
+      return NextResponse.json(
+        { ok: false, error: "That provider command does not belong to this capture room." },
+        { status: 404 },
+      );
+    }
+    let result;
+    try {
+      result = await processProviderRecordingCommand({ commandId: command.id });
+    } catch (error) {
+      if (error instanceof ProviderRecordingCommandError) {
+        return NextResponse.json(
+          { ok: false, code: error.code, error: error.message },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+    const accepted = ["started", "stopped", "queued", "processing", "reconcile-required"].includes(result.status);
+    return NextResponse.json({
+      ok: accepted,
+      action,
+      providerRecording: {
+        startsWithJoin: false,
+        requiresExplicitStart: true,
+        requiresAllParticipantConsent: true,
+        receiptRequiredBeforeTranscript: true,
+        currentStatus: result.status,
+        externalRecordingStarted: result.status === "started",
+        egressId: result.egressId ?? null,
+        nextAction: result.message,
+      },
+      command: {
+        id: result.commandId,
+        requestId: result.requestId,
+        status: result.status,
+        idempotentReplay: result.idempotentReplay,
+      },
+      recordingAssetId: result.recordingAssetId ?? null,
+      callRoomId: result.callRoomId,
+      message: result.message,
+    }, { status: ["started", "stopped"].includes(result.status) ? 200 : accepted ? 202 : 409 });
   }
 
   const paymentHold = paymentHoldForRoom(room);
@@ -204,7 +376,7 @@ export async function POST(request: Request) {
 
   let participant = room.participants.find((item: any) => item.userId === userId);
   const participants = [...room.participants];
-  if (!participant) {
+  if (!participant && action === "PREPARE_RECEIPT_SLOT") {
     const role = room.booking?.coachUserId === userId ? "COACH" : room.booking?.clientUserId === userId ? "CLIENT" : "GUEST";
     participant = await prisma.callParticipant.create({
       data: {
@@ -244,9 +416,25 @@ export async function POST(request: Request) {
   }
 
   if (action === "START_EGRESS") {
-    const result = await startQuipslyLiveKitRoomCompositeEgress({ callRoomId: room.id, operatorUserId: userId });
+    let result;
+    try {
+      result = await startQuipslyLiveKitRoomCompositeEgress({
+        callRoomId: room.id,
+        operatorUserId: userId,
+        requestId,
+      });
+    } catch (error) {
+      if (error instanceof ProviderRecordingCommandError) {
+        return NextResponse.json(
+          { ok: false, code: error.code, error: error.message },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+    const accepted = ["started", "queued", "processing", "reconcile-required"].includes(result.status);
     return NextResponse.json({
-      ok: result.status === "started",
+      ok: accepted,
       action,
       providerRecording: {
         startsWithJoin: false,
@@ -258,16 +446,38 @@ export async function POST(request: Request) {
         egressId: result.egressId ?? null,
         nextAction: result.message,
       },
+      command: {
+        id: result.commandId,
+        requestId: result.requestId,
+        status: result.status,
+        idempotentReplay: result.idempotentReplay,
+      },
       recordingAssetId: result.recordingAssetId ?? null,
       callRoomId: result.callRoomId,
       message: result.message,
-    }, { status: result.status === "started" ? 200 : 409 });
+    }, { status: result.status === "started" ? 200 : accepted ? 202 : 409 });
   }
 
   if (action === "STOP_EGRESS") {
-    const result = await stopQuipslyLiveKitRoomCompositeEgress({ callRoomId: room.id, operatorUserId: userId });
+    let result;
+    try {
+      result = await stopQuipslyLiveKitRoomCompositeEgress({
+        callRoomId: room.id,
+        operatorUserId: userId,
+        requestId,
+      });
+    } catch (error) {
+      if (error instanceof ProviderRecordingCommandError) {
+        return NextResponse.json(
+          { ok: false, code: error.code, error: error.message },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+    const accepted = ["stopped", "queued", "processing", "reconcile-required"].includes(result.status);
     return NextResponse.json({
-      ok: result.status === "stopped",
+      ok: accepted,
       action,
       providerRecording: {
         startsWithJoin: false,
@@ -279,10 +489,16 @@ export async function POST(request: Request) {
         egressId: result.egressId ?? null,
         nextAction: result.message,
       },
+      command: {
+        id: result.commandId,
+        requestId: result.requestId,
+        status: result.status,
+        idempotentReplay: result.idempotentReplay,
+      },
       recordingAssetId: result.recordingAssetId ?? null,
       callRoomId: result.callRoomId,
       message: result.message,
-    }, { status: result.status === "stopped" ? 200 : 409 });
+    }, { status: result.status === "stopped" ? 200 : accepted ? 202 : 409 });
   }
 
   if (action === "RECONCILE_PROVIDER_FILE") {

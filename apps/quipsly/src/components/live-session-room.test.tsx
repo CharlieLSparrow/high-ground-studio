@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { LiveSessionRoom } from "./live-session-room";
 
@@ -23,12 +23,14 @@ jest.mock("@/components/browser-source-recorder", () => ({
 
 describe("LiveSessionRoom", () => {
   const originalMediaDevices = navigator.mediaDevices;
+  const originalFetch = global.fetch;
 
   afterEach(() => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: originalMediaDevices,
     });
+    global.fetch = originalFetch;
     jest.restoreAllMocks();
   });
 
@@ -60,6 +62,7 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
     expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
+    expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent(
       "55555555-5555-4555-8555-555555555551",
     );
@@ -67,7 +70,9 @@ describe("LiveSessionRoom", () => {
   });
 
   it("does not request media permission until the person acts", async () => {
-    const getUserMedia = jest.fn();
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop: jest.fn() }],
+    });
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -84,6 +89,7 @@ describe("LiveSessionRoom", () => {
     expect(getUserMedia).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Allow microphone/i }));
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
+    await screen.findByText(/No microphone was found/i);
   });
 
   it("keeps camera permission independent from an audio-only coaching join", async () => {
@@ -162,5 +168,59 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source stop" }));
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeEnabled();
+  });
+
+  it("reuses the same provider START request after an ambiguous transport failure", async () => {
+    const postBodies: Array<{ requestId: string }> = [];
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!init?.method || init.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            providerRecording: {
+              state: "off",
+              optionalWitness: true,
+              affectsCaptureGroupSync: false,
+              syncAuthority: "capture group and local masters",
+              canOperate: true,
+              configured: true,
+              enabled: true,
+              paymentHeld: false,
+              nextAction: "Provider safety copy is off.",
+              activeRecordingAssetId: null,
+              latestCommand: null,
+            },
+          }),
+        } as Response;
+      }
+      postBodies.push(JSON.parse(String(init.body)) as { requestId: string });
+      throw new Error(`response lost for ${String(input)}`);
+    }) as typeof fetch;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-provider-retry" captureGroupId="55555555-5555-4555-8555-555555555556" sessionTitle="Provider retry" kind="coaching" />);
+    });
+    await screen.findByRole("option", { name: "Shure MV7i" });
+    fireEvent.click(await screen.findByRole("button", { name: "Review provider safety copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start provider copy" }));
+    await waitFor(() => expect(postBodies).toHaveLength(1));
+    await screen.findByText(/Retry uses the same request ID/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Review provider safety copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start provider copy" }));
+    await waitFor(() => expect(postBodies).toHaveLength(2));
+    expect(postBodies[1].requestId).toBe(postBodies[0].requestId);
   });
 });
