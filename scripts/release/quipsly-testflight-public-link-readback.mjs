@@ -33,6 +33,10 @@ export function parsePublicLinkArguments(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
+    // `pnpm <script> -- <args>` keeps the conventional separator in argv for
+    // some pnpm versions. Treat it as syntax, not as an option that needs a
+    // value, so the documented package-script invocation remains reliable.
+    if (flag === "--") continue;
     if (flag === "--help" || flag === "-h") {
       options.help = true;
       continue;

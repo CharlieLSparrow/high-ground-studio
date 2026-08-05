@@ -13,6 +13,7 @@ on:
       - docs/quipsly/hgo-testflight-rehearsal-runbook.md
       - docs/quipsly/ios-capture-privacy-label-matrix.md
       - docs/quipsly/ios-capture-reviewer-smoke-checklist.md
+      - docs/quipsly/xcode-cloud-usage-policy.md
       - release/app-store/quipsly-capture/**
       - release/manifests/capture.json
       - scripts/quipsly-ios-capture-app-store-static-smoke.mjs
@@ -31,6 +32,8 @@ on:
       - scripts/release/quipsly-capture-release-target.test.mjs
       - scripts/release/quipsly-testflight-public-link-readback.mjs
       - scripts/release/quipsly-testflight-public-link-readback.test.mjs
+      - scripts/release/quipsly-xcode-cloud-workflow-audit.mjs
+      - scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs
       - .github/workflows/capture-pr-tests.yml
   workflow_dispatch:
 
@@ -72,6 +75,7 @@ jobs:
           node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
           node --test scripts/release/quipsly-capture-release-target.test.mjs
           node --test scripts/release/quipsly-testflight-public-link-readback.test.mjs
+          node --test scripts/release/quipsly-xcode-cloud-workflow-audit.test.mjs
           node --test scripts/quipsly-hgo-rehearsal-preflight.test.mjs
           bash -n scripts/quipsly-hgo-rehearsal-live-preflight.sh
           node scripts/release/quipsly-capture-app-store-metadata.mjs

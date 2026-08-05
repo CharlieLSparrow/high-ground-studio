@@ -38,7 +38,9 @@ that Xcode Cloud usefully provides.
 
 ## Guardrail
 
-Run the checked-in read-only audit before enabling or editing the workflow:
+The Capture pull-request workflow runs the checked-in policy unit tests whenever
+this audit, its tests, or this policy changes. Run the live read-only audit
+before enabling or editing the provider workflow:
 
 ```bash
 pnpm quipsly:xcode-cloud:audit -- --strict --expect-disabled
@@ -47,6 +49,11 @@ pnpm quipsly:xcode-cloud:audit -- --strict --expect-disabled
 It fails closed when an automatic start condition, non-iOS action, multiple
 actions, or an unexpectedly enabled held workflow appears. It also reports the
 latest 200 build-run outcomes without printing the App Store Connect key.
+
+The normal TestFlight path remains the local detached-commit candidate lane and
+direct App Store Connect upload. Xcode Cloud availability is therefore not a
+release dependency and exhausting its allowance must never stop simulator,
+physical-device, signed archive, or TestFlight work.
 
 Apple Developer Program membership currently includes 25 compute hours per
 month. Parallel tasks each consume compute time; unused hours do not roll over.

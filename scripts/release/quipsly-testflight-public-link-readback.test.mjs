@@ -69,6 +69,24 @@ test("parses explicit app, link, and receipt options", () => {
   );
 });
 
+test("accepts pnpm's conventional argument separator", () => {
+  assert.deepEqual(
+    parsePublicLinkArguments([
+      "--",
+      "--app-name",
+      "Quipsly Capture",
+      "--public-link",
+      "https://testflight.apple.com/join/XwRRcYUm",
+    ]),
+    {
+      appName: "Quipsly Capture",
+      publicLink: "https://testflight.apple.com/join/XwRRcYUm",
+      outputPath: "",
+      help: false,
+    },
+  );
+});
+
 test("requires the exact app title, heading, and itms-beta handoff", () => {
   assert.deepEqual(
     classifyTestFlightPublicPage({ html: openHtml, appName, linkId }),
