@@ -153,6 +153,17 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesConsentNeededNextPreview: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        usesPreviewData
+            && ProcessInfo.processInfo.arguments.contains(
+                "--capture-consent-needed-next-preview"
+            )
+        #else
+        false
+        #endif
+    }
+
     static var usesReminderSystemUITest: Bool {
         #if DEBUG && targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--capture-reminder-system-ui-test")
@@ -2614,8 +2625,15 @@ final class CaptureExperienceModel: ObservableObject {
 
 extension MobileCaptureSession {
     static var capturePreviewFixtures: [MobileCaptureSession] {
-        let coachingStart = Date().addingTimeInterval(35 * 60)
-        let podcastStart = Date().addingTimeInterval(24 * 60 * 60)
+        let consentNeededIsNext =
+            CaptureLaunchConfiguration
+                .usesConsentNeededNextPreview
+        let coachingStart = Date().addingTimeInterval(
+            consentNeededIsNext ? 24 * 60 * 60 : 35 * 60
+        )
+        let podcastStart = Date().addingTimeInterval(
+            consentNeededIsNext ? 10 * 60 : 24 * 60 * 60
+        )
         return [
             capturePreview(
                 id: "preview-coaching-ready",

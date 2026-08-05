@@ -5783,7 +5783,12 @@ private struct CaptureRecorderView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            // This surface can project a full Episode workspace. Lazy layout
+            // is a correctness boundary on physical devices: eagerly laying
+            // out every transcript, notes, follow-through, chat, Watch, and
+            // capture card can overflow SwiftUI's AttributeGraph stack before
+            // the person reaches the consent controls.
+            LazyVStack(spacing: 16) {
                 SessionChooserButton(session: model.selectedSession) {
                     showsSessionPicker = true
                 }
@@ -5804,6 +5809,11 @@ private struct CaptureRecorderView: View {
                 }
 
                 if let session = model.selectedSession {
+                    // Keep the consent and recording controls in one eager,
+                    // bounded unit so VoiceOver and UI automation can reach
+                    // the recorder immediately. The much larger workflow
+                    // workspace below remains lazy.
+                    VStack(spacing: 16) {
                     ConsentStrip(
                         session: session,
                         isBusy: model.isChangingConsent,
@@ -5854,11 +5864,6 @@ private struct CaptureRecorderView: View {
                         }
                     }
                     .captureCard()
-
-                    CaptureSessionTranscriptReviewCard(
-                        session: session,
-                        previewOnly: model.usesPreviewData
-                    )
 
                     if recordingMode == .audio {
                         RecorderHero(
@@ -5988,6 +5993,12 @@ private struct CaptureRecorderView: View {
                                 await runRehearsalCheck(for: session)
                             }
                         }
+                    )
+                    }
+
+                    CaptureSessionTranscriptReviewCard(
+                        session: session,
+                        previewOnly: model.usesPreviewData
                     )
 
                     if session.projectSlug?.nonempty != nil,

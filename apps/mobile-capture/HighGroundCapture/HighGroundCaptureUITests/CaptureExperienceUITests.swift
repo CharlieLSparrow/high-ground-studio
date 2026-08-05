@@ -7,6 +7,13 @@ final class CaptureExperienceUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--capture-ui-preview"]
+        if name.contains(
+            "testConsentNeededNextEpisodeOpensRecorderWithoutCrashing"
+        ) {
+            app.launchArguments.append(
+                "--capture-consent-needed-next-preview"
+            )
+        }
         if name.contains("testCoachFollowUpHoldsReleaseWhenCanonicalSourceChanged") {
             app.launchArguments.append("--capture-follow-up-source-changed-preview")
         }
@@ -77,6 +84,29 @@ final class CaptureExperienceUITests: XCTestCase {
 
         tabBar.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+    }
+
+    func testConsentNeededNextEpisodeOpensRecorderWithoutCrashing() {
+        let next = app.buttons["CaptureOpenNextSessionButton"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts["High Ground pre-show"].exists,
+            "The regression fixture must make the consent-needed podcast the exact Next button target."
+        )
+
+        next.tap()
+
+        XCTAssertTrue(
+            app.scrollViews["CaptureRecorderView"]
+                .waitForExistence(timeout: 8),
+            "Opening a full Episode projection must not overflow SwiftUI's layout stack."
+        )
+        XCTAssertTrue(
+            app.buttons["CaptureConfirmConsentButton"]
+                .waitForExistence(timeout: 5),
+            "Consent-needed Sessions must open the in-recorder Review choices action."
+        )
+        XCTAssertTrue(app.state == .runningForeground)
     }
 
     func testRecorderNamesItsAudioEvidenceInsteadOfShowingAnOpaquePercentage() {
@@ -1503,7 +1533,9 @@ final class CaptureExperienceUITests: XCTestCase {
 
     func testCoachFollowUpPreservesExactSourceWithoutReleasingPreview() throws {
         app.buttons["CaptureOpenNextSessionButton"].tap()
-        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        let recorderHero = app.otherElements["CaptureRecorderHero"]
+        reveal(recorderHero)
+        XCTAssertTrue(recorderHero.waitForExistence(timeout: 5))
 
         let followUp = app.buttons["CaptureCoachClientFollowUp"].firstMatch
         reveal(followUp)
@@ -1538,7 +1570,8 @@ final class CaptureExperienceUITests: XCTestCase {
         let back = app.navigationBars["Transcript review"].buttons.firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 5))
         back.tap()
-        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        reveal(recorderHero)
+        XCTAssertTrue(recorderHero.waitForExistence(timeout: 5))
 
         let save = app.buttons["CaptureCoachFollowUpSave"]
         revealBelow(save, in: recorderScroll)
