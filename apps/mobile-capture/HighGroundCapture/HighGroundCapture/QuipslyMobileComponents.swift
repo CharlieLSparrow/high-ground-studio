@@ -950,11 +950,13 @@ struct MobileCoachClientFollowUpCard: View {
                                     Label("Release held — review current sources", systemImage: "exclamationmark.shield.fill")
                                         .font(.caption.bold())
                                         .foregroundStyle(.red)
+                                        .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeldTitle")
                                     if let changes = workspace.readiness?.changes, !changes.isEmpty {
                                         ForEach(changes, id: \.stableID) { change in
                                             Text("\(change.kind.capitalized) · \(change.label) \(readinessDetail(change)).")
                                                 .font(.caption2.bold())
                                                 .fixedSize(horizontal: false, vertical: true)
+                                                .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeldChange")
                                         }
                                     } else {
                                         Text("Quipsly could not verify this draft against current canonical records.")
@@ -965,7 +967,6 @@ struct MobileCoachClientFollowUpCard: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 .foregroundStyle(.red)
-                                .accessibilityIdentifier("CaptureCoachFollowUpReleaseHeld")
                             }
 
                             Toggle(

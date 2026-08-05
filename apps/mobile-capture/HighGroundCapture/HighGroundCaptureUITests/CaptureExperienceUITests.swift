@@ -1592,12 +1592,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(followUp.waitForExistence(timeout: 5))
 
         let recorderScroll = app.scrollViews["CaptureRecorderView"].firstMatch
-        let held = app.descendants(matching: .any)["CaptureCoachFollowUpReleaseHeld"].firstMatch
-        revealBelow(held, in: recorderScroll)
-        XCTAssertTrue(held.waitForExistence(timeout: 5))
-        XCTAssertTrue(held.label.contains("Release held — review current sources"))
+        let heldTitle = app.staticTexts["CaptureCoachFollowUpReleaseHeldTitle"]
+        revealBelow(heldTitle, in: recorderScroll)
+        XCTAssertTrue(heldTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(heldTitle.label.contains("Release held — review current sources"))
         let sourceChanges = app.staticTexts
-            .matching(identifier: "CaptureCoachFollowUpReleaseHeld")
+            .matching(identifier: "CaptureCoachFollowUpReleaseHeldChange")
             .matching(
                 NSPredicate(
                     format: "label CONTAINS %@",
