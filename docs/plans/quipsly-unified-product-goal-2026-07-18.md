@@ -7725,3 +7725,23 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   physical Build 28 Episode 9/capture/recovery/upload/playback acceptance, and
   disposable production account-deletion proof. No review submission or
   release was created.
+
+## 2026-08-05 Build 28 aggregate privacy checkpoint
+
+- Inspected all 14 privacy manifests inside the exact signed and uploaded Build
+  28 archive instead of treating Quipsly's root manifest as the complete App
+  Store label. Google Sign-In 9.1.0 contributes phone number, coarse location,
+  other data, other usage data, and analytics purposes for identifiers.
+- Added a canonical 11-type questionnaire and pinned SDK inventory. Every type
+  is linked to the account, none is used for tracking, and the aggregate has no
+  tracking domains. The exact manifest-set hash is
+  `ee7e45d0a664095c7b02ce8b1e9d5ecd038c9191d673140733335aca3707af0b`.
+- Added source and signed-archive validators that fail when an app declaration,
+  reviewed SDK type, SDK version, purpose, linkage answer, tracking answer,
+  manifest count, or aggregate hash drifts. Focused source and exact Build 28
+  archive readback pass.
+- This closes the engineering inventory gap, not the legal/provider gate. App
+  Privacy remains unpublished until the Account Holder reviews the exact
+  answers and App Store Connect readback confirms them. Production disposable
+  account deletion, DSA, compatibility opt-out, physical Build 28 operation,
+  and signed/TestFlight screenshots remain open.

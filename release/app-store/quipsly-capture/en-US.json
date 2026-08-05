@@ -30,11 +30,10 @@
   },
   "privacy": {
     "sourceManifest": "apps/mobile-capture/HighGroundCapture/HighGroundCapture/PrivacyInfo.xcprivacy",
+    "questionnaireFile": "release/app-store/quipsly-capture/privacy-questionnaire.json",
     "tracking": false,
     "trackingDomains": [],
-    "linkedToUser": true,
-    "purpose": "App Functionality",
-    "collectedDataTypes": [
+    "appManifestCollectedDataTypes": [
       "NSPrivacyCollectedDataTypeName",
       "NSPrivacyCollectedDataTypeEmailAddress",
       "NSPrivacyCollectedDataTypeUserID",
@@ -43,6 +42,8 @@
       "NSPrivacyCollectedDataTypePhotosorVideos",
       "NSPrivacyCollectedDataTypeOtherUserContent"
     ],
+    "archiveAggregateValidatedBuild": "28",
+    "aggregateCollectedDataTypeCount": 11,
     "publicationStatus": "requires-account-holder-approval"
   },
   "compliance": {

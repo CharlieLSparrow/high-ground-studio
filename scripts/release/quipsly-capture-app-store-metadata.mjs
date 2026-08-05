@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
+import { validatePrivacyQuestionnaire } from "./quipsly-capture-privacy-questionnaire.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -269,24 +270,47 @@ export function validateAppStoreMetadata(
       errors.push(`privacy.sourceManifest does not exist: ${privacy.sourceManifest}.`);
     } else {
       const manifestText = fs.readFileSync(manifestPath, "utf8");
-      const dataTypes = Array.isArray(privacy.collectedDataTypes) ? privacy.collectedDataTypes : [];
+      const dataTypes = Array.isArray(privacy.appManifestCollectedDataTypes) ? privacy.appManifestCollectedDataTypes : [];
       for (const dataType of dataTypes) {
         if (typeof dataType !== "string" || !/^NSPrivacyCollectedDataType[A-Za-z]+$/.test(dataType)) {
-          errors.push("privacy.collectedDataTypes must contain only Apple collected-data identifiers.");
+          errors.push("privacy.appManifestCollectedDataTypes must contain only Apple collected-data identifiers.");
         } else if (!manifestText.includes(`<string>${dataType}</string>`)) {
           errors.push(`privacy.sourceManifest does not declare ${dataType}.`);
         }
       }
       for (const match of manifestText.matchAll(/<string>(NSPrivacyCollectedDataType(?!Purpose)[A-Za-z]+)<\/string>/g)) {
-        if (!dataTypes.includes(match[1])) errors.push(`privacy.collectedDataTypes omits ${match[1]} from the shipping manifest.`);
+        if (!dataTypes.includes(match[1])) errors.push(`privacy.appManifestCollectedDataTypes omits ${match[1]} from the app manifest.`);
+      }
+    }
+  }
+  if (!safeRepositoryPath(privacy.questionnaireFile)) {
+    errors.push("privacy.questionnaireFile must be a safe repository-relative path.");
+  } else {
+    const questionnairePath = path.join(root, privacy.questionnaireFile);
+    if (!fs.existsSync(questionnairePath)) {
+      errors.push(`privacy.questionnaireFile does not exist: ${privacy.questionnaireFile}.`);
+    } else {
+      try {
+        const questionnaire = JSON.parse(fs.readFileSync(questionnairePath, "utf8"));
+        const privacyResult = validatePrivacyQuestionnaire(questionnaire, { root });
+        errors.push(...privacyResult.errors.map((error) => `privacy questionnaire: ${error}`));
+        metrics.aggregateCollectedDataTypeCount = questionnaire.collectedDataTypes?.length || 0;
+        if (privacy.aggregateCollectedDataTypeCount !== metrics.aggregateCollectedDataTypeCount) {
+          errors.push("privacy.aggregateCollectedDataTypeCount must match the questionnaire.");
+        }
+        if (questionnaire.target?.build !== compliance.providerTarget?.build) {
+          errors.push("privacy questionnaire target build must match compliance.providerTarget.build.");
+        }
+      } catch (error) {
+        errors.push(`privacy.questionnaireFile is invalid: ${error instanceof Error ? error.message : String(error)}.`);
       }
     }
   }
   if (privacy.tracking !== false || !Array.isArray(privacy.trackingDomains) || privacy.trackingDomains.length !== 0) {
     errors.push("privacy must declare no tracking and no tracking domains for the current binary.");
   }
-  if (privacy.linkedToUser !== true || privacy.purpose !== "App Functionality") {
-    errors.push("privacy collection must remain linked to the user for App Functionality.");
+  if (privacy.archiveAggregateValidatedBuild !== compliance.providerTarget?.build) {
+    errors.push("privacy.archiveAggregateValidatedBuild must match the exact provider target build.");
   }
   if (privacy.publicationStatus !== "requires-account-holder-approval") {
     errors.push("privacy.publicationStatus must remain account-holder gated until provider publication is proved.");

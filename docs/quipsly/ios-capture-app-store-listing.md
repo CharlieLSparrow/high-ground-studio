@@ -1,6 +1,6 @@
 # Quipsly Capture App Store listing
 
-Date: 2026-08-01
+Date: 2026-08-05
 Status: safe provider metadata applied and read back; submission blocked
 
 The canonical English (U.S.) listing is
@@ -13,6 +13,7 @@ Validate the reviewed source packet:
 
 ```bash
 pnpm quipsly:capture:app-store-metadata
+pnpm quipsly:capture:privacy -- --strict
 ```
 
 Run the final fail-closed submission gate:
@@ -55,7 +56,7 @@ and demo-account identity; it never prints or stores the password or API key.
 - Release: manual after App Review approval
 
 These categories, copyright, manual release, the en-US listing, policy URLs,
-Build 26, and App Review details are now applied and read back in App Store
+Build 28, and App Review details are now applied and read back in App Store
 Connect. Content rights, all current age-rating questions, IDFA false, Free
 pricing, and USA-only availability also have provider readback. App Privacy
 publication, the account-level DSA determination, approved screenshots,
@@ -63,8 +64,8 @@ physical-device acceptance, account-deletion proof, and iPhone-only provider
 compatibility remain open before submission.
 
 The source now resolves `SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD=NO` alongside
-the existing iPhone-only family and Mac opt-out settings, and signed Build 26
-proves `UIDeviceFamily=[1]`. Apple still computes Build 26 as capable of running
+the existing iPhone-only family and Mac opt-out settings, and signed Build 28
+proves `UIDeviceFamily=[1]`. Apple still computes Build 28 as capable of running
 on Apple silicon Mac. That does not mean it should be offered there: use
 **Pricing and Availability** to deselect both the Apple Silicon Mac and Apple
 Vision Pro availability controls, save, reload, and preserve visual readback.
@@ -122,13 +123,13 @@ canonical approved-assets directory. Re-run the same five stories on the exact
 signed candidate or its TestFlight install with the approved reviewer account,
 then inspect and approve those final captures separately.
 
-The 2026-08-02 exact Build 26 source run produced five valid `1320 x 2868`
-images without preview banners and passed visual inspection. That review found
-one singular archived-tag grammar defect in Work; pushed source `c621af95`
-fixed it, added an operated assertion, and regenerated the complete clean-source
-set. Both bundles remain draft evidence with `submissionEligible:false`. The
-complete evidence is retained outside Git under the Quipsly QA artifacts
-volume.
+The 2026-08-05 clean detached source `9387c6254a1d5a6e78aae2ae01193ab38af72451`
+produced all five valid `1320 x 2868` layouts. An earlier exact-Build-28 journey
+exposed that the Account test asserted Privacy and Request Account Deletion
+before scrolling them into view; the repaired journey now captures the actual
+reachable controls. These remain DEBUG composition evidence with
+`submissionEligible:false`, retained outside Git under the Quipsly QA artifacts
+volume. Signed/TestFlight recapture and human approval remain required.
 
 ## Submission ownership
 

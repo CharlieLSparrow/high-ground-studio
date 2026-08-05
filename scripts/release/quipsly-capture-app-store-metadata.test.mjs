@@ -29,6 +29,7 @@ test("canonical App Store metadata passes its source contract", () => {
   assert.equal(result.metrics.subtitleCharacters, 27);
   assert.equal(result.metrics.promotionalTextCharacters, 151);
   assert.equal(result.metrics.keywordsBytes, 87);
+  assert.equal(result.metrics.aggregateCollectedDataTypeCount, 11);
   assert.equal(result.screenshotCount, 5);
   assert.equal(result.submissionReadiness, "blocked");
   assert.equal(

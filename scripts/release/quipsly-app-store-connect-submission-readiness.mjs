@@ -347,7 +347,12 @@ export function summarizeSubmissionReadiness({
     if (!checks.expectedTerritoriesAvailable) addBlocker(blockers, "expected-territory-unavailable", `The intended first-release territories are not all available: ${expectedTerritoryIds.join(", ")}.`, "legal");
     if (!checks.territoryStatusesClear) addBlocker(blockers, "territory-status-blocked", `Apple reports blocking territory status: ${blockingStatuses.join(", ")}.`, "legal");
   }
-  addBlocker(blockers, "app-privacy-manual-publication", "App Privacy answers and Publish confirmation require App Store Connect verification.", "manual");
+  addBlocker(
+    blockers,
+    "app-privacy-manual-publication",
+    `Publish the validated ${metadata.privacy.aggregateCollectedDataTypeCount}-type Build ${metadata.privacy.archiveAggregateValidatedBuild} signed-archive questionnaire in App Store Connect and independently read it back.`,
+    "manual",
+  );
   addBlocker(blockers, "dsa-trader-manual-verification", traderStatusBlockers.length > 0
     ? `Apple reports: ${traderStatusBlockers.join(", ")}.`
     : "EU DSA trader identity remains an account-level legal verification.", "manual");
@@ -462,6 +467,9 @@ export function summarizeSubmissionReadiness({
     appPrivacy: {
       apiVerifiable: false,
       canonicalPublicationStatus: metadata.privacy.publicationStatus,
+      questionnaireFile: metadata.privacy.questionnaireFile,
+      archiveAggregateValidatedBuild: metadata.privacy.archiveAggregateValidatedBuild,
+      aggregateCollectedDataTypeCount: metadata.privacy.aggregateCollectedDataTypeCount,
       status: "manual-verification-required",
     },
     checks,

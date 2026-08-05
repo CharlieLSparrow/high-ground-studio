@@ -31,7 +31,7 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 
 ## Current native readiness artifacts
 
-- `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, audio, photos-or-videos, and other session/user-content data, plus required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check.
+- `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, audio, photos-or-videos, and other session/user-content data, plus required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check. The exact signed Build 28 app contains 14 app/SDK privacy manifests; the aggregate validator requires all 11 resulting App Store types and catches Google Sign-In's additional phone, coarse-location, other-data, other-usage, and analytics disclosures instead of trusting the root app manifest alone.
 - The project uses an explicit microphone purpose string: Quipsly records coaching calls, podcast sessions, interviews, and field notes after the user explicitly starts recording.
 - Native account entry supports Firebase email/password sign-in, account creation, verification email, and enumeration-safe password recovery through Firebase's public REST API, then verifies Quipsly app access through `/api/mac/session-check` with a Firebase bearer token. Current `accounts:lookup` state must show a verified mailbox before any token or cached offline identity is stored, and refresh rechecks that state. Account creation does not grant Capture beta recording/upload access; Nest remains the access authority. Google-origin accounts are guided toward the same email, recovery, web Google sign-in, or support rather than a duplicate identity. The old browser/native handoff endpoints are not the iOS product path.
 - Recorder UI shows capture readiness, consent state, visible recording state, local fallback, upload/transcript readiness, privacy/deletion routes, and preserved-upload recovery.
@@ -47,7 +47,7 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 - `UploadManager` exposes a retry path for recoverable direct private-GCS resumable v2 uploads. Its non-secret phase ledger is protected and owner-partitioned; the secret resumable capability remains in this-device Keychain. Legacy job/source evidence remains readable, but old server-buffered multipart/chunk transport is disabled; a preserved source must be re-enqueued through v2.
 - Capability issuance writes a stable, exact-size Prisma reservation under per-account and per-Nest rolling-byte, issuance-rate, and active limits. Successful canonical finalize settles generation/size evidence and frees the active slot; retries cannot mutate their actor/project/object/type/size binding.
 - Room Start/Stop outcomes are persisted transactionally in `CaptureRoomStateReceipt`, including deterministic terminal rejection evidence. Upload issuance/settlement is persisted in `MediaVaultUploadReservation`. These objects are now covered by the committed Prisma migration history. A dependent backend revision cannot receive traffic until `scripts/release/quipsly-schema-release.sh` has produced a passing exact-source receipt with fixture replay, verified backup, current production migration ledger, and zero schema diff. The historical additive SQL and targeted coaching-capture sync are recovery references only.
-- In-app account deletion currently initiates a server request only. It is distinct from local-original deletion and is not a complete App Store deletion workflow until Quipsly has an approved retention matrix, disclosed completion timeframe, executor/anonymizer, and completion confirmation.
+- In-app account deletion is distinct from local-original deletion. It exposes a reachable request, visible status, a 30-day target, and completion state. A dedicated fail-closed worker inventories ownership and retention ambiguity, deactivates access, deletes eligible private database/GCS/Firebase identity data, sends completion confirmation, and keeps a sanitized idempotent receipt. The local disposable loop passes; the remaining App Store gate is one controlled disposable production execution plus Account Holder retention approval and independent readback.
 - `scripts/quipsly-ios-capture-app-store-static-smoke.mjs` guards the App Store-readiness invariants that are easy to accidentally regress: no tracking, privacy data and required-reason categories, explicit microphone and dependency-required camera purpose strings, modern app target, Firebase reviewer auth, explicit consent gate, visible recording state, protected resumable uploads, capture-first iPhone UX, privacy/deletion routes, and reviewer docs.
 - `scripts/quipsly-mobile-capture-preflight.sh` is the default local health check for privacy manifest lint, Quipsly TypeScript, mobile capture contract syntax, iOS native auth invariants, App Store static invariants, upload idempotency, session evidence, and iOS simulator build.
 - `docs/quipsly/ios-capture-reviewer-smoke-checklist.md` is the physical-device/TestFlight smoke path for reviewer and beta readiness.
@@ -69,6 +69,14 @@ Run only the App Store static invariant guard when you are changing privacy, aut
 
 ```bash
 node scripts/quipsly-ios-capture-app-store-static-smoke.mjs
+```
+
+Validate the source-owned aggregate privacy questionnaire on every privacy or
+SDK change, and inspect all bundled manifests for each signed candidate:
+
+```bash
+pnpm quipsly:capture:privacy -- --strict
+pnpm quipsly:capture:privacy -- --strict --archive <QuipslyCapture.xcarchive>
 ```
 
 Optional route smoke when a local or preview Nest is running:
