@@ -26,7 +26,9 @@ test("mastering output is create-and-read only while control records stay update
 });
 
 test("access activation never grants job execution overrides", () => {
+  assert.match(script, /ENABLE_SCHEDULER:-0/);
+  assert.match(script, /Processor access is request-driven; Cloud Scheduler remains disabled by contract/);
   assert.match(script, /roles\/run\.jobsExecutor/);
   assert.match(script, /roles\/run\.jobsExecutorWithOverrides/);
-  assert.match(script, /if \(!executor \|\| override\)/);
+  assert.match(script, /if \(\(required && !executor\) \|\| override\)/);
 });

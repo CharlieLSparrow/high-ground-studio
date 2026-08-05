@@ -12,6 +12,7 @@ nest_service_account="${NEST_INVOKER_SERVICE_ACCOUNT:-}"
 scheduler_job_name="${SCHEDULER_JOB_NAME:-quipsly-media-processor-sweep}"
 scheduler_region="${SCHEDULER_REGION:-${region}}"
 scheduler_schedule="${SCHEDULER_SCHEDULE:-*/5 * * * *}"
+enable_scheduler="${ENABLE_SCHEDULER:-0}"
 apply="${APPLY:-0}"
 phase="${PHASE:-all}"
 
@@ -27,6 +28,10 @@ if [[ ! "${project_id}" =~ ^[a-z][a-z0-9-]{4,62}$ ]] \
 fi
 if [[ "${phase}" != "prepare" && "${phase}" != "activate" && "${phase}" != "all" ]]; then
   echo "PHASE must be prepare, activate, or all." >&2
+  exit 2
+fi
+if [[ "${enable_scheduler}" != "0" && "${enable_scheduler}" != "1" ]]; then
+  echo "ENABLE_SCHEDULER must be 0 or 1." >&2
   exit 2
 fi
 
@@ -211,43 +216,49 @@ ensure_binding \
   "roles/storage.objectViewer"
 
 if [[ "${apply}" == "1" && ( "${phase}" == "activate" || "${phase}" == "all" ) ]]; then
-  for invoker in "${nest_service_account}" "${scheduler_service_account}"; do
+  gcloud run jobs add-iam-policy-binding "${job_name}" \
+    --project="${project_id}" \
+    --region="${region}" \
+    --member="serviceAccount:${nest_service_account}" \
+    --role="roles/run.jobsExecutor" \
+    --quiet >/dev/null
+  if [[ "${enable_scheduler}" == "1" ]]; then
     gcloud run jobs add-iam-policy-binding "${job_name}" \
       --project="${project_id}" \
       --region="${region}" \
-      --member="serviceAccount:${invoker}" \
+      --member="serviceAccount:${scheduler_service_account}" \
       --role="roles/run.jobsExecutor" \
       --quiet >/dev/null
-  done
-  gcloud services enable cloudscheduler.googleapis.com \
-    --project="${project_id}" \
-    --quiet
-  scheduler_uri="https://run.googleapis.com/v2/projects/${project_id}/locations/${region}/jobs/${job_name}:run"
-  scheduler_args=(
-    "${scheduler_job_name}"
-    "--project=${project_id}"
-    "--location=${scheduler_region}"
-    "--schedule=${scheduler_schedule}"
-    "--time-zone=Etc/UTC"
-    "--uri=${scheduler_uri}"
-    "--http-method=POST"
-    "--message-body={}"
-    "--headers=Content-Type=application/json"
-    "--oauth-service-account-email=${scheduler_service_account}"
-    "--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform"
-    "--attempt-deadline=60s"
-    "--max-retry-attempts=3"
-    "--min-backoff=30s"
-    "--max-backoff=10m"
-    "--max-doublings=3"
-    "--quiet"
-  )
-  if gcloud scheduler jobs describe "${scheduler_job_name}" \
-    --project="${project_id}" \
-    --location="${scheduler_region}" >/dev/null 2>&1; then
-    gcloud scheduler jobs update http "${scheduler_args[@]}"
-  else
-    gcloud scheduler jobs create http "${scheduler_args[@]}"
+    gcloud services enable cloudscheduler.googleapis.com \
+      --project="${project_id}" \
+      --quiet
+    scheduler_uri="https://run.googleapis.com/v2/projects/${project_id}/locations/${region}/jobs/${job_name}:run"
+    scheduler_args=(
+      "${scheduler_job_name}"
+      "--project=${project_id}"
+      "--location=${scheduler_region}"
+      "--schedule=${scheduler_schedule}"
+      "--time-zone=Etc/UTC"
+      "--uri=${scheduler_uri}"
+      "--http-method=POST"
+      "--message-body={}"
+      "--headers=Content-Type=application/json"
+      "--oauth-service-account-email=${scheduler_service_account}"
+      "--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform"
+      "--attempt-deadline=60s"
+      "--max-retry-attempts=3"
+      "--min-backoff=30s"
+      "--max-backoff=10m"
+      "--max-doublings=3"
+      "--quiet"
+    )
+    if gcloud scheduler jobs describe "${scheduler_job_name}" \
+      --project="${project_id}" \
+      --location="${scheduler_region}" >/dev/null 2>&1; then
+      gcloud scheduler jobs update http "${scheduler_args[@]}"
+    else
+      gcloud scheduler jobs create http "${scheduler_args[@]}"
+    fi
   fi
 fi
 
@@ -265,6 +276,7 @@ job_policy="$(
 POLICY_JSON="${job_policy}" \
 NEST_MEMBER="serviceAccount:${nest_service_account}" \
 SCHEDULER_MEMBER="serviceAccount:${scheduler_service_account}" \
+ENABLE_SCHEDULER="${enable_scheduler}" \
 node <<'NODE'
 const policy = JSON.parse(process.env.POLICY_JSON || "{}");
 for (const member of [process.env.NEST_MEMBER, process.env.SCHEDULER_MEMBER]) {
@@ -278,11 +290,18 @@ for (const member of [process.env.NEST_MEMBER, process.env.SCHEDULER_MEMBER]) {
       binding.role === "roles/run.jobsExecutorWithOverrides"
       && (binding.members || []).includes(member),
   );
-  if (!executor || override) {
+  const required = member === process.env.NEST_MEMBER || process.env.ENABLE_SCHEDULER === "1";
+  if ((required && !executor) || override) {
     throw new Error(`Unsafe or missing job execution role for ${member}.`);
   }
 }
 NODE
+
+if [[ "${enable_scheduler}" != "1" ]]; then
+  echo "PASS Processor access is request-driven; Cloud Scheduler remains disabled by contract."
+  echo "PASS Processor service accounts, storage access, and invocation authority match the least-privilege contract."
+  exit 0
+fi
 
 scheduler_json="$(
   gcloud scheduler jobs describe "${scheduler_job_name}" \
