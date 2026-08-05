@@ -8856,7 +8856,6 @@ private struct CaptureAccountView: View {
         ScrollView {
             VStack(spacing: 16) {
                 accountHeader
-                accountControlCard
 
                 NavigationLink {
                     CaptureNestPortabilityView(
@@ -8978,6 +8977,8 @@ private struct CaptureAccountView: View {
                     )
                 }
                 .captureCard()
+
+                accountControlCard
 
                 if let request = deletionClient.latestRequest {
                     AccountDeletionStatusCard(
