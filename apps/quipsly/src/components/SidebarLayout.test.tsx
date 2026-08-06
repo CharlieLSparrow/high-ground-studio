@@ -23,6 +23,7 @@ describe("Quipsly workspace navigation", () => {
     expect(screen.getAllByRole("link", { name: "Calendar" })[0]).toHaveAttribute("href", "/schedule");
     expect(screen.getByRole("navigation", { name: "More workspace tools" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Nests" })[0]).toHaveAttribute("href", "/projects");
+    expect(screen.getAllByRole("link", { name: "Audio Studio" })[0]).toHaveAttribute("href", "/audio");
     expect(screen.getAllByRole("link", { name: "Podcast desk" })[0]).toHaveAttribute("href", "/podcast");
     expect(screen.getAllByRole("link", { name: "Publishing" }).some((link) => link.getAttribute("href") === "/publishing")).toBe(true);
   });

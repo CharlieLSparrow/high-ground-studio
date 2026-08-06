@@ -3,8 +3,9 @@
 Date: 2026-08-05
 
 Status: source-bound candidate, append-only review, exact-range proposal,
-renderer, retained impact scan, and browser review persistence implemented;
-human operation on a retained podcast defect remains open
+renderer, retained impact scan, browser review persistence, and a first-class
+Audio Studio workspace implemented; human operation on a retained podcast
+defect remains open
 
 ## Outcome
 
@@ -243,3 +244,32 @@ imported-media card's compact scrolling area. Preserve the embedded status and
 quick action, but evolve detailed diagnosis, transcript-linked navigation,
 candidate review, treatment comparison, and delivery into a first-class Audio
 Mastery workspace.
+
+## First-class Audio Studio checkpoint
+
+`/audio` now projects the existing episode inventory and Audio Mastery ledgers
+as a dedicated workspace. It does not create an audio-project table or copy
+media state. The selected Nest, episode, asset, source, mastering job, review,
+promotion, delivery artifact, and proof-listen remain the canonical identities
+used by the editor and media-vault APIs.
+
+The workspace provides:
+
+- permission-filtered Nest and episode selection;
+- retained-source selection and direct links back to the episode room and video
+  editor;
+- a visible measure -> audition -> promote -> deliver -> proof-listen chain;
+- complete-decode loudness evidence and decoded signal-attention counts;
+- source-clock Dialogue Repair and the full matched-loudness audition desk;
+- processing holds that remain visible but cannot queue new derivative work;
+- explicit original/source, approval, delivery, and publication boundaries;
+- responsive navigation and native list/button semantics for source and repair
+  queues.
+
+The browser operation reopened Episode 4 Part 2 using the disposable local QA
+account. It found three real retained sources, selected
+`quipsly-audio-mastery-dogfood.wav`, recovered its persisted unreviewed
+`noise-event` candidate, and opened and closed the matched audition dialog. It
+performed no review, promotion, delivery, or publication mutation. This proves
+the new surface can operate the existing records; it does not replace the
+pending human-confirmed repair and matched A/B acceptance step.

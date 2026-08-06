@@ -60,6 +60,10 @@ const primaryLinks = [
     label: "Video Editor",
   },
   {
+    href: "/audio",
+    label: "Audio Studio",
+  },
+  {
     href: "/storyboards/builder",
     label: "Storyboard Desk",
   },

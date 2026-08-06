@@ -57,6 +57,7 @@ const secondaryNavItems: NavItem[] = [
   { name: "Nests", href: "/projects", icon: LayoutDashboard, activePrefixes: ["/projects", "/nests", "/create"] },
   { name: "Research", href: "/research", icon: Search },
   { name: "Media", href: "/media", icon: Film, activePrefixes: ["/media"] },
+  { name: "Audio Studio", href: "/audio", icon: AudioLines },
   { name: "Transcription lab", href: "/transcription", icon: AudioLines },
   { name: "Podcast desk", href: "/podcast", icon: Podcast },
   { name: "Publishing", href: "/publishing", icon: Rocket },

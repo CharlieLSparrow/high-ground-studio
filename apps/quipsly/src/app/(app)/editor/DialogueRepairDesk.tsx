@@ -246,15 +246,15 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
 
       {status?.candidates.length ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.6fr)]">
-          <div className="max-h-72 space-y-1 overflow-y-auto pr-1" role="list" aria-label="Dialogue repair candidates">
+          <ul className="max-h-72 space-y-1 overflow-y-auto pr-1" aria-label="Dialogue repair candidates">
             {status.candidates.map((entry) => {
               const selected = entry.candidate.candidateId === activeCandidate?.candidateId;
-              return <button key={entry.candidate.candidateId} type="button" role="listitem" onClick={() => { setActiveCandidateId(entry.candidate.candidateId); setListenedBins(new Set()); }} className={`w-full rounded-lg border px-3 py-2 text-left ${selected ? "border-amber-300 bg-amber-300/15" : "border-slate-700 bg-slate-900 hover:bg-slate-800"}`}>
-                <div className="flex items-center justify-between gap-2"><span className="font-black">{labelName(entry.candidate.label)}</span><span className="font-mono text-[10px] text-slate-300">{formatClock(entry.candidate.range.startSeconds)}</span></div>
-                <div className="mt-1 text-[10px] font-bold text-slate-400">{entry.latestReview ? entry.latestReview.decision.replace("-", " ") : "awaiting source review"}{entry.experiment ? ` · ${entry.experiment.status}` : ""}</div>
-              </button>;
+              return <li key={entry.candidate.candidateId}><button type="button" aria-pressed={selected} onClick={() => { setActiveCandidateId(entry.candidate.candidateId); setListenedBins(new Set()); }} className={`w-full rounded-lg border px-3 py-2 text-left ${selected ? "border-amber-300 bg-amber-300/15" : "border-slate-700 bg-slate-900 hover:bg-slate-800"}`}>
+                <span className="flex items-center justify-between gap-2"><span className="font-black">{labelName(entry.candidate.label)}</span><span className="font-mono text-[10px] text-slate-300">{formatClock(entry.candidate.range.startSeconds)}</span></span>
+                <span className="mt-1 block text-[10px] font-bold text-slate-400">{entry.latestReview ? entry.latestReview.decision.replace("-", " ") : "awaiting source review"}{entry.experiment ? ` · ${entry.experiment.status}` : ""}</span>
+              </button></li>;
             })}
-          </div>
+          </ul>
 
           {activeCandidate && activeWindow && activeEntry && (
             <div className="rounded-lg border border-slate-700 bg-slate-900 p-3">
