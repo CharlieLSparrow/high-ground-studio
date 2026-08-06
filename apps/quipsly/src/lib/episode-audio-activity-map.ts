@@ -18,6 +18,8 @@ export type EpisodeAudioActivityLane = {
   sourceDurationSeconds: number | null;
   activityThresholdDbfs: number | null;
   evidenceJobId: string | null;
+  transcriptEvidenceJobId: string | null;
+  transcriptWordCount: number;
   cells: Array<{
     index: number;
     programStartSeconds: number;
@@ -27,7 +29,9 @@ export type EpisodeAudioActivityLane = {
     intensity: number;
     energyActive: boolean;
     clippingObserved: boolean;
+    providerWordActive: boolean;
   }>;
+  agreement: { comparableCellCount: number; agreementCellCount: number; bothActiveCellCount: number; energyOnlyCellCount: number; transcriptOnlyCellCount: number; agreementRatio: number | null };
 };
 
 export type EpisodeAudioActivityMomentKind =
@@ -62,7 +66,10 @@ export type EpisodeAudioActivityMap = {
     missingProfileCount: number;
     unalignedProfileCount: number;
     unidentifiedDialogueTrackCount: number;
+    transcribedTrackCount: number;
+    comparableTranscriptEnergyTrackCount: number;
   };
+  transcriptEnergyAgreement: { comparableCellCount: number; agreementCellCount: number; bothActiveCellCount: number; energyOnlyCellCount: number; transcriptOnlyCellCount: number; agreementRatio: number | null };
   summary: {
     possibleOverlapCount: number;
     sameParticipantMultideviceCount: number;
@@ -75,6 +82,8 @@ export type EpisodeAudioActivityMap = {
     candidateAlignmentDoesNotMoveTimeline: true;
     noMixAutomationWritten: true;
     sourceBytesRemainImmutable: true;
+    providerWordTimingIsNotVoiceActivity: true;
+    agreementIsNotTranscriptionAccuracy: true;
   };
 };
 
@@ -114,6 +123,21 @@ function alignmentFor(track: EpisodeAudioProgramTrack, clock: { assetId: string;
 
 function windowAt(evidence: EpisodeAudioProgramActivityEvidence, sourceSeconds: number) {
   return evidence.waveform.find((window) => sourceSeconds >= window.startSeconds && sourceSeconds < window.startSeconds + window.durationSeconds) ?? null;
+}
+
+function wordActiveAt(track: EpisodeAudioProgramTrack, sourceStartSeconds: number, sourceEndSeconds: number) {
+  return Boolean(track.transcriptActivityEvidence?.words.some((word) => word.endSeconds > sourceStartSeconds && word.startSeconds < sourceEndSeconds));
+}
+
+function agreement(cells: EpisodeAudioActivityLane["cells"], comparable: boolean) {
+  if (!comparable) return { comparableCellCount: 0, agreementCellCount: 0, bothActiveCellCount: 0, energyOnlyCellCount: 0, transcriptOnlyCellCount: 0, agreementRatio: null };
+  const coveredCells = cells.filter((cell) => cell.sourceSeconds !== null);
+  const bothActiveCellCount = coveredCells.filter((cell) => cell.energyActive && cell.providerWordActive).length;
+  const energyOnlyCellCount = coveredCells.filter((cell) => cell.energyActive && !cell.providerWordActive).length;
+  const transcriptOnlyCellCount = coveredCells.filter((cell) => !cell.energyActive && cell.providerWordActive).length;
+  const comparableCellCount = coveredCells.length;
+  const agreementCellCount = comparableCellCount - energyOnlyCellCount - transcriptOnlyCellCount;
+  return { comparableCellCount, agreementCellCount, bothActiveCellCount, energyOnlyCellCount, transcriptOnlyCellCount, agreementRatio: comparableCellCount ? agreementCellCount / comparableCellCount : null };
 }
 
 function momentText(kind: EpisodeAudioActivityMomentKind, laneLabels: string[]) {
@@ -206,6 +230,8 @@ export function buildEpisodeAudioActivityMap(program: EpisodeAudioProgram): Epis
       const programStartSeconds = index * secondsPerCell;
       const programEndSeconds = (index + 1) * secondsPerCell;
       const sourceSeconds = aligned.offset === null ? null : (programStartSeconds + programEndSeconds) / 2 - aligned.offset;
+      const sourceStartSeconds = aligned.offset === null ? null : programStartSeconds - aligned.offset;
+      const sourceEndSeconds = aligned.offset === null ? null : programEndSeconds - aligned.offset;
       const window = evidence && sourceSeconds !== null && sourceSeconds >= 0 ? windowAt(evidence, sourceSeconds) : null;
       return {
         index,
@@ -216,8 +242,10 @@ export function buildEpisodeAudioActivityMap(program: EpisodeAudioProgram): Epis
         intensity: window ? clamp((window.rmsDbfs - evidence!.nearSilenceDbfs) / Math.max(1, 0 - evidence!.nearSilenceDbfs), 0, 1) : 0,
         energyActive: Boolean(window && threshold !== null && window.rmsDbfs >= threshold),
         clippingObserved: Boolean(window && window.clippedFrameCount > 0),
+        providerWordActive: Boolean(sourceStartSeconds !== null && sourceEndSeconds !== null && sourceEndSeconds >= 0 && wordActiveAt(track, Math.max(0, sourceStartSeconds), Math.max(0, sourceEndSeconds))),
       };
     });
+    const comparable = Boolean(evidence && track.transcriptActivityEvidence && aligned.offset !== null);
     return {
       assetId: track.assetId,
       sourceId: track.sourceId,
@@ -232,11 +260,22 @@ export function buildEpisodeAudioActivityMap(program: EpisodeAudioProgram): Epis
       sourceDurationSeconds: evidence?.durationSeconds ?? track.durationSeconds,
       activityThresholdDbfs: threshold,
       evidenceJobId: evidence?.jobId ?? null,
+      transcriptEvidenceJobId: track.transcriptActivityEvidence?.jobId ?? null,
+      transcriptWordCount: track.transcriptActivityEvidence?.timedWordCount ?? 0,
       cells,
+      agreement: agreement(cells, comparable),
     };
   });
   const plottedLanes = lanes.filter((lane) => lane.evidenceJobId && lane.programOffsetSeconds !== null);
   const moments = programClock ? buildMoments(plottedLanes, secondsPerCell) : [];
+  const comparableLanes = lanes.filter((lane) => lane.agreement.comparableCellCount > 0);
+  const aggregateAgreement = comparableLanes.reduce((total, lane) => ({
+    comparableCellCount: total.comparableCellCount + lane.agreement.comparableCellCount,
+    agreementCellCount: total.agreementCellCount + lane.agreement.agreementCellCount,
+    bothActiveCellCount: total.bothActiveCellCount + lane.agreement.bothActiveCellCount,
+    energyOnlyCellCount: total.energyOnlyCellCount + lane.agreement.energyOnlyCellCount,
+    transcriptOnlyCellCount: total.transcriptOnlyCellCount + lane.agreement.transcriptOnlyCellCount,
+  }), { comparableCellCount: 0, agreementCellCount: 0, bothActiveCellCount: 0, energyOnlyCellCount: 0, transcriptOnlyCellCount: 0 });
   return {
     schema: "quipsly-episode-audio-activity-map-v1",
     programFingerprintSha256: program.fingerprintSha256,
@@ -252,13 +291,16 @@ export function buildEpisodeAudioActivityMap(program: EpisodeAudioProgram): Epis
       missingProfileCount: program.tracks.filter((track) => !track.activityEvidence).length,
       unalignedProfileCount: program.tracks.filter((track) => track.activityEvidence && alignment.get(trackKey(track))?.offset === null).length,
       unidentifiedDialogueTrackCount: program.tracks.filter((track) => track.kind === "dialogue" && !track.participantId).length,
+      transcribedTrackCount: program.tracks.filter((track) => track.transcriptActivityEvidence).length,
+      comparableTranscriptEnergyTrackCount: comparableLanes.length,
     },
+    transcriptEnergyAgreement: { ...aggregateAgreement, agreementRatio: aggregateAgreement.comparableCellCount ? aggregateAgreement.agreementCellCount / aggregateAgreement.comparableCellCount : null },
     summary: {
       possibleOverlapCount: moments.filter((moment) => moment.kind === "possible-participant-overlap").length,
       sameParticipantMultideviceCount: moments.filter((moment) => moment.kind === "same-participant-multidevice").length,
       unassignedEnergyCount: moments.filter((moment) => moment.kind === "unassigned-energy").length,
       dialogueGapCount: moments.filter((moment) => moment.kind === "dialogue-gap").length,
     },
-    boundaries: { energyIsNotSpeech: true, overlapRequiresListening: true, candidateAlignmentDoesNotMoveTimeline: true, noMixAutomationWritten: true, sourceBytesRemainImmutable: true },
+    boundaries: { energyIsNotSpeech: true, overlapRequiresListening: true, candidateAlignmentDoesNotMoveTimeline: true, noMixAutomationWritten: true, sourceBytesRemainImmutable: true, providerWordTimingIsNotVoiceActivity: true, agreementIsNotTranscriptionAccuracy: true },
   };
 }

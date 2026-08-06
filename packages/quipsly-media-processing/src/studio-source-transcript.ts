@@ -193,7 +193,7 @@ export function parseStudioSourceTranscriptResult(
   if (
     row.kind !== STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND
     || row.version !== STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION
-    || (job && (job.jobId !== jobId || job.transcriptJobId !== transcriptJobId || !sameSource(job.source, source)))
+    || (job && (job.jobId !== jobId || job.transcriptJobId !== transcriptJobId || !sameSource(job.source, source) || provider.model !== job.provider.model))
     || provider.name !== "openai-whisper-local"
     || capabilities.segmentTiming !== "provider"
     || capabilities.wordTiming !== "provider"

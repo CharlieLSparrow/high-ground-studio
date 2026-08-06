@@ -11,6 +11,7 @@ import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-a
 import {
   episodeAudioProcessingEvidence,
   episodeAudioSignalActivityEvidence,
+  episodeAudioTranscriptActivityEvidence,
 } from "@/lib/episode-audio-processing-evidence";
 import {
   episodeAudioProgramFingerprint,
@@ -165,6 +166,10 @@ function publicAsset(asset: any, proxies: any[] = []): any {
   const audioSignalActivityEvidence = episodeAudioSignalActivityEvidence(
     Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
   );
+  const audioTranscriptActivityEvidence = episodeAudioTranscriptActivityEvidence(
+    Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
+    Array.isArray(asset.transcriptJobs) ? asset.transcriptJobs : [],
+  );
   const proxyAssets: any[] = proxies.map((proxy) => publicAsset(proxy, [])).filter(Boolean);
   const hasProxy =
     proxyAssets.length > 0 ||
@@ -190,6 +195,7 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     jobs,
     audioProcessingEvidence,
     audioSignalActivityEvidence,
+    audioTranscriptActivityEvidence,
     proxyAssets,
     audioMasterDeliveryCandidate,
     audioDeliveryArtifact,

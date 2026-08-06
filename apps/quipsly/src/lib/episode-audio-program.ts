@@ -1,6 +1,7 @@
 import type {
   EpisodeAudioProcessingEvidence,
   EpisodeAudioProcessingStatus,
+  EpisodeAudioTranscriptActivityEvidence,
 } from "./episode-audio-processing-evidence";
 
 export type EpisodeAudioProgramTrackKind = "dialogue" | "reference" | "music" | "unknown";
@@ -10,6 +11,7 @@ export type EpisodeAudioProgramActivityEvidence = {
   jobId: string;
   sourceSha256: string;
   sourceGeneration: string;
+  sourceSizeBytes: number;
   durationSeconds: number;
   windowDurationSeconds: number;
   rmsDbfs: number;
@@ -44,6 +46,7 @@ export type EpisodeAudioProgramTrack = {
   stages: EpisodeAudioProgramStage[];
   processing: EpisodeAudioProcessingEvidence;
   activityEvidence: EpisodeAudioProgramActivityEvidence | null;
+  transcriptActivityEvidence: EpisodeAudioTranscriptActivityEvidence | null;
   decisions: EpisodeAudioProgramDecision[];
 };
 
@@ -175,12 +178,14 @@ function activityEvidence(value: unknown): EpisodeAudioProgramActivityEvidence |
   const jobId = text(evidence.jobId);
   const sourceSha256 = text(source.sha256);
   const sourceGeneration = text(source.generation);
+  const sourceSizeBytes = number(source.sizeBytes);
   if (
     evidence.schema !== "quipsly-episode-audio-signal-activity-evidence-v1"
     || evidence.completeDecode !== true
     || !jobId
     || !/^[0-9a-f]{64}$/.test(sourceSha256)
     || !sourceGeneration
+    || sourceSizeBytes === null
     || durationSeconds === null
     || windowDurationSeconds === null
     || rmsDbfs === null
@@ -188,6 +193,9 @@ function activityEvidence(value: unknown): EpisodeAudioProgramActivityEvidence |
     || !Array.isArray(evidence.waveform)
     || evidence.waveform.length === 0
     || evidence.waveform.length > 1_200
+    || record(evidence.boundaries).energyIsNotVoiceActivity !== true
+    || record(evidence.boundaries).measurementDoesNotChangeMedia !== true
+    || record(evidence.boundaries).sourceIdentityBound !== true
   ) return null;
   const waveform = evidence.waveform.flatMap((rawWindow): EpisodeAudioProgramActivityEvidence["waveform"] => {
     const window = record(rawWindow);
@@ -200,17 +208,77 @@ function activityEvidence(value: unknown): EpisodeAudioProgramActivityEvidence |
       ? []
       : [{ startSeconds, durationSeconds: duration, rmsDbfs: rms, samplePeakDbfs: peak, clippedFrameCount: Math.round(clipped) }];
   });
-  if (waveform.length !== evidence.waveform.length) return null;
+  if (
+    waveform.length !== evidence.waveform.length
+    || waveform.some((window, index) => index > 0 && window.startSeconds < waveform[index - 1].startSeconds)
+  ) return null;
   return {
     jobId,
     sourceSha256,
     sourceGeneration,
+    sourceSizeBytes,
     durationSeconds,
     windowDurationSeconds,
     rmsDbfs,
     nearSilenceDbfs,
     waveform,
     observationCount: Array.isArray(evidence.observations) ? evidence.observations.length : 0,
+  };
+}
+
+function transcriptActivityEvidence(value: unknown): EpisodeAudioTranscriptActivityEvidence | null {
+  const evidence = record(value);
+  const source = record(evidence.source);
+  const provider = record(evidence.provider);
+  const words = Array.isArray(evidence.words) ? evidence.words.flatMap((rawWord) => {
+    const word = record(rawWord);
+    const startSeconds = number(word.startSeconds);
+    const endSeconds = number(word.endSeconds);
+    return startSeconds === null || endSeconds === null || endSeconds < startSeconds
+      ? []
+      : [{ startSeconds, endSeconds, confidenceAvailable: word.confidenceAvailable === true }];
+  }) : [];
+  const wordCount = number(evidence.wordCount);
+  const transcriptStartSeconds = number(evidence.transcriptStartSeconds);
+  const transcriptEndSeconds = number(evidence.transcriptEndSeconds);
+  const orderedWords = words.every((word, index) => index === 0 || word.startSeconds >= words[index - 1].startSeconds);
+  if (
+    evidence.schema !== "quipsly-episode-audio-transcript-activity-evidence-v1"
+    || evidence.completeSourceRead !== true
+    || !text(evidence.jobId)
+    || !text(evidence.transcriptJobId)
+    || !/^[0-9a-f]{64}$/.test(text(source.sha256))
+    || !text(source.generation)
+    || number(source.sizeBytes) === null
+    || !text(provider.name)
+    || !text(provider.model)
+    || wordCount === null
+    || wordCount !== words.length
+    || number(evidence.timedWordCount) !== words.length
+    || words.length !== evidence.words.length
+    || transcriptStartSeconds === null
+    || transcriptEndSeconds === null
+    || transcriptEndSeconds < transcriptStartSeconds
+    || !orderedWords
+    || words.some((word) => word.startSeconds < transcriptStartSeconds - 0.05 || word.endSeconds > transcriptEndSeconds + 0.05)
+    || record(evidence.boundaries).providerTimingIsNotMeasuredAccuracy !== true
+    || record(evidence.boundaries).wordsAreNotVoiceActivity !== true
+    || record(evidence.boundaries).sourceIdentityBound !== true
+    || record(evidence.boundaries).textExcludedFromActivityProjection !== true
+  ) return null;
+  return {
+    schema: "quipsly-episode-audio-transcript-activity-evidence-v1",
+    jobId: text(evidence.jobId),
+    transcriptJobId: text(evidence.transcriptJobId),
+    source: { sha256: text(source.sha256), generation: text(source.generation), sizeBytes: number(source.sizeBytes)! },
+    provider: { name: text(provider.name), model: text(provider.model) },
+    completeSourceRead: true,
+    wordCount,
+    timedWordCount: words.length,
+    transcriptStartSeconds,
+    transcriptEndSeconds,
+    words,
+    boundaries: { providerTimingIsNotMeasuredAccuracy: true, wordsAreNotVoiceActivity: true, sourceIdentityBound: true, textExcludedFromActivityProjection: true },
   };
 }
 
@@ -335,6 +403,14 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       : "include") as EpisodeAudioProgramTrack["mixDisposition"];
     const groupKey = participantId ? `participant:${participantId}` : `source:${sourceId}`;
     const processing = processingEvidence(asset.audioProcessingEvidence);
+    const measuredActivity = activityEvidence(asset.audioSignalActivityEvidence);
+    const timedTranscript = transcriptActivityEvidence(asset.audioTranscriptActivityEvidence);
+    const sourceBoundTranscript = timedTranscript && measuredActivity
+      && (timedTranscript.source.sha256 !== measuredActivity.sourceSha256
+        || timedTranscript.source.generation !== measuredActivity.sourceGeneration
+        || timedTranscript.source.sizeBytes !== measuredActivity.sourceSizeBytes)
+      ? null
+      : timedTranscript;
     const delivery = record(asset.audioDeliveryArtifact);
     const deliveryReadiness = record(delivery.readiness);
     const syncStatus = text(item.syncStatus).toLowerCase();
@@ -367,7 +443,8 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       attentionReason: ranked.reason,
       stages,
       processing,
-      activityEvidence: activityEvidence(asset.audioSignalActivityEvidence),
+      activityEvidence: measuredActivity,
+      transcriptActivityEvidence: sourceBoundTranscript,
       decisions: trackDecisions,
     }];
   }).sort((left, right) => right.attentionScore - left.attentionScore || left.title.localeCompare(right.title));

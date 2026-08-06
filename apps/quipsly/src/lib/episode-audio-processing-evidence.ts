@@ -66,6 +66,21 @@ export type EpisodeAudioSignalActivityEvidence = {
   boundaries: { energyIsNotVoiceActivity: true; measurementDoesNotChangeMedia: true; sourceIdentityBound: true };
 };
 
+export type EpisodeAudioTranscriptActivityEvidence = {
+  schema: "quipsly-episode-audio-transcript-activity-evidence-v1";
+  jobId: string;
+  transcriptJobId: string;
+  source: { sha256: string; generation: string; sizeBytes: number };
+  provider: { name: string; model: string };
+  completeSourceRead: true;
+  wordCount: number;
+  timedWordCount: number;
+  transcriptStartSeconds: number;
+  transcriptEndSeconds: number;
+  words: Array<{ startSeconds: number; endSeconds: number; confidenceAvailable: boolean }>;
+  boundaries: { providerTimingIsNotMeasuredAccuracy: true; wordsAreNotVoiceActivity: true; sourceIdentityBound: true; textExcludedFromActivityProjection: true };
+};
+
 const JOB_TYPES = ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery"] as const;
 
 function record(value: unknown): Record<string, any> {
@@ -278,6 +293,44 @@ export function episodeAudioSignalActivityEvidence(jobs: any[]): EpisodeAudioSig
       })),
       observations: result.audioSignal.observations.slice(0, 2_000).map((observation) => ({ ...observation })),
       boundaries: { energyIsNotVoiceActivity: true, measurementDoesNotChangeMedia: true, sourceIdentityBound: true },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Projects only provider word timing from a completed, exact-source canonical
+ * transcript. Text stays out of the cross-track activity surface, and word
+ * timing is never relabeled as VAD or measured transcription accuracy.
+ */
+export function episodeAudioTranscriptActivityEvidence(jobs: any[], transcriptJobs: any[]): EpisodeAudioTranscriptActivityEvidence | null {
+  const transcriptJob = latestByType(jobs).get("source-transcript") ?? null;
+  if (!transcriptJob || transcriptJob.status !== "completed") return null;
+  try {
+    const contract = parseStudioSourceTranscriptJob(transcriptJob.inputJson, transcriptJob.id);
+    const result = parseStudioSourceTranscriptResult(record(transcriptJob.resultJson).receipt, contract);
+    const canonical = transcriptJobs.find((candidate) => candidate?.id === contract.transcriptJobId) ?? null;
+    if (
+      canonical?.status !== "COMPLETED"
+      || Number(canonical?._count?.segments ?? -1) !== result.coverage.segmentCount
+      || Number(canonical?._count?.words ?? -1) !== result.coverage.wordCount
+      || result.words.length !== result.coverage.wordCount
+      || result.coverage.timedWordCount !== result.words.length
+    ) return null;
+    return {
+      schema: "quipsly-episode-audio-transcript-activity-evidence-v1",
+      jobId: String(transcriptJob.id),
+      transcriptJobId: contract.transcriptJobId,
+      source: { sha256: result.source.sha256, generation: result.source.generation, sizeBytes: result.source.sizeBytes },
+      provider: { name: result.provider.name, model: contract.provider.model },
+      completeSourceRead: true,
+      wordCount: result.coverage.wordCount,
+      timedWordCount: result.coverage.timedWordCount,
+      transcriptStartSeconds: result.coverage.transcriptStartSeconds,
+      transcriptEndSeconds: result.coverage.transcriptEndSeconds,
+      words: result.words.map((word) => ({ startSeconds: word.startSeconds, endSeconds: word.endSeconds, confidenceAvailable: word.confidence !== null })),
+      boundaries: { providerTimingIsNotMeasuredAccuracy: true, wordsAreNotVoiceActivity: true, sourceIdentityBound: true, textExcludedFromActivityProjection: true },
     };
   } catch {
     return null;

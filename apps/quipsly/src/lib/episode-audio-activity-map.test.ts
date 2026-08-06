@@ -21,10 +21,11 @@ function activity(jobId: string, levels: number[]) {
     thresholds: { nearSilenceDbfs: -72 },
     waveform: levels.map((rmsDbfs, index) => ({ startSeconds: index, durationSeconds: 1, rmsDbfs, samplePeakDbfs: rmsDbfs + 6, clippedFrameCount: 0 })),
     observations: [],
+    boundaries: { energyIsNotVoiceActivity: true, measurementDoesNotChangeMedia: true, sourceIdentityBound: true },
   };
 }
 
-function source(input: { id: string; participantId: string | null; levels: number[]; alignedTo?: string }) {
+function source(input: { id: string; participantId: string | null; levels: number[]; alignedTo?: string; words?: Array<{ startSeconds: number; endSeconds: number }> }) {
   return {
     id: input.id,
     sourceId: `source-${input.id}`,
@@ -38,6 +39,20 @@ function source(input: { id: string; participantId: string | null; levels: numbe
       duration: 6,
       readiness: { sourceSafe: true },
       audioSignalActivityEvidence: activity(`signal-${input.id}`, input.levels),
+      audioTranscriptActivityEvidence: input.words ? {
+        schema: "quipsly-episode-audio-transcript-activity-evidence-v1",
+        jobId: `transcript-${input.id}`,
+        transcriptJobId: `canonical-transcript-${input.id}`,
+        source: { sha256: "a".repeat(64), generation: "generation-1", sizeBytes: 48_000 },
+        provider: { name: "openai-whisper-local", model: "small.en" },
+        completeSourceRead: true,
+        wordCount: input.words.length,
+        timedWordCount: input.words.length,
+        transcriptStartSeconds: input.words[0].startSeconds,
+        transcriptEndSeconds: input.words.at(-1)!.endSeconds,
+        words: input.words.map((word) => ({ ...word, confidenceAvailable: true })),
+        boundaries: { providerTimingIsNotMeasuredAccuracy: true, wordsAreNotVoiceActivity: true, sourceIdentityBound: true, textExcludedFromActivityProjection: true },
+      } : null,
       audioProcessingEvidence: input.alignedTo ? {
         ...emptyProcessing,
         alignment: { jobId: `align-${input.id}`, status: "completed", integrityVerified: true, error: null, updatedAt: null, spineAssetId: input.alignedTo, qualifiedForReview: true, openingOffsetSeconds: 0, residualDriftMilliseconds: 1 },
@@ -84,5 +99,24 @@ describe("episode audio activity map", () => {
     expect(evidence).not.toBeNull();
     expect(episodeAudioEnergyActivityThreshold(evidence!)).toBeGreaterThanOrEqual(-56);
     expect(episodeAudioEnergyActivityThreshold(evidence!)).toBeLessThanOrEqual(-22);
+  });
+
+  it("compares exact-source provider word timing with energy while keeping mismatches review-only", () => {
+    const importedMedia = [source({
+      id: "timed",
+      participantId: "host",
+      levels: [-80, -20, -20, -80, -80, -80],
+      words: [{ startSeconds: 1.2, endSeconds: 1.8 }, { startSeconds: 4.1, endSeconds: 4.3 }],
+    })];
+    const active = [decision("clock-timed", "program-clock", "timed", "source-timed", "primary", "Program clock")];
+    const program = buildEpisodeAudioProgram({ importedMedia, audioProgram: { fingerprintSha256: "f".repeat(64), participants: [], decisions: { active, summary: { activeCount: 1, staleCount: 0 } } } });
+    const map = buildEpisodeAudioActivityMap(program);
+
+    expect(map.coverage).toMatchObject({ transcribedTrackCount: 1, comparableTranscriptEnergyTrackCount: 1 });
+    expect(map.transcriptEnergyAgreement).toEqual(expect.objectContaining({ comparableCellCount: 180 }));
+    expect(map.transcriptEnergyAgreement.bothActiveCellCount).toBeGreaterThan(0);
+    expect(map.transcriptEnergyAgreement.energyOnlyCellCount).toBeGreaterThan(0);
+    expect(map.transcriptEnergyAgreement.transcriptOnlyCellCount).toBeGreaterThan(0);
+    expect(map.boundaries).toMatchObject({ providerWordTimingIsNotVoiceActivity: true, agreementIsNotTranscriptionAccuracy: true });
   });
 });

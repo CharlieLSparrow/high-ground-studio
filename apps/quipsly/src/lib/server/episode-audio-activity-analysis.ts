@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { buildEpisodeAudioActivityMap } from "@/lib/episode-audio-activity-map";
-import { episodeAudioProcessingEvidence, episodeAudioSignalActivityEvidence } from "@/lib/episode-audio-processing-evidence";
+import { episodeAudioProcessingEvidence, episodeAudioSignalActivityEvidence, episodeAudioTranscriptActivityEvidence } from "@/lib/episode-audio-processing-evidence";
 import { buildEpisodeAudioProgram, type EpisodeAudioProgram } from "@/lib/episode-audio-program";
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -95,8 +95,20 @@ export function episodeAudioActivityAnalysisInput(program: EpisodeAudioProgram, 
           jobId: track.activityEvidence.jobId,
           sourceSha256: track.activityEvidence.sourceSha256,
           sourceGeneration: track.activityEvidence.sourceGeneration,
+          sourceSizeBytes: track.activityEvidence.sourceSizeBytes,
           durationSeconds: track.activityEvidence.durationSeconds,
           windowDurationSeconds: track.activityEvidence.windowDurationSeconds,
+        } : null,
+        transcriptTiming: track.transcriptActivityEvidence ? {
+          jobId: track.transcriptActivityEvidence.jobId,
+          transcriptJobId: track.transcriptActivityEvidence.transcriptJobId,
+          sourceSha256: track.transcriptActivityEvidence.source.sha256,
+          sourceGeneration: track.transcriptActivityEvidence.source.generation,
+          sourceSizeBytes: track.transcriptActivityEvidence.source.sizeBytes,
+          provider: track.transcriptActivityEvidence.provider,
+          timedWordCount: track.transcriptActivityEvidence.timedWordCount,
+          transcriptStartSeconds: track.transcriptActivityEvidence.transcriptStartSeconds,
+          transcriptEndSeconds: track.transcriptActivityEvidence.transcriptEndSeconds,
         } : null,
       };
     }).sort((left, right) => `${left.assetId}:${left.sourceId}`.localeCompare(`${right.assetId}:${right.sourceId}`)),
@@ -112,6 +124,7 @@ function analysisSnapshot(map: ReturnType<typeof buildEpisodeAudioActivityMap>) 
     resolution: map.resolution,
     coverage: map.coverage,
     summary: map.summary,
+    transcriptEnergyAgreement: map.transcriptEnergyAgreement,
     lanes: map.lanes.map((lane) => ({
       assetId: lane.assetId,
       sourceId: lane.sourceId,
@@ -126,7 +139,10 @@ function analysisSnapshot(map: ReturnType<typeof buildEpisodeAudioActivityMap>) 
       sourceDurationSeconds: lane.sourceDurationSeconds,
       activityThresholdDbfs: lane.activityThresholdDbfs,
       evidenceJobId: lane.evidenceJobId,
-      cells: lane.cells.map((cell) => ({ index: cell.index, programStartSeconds: cell.programStartSeconds, programEndSeconds: cell.programEndSeconds, sourceSeconds: cell.sourceSeconds, rmsDbfs: cell.rmsDbfs, energyActive: cell.energyActive, clippingObserved: cell.clippingObserved })),
+      transcriptEvidenceJobId: lane.transcriptEvidenceJobId,
+      transcriptWordCount: lane.transcriptWordCount,
+      agreement: lane.agreement,
+      cells: lane.cells.map((cell) => ({ index: cell.index, programStartSeconds: cell.programStartSeconds, programEndSeconds: cell.programEndSeconds, sourceSeconds: cell.sourceSeconds, rmsDbfs: cell.rmsDbfs, energyActive: cell.energyActive, clippingObserved: cell.clippingObserved, providerWordActive: cell.providerWordActive })),
     })),
     moments: map.moments,
     boundaries: { ...map.boundaries, suggestionsRequireProtectedListening: true, analysisDoesNotAuthorizeReviewDecision: true },
@@ -149,7 +165,7 @@ export async function loadEpisodeAudioActivityAnalysisContext(input: { prisma: a
   const [decisionRows, participants, assets, sources, recordings] = await Promise.all([
     input.prisma.studioEpisodeAudioTrackDecisionReceipt.findMany({ where: { episodeProductionId: episode.id }, orderBy: [{ occurredAt: "asc" }, { id: "asc" }], take: 500 }),
     input.prisma.callParticipant.findMany({ where: { room: { episodeProductionId: episode.id } }, select: { id: true, displayName: true, email: true, role: true, deviceLabel: true, roomId: true }, take: 100 }),
-    assetIds.length ? input.prisma.studioMediaAsset.findMany({ where: { id: { in: assetIds }, isProxy: false }, select: { id: true, filename: true, url: true, mimeType: true, duration: true, isProxy: true, assetAttachments: { where: { projectId: project.id }, select: { metadataJson: true } }, processingJobs: { where: { type: { in: ["audio-signal-profile", "audio-alignment"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 25 } } }) : [],
+    assetIds.length ? input.prisma.studioMediaAsset.findMany({ where: { id: { in: assetIds }, isProxy: false }, select: { id: true, filename: true, url: true, mimeType: true, duration: true, isProxy: true, assetAttachments: { where: { projectId: project.id }, select: { metadataJson: true } }, processingJobs: { where: { type: { in: ["audio-signal-profile", "source-transcript", "audio-alignment"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 25 }, transcriptJobs: { where: { episodeProductionId: episode.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10, select: { id: true, status: true, _count: { select: { segments: true, words: true } } } } } }) : [],
     sourceIds.length ? input.prisma.studioVideoSource.findMany({ where: { id: { in: sourceIds } }, select: { id: true, url: true, providerSourceId: true } }) : [],
     recordingIds.length ? input.prisma.recordingAsset.findMany({ where: { id: { in: recordingIds } }, select: { id: true, participantId: true, participant: { select: { id: true, displayName: true, email: true } } } }) : [],
   ]);
@@ -178,8 +194,9 @@ export async function loadEpisodeAudioActivityAnalysisContext(input: { prisma: a
       asset: {
         duration: asset.duration,
         readiness: { sourceSafe: true },
-        audioProcessingEvidence: episodeAudioProcessingEvidence(asset.processingJobs, []),
+        audioProcessingEvidence: episodeAudioProcessingEvidence(asset.processingJobs, asset.transcriptJobs),
         audioSignalActivityEvidence: episodeAudioSignalActivityEvidence(asset.processingJobs),
+        audioTranscriptActivityEvidence: episodeAudioTranscriptActivityEvidence(asset.processingJobs, asset.transcriptJobs),
       },
     }];
   });
@@ -210,6 +227,7 @@ function publicReceipt(row: any, context: { fingerprint: string; activeDecisionR
     stale,
     coverage: object(analysis.coverage),
     summary: object(analysis.summary),
+    transcriptEnergyAgreement: object(analysis.transcriptEnergyAgreement),
     momentCount: Array.isArray(analysis.moments) ? analysis.moments.length : 0,
     actorEmail: String(row.actorEmail),
     analyzedAt: row.analyzedAt?.toISOString?.() ?? String(row.analyzedAt),

@@ -53,12 +53,13 @@ export function EpisodeAudioActivityMap({
           <div className="max-w-3xl">
             <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200"><RadioTower className="h-4 w-4" aria-hidden="true" /> Program sound map</div>
             <h2 id="episode-audio-activity-heading" className="mt-1 text-xl font-black sm:text-2xl">Measured energy across the shared clock</h2>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-300">Compare complete-decode source energy, alignment coverage, and listen-required attention regions. Energy is not speech, speaker identity, bleed, echo, or an edit decision.</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-300">Compare complete-decode source energy, provider word timing, alignment coverage, and listen-required attention regions. Energy is not speech; timed words are not VAD or measured transcript accuracy.</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[390px]">
+          <div className="grid grid-cols-2 gap-2 text-center sm:min-w-[480px] sm:grid-cols-4">
             <div className="rounded-xl border border-cyan-900 bg-slate-900 px-2 py-2"><div className="font-mono text-base font-black text-cyan-100">{map.coverage.plottedTrackCount}/{map.coverage.trackCount}</div><div className="text-[9px] font-black uppercase tracking-wide text-cyan-300">Plotted</div></div>
             <div className="rounded-xl border border-cyan-900 bg-slate-900 px-2 py-2"><div className="font-mono text-base font-black text-cyan-100">{map.summary.possibleOverlapCount}</div><div className="text-[9px] font-black uppercase tracking-wide text-cyan-300">Overlap checks</div></div>
             <div className="rounded-xl border border-cyan-900 bg-slate-900 px-2 py-2"><div className="font-mono text-base font-black text-cyan-100">{map.moments.length}</div><div className="text-[9px] font-black uppercase tracking-wide text-cyan-300">Listen points</div></div>
+            <div className="rounded-xl border border-fuchsia-900 bg-slate-900 px-2 py-2"><div className="font-mono text-base font-black text-fuchsia-100">{map.transcriptEnergyAgreement.energyOnlyCellCount + map.transcriptEnergyAgreement.transcriptOnlyCellCount}</div><div className="text-[9px] font-black uppercase tracking-wide text-fuchsia-300">Energy↔word gaps</div></div>
           </div>
         </div>
         {!map.programClock ? (
@@ -74,6 +75,7 @@ export function EpisodeAudioActivityMap({
             {map.coverage.missingProfileCount ? <span className="rounded-full border border-slate-700 px-2 py-1">{map.coverage.missingProfileCount} missing signal profile</span> : null}
             {map.coverage.unalignedProfileCount ? <span className="rounded-full border border-slate-700 px-2 py-1">{map.coverage.unalignedProfileCount} profile not on shared clock</span> : null}
             {map.coverage.unidentifiedDialogueTrackCount ? <span className="rounded-full border border-slate-700 px-2 py-1">{map.coverage.unidentifiedDialogueTrackCount} dialogue identity needed</span> : null}
+            {map.coverage.trackCount - map.coverage.transcribedTrackCount > 0 ? <span className="rounded-full border border-slate-700 px-2 py-1">{map.coverage.trackCount - map.coverage.transcribedTrackCount} missing timed transcript</span> : null}
           </div>
         ) : null}
         {onRegisterAnalysis ? (
@@ -97,17 +99,19 @@ export function EpisodeAudioActivityMap({
                 <button key={`${lane.assetId}:${lane.sourceId}`} type="button" aria-pressed={selected} onClick={() => onSelectTrack(lane.assetId)} className={`grid min-h-14 w-full grid-cols-[minmax(8rem,18rem)_1fr] items-center gap-2 rounded-lg border p-2 text-left ${selected ? "border-cyan-300 bg-cyan-950/40" : "border-slate-800 bg-slate-900 hover:border-slate-600"}`}>
                   <span className="min-w-0">
                     <span className="block truncate text-[10px] font-black text-white">{lane.participantLabel || lane.title}</span>
-                    <span className="mt-0.5 block truncate text-[8px] font-bold uppercase tracking-wide text-slate-400">{lane.role.replaceAll("-", " ")} · {lane.alignment.replaceAll("-", " ")}{lane.activityThresholdDbfs !== null ? ` · active ≥ ${lane.activityThresholdDbfs.toFixed(1)} dBFS` : ""}</span>
+                    <span className="mt-0.5 block truncate text-[8px] font-bold uppercase tracking-wide text-slate-400">{lane.role.replaceAll("-", " ")} · {lane.alignment.replaceAll("-", " ")}{lane.activityThresholdDbfs !== null ? ` · active ≥ ${lane.activityThresholdDbfs.toFixed(1)} dBFS` : ""}{lane.transcriptEvidenceJobId ? ` · ${lane.transcriptWordCount} timed words` : ""}</span>
+                    {lane.agreement.comparableCellCount ? <span className="mt-0.5 block truncate text-[8px] font-bold text-fuchsia-200">Energy-only {lane.agreement.energyOnlyCellCount} · words-only {lane.agreement.transcriptOnlyCellCount} cells</span> : null}
                   </span>
                   {plotted ? (
                     <svg viewBox="0 0 1000 36" className="h-9 w-full overflow-hidden rounded bg-slate-950" role="img" aria-label={`${lane.title}: ${lane.cells.filter((cell) => cell.energyActive).length} of ${lane.cells.length} display cells cross the measured-energy threshold.`} preserveAspectRatio="none">
-                      {lane.cells.map((cell) => <rect key={cell.index} x={(cell.index / lane.cells.length) * 1000} y={cell.energyActive ? 5 : 15} width={Math.max(1.2, 1000 / lane.cells.length)} height={cell.energyActive ? 26 : 8} fill={cell.clippingObserved ? "#fb7185" : cell.energyActive ? "#22d3ee" : "#334155"} opacity={cell.energyActive ? 0.45 + cell.intensity * 0.55 : 0.45} />)}
+                      {lane.cells.map((cell) => <g key={cell.index}><rect x={(cell.index / lane.cells.length) * 1000} y={cell.energyActive ? 7 : 17} width={Math.max(1.2, 1000 / lane.cells.length)} height={cell.energyActive ? 27 : 7} fill={cell.clippingObserved ? "#fb7185" : cell.energyActive ? "#22d3ee" : "#334155"} opacity={cell.energyActive ? 0.45 + cell.intensity * 0.55 : 0.45} />{cell.providerWordActive ? <rect x={(cell.index / lane.cells.length) * 1000} y={1} width={Math.max(1.2, 1000 / lane.cells.length)} height={4} fill="#e879f9" /> : null}</g>)}
                     </svg>
                   ) : <span className="flex h-9 items-center justify-center rounded border border-dashed border-slate-700 text-[9px] font-black text-slate-500">{lane.evidenceJobId ? "Needs qualified clock alignment" : "Build complete-decode signal profile"}</span>}
                 </button>
               );
             })}
           </div>
+          <div className="mt-3 rounded-lg border border-fuchsia-900/70 bg-fuchsia-950/20 p-2 text-[9px] font-semibold leading-4 text-fuchsia-100"><span className="font-black">Cyan bars</span> are source-specific RMS energy; <span className="font-black">magenta ticks</span> are provider-timed words. Energy-only and words-only cells are review cues for noise, music, breath, quiet speech, timing drift, or recognition gaps—not diagnoses. A real voice-activity detector remains a separate evidence layer.</div>
 
           <div className="mt-4 border-t border-slate-800 pt-4">
             <div className="flex items-start justify-between gap-3">

@@ -70,6 +70,19 @@ Source:
 
 - https://webrtc.googlesource.com/src/+/main/modules/audio_processing/include/audio_processing.h
 
+### Silero VAD
+
+Silero's official VAD project is a strong candidate for Quipsly's first explicit speech-activity detector. Its current v6 model family publishes ONNX and JIT variants, supports 8 kHz and 16 kHz input, is designed for streaming as well as whole-file use, and is distributed under the MIT license. The project also publishes its model history, inference utilities, and operational FAQ rather than exposing only a hosted black box.
+
+Implication for Quipsly: prefer a pinned ONNX model artifact and a worker-owned deterministic framing contract. Retain the model SHA-256, upstream model version, runtime version, sample-rate conversion policy, frame/window policy, sensitivity thresholds, source identity, and complete-decode proof in every receipt. Do not infer correctness from the library name or overwrite a VAD receipt when thresholds change.
+
+Sources:
+
+- https://github.com/snakers4/silero-vad
+- https://github.com/snakers4/silero-vad/wiki/Version-history-and-Available-Models
+- https://github.com/snakers4/silero-vad/wiki/FAQ
+- https://github.com/snakers4/silero-vad/blob/master/src/silero_vad/utils_vad.py
+
 ## Product architecture
 
 ### 1. Canonical program truth
@@ -197,7 +210,16 @@ This version does not claim VAD, diarization, bleed, echo, or audibility.
 
 ### Version 2: speech activity and transcript agreement
 
-Add a versioned VAD receipt, preserve threshold/sensitivity, and compare VAD with timed transcript coverage. Surface disagreements as review candidates.
+The first sub-layer uses already-retained provider word timing and exact-source RMS windows. It displays word-presence ticks over measured energy and counts energy-only and word-only cells. This is useful for finding likely noise/music/breath regions, quiet recognized speech, timing drift, or recognition gaps, but it is explicitly **not VAD and not measured transcription accuracy**.
+
+The second sub-layer adds a separate, versioned Silero VAD receipt. Pin the ONNX model by version and SHA-256, use a worker-owned 16 kHz mono conversion/framing contract, preserve threshold and silence-padding parameters, and compare VAD with timed transcript coverage. Threshold changes create new immutable receipts. Surface disagreements as bounded review candidates; never silently convert them to transcript corrections or cuts.
+
+The two sub-layers stay separate in storage and UI:
+
+- measured energy answers whether signal power crossed a source-relative threshold;
+- provider word timing answers where a transcription provider placed recognized words;
+- VAD answers where a particular pinned detector classified speech under recorded parameters;
+- playback review answers what a human heard in the bound source-clock range.
 
 ### Version 3: correlated bleed and echo evidence
 

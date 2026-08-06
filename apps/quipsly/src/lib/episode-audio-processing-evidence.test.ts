@@ -1,8 +1,9 @@
-import { newAudioSignalProfileJob } from "@high-ground/quipsly-media-processing";
+import { newAudioSignalProfileJob, newStudioSourceTranscriptJob } from "@high-ground/quipsly-media-processing";
 
 import {
   episodeAudioProcessingEvidence,
   episodeAudioSignalActivityEvidence,
+  episodeAudioTranscriptActivityEvidence,
 } from "./episode-audio-processing-evidence";
 
 const source = {
@@ -14,6 +15,56 @@ const source = {
   sizeBytes: 48_000,
   contentType: "audio/wav",
 };
+
+function transcriptFixture() {
+  const job = newStudioSourceTranscriptJob({
+    jobId: "source_transcript_job_0001",
+    transcriptJobId: "canonical_transcript_job_0001",
+    projectId: "project_0001",
+    episodeProductionId: "episode_production_0001",
+    episodeSlug: "episode-9",
+    sourceId: "source_0001",
+    requestedByEmail: "producer@example.com",
+    queuedAt: "2026-08-06T12:00:00.000Z",
+    source,
+    authorization: {
+      kind: "participant-consent-confirmed",
+      statementVersion: "quipsly-studio-transcription-authorization-v1",
+      accepted: true,
+      acceptedAt: "2026-08-06T11:59:00.000Z",
+      acceptedByEmail: "producer@example.com",
+      importRole: "phone-audio",
+      purpose: "episode-production-transcription-and-review",
+    },
+    provider: { name: "openai-whisper-local", model: "small.en", language: "en", wordTimestamps: true, speakerDiarization: false },
+  });
+  const receipt = {
+    kind: "quipsly-studio-source-transcript-result-v1",
+    version: 1,
+    jobId: job.jobId,
+    transcriptJobId: job.transcriptJobId,
+    completedAt: "2026-08-06T12:02:00.000Z",
+    source,
+    language: "en",
+    provider: {
+      name: "openai-whisper-local",
+      model: "small.en",
+      rawEvidenceSha256: "b".repeat(64),
+      rawEvidenceSizeBytes: 800,
+      rawEvidenceLocator: "/evidence/source_transcript_job_0001.json",
+      capabilities: { segmentTiming: "provider", wordTiming: "provider", wordConfidence: "provider", segmentConfidence: "unavailable", speakerDiarization: "unavailable", alternatives: "unavailable" },
+    },
+    segments: [{ ordinal: 0, startSeconds: 0.1, endSeconds: 0.8, text: "Hello there", confidence: null, speakerLabel: null, wordStartIndex: 0, wordEndIndexExclusive: 2 }],
+    words: [
+      { index: 0, segmentOrdinal: 0, startSeconds: 0.1, endSeconds: 0.35, word: "Hello", punctuatedWord: "Hello", confidence: 0.92, speakerLabel: null },
+      { index: 1, segmentOrdinal: 0, startSeconds: 0.4, endSeconds: 0.8, word: "there", punctuatedWord: "there", confidence: null, speakerLabel: null },
+    ],
+    coverage: { segmentCount: 1, wordCount: 2, timedWordCount: 2, confidenceWordCount: 1, speakerLabeledWordCount: 0, transcriptStartSeconds: 0.1, transcriptEndSeconds: 0.8 },
+    worker: { executionId: "execution_transcript_0001", buildId: "build-transcript-fixture", imageDigest: null, attempt: 1 },
+    boundaries: { ...job.boundaries, completeSourceRead: true, providerEvidenceRetained: true },
+  };
+  return { job, receipt };
+}
 
 describe("episodeAudioProcessingEvidence", () => {
   it("keeps absent work explicitly not queued", () => {
@@ -138,5 +189,34 @@ describe("episodeAudioProcessingEvidence", () => {
       waveform: [{ startSeconds: 0, rmsDbfs: -18 }, { startSeconds: 0.5, rmsDbfs: -19 }],
       boundaries: { energyIsNotVoiceActivity: true, measurementDoesNotChangeMedia: true, sourceIdentityBound: true },
     });
+  });
+
+  it("projects provider word timing without exposing transcript text or calling it VAD", () => {
+    const { job, receipt } = transcriptFixture();
+    const evidence = episodeAudioTranscriptActivityEvidence(
+      [{ id: job.jobId, type: "source-transcript", status: "completed", inputJson: job, resultJson: { receipt } }],
+      [{ id: job.transcriptJobId, status: "COMPLETED", _count: { segments: 1, words: 2 } }],
+    );
+
+    expect(evidence).toEqual(expect.objectContaining({
+      jobId: job.jobId,
+      transcriptJobId: job.transcriptJobId,
+      wordCount: 2,
+      timedWordCount: 2,
+      words: [
+        { startSeconds: 0.1, endSeconds: 0.35, confidenceAvailable: true },
+        { startSeconds: 0.4, endSeconds: 0.8, confidenceAvailable: false },
+      ],
+      boundaries: { providerTimingIsNotMeasuredAccuracy: true, wordsAreNotVoiceActivity: true, sourceIdentityBound: true, textExcludedFromActivityProjection: true },
+    }));
+    expect(JSON.stringify(evidence)).not.toContain("Hello");
+  });
+
+  it("fails closed when canonical transcript counts diverge from the provider receipt", () => {
+    const { job, receipt } = transcriptFixture();
+    expect(episodeAudioTranscriptActivityEvidence(
+      [{ id: job.jobId, type: "source-transcript", status: "completed", inputJson: job, resultJson: { receipt } }],
+      [{ id: job.transcriptJobId, status: "COMPLETED", _count: { segments: 1, words: 1 } }],
+    )).toBeNull();
   });
 });

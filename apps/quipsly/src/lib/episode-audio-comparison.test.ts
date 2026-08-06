@@ -16,7 +16,10 @@ function lane(input: { assetId: string; offset: number | null; duration?: number
     sourceDurationSeconds: input.duration === undefined ? 60 : input.duration,
     activityThresholdDbfs: -36,
     evidenceJobId: `signal-${input.assetId}`,
+    transcriptEvidenceJobId: null,
+    transcriptWordCount: 0,
     cells: [],
+    agreement: { comparableCellCount: 0, agreementCellCount: 0, bothActiveCellCount: 0, energyOnlyCellCount: 0, transcriptOnlyCellCount: 0, agreementRatio: null },
   };
 }
 
@@ -29,9 +32,10 @@ function map(lanes: EpisodeAudioActivityLane[]): EpisodeAudioActivityMap {
     resolution: { cellCount: 180, secondsPerCell: 1 / 3 },
     lanes,
     moments: [],
-    coverage: { trackCount: lanes.length, profiledTrackCount: lanes.length, plottedTrackCount: lanes.length, missingProfileCount: 0, unalignedProfileCount: 0, unidentifiedDialogueTrackCount: 0 },
+    coverage: { trackCount: lanes.length, profiledTrackCount: lanes.length, plottedTrackCount: lanes.length, missingProfileCount: 0, unalignedProfileCount: 0, unidentifiedDialogueTrackCount: 0, transcribedTrackCount: 0, comparableTranscriptEnergyTrackCount: 0 },
+    transcriptEnergyAgreement: { comparableCellCount: 0, agreementCellCount: 0, bothActiveCellCount: 0, energyOnlyCellCount: 0, transcriptOnlyCellCount: 0, agreementRatio: null },
     summary: { possibleOverlapCount: 1, sameParticipantMultideviceCount: 0, unassignedEnergyCount: 0, dialogueGapCount: 0 },
-    boundaries: { energyIsNotSpeech: true, overlapRequiresListening: true, candidateAlignmentDoesNotMoveTimeline: true, noMixAutomationWritten: true, sourceBytesRemainImmutable: true },
+    boundaries: { energyIsNotSpeech: true, overlapRequiresListening: true, candidateAlignmentDoesNotMoveTimeline: true, noMixAutomationWritten: true, sourceBytesRemainImmutable: true, providerWordTimingIsNotVoiceActivity: true, agreementIsNotTranscriptionAccuracy: true },
   };
 }
 
