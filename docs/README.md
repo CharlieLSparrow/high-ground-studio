@@ -58,6 +58,8 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `agents/quipsly-quiplore-codex-brief.md`: startup brief for future Quipsly/QuipLore implementation agents.
 - `agents/quipsly-quiplore-implementation-result.md`: current implementation result for the first QuipLore app, Quipsly API, and shared domain package pass.
 - `analysis/studio-manuscript-writing-tool-competitive-research.md`: competitive research across Scrivener, Ulysses, Reedsy, Dabble, Atticus, Plottr, iA Writer, and Docs/Word for the next Manuscript Desk planning cycle.
+- `research/quipsly-capability-expansion-2026-08-05.md`: evidence-connected product thesis, market research, priority portfolio, and highest-leverage Session/Audio/Transcript production slice.
+- `research/quipsly-feature-depth-radar-2026-08-06.md`: current official-product refresh, seven-dimension maturity test, ranked depth bets, and real-work research experiments.
 - `plans/studio-manuscript-desk-improvement-roadmap.md`: big-swing roadmap for mobile writing, semantic lenses, manuscript map, revision timeline, compile profiles, source bible, review, and Codex handoff mode.
 - `agents/codex-application-handoff-2026-05-26.md`: current handoff packet for passing this branch into the Codex application, including validation status and branch/worktree audit.
 - `reference/quipsly-quiplore/visual-language-study.md`: visual notes from uploaded Quipsly/QuipLore reference assets.
