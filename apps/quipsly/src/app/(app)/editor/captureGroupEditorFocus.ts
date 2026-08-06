@@ -89,6 +89,18 @@ function baselineRecordingId(asset: unknown) {
   return text(record(alignment.captureGroup).baselineRecordingAssetId);
 }
 
+export function importedAssetRecoverySelectionStatus(asset: unknown) {
+  const row = record(asset);
+  const metadata = record(row.metadata);
+  const sync = record(row.sync);
+  const metadataRecording = record(metadata.recordingSync);
+  const syncRecording = record(sync.recordingSync);
+  return text(
+    record(syncRecording.recoverySelection).status
+      || record(metadataRecording.recoverySelection).status,
+  );
+}
+
 function isAudio(asset: CaptureGroupFocusableAsset) {
   return text(asset.kind).toLowerCase() === "audio"
     || text(asset.contentType).toLowerCase().startsWith("audio/")
@@ -119,7 +131,8 @@ export function captureGroupEditorFocusPlan(
 
   const groupAssets = assets
     .filter(
-      (asset) => importedAssetCaptureGroupId(asset) === captureGroupId,
+      (asset) => importedAssetCaptureGroupId(asset) === captureGroupId
+        && importedAssetRecoverySelectionStatus(asset) !== "superseded-original",
     )
     .sort((left, right) => (
       text(left.importedAt).localeCompare(text(right.importedAt))

@@ -107,6 +107,31 @@ describe("Capture group editor focus", () => {
     });
   });
 
+  it("keeps a superseded original in history but focuses its active recovered master", () => {
+    const original = asset({
+      id: "silent-original",
+      recordingAssetId: "recording-original",
+      captureGroupId: "take-1",
+      kind: "audio",
+      importedAt: "2026-08-07T03:00:00.000Z",
+    });
+    (original.metadata.recordingSync as Record<string, unknown>).recoverySelection = { status: "superseded-original" };
+    const replacement = asset({
+      id: "mv7i-replacement",
+      recordingAssetId: "recording-replacement",
+      captureGroupId: "take-1",
+      kind: "audio",
+      importedAt: "2026-08-07T03:05:00.000Z",
+    });
+    (replacement.metadata.recordingSync as Record<string, unknown>).recoverySelection = { status: "active-replacement" };
+
+    expect(captureGroupEditorFocusPlan([original, replacement], "take-1")).toMatchObject({
+      sourceCount: 1,
+      assetIds: ["mv7i-replacement"],
+      spineAssetId: "mv7i-replacement",
+    });
+  });
+
   it("fails visibly when the phone-reviewed group is absent", () => {
     expect(captureGroupEditorFocusPlan([], "take-missing")).toMatchObject({
       requestedCaptureGroupId: "take-missing",

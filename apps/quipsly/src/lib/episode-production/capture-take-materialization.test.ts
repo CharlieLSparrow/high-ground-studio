@@ -51,6 +51,7 @@ function source(
       signalStatus: "signal-present",
       rmsDbfs: -22,
       samplePeakDbfs: -3,
+      durationSeconds: 90,
       error: null,
     } : {
       status: "not-observed",
@@ -61,6 +62,7 @@ function source(
       signalStatus: null,
       rmsDbfs: null,
       samplePeakDbfs: null,
+      durationSeconds: null,
       error: null,
     },
     alignment: kind === "audio" ? null : {
@@ -111,6 +113,7 @@ describe("Capture take materialization", () => {
           signalStatus: null,
           rmsDbfs: null,
           samplePeakDbfs: null,
+          durationSeconds: null,
           error: "audio-signal-probe-invalid: invalid stream metadata",
         },
       })],
@@ -143,6 +146,7 @@ describe("Capture take materialization", () => {
           signalStatus: "near-digital-silence",
           rmsDbfs: -160,
           samplePeakDbfs: -160,
+          durationSeconds: 6.42,
           error: null,
         },
       })],

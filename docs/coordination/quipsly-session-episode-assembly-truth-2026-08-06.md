@@ -176,6 +176,39 @@ poll (up to ten seconds), while preserving the existing exact-source revision
 check and launcher ownership boundary. The full local lane was restarted and
 read back healthy after the repair.
 
+## Auditable retained-master recovery
+
+Near-silence is now recoverable without overwriting, relinking, or deleting the
+protected original. The Episode editor imports a recorder, camera, or phone
+backup as a normal immutable source first. An explicit operator then confirms
+that it belongs to the same Session/source owner and is governed by the
+capture-time recording and processing decision.
+
+Adoption creates a new `RecordingAsset`, clones the immutable consent-scoped
+finalization disposition, and binds the exact SHA-256 and storage generation.
+The existing `CallExpectedSource` acts as the mutable slot projection while
+`CallExpectedSourceRevision` preserves the append-only decision history. The
+first recovery writes `CREATE -> UNBIND -> BIND`; later recoveries append new
+unbind/bind decisions and remove every previous binding from the active take.
+The Episode source bin retains the originals as `superseded-original` evidence
+and identifies only the selected backup as `active-replacement`.
+
+The retained operation adopted `mv7i-backup.mp3` for recording asset
+`cmsfphljt000lb9xltoz7eob8`. The replacement recording asset is
+`cmsi2ig7h000hlqxlwxtdmuq5`, bound to source SHA-256
+`806d8555cabcca2e4ce5300fe7288cfa6ca4b9aa7b0311c75808cca4d5cd24fc`.
+The durable worker completely decoded 17.145458 seconds and classified the
+source as `signal-present`. The running editor then showed that source as the
+healthy recovered master and held the take only on the remaining unrecovered
+near-silent source.
+
+A replay of the exact adoption request returned the same replacement and
+completed signal receipt. The database remained at one replacement asset and
+exactly three source-plan revisions. This proves response-loss retry does not
+duplicate media identities or ledger decisions. Failed UI adoption retries also
+reuse the already imported backup and original request identity instead of
+uploading another copy.
+
 ## Regression discovered and repaired
 
 Operating the real editor exposed a phantom save: hydration normalized the
@@ -200,6 +233,7 @@ After the repair:
 22 materialization, route, and cockpit decode-gate tests passed
 2 processing/release policy suites passed, including capture-scoped consent
 32 focused editor, cockpit, materialization, and route tests passed
+23 focused recovery, source-focus, and materialization tests passed
 Quipsly Next.js route generation passed
 Quipsly TypeScript typecheck passed
 Running-app reload did not append a receipt
@@ -210,14 +244,18 @@ Running editor retried both real sources to complete-decode receipts
 Running editor showed two near-digital-silence holds and disabled spine controls
 Session Guardian regression proved advancing silent chunks remain an intervention
 Local lifecycle contract passed 12/12 and the full lane read back healthy
+Audible backup adoption preserved the original and wrote CREATE -> UNBIND -> BIND
+Exact request replay retained one replacement asset and three source revisions
+Running editor showed the active recovered master and only the remaining true hold
 ```
 
 ## Next production slice
 
-Do not manufacture a green fixture by selecting either tiny test WebM as the
-production spine. The next serious acceptance run should retain a substantial
-browser or iPhone local master, complete source-bound transcription and audio
-analysis, explicitly choose the clean high-quality spine, materialize the take,
-generate proposals bound to the resulting timeline fingerprint, proof-listen
-or proof-watch them, apply accepted operations to a reversible draft, and save
+Do not manufacture a green fixture by selecting the remaining tiny test WebM as
+the production spine. Recover its slot with a distinct audible retained source,
+then complete source-bound transcription and alignment review. The next serious
+acceptance run should retain a substantial browser or iPhone local master,
+explicitly choose the clean high-quality spine, materialize the take, generate
+proposals bound to the resulting timeline fingerprint, proof-listen or
+proof-watch them, apply accepted operations to a reversible draft, and save
 those reviewed draft receipts into the canonical Episode timeline.

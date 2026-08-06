@@ -37,6 +37,7 @@ import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
 import { sourceBoundSpectralEditMarkers } from "@/components/audio/spectral-evidence-overlay";
 import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import { CaptureTakeMaterializationPanel } from "./CaptureTakeMaterializationPanel";
+import { CaptureSourceRecoveryPanel } from "./CaptureSourceRecoveryPanel";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import {
   buildEpisodeArtifactPayload as buildCanonicalEpisodeArtifactPayload,
@@ -9022,7 +9023,7 @@ function CloudEditorContent() {
                                 ? "Clock proposal"
                                 : source.alignment
                                   ? "Waveform review"
-                                  : "Evidence pending";
+                                  : "Alignment not reviewed";
                             const selectedAsSpine = syncWizardSpineAssetId === source.asset.id;
                             const selectedAsTarget = syncWizardTargetAssetId === source.asset.id;
                             return (
@@ -9093,6 +9094,27 @@ function CloudEditorContent() {
                                     >
                                       {signalJobWorking ? "Decoding exact source…" : decodeFailed ? "Retry complete decode" : "Run complete decode"}
                                     </button>
+                                  ) : null}
+                                  {source.recordingAssetId && (decodeFailed || decodedSilence) ? (
+                                    <CaptureSourceRecoveryPanel
+                                      projectSlug={resolvedProjectSlug}
+                                      episodeSlug={episodeSlug}
+                                      captureGroupId={captureGroupFocus.requestedCaptureGroupId}
+                                      originalRecordingAssetId={source.recordingAssetId}
+                                      originalName={source.asset.originalName}
+                                      accept={source.isAudio ? "audio/*,.wav,.m4a,.mp3,.aac,.flac,.ogg,.webm" : "video/*,.mov,.mp4,.m4v,.webm,.mkv"}
+                                      onRecovered={(payload, importedBackup) => {
+                                        setProductionState((previous) => previous
+                                          ? {
+                                              ...previous,
+                                              productionJson: payload.productionJson ?? previous.productionJson,
+                                              updatedAt: new Date().toISOString(),
+                                            }
+                                          : previous);
+                                        setMediaImportStatus(payload.nextAction || `${importedBackup.originalName} is now the active recovered master. Complete decode remains required.`);
+                                        setEpisodeMediaTruthRefreshToken((token) => token + 1);
+                                      }}
+                                    />
                                   ) : null}
                                 </div>
                               </article>

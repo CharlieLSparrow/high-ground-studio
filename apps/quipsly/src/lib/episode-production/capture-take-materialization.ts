@@ -42,6 +42,7 @@ export type CaptureTakeMaterializationSource = {
     signalStatus: "signal-present" | "attention" | "near-digital-silence" | null;
     rmsDbfs: number | null;
     samplePeakDbfs: number | null;
+    durationSeconds: number | null;
     error: string | null;
   };
   alignment: CaptureTakeReviewedAlignment | null;

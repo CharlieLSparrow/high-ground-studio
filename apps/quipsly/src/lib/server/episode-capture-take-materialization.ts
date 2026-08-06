@@ -7,6 +7,7 @@ import {
 } from "@/app/(app)/episode-production/episodeArtifact";
 import { canonicalEpisodeImportedMedia } from "@/lib/episode-production/imported-media";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
+import { applyActiveRecoverySelections } from "@/lib/episode-production/capture-source-recovery";
 import {
   planCaptureTakeMaterialization,
   type CaptureTakeMaterializationSource,
@@ -97,6 +98,7 @@ function materializationSource(
       : "audio";
   const durationSeconds = finitePositive(recordingSync.durationSeconds)
     ?? finitePositive(recordingAsset?.durationSeconds)
+    ?? finitePositive(audioDecodeEvidence.durationSeconds)
     ?? 0;
   const captureGroupId = captureGroupForImportedAsset(importedAsset);
   const roomId = text(recordingAsset?.roomId)
@@ -148,6 +150,7 @@ function audioDecodeEvidence(
     signalStatus: null,
     rmsDbfs: null,
     samplePeakDbfs: null,
+    durationSeconds: null,
     error: null,
   };
   const status = toPublicAudioSignalProfileStatus(job);
@@ -176,6 +179,7 @@ function audioDecodeEvidence(
     signalStatus: complete ? status.audioSignal!.signalStatus : null,
     rmsDbfs: complete ? status.audioSignal!.rmsDbfs : null,
     samplePeakDbfs: complete ? status.audioSignal!.samplePeakDbfs : null,
+    durationSeconds: complete ? finitePositive(status.media?.durationSeconds) : null,
     error: status.status === "completed" && !exactSourceBound
       ? "Complete decode receipt is not bound to these exact source bytes."
       : status.error,
@@ -320,7 +324,19 @@ export async function loadEpisodeCaptureTakeMaterialization(input: {
     );
     return source ? [source] : [];
   });
-  const roomId = sources[0]?.roomId ?? "";
+  const roomIds = Array.from(new Set(sources.map((source) => source.roomId).filter(Boolean)));
+  const recoveryExpectations = roomIds.length > 0
+    ? await input.prisma.callExpectedSource.findMany({
+        where: { roomId: { in: roomIds }, status: "ACTIVE" },
+        select: {
+          recordingAssetId: true,
+          status: true,
+          revisions: { orderBy: { revision: "asc" }, select: { afterJson: true } },
+        },
+      })
+    : [];
+  const activeSources = applyActiveRecoverySelections(sources, recoveryExpectations);
+  const roomId = activeSources[0]?.roomId ?? "";
   const transcript = roomId
     ? await canonicalTranscriptForRoom({
         prisma: input.prisma,
@@ -332,7 +348,7 @@ export async function loadEpisodeCaptureTakeMaterialization(input: {
   const timeline = timelineStateFromEpisodeArtifact(production.timelineJson);
   const plan = planCaptureTakeMaterialization({
     timeline,
-    sources,
+    sources: activeSources,
     transcript,
     spineAudioAssetId: text(productionRecord.spineAudioAssetId) || null,
     actor: { id: input.actor.id, email: input.actor.email },
@@ -344,7 +360,8 @@ export async function loadEpisodeCaptureTakeMaterialization(input: {
     captureGroupId,
     importedMediaCount: importedMedia.length,
     selectedMediaCount: selectedMedia.length,
-    sourceCount: sources.length,
+    sourceCount: activeSources.length,
+    historicalSourceCount: sources.length - activeSources.length,
     transcriptJobId: transcript?.transcriptJobId ?? null,
     plan,
   };

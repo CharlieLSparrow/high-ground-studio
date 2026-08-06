@@ -61,6 +61,7 @@ function inspection(plan = planCaptureTakeMaterialization({
       signalStatus: "signal-present",
       rmsDbfs: -22,
       samplePeakDbfs: -3,
+      durationSeconds: 20,
       error: null,
     },
     alignment: null,
