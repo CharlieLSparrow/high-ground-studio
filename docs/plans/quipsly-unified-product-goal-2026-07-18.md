@@ -7963,3 +7963,29 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   been made.
 - Architecture and evidence:
   `docs/coordination/2026-08-06-matched-terminology-accuracy-lab.md`.
+
+## 2026-08-07 shared source-clock listening-moment checkpoint
+
+- Audited the current Audio Mastery stack before adding surface area. Quipsly
+  already retains exact-source repair candidates, program activity, pair
+  correlation, matched multitrack listening, versioned mix previews, A/B
+  review, promotion, delivery, and proof-listen boundaries. The missing UX
+  depth was duplicated human review across those authorities.
+- Session review now clusters nearby unresolved evidence on the same immutable
+  source into bounded shared listening moments. Every transcript, detector,
+  repair, mastery, and edit record keeps its own confidence semantics,
+  consequence, boundary, and deep link; clustering writes no decision.
+- Each moment is limited to 25 seconds, uses explicit context, refuses
+  cross-source grouping, and exposes a deterministic source-review budget plus
+  duplicate context avoided. Matched A/B, full-mix, and proof-listen work are
+  explicitly excluded from the estimate.
+- The detailed review surface plays one combined context and shows every
+  underlying authority separately. Subsecond ranges retain tenth-second
+  visibility rather than collapsing to an ambiguous whole-second label.
+- The complete Session directory passes 147 tests across 21 suites; Quipsly
+  typecheck and the production web build pass. A separate local PostgreSQL
+  operation on retained coaching evidence projected two detector signals into
+  one 15-second listening moment, avoiding nine seconds of duplicate context
+  while preserving both authority records.
+- Architecture and evidence:
+  `docs/coordination/2026-08-07-shared-source-clock-listening-moments.md`.

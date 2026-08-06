@@ -83,12 +83,32 @@ export type SessionSourceClockAttentionItem = {
   editorHref: string | null;
 };
 
+export type SessionSourceClockReviewMoment = {
+  id: string;
+  severity: "HIGH" | "REVIEW";
+  source: SessionSourceClockSource;
+  startSeconds: number;
+  endSeconds: number;
+  title: string;
+  authorityLabels: string[];
+  items: SessionSourceClockAttentionItem[];
+  contextTruncated: boolean;
+  estimatedReviewSeconds: number;
+  separateReviewSeconds: number;
+  sharedContextSavingsSeconds: number;
+};
+
 export type SessionSourceClockAttention = {
   items: SessionSourceClockAttentionItem[];
+  moments: SessionSourceClockReviewMoment[];
   counts: {
     total: number;
     high: number;
     review: number;
+    moments: number;
+    estimatedReviewSeconds: number;
+    separateReviewSeconds: number;
+    sharedContextSavingsSeconds: number;
     byAuthority: Record<SessionSourceClockAuthority, number>;
   };
   boundaries: {
@@ -98,6 +118,10 @@ export type SessionSourceClockAttention = {
     providerConfidenceIsNotAccuracy: true;
     editConfidenceIsNotCalibratedProbability: true;
     playbackRemainsRequired: true;
+    clusteringDoesNotMergeAuthority: true;
+    attentionBudgetIsDeterministicEstimate: true;
+    downstreamComparisonsAreNotIncluded: true;
+    truncatedContextRequiresAuthoritySurface: true;
   };
 };
 
@@ -116,6 +140,12 @@ const AUTHORITY_ORDER: Record<SessionSourceClockAuthority, number> = {
   TRANSCRIPT_ATTEMPT: 3,
   EDIT_PROPOSAL: 4,
 };
+
+const REVIEW_CONTEXT_SECONDS = 2;
+const REVIEW_DECISION_SECONDS = 6;
+const ADDITIONAL_SIGNAL_SECONDS = 3;
+const MAX_REVIEW_MOMENT_SECONDS = 25;
+const NEARBY_SIGNAL_GAP_SECONDS = 1.5;
 
 function validRange(item: RangeEvidence) {
   return Number.isFinite(item.startSeconds)
@@ -165,6 +195,79 @@ function itemBase(item: RangeEvidence, authority: SessionSourceClockAuthority) {
     endSeconds: item.endSeconds,
     audioStudioHref: audioStudioHref(item),
   };
+}
+
+function sourceKey(source: SessionSourceClockSource) {
+  return `${source.roomId}\u0000${source.mediaAssetId}\u0000${source.sourceId}`;
+}
+
+function paddedRange(item: SessionSourceClockAttentionItem) {
+  const startSeconds = Math.max(0, item.startSeconds - REVIEW_CONTEXT_SECONDS);
+  return {
+    startSeconds,
+    endSeconds: Math.min(86_400, item.endSeconds + REVIEW_CONTEXT_SECONDS, startSeconds + MAX_REVIEW_MOMENT_SECONDS),
+  };
+}
+
+function buildReviewMoments(items: SessionSourceClockAttentionItem[]): SessionSourceClockReviewMoment[] {
+  const rank = new Map(items.map((item, index) => [item.id, index]));
+  const bySource = new Map<string, SessionSourceClockAttentionItem[]>();
+  for (const item of items) {
+    const key = sourceKey(item.source);
+    const current = bySource.get(key) ?? [];
+    current.push(item);
+    bySource.set(key, current);
+  }
+  const moments: SessionSourceClockReviewMoment[] = [];
+  for (const sourceItems of bySource.values()) {
+    const chronological = [...sourceItems].sort((left, right) => left.startSeconds - right.startSeconds || left.endSeconds - right.endSeconds || left.id.localeCompare(right.id));
+    const groups: Array<{ startSeconds: number; endSeconds: number; items: SessionSourceClockAttentionItem[] }> = [];
+    for (const item of chronological) {
+      const padded = paddedRange(item);
+      const current = groups.at(-1);
+      const mergedEnd = current ? Math.max(current.endSeconds, padded.endSeconds) : padded.endSeconds;
+      if (current
+        && padded.startSeconds <= current.endSeconds + NEARBY_SIGNAL_GAP_SECONDS
+        && mergedEnd - current.startSeconds <= MAX_REVIEW_MOMENT_SECONDS) {
+        current.endSeconds = mergedEnd;
+        current.items.push(item);
+      } else {
+        groups.push({ startSeconds: padded.startSeconds, endSeconds: padded.endSeconds, items: [item] });
+      }
+    }
+    for (const group of groups) {
+      const orderedItems = [...group.items].sort((left, right) => (rank.get(left.id) ?? 0) - (rank.get(right.id) ?? 0));
+      const separateReviewSeconds = orderedItems.reduce((total, item) => {
+        const range = paddedRange(item);
+        return total + Math.ceil(range.endSeconds - range.startSeconds + REVIEW_DECISION_SECONDS);
+      }, 0);
+      const estimatedReviewSeconds = Math.ceil(
+        group.endSeconds - group.startSeconds
+        + REVIEW_DECISION_SECONDS
+        + Math.max(0, orderedItems.length - 1) * ADDITIONAL_SIGNAL_SECONDS,
+      );
+      const first = orderedItems[0]!;
+      moments.push({
+        id: `review-moment:${first.id}`,
+        severity: orderedItems.some((item) => item.severity === "HIGH") ? "HIGH" : "REVIEW",
+        source: first.source,
+        startSeconds: group.startSeconds,
+        endSeconds: group.endSeconds,
+        title: orderedItems.length === 1 ? first.title : `${orderedItems.length} signals share one listening moment`,
+        authorityLabels: [...new Set(orderedItems.map((item) => item.authorityLabel))],
+        items: orderedItems,
+        contextTruncated: orderedItems.some((item) => item.startSeconds < group.startSeconds || item.endSeconds > group.endSeconds),
+        estimatedReviewSeconds,
+        separateReviewSeconds,
+        sharedContextSavingsSeconds: Math.max(0, separateReviewSeconds - estimatedReviewSeconds),
+      });
+    }
+  }
+  return moments.sort((left, right) => {
+    const leftRank = Math.min(...left.items.map((item) => rank.get(item.id) ?? Number.MAX_SAFE_INTEGER));
+    const rightRank = Math.min(...right.items.map((item) => rank.get(item.id) ?? Number.MAX_SAFE_INTEGER));
+    return leftRank - rightRank || left.source.label.localeCompare(right.source.label) || left.startSeconds - right.startSeconds || left.id.localeCompare(right.id);
+  });
 }
 
 export function buildSessionSourceClockAttention(input: SessionSourceClockAttentionInput): SessionSourceClockAttention {
@@ -273,12 +376,20 @@ export function buildSessionSourceClockAttention(input: SessionSourceClockAttent
   }).slice(0, 100);
   const byAuthority = Object.fromEntries(Object.keys(AUTHORITY_LABEL).map((authority) => [authority, 0])) as Record<SessionSourceClockAuthority, number>;
   for (const item of bounded) byAuthority[item.authority] += 1;
+  const moments = buildReviewMoments(bounded);
+  const estimatedReviewSeconds = moments.reduce((total, moment) => total + moment.estimatedReviewSeconds, 0);
+  const separateReviewSeconds = moments.reduce((total, moment) => total + moment.separateReviewSeconds, 0);
   return {
     items: bounded,
+    moments,
     counts: {
       total: bounded.length,
       high: bounded.filter((item) => item.severity === "HIGH").length,
       review: bounded.filter((item) => item.severity === "REVIEW").length,
+      moments: moments.length,
+      estimatedReviewSeconds,
+      separateReviewSeconds,
+      sharedContextSavingsSeconds: Math.max(0, separateReviewSeconds - estimatedReviewSeconds),
       byAuthority,
     },
     boundaries: {
@@ -288,6 +399,10 @@ export function buildSessionSourceClockAttention(input: SessionSourceClockAttent
       providerConfidenceIsNotAccuracy: true,
       editConfidenceIsNotCalibratedProbability: true,
       playbackRemainsRequired: true,
+      clusteringDoesNotMergeAuthority: true,
+      attentionBudgetIsDeterministicEstimate: true,
+      downstreamComparisonsAreNotIncluded: true,
+      truncatedContextRequiresAuthoritySurface: true,
     },
   };
 }
