@@ -57,6 +57,8 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("option", { name: "Canon EOS R8" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Conversation is not recording" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Call-path microphone evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Private studio sound check" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
     expect(screen.getByText("Call-path input evidence")).toBeInTheDocument();
     expect(screen.getByText(/not LUFS, true peak, or proof of the retained source/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
@@ -191,6 +193,29 @@ describe("LiveSessionRoom", () => {
     fireEvent.click(screen.getByRole("button", { name: "Simulate retained source stop" }));
     expect(screen.getByRole("combobox", { name: "Microphone" })).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "Camera" })).toBeEnabled();
+  });
+
+  it("keeps device testing and conversation available while missing capture identity holds retained recording", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        enumerateDevices: jest.fn().mockResolvedValue([
+          { kind: "audioinput", deviceId: "mv7i", label: "Shure MV7i" },
+          { kind: "videoinput", deviceId: "canon-r8", label: "Canon EOS R8" },
+        ]),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      },
+    });
+
+    await act(async () => {
+      render(<LiveSessionRoom callRoomId="room-unbound" captureGroupId={null} sessionTitle="Unbound take" kind="episode" />);
+    });
+
+    expect(await screen.findByRole("region", { name: "Retained source unavailable" })).toHaveTextContent(/recording held/i);
+    expect(screen.getByRole("button", { name: /Test selected setup/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Join live room/i })).toBeEnabled();
+    expect(screen.queryByTestId("browser-source-capture-group")).not.toBeInTheDocument();
   });
 
   it("reuses the same provider START request after an ambiguous transport failure", async () => {

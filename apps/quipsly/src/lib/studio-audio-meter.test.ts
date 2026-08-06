@@ -9,6 +9,7 @@ import {
   studioAudioDbfsPercent,
   studioAudioMeterEvidence,
   studioAudioSignalState,
+  studioSoundCheckGuidance,
 } from "./studio-audio-meter";
 
 describe("studio audio meter evidence", () => {
@@ -65,6 +66,19 @@ describe("studio audio meter evidence", () => {
     expect(studioAudioSignalState(-11.9, -6)).toBe("hot");
     expect(studioAudioSignalState(-24, -0.9)).toBe("clipping-risk");
     expect(amplitudeToDbfs(Number.NaN)).toBe(-120);
+  });
+
+  it("turns measured call-path states into specific sound-check guidance", () => {
+    expect(studioSoundCheckGuidance(null).heading).toBe("Run the selected setup first");
+    expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
+      analyseStudioAudioFrame(new Float32Array(32)),
+    )).heading).toMatch(/not carrying useful speech/i);
+    expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
+      analyseStudioAudioFrame(new Float32Array([0.02, -0.02])),
+    )).heading).toMatch(/healthy speech range/i);
+    expect(studioSoundCheckGuidance(studioAudioMeterEvidence(
+      analyseStudioAudioFrame(new Float32Array([1, -1])),
+    )).heading).toMatch(/lower gain/i);
   });
 
   it("versions capture-time observations without claiming complete-decode mastering evidence", () => {

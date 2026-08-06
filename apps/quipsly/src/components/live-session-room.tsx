@@ -28,6 +28,7 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
+import { StudioSoundCheck } from "@/components/studio-sound-check";
 import {
   decodeEpisodeWatchLiveHint,
   dispatchEpisodeWatchIncoming,
@@ -297,7 +298,7 @@ export function LiveSessionRoom({
   narrow = false,
 }: {
   callRoomId: string;
-  captureGroupId: string;
+  captureGroupId?: string | null;
   sessionTitle: string;
   kind: SessionCaptureProfile;
   purpose?: string | null;
@@ -385,6 +386,17 @@ export function LiveSessionRoom({
   const clearRemoteMedia = useCallback(() => {
     remoteMediaRef.current?.replaceChildren();
   }, []);
+
+  const clearPreflightPreview = useCallback(() => {
+    meterCleanupRef.current?.();
+    meterCleanupRef.current = null;
+    stopStream(preflightStreamRef.current);
+    preflightStreamRef.current = null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    setMeterEvidence(null);
+    setCameraEvidence(null);
+  }, []);
+  const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
 
   const refreshProviderRecording = useCallback(async (announceFailure = false) => {
     try {
@@ -490,7 +502,7 @@ export function LiveSessionRoom({
         : "Reading available devices…");
     try {
       if (permission !== "none") {
-        stopStream(preflightStreamRef.current);
+        clearPreflightPreview();
         preflightStreamRef.current = await getUserMediaWithTimeout({
           audio: permission === "microphone",
           video: permission === "camera",
@@ -539,7 +551,7 @@ export function LiveSessionRoom({
       if (!preserveLiveConnection) setStatus("error");
       setMessage(error instanceof Error ? `Device check failed: ${error.message}` : "Device permission was not granted.");
     }
-  }, []);
+  }, [clearPreflightPreview]);
 
   const startSelectedPreview = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia || !microphoneId) return;
@@ -551,8 +563,7 @@ export function LiveSessionRoom({
     setStatus("checking");
     setMessage("Opening the selected studio devices…");
     try {
-      stopStream(preflightStreamRef.current);
-      meterCleanupRef.current?.();
+      clearPreflightPreview();
       const stream = await getUserMediaWithTimeout({
         audio: {
           deviceId: { exact: microphoneId },
@@ -630,13 +641,10 @@ export function LiveSessionRoom({
       setCameraEvidence(null);
       setMessage(error instanceof Error ? `Selected device could not start: ${error.message}` : "Selected device could not start.");
     }
-  }, [cameraId, cameraWanted, cameras, microphoneId]);
+  }, [cameraId, cameraWanted, cameras, clearPreflightPreview, microphoneId]);
 
   const leave = useCallback(async () => {
-    meterCleanupRef.current?.();
-    meterCleanupRef.current = null;
-    stopStream(preflightStreamRef.current);
-    preflightStreamRef.current = null;
+    clearPreflightPreview();
     roomRef.current?.disconnect(true);
     roomRef.current = null;
     clearRemoteMedia();
@@ -644,7 +652,7 @@ export function LiveSessionRoom({
     setParticipants([]);
     setStatus("ended");
     setMessage("You left the live room. No provider recording was started by joining or leaving.");
-  }, [clearRemoteMedia]);
+  }, [clearPreflightPreview, clearRemoteMedia]);
 
   const join = useCallback(async () => {
     if (!microphoneId) {
@@ -659,10 +667,7 @@ export function LiveSessionRoom({
     setStatus("joining");
     setMessage("Requesting a short-lived, room-scoped key…");
     try {
-      stopStream(preflightStreamRef.current);
-      preflightStreamRef.current = null;
-      meterCleanupRef.current?.();
-      meterCleanupRef.current = null;
+      clearPreflightPreview();
       const response = await fetch("/api/mobile/capture/rooms/join", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -766,7 +771,7 @@ export function LiveSessionRoom({
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The live room could not connect.");
     }
-  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearRemoteMedia, episodeSlug, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
+  }, [attachRemoteTrack, callRoomId, cameraId, cameraWanted, clearPreflightPreview, clearRemoteMedia, episodeSlug, microphoneId, onEpisodeWatchHint, projectSlug, updateRoster]);
 
   useEffect(() => {
     const threadKeys = new Set([
@@ -879,13 +884,17 @@ export function LiveSessionRoom({
         }
       }
       setMicrophoneId(nextId);
+      if (!connected) {
+        clearPreflightPreview();
+        setStatus("preflight");
+      }
       const label = microphones.find((device) => device.deviceId === nextId)?.label || "selected microphone";
       setMessage(connected ? `Live microphone switched to ${label}. The retained local source remains off until you start it separately.` : `Microphone selected: ${label}. Run the confidence check before joining.`);
     } catch (error) {
       setMicrophoneId(previousId);
       setMessage(error instanceof Error ? `Microphone switch failed: ${error.message}` : "Microphone switch failed.");
     }
-  }, [connected, microphoneId, microphoneMuted, microphones, sourceLocked]);
+  }, [clearPreflightPreview, connected, microphoneId, microphoneMuted, microphones, sourceLocked]);
 
   const chooseCamera = useCallback(async (nextId: string) => {
     if (!nextId || nextId === cameraId) return;
@@ -906,14 +915,19 @@ export function LiveSessionRoom({
         }
       }
       setCameraId(nextId);
-      setCameraEvidence(null);
+      if (!connected) {
+        clearPreflightPreview();
+        setStatus("preflight");
+      } else {
+        setCameraEvidence(null);
+      }
       const label = cameras.find((device) => device.deviceId === nextId)?.label || "selected camera";
       setMessage(connected ? `Live camera switched to ${label}. This does not alter or restart retained recording.` : `Camera selected: ${label}. Run the preview before joining.`);
     } catch (error) {
       setCameraId(previousId);
       setMessage(error instanceof Error ? `Camera switch failed: ${error.message}` : "Camera switch failed.");
     }
-  }, [cameraId, cameraMuted, cameraWanted, cameras, connected, sourceLocked]);
+  }, [cameraId, cameraMuted, cameraWanted, cameras, clearPreflightPreview, connected, sourceLocked]);
 
   const chooseOutput = useCallback((nextId: string) => {
     setOutputId(nextId);
@@ -1030,6 +1044,15 @@ export function LiveSessionRoom({
 
           <StudioInputEvidenceMeter evidence={meterEvidence} />
           {cameraWanted ? <StudioCameraEvidence cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""} evidence={cameraEvidence} /> : null}
+          {!connected ? (
+            <StudioSoundCheck
+              getInputStream={currentPreflightStream}
+              microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+              outputId={outputId}
+              evidence={meterEvidence}
+              disabled={!preflightStreamRef.current || status !== "ready"}
+            />
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             {!connected ? <>
@@ -1105,19 +1128,27 @@ export function LiveSessionRoom({
         </aside>
       </div>
       <div className="mt-5">
-        <BrowserSourceRecorder
-          callRoomId={callRoomId}
-          captureGroupId={captureGroupId}
-          sessionTitle={sessionTitle}
-          sessionKind={experience.captureProfile}
-          projectSlug={projectSlug}
-          episodeSlug={episodeSlug}
-          microphoneId={microphoneId}
-          microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
-          cameraId={cameraId}
-          cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
-          onSourceLockChange={setSourceLocked}
-        />
+        {typeof captureGroupId === "string" && captureGroupId.trim() ? (
+          <BrowserSourceRecorder
+            callRoomId={callRoomId}
+            captureGroupId={captureGroupId.trim()}
+            sessionTitle={sessionTitle}
+            sessionKind={experience.captureProfile}
+            projectSlug={projectSlug}
+            episodeSlug={episodeSlug}
+            microphoneId={microphoneId}
+            microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
+            cameraId={cameraId}
+            cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
+            onSourceLockChange={setSourceLocked}
+          />
+        ) : (
+          <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide"><CircleAlert size={16} aria-hidden="true" /> Conversation available · recording held</p>
+            <p className="mt-2 text-sm font-semibold leading-6">This Session does not yet have a canonical capture-group identity. Device testing and the live conversation remain available, but Quipsly will not create or relabel retained source files without that take boundary.</p>
+            <p className="mt-2 text-[10px] font-black leading-4">Refresh the Session after its capture group is repaired or created. Do not substitute the room ID: room access and synchronized source identity are different contracts.</p>
+          </section>
+        )}
       </div>
     </section>
   );

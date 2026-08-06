@@ -36,7 +36,7 @@ import {
 
 export type LiveSessionDockConfig = {
   callRoomId: string;
-  captureGroupId: string;
+  captureGroupId: string | null;
   sessionTitle: string;
   kind: SessionCaptureProfile;
   purpose: string;

@@ -108,7 +108,7 @@ export type EpisodeRoomVaultSavedClip = {
 
 export type EpisodeRoomRecordingSession = {
   id: string;
-  captureGroupId: string;
+  captureGroupId: string | null;
   title: string;
   purpose: string;
   status: string;
@@ -773,7 +773,7 @@ export async function recordingSessionsFor(
   });
   const sessions = rooms.map((room: any) => ({
     id: room.id,
-    captureGroupId: room.captureGroupId,
+    captureGroupId: text(room.captureGroupId) || null,
     title: text(room.title) || "Podcast recording session",
     purpose: room.purpose,
     status: room.status,
@@ -820,7 +820,7 @@ export async function recordingSessionsFor(
     ...sessions,
     {
       id: boundRoom.id,
-      captureGroupId: boundRoom.captureGroupId,
+      captureGroupId: text(boundRoom.captureGroupId) || null,
       title: text(boundRoom.title) || "Podcast recording session",
       purpose: boundRoom.purpose,
       status: boundRoom.status,

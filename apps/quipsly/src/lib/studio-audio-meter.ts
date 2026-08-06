@@ -147,6 +147,47 @@ export function studioAudioSignalLabel(state: StudioAudioSignalState) {
   }
 }
 
+export function studioSoundCheckGuidance(evidence: StudioAudioMeterEvidence | null) {
+  switch (evidence?.state ?? "inactive") {
+    case "inactive":
+      return {
+        tone: "neutral" as const,
+        heading: "Run the selected setup first",
+        detail: "Open the exact microphone, speak naturally, then record a private sample to hear the browser call path through your chosen output.",
+      };
+    case "no-signal":
+      return {
+        tone: "warning" as const,
+        heading: "The selected path is not carrying useful speech",
+        detail: "Check mute, interface gain, cable, and the selected input. Do not join or record until the meter follows your voice.",
+      };
+    case "low":
+      return {
+        tone: "warning" as const,
+        heading: "Speech is arriving low",
+        detail: "Move closer or raise interface gain modestly, then repeat the sample. Leave headroom instead of normalizing a weak call path by ear.",
+      };
+    case "ready":
+      return {
+        tone: "ready" as const,
+        heading: "Level is in a healthy speech range",
+        detail: "Listen for room noise, mouth noise, monitoring delay, and the correct microphone. The meter cannot certify those by itself.",
+      };
+    case "hot":
+      return {
+        tone: "warning" as const,
+        heading: "Speech is running hot",
+        detail: "Lower interface gain or increase mic distance slightly, then repeat the loudest line you expect to deliver.",
+      };
+    case "clipping-risk":
+      return {
+        tone: "danger" as const,
+        heading: "Clipping risk—lower gain before joining",
+        detail: "Near-full-scale samples were observed. Reduce gain, repeat the loudest phrase, and confirm the peak no longer reaches the danger range.",
+      };
+  }
+}
+
 export function createBrowserCaptureMeterSummary(input: {
   startedAt: string;
   sampleRateHz: number;
