@@ -14,10 +14,11 @@ function text(value: unknown) {
 }
 
 function coordinates(value: Record<string, unknown>) {
+  const projectId = text(value.projectId);
   const projectSlug = text(value.projectSlug);
   const assetId = text(value.assetId);
   const sourceId = text(value.sourceId);
-  return projectSlug && assetId ? { projectSlug, assetId, sourceId } : null;
+  return projectSlug && assetId ? { projectId, projectSlug, assetId, sourceId } : null;
 }
 
 function profile(value: unknown): AudioMasteryProfileId | null {
@@ -28,12 +29,13 @@ function profile(value: unknown): AudioMasteryProfileId | null {
 export async function GET(request: NextRequest) {
   try {
     const input = coordinates({
+      projectId: request.nextUrl.searchParams.get("projectId"),
       projectSlug: request.nextUrl.searchParams.get("projectSlug"),
       assetId: request.nextUrl.searchParams.get("assetId"),
     });
     if (!input) return NextResponse.json({ ok: false, error: "projectSlug and assetId are required." }, { status: 400 });
     const prisma = getPrismaClient();
-    const access = await resolveEpisodeProductionAccess({ request, projectSlug: input.projectSlug, action: "read", prisma });
+    const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action: "read", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status });
     const status = await readAudioMasteryStatus({ prisma, projectSlug: input.projectSlug, assetId: input.assetId });
     return NextResponse.json({ ok: true, ...status }, { headers: { "Cache-Control": "private, no-store" } });
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unsupported audio mastery action." }, { status: 400 });
     }
     const prisma = getPrismaClient();
-    const access = await resolveEpisodeProductionAccess({ request, projectSlug: input.projectSlug, action: "write", prisma });
+    const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action: "write", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status });
     const sourceAccess = await authorizeStudioMediaSource({
       prisma,

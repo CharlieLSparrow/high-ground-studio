@@ -55,6 +55,7 @@ function viewFor(mode: ViewMode, duration: number, selectedSeconds: number) {
 function levelFor(mode: ViewMode): LevelId { return mode === "whole" ? "overview" : mode === "minute" ? "browse" : "detail"; }
 
 export function SpectralEvidenceViewer({
+  projectId,
   projectSlug,
   assetId,
   sourceId,
@@ -68,6 +69,7 @@ export function SpectralEvidenceViewer({
   evidenceMarkers = NO_MARKERS,
   loudnessEvidence = null,
 }: {
+  projectId?: string;
   projectSlug: string;
   assetId: string;
   sourceId: string;
@@ -91,7 +93,10 @@ export function SpectralEvidenceViewer({
   const [renderRevision, setRenderRevision] = useState(0);
   const [canvasWidth, setCanvasWidth] = useState(900);
 
-  const query = useMemo(() => new URLSearchParams({ projectSlug, assetId }), [assetId, projectSlug]);
+  const query = useMemo(
+    () => new URLSearchParams({ ...(projectId ? { projectId } : {}), projectSlug, assetId }),
+    [assetId, projectId, projectSlug],
+  );
   const readStatus = useCallback(async () => {
     const response = await fetch(`/api/media-vault/audio-spectral-evidence?${query.toString()}`, { cache: "no-store" });
     const payload = await response.json().catch(() => null) as (SpectralStatus & { error?: string }) | null;
@@ -114,7 +119,7 @@ export function SpectralEvidenceViewer({
     setMessage("Starting complete-decode spectral analysis…");
     try {
       const request = async (action: "queue" | "reconcile") => {
-        const response = await fetch("/api/media-vault/audio-spectral-evidence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, projectSlug, assetId, sourceId }) });
+        const response = await fetch("/api/media-vault/audio-spectral-evidence", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...(projectId ? { projectId } : {}), projectSlug, assetId, sourceId }) });
         const payload = await response.json().catch(() => null) as (SpectralStatus & { error?: string }) | null;
         if (!response.ok || !payload?.ok || !payload.status || !["not-queued", "queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(payload.status)) throw new Error(payload?.error || `Spectral operation returned HTTP ${response.status}.`);
         setStatus(payload);
@@ -134,7 +139,7 @@ export function SpectralEvidenceViewer({
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Spectral analysis could not finish.");
     } finally { setWorking(false); }
-  }, [assetId, projectSlug, sourceId]);
+  }, [assetId, projectId, projectSlug, sourceId]);
 
   const duration = status.media?.durationSeconds ?? 0;
   const view = useMemo(() => viewFor(viewMode, Math.max(duration, 0.01), selectedSeconds), [duration, selectedSeconds, viewMode]);
@@ -194,7 +199,7 @@ export function SpectralEvidenceViewer({
         const cacheKey = `${jobId}:${currentLevel.id}:${tileIndex}`;
         let bytes = cacheRef.current.get(cacheKey);
         if (!bytes) {
-          const params = new URLSearchParams({ projectSlug, assetId, jobId, level: currentLevel.id, tile: String(tileIndex) });
+          const params = new URLSearchParams({ ...(projectId ? { projectId } : {}), projectSlug, assetId, jobId, level: currentLevel.id, tile: String(tileIndex) });
           const response = await fetch(`/api/media-vault/audio-spectral-evidence/tile?${params.toString()}`, { cache: "force-cache" });
           if (!response.ok) throw new Error(`Spectral tile ${tileIndex} returned HTTP ${response.status}.`);
           bytes = new Uint8Array(await response.arrayBuffer());
@@ -233,7 +238,7 @@ export function SpectralEvidenceViewer({
     };
     void paint().catch((error) => { if (!canceled) setMessage(error instanceof Error ? error.message : "Spectral tiles could not be painted."); });
     return () => { canceled = true; };
-  }, [assetId, canvasWidth, currentLevel, duration, projectSlug, renderRevision, selectedSeconds, status.jobId, status.media, status.pyramid, status.status, view]);
+  }, [assetId, canvasWidth, currentLevel, duration, projectId, projectSlug, renderRevision, selectedSeconds, status.jobId, status.media, status.pyramid, status.status, view]);
 
   const chooseAtClientX = useCallback((clientX: number, play: boolean) => {
     const canvas = canvasRef.current;

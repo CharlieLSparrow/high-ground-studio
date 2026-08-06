@@ -16,16 +16,17 @@ export const runtime = "nodejs";
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function coordinates(value: Record<string, unknown>) {
+  const projectId = text(value.projectId);
   const projectSlug = text(value.projectSlug);
   const episodeSlug = text(value.episodeSlug);
   const assetId = text(value.assetId);
   const sourceId = text(value.sourceId);
-  return projectSlug && episodeSlug && assetId && sourceId ? { projectSlug, episodeSlug, assetId, sourceId } : null;
+  return projectSlug && episodeSlug && assetId && sourceId ? { projectId, projectSlug, episodeSlug, assetId, sourceId } : null;
 }
 
 async function authorize(request: NextRequest, input: NonNullable<ReturnType<typeof coordinates>>, action: "read" | "write") {
   const prisma = getPrismaClient();
-  const access = await resolveEpisodeProductionAccess({ request, projectSlug: input.projectSlug, action, prisma });
+  const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action, prisma });
   if (!access.allowed) return { response: NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status }) } as const;
   const sourceAccess = await authorizeStudioMediaSource({
     prisma,
@@ -54,7 +55,10 @@ export async function GET(request: NextRequest) {
     const result = await readStudioTranscriptReviewPage({
       prisma: access.prisma,
       actor: access.actor,
-      ...input,
+      projectSlug: input.projectSlug,
+      episodeSlug: input.episodeSlug,
+      assetId: input.assetId,
+      sourceId: input.sourceId,
       afterSegmentId: text(request.nextUrl.searchParams.get("afterSegmentId")) || null,
       limit,
     });
@@ -77,7 +81,10 @@ export async function POST(request: NextRequest) {
     const common = {
       prisma: access.prisma,
       actor: access.actor,
-      ...input,
+      projectSlug: input.projectSlug,
+      episodeSlug: input.episodeSlug,
+      assetId: input.assetId,
+      sourceId: input.sourceId,
       segmentId: text(body.segmentId),
       clientRequestId: text(body.clientRequestId),
       expectedText: typeof body.expectedText === "string" ? body.expectedText : "",

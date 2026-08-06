@@ -53,6 +53,29 @@ describe("Studio source transcript review route", () => {
     expect(readStudioTranscriptReviewPage).not.toHaveBeenCalled();
   });
 
+  it("denies a mismatched stable project locator before source authorization or transcript mutation", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({ allowed: false, status: 404, code: "project-not-found", error: "No matching project was found.", actor, access: null } as never);
+    const response = (await POST(post({
+      action: "confirm-as-is",
+      projectId: "project-1",
+      ...coordinates,
+      segmentId: "segment-1",
+      clientRequestId: "request-1",
+      expectedText: "Provider words",
+      confirmedAgainstPlayback: true,
+      playbackPositionSeconds: 12.4,
+    })))!;
+    expect(response.status).toBe(404);
+    expect(resolveEpisodeProductionAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      projectSlug: coordinates.projectSlug,
+      action: "write",
+    }));
+    expect(authorizeStudioMediaSource).not.toHaveBeenCalled();
+    expect(confirmStudioTranscriptSegmentAsIs).not.toHaveBeenCalled();
+    expect(correctStudioTranscriptSegment).not.toHaveBeenCalled();
+  });
+
   it("authorizes both the Nest and exact media source before paged readback", async () => {
     jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({ allowed: true, actor, access: { allowed: true, projectId: "project-1", role: "EDITOR" } } as never);
     jest.mocked(authorizeStudioMediaSource).mockResolvedValue({ allowed: true } as never);

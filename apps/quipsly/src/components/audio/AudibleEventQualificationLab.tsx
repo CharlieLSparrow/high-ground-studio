@@ -19,6 +19,7 @@ type InitialEvent = {
 };
 
 export function AudibleEventQualificationLab({
+  projectId,
   projectSlug,
   assetId,
   sourceId,
@@ -27,6 +28,7 @@ export function AudibleEventQualificationLab({
   defaultWorkload,
   initialEvent = null,
 }: {
+  projectId?: string;
   projectSlug: string;
   assetId: string;
   sourceId: string;
@@ -62,7 +64,10 @@ export function AudibleEventQualificationLab({
   const initialFamily = initialEvent?.family ?? null;
   const initialStart = initialEvent?.startSeconds ?? null;
   const initialEnd = initialEvent?.endSeconds ?? null;
-  const coordinates = useMemo(() => ({ projectSlug, assetId, sourceId }), [assetId, projectSlug, sourceId]);
+  const coordinates = useMemo(
+    () => ({ ...(projectId ? { projectId } : {}), projectSlug, assetId, sourceId }),
+    [assetId, projectId, projectSlug, sourceId],
+  );
   const requiredBins = useMemo(() => secondBins(reviewStartSeconds, reviewEndSeconds), [reviewEndSeconds, reviewStartSeconds]);
   const windowListened = requiredBins.length > 0 && requiredBins.every((bin) => listenedBins.has(bin));
 

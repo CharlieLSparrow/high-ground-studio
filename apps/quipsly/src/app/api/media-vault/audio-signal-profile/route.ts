@@ -9,18 +9,19 @@ export const runtime = "nodejs";
 
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 function coordinates(value: Record<string, unknown>) {
+  const projectId = text(value.projectId);
   const projectSlug = text(value.projectSlug);
   const assetId = text(value.assetId);
   const sourceId = text(value.sourceId);
-  return projectSlug && assetId ? { projectSlug, assetId, sourceId } : null;
+  return projectSlug && assetId ? { projectId, projectSlug, assetId, sourceId } : null;
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const input = coordinates({ projectSlug: request.nextUrl.searchParams.get("projectSlug"), assetId: request.nextUrl.searchParams.get("assetId") });
+    const input = coordinates({ projectId: request.nextUrl.searchParams.get("projectId"), projectSlug: request.nextUrl.searchParams.get("projectSlug"), assetId: request.nextUrl.searchParams.get("assetId") });
     if (!input) return NextResponse.json({ ok: false, error: "projectSlug and assetId are required." }, { status: 400 });
     const prisma = getPrismaClient();
-    const access = await resolveEpisodeProductionAccess({ request, projectSlug: input.projectSlug, action: "read", prisma });
+    const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action: "read", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status });
     const status = await readAudioSignalProfileStatus({ prisma, projectSlug: input.projectSlug, assetId: input.assetId });
     return NextResponse.json({ ok: true, ...status }, { headers: { "Cache-Control": "private, no-store" } });
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (!input || !input.sourceId) return NextResponse.json({ ok: false, error: "projectSlug, assetId, and sourceId are required." }, { status: 400 });
     if (action !== "queue" && action !== "reconcile") return NextResponse.json({ ok: false, error: "Unsupported audio signal profile action." }, { status: 400 });
     const prisma = getPrismaClient();
-    const access = await resolveEpisodeProductionAccess({ request, projectSlug: input.projectSlug, action: "write", prisma });
+    const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action: "write", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status });
     const sourceAccess = await authorizeStudioMediaSource({ prisma, actor: { id: access.actor.id, email: access.actor.email, isStaff: access.actor.isStaff }, sourceId: input.sourceId });
     if (!sourceAccess.allowed) return NextResponse.json({ ok: false, code: sourceAccess.errorCode || "audio-signal-source-held", error: sourceAccess.error }, { status: sourceAccess.status });

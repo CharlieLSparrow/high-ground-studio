@@ -59,6 +59,46 @@ describe("audio mastery route", () => {
     expect(readAudioMasteryStatus).not.toHaveBeenCalled();
   });
 
+  it("binds a stable project id to authorization and stops a mismatched locator before readback", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: false,
+      status: 404,
+      code: "project-not-found",
+      error: "No matching project was found.",
+      actor: allowed.actor,
+      access: null,
+    } as never);
+    const response = await GET(new NextRequest(`http://localhost/api/media-vault/audio-mastery?projectId=project_001&projectSlug=${coordinates.projectSlug}&assetId=${coordinates.assetId}`));
+    expect(response.status).toBe(404);
+    expect(resolveEpisodeProductionAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project_001",
+      projectSlug: coordinates.projectSlug,
+      action: "read",
+    }));
+    expect(readAudioMasteryStatus).not.toHaveBeenCalled();
+  });
+
+  it("stops a mismatched stable locator before a mastering mutation", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: false,
+      status: 404,
+      code: "project-not-found",
+      error: "No matching project was found.",
+      actor: allowed.actor,
+      access: null,
+    } as never);
+    const response = await POST(post({ projectId: "project_001", ...coordinates }));
+    expect(response.status).toBe(404);
+    expect(resolveEpisodeProductionAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project_001",
+      projectSlug: coordinates.projectSlug,
+      action: "write",
+    }));
+    expect(authorizeStudioMediaSource).not.toHaveBeenCalled();
+    expect(queueAudioMastery).not.toHaveBeenCalled();
+    expect(reconcileAudioMastery).not.toHaveBeenCalled();
+  });
+
   it("fails closed before queueing a held source", async () => {
     jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue(allowed as never);
     jest.mocked(authorizeStudioMediaSource).mockResolvedValue({ allowed: false, status: 423, errorCode: "held", error: "Held." } as never);

@@ -73,7 +73,7 @@ describe("StudioTranscriptReviewDesk", () => {
   it("keeps the deep desk out of the narrow media card and restores focus when it closes", async () => {
     jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
     const user = userEvent.setup();
-    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+    render(<StudioTranscriptReviewDesk projectId="project-1" projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
 
     const opener = screen.getByRole("button", { name: /Open transcript and audio desk/i });
     expect(screen.queryByRole("dialog", { name: /Transcript and audio evidence desk/i })).not.toBeInTheDocument();
@@ -89,7 +89,7 @@ describe("StudioTranscriptReviewDesk", () => {
 
   it("shows provider word probability without presenting it as accuracy", async () => {
     jest.mocked(globalThis.fetch).mockResolvedValue({ ok: true, json: async () => payload() } as Response);
-    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+    render(<StudioTranscriptReviewDesk projectId="project-1" projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
     await userEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     expect(await screen.findByRole("heading", { name: /Listen, correct, or confirm/i })).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe("StudioTranscriptReviewDesk", () => {
       return { ok: true, json: async () => payload() } as Response;
     });
     const user = userEvent.setup();
-    render(<StudioTranscriptReviewDesk projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
+    render(<StudioTranscriptReviewDesk projectId="project-1" projectSlug="hgo" episodeSlug="episode-8" assetId="asset-1" sourceId="source-1" />);
     await user.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     await user.click(await screen.findByRole("button", { name: /Review transcript segment at 0:04\.0/i }));
@@ -144,6 +144,7 @@ describe("StudioTranscriptReviewDesk", () => {
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(JSON.parse(String(post?.[1]?.body))).toEqual(expect.objectContaining({
       action: "correct",
+      projectId: "project-1",
       segmentId: "segment-1",
       confirmedAgainstPlayback: true,
       playbackPositionSeconds: 4.4,
@@ -195,6 +196,7 @@ describe("StudioTranscriptReviewDesk", () => {
     });
 
     render(<StudioTranscriptReviewDesk
+      projectId="project-1"
       projectSlug="hgo"
       episodeSlug="episode-8"
       assetId="asset-1"
@@ -209,6 +211,11 @@ describe("StudioTranscriptReviewDesk", () => {
     await userEvent.click(screen.getByRole("button", { name: /Open transcript and audio desk/i }));
 
     const spectral = await screen.findByRole("region", { name: "High-resolution spectral evidence" });
+    const spectralCalls = jest.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).includes("/audio-spectral-evidence"));
+    expect(spectralCalls.length).toBeGreaterThan(0);
+    for (const [input] of spectralCalls) {
+      expect(new URL(String(input), "http://localhost").searchParams.get("projectId")).toBe("project-1");
+    }
     expect(await screen.findByRole("region", { name: "Shared spectral evidence navigator" })).toHaveTextContent(/One clock · 4 review points/i);
     expect(screen.getByRole("region", { name: "Shared evidence at selected time" })).toHaveTextContent(/Mastering measurement: -18.2 integrated LUFS/i);
     expect(screen.getByRole("region", { name: "Shared evidence at selected time" })).toHaveTextContent(/Transcript “Curious,”/i);

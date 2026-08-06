@@ -81,6 +81,7 @@ function probabilityTone(confidence: number | null) {
 }
 
 export function StudioTranscriptReviewDesk({
+  projectId,
   projectSlug,
   episodeSlug,
   assetId,
@@ -93,6 +94,7 @@ export function StudioTranscriptReviewDesk({
   processingEvidenceMarkers = [],
   loudnessEvidence = null,
 }: {
+  projectId?: string;
   projectSlug: string;
   episodeSlug: string;
   assetId: string;
@@ -194,7 +196,7 @@ export function StudioTranscriptReviewDesk({
   const loadPage = useCallback(async (afterSegmentId?: string | null) => {
     setIsLoading(true);
     try {
-      const query = new URLSearchParams({ projectSlug, episodeSlug, assetId, sourceId, limit: "40" });
+      const query = new URLSearchParams({ ...(projectId ? { projectId } : {}), projectSlug, episodeSlug, assetId, sourceId, limit: "40" });
       if (afterSegmentId) query.set("afterSegmentId", afterSegmentId);
       const response = await fetch(`/api/media-vault/source-transcript/review?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json() as ReviewDesk & { error?: string };
@@ -215,7 +217,7 @@ export function StudioTranscriptReviewDesk({
     } finally {
       setIsLoading(false);
     }
-  }, [assetId, episodeSlug, projectSlug, sourceId]);
+  }, [assetId, episodeSlug, projectId, projectSlug, sourceId]);
 
   useEffect(() => {
     void loadPage(null);
@@ -262,6 +264,7 @@ export function StudioTranscriptReviewDesk({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
+          ...(projectId ? { projectId } : {}),
           projectSlug,
           episodeSlug,
           assetId,
@@ -311,7 +314,7 @@ export function StudioTranscriptReviewDesk({
     } finally {
       setIsSaving(false);
     }
-  }, [assetId, draftSpeaker, draftText, episodeSlug, heardSelected, playbackPosition, projectSlug, reason, selected, sourceId]);
+  }, [assetId, draftSpeaker, draftText, episodeSlug, heardSelected, playbackPosition, projectId, projectSlug, reason, selected, sourceId]);
 
   const reviewReady = Boolean(selected && heardSelected && playbackPosition !== null);
   const changed = Boolean(selected && (draftText.trim() !== selected.providerText || (draftSpeaker.trim() || null) !== selected.providerSpeakerLabel));
@@ -391,6 +394,7 @@ export function StudioTranscriptReviewDesk({
           onSelect={selectEvidenceTime}
         />
         <SpectralEvidenceViewer
+          projectId={projectId}
           projectSlug={projectSlug}
           assetId={assetId}
           sourceId={sourceId}

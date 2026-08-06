@@ -55,6 +55,7 @@ export type DialogueRepairStatus = {
 };
 
 type Props = {
+  projectId?: string;
   projectSlug: string;
   assetId: string;
   sourceId: string;
@@ -73,7 +74,7 @@ const LABELS: Array<{ value: DialogueRepairLabel; label: string }> = [
   { value: "noise-event", label: "Noise event" },
 ];
 
-export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement, audioSignal = null, audibleEventAnalysis = null }: Props) {
+export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement, audioSignal = null, audibleEventAnalysis = null }: Props) {
   const sourceRef = useRef<HTMLAudioElement | null>(null);
   const repairedRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
@@ -93,7 +94,10 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const [detectorNotes, setDetectorNotes] = useState<Record<string, string>>({});
   const [comparisonMode, setComparisonMode] = useState<"source" | "repaired">("source");
 
-  const coordinates = useMemo(() => ({ projectSlug, assetId, sourceId }), [assetId, projectSlug, sourceId]);
+  const coordinates = useMemo(
+    () => ({ ...(projectId ? { projectId } : {}), projectSlug, assetId, sourceId }),
+    [assetId, projectId, projectSlug, sourceId],
+  );
   const refresh = useCallback(async () => {
     const query = new URLSearchParams(coordinates);
     const response = await fetch(`/api/media-vault/dialogue-repair?${query}`, { cache: "no-store" });
@@ -356,6 +360,7 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
         </section>
       )}
       {audibleEventAnalysis && <div className="mt-3"><AudibleEventQualificationLab
+        projectId={projectId}
         projectSlug={projectSlug}
         assetId={assetId}
         sourceId={sourceId}

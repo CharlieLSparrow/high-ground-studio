@@ -89,8 +89,10 @@ describe("DialogueRepairDesk", () => {
   });
 
   it("links source-clock, speaker, transcript, and append-only review evidence", async () => {
-    render(<DialogueRepairDesk projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} />);
+    render(<DialogueRepairDesk projectId="project_001" projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} />);
     expect(await screen.findByText("Homer")).toBeInTheDocument();
+    const readCall = jest.mocked(global.fetch).mock.calls.find(([input]) => String(input).includes("/api/media-vault/dialogue-repair?"));
+    expect(new URL(String(readCall?.[0]), "http://localhost").searchParams.get("projectId")).toBe("project_001");
     expect(screen.getByText("testing")).toBeInTheDocument();
     const confirm = screen.getByRole("button", { name: "Confirm audible event" });
     expect(confirm).toBeDisabled();
@@ -105,7 +107,7 @@ describe("DialogueRepairDesk", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith("/api/media-vault/dialogue-repair", expect.objectContaining({ method: "POST" })));
     const postCall = jest.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "POST");
-    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "review-candidate", candidateId: "dialogue_candidate_001", decision: "confirmed", playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [2, 3, 4, 5] } });
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "review-candidate", projectId: "project_001", candidateId: "dialogue_candidate_001", decision: "confirmed", playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [2, 3, 4, 5] } });
   });
 
   it("marks a precise editable range from the current source playhead", async () => {

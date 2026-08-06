@@ -149,6 +149,7 @@ function workspaceFetch(options: { released: boolean; signal?: "not-queued" | "c
 
 describe("AudioMasteryWorkspaceClient", () => {
   beforeEach(() => {
+    jest.restoreAllMocks();
     replace.mockReset();
   });
 
@@ -168,6 +169,13 @@ describe("AudioMasteryWorkspaceClient", () => {
       expect.stringContaining("episode-inventory?projectId=project-1&projectSlug=high-ground-odyssey"),
       expect.objectContaining({ cache: "no-store" }),
     );
+    for (const endpoint of ["audio-mastery", "audio-signal-profile", "source-transcript"]) {
+      const call = jest.mocked(global.fetch).mock.calls.find(([input]) => String(input).includes(`/api/media-vault/${endpoint}?`));
+      expect(call).toBeDefined();
+      const query = new URL(String(call?.[0]), "http://localhost").searchParams;
+      expect(query.get("projectId")).toBe("project-1");
+      expect(query.get("projectSlug")).toBe("high-ground-odyssey");
+    }
   });
 
   it("opens an exact source-clock handoff without claiming playback", async () => {
@@ -182,6 +190,30 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(media.paused).toBe(true);
     expect(screen.getByRole("status")).toHaveTextContent("Opened at exact source time 8.250s");
     expect(screen.getByRole("status")).toHaveTextContent("Playback remains a deliberate human action");
+  });
+
+  it.each([
+    [/Measure and prepare mastering preview/, "/api/media-vault/audio-mastery"],
+    [/Build signal map/, "/api/media-vault/audio-signal-profile"],
+    [/Transcribe canonical source/, "/api/media-vault/source-transcript"],
+  ] as const)("carries the stable project pair into the %s mutation", async (buttonName, endpoint) => {
+    global.fetch = workspaceFetch({ released: true });
+    jest.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectId="project-1" initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
+
+    await screen.findByRole("heading", { name: "Homer local master.wav" });
+    const button = screen.getByRole("button", { name: buttonName });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([input, init]) => String(input) === endpoint && init?.method === "POST")).toBe(true));
+    const call = jest.mocked(global.fetch).mock.calls.find(([input, init]) => String(input) === endpoint && init?.method === "POST");
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+      projectId: "project-1",
+      projectSlug: "high-ground-odyssey",
+      assetId: "asset-1",
+      sourceId: "source-1",
+    });
   });
 
   it("shows held source evidence but disables processing operations", async () => {

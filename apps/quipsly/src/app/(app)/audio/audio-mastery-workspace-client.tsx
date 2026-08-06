@@ -119,6 +119,7 @@ export function AudioMasteryWorkspaceClient({
     [projectId, projectSlug, projects],
   );
   const projectEpisodes = selectedProject?.episodes ?? [];
+  const activeProjectId = selectedProject?.id ?? projectId;
   const selectedEpisode = projectEpisodes.find((episode) => episode.slug === episodeSlug) ?? null;
   const assets = useMemo(() => audioWorkspaceAssets(inventory), [inventory]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId || asset.sourceId === selectedAssetId)
@@ -173,7 +174,7 @@ export function AudioMasteryWorkspaceClient({
     setInventoryState("loading");
     setInventoryError(null);
     setNotice(null);
-    const query = new URLSearchParams({ projectId: selectedProject.id, projectSlug, episodeSlug });
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, episodeSlug });
 
     void fetch(`/api/media-vault/episode-inventory?${query.toString()}`, {
       cache: "no-store",
@@ -199,7 +200,7 @@ export function AudioMasteryWorkspaceClient({
       });
 
     return () => controller.abort();
-  }, [episodeSlug, inventoryRefreshToken, projectSlug, selectedProject]);
+  }, [activeProjectId, episodeSlug, inventoryRefreshToken, projectSlug, selectedProject]);
 
   useEffect(() => {
     if (assets.length === 0) {
@@ -220,7 +221,7 @@ export function AudioMasteryWorkspaceClient({
     const controller = new AbortController();
     setStatusLoading(true);
     setStatus(null);
-    const query = new URLSearchParams({ projectSlug, assetId: selectedAsset.id });
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, assetId: selectedAsset.id });
     void fetch(`/api/media-vault/audio-mastery?${query.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -245,7 +246,7 @@ export function AudioMasteryWorkspaceClient({
       });
 
     return () => controller.abort();
-  }, [projectSlug, selectedAsset, statusRefreshToken]);
+  }, [activeProjectId, projectSlug, selectedAsset, statusRefreshToken]);
 
   useEffect(() => {
     if (!selectedAsset || !projectSlug) {
@@ -257,7 +258,7 @@ export function AudioMasteryWorkspaceClient({
     const controller = new AbortController();
     setSignalStatusLoading(true);
     setSignalStatus(null);
-    const query = new URLSearchParams({ projectSlug, assetId: selectedAsset.id });
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, assetId: selectedAsset.id });
     void fetch(`/api/media-vault/audio-signal-profile?${query.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -282,7 +283,7 @@ export function AudioMasteryWorkspaceClient({
       });
 
     return () => controller.abort();
-  }, [projectSlug, selectedAsset, statusRefreshToken]);
+  }, [activeProjectId, projectSlug, selectedAsset, statusRefreshToken]);
 
   useEffect(() => {
     if (!selectedAsset || !projectSlug || !episodeSlug) {
@@ -294,7 +295,7 @@ export function AudioMasteryWorkspaceClient({
     const controller = new AbortController();
     setTranscriptStatusLoading(true);
     setTranscriptStatus(null);
-    const query = new URLSearchParams({ projectSlug, episodeSlug, assetId: selectedAsset.id });
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, episodeSlug, assetId: selectedAsset.id });
     void fetch(`/api/media-vault/source-transcript?${query.toString()}`, {
       cache: "no-store",
       signal: controller.signal,
@@ -319,7 +320,7 @@ export function AudioMasteryWorkspaceClient({
       });
 
     return () => controller.abort();
-  }, [episodeSlug, projectSlug, selectedAsset, statusRefreshToken]);
+  }, [activeProjectId, episodeSlug, projectSlug, selectedAsset, statusRefreshToken]);
 
   const updateStatus = useCallback((next: AudioMasteryClientStatus) => {
     setStatus(next);
@@ -331,6 +332,7 @@ export function AudioMasteryWorkspaceClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action,
+        projectId: activeProjectId,
         projectSlug,
         assetId: asset.id,
         sourceId: asset.sourceId,
@@ -344,7 +346,7 @@ export function AudioMasteryWorkspaceClient({
     const next = payload as { ok: true } & AudioMasteryClientStatus;
     updateStatus(next);
     return next;
-  }, [projectSlug, updateStatus]);
+  }, [activeProjectId, projectSlug, updateStatus]);
 
   const runMastery = useCallback(async () => {
     if (!selectedAsset || !selectedAsset.canProcess || operation) return;
@@ -377,7 +379,7 @@ export function AudioMasteryWorkspaceClient({
     const response = await fetch("/api/media-vault/audio-signal-profile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, projectSlug, assetId: asset.id, sourceId: asset.sourceId }),
+      body: JSON.stringify({ action, projectId: activeProjectId, projectSlug, assetId: asset.id, sourceId: asset.sourceId }),
     });
     const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioSignalProfileClientStatus>) | null;
     if (!response.ok || !payload?.ok || !payload.status) {
@@ -386,7 +388,7 @@ export function AudioMasteryWorkspaceClient({
     const next = payload as { ok: true } & AudioSignalProfileClientStatus;
     setSignalStatus(next);
     return next;
-  }, [projectSlug]);
+  }, [activeProjectId, projectSlug]);
 
   const runSignalProfile = useCallback(async () => {
     if (!selectedAsset || !selectedAsset.canProcess || operation) return;
@@ -424,6 +426,7 @@ export function AudioMasteryWorkspaceClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action,
+        projectId: activeProjectId,
         projectSlug,
         episodeSlug,
         assetId: asset.id,
@@ -438,7 +441,7 @@ export function AudioMasteryWorkspaceClient({
     const next = payload as { ok: true } & StudioSourceTranscriptClientStatus;
     setTranscriptStatus(next);
     return next;
-  }, [episodeSlug, projectSlug]);
+  }, [activeProjectId, episodeSlug, projectSlug]);
 
   const runSourceTranscript = useCallback(async () => {
     if (!selectedAsset || !selectedAsset.canTranscribe || operation) return;
@@ -488,6 +491,7 @@ export function AudioMasteryWorkspaceClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId: activeProjectId,
           projectSlug,
           assetId: selectedAsset.id,
           sourceId: selectedAsset.sourceId,
@@ -511,7 +515,7 @@ export function AudioMasteryWorkspaceClient({
     } finally {
       setOperation(null);
     }
-  }, [projectSlug, selectedAsset, status?.jobId]);
+  }, [activeProjectId, projectSlug, selectedAsset, status?.jobId]);
 
   const changePromotion = useCallback(async (
     action: "promote" | "withdraw",
@@ -528,6 +532,7 @@ export function AudioMasteryWorkspaceClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId: activeProjectId,
           projectSlug,
           assetId: selectedAsset.id,
           sourceId: selectedAsset.sourceId,
@@ -554,7 +559,7 @@ export function AudioMasteryWorkspaceClient({
     } finally {
       setOperation(null);
     }
-  }, [projectSlug, selectedAsset, status]);
+  }, [activeProjectId, projectSlug, selectedAsset, status]);
 
   const createDelivery = useCallback(async () => {
     if (!selectedAsset || !status?.jobId) throw new Error("Refresh this source before creating delivery bytes.");
@@ -568,6 +573,7 @@ export function AudioMasteryWorkspaceClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
+          projectId: activeProjectId,
           projectSlug,
           assetId: selectedAsset.id,
           sourceId: selectedAsset.sourceId,
@@ -596,7 +602,7 @@ export function AudioMasteryWorkspaceClient({
     } finally {
       setOperation(null);
     }
-  }, [projectSlug, selectedAsset, status]);
+  }, [activeProjectId, projectSlug, selectedAsset, status]);
 
   const reviewDelivery = useCallback(async (
     decision: "approved" | "rejected",
@@ -614,6 +620,7 @@ export function AudioMasteryWorkspaceClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId: activeProjectId,
           projectSlug,
           assetId: selectedAsset.id,
           sourceId: selectedAsset.sourceId,
@@ -640,7 +647,7 @@ export function AudioMasteryWorkspaceClient({
     } finally {
       setOperation(null);
     }
-  }, [projectSlug, selectedAsset, status?.delivery.jobId]);
+  }, [activeProjectId, projectSlug, selectedAsset, status?.delivery.jobId]);
 
   const changeProject = (nextProjectId: string) => {
     const nextProject = projects.find((project) => project.id === nextProjectId);
@@ -885,6 +892,7 @@ export function AudioMasteryWorkspaceClient({
               {transcriptStatus?.status === "completed" && (transcriptStatus.coverage?.segmentCount ?? 0) > 0 ? (
                 <div className="mt-4">
                   <StudioTranscriptReviewDesk
+                    projectId={activeProjectId}
                     projectSlug={projectSlug}
                     episodeSlug={episodeSlug}
                     assetId={selectedAsset.id}
@@ -923,7 +931,7 @@ export function AudioMasteryWorkspaceClient({
             </section>
 
             {selectedAsset.canProcess && status?.sourceMeasurement ? (
-              <DialogueRepairDesk projectSlug={projectSlug} assetId={selectedAsset.id} sourceId={selectedAsset.sourceId} sourceUrl={selectedAsset.playbackUrl} sourceMeasurement={status.sourceMeasurement} audioSignal={audioSignal} audibleEventAnalysis={selectedAsset.audibleEventAnalysis} />
+              <DialogueRepairDesk projectId={activeProjectId} projectSlug={projectSlug} assetId={selectedAsset.id} sourceId={selectedAsset.sourceId} sourceUrl={selectedAsset.playbackUrl} sourceMeasurement={status.sourceMeasurement} audioSignal={audioSignal} audibleEventAnalysis={selectedAsset.audibleEventAnalysis} />
             ) : null}
 
             {selectedAsset.canProcess && status?.derivative?.playbackUrl && status.proposal ? (

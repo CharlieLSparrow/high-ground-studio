@@ -9,6 +9,7 @@ import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
+    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     const projectSlug = request.nextUrl.searchParams.get("projectSlug")?.trim() || "";
     const assetId = request.nextUrl.searchParams.get("assetId")?.trim() || "";
     const jobId = request.nextUrl.searchParams.get("jobId")?.trim() || "";
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     const tileIndex = tileValue ? Number(tileValue) : Number.NaN;
     if (!projectSlug || !assetId || !jobId || !levelId || !Number.isSafeInteger(tileIndex)) return NextResponse.json({ ok: false, error: "A complete spectral tile coordinate is required." }, { status: 400 });
     const prisma = getPrismaClient();
-    const access = await resolveEpisodeProductionAccess({ request, projectSlug, action: "read", prisma });
+    const access = await resolveEpisodeProductionAccess({ request, ...(projectId ? { projectId } : {}), projectSlug, action: "read", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status, headers: { "Cache-Control": "private, no-store" } });
     const tile = await resolveAudioSpectralTile({ prisma, projectSlug, assetId, jobId, levelId, tileIndex });
     if (!tile) return NextResponse.json({ ok: false, error: "Spectral tile is unavailable." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });

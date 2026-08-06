@@ -17,6 +17,7 @@ function text(value: unknown) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>;
+    const projectId = text(body.projectId);
     const projectSlug = text(body.projectSlug);
     const assetId = text(body.assetId);
     const sourceId = text(body.sourceId);
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
     const prisma = getPrismaClient();
     const access = await resolveEpisodeProductionAccess({
       request,
+      ...(projectId ? { projectId } : {}),
       projectSlug,
       action: "write",
       prisma,
