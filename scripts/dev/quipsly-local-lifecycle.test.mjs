@@ -57,6 +57,22 @@ const quipslyPackageJson = readFileSync(
   fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
   "utf8",
 );
+const localMediaWorkerStores = [
+  "local-audio-alignment-worker.ts",
+  "local-audio-delivery-worker.ts",
+  "local-audio-mastery-worker.ts",
+  "local-audio-signal-profile-worker.ts",
+  "local-audio-treatment-worker.ts",
+  "local-dialogue-repair-worker.ts",
+].map((filename) => ({
+  filename,
+  source: readFileSync(
+    fileURLToPath(
+      new URL(`../../apps/quipsly-media-processor/src/${filename}`, import.meta.url),
+    ),
+    "utf8",
+  ),
+}));
 
 test("machine-wide services use machine-wide ownership state", () => {
   assert.match(stateHelper, /getconf DARWIN_USER_CACHE_DIR/);
@@ -81,7 +97,7 @@ test("machine-wide services use machine-wide ownership state", () => {
   );
   assert.match(
     quipslyPackageJson,
-    /"build": "next build --webpack"/,
+    /"build": "[^"]*next build --webpack"/,
     "Quipsly production builds must pin the same supported Next 16 bundler as local development and the release image.",
   );
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
@@ -192,6 +208,26 @@ test("the local lane generates the Prisma client before applying migrations", ()
     migrateIndex < up.indexOf('start_macos_job "nest"'),
     "migrations must finish before Nest starts",
   );
+});
+
+test("local media job release queries keep reused PostgreSQL parameters typed", () => {
+  for (const { filename, source } of localMediaWorkerStores) {
+    assert.match(
+      source,
+      /"status"\s*=\s*\$3::text/,
+      `${filename} must type the status parameter reused by SET and CASE`,
+    );
+    assert.match(
+      source,
+      /"updatedAt"\s*=\s*\$4::timestamp\(3\)/,
+      `${filename} must type the timestamp parameter reused by SET and CASE`,
+    );
+    assert.match(
+      source,
+      /CASE WHEN \$3::text\s*=\s*'failed' THEN \$4::timestamp\(3\) ELSE NULL::timestamp END/,
+      `${filename} must not leave PostgreSQL to infer incompatible parameter types`,
+    );
+  }
 });
 
 test("replacement and shutdown remain confined to Quipsly app jobs", () => {

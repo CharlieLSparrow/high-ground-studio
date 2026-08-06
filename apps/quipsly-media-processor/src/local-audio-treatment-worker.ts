@@ -324,7 +324,7 @@ export class PostgresLocalAudioTreatmentStore implements LocalAudioTreatmentStor
     const result = await this.pool.query({
       text: `
         UPDATE "StudioAssetProcessingJob"
-        SET "status" = $3, "updatedAt" = $4, "completedAt" = CASE WHEN $3 = 'failed' THEN $4 ELSE NULL END,
+        SET "status" = $3::text, "updatedAt" = $4::timestamp(3), "completedAt" = CASE WHEN $3::text = 'failed' THEN $4::timestamp(3) ELSE NULL::timestamp END,
             "error" = $5, "resultJson" = $6::jsonb
         WHERE "id" = $1 AND "status" = 'processing' AND "resultJson"->'lease'->>'executionId' = $2
       `,
