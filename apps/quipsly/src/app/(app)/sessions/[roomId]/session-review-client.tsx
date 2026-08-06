@@ -45,6 +45,8 @@ import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
+import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
   EditableSessionNoteKind,
@@ -1847,7 +1849,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1857,6 +1859,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sourceEvidence?: SessionSourceEvidence;
+  readinessTopology?: SessionReadinessTopology;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
@@ -2234,6 +2237,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </> : null}
 
       {mode === "live" ? <div className="space-y-5">
+        <SessionReadinessTopologyCard roomId={roomId} topology={readinessTopology} />
         <CaptureAppHandoff roomId={roomId} joinedFromInvitation={joinedFromInvitation} />
         <SessionInvitations roomId={roomId} purpose={preparation?.purpose || "COACHING"} />
         <LiveSessionDockLauncher
@@ -2245,6 +2249,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </div> : null}
 
       {mode === "recordings" ? <>
+        <SessionReadinessTopologyCard roomId={roomId} topology={readinessTopology} />
         <SessionRecordingImportCard roomId={roomId} preparation={preparation} />
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />

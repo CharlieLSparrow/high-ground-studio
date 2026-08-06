@@ -2072,3 +2072,26 @@ These should be treated as cleanup candidates later, not as authoritative produc
   receipt or treatment preview was manufactured. The next product
   boundary is the linked browser review journey, then a real human confirmation
   and matched source/candidate audition.
+
+### 2026-08-05 Session person/device/source readiness topology
+
+- Recording room and Takes now share one projection that keeps canonical
+  people, provider endpoints, pending phone capture receipts, and retained
+  RecordingAssets visibly separate. A join grant never becomes presence; a
+  call track never becomes a master; START/STOP never becomes uploaded media.
+- The projection uses existing participant, consent, provider-grant, capture-
+  owner receipt, source-profile, and RecordingAsset evidence. No schema or
+  parallel readiness store was added. Renamed endpoint grants converge by
+  client installation, and unmatched evidence remains explicitly unassigned.
+- Live provider status is a separate safe readback, refreshed on demand and
+  every twenty seconds only while the page is visible. Provider identities and
+  credentials remain server-only, and the read cannot change access,
+  invitations, consent, recording, or source state.
+- A loopback-only retained dogfood fixture proved one consent-ready person, one
+  prepared historical browser endpoint, and one closed iPhone capture awaiting
+  bytes while the independent content/source ledgers still reported zero
+  uploaded recordings. Both Recording room and Takes were operated in a signed-
+  in local browser. Six focused suites / 53 tests and Quipsly typecheck pass.
+- Physical browser+iPhone presence, real source upload, alignment, and Studio
+  attachment remain the next acceptance lane. See
+  `docs/coordination/2026-08-05-session-readiness-source-topology.md`.

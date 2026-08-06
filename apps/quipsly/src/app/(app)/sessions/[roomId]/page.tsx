@@ -28,6 +28,7 @@ import {
 } from "./session-notes-model";
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { buildSessionSourceEvidence } from "./session-source-evidence-model";
+import { buildSessionReadinessTopology } from "./session-readiness-topology";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
 export const dynamic = "force-dynamic";
@@ -112,12 +113,26 @@ export default async function SessionReviewPage({
             user: { select: { name: true, primaryEmail: true } },
           },
         },
+        participantProviderGrants: {
+          orderBy: { issuedAt: "desc" },
+          take: 200,
+          select: {
+            id: true,
+            participantId: true,
+            clientInstanceId: true,
+            clientKind: true,
+            deviceLabel: true,
+            issuedAt: true,
+            expiresAt: true,
+          },
+        },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
           select: {
             id: true,
             roomId: true,
+            participantId: true,
             fileName: true,
             kind: true,
             status: true,
@@ -157,6 +172,7 @@ export default async function SessionReviewPage({
             receiptId: true,
             captureId: true,
             actorUserId: true,
+            captureOwnerUserId: true,
             action: true,
             outcome: true,
             stateApplied: true,
@@ -207,6 +223,7 @@ export default async function SessionReviewPage({
     const contentReadiness = recordingContentReadiness(room.recordingAssets, room.purpose);
     const captureReceiptGroups = new Map<string, {
       captureId: string;
+      actorUserId: string;
       startedAt: string | null;
       stoppedAt: string | null;
       startReceiptId: string | null;
@@ -218,6 +235,7 @@ export default async function SessionReviewPage({
       const captureId = String(receipt.captureId).toLowerCase();
       const current = captureReceiptGroups.get(captureId) ?? {
         captureId,
+        actorUserId: receipt.captureOwnerUserId || receipt.actorUserId,
         startedAt: null,
         stoppedAt: null,
         startReceiptId: null,
@@ -238,7 +256,12 @@ export default async function SessionReviewPage({
     const captureReceipts = {
       captures: Array.from(captureReceiptGroups.values())
         .map((capture) => ({
-          ...capture,
+          captureId: capture.captureId,
+          startedAt: capture.startedAt,
+          stoppedAt: capture.stoppedAt,
+          startReceiptId: capture.startReceiptId,
+          stopReceiptId: capture.stopReceiptId,
+          lastReceivedAt: capture.lastReceivedAt,
           status: capture.startedAt && capture.stoppedAt
             ? "START_AND_STOP_RECEIVED" as const
             : capture.startedAt
@@ -247,6 +270,37 @@ export default async function SessionReviewPage({
         }))
         .sort((left, right) => right.lastReceivedAt.localeCompare(left.lastReceivedAt)),
     };
+    const sessionReadinessTopology = buildSessionReadinessTopology({
+      participants: room.participants.map((participant: any) => {
+        const prepared = sessionPreparation.participants.find((candidate) => candidate.id === participant.id);
+        return {
+          id: participant.id,
+          userId: participant.userId,
+          label: prepared?.label || participant.displayName || participant.email || "Session participant",
+          role: String(participant.role),
+          isCurrentActor: participant.userId === session.user.id,
+          consent: prepared?.consent ? {
+            recordingReady: prepared.consent.recordingReady,
+            canRecordVideo: prepared.consent.canRecordVideo,
+            transcriptionReady: prepared.consent.transcriptionReady,
+          } : null,
+        };
+      }),
+      grants: room.participantProviderGrants,
+      recordings: room.recordingAssets,
+      captures: Array.from(captureReceiptGroups.values()).map((capture) => ({
+        captureId: capture.captureId,
+        actorUserId: capture.actorUserId,
+        status: capture.startedAt && capture.stoppedAt
+          ? "START_AND_STOP_RECEIVED" as const
+          : capture.startedAt
+            ? "START_ONLY" as const
+            : "STOP_ONLY" as const,
+        startedAt: capture.startedAt,
+        stoppedAt: capture.stoppedAt,
+        lastReceivedAt: capture.lastReceivedAt,
+      })),
+    });
     const sessionContinuity = await loadSessionContinuityState({
       prisma,
       actor: session.user,
@@ -457,7 +511,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
