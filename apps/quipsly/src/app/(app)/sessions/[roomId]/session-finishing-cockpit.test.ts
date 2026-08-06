@@ -115,4 +115,59 @@ describe("Session finishing cockpit", () => {
     expect(cockpit.stages.find((stage) => stage.id === "finish")).toMatchObject({ state: "IN_PROGRESS", summary: expect.stringContaining("hosting, metadata, upload, and publication remain separate") });
     expect(cockpit.stages.find((stage) => stage.id === "finish")?.evidence).toContain("1 proof-listened artifact · 1 selected package");
   });
+
+  it("separates a materialized Episode take, current proposals, local drafts, and canonical saves", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        assembly: {
+          episodeProductionId: "episode-9",
+          episodeTitle: "Episode 9",
+          projectSlug: "high-ground-odyssey",
+          episodeSlug: "episode-9",
+          editorHref: "/editor?project=high-ground-odyssey&episode=episode-9#automated-edit-evidence",
+          state: "MATERIALIZED_ASSEMBLY",
+          captureGroupId: "take-9",
+          selectedMediaCount: 2,
+          plannedSourceCount: 2,
+          blockerCount: 0,
+          warningCount: 0,
+          nextAction: "Review deterministic camera assembly.",
+          canonicalTakeCount: 1,
+          canonicalSourceCount: 2,
+          canonicalAssemblyReadyCount: 1,
+          sessionTimelineClipCount: 2,
+          sessionTranscriptBlockCount: 80,
+          episodeTimelineClipCount: 3,
+          episodeTranscriptBlockCount: 80,
+          currentProposalSetCount: 1,
+          staleProposalSetCount: 2,
+          currentReviewReceiptCount: 2,
+          proofListenCount: 1,
+          proofWatchCount: 0,
+          localDraftActionCount: 1,
+          unsavedLocalDraftActionCount: 1,
+          canonicalTimelineSaveCount: 1,
+          canonicallyLinkedDraftActionCount: 0,
+          latestCanonicalSaveAt: "2026-08-07T01:00:00.000Z",
+          ledgerAvailable: true,
+          productionUpdatedAt: "2026-08-07T01:00:00.000Z",
+        },
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "episode-local-draft-unsaved", severity: "HIGH" }),
+    ]));
+    expect(cockpit.stages.find((stage) => stage.id === "assemble")).toMatchObject({
+      state: "IN_PROGRESS",
+      summary: expect.stringContaining("assembly-ready"),
+      href: expect.stringContaining("/editor?"),
+    });
+  });
 });

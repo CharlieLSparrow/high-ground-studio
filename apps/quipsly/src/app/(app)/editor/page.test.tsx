@@ -732,6 +732,42 @@ describe("CloudEditor production truth UX", () => {
     });
   });
 
+  it("does not manufacture a canonical timeline save while hydrating older persisted shapes", async () => {
+    mockEpisodeProduction({
+      timelineJson: {
+        payloadVersion: 3,
+        // Deliberately represents an older embedded fingerprint. Hydration may
+        // normalize the local editor state, but opening is still read-only.
+        contentFingerprint: "older-persisted-fingerprint",
+        projectSlug: "high-ground-odyssey-manuscript",
+        episodeSlug: "current-episode",
+        timelineClips: [{
+          id: "primary-camera",
+          assetId: "camera-asset",
+          trackId: "V1",
+          kind: "video",
+          startIn: 0,
+          duration: 60,
+          sourceStart: 0,
+          sourceEnd: 60,
+          name: "Primary camera",
+          color: "#2563eb",
+        }],
+        transcript: [],
+      },
+    });
+
+    render(<CloudEditor />);
+    expect(await screen.findByText("Loaded Current Episode from saved timeline")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+    const saveCalls = jest.mocked(globalThis.fetch).mock.calls.filter(([, init]) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return body.action === "save-timeline";
+    });
+    expect(saveCalls).toHaveLength(0);
+  });
+
   it("probes a timeline derivative through its canonical imported-media playback URL", async () => {
     mockEpisodeProduction({
       timelineJson: {

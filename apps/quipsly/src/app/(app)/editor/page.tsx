@@ -3169,6 +3169,7 @@ function CloudEditorContent() {
   const timelineSaveStateRef = useRef<TimelineSaveState>("idle");
   const timelineAutosaveAbortRef = useRef<AbortController | null>(null);
   const timelineAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timelineServerFingerprintRef = useRef("");
   const timelineSavedFingerprintRef = useRef("");
   const timelineRouteRef = useRef("");
   const captureGroupFocusAppliedRef = useRef("");
@@ -3896,6 +3897,7 @@ function CloudEditorContent() {
     setProductionEntryError(null);
     hasHydratedProductionTimeline.current = false;
     setIsTimelineHydrated(false);
+    timelineServerFingerprintRef.current = "";
     timelineSavedFingerprintRef.current = "";
     timelineSaveStateRef.current = "idle";
     setTimelineSaveState("idle");
@@ -3986,6 +3988,7 @@ function CloudEditorContent() {
         .find((candidate) => Boolean(candidate.timeline)) as { label: TimelineHydrationSource; timeline: TimelineState } | undefined;
 
       if (persistedTimelineEntry) {
+        const persistedTimelineFingerprint = timelineContentFingerprint(persistedTimelineEntry.timeline);
         const sharedWatchProjection = projectSharedWatchTimeline(
           persistedTimelineEntry.timeline,
           state.productionJson,
@@ -3995,10 +3998,17 @@ function CloudEditorContent() {
         hasHydratedProductionTimeline.current = true;
         setIsTimelineHydrated(true);
         const persistedRecord = asObject(state.timelineJson);
-        timelineSavedFingerprintRef.current = coerceString(
+        timelineServerFingerprintRef.current = coerceString(
           persistedRecord?.contentFingerprint,
-          timelineContentFingerprint(persistedTimelineEntry.timeline),
+          persistedTimelineFingerprint,
         );
+        // Shape normalization during hydration is read-only, so the normalized
+        // persisted timeline is the local save baseline. Receipt-backed Shared
+        // Watch spans are different: they are deterministic new canonical
+        // content and remain visibly unsaved until the projected timeline is
+        // written. Retain the exact server fingerprint separately for the next
+        // conflict-safe save.
+        timelineSavedFingerprintRef.current = persistedTimelineFingerprint;
         const persistedSavedAt = coerceString(persistedRecord?.savedAt);
         setTimelineLastSavedAt(persistedSavedAt || null);
         setTimelineHydrationSource(persistedTimelineEntry.label);
@@ -4014,7 +4024,8 @@ function CloudEditorContent() {
           state.productionJson,
         );
         replaceTimeline(sharedWatchProjection.timeline);
-        timelineSavedFingerprintRef.current = timelineContentFingerprint(sharedWatchProjection.timeline);
+        timelineServerFingerprintRef.current = "";
+        timelineSavedFingerprintRef.current = timelineContentFingerprint(EMPTY_TIMELINE_STATE);
         setTimelineLastSavedAt(null);
         setTimelineHydrationSource(sharedWatchProjection.derivativeCount ? "shared watch" : "empty episode");
         setSessionSummary(
@@ -4049,6 +4060,7 @@ function CloudEditorContent() {
       if (!nextTimeline) return;
 
       replaceTimeline(nextTimeline);
+      timelineServerFingerprintRef.current = timelineContentFingerprint(nextTimeline);
       timelineSavedFingerprintRef.current = timelineContentFingerprint(nextTimeline);
       setProductionState(detail?.state ?? null);
       setTimelineLastSavedAt(new Date().toISOString());
@@ -4081,6 +4093,13 @@ function CloudEditorContent() {
     const activeRoute = routeToken;
     const capturedFingerprint = timelineFingerprint;
     const capturedPendingReceiptIds = [...pendingEditReviewReceiptIdsRef.current];
+    if (
+      capturedFingerprint === timelineSavedFingerprintRef.current
+      && capturedPendingReceiptIds.length === 0
+    ) {
+      setTimelineSaveStateSafe("saved");
+      return;
+    }
     const editReviewSaveRequestId = crypto.randomUUID();
     const savedAt = new Date().toISOString();
     const episodeArtifact = buildTimelineArtifact(
@@ -4095,7 +4114,7 @@ function CloudEditorContent() {
 
     try {
       const [timelineFingerprintBeforeSha256, timelineFingerprintAfterSha256] = await Promise.all([
-        browserSha256(timelineSavedFingerprintRef.current || capturedFingerprint),
+        browserSha256(timelineServerFingerprintRef.current || capturedFingerprint),
         browserSha256(capturedFingerprint),
       ]);
       const state = await postEpisodeProduction(
@@ -4106,7 +4125,8 @@ function CloudEditorContent() {
           episodeSlug,
           timelineJson: episodeArtifact,
           transcriptJson: episodeArtifact,
-          expectedTimelineFingerprint: timelineSavedFingerprintRef.current || undefined,
+          expectedTimelineFingerprint: timelineServerFingerprintRef.current || undefined,
+          expectedUpdatedAt: timelineServerFingerprintRef.current ? undefined : productionState.updatedAt,
           editReviewSaveRequestId,
           editReviewReceiptIds: capturedPendingReceiptIds,
           editReviewSaveMode: mode,
@@ -4123,6 +4143,7 @@ function CloudEditorContent() {
 
       setProductionState(state);
       if (state.mode === "database") {
+        timelineServerFingerprintRef.current = capturedFingerprint;
         timelineSavedFingerprintRef.current = capturedFingerprint;
         setTimelineLastSavedAt(savedAt);
         setTimelineSaveStateSafe("saved");
@@ -4270,7 +4291,7 @@ function CloudEditorContent() {
         if (!state) return;
         setCollaborationState(state);
 
-        if (!state.timelineFingerprint || state.timelineFingerprint === timelineSavedFingerprintRef.current) return;
+        if (!state.timelineFingerprint || state.timelineFingerprint === timelineServerFingerprintRef.current) return;
 
         const hasUnsavedLocalChanges = timelineFingerprint !== timelineSavedFingerprintRef.current;
         if (
@@ -5106,6 +5127,7 @@ function CloudEditorContent() {
       const promotedTimeline = extractTimelineFromPayload(payload.timelineJson);
       if (promotedTimeline) {
         replaceTimeline(promotedTimeline);
+        timelineServerFingerprintRef.current = timelineContentFingerprint(promotedTimeline);
         timelineSavedFingerprintRef.current = timelineContentFingerprint(promotedTimeline);
         setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
         setTimelineHydrationSource("saved timeline");
@@ -5207,6 +5229,7 @@ function CloudEditorContent() {
       const restoredTimeline = extractTimelineFromPayload(payload.timelineJson);
       if (restoredTimeline) {
         replaceTimeline(restoredTimeline);
+        timelineServerFingerprintRef.current = timelineContentFingerprint(restoredTimeline);
         timelineSavedFingerprintRef.current = timelineContentFingerprint(restoredTimeline);
         setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
         setTimelineHydrationSource("saved timeline");
@@ -9039,6 +9062,7 @@ function CloudEditorContent() {
                             return;
                           }
                           replaceTimeline(nextTimeline);
+                          timelineServerFingerprintRef.current = timelineContentFingerprint(nextTimeline);
                           timelineSavedFingerprintRef.current = timelineContentFingerprint(nextTimeline);
                           setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
                           setTimelineSaveStateSafe("saved");

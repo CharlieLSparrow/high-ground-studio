@@ -29,6 +29,7 @@ import {
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { buildSessionSourceEvidence } from "./session-source-evidence-model";
 import { buildSessionReadinessTopology } from "./session-readiness-topology";
+import { loadSessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence-loader";
 import { loadSessionSourceClockAttention } from "./session-source-clock-attention-loader";
 import { loadSessionVersionedOutputGraph } from "./session-versioned-output-graph-loader";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
@@ -477,6 +478,21 @@ export default async function SessionReviewPage({
           sources: episodeOutputSources,
         })
       : null;
+    const episodeAssemblyEvidence = visibleProject && boundEpisode ? await loadSessionEpisodeAssemblyEvidence({
+      prisma,
+      roomId: room.id,
+      projectId: visibleProject.id,
+      projectSlug: visibleProject.slug,
+      episodeSlug: boundEpisode.slug,
+      captureGroupId: room.captureGroupId,
+      actor: {
+        id: session.user.id,
+        email: actorEmail,
+        name: session.user.name || actorEmail,
+        isStaff: session.user.isStaff === true,
+        source: "embedded-cookie",
+      },
+    }) : null;
     let episodeRepair = null;
     if (room.purpose === "PODCAST" && visibleProject && !boundEpisode) {
       const mutationAccess = await prisma.callRoom.findFirst({
@@ -686,6 +702,7 @@ export default async function SessionReviewPage({
         high: sourceClockAttention.counts.high,
         review: sourceClockAttention.counts.review,
       } : { total: 0, high: 0, review: 0 },
+      assembly: episodeAssemblyEvidence ?? undefined,
       versionedOutput: versionedOutputGraph ? {
         ...versionedOutputGraph.counts,
         metadataComplete: versionedOutputGraph.currentPacket?.metadataComplete ?? false,

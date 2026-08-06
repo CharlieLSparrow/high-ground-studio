@@ -8,6 +8,7 @@ import {
 import {
   planExistingEpisodeProductionEnsure,
 } from "@/lib/episode-production/episode-production-ensure";
+import { timelineSaveDisposition } from "@/lib/editor/timeline-save-receipt-policy";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import {
   appendEpisodeTimelineSavedReceipt,
@@ -365,8 +366,25 @@ export async function POST(request: Request) {
         const currentFingerprint = payloadContentFingerprint(currentForMerge?.timelineJson);
         const fingerprintConflict = Boolean(body.expectedTimelineFingerprint && currentFingerprint && currentFingerprint !== body.expectedTimelineFingerprint);
         const timestampConflict = Boolean(!body.expectedTimelineFingerprint && body.expectedUpdatedAt && currentForMerge && currentForMerge.updatedAt.toISOString() !== body.expectedUpdatedAt);
-        const exactReplay = Boolean(saveRequestId && currentFingerprint && currentFingerprint === incomingFingerprint);
-        if (currentForMerge && exactReplay) {
+        const saveDisposition = timelineSaveDisposition({
+          currentFingerprint,
+          incomingFingerprint,
+          linkedReviewReceiptIds,
+        });
+        if (currentForMerge && saveRequestId && saveDisposition === "NO_OP") {
+          // Replaying identical canonical bytes without linking a reviewed
+          // local-draft action is a no-op, not a new timeline event. Opening
+          // the editor, hydration normalization, or an impatient Save click
+          // must not manufacture canonical edit history.
+          return { conflict: false as const, current: currentForMerge, receipt: null, updated: currentForMerge };
+        }
+        if (fingerprintConflict || timestampConflict || !currentForMerge) {
+          return { conflict: true as const, current: currentForMerge, receipt: null, updated: null };
+        }
+        if (saveRequestId && saveDisposition === "LINK_REVIEWED_DRAFT") {
+          // Linking reviewed draft actions to unchanged canonical bytes is a
+          // real history event, but only when the caller's expected revision
+          // still matches. A stale tab cannot bless later collaborator bytes.
           const receipt = await appendEpisodeTimelineSavedReceipt({
             prisma: tx,
             episodeProductionId: state.id,
@@ -379,9 +397,6 @@ export async function POST(request: Request) {
             occurredAt: saveOccurredAt,
           });
           return { conflict: false as const, current: currentForMerge, receipt, updated: currentForMerge };
-        }
-        if (fingerprintConflict || timestampConflict || !currentForMerge) {
-          return { conflict: true as const, current: currentForMerge, receipt: null, updated: null };
         }
         const updated = await tx.studioEpisodeProduction.update({
           where: { id: state.id },

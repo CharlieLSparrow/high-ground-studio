@@ -1,0 +1,132 @@
+# Quipsly Session-to-Episode assembly truth checkpoint
+
+Date: 2026-08-06
+Branch: `codex/quipsly-product-20260724`
+
+## Outcome
+
+The Session finishing cockpit now projects the real state of a bound Capture
+take, Episode timeline, edit proposals, review actions, and canonical saves. A
+Studio attachment no longer makes the Assemble stage look complete.
+
+This is a projection over canonical records. It introduces no parallel
+workflow table, mutable super-record, or migration:
+
+- `CallRoom.captureGroupId` identifies the exact Session take;
+- capture materialization receipts in `StudioEpisodeProduction.timelineJson`
+  identify source lanes and transcript blocks written into the Episode;
+- `StudioEpisodeEditProposalSet` binds generated proposals to exact timeline
+  bytes;
+- `StudioEpisodeEditReviewReceipt` separates review-only actions, reversible
+  local-draft actions, and canonical timeline saves; and
+- the Session cockpit derives ranked attention and direct editor links from
+  those records without claiming new facts.
+
+## Assembly states
+
+| State | Meaning | Calm default action |
+| --- | --- | --- |
+| `NO_CAPTURE_TAKE` | The bound Episode has no take from this Session capture group. | Open the exact Episode and inspect the Session boundary. |
+| `BLOCKED` | Materialization evidence has at least one blocker. | Resolve the named blocker in Guided Sync. |
+| `READY_TO_MATERIALIZE` | Exact sources are verified and a guarded materialization plan exists. | Explicitly write the take into the canonical timeline. |
+| `MATERIALIZED_MEDIA` | Session media exists in the timeline, but transcript, speaker, camera, or assembly evidence is incomplete. | Continue evidence review without guessing identity or placement. |
+| `MATERIALIZED_ASSEMBLY` | The materialized take has enough evidence for assembly review. | Review current proposals and link accepted draft actions to a canonical save. |
+
+The cockpit separately reports stale proposal sets, current proposal sets,
+proof-review actions, reversible local-draft actions, draft actions linked to a
+canonical save, and unlinked draft actions. Missing ledger access is reported
+as unknown, never flattened into zero.
+
+## Canonical timeline receipt rule
+
+A `TIMELINE_SAVED` receipt is editorial history. It may be appended only when:
+
+1. incoming canonical timeline bytes differ from the current canonical bytes;
+   or
+2. an explicit save links already-reviewed local-draft receipt IDs to otherwise
+   identical canonical bytes.
+
+Opening a route, normalizing an older payload shape, hydration, polling, or
+clicking Save on an unchanged timeline is a no-op. Deterministic receipt-backed
+Shared Watch spans remain saveable because they are new canonical content, not
+display-only normalization.
+
+The client maintains two fingerprints for this reason:
+
+- the exact server fingerprint used for conflict-safe writes; and
+- the normalized local save baseline used to distinguish harmless hydration
+  from actual projected or editorial changes.
+
+The API independently enforces the receipt rule. Client behavior alone is not
+trusted as the history boundary.
+
+## Retained operation
+
+The checkpoint was operated in the running local app with the dedicated
+Firebase-emulator collaborator
+`quipsly-assembly-cockpit-qa-20260807@example.test`.
+
+Retained records:
+
+- room: `cmsfpfwrt000db9xld8ppuon4`
+- capture group: `967f72b2-f762-4535-a337-e69b5676cad1`
+- project: `high-ground-odyssey-manuscript`
+- episode: `capture-sync-rendezvous-qa-20260805`
+- Episode production: `cmsfopxjc0001hvxlf30hh0e1`
+
+Observed UI and evidence:
+
+- two server-safe immutable source attachments;
+- no completed source-bound transcript;
+- no complete audio-analysis coverage;
+- the focused Capture take held on the explicit blocker “Choose the canonical
+  high-quality audio spine in Guided sync”;
+- zero Session timeline clips and zero materialized takes for this capture
+  group;
+- zero current proposal sets and zero unsaved local-draft actions;
+- five historical canonical timeline-save receipts; and
+- direct navigation from the cockpit into the exact Episode, capture group,
+  and Guided Sync section.
+
+The source set contains two tiny test WebM audio files whose stream metadata
+cannot support a trustworthy sync/materialization decision. Quipsly correctly
+held them. Existing protected microphone and iPhone camera media in the Episode
+were not silently reassigned to this take.
+
+## Regression discovered and repaired
+
+Operating the real editor exposed a phantom save: hydration normalized the
+timeline to its current rendered shape, compared that shape with an older
+embedded fingerprint, and autosaved even though the collaborator made no edit.
+That created a fifth receipt merely by opening the editor.
+
+After the repair:
+
+1. the editor was fully reloaded and left open beyond the autosave delay;
+2. the canonical save count remained exactly five;
+3. the visible unchanged `Timeline Saved` control was clicked;
+4. the canonical save count still remained exactly five; and
+5. Shared Watch projection coverage continued to prove that genuinely new
+   receipt-backed timeline spans remain saveable.
+
+## Verification
+
+```text
+4 focused Jest suites passed
+27 focused tests passed
+Quipsly Next.js route generation passed
+Quipsly TypeScript typecheck passed
+Running-app reload did not append a receipt
+Running-app unchanged manual Save did not append a receipt
+Session cockpit readback showed the exact five-save ledger and held take
+```
+
+## Next production slice
+
+Do not manufacture a green fixture by selecting either tiny test WebM as the
+production spine. The next serious acceptance run should retain a substantial
+browser or iPhone local master, complete source-bound transcription and audio
+analysis, explicitly choose the clean high-quality spine, materialize the take,
+generate proposals bound to the resulting timeline fingerprint, proof-listen
+or proof-watch them, apply accepted operations to a reversible draft, and save
+those reviewed draft receipts into the canonical Episode timeline.

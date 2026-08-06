@@ -16,7 +16,7 @@ type Props = {
   finishingEvidence: SessionFinishingEvidence;
 };
 
-function href(roomId: string, lane: string) {
+function laneHref(roomId: string, lane: string) {
   return `/sessions/${encodeURIComponent(roomId)}?mode=${lane}`;
 }
 
@@ -56,7 +56,7 @@ export function SessionFinishingCockpitCard(props: Props) {
         </div>
         <p className="mt-3 text-sm font-black leading-5 text-[#3d3122]">{stage.summary}</p>
         <p className="mt-2 text-[10px] font-bold leading-4 text-[#765f40]">{stage.evidence}</p>
-        <Link href={href(props.roomId, stage.lane)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-violet-800 hover:underline">Inspect {stage.label}<ArrowRight size={12} aria-hidden="true" /></Link>
+        <Link href={stage.href ?? laneHref(props.roomId, stage.lane)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-violet-800 hover:underline">{stage.actionLabel ?? `Inspect ${stage.label}`}<ArrowRight size={12} aria-hidden="true" /></Link>
       </li>)}
     </ol>
 
@@ -66,7 +66,7 @@ export function SessionFinishingCockpitCard(props: Props) {
         {cockpit.attention.map((item, index) => <li key={item.id} className={`rounded-2xl border p-4 ${severityStyle[item.severity]}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="max-w-3xl"><p className="text-[10px] font-black uppercase tracking-wide">#{index + 1} · {item.severity}</p><h4 className="mt-1 text-lg font-black">{item.title}</h4><p className="mt-1 text-xs font-semibold leading-5">{item.detail}</p><p className="mt-2 text-xs font-black leading-5">Why it matters: {item.consequence}</p></div>
-            <Link href={href(props.roomId, item.lane)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-current bg-white/70 px-4 py-2 text-[10px] font-black uppercase tracking-wide">Open {item.lane}<ArrowRight size={13} aria-hidden="true" /></Link>
+            <Link href={item.href ?? laneHref(props.roomId, item.lane)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-current bg-white/70 px-4 py-2 text-[10px] font-black uppercase tracking-wide">{item.actionLabel ?? `Open ${item.lane}`}<ArrowRight size={13} aria-hidden="true" /></Link>
           </div>
         </li>)}
       </ol> : <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-950">No source, transcript, analysis-coverage, Studio-integrity, or delivery attention item is projected from the current canonical evidence.</p>}

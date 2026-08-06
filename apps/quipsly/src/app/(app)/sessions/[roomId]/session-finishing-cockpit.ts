@@ -1,4 +1,5 @@
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import type { SessionEpisodeAssemblyEvidence } from "./session-episode-assembly-evidence";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 
 export type SessionFinishingEvidence = {
@@ -18,6 +19,7 @@ export type SessionFinishingEvidence = {
   }>;
   analyzedSourceCount: number;
   sourceClockAttention?: { total: number; high: number; review: number };
+  assembly?: SessionEpisodeAssemblyEvidence;
   versionedOutput?: {
     sources: number;
     activeMasters: number;
@@ -50,6 +52,8 @@ export type SessionFinishingAttention = {
   title: string;
   detail: string;
   consequence: string;
+  href?: string;
+  actionLabel?: string;
 };
 
 export type SessionFinishingStage = {
@@ -59,6 +63,8 @@ export type SessionFinishingStage = {
   summary: string;
   evidence: string;
   lane: "recordings" | "transcript" | "outputs";
+  href?: string;
+  actionLabel?: string;
 };
 
 export type SessionFinishingCockpit = {
@@ -166,6 +172,78 @@ export function buildSessionFinishingCockpit(input: {
     consequence: "Unresolved exact-clock evidence can mislead transcript, repair, assembly, or delivery decisions if it is flattened into a generic confidence score.",
   });
 
+  const assembly = finishingEvidence.assembly;
+  if (assembly && !assembly.ledgerAvailable) attention.push({
+    id: "episode-edit-ledger-unavailable",
+    severity: "HIGH",
+    lane: "outputs",
+    title: "The Episode edit-review ledger could not be read",
+    detail: "The canonical timeline remains intact, but Quipsly cannot currently prove which proposed, local-draft, proof-review, or saved actions belong to it.",
+    consequence: "The cockpit will not collapse unknown editorial evidence into a false zero or claim that a draft was canonically saved.",
+    href: assembly.editorHref,
+    actionLabel: "Open editor",
+  });
+  if (assembly?.state === "BLOCKED") attention.push({
+    id: "episode-take-materialization-held",
+    severity: "HIGH",
+    lane: "outputs",
+    title: "The current Capture take is held before timeline materialization",
+    detail: `${assembly.blockerCount} blocker${assembly.blockerCount === 1 ? "" : "s"} · ${assembly.warningCount} warning${assembly.warningCount === 1 ? "" : "s"}. ${assembly.nextAction}`,
+    consequence: "The protected sources remain unchanged, but this take cannot become a trustworthy editable timeline until its identity, spine, alignment, or playback evidence is repaired.",
+    href: assembly.editorHref,
+    actionLabel: "Resolve in Guided sync",
+  });
+  if (assembly?.state === "READY_TO_MATERIALIZE") attention.push({
+    id: "episode-take-ready-to-materialize",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: `${assembly.plannedSourceCount} verified Capture source${assembly.plannedSourceCount === 1 ? " is" : "s are"} ready to become an editable Episode take`,
+    detail: `${assembly.warningCount} non-blocking warning${assembly.warningCount === 1 ? "" : "s"}. Materialization is an explicit, conflict-safe canonical timeline save.`,
+    consequence: "Until that save is accepted, source attachment proves provenance but the editor has no canonical take lanes for this Session.",
+    href: assembly.editorHref,
+    actionLabel: "Materialize take",
+  });
+  if (assembly?.state === "MATERIALIZED_MEDIA") attention.push({
+    id: "episode-take-media-only",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: "The Capture media is canonical, but automated assembly is not ready",
+    detail: `${assembly.sessionTimelineClipCount} Session clip${assembly.sessionTimelineClipCount === 1 ? "" : "s"} and ${assembly.sessionTranscriptBlockCount} transcript block${assembly.sessionTranscriptBlockCount === 1 ? "" : "s"} are persisted. ${assembly.nextAction}`,
+    consequence: "Quipsly will not guess speaker identity, camera ownership, or non-spine alignment merely to make the timeline look complete.",
+    href: assembly.editorHref,
+    actionLabel: "Continue assembly review",
+  });
+  if (assembly && assembly.state === "MATERIALIZED_ASSEMBLY" && assembly.currentProposalSetCount === 0) attention.push({
+    id: "episode-current-proposal-missing",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: "The editable take has no proposal set bound to the current timeline",
+    detail: `${assembly.staleProposalSetCount} older proposal set${assembly.staleProposalSetCount === 1 ? " is" : "s are"} preserved but not treated as current.`,
+    consequence: "A fresh rough-cut or camera proposal must bind to these exact timeline bytes before it can be reviewed or applied.",
+    href: assembly.editorHref,
+    actionLabel: "Create current proposals",
+  });
+  if (assembly && assembly.currentProposalSetCount > 0 && assembly.currentReviewReceiptCount === 0) attention.push({
+    id: "episode-proposals-unreviewed",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: `${assembly.currentProposalSetCount} current edit proposal set${assembly.currentProposalSetCount === 1 ? " needs" : "s need"} a human decision`,
+    detail: "The proposals are durable evidence, but no proof-listen, proof-watch, apply, restore, or dismiss receipt is observed for the current timeline.",
+    consequence: "Generated suggestions remain suggestions; they do not silently become editorial canon.",
+    href: assembly.editorHref,
+    actionLabel: "Review proposals",
+  });
+  if (assembly?.unsavedLocalDraftActionCount) attention.push({
+    id: "episode-local-draft-unsaved",
+    severity: "HIGH",
+    lane: "outputs",
+    title: `${assembly.unsavedLocalDraftActionCount} local edit action${assembly.unsavedLocalDraftActionCount === 1 ? " is" : "s are"} not linked to a canonical timeline save`,
+    detail: `${assembly.localDraftActionCount} local-draft action${assembly.localDraftActionCount === 1 ? "" : "s"} observed · ${assembly.canonicallyLinkedDraftActionCount} linked into saved timeline evidence.`,
+    consequence: "Another device or collaborator cannot rely on an unsaved browser draft, even when the local editor currently looks correct.",
+    href: assembly.editorHref,
+    actionLabel: "Open unsaved draft",
+  });
+
   const versionedOutput = finishingEvidence.versionedOutput;
   if (versionedOutput?.activeMasters && !versionedOutput.verifiedArtifacts) attention.push({
     id: "episode-artifact-missing",
@@ -206,6 +284,37 @@ export function buildSessionFinishingCockpit(input: {
     ? `${versionedOutput.approvedArtifacts} proof-listened artifact${versionedOutput.approvedArtifacts === 1 ? "" : "s"} · ${versionedOutput.selectedPackets} selected package`
     : null;
   const sessionDeliveryEvidence = `${releasedOutputs.length} released ${versionedOutput ? "Session " : ""}output${releasedOutputs.length === 1 ? "" : "s"} · ${deliveryCount} delivery event${deliveryCount === 1 ? "" : "s"}`;
+  const assemblySaved = Boolean(
+    assembly
+    && assembly.state === "MATERIALIZED_ASSEMBLY"
+    && assembly.currentProposalSetCount > 0
+    && assembly.currentReviewReceiptCount > 0
+    && assembly.canonicallyLinkedDraftActionCount > 0
+    && assembly.unsavedLocalDraftActionCount === 0,
+  );
+  const assemblyStage = assembly ? {
+    state: assembly.state === "BLOCKED"
+      ? "BLOCKED" as const
+      : assemblySaved
+        ? "READY" as const
+        : assembly.state === "NO_CAPTURE_TAKE"
+          ? "NOT_OBSERVED" as const
+          : "IN_PROGRESS" as const,
+    summary: assemblySaved
+      ? "Reviewed edit actions are linked to a canonical Episode timeline save."
+      : assembly.state === "MATERIALIZED_ASSEMBLY"
+        ? "The take is assembly-ready; proposal review and canonical save truth remain visible."
+        : assembly.state === "MATERIALIZED_MEDIA"
+          ? "Capture media is editable; transcript, speaker, or camera evidence is still incomplete."
+          : assembly.state === "READY_TO_MATERIALIZE"
+            ? "The verified Capture take is ready for an explicit canonical timeline save."
+            : assembly.state === "BLOCKED"
+              ? "The Capture take is held before trustworthy timeline materialization."
+              : "No Capture take from this Session is observed in the bound Episode.",
+    evidence: `${assembly.sessionTimelineClipCount} Session clips · ${assembly.canonicalTakeCount} materialized take${assembly.canonicalTakeCount === 1 ? "" : "s"} · ${assembly.currentProposalSetCount} current proposal set${assembly.currentProposalSetCount === 1 ? "" : "s"} · ${assembly.unsavedLocalDraftActionCount} unsaved draft actions · ${assembly.canonicalTimelineSaveCount} canonical saves`,
+    href: assembly.editorHref,
+    actionLabel: "Open exact Episode editor",
+  } : null;
   const stages: SessionFinishingStage[] = [
     {
       id: "recover",
@@ -234,10 +343,12 @@ export function buildSessionFinishingCockpit(input: {
     {
       id: "assemble",
       label: "Assemble",
-      state: attached ? "IN_PROGRESS" : handoffHolds ? "BLOCKED" : "NOT_OBSERVED",
-      summary: attached ? "Immutable Session sources are attached to Studio; editorial choice is not inferred." : "No verified Studio source attachment is observed.",
-      evidence: `${attached} attached · ${readyForHandoff} ready · ${handoffHolds} integrity holds`,
+      state: assemblyStage?.state ?? (attached ? "IN_PROGRESS" : handoffHolds ? "BLOCKED" : "NOT_OBSERVED"),
+      summary: assemblyStage?.summary ?? (attached ? "Immutable Session sources are attached to Studio; editorial choice is not inferred." : "No verified Studio source attachment is observed."),
+      evidence: assemblyStage?.evidence ?? `${attached} attached · ${readyForHandoff} ready · ${handoffHolds} integrity holds`,
       lane: "outputs",
+      href: assemblyStage?.href,
+      actionLabel: assemblyStage?.actionLabel,
     },
     {
       id: "finish",

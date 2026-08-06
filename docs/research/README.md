@@ -18,6 +18,8 @@ The current product decision is:
 1. [`2026-08-06-quipsly-obvious-depth-feature-portfolio.md`](./2026-08-06-quipsly-obvious-depth-feature-portfolio.md)
    ranks the visible product bets and recommends the Episode and Session
    Finishing Cockpit.
+   The first retained implementation checkpoint is documented in
+   [`../coordination/quipsly-session-episode-assembly-truth-2026-08-06.md`](../coordination/quipsly-session-episode-assembly-truth-2026-08-06.md).
 2. [`2026-08-06-quipsly-capability-depth-and-operating-agent.md`](./2026-08-06-quipsly-capability-depth-and-operating-agent.md)
    defines the shared platform primitives, capability manifests, and governed
    action runtime.
