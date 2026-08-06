@@ -35,6 +35,7 @@ describe("EpisodeAudioMixDesk", () => {
       actionCount: 1,
       unresolvedCount: 0,
       requiredReviewSecondBins: [2, 30, 58],
+      transcriptReview: { status: "partial", detail: "1 of 2 included tracks have exact-source timed transcript context.", transcribedTrackCount: 1, missingTrackCount: 1, tracks: [], checkpoints: [{ second: 2, snippets: [] }, { second: 30, snippets: [{ id: "snippet-1", trackTitle: "Charlie MV7i", participantLabel: "Charlie", transcriptJobId: "transcript-1", segmentId: "segment-1", programStartSeconds: 29.5, programEndSeconds: 33.1, sourceStartSeconds: 29.5, sourceEndSeconds: 33.1, text: "The human-reviewed words remain an overlay.", speakerLabel: "Charlie", provider: "openai-whisper-local", providerModel: "large-v3-turbo", reviewStatus: "human-corrected", reviewReceiptId: "correction-1", providerConfidence: 0.82 }] }, { second: 58, snippets: [] }] },
       preview: { assetId: "proposal_asset", playbackUrl: "/proposal.wav", sha256: "a".repeat(64), durationSeconds: 60, integratedLufs: -16, truePeakDbtp: -1.5, baselineAssetId: "baseline_asset", baselinePlaybackUrl: "/baseline.wav", baselineSha256: "b".repeat(64), baselineDurationSeconds: 60, baselineIntegratedLufs: -15.9, baselineTruePeakDbtp: -1.7, levelMatchedDeltaLufs: 0.1, outputByteRelationship: "bit-identical" },
       }) })
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotion: { active: false, activePromotion: null, candidatePlaybackUrl: null, promoteCount: 0, withdrawalCount: 0 } }) });
@@ -45,6 +46,10 @@ describe("EpisodeAudioMixDesk", () => {
     expect(screen.getByText("0.10 LU apart")).toBeInTheDocument();
     expect(screen.getByText("Bit-exact no-op")).toBeInTheDocument();
     expect(screen.getByLabelText("Episode mix audition playhead")).toBeInTheDocument();
+    expect(screen.getByLabelText("Transcript-linked review context")).toHaveTextContent("1 of 2 included tracks");
+    expect(screen.getByText(/The human-reviewed words remain an overlay/)).toBeInTheDocument();
+    expect(screen.getByText("Human corrected")).toBeInTheDocument();
+    expect(screen.getAllByText(/No exact timed transcript segment/)).toHaveLength(2);
     expect(screen.getByRole("button", { name: /Approve as heard/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "0:30 B○ P○" })).toBeInTheDocument();
   });

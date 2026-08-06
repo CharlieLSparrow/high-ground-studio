@@ -19,6 +19,13 @@ import {
   type EpisodeAudioMixTrack,
 } from "@high-ground/quipsly-media-processing";
 
+import {
+  emptyEpisodeAudioMixTranscriptReview,
+  projectEpisodeAudioMixTranscriptReview,
+  type EpisodeAudioMixTranscriptReview,
+  type EpisodeAudioMixTranscriptSegment,
+  type EpisodeAudioMixTranscriptTrack,
+} from "@/lib/episode-audio-mix-transcript";
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { loadEpisodeAudioActivityAnalysisContext } from "@/lib/server/episode-audio-activity-analysis";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
@@ -39,6 +46,7 @@ export type PublicEpisodeAudioMixStatus = {
   actions: Array<{ id: string; targetAssetId: string; targetTitle: string; participantLabel: string | null; startSeconds: number; endSeconds: number; gainDb: number; reason: string; evidenceReviewReceiptIds: string[] }>;
   unresolved: Array<{ eventId: string; reason: string; involvedAssetIds: string[] }>;
   requiredReviewSecondBins: number[];
+  transcriptReview: EpisodeAudioMixTranscriptReview;
   preview: null | { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number; baselineAssetId: string | null; baselinePlaybackUrl: string | null; baselineSha256: string | null; baselineDurationSeconds: number | null; baselineIntegratedLufs: number | null; baselineTruePeakDbtp: number | null; levelMatchedDeltaLufs: number | null; outputByteRelationship: "bit-identical" | "different" | null };
   error: string | null;
   updatedAt: string | null;
@@ -102,13 +110,13 @@ export async function queueEpisodeAudioMix(input: { prisma: any; projectSlug: st
 export async function readEpisodeAudioMix(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
   const context = await loadEpisodeAudioActivityAnalysisContext(input);
   const row = await input.prisma.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, type: JOB_TYPE, AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
-  return row ? publicStatus(row) : emptyStatus();
+  return row ? publicStatusWithTranscript(input.prisma, context, row) : emptyStatus();
 }
 
 export async function reconcileEpisodeAudioMix(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
   const context = await loadEpisodeAudioActivityAnalysisContext(input);
   const row = await input.prisma.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, type: JOB_TYPE, AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
-  if (!row || row.status !== "output-ready") return row ? publicStatus(row) : emptyStatus();
+  if (!row || row.status !== "output-ready") return row ? publicStatusWithTranscript(input.prisma, context, row) : emptyStatus();
   const proposal = parseEpisodeAudioMixProposal(row.inputJson);
   if (proposal.programFingerprintSha256 !== context.program.fingerprintSha256 || JSON.stringify(proposal.activeDecisionReceiptIds) !== JSON.stringify(context.program.activeDecisions.map((decision) => decision.id).sort())) throw new EpisodeAudioMixError("The Episode or its canonical audio decisions changed before mix preview registration.", 409, "EPISODE_AUDIO_MIX_PROPOSAL_STALE");
   const result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal);
@@ -127,7 +135,7 @@ export async function reconcileEpisodeAudioMix(input: { prisma: any; projectSlug
       : null;
     return tx.studioAssetProcessingJob.update({ where: { id: row.id }, data: { status: "completed", completedAt: new Date(result.completedAt), error: null, resultJson: json({ state: "completed", receipt: result, registration: { playbackUrl: proposalRegistration.playbackUrl, sourceId: proposalRegistration.sourceId, outputPath: proposalRegistration.outputPath, outputAssetId: result.derivative.assetId, baselinePlaybackUrl: baselineRegistration?.playbackUrl ?? null, baselineSourceId: baselineRegistration?.sourceId ?? null, baselineOutputPath: baselineRegistration?.outputPath ?? null, baselineAssetId: result.baselineDerivative?.assetId ?? null, outputIsUnpromotedPreview: true, baselineIsImmutableComparisonOnly: true } }) } });
   }, { isolationLevel: "Serializable" });
-  return publicStatus(updated);
+  return publicStatusWithTranscript(input.prisma, context, updated);
 }
 
 export async function loadEpisodeAudioMixReviewContext(input: { prisma: any; projectSlug: string; episodeProductionId: string; jobId: string }) {
@@ -206,8 +214,109 @@ function sameProposalInputs(left: EpisodeAudioMixProposal, right: EpisodeAudioMi
     && stableJson(left.evidenceReviews) === stableJson(right.evidenceReviews)
     && Boolean(left.baselineOutput) === Boolean(right.baselineOutput);
 }
-function publicStatus(row: any): PublicEpisodeAudioMixStatus { let proposal: EpisodeAudioMixProposal | null = null; let result: ReturnType<typeof parseEpisodeAudioMixResult> | null = null; try { proposal = parseEpisodeAudioMixProposal(row.inputJson); } catch { /* fail closed */ } try { if (proposal) result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal); } catch { /* fail closed */ } const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(row.status) ? row.status as PublicEpisodeAudioMixStatus["status"] : "failed"; const invalid = !proposal || (["output-ready", "completed"].includes(declared) && !result); const registration = record(record(row.resultJson).registration); const requiredReviewSecondBins = proposal && result?.baselineDerivative ? episodeAudioMixReviewCoverage(proposal, { schema: EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA, baselineListenedSecondBins: [], proposalListenedSecondBins: [], switches: [], completedAt: new Date(0).toISOString() }).requiredSecondBins : []; const tracks = new Map(proposal?.tracks.map((track) => [track.assetId, track]) ?? []); return { jobId: String(row.id), status: invalid ? "failed" : declared, proposalId: proposal?.proposalId ?? null, programFingerprintSha256: proposal?.programFingerprintSha256 ?? null, actionCount: proposal?.actions.length ?? 0, unresolvedCount: proposal?.unresolvedEvents.length ?? 0, actions: proposal?.actions.map((action) => ({ id: action.id, targetAssetId: action.targetAssetId, targetTitle: tracks.get(action.targetAssetId)?.title ?? action.targetAssetId, participantLabel: tracks.get(action.targetAssetId)?.participantLabel ?? null, startSeconds: action.programStartSeconds, endSeconds: action.programEndSeconds, gainDb: action.gainDb, reason: action.reason, evidenceReviewReceiptIds: action.evidenceReviewReceiptIds })) ?? [], unresolved: proposal?.unresolvedEvents.map((event) => ({ eventId: event.eventId, reason: event.reason, involvedAssetIds: event.involvedAssetIds })) ?? [], requiredReviewSecondBins, preview: result ? { assetId: result.derivative.assetId, playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null, sha256: result.derivative.sha256, durationSeconds: result.derivative.durationSeconds, integratedLufs: result.derivative.measurement.integratedLufs, truePeakDbtp: result.derivative.measurement.truePeakDbtp, baselineAssetId: result.baselineDerivative?.assetId ?? null, baselinePlaybackUrl: typeof registration.baselinePlaybackUrl === "string" ? registration.baselinePlaybackUrl : null, baselineSha256: result.baselineDerivative?.sha256 ?? null, baselineDurationSeconds: result.baselineDerivative?.durationSeconds ?? null, baselineIntegratedLufs: result.baselineDerivative?.measurement.integratedLufs ?? null, baselineTruePeakDbtp: result.baselineDerivative?.measurement.truePeakDbtp ?? null, levelMatchedDeltaLufs: result.verification.levelMatchedDeltaLufs, outputByteRelationship: result.verification.outputByteRelationship } : null, error: invalid ? "Episode mix evidence failed integrity validation." : typeof row.error === "string" ? row.error : null, updatedAt: row.updatedAt?.toISOString?.() ?? null, boundaries: publicBoundaries() }; }
-function emptyStatus(): PublicEpisodeAudioMixStatus { return { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], preview: null, error: null, updatedAt: null, boundaries: publicBoundaries() }; }
+async function publicStatusWithTranscript(prisma: any, context: Awaited<ReturnType<typeof loadEpisodeAudioActivityAnalysisContext>>, row: any) {
+  const status = publicStatus(row);
+  if (status.status !== "completed" || !status.preview) return status;
+  try {
+    const proposal = parseEpisodeAudioMixProposal(row.inputJson);
+    status.transcriptReview = await loadTranscriptReview(prisma, context, proposal, status.requiredReviewSecondBins);
+  } catch {
+    status.transcriptReview = emptyEpisodeAudioMixTranscriptReview("Checkpoint transcript context failed integrity validation and was withheld.");
+  }
+  return status;
+}
+
+async function loadTranscriptReview(
+  prisma: any,
+  context: Awaited<ReturnType<typeof loadEpisodeAudioActivityAnalysisContext>>,
+  proposal: EpisodeAudioMixProposal,
+  checkpointSeconds: number[],
+) {
+  const candidateTracks: EpisodeAudioMixTranscriptTrack[] = proposal.tracks.map((track) => {
+    const current = context.program.tracks.find((candidate) => candidate.assetId === track.assetId && candidate.sourceId === track.sourceId) ?? null;
+    const evidence = current?.transcriptActivityEvidence ?? null;
+    const exactSource = evidence && sameBinding(evidence.source, track.source);
+    return {
+      assetId: track.assetId,
+      sourceId: track.sourceId,
+      title: track.title,
+      participantLabel: track.participantLabel,
+      programOffsetSeconds: track.programOffsetSeconds,
+      transcriptJobId: exactSource ? evidence.transcriptJobId : null,
+      provider: exactSource ? evidence.provider.name : null,
+      providerModel: exactSource ? evidence.provider.model : null,
+      unavailableReason: evidence && !exactSource
+        ? "Transcript evidence no longer matches the exact retained source."
+        : "No completed exact-source timed transcript receipt is available.",
+    };
+  });
+  const requestedJobIds = candidateTracks.flatMap((track) => track.transcriptJobId ? [track.transcriptJobId] : []);
+  if (requestedJobIds.length === 0 || checkpointSeconds.length === 0) {
+    return projectEpisodeAudioMixTranscriptReview({ checkpointSeconds, tracks: candidateTracks, segments: [] });
+  }
+
+  const jobs = await prisma.transcriptJob.findMany({
+    where: {
+      id: { in: requestedJobIds },
+      status: "COMPLETED",
+      studioProjectId: context.project.id,
+      episodeProductionId: context.episode.id,
+    },
+    select: { id: true, studioMediaAssetId: true, sourceSha256: true, sourceGeneration: true },
+  });
+  const validJobs = new Set(jobs.flatMap((job: any) => {
+    const track = candidateTracks.find((candidate) => candidate.transcriptJobId === job.id);
+    const proposalTrack = proposal.tracks.find((candidate) => candidate.assetId === track?.assetId && candidate.sourceId === track?.sourceId);
+    return track && proposalTrack
+      && job.studioMediaAssetId === track.assetId
+      && job.sourceSha256 === proposalTrack.source.sha256
+      && job.sourceGeneration === proposalTrack.source.generation
+      ? [String(job.id)]
+      : [];
+  }));
+  const tracks = candidateTracks.map((track) => track.transcriptJobId && validJobs.has(track.transcriptJobId) ? track : {
+    ...track,
+    transcriptJobId: null,
+    unavailableReason: track.transcriptJobId ? "Canonical transcript registration no longer matches this Episode and exact source." : track.unavailableReason,
+  });
+  const ranges = tracks.flatMap((track) => track.transcriptJobId ? checkpointSeconds.map((second) => {
+    const sourceSecond = second - track.programOffsetSeconds;
+    return {
+      transcriptJobId: track.transcriptJobId!,
+      startSeconds: { lte: sourceSecond + 8 },
+      endSeconds: { gte: sourceSecond - 8 },
+    };
+  }) : []);
+  const segments: EpisodeAudioMixTranscriptSegment[] = ranges.length ? await prisma.transcriptSegment.findMany({
+    where: { OR: ranges },
+    orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
+    take: 500,
+    select: {
+      id: true,
+      transcriptJobId: true,
+      startSeconds: true,
+      endSeconds: true,
+      text: true,
+      speakerLabel: true,
+      confidence: true,
+      corrections: {
+        where: { status: "accepted" },
+        orderBy: { updatedAt: "desc" },
+        take: 4,
+        select: { id: true, status: true, baseTextSha256: true, expectedText: true, expectedSpeakerLabel: true, startSecondsSnapshot: true, endSecondsSnapshot: true, correctedText: true, correctedSpeakerLabel: true, reviewedAt: true, updatedAt: true },
+      },
+      verifications: {
+        orderBy: { createdAt: "desc" },
+        take: 4,
+        select: { id: true, reviewKind: true, providerTextSha256: true, providerSpeakerLabel: true, startSecondsSnapshot: true, endSecondsSnapshot: true, createdAt: true },
+      },
+    },
+  }) : [];
+  return projectEpisodeAudioMixTranscriptReview({ checkpointSeconds, tracks, segments });
+}
+
+function publicStatus(row: any): PublicEpisodeAudioMixStatus { let proposal: EpisodeAudioMixProposal | null = null; let result: ReturnType<typeof parseEpisodeAudioMixResult> | null = null; try { proposal = parseEpisodeAudioMixProposal(row.inputJson); } catch { /* fail closed */ } try { if (proposal) result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal); } catch { /* fail closed */ } const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(row.status) ? row.status as PublicEpisodeAudioMixStatus["status"] : "failed"; const invalid = !proposal || (["output-ready", "completed"].includes(declared) && !result); const registration = record(record(row.resultJson).registration); const requiredReviewSecondBins = proposal && result?.baselineDerivative ? episodeAudioMixReviewCoverage(proposal, { schema: EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA, baselineListenedSecondBins: [], proposalListenedSecondBins: [], switches: [], completedAt: new Date(0).toISOString() }).requiredSecondBins : []; const tracks = new Map(proposal?.tracks.map((track) => [track.assetId, track]) ?? []); return { jobId: String(row.id), status: invalid ? "failed" : declared, proposalId: proposal?.proposalId ?? null, programFingerprintSha256: proposal?.programFingerprintSha256 ?? null, actionCount: proposal?.actions.length ?? 0, unresolvedCount: proposal?.unresolvedEvents.length ?? 0, actions: proposal?.actions.map((action) => ({ id: action.id, targetAssetId: action.targetAssetId, targetTitle: tracks.get(action.targetAssetId)?.title ?? action.targetAssetId, participantLabel: tracks.get(action.targetAssetId)?.participantLabel ?? null, startSeconds: action.programStartSeconds, endSeconds: action.programEndSeconds, gainDb: action.gainDb, reason: action.reason, evidenceReviewReceiptIds: action.evidenceReviewReceiptIds })) ?? [], unresolved: proposal?.unresolvedEvents.map((event) => ({ eventId: event.eventId, reason: event.reason, involvedAssetIds: event.involvedAssetIds })) ?? [], requiredReviewSecondBins, transcriptReview: emptyEpisodeAudioMixTranscriptReview(), preview: result ? { assetId: result.derivative.assetId, playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null, sha256: result.derivative.sha256, durationSeconds: result.derivative.durationSeconds, integratedLufs: result.derivative.measurement.integratedLufs, truePeakDbtp: result.derivative.measurement.truePeakDbtp, baselineAssetId: result.baselineDerivative?.assetId ?? null, baselinePlaybackUrl: typeof registration.baselinePlaybackUrl === "string" ? registration.baselinePlaybackUrl : null, baselineSha256: result.baselineDerivative?.sha256 ?? null, baselineDurationSeconds: result.baselineDerivative?.durationSeconds ?? null, baselineIntegratedLufs: result.baselineDerivative?.measurement.integratedLufs ?? null, baselineTruePeakDbtp: result.baselineDerivative?.measurement.truePeakDbtp ?? null, levelMatchedDeltaLufs: result.verification.levelMatchedDeltaLufs, outputByteRelationship: result.verification.outputByteRelationship } : null, error: invalid ? "Episode mix evidence failed integrity validation." : typeof row.error === "string" ? row.error : null, updatedAt: row.updatedAt?.toISOString?.() ?? null, boundaries: publicBoundaries() }; }
+function emptyStatus(): PublicEpisodeAudioMixStatus { return { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], transcriptReview: emptyEpisodeAudioMixTranscriptReview(), preview: null, error: null, updatedAt: null, boundaries: publicBoundaries() }; }
 function publicBoundaries(): PublicEpisodeAudioMixStatus["boundaries"] { return { sourceTracksRemainImmutable: true, automationIsProposalNotTimelineMutation: true, previewIsUnpromoted: true, playbackApprovalRequired: true }; }
 function sameBinding(left: { sha256: string; generation: string; sizeBytes: number }, right: { sha256: string; generation: string; sizeBytes: number }) { return left.sha256 === right.sha256 && left.generation === right.generation && left.sizeBytes === right.sizeBytes; }
 function record(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }

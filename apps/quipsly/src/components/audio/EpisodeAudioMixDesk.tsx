@@ -5,6 +5,14 @@ import { CheckCircle2, LoaderCircle, SlidersHorizontal, Sparkles, TriangleAlert 
 
 type MixPreview = { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number; baselineAssetId: string | null; baselinePlaybackUrl: string | null; baselineSha256: string | null; baselineDurationSeconds: number | null; baselineIntegratedLufs: number | null; baselineTruePeakDbtp: number | null; levelMatchedDeltaLufs: number | null; outputByteRelationship: "bit-identical" | "different" | null };
 type AuditionReadyMixPreview = MixPreview & { playbackUrl: string; baselinePlaybackUrl: string; baselineDurationSeconds: number; baselineIntegratedLufs: number; baselineTruePeakDbtp: number };
+type MixTranscriptReview = {
+  status: "available" | "partial" | "unavailable";
+  detail: string;
+  transcribedTrackCount: number;
+  missingTrackCount: number;
+  checkpoints: Array<{ second: number; snippets: Array<{ id: string; trackTitle: string; participantLabel: string | null; transcriptJobId: string; segmentId: string; programStartSeconds: number; programEndSeconds: number; sourceStartSeconds: number; sourceEndSeconds: number; text: string; speakerLabel: string | null; provider: string | null; providerModel: string | null; reviewStatus: "provider" | "human-corrected" | "human-confirmed"; reviewReceiptId: string | null; providerConfidence: number | null }> }>;
+  tracks: Array<{ assetId: string; title: string; participantLabel: string | null; transcriptJobId: string | null; available: boolean; detail: string }>;
+};
 
 type MixStatus = {
   jobId: string | null;
@@ -16,12 +24,14 @@ type MixStatus = {
   actions: Array<{ id: string; targetAssetId: string; targetTitle: string; participantLabel: string | null; startSeconds: number; endSeconds: number; gainDb: number; reason: string; evidenceReviewReceiptIds: string[] }>;
   unresolved: Array<{ eventId: string; reason: string; involvedAssetIds: string[] }>;
   requiredReviewSecondBins: number[];
+  transcriptReview: MixTranscriptReview;
   preview: MixPreview | null;
   error: string | null;
   updatedAt: string | null;
 };
 
-const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], preview: null, error: null, updatedAt: null };
+const EMPTY_TRANSCRIPT_REVIEW: MixTranscriptReview = { status: "unavailable", detail: "Build a completed matched A/B preview before loading checkpoint transcript context.", transcribedTrackCount: 0, missingTrackCount: 0, checkpoints: [], tracks: [] };
+const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], transcriptReview: EMPTY_TRANSCRIPT_REVIEW, preview: null, error: null, updatedAt: null };
 
 export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionId, programFingerprintSha256, canWrite, eligible, eligibilityDetail }: { projectId: string; projectSlug: string; episodeProductionId: string; programFingerprintSha256: string | null; canWrite: boolean; eligible: boolean; eligibilityDetail: string }) {
   const [status, setStatus] = useState<MixStatus>(EMPTY);
@@ -95,7 +105,7 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
       {status.actions.length > 0 ? <MixActionMap actions={status.actions} durationSeconds={status.preview?.durationSeconds ?? Math.max(...status.actions.map((action) => action.endSeconds), 1)} /> : status.status === "completed" ? <div className="mt-4 rounded-xl border border-sky-700/60 bg-sky-950/40 px-3 py-3 text-xs font-bold leading-5 text-sky-100">Transparent result: no protected listening receipt authorized a gain move. {status.preview?.outputByteRelationship === "bit-identical" ? "Quipsly independently proved the proposal is bit-identical to its baseline." : "The output relationship is still awaiting verification."}</div> : null}
       {status.unresolved.length > 0 ? <div className="mt-3 rounded-xl border border-amber-700/60 bg-amber-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-amber-200">Held for human judgment</div>{status.unresolved.map((event) => <div key={`${event.eventId}:${event.reason}`} className="mt-2 text-[10px] font-bold text-amber-100">{event.eventId} · {event.reason.replaceAll("-", " ")} · {event.involvedAssetIds.length} track{event.involvedAssetIds.length === 1 ? "" : "s"}</div>)}</div> : null}
       {status.preview?.playbackUrl && !stale ? auditionReady(status.preview)
-        ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} coordinates={coordinates()} canWrite={canWrite} />
+        ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} transcriptReview={status.transcriptReview} coordinates={coordinates()} canWrite={canWrite} />
         : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified legacy preview retained</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">This earlier result predates matched baseline rendering. Build a new proposal for trustworthy A/B review.</p></div>
         : null}
       {notice ? <div className="mt-3 rounded-xl border border-sky-600/60 bg-sky-950/60 px-3 py-2 text-xs font-bold leading-5 text-sky-100" role="status" aria-live="polite">{notice}</div> : null}
@@ -119,7 +129,7 @@ type MixDecisionSummary = {
 
 const EMPTY_DECISIONS: MixDecisionSummary = { review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotion: { active: false, activePromotion: null, candidatePlaybackUrl: null, promoteCount: 0, withdrawalCount: 0 } };
 
-function EpisodeMixAudition({ preview, jobId, requiredSecondBins, coordinates, canWrite }: { preview: AuditionReadyMixPreview; jobId: string; requiredSecondBins: number[]; coordinates: { projectId: string; projectSlug: string; episodeProductionId: string }; canWrite: boolean }) {
+function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptReview, coordinates, canWrite }: { preview: AuditionReadyMixPreview; jobId: string; requiredSecondBins: number[]; transcriptReview: MixTranscriptReview; coordinates: { projectId: string; projectSlug: string; episodeProductionId: string }; canWrite: boolean }) {
   const baselineRef = useRef<HTMLAudioElement>(null);
   const proposalRef = useRef<HTMLAudioElement>(null);
   const [version, setVersion] = useState<"baseline" | "proposal">("proposal");
@@ -235,6 +245,7 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, coordinates, c
       <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-200">Required review checkpoints</div><span className={`rounded-full px-2 py-1 text-[9px] font-black ${approvalReady ? "bg-emerald-200 text-emerald-950" : "bg-slate-800 text-slate-300"}`}>{approvalReady ? "Coverage ready" : "Listen to both at each point"}</span></div>
       <div className="mt-2 flex flex-wrap gap-2">{requiredSecondBins.map((second) => <button key={second} type="button" onClick={() => seek(second)} className={`rounded-md border px-2 py-1 font-mono text-[9px] font-black ${covered(baselineBins, second) && covered(proposalBins, second) ? "border-emerald-500 bg-emerald-950 text-emerald-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>{clock(second)} {covered(baselineBins, second) ? "B✓" : "B○"} {covered(proposalBins, second) ? "P✓" : "P○"}</button>)}</div>
     </div>
+    <TranscriptCheckpointContext review={transcriptReview} requiredSecondBins={requiredSecondBins} seek={seek} />
     <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
       <AuditionMetric value={preview.baselineIntegratedLufs.toFixed(1)} label="Baseline LUFS" />
       <AuditionMetric value={preview.integratedLufs.toFixed(1)} label="Proposal LUFS" />
@@ -251,6 +262,33 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, coordinates, c
       {decisionMessage ? <p className="mt-2 text-[10px] font-bold leading-4 text-violet-100" role="status" aria-live="polite">{decisionMessage}</p> : null}
     </div>
   </div>;
+}
+
+function TranscriptCheckpointContext({ review, requiredSecondBins, seek }: { review: MixTranscriptReview; requiredSecondBins: number[]; seek: (seconds: number) => void }) {
+  return <div className="mt-3 rounded-lg border border-sky-800/80 bg-sky-950/35 p-3" aria-label="Transcript-linked review context">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div><div className="text-[10px] font-black uppercase tracking-[0.1em] text-sky-200">What was being said</div><p className="mt-1 text-[9px] font-bold leading-4 text-sky-100">Exact-source transcript snippets share the mix program clock. Provider confidence is triage evidence, never measured accuracy.</p></div>
+      <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${review.status === "available" ? "border-emerald-600 text-emerald-200" : review.status === "partial" ? "border-amber-600 text-amber-200" : "border-slate-600 text-slate-300"}`}>{review.status}</span>
+    </div>
+    <p className="mt-2 text-[9px] font-bold leading-4 text-slate-300">{review.detail}</p>
+    <div className="mt-3 grid gap-2 lg:grid-cols-3">
+      {requiredSecondBins.map((second) => {
+        const checkpoint = review.checkpoints.find((candidate) => Math.abs(candidate.second - second) <= 0.001);
+        return <div key={second} className="rounded-lg border border-white/10 bg-slate-950/75 p-2">
+          <button type="button" onClick={() => seek(second)} className="font-mono text-[10px] font-black text-sky-200 hover:text-white">At {clock(second)}</button>
+          {checkpoint?.snippets.length ? <div className="mt-2 space-y-2">{checkpoint.snippets.map((snippet) => <button key={snippet.id} type="button" onClick={() => seek(Math.max(0, snippet.programStartSeconds - 0.35))} className="block w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-2 text-left hover:border-sky-500">
+            <span className="flex flex-wrap items-center justify-between gap-1 text-[8px] font-black uppercase tracking-[0.08em] text-slate-400"><span>{snippet.speakerLabel || snippet.participantLabel || snippet.trackTitle}</span><span className={snippet.reviewStatus === "provider" ? "text-amber-300" : "text-emerald-300"}>{transcriptReviewLabel(snippet.reviewStatus)}</span></span>
+            <span className="mt-1 block text-[10px] font-semibold leading-4 text-slate-100">“{snippet.text}”</span>
+            <span className="mt-1 block font-mono text-[8px] font-bold text-slate-500">{clock(snippet.programStartSeconds)}–{clock(snippet.programEndSeconds)} program · {snippet.trackTitle}</span>
+          </button>)}</div> : <p className="mt-2 text-[9px] font-bold leading-4 text-slate-500">No exact timed transcript segment is available near this checkpoint.</p>}
+        </div>;
+      })}
+    </div>
+  </div>;
+}
+
+function transcriptReviewLabel(status: "provider" | "human-corrected" | "human-confirmed") {
+  return status === "human-corrected" ? "Human corrected" : status === "human-confirmed" ? "Human confirmed" : "Provider text";
 }
 
 function AuditionMetric({ value, label }: { value: string; label: string }) { return <div className="rounded-lg bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-100">{value}</div><div className="text-slate-400">{label}</div></div>; }
