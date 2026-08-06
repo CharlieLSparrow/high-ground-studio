@@ -210,6 +210,18 @@ launchctl_job_exists() {
   launchctl print "gui/$(id -u)/$1" >/dev/null 2>&1
 }
 
+wait_for_macos_job_running() {
+  local label="$1"
+  local attempt
+  for attempt in $(seq 1 40); do
+    if launchctl print "gui/$(id -u)/${label}" 2>/dev/null | rg -q "state = running"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 wait_for_port_release() {
   local port="$1"
   local label="$2"
@@ -352,9 +364,8 @@ if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; t
         printf "RELOAD %-23s source %s -> %s\n" "Transcript worker" "${recorded_transcript_source_revision:-unknown}" "${local_worker_source_revision}"
       fi
       start_macos_job "transcript-worker" "${transcript_worker_label}" "--run-transcript-worker"
-      sleep 1
     fi
-    if ! launchctl print "gui/$(id -u)/${transcript_worker_label}" 2>/dev/null | rg -q "state = running"; then
+    if ! wait_for_macos_job_running "${transcript_worker_label}"; then
       echo "Transcript worker did not remain running." >&2
       tail -40 "${state_dir}/transcript-worker.log" >&2 || true
       exit 1
@@ -403,9 +414,8 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
       printf "RELOAD %-23s source %s -> %s\n" "Episode media worker" "${recorded_media_source_revision:-unknown}" "${local_worker_source_revision}"
     fi
     start_macos_job "media-worker" "${media_worker_label}" "--run-media-worker"
-    sleep 1
   fi
-  if ! launchctl print "gui/$(id -u)/${media_worker_label}" 2>/dev/null | rg -q "state = running"; then
+  if ! wait_for_macos_job_running "${media_worker_label}"; then
     echo "Episode media worker did not remain running." >&2
     tail -40 "${state_dir}/media-worker.log" >&2 || true
     exit 1
