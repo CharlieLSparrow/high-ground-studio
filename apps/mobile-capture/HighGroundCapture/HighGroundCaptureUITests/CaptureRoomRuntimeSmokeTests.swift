@@ -3975,6 +3975,13 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Journey"].firstMatch.waitForExistence(timeout: 8)
         )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureRetainedSourceTruth"].firstMatch.waitForExistence(timeout: 8),
+            "Session readiness should distinguish retained masters from prepared rooms and live tracks."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Retained source set"].firstMatch.waitForExistence(timeout: 8)
+        )
         let recordingBoundaryCopy = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Joining, CallKit, consent, local recording, and server recording remain separate states")
         ).firstMatch

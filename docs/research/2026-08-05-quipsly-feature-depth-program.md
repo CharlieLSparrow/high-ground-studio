@@ -338,3 +338,59 @@ For each epic:
 
 This program preserves Quipsly's speed. It replaces small disconnected feature
 claims with large, testable product systems.
+
+## Frontier research queue
+
+This is the next research queue, not a promise to add eight new navigation
+destinations. Each investigation must end in a retained comparison, a product
+decision, and either a bounded vertical slice or an explicit rejection.
+
+| Investigation | Product hypothesis | Smallest convincing proof | Principal risk |
+| --- | --- | --- | --- |
+| Session Guardian | Quipsly can prevent more bad recordings than a post-production repair tool can rescue by watching level, clipping, silence, route changes, storage, thermal pressure, clock health, track retention, and upload continuity during a Session. | Run one real hybrid episode with deliberate clipping, route loss, network loss, and low-storage simulations; show timely plain-language interventions and prove that warnings never claim more than measured evidence. | Too many alerts create more systems anxiety than they remove. |
+| On-device transcript assist | Capability-gated Apple Speech analysis can provide private live navigation, named-moment markers, and a recovery transcript while cloud or workstation transcription remains the measured reference lane. | On a supported physical iPhone, compare live and prerecorded Apple transcription against the retained Quipsly reference windows for latency, named entities, word timing, and battery/thermal cost. | OS and language support vary; a convenient draft can be mistaken for canonical transcript truth. |
+| Audible-event map | Sound classification plus Quipsly's deterministic signal evidence can make laughter, applause, silence, likely mouth events, and environmental disruptions searchable without pretending classification is repair approval. | Evaluate built-in and custom classifiers against human-labeled podcast/coaching windows, preserving false positives and exact source spans. | General sound labels are not precise enough for dialogue-repair decisions. |
+| Explainable assembly director | Speaker activity, reaction holds, Shared Watch state, manuscript cues, source quality, and explicit editorial style can generate a better first multicam cut than speaker switching alone. | Rebuild a substantial Episode 9 section as reversible edit operations; compare edit time, false cuts, missed reactions, and human changes against the manual baseline. | An opaque auto-cut can be fast but tonally awful. |
+| Conversation memory | One evidence-linked recap can serve coaching, episode, research, and working Sessions when templates are projections over the same transcript, decisions, and work records. | Regenerate the same retained Session as podcast production recap, coaching follow-up, and neutral meeting recap without duplicating tasks or losing source links. | Generic summaries flatten domain-specific privacy and meaning. |
+| Adaptive voice chain | Reviewed speaker, microphone, and room evidence can seed conservative leveling and repair proposals that improve over time without silently applying a personal preset. | Compare three episodes from the same setup with and without the learned proposal seed, using matched A/B, delivery QC, and human preference. | Overfitting one room or voice can damage a different recording. |
+| Evidence Lens | Permission-aware semantic retrieval over sources, transcripts, annotations, decisions, and documents can become Quipsly's research advantage if every answer navigates to exact evidence. | Answer a real High Ground Odyssey research question from mixed web, book, transcript, and note sources; require citation coverage, permission filtering, contradiction surfacing, and a portable research packet. | Embeddings can leak inaccessible context or create persuasive unsupported synthesis. |
+| Outcome compiler | The same reviewed structure can compile an episode, article, coaching packet, course lesson, short, social package, and archive bundle as versioned outputs rather than copied drafts. | Produce two meaningfully different outputs from one reviewed source graph, then change one source decision and show an explicit, reviewable impact set rather than silent drift. | A universal compiler can become lowest-common-denominator templating. |
+
+### Immediate ordering
+
+1. Session Guardian extends the readiness/source-topology work already shipping.
+2. Audible-event mapping and adaptive voice chains extend the Audio and
+   Dialogue Repair evidence kernel.
+3. On-device transcript assist feeds the transcript attention system, but only
+   after physical-device capability and accuracy measurement.
+4. Explainable assembly follows source-set and transcript-clock acceptance.
+5. Conversation memory and Evidence Lens reuse the same source anchors,
+   visibility policy, review receipts, and canonical work graph.
+6. Outcome compiler follows versioned writing, edit, and delivery operations;
+   it should not create another detached content generator.
+
+### Current official capability signals
+
+- Apple's [Speech framework](https://developer.apple.com/documentation/speech/)
+  exposes live and prerecorded transcription, alternative interpretations,
+  confidence, asset-managed modules, and voice-activity detection. Quipsly must
+  capability-gate the newer APIs and measure them on its own corpus.
+- Apple's [Sound Analysis framework](https://developer.apple.com/documentation/soundanalysis/)
+  supports stream and file classification with built-in or custom models. Its
+  output is candidate evidence, not an edit or repair decision.
+- [Microsoft Teams intelligent recap](https://learn.microsoft.com/en-us/microsoftteams/intelligent-recap-calls-meetings)
+  connects speaker/topic/mention timelines, chapters, notes, and suggested tasks
+  to a meeting. Quipsly should preserve the stronger exact-source and acceptance
+  boundaries it already has.
+- [Zoom meeting-summary templates](https://support.zoom.com/hc/en/article?id=zm_kb&sysparm_article=KB0080366)
+  validate domain-specific recap projections over one transcript rather than
+  separate meeting systems.
+- [Adobe Enhance Speech](https://podcast.adobe.com/en/enhancespeech) demonstrates
+  the appeal of one-click rescue and adjustable speech, music, and ambience.
+  Quipsly's differentiator should remain visible evidence, matched A/B, defect-
+  specific treatment, and versioned delivery rather than a mysterious global
+  enhancement switch.
+- [Notion AI](https://www.notion.com/help/notion-ai-faqs) connects meeting notes,
+  research, search, documents, databases, and connected applications. Quipsly's
+  opportunity is to make the cited source, media clock, editorial consequence,
+  and canonical follow-through substantially more exact.

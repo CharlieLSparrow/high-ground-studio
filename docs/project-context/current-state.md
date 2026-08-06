@@ -2095,3 +2095,23 @@ These should be treated as cleanup candidates later, not as authoritative produc
 - Physical browser+iPhone presence, real source upload, alignment, and Studio
   attachment remain the next acceptance lane. See
   `docs/coordination/2026-08-05-session-readiness-source-topology.md`.
+
+### 2026-08-05 native retained-source readiness
+
+- iPhone Capture's expandable Session readiness now exposes the retained source
+  set before recording and handoff controls. It uses the existing canonical
+  RecordingAsset/capture-group projection and does not create another device or
+  readiness store.
+- Each visible source distinguishes required local master from optional server-
+  mix witness, exact-byte/release verification from pending processing, and
+  retained source from Studio attachment. The empty state explicitly says that
+  a prepared room, live call track, or server-recording receipt is not a master.
+- The iOS app and UI-test target compile successfully for the iOS Simulator.
+  The runtime smoke now requires the retained-source disclosure alongside the
+  existing join/CallKit/consent/local/server-recording boundary. Physical source
+  capture and playback remain the acceptance boundary.
+- The feature-depth research program now has one ordered frontier queue for
+  Session Guardian, on-device transcript assist, audible-event mapping,
+  explainable assembly, conversation memory, adaptive voice chains, permission-
+  aware Evidence Lens, and an outcome compiler. These are investigations over
+  shared canonical primitives, not eight new parallel products.

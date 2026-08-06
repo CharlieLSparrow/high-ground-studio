@@ -7053,6 +7053,8 @@ private struct CaptureSessionTruthPanel: View {
                 tint: session.lifecycle?.readyForCapture == true ? .green : .orange
             )
 
+            retainedSourceTruth
+
             if !session.lifecycleSafeActions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Safe next actions")
@@ -7152,6 +7154,83 @@ private struct CaptureSessionTruthPanel: View {
             .accessibilityElement(children: .contain)
         }
         .accessibilityIdentifier("CaptureSessionTruthPanel")
+    }
+
+    @ViewBuilder
+    private var retainedSourceTruth: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            truthSection(
+                title: "Retained source set",
+                systemImage: "externaldrive.badge.checkmark",
+                status: session.recordingPromotionBadgeLabel,
+                detail: session.recordingMediaVaultLine,
+                tint: retainedSourceTint
+            )
+
+            ForEach(session.studioHandoffSources.prefix(4)) { source in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: source.isVerifiedForStudio ? "checkmark.circle.fill" : "clock.badge.exclamationmark")
+                        .foregroundStyle(source.isVerifiedForStudio ? Color.green : Color.orange)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source.fileName?.nonempty ?? "Unnamed capture source")
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(2)
+                        Text(retainedSourceDetail(source))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 4)
+                    if source.isPromotedToStudio {
+                        Text("In Studio")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.green)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureRetainedSource_\(source.recordingAssetId)")
+            }
+
+            if session.studioHandoffSources.count > 4 {
+                Text("\(session.studioHandoffSources.count - 4) more retained sources are available in the post-session inventory.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("A prepared room, a connected call track, or a server-recording receipt is not a retained master. Only verified recording assets appear here.")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureRetainedSourceTruth")
+    }
+
+    private var retainedSourceTint: Color {
+        let requiredSources = session.studioRequiredHandoffSources
+        guard !requiredSources.isEmpty else { return .secondary }
+        return requiredSources.allSatisfy(\.isVerifiedForStudio) ? .green : .orange
+    }
+
+    private func retainedSourceDetail(_ source: MobileCaptureSourceSummary) -> String {
+        let kind = source.kind?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .lowercased()
+            ?? "capture source"
+        let status = source.recordingStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: " ")
+            .lowercased()
+            ?? "status unavailable"
+        let verification = source.isVerifiedForStudio
+            ? "exact bytes verified"
+            : source.exactBytesVerified == true
+                ? "bytes verified; processing held"
+                : "verification pending"
+        let role = kind == "server mix" ? "optional sync witness" : "required local master"
+        return "\(role) · \(kind) · \(status) · \(verification)"
     }
 
     @ViewBuilder
