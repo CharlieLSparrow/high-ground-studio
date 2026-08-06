@@ -12,7 +12,7 @@ function map(clock = true): ActivityMap {
     programClock: clock ? { assetId: "asset-a", sourceId: "source-a" } : null,
     programDurationSeconds: 6,
     resolution: { cellCount: 180, secondsPerCell: 1 / 30 },
-    lanes: [{ assetId: "asset-a", sourceId: "source-a", title: "Homer iPhone.wav", kind: "dialogue", role: "dialogue-primary", participantId: "homer", participantLabel: "Homer Sparrow", mixDisposition: "include", alignment: clock ? "program-clock" : "unavailable", programOffsetSeconds: clock ? 0 : null, activityThresholdDbfs: -32, evidenceJobId: "signal-a", cells }],
+    lanes: [{ assetId: "asset-a", sourceId: "source-a", title: "Homer iPhone.wav", kind: "dialogue", role: "dialogue-primary", participantId: "homer", participantLabel: "Homer Sparrow", mixDisposition: "include", alignment: clock ? "program-clock" : "unavailable", programOffsetSeconds: clock ? 0 : null, sourceDurationSeconds: 6, activityThresholdDbfs: -32, evidenceJobId: "signal-a", cells }],
     moments: clock ? [{ id: "overlap-1", kind: "possible-participant-overlap", startSeconds: 2, endSeconds: 3, label: "Possible participant overlap", detail: "Listen before classifying this region.", assetIds: ["asset-a"], requiresListening: true }] : [],
     coverage: { trackCount: 1, profiledTrackCount: 1, plottedTrackCount: clock ? 1 : 0, missingProfileCount: 0, unalignedProfileCount: clock ? 0 : 1, unidentifiedDialogueTrackCount: 0 },
     summary: { possibleOverlapCount: clock ? 1 : 0, sameParticipantMultideviceCount: 0, unassignedEnergyCount: 0, dialogueGapCount: 0 },

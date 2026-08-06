@@ -21,11 +21,16 @@ import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-me
 
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
 import { EpisodeAudioActivityMap } from "@/components/audio/EpisodeAudioActivityMap";
+import { EpisodeAudioMatchedAudition } from "@/components/audio/EpisodeAudioMatchedAudition";
 import { EpisodeAudioProgramMap } from "@/components/audio/EpisodeAudioProgramMap";
 import {
   buildEpisodeAudioActivityMap,
   type EpisodeAudioActivityMoment,
 } from "@/lib/episode-audio-activity-map";
+import {
+  buildEpisodeAudioComparisonPlan,
+  type EpisodeAudioComparisonPlan,
+} from "@/lib/episode-audio-comparison";
 import {
   buildEpisodeAudioProgram,
   type EpisodeAudioProgramDecision,
@@ -107,6 +112,7 @@ export function AudioMasteryWorkspaceClient({
   const [projectSlug, setProjectSlug] = useState(initialProjectSlug);
   const [episodeSlug, setEpisodeSlug] = useState(initialEpisodeSlug);
   const [selectedAssetId, setSelectedAssetId] = useState(initialAssetId);
+  const [comparisonPlan, setComparisonPlan] = useState<EpisodeAudioComparisonPlan | null>(null);
   const [inventory, setInventory] = useState<AudioWorkspaceInventory | null>(null);
   const [inventoryState, setInventoryState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [inventoryError, setInventoryError] = useState<string | null>(loadError);
@@ -163,6 +169,7 @@ export function AudioMasteryWorkspaceClient({
   }, [applyInitialSourceClockFocus]);
 
   const replaceSelection = useCallback((nextProjectId: string, nextProjectSlug: string, nextEpisode: string, nextAsset?: string | null) => {
+    setComparisonPlan(null);
     setProjectId(nextProjectId);
     setProjectSlug(nextProjectSlug);
     setEpisodeSlug(nextEpisode);
@@ -742,6 +749,12 @@ export function AudioMasteryWorkspaceClient({
   }, [activeProjectId, audioProgram.fingerprintSha256, decisionBusy, projectSlug, selectedEpisode?.id]);
 
   const inspectActivityMoment = useCallback((moment: EpisodeAudioActivityMoment) => {
+    const nextComparisonPlan = buildEpisodeAudioComparisonPlan({
+      map: audioActivityMap,
+      moment,
+      playbackSources: assets.map((asset) => ({ assetId: asset.id, sourceId: asset.sourceId, playbackUrl: asset.playbackUrl })),
+    });
+    setComparisonPlan(nextComparisonPlan);
     const preferredAssetId = moment.assetIds.find((assetId) => audioActivityMap.lanes.some((lane) => lane.assetId === assetId))
       ?? audioActivityMap.programClock?.assetId
       ?? null;
@@ -754,9 +767,11 @@ export function AudioMasteryWorkspaceClient({
     if (selectedAsset?.id === lane.assetId && sourceSeconds !== null && immutableSourceRef.current) {
       immutableSourceRef.current.currentTime = sourceSeconds;
     }
-    setNotice(`Opened ${moment.label.toLowerCase()} at program ${moment.startSeconds.toFixed(3)}s${sourceSeconds !== null ? ` · source ${sourceSeconds.toFixed(3)}s` : ""}. Press play to listen.`);
+    setNotice(nextComparisonPlan
+      ? `Prepared a ${nextComparisonPlan.durationSeconds.toFixed(2)}s matched-source audition for ${moment.label.toLowerCase()}. Playback remains a deliberate human action.`
+      : `Opened ${moment.label.toLowerCase()} at program ${moment.startSeconds.toFixed(3)}s${sourceSeconds !== null ? ` · source ${sourceSeconds.toFixed(3)}s` : ""}. A matched audition is unavailable until protected aligned sources overlap this region.`);
     router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, selectedEpisode.slug, lane.assetId, sourceSeconds));
-  }, [audioActivityMap, projectId, projectSlug, router, selectedAsset?.id, selectedEpisode, selectedProject?.id]);
+  }, [assets, audioActivityMap, projectId, projectSlug, router, selectedAsset?.id, selectedEpisode, selectedProject?.id]);
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 pb-16 text-[#3d3122]">
@@ -899,6 +914,13 @@ export function AudioMasteryWorkspaceClient({
               }}
               onInspectMoment={inspectActivityMoment}
             />
+            {comparisonPlan ? (
+              <EpisodeAudioMatchedAudition
+                plan={comparisonPlan}
+                onClose={() => setComparisonPlan(null)}
+                onPausePrimarySource={() => immutableSourceRef.current?.pause()}
+              />
+            ) : null}
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">

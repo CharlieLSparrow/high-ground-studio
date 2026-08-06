@@ -15,6 +15,7 @@ export type EpisodeAudioActivityLane = {
   mixDisposition: EpisodeAudioProgramTrack["mixDisposition"];
   alignment: "program-clock" | "qualified-candidate" | "unavailable";
   programOffsetSeconds: number | null;
+  sourceDurationSeconds: number | null;
   activityThresholdDbfs: number | null;
   evidenceJobId: string | null;
   cells: Array<{
@@ -228,6 +229,7 @@ export function buildEpisodeAudioActivityMap(program: EpisodeAudioProgram): Epis
       mixDisposition: track.mixDisposition,
       alignment: aligned.kind,
       programOffsetSeconds: aligned.offset,
+      sourceDurationSeconds: evidence?.durationSeconds ?? track.durationSeconds,
       activityThresholdDbfs: threshold,
       evidenceJobId: evidence?.jobId ?? null,
       cells,
