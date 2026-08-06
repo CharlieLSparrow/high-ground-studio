@@ -72,6 +72,51 @@ A term recall gain cannot produce `improved` when general WER regresses beyond
 the tolerance, critical-term recall falls, or false prompted mentions rise.
 No verdict changes production routing.
 
+## Provider capability and operated runner
+
+The private provider runner now owns the complete matched operation instead of
+requiring an operator to assemble two unrelated commands. With
+`--terminology-experiment`, it:
+
+1. downloads and SHA-verifies the protected source once;
+2. creates and probes one exact mono 16 kHz PCM derivative;
+3. runs a baseline arm and a project-terminology arm against those same bytes;
+4. writes each raw provider receipt create-once with mode `0600` before the
+   candidate append;
+5. gives each arm a stable, idempotent run key; and
+6. appends both immutable candidates for the existing matched board.
+
+Deepgram Nova-3 is eligible because its current pre-recorded API supports
+repeated native `keyterm` parameters. Local open-source Whisper is eligible
+through a first-window `initial_prompt` and now has a provider adapter that
+preserves real word timestamps while explicitly reporting speaker attribution
+as unavailable. OpenAI `gpt-4o-transcribe-diarize` remains an eligible
+unprompted accuracy/diarization benchmark, but the runner rejects it for this
+experiment because the current Audio API explicitly does not support `prompt`
+with that model. Quipsly does not synthesize or mislabel a provider feature.
+
+Primary capability references:
+
+- [Deepgram Nova-3 keyterm prompting](https://developers.deepgram.com/docs/keyterm)
+- [OpenAI Audio API transcription parameters](https://platform.openai.com/docs/api-reference/audio/createTranscription)
+
+Example local matched run after a genuine window exists:
+
+```bash
+QUIPSLY_BEARER_TOKEN=... pnpm quipsly:transcript:providers:run -- \
+  --provider local-whisper \
+  --terminology-experiment \
+  --room-id ROOM_ID \
+  --base-url http://127.0.0.1:3012 \
+  --run-key terminology-YYYYMMDD \
+  --policy PRIVATE_LOCAL_POLICY.json \
+  --evidence-dir PRIVATE_EVIDENCE_DIRECTORY
+```
+
+The command remains a protected operator tool. It does not change the
+production transcript provider, rewrite a transcript, or authorize downstream
+regeneration.
+
 ## Operated evidence
 
 - The local retained database currently has three active High Ground Odyssey
@@ -92,6 +137,11 @@ No verdict changes production routing.
   removed the fixture afterward.
 - Focused media, server, API, board, and local-database tests pass. Production
   typechecks pass for Quipsly and the shared media package.
+- A controlled local runner operation invoked a deterministic fake Whisper
+  executable twice, verified the baseline and prompted requests used one
+  derivative checksum, retained different arm identities, and appended both
+  candidate payloads through the API boundary. It did not claim transcription
+  accuracy or call an external provider.
 
 The database operation is contract evidence, not a provider benchmark or a
 human High Ground Odyssey quality result.
@@ -100,8 +150,11 @@ human High Ground Odyssey quality result.
 
 Use the existing Session correction desk to listen through and approve a real
 60-180 second High Ground Odyssey window containing Quipsly, High Ground
-Odyssey, Homer, or another reviewed project term. Export its protected runner
-input, create baseline and project-terminology attempts from the same PCM
-derivative, time one human correction pass per arm, and inspect the matched
-verdict. Repeat with coaching names, commitments, and dates before proposing a
-production default.
+Odyssey, Homer, or another reviewed project term. Run the paired command, time
+one human correction pass per arm, and inspect the matched verdict. Repeat with
+coaching names, commitments, and dates before proposing a production default.
+
+The next productization step is a leased run-control record and operator queue,
+so Nest can request, observe, retry, and reconcile this exact operation without
+placing provider secrets in the web process. The create-once receipt directory
+and idempotent candidate keys are already the crash boundary for that worker.

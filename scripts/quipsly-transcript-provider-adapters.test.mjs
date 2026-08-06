@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   deepgramEvaluationRequestConfig,
+  localWhisperEvaluationRequestConfig,
   normalizeDeepgramEvaluationWords,
+  normalizeLocalWhisperEvaluationWords,
   normalizeOpenAIDiarizedEvaluationWords,
   openAIDiarizedEvaluationRequestConfig,
 } from "../packages/quipsly-media-processing/src/transcript-provider-adapters.ts";
@@ -36,6 +38,18 @@ test("OpenAI adapter preserves segment speakers without inventing word timing", 
   ]);
 });
 
+test("local Whisper adapter preserves word timing and names missing diarization honestly", () => {
+  assert.deepEqual(normalizeLocalWhisperEvaluationWords({
+    segments: [{ words: [
+      { word: " Quipsly", start: 0.2, end: 0.6, probability: 0.91 },
+      { word: " Homer", start: 0.7, end: 1.1, probability: 0.88 },
+    ] }],
+  }), [
+    { text: "Quipsly", startSeconds: 0.2, endSeconds: 0.6, speakerId: null },
+    { text: "Homer", startSeconds: 0.7, endSeconds: 1.1, speakerId: null },
+  ]);
+});
+
 test("evaluation configs pin evidence boundaries", () => {
   assert.throws(() => deepgramEvaluationRequestConfig({ modelVersion: "latest" }), /exact Deepgram model version/);
   assert.deepEqual(deepgramEvaluationRequestConfig({ modelVersion: "2026-05-01.0" }), {
@@ -55,5 +69,13 @@ test("evaluation configs pin evidence boundaries", () => {
     response_format: "diarized_json",
     chunking_strategy: "auto",
     language: "en",
+  });
+  assert.deepEqual(localWhisperEvaluationRequestConfig({ model: "large-v3-turbo" }), {
+    executable: "openai-whisper-cli",
+    model: "large-v3-turbo",
+    language: "en",
+    device: "cpu",
+    word_timestamps: true,
+    condition_on_previous_text: false,
   });
 });

@@ -9,10 +9,14 @@ import { promisify } from "node:util";
 
 import {
   DEEPGRAM_TRANSCRIPT_MODEL,
+  LOCAL_WHISPER_EVALUATION_ADAPTER_VERSION,
+  LOCAL_WHISPER_TRANSCRIPT_PROVIDER,
   OPENAI_DIARIZED_TRANSCRIPT_MODEL,
   QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
   deepgramEvaluationRequestConfig,
+  localWhisperEvaluationRequestConfig,
   normalizeDeepgramEvaluationWords,
+  normalizeLocalWhisperEvaluationWords,
   normalizeOpenAIDiarizedEvaluationWords,
   openAIDiarizedEvaluationRequestConfig,
 } from "../packages/quipsly-media-processing/src/transcript-provider-adapters.ts";
@@ -32,62 +36,91 @@ validateRunnerInput(runnerInput, options.roomId || null);
 
 const requestConfig = options.provider === "deepgram"
   ? deepgramEvaluationRequestConfig({ modelVersion: options.deepgramModelVersion, language: options.language })
-  : openAIDiarizedEvaluationRequestConfig({ language: options.language });
+  : options.provider === "openai"
+    ? openAIDiarizedEvaluationRequestConfig({ language: options.language })
+    : localWhisperEvaluationRequestConfig({
+        model: options.whisperModel,
+        language: options.language,
+        device: options.whisperDevice,
+      });
 const evidenceDirectory = options.dryRun ? null : resolve(options.evidenceDir);
 if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true, mode: 0o700 });
 
 const selectedWindows = runnerInput.windows.slice(0, options.limit || runnerInput.windows.length);
 const results = [];
 for (const window of selectedWindows) {
-  const receiptPath = evidenceDirectory
-    ? resolve(evidenceDirectory, `${safeFile(options.runKey)}-${safeFile(window.windowId)}.provider.json`)
-    : null;
-  let receipt = receiptPath ? await readExistingReceipt(receiptPath, window, options) : null;
-  if (!receipt) {
-    const originalSource = await downloadVerifiedSource(baseUrl, bearerToken, window);
-    const source = await createDeterministicEvaluationDerivative(originalSource, window);
-    if (options.dryRun) {
-      results.push({
-        windowId: window.windowId,
-        sourceSha256: window.source.sha256,
-        sourceBytes: originalSource.bytes.byteLength,
-        derivativeSha256: source.derivative.sha256,
-        derivativeBytes: source.bytes.byteLength,
-        derivativeDurationSeconds: source.derivative.durationSeconds,
-        outcome: "validated-only",
-      });
-      continue;
-    }
-    receipt = await invokeProvider({ options, requestConfig, policy, window, source });
-    await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  const arms = experimentArms(options, window);
+  const existingReceipts = new Map();
+  for (const arm of arms) {
+    const receiptPath = evidenceDirectory
+      ? resolve(evidenceDirectory, receiptFileName(options.runKey, window.windowId, arm.name))
+      : null;
+    const receipt = receiptPath
+      ? await readExistingReceipt(receiptPath, window, options, arm)
+      : null;
+    existingReceipts.set(arm.name, { receiptPath, receipt });
   }
-  const appendResult = await fetchJson(`${baseUrl}/api/transcript-evaluation`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${bearerToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      operation: "append-candidate",
+  const needsSource = options.dryRun || [...existingReceipts.values()].some((value) => !value.receipt);
+  const originalSource = needsSource ? await downloadVerifiedSource(baseUrl, bearerToken, window) : null;
+  const source = originalSource ? await createDeterministicEvaluationDerivative(originalSource, window) : null;
+  if (options.dryRun) {
+    results.push({
       windowId: window.windowId,
-      clientRequestId: stableRequestId(options.runKey, window.windowId),
-      runKey: options.runKey,
-      requestConfig: receipt.requestConfig,
-      rawResponse: receipt.rawResponse,
-      policy: receipt.policy,
-      candidate: receipt.candidate,
-    }),
-  });
-  results.push({
-    windowId: window.windowId,
-    sourceSha256: window.source.sha256,
-    derivativeSha256: receipt.sourceDerivative.sha256,
-    outcome: receipt.candidate.outcome,
-    candidateId: appendResult.candidate?.id ?? null,
-    idempotentReplay: appendResult.idempotentReplay === true,
-    rawResponseSha256: sha256Json(receipt.rawResponse),
-    elapsedMilliseconds: receipt.candidate.elapsedMilliseconds,
-  });
+      sourceSha256: window.source.sha256,
+      sourceBytes: originalSource.bytes.byteLength,
+      derivativeSha256: source.derivative.sha256,
+      derivativeBytes: source.bytes.byteLength,
+      derivativeDurationSeconds: source.derivative.durationSeconds,
+      arms: arms.map((arm) => arm.name),
+      outcome: "validated-only",
+    });
+    continue;
+  }
+  for (const arm of arms) {
+    const stored = existingReceipts.get(arm.name);
+    let receipt = stored.receipt;
+    if (!receipt) {
+      receipt = await invokeProvider({
+        options,
+        requestConfig: requestConfigForArm(requestConfig, window, arm),
+        policy,
+        window,
+        source,
+        arm,
+      });
+      await writeFile(stored.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    }
+    const armRunKey = runKeyForArm(options.runKey, arm.name);
+    const appendResult = await fetchJson(`${baseUrl}/api/transcript-evaluation`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        operation: "append-candidate",
+        windowId: window.windowId,
+        clientRequestId: stableRequestId(armRunKey, window.windowId),
+        runKey: armRunKey,
+        requestConfig: receipt.requestConfig,
+        rawResponse: receipt.rawResponse,
+        policy: receipt.policy,
+        candidate: receipt.candidate,
+      }),
+    });
+    results.push({
+      windowId: window.windowId,
+      arm: arm.name,
+      comparisonKey: receipt.requestConfig.terminologyExperiment?.comparisonKey ?? null,
+      sourceSha256: window.source.sha256,
+      derivativeSha256: receipt.sourceDerivative.sha256,
+      outcome: receipt.candidate.outcome,
+      candidateId: appendResult.candidate?.id ?? null,
+      idempotentReplay: appendResult.idempotentReplay === true,
+      rawResponseSha256: sha256Json(receipt.rawResponse),
+      elapsedMilliseconds: receipt.candidate.elapsedMilliseconds,
+    });
+  }
 }
 const summary = {
   kind: "quipsly-transcript-provider-run-summary-v1",
@@ -96,6 +129,7 @@ const summary = {
   corpusRevisionSha256: runnerInput.corpusRevisionSha256,
   provider: options.provider,
   runKey: options.runKey,
+  experiment: options.terminologyExperiment ? "terminology" : null,
   requestConfig,
   dryRun: options.dryRun,
   windowCount: results.length,
@@ -109,7 +143,7 @@ if (options.output) {
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
-async function invokeProvider({ options, requestConfig, policy, window, source }) {
+async function invokeProvider({ options, requestConfig, policy, window, source, arm }) {
   const startedAt = Date.now();
   let rawResponse;
   let providerRequestId = null;
@@ -118,8 +152,11 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
       const apiKey = requiredEnvironment("DEEPGRAM_API_KEY");
       const url = new URL(requestConfig.endpoint);
       for (const [key, value] of Object.entries(requestConfig)) {
-        if (key === "endpoint") continue;
+        if (key === "endpoint" || key === "terminology") continue;
         url.searchParams.set(key, String(value));
+      }
+      for (const keyterm of requestConfig.terminology?.nativeKeyterms ?? []) {
+        url.searchParams.append("keyterm", keyterm);
       }
       const response = await fetch(url, {
         method: "POST",
@@ -146,6 +183,35 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
           providerName: "Deepgram batch",
           model: `${DEEPGRAM_TRANSCRIPT_MODEL}@${requestConfig.version}+diarizer-${requestConfig.diarize_model}`,
           speakerAttribution: "word",
+          timingGranularity: "word",
+          outcome: "succeeded",
+          words,
+        },
+      });
+    }
+
+    if (options.provider === "local-whisper") {
+      const rawResponse = await invokeLocalWhisper({
+        options,
+        source,
+        prompt: requestConfig.terminology?.prompt ?? null,
+      });
+      const words = normalizeLocalWhisperEvaluationWords(rawResponse);
+      return receipt({
+        options,
+        requestConfig,
+        policy,
+        window,
+        rawResponse,
+        providerRequestId: null,
+        elapsedMilliseconds: Date.now() - startedAt,
+        candidate: {
+          sourceDerivative: source.derivative,
+          providerKey: LOCAL_WHISPER_TRANSCRIPT_PROVIDER,
+          providerName: "OpenAI Whisper local",
+          model: requestConfig.model,
+          adapterVersion: LOCAL_WHISPER_EVALUATION_ADAPTER_VERSION,
+          speakerAttribution: "unavailable",
           timingGranularity: "word",
           outcome: "succeeded",
           words,
@@ -189,6 +255,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
     });
   } catch (error) {
     const failure = sanitizeFailure(error, options.provider, providerRequestId);
+    const identity = providerIdentity(options, requestConfig);
     return receipt({
       options,
       requestConfig,
@@ -199,19 +266,130 @@ async function invokeProvider({ options, requestConfig, policy, window, source }
       elapsedMilliseconds: Date.now() - startedAt,
       candidate: {
         sourceDerivative: source.derivative,
-        providerKey: options.provider === "deepgram" ? "deepgram-batch" : "openai-diarized",
-        providerName: options.provider === "deepgram" ? "Deepgram batch" : "OpenAI diarized transcription",
-        model: options.provider === "deepgram"
-          ? `${DEEPGRAM_TRANSCRIPT_MODEL}@${requestConfig.version}+diarizer-${requestConfig.diarize_model}`
-          : OPENAI_DIARIZED_TRANSCRIPT_MODEL,
-        speakerAttribution: options.provider === "deepgram" ? "word" : "segment",
-        timingGranularity: options.provider === "deepgram" ? "word" : "unavailable",
+        ...identity,
         outcome: "failed",
         errorCode: failure.errorCode,
         retryable: failure.retryable,
       },
     });
   }
+}
+
+async function invokeLocalWhisper({ options, source, prompt }) {
+  const workingDirectory = await mkdtemp(join(tmpdir(), "quipsly-evaluation-whisper-"));
+  const sourcePath = join(workingDirectory, "window.wav");
+  const outputPath = join(workingDirectory, "window.json");
+  try {
+    await writeFile(sourcePath, source.bytes, { flag: "wx", mode: 0o600 });
+    const args = [
+      sourcePath,
+      "--model", options.whisperModel,
+      "--device", options.whisperDevice,
+      "--output_dir", workingDirectory,
+      "--output_format", "json",
+      "--verbose", "False",
+      "--word_timestamps", "True",
+      "--condition_on_previous_text", "False",
+      "--fp16", options.whisperDevice === "cpu" ? "False" : "True",
+    ];
+    if (options.language) args.push("--language", options.language);
+    if (prompt) args.push("--initial_prompt", prompt);
+    await execFileAsync(options.whisperExecutable, args, { maxBuffer: 16 * 1024 * 1024 });
+    return JSON.parse(await readFile(outputPath, "utf8"));
+  } finally {
+    await rm(workingDirectory, { recursive: true, force: true });
+  }
+}
+
+function providerIdentity(options, requestConfig) {
+  if (options.provider === "deepgram") {
+    return {
+      providerKey: "deepgram-batch",
+      providerName: "Deepgram batch",
+      model: `${DEEPGRAM_TRANSCRIPT_MODEL}@${requestConfig.version}+diarizer-${requestConfig.diarize_model}`,
+      adapterVersion: QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
+      speakerAttribution: "word",
+      timingGranularity: "word",
+    };
+  }
+  if (options.provider === "local-whisper") {
+    return {
+      providerKey: LOCAL_WHISPER_TRANSCRIPT_PROVIDER,
+      providerName: "OpenAI Whisper local",
+      model: requestConfig.model,
+      adapterVersion: LOCAL_WHISPER_EVALUATION_ADAPTER_VERSION,
+      speakerAttribution: "unavailable",
+      timingGranularity: "word",
+    };
+  }
+  return {
+    providerKey: "openai-diarized",
+    providerName: "OpenAI diarized transcription",
+    model: OPENAI_DIARIZED_TRANSCRIPT_MODEL,
+    adapterVersion: QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
+    speakerAttribution: "segment",
+    timingGranularity: "unavailable",
+  };
+}
+
+function experimentArms(options, window) {
+  if (!options.terminologyExperiment) return [{ name: "single" }];
+  const experiment = window?.terminologyExperiment;
+  if (
+    experiment?.schema !== "quipsly-transcript-terminology-experiment-v1"
+    || !/^[a-f0-9]{64}$/.test(experiment.termsSha256 ?? "")
+    || !Array.isArray(experiment.terms)
+    || experiment.terms.length !== experiment.promptTermCount
+    || experiment.promptTermCount < 1
+  ) {
+    throw new Error(`Window ${window.windowId} has no valid frozen terminology experiment.`);
+  }
+  if (experiment.terms.length > 100) {
+    throw new Error(`Window ${window.windowId} exceeds the provider-safe 100-term experiment limit.`);
+  }
+  return [{ name: "baseline" }, { name: "project-terminology" }];
+}
+
+function requestConfigForArm(baseConfig, window, arm) {
+  if (arm.name === "single") return baseConfig;
+  const experiment = window.terminologyExperiment;
+  const terms = experiment.terms.map((term) => String(term.canonicalText ?? "").trim()).filter(Boolean);
+  if (terms.length !== experiment.promptTermCount) {
+    throw new Error(`Window ${window.windowId} has incomplete canonical terminology text.`);
+  }
+  if (arm.name === "baseline") {
+    return {
+      ...baseConfig,
+      terminology: {
+        mode: "none",
+        snapshotSha256: experiment.termsSha256,
+        termCount: 0,
+        nativeKeyterms: [],
+        prompt: null,
+      },
+    };
+  }
+  const prompt = terms.join(", ");
+  return {
+    ...baseConfig,
+    terminology: {
+      mode: "project-snapshot",
+      snapshotSha256: experiment.termsSha256,
+      termCount: experiment.promptTermCount,
+      nativeKeyterms: terms,
+      prompt,
+      promptSha256: createHash("sha256").update(prompt, "utf8").digest("hex"),
+    },
+  };
+}
+
+function runKeyForArm(runKey, armName) {
+  return armName === "single" ? runKey : `${runKey}-${armName}`;
+}
+
+function receiptFileName(runKey, windowId, armName) {
+  const suffix = armName === "single" ? "" : `-${safeFile(armName)}`;
+  return `${safeFile(runKey)}-${safeFile(windowId)}${suffix}.provider.json`;
 }
 
 function receipt({ options, requestConfig, policy, window, rawResponse, providerRequestId, elapsedMilliseconds, candidate }) {
@@ -221,7 +399,12 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
   return {
     kind: "quipsly-private-transcript-provider-receipt-v1",
     version: 1,
-    runKey: options.runKey,
+    runKey: runKeyForArm(
+      options.runKey,
+      options.terminologyExperiment
+        ? requestConfig.terminology.mode === "none" ? "baseline" : "project-terminology"
+        : "single",
+    ),
     windowId: window.windowId,
     windowKeySha256: window.windowKeySha256,
     sourceSha256: window.source.sha256,
@@ -230,12 +413,20 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
     requestConfig: {
       provider: requestConfig,
       inputMedia: sourceDerivative,
+      ...(options.terminologyExperiment ? {
+        terminologyExperiment: {
+          schema: "quipsly-transcript-terminology-experiment-v1",
+          comparisonKey: options.runKey,
+          arm: requestConfig.terminology.mode === "none" ? "baseline" : "project-terminology",
+          termsSha256: requestConfig.terminology.snapshotSha256,
+        },
+      } : {}),
     },
     policy,
     rawResponse,
     candidate: {
       ...candidateWithoutDerivative,
-      adapterVersion: QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
+      adapterVersion: candidateWithoutDerivative.adapterVersion ?? QUIPSLY_TRANSCRIPT_PROVIDER_ADAPTER_VERSION,
       providerRequestId,
       completedAt: new Date().toISOString(),
       elapsedMilliseconds,
@@ -247,12 +438,19 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
   };
 }
 
-async function readExistingReceipt(path, window, options) {
+async function readExistingReceipt(path, window, options, arm) {
   try {
     const existing = JSON.parse(await readFile(path, "utf8"));
+    const expectedRunKey = runKeyForArm(options.runKey, arm.name);
+    const expectedProviderKey = options.provider === "deepgram"
+      ? "deepgram-batch"
+      : options.provider === "openai"
+        ? "openai-diarized"
+        : LOCAL_WHISPER_TRANSCRIPT_PROVIDER;
+    const experiment = existing.requestConfig?.terminologyExperiment;
     if (
       existing.kind !== "quipsly-private-transcript-provider-receipt-v1"
-      || existing.runKey !== options.runKey
+      || existing.runKey !== expectedRunKey
       || existing.windowId !== window.windowId
       || existing.windowKeySha256 !== window.windowKeySha256
       || existing.sourceSha256 !== window.source.sha256
@@ -262,6 +460,14 @@ async function readExistingReceipt(path, window, options) {
       || Math.abs(Number(existing.sourceDerivative?.startSeconds) - Number(window.source.startSeconds)) > 0.01
       || Math.abs(Number(existing.sourceDerivative?.endSeconds) - Number(window.source.endSeconds)) > 0.01
       || JSON.stringify(existing.requestConfig?.inputMedia) !== JSON.stringify(existing.sourceDerivative)
+      || existing.candidate?.providerKey !== expectedProviderKey
+      || (options.terminologyExperiment && (
+        experiment?.schema !== "quipsly-transcript-terminology-experiment-v1"
+        || experiment?.comparisonKey !== options.runKey
+        || experiment?.arm !== arm.name
+        || experiment?.termsSha256 !== window.terminologyExperiment?.termsSha256
+      ))
+      || (!options.terminologyExperiment && experiment != null)
     ) {
       throw new Error(`Existing provider receipt does not match current immutable evidence: ${path}`);
     }
@@ -452,9 +658,14 @@ function parseArguments(args) {
     output: "",
     language: "",
     deepgramModelVersion: "",
+    whisperExecutable: process.env.QUIPSLY_LOCAL_WHISPER_EXECUTABLE?.trim()
+      || "/opt/homebrew/Caskroom/miniconda/base/bin/whisper",
+    whisperModel: process.env.QUIPSLY_LOCAL_WHISPER_MODEL?.trim() || "large-v3-turbo",
+    whisperDevice: process.env.QUIPSLY_LOCAL_WHISPER_DEVICE?.trim() || "cpu",
     estimatedCostUsdPerHour: null,
     limit: 0,
     dryRun: false,
+    terminologyExperiment: false,
   };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -469,14 +680,19 @@ function parseArguments(args) {
     else if (argument === "--output") parsed.output = args[++index] ?? "";
     else if (argument === "--language") parsed.language = args[++index] ?? "";
     else if (argument === "--deepgram-model-version") parsed.deepgramModelVersion = args[++index] ?? "";
+    else if (argument === "--whisper-executable") parsed.whisperExecutable = args[++index] ?? "";
+    else if (argument === "--whisper-model") parsed.whisperModel = args[++index] ?? "";
+    else if (argument === "--whisper-device") parsed.whisperDevice = args[++index] ?? "";
     else if (argument === "--estimated-cost-usd-per-hour") parsed.estimatedCostUsdPerHour = Number(args[++index]);
     else if (argument === "--limit") parsed.limit = Number(args[++index]);
     else if (argument === "--dry-run") parsed.dryRun = true;
+    else if (argument === "--terminology-experiment") parsed.terminologyExperiment = true;
     else if (argument === "--help" || argument === "-h") {
       process.stdout.write([
         "Usage:",
         "  QUIPSLY_BEARER_TOKEN=... OPENAI_API_KEY=... pnpm quipsly:transcript:providers:run --provider openai --room-id ROOM --base-url https://nest.quipsly.com --run-key RUN --policy POLICY.json --evidence-dir PRIVATE_DIR --output SUMMARY.json",
         "  QUIPSLY_BEARER_TOKEN=... DEEPGRAM_API_KEY=... pnpm quipsly:transcript:providers:run --provider deepgram --deepgram-model-version EXACT_VERSION ...",
+        "  QUIPSLY_BEARER_TOKEN=... pnpm quipsly:transcript:providers:run --provider local-whisper --terminology-experiment ...",
         "",
         "Use --dry-run to authenticate, export, download, and SHA-verify sources without calling a provider or mutating Nest.",
         "Provider and Quipsly credentials are read only from environment variables and never from command arguments.",
@@ -486,11 +702,19 @@ function parseArguments(args) {
       process.exit(0);
     } else throw new Error(`Unknown option: ${argument}`);
   }
-  if (parsed.provider !== "deepgram" && parsed.provider !== "openai") throw new Error("--provider must be deepgram or openai.");
+  if (!["deepgram", "openai", "local-whisper"].includes(parsed.provider)) throw new Error("--provider must be deepgram, openai, or local-whisper.");
   if (!parsed.roomId && !parsed.input) throw new Error("Choose --room-id or --input.");
   if (!parsed.baseUrl || !parsed.runKey || !parsed.policy) throw new Error("--base-url, --run-key, and --policy are required.");
   if (!parsed.dryRun && !parsed.evidenceDir) throw new Error("--evidence-dir is required for crash-safe provider execution.");
   if (parsed.provider === "deepgram" && !parsed.deepgramModelVersion) throw new Error("--deepgram-model-version is required and must be exact.");
+  if (parsed.terminologyExperiment && parsed.provider === "openai") {
+    throw new Error("OpenAI diarized transcription does not support prompt terminology; use Deepgram Nova-3 or local-whisper for a matched terminology experiment.");
+  }
+  if (parsed.provider === "local-whisper") {
+    if (!parsed.whisperExecutable) throw new Error("A local Whisper executable is required.");
+    if (!/^[A-Za-z0-9._-]{2,100}$/.test(parsed.whisperModel)) throw new Error("The local Whisper model is invalid.");
+    if (!/^[A-Za-z0-9._-]{2,30}$/.test(parsed.whisperDevice)) throw new Error("The local Whisper device is invalid.");
+  }
   if (parsed.limit && (!Number.isSafeInteger(parsed.limit) || parsed.limit < 1)) throw new Error("--limit must be a positive integer.");
   if (parsed.estimatedCostUsdPerHour !== null && (!Number.isFinite(parsed.estimatedCostUsdPerHour) || parsed.estimatedCostUsdPerHour < 0)) throw new Error("--estimated-cost-usd-per-hour must be non-negative.");
   safeFile(parsed.runKey);

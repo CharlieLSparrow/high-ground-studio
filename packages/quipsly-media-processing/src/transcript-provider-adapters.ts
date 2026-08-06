@@ -7,6 +7,9 @@ export const OPENAI_DIARIZED_TRANSCRIPT_MODEL =
   "gpt-4o-transcribe-diarize" as const;
 export const DEEPGRAM_TRANSCRIPT_MODEL = "nova-3" as const;
 export const DEEPGRAM_DIARIZATION_MODEL = "v2" as const;
+export const LOCAL_WHISPER_TRANSCRIPT_PROVIDER = "openai-whisper-local" as const;
+export const LOCAL_WHISPER_EVALUATION_ADAPTER_VERSION =
+  "quipsly-local-whisper-evaluation-adapter-v1" as const;
 
 function record(value: unknown, field: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -89,6 +92,54 @@ export function normalizeOpenAIDiarizedEvaluationWords(
   });
   if (!words.length) throw new Error("OpenAI returned no diarized transcript words.");
   return words;
+}
+
+/**
+ * Normalize the create-once JSON emitted by the open-source Whisper CLI.
+ *
+ * Whisper has word timestamps but no speaker identity. Null speaker evidence is
+ * deliberate here: the accuracy lab may compare lexical/timing quality, while
+ * the release board will continue to report diarization as unavailable.
+ */
+export function normalizeLocalWhisperEvaluationWords(
+  response: unknown,
+): TranscriptEvaluationWord[] {
+  const root = record(response, "Local Whisper response");
+  const segments = array(root.segments, "Local Whisper response.segments");
+  const words = segments.flatMap((value, segmentIndex) => {
+    const segment = record(value, `Local Whisper segment ${segmentIndex}`);
+    return array(segment.words, `Local Whisper segment ${segmentIndex}.words`).map((wordValue, wordIndex) => {
+      const word = record(wordValue, `Local Whisper word ${segmentIndex}.${wordIndex}`);
+      const startSeconds = nonNegative(word.start, `Local Whisper word ${segmentIndex}.${wordIndex}.start`);
+      const endSeconds = nonNegative(word.end, `Local Whisper word ${segmentIndex}.${wordIndex}.end`);
+      if (endSeconds < startSeconds) {
+        throw new Error(`Local Whisper word ${segmentIndex}.${wordIndex} has a reversed time range.`);
+      }
+      return {
+        text: text(word.word, `Local Whisper word ${segmentIndex}.${wordIndex}.text`),
+        startSeconds,
+        endSeconds,
+        speakerId: null,
+      };
+    });
+  });
+  if (!words.length) throw new Error("Local Whisper returned no word timing evidence.");
+  return words;
+}
+
+export function localWhisperEvaluationRequestConfig(input: {
+  model: string;
+  language?: string;
+  device?: string;
+}) {
+  return {
+    executable: "openai-whisper-cli",
+    model: text(input.model, "Local Whisper model"),
+    language: input.language?.trim() || "en",
+    device: input.device?.trim() || "cpu",
+    word_timestamps: true,
+    condition_on_previous_text: false,
+  } as const;
 }
 
 export function deepgramEvaluationRequestConfig(input: {

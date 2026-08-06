@@ -177,3 +177,18 @@ score.
 
 The order can change when real use exposes a stronger dependency. The evidence
 and object boundaries should survive that change.
+
+## Research cadence
+
+Maintain two parallel horizons:
+
+- a weekly depth pass on the capabilities currently being operated, ending in
+  a measurable build, a rejected idea, or an explicit dependency; and
+- a monthly expansion pass across adjacent creator, coaching, research,
+  writing, learning, collaboration, and distribution categories.
+
+Every pass updates the capability frontier above. A competitor feature is not
+automatically a Quipsly feature request: the research must identify the user
+outcome, the shared objects it deepens, and the real-work acceptance journey.
+This cadence is intentionally lightweight enough that it does not slow large
+implementation swings.
