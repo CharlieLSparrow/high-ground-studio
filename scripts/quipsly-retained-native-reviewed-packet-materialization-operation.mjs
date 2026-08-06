@@ -452,7 +452,8 @@ async function main() {
       "The rebuilt packet must correlate its fully reviewed source span to one canonical goal.");
     assert(afterNote.transcriptReviewStatus === "human-reviewed" && afterNote.committedNoteId
       && afterNote.suggestedTitle === editedNoteTitle && afterNote.suggestedBody === editedNoteBody
-      && afterNote.reviewStatus === "ACCEPTED_AS_NOTE" && afterNote.lastHumanReview?.decision === "ACCEPT",
+      && afterNote.reviewStatus === "ACCEPTED_AS_NOTE" && afterNote.lastHumanReview?.decision === "ACCEPT"
+      && afterNote.lastHumanReview?.governance?.capabilityId === "quipsly.session.transcript-note.materialize",
     "The rebuilt packet must read back the edited exact-source draft as one accepted canonical Session note.");
     assert(afterTask.transcriptReviewStatus === "human-reviewed" && afterTask.committedActionItemId,
       "The rebuilt packet must correlate its fully reviewed source span to one canonical task.");
@@ -464,7 +465,7 @@ async function main() {
       prisma.coachingNote.findMany({ where: { roomId: fixture.roomID } }),
       prisma.calendarEventLink.findMany({ where: { roomId: fixture.roomID } }),
       prisma.governedAction.findMany({
-        where: { targetObjectType: { in: ["Goal", "ActionItem"] } },
+        where: { targetObjectType: { in: ["Goal", "ActionItem", "CoachingNote"] } },
         include: { run: true, attempts: true, receipts: true },
       }),
     ]);
@@ -521,6 +522,24 @@ async function main() {
       && canonicalNoteSource.recordingAssetId === fixture.assetID
       && JSON.stringify(canonicalNoteSource.segmentIds) === JSON.stringify(fixture.goalSegmentIDs),
     "The canonical note must retain the current packet candidate and complete immutable source span.");
+    const governedNote = governedActions.find((action) => action.targetObjectId === canonicalNotes[0].id);
+    const noteGovernance = asObject(canonicalNoteSource.governance);
+    const initialRevision = await prisma.coachingNoteRevision.findFirst({
+      where: { noteId: canonicalNotes[0].id, revision: 1 },
+    });
+    assert(governedNote
+      && governedNote.capabilityId === "quipsly.session.transcript-note.materialize"
+      && governedNote.status === "SUCCEEDED"
+      && governedNote.riskLevel === "MEDIUM"
+      && governedNote.run.status === "SUCCEEDED"
+      && governedNote.attempts.length === 1
+      && governedNote.attempts[0].status === "SUCCEEDED"
+      && governedNote.receipts.length === 1
+      && governedNote.receipts[0].kind === "EXECUTION_SUCCEEDED"
+      && noteGovernance.actionId === governedNote.id
+      && noteGovernance.receiptId === governedNote.receipts[0].id
+      && asObject(asObject(initialRevision?.snapshotJson).governance).actionId === governedNote.id,
+    "The canonical note, its first revision, and packet projection did not retain one matching governed materialization receipt.");
     await stat(resultBundle);
 
     console.log(JSON.stringify({
@@ -543,6 +562,8 @@ async function main() {
       governedTaskActionID: governedTask.id,
       governedTaskReceiptID: governedTask.receipts[0].id,
       canonicalNoteID: canonicalNotes[0].id,
+      governedNoteActionID: governedNote.id,
+      governedNoteReceiptID: governedNote.receipts[0].id,
       sourceSHA256: fixture.sourceSHA256,
       durableFixtureVersion: DURABLE_FIXTURE_VERSION,
       durableFixtureGenerated: fixture.sourceGenerated,

@@ -321,6 +321,7 @@ export function buildPacketNoteCandidates(input: {
           decision: text(latestReceipt.decision),
           reviewedAt: text(latestReceipt.reviewedAt),
           reviewedByUserId: text(latestReceipt.reviewedByUserId),
+          governance: readGovernedActionSourceReference(latestReceipt.governance),
         } : null,
         carriedForwardDraft: historicalDraftReceipt ? {
           receiptId: text(historicalDraftReceipt.id),

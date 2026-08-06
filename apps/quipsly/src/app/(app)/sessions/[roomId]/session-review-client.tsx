@@ -32,6 +32,7 @@ import {
   type SessionReviewCandidate,
   type SessionReviewGoalCandidate,
   type SessionReviewGoalMergeTarget,
+  type SessionReviewGovernedActionReference,
   type SessionReviewTaskMergeTarget,
   type SessionReviewLane,
   type SessionReviewLaneStatus,
@@ -1193,7 +1194,7 @@ function PacketNoteCandidateCard({
     <TranscriptSpanProvenance segmentIds={candidate.segmentIds} />
     <a href={`#transcript-segment-${encodeURIComponent(candidate.segmentId)}`} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950 hover:underline">Review exact transcript source</a>
     {!accepted && !sourceReviewed ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-black text-amber-950">Listen through and confirm every segment in this source span before saving a canonical note.</p> : null}
-    {accepted ? <p className="mt-4 flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />{candidate.reviewStatus === "MERGED_INTO_NOTE" ? "Merged into one revisioned Session note." : "Saved as one canonical Session note."} <Link href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`} className="underline">Open notes</Link></p> : reviewMode ? <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+    {accepted ? <div className="mt-4 space-y-1"><p className="flex flex-wrap items-center gap-2 text-sm font-black text-emerald-700"><CheckCircle2 size={16} aria-hidden="true" />{candidate.reviewStatus === "MERGED_INTO_NOTE" ? "Merged into one revisioned Session note." : "Saved as one canonical Session note."} <Link href={`/sessions/${encodeURIComponent(candidate.roomId)}?mode=notes`} className="underline">Open notes</Link></p>{candidate.lastHumanReview?.governance?.actionId ? <p className="text-xs font-bold text-[#765f40]">Governed receipt <span className="font-mono">{candidate.lastHumanReview.governance.actionId.slice(-8)}</span></p> : null}</div> : reviewMode ? <div className="mt-4 space-y-4 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
       <div><p className="text-xs font-black uppercase tracking-wide text-orange-950">{reviewMode === "ACCEPT" ? "Save one source-linked Session note" : reviewMode === "MERGE" ? "Merge into one existing Session note" : "Refine candidate for later review"}</p><p className="mt-1 text-xs font-semibold leading-5 text-orange-900">Review the wording, purpose, and audience. The source remains attached; {reviewMode === "ACCEPT" ? "nothing is sent or shared outside its selected in-app visibility." : reviewMode === "MERGE" ? "the existing note is revisioned and its prior content remains recoverable." : "saving this draft creates no canonical note."}</p></div>
       {reviewMode === "MERGE" ? <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Existing note<select aria-label="Merge into note" value={mergeTargetId} onChange={(event) => chooseMergeTarget(event.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#3d3122]"><option value="">Choose a note…</option>{mergeTargets.map((target) => <option key={target.id} value={target.id}>{target.title || target.body.slice(0, 72)} · revision {target.revisionCount}</option>)}</select></label> : null}
       <label className="block text-xs font-black uppercase tracking-wide text-orange-950">Note title <span className="normal-case tracking-normal text-orange-800">(optional)</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} className="mt-1 block min-h-11 w-full rounded-lg border border-orange-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#3d3122]" /></label>
@@ -2052,17 +2053,17 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         headers: { "content-type": "application/json" },
         body: JSON.stringify(request),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; note?: { id: string; visibility: string } | null };
+      const payload = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean; governance?: SessionReviewGovernedActionReference | null; note?: { id: string; visibility: string } | null };
       if (!response.ok || !payload.ok || ((decision === "ACCEPT" || decision === "MERGE") && !payload.note?.id)) throw new Error(payload.error || "The packet note review was not saved.");
       await load();
       setMessage(decision === "ACCEPT"
         ? payload.idempotentReplay
           ? "This exact packet note choice was already saved; nothing was duplicated."
-          : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()} visibility. No message, delivery, calendar event, task, goal, or publication was created.`
+          : `One source-linked Session note was saved with ${sessionNoteVisibilityLabel(payload.note!.visibility as SessionNoteVisibility).toLowerCase()} visibility${payload.governance?.actionId ? ` under governed receipt ${payload.governance.actionId.slice(-8)}` : ""}. No message, delivery, calendar event, task, goal, or publication was created.`
         : decision === "MERGE"
           ? payload.idempotentReplay
             ? "This exact merge was already applied; no revision was duplicated."
-            : "The candidate was merged into one existing note as a new recoverable revision. Its transcript source remains attached; nothing was sent."
+            : `The candidate was merged into one existing note as a new recoverable revision${payload.governance?.actionId ? ` under governed receipt ${payload.governance.actionId.slice(-8)}` : ""}. Its transcript source remains attached; nothing was sent.`
           : `${humanize(decision)} saved as note review state. No canonical note, task, goal, message, or calendar event was created.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The packet note review was not saved.");

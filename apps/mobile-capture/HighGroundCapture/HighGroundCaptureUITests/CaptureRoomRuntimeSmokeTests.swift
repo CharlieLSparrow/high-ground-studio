@@ -2113,6 +2113,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 .waitForExistence(timeout: 30),
             "The separate playback-gated save must read back as one canonical Session note."
         )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CapturePacketNoteGovernance_\(candidateKey)"].firstMatch
+                .waitForExistence(timeout: 12),
+            "The canonical note must expose its governed materialization receipt in Capture."
+        )
 
         jumpMenu.tap()
         let jumpToGoals = app.buttons["CaptureTranscriptJumpToGoals"].firstMatch

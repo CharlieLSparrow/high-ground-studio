@@ -119,12 +119,7 @@ export type SessionReviewNoteCandidate = {
   reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_NOTE" | "MERGED_INTO_NOTE";
   humanApprovalRequired: boolean;
   committedNoteId: string | null;
-  lastHumanReview?: {
-    receiptId: string;
-    decision: TranscriptNoteReviewDecision;
-    reviewedAt: string;
-    reviewedByUserId: string;
-  } | null;
+  lastHumanReview?: SessionReviewHumanDecision | null;
 };
 
 export type SessionReviewNoteMergeTarget = {

@@ -22,6 +22,10 @@ test("retained native packet-note merge proves revision, replay, and source retu
   assert.match(operation, /JSON\.stringify\(sideEffectsAfter\) === JSON\.stringify\(sideEffectsBefore\)/);
   assert.match(operation, /replay\.idempotentReplay === true/);
   assert.match(operation, /replayRevisionCount === 2/);
+  assert.match(operation, /quipsly\.session\.transcript-note\.merge/);
+  assert.match(operation, /append-a-compensating-note-revision-and-supersede-this-decision/);
+  assert.match(operation, /governedAction\?\.riskLevel === "HIGH"/);
+  assert.match(operation, /afterCandidate\.lastHumanReview\?\.governance/);
   assert.match(operation, /exactTranscriptReturnOperatedAfterRelaunch: true/);
 
   assert.match(runner, /transcript-packet-note-merge\)/);
@@ -31,5 +35,6 @@ test("retained native packet-note merge proves revision, replay, and source retu
   assert.match(runtimeTests, /CaptureSessionNoteMergedSourceLink_/);
   assert.match(runtimeTests, /CaptureTranscriptSourceBoundary_/);
   assert.match(nativeReview, /Updates exactly one existing note and retains its prior revision plus this transcript source/);
+  assert.match(nativeReview, /CapturePacketNoteGovernance_/);
   assert.match(phoneShell, /Latest merged transcript source/);
 });

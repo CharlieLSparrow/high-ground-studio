@@ -55,6 +55,8 @@ export const TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transc
 export const TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-task.materialize";
 export const TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID = "quipsly.session.transcript-goal-evidence.merge";
 export const TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID = "quipsly.session.transcript-task-evidence.merge";
+export const TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-note.materialize";
+export const TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID = "quipsly.session.transcript-note.merge";
 
 const writingManifest = (
   id: string,
@@ -313,12 +315,79 @@ const TRANSCRIPT_TASK_EVIDENCE_MERGE_MANIFEST = transcriptEvidenceMergeManifest(
   "ActionItem",
 );
 
+const TRANSCRIPT_NOTE_MATERIALIZE_MANIFEST: GovernedActionCapabilityManifest = {
+  id: TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+  version: 1,
+  title: "Create a canonical note from reviewed transcript evidence",
+  promise: "Turn one reviewed, playback-linked transcript span into one actor-authored Session note with an explicit in-app audience and no delivery side effect.",
+  objectTypes: ["CallRoom", "TranscriptJob", "TranscriptSegment", "CoachingNote", "CoachingNoteRevision"],
+  scope: "SESSION",
+  decisionPolicy: "USER_INITIATED",
+  riskLevel: "MEDIUM",
+  consequences: [
+    "creates one canonical actor-authored note and its first immutable revision",
+    "makes the note readable only through its explicitly reviewed AUTHOR_PRIVATE, SESSION_SHARED, CLIENT_SAFE, or PROJECT_TEAM audience",
+    "CLIENT_SAFE marks eligibility for a separately reviewed follow-up; it does not send or deliver the note",
+    "preserves the exact released transcript and playback source anchor",
+    "does not mutate transcript, recording, task, goal, calendar, message, external delivery, or publication state",
+  ],
+  evidence: [
+    "current Session mutation authority",
+    "released recording-backed transcript gate",
+    "provider and effective-text hashes",
+    "exact segment or thought-span identities and source clock",
+    "human-reviewed note wording, purpose, and audience",
+    "canonical note and revision identities with immutable action receipt",
+  ],
+  recovery: ["SUPERSEDE", "COMPENSATE"],
+  entryPoints: ["Nest Session transcript review", "Quipsly Capture transcript review"],
+  apiExposure: "AUTHORIZED_API",
+  mcpExposure: "PLANNED",
+  accessibility: ["source playback return", "audience consequence preview", "status not conveyed by color alone"],
+  qualification: "OPERATED_LOCAL",
+};
+
+const TRANSCRIPT_NOTE_MERGE_MANIFEST: GovernedActionCapabilityManifest = {
+  id: TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
+  version: 1,
+  title: "Merge reviewed transcript evidence into an existing note",
+  promise: "Create one explicit revision of an actor-owned Session note from reviewed transcript evidence while retaining the complete prior content and audience.",
+  objectTypes: ["CallRoom", "TranscriptJob", "TranscriptSegment", "CoachingNote", "CoachingNoteRevision"],
+  scope: "SESSION",
+  decisionPolicy: "USER_INITIATED",
+  riskLevel: "HIGH",
+  consequences: [
+    "changes one explicitly selected actor-owned note's reviewed wording, purpose, or in-app audience",
+    "retains exact before and after snapshots in an immutable revision and governed receipt",
+    "may widen who can read the note in Quipsly when the reviewed audience changes",
+    "CLIENT_SAFE marks eligibility for a separately reviewed follow-up; it does not send or deliver the note",
+    "does not mutate transcript, recording, task, goal, calendar, message, external delivery, or publication state",
+  ],
+  evidence: [
+    "current Session mutation authority",
+    "released recording-backed transcript gate",
+    "provider and effective-text hashes",
+    "exact segment or thought-span identities and source clock",
+    "explicitly selected note identity and expected current version",
+    "exact reviewed before and after content, purpose, and audience",
+    "immutable revision identity and changed-note readback",
+  ],
+  recovery: ["COMPENSATE", "SUPERSEDE"],
+  entryPoints: ["Nest Session transcript review", "Quipsly Capture transcript review"],
+  apiExposure: "AUTHORIZED_API",
+  mcpExposure: "PLANNED",
+  accessibility: ["source playback return", "before and after audience preview", "status not conveyed by color alone"],
+  qualification: "OPERATED_LOCAL",
+};
+
 export const GOVERNED_ACTION_CAPABILITIES: readonly GovernedActionCapabilityManifest[] = [
   SESSION_PREFLIGHT_MANIFEST,
   TRANSCRIPT_GOAL_MATERIALIZE_MANIFEST,
   TRANSCRIPT_TASK_MATERIALIZE_MANIFEST,
   TRANSCRIPT_GOAL_EVIDENCE_MERGE_MANIFEST,
   TRANSCRIPT_TASK_EVIDENCE_MERGE_MANIFEST,
+  TRANSCRIPT_NOTE_MATERIALIZE_MANIFEST,
+  TRANSCRIPT_NOTE_MERGE_MANIFEST,
   ...Object.values(WRITING_CAPABILITIES),
 ];
 
@@ -368,6 +437,50 @@ export function assertGovernedActionPayload(
       || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
       || typeof record.title !== "string"
       || !record.title.trim()
+    )
+  ) {
+    throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);
+  }
+  if (
+    capabilityId === TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID
+    && (
+      typeof record.roomId !== "string"
+      || !record.roomId.trim()
+      || typeof record.segmentId !== "string"
+      || !record.segmentId.trim()
+      || typeof record.expectedProviderTextSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
+      || typeof record.noteId !== "string"
+      || !record.noteId.trim()
+      || typeof record.noteRevisionId !== "string"
+      || !record.noteRevisionId.trim()
+      || typeof record.contentSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.contentSha256)
+      || typeof record.visibility !== "string"
+      || !record.visibility.trim()
+    )
+  ) {
+    throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);
+  }
+  if (
+    capabilityId === TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID
+    && (
+      typeof record.roomId !== "string"
+      || !record.roomId.trim()
+      || typeof record.segmentId !== "string"
+      || !record.segmentId.trim()
+      || typeof record.expectedProviderTextSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
+      || typeof record.noteId !== "string"
+      || !record.noteId.trim()
+      || typeof record.expectedTargetUpdatedAt !== "string"
+      || !record.expectedTargetUpdatedAt.trim()
+      || typeof record.noteRevisionId !== "string"
+      || !record.noteRevisionId.trim()
+      || typeof record.previousContentSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.previousContentSha256)
+      || typeof record.nextContentSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.nextContentSha256)
     )
   ) {
     throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);

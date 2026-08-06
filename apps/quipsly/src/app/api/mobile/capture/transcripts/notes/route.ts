@@ -11,6 +11,10 @@ import {
   readTranscriptDerivedNoteSource,
   TRANSCRIPT_DERIVED_NOTE_SCHEMA,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
+import {
+  TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+  TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
+} from "@high-ground/quipsly-domain/governed-actions";
 import { NextResponse } from "next/server";
 
 import {
@@ -33,6 +37,10 @@ import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-adviso
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
+import {
+  readGovernedActionSourceReference,
+  recordSucceededTranscriptWorkAction,
+} from "@/lib/server/governed-action-runtime";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
   buildTranscriptSourceAnchorFields,
@@ -96,6 +104,53 @@ function transcriptDerivedNoteBoundaries(noteCreated: boolean, packetCandidate =
     externalDelivery: false,
     publication: false,
   };
+}
+
+function canonicalNoteState(input: {
+  id: string;
+  roomId: string;
+  authorUserId: string;
+  title: string | null;
+  body: string;
+  kind: unknown;
+  visibility: unknown;
+}) {
+  return {
+    id: input.id,
+    roomId: input.roomId,
+    authorUserId: input.authorUserId,
+    title: input.title,
+    body: input.body,
+    kind: String(input.kind),
+    visibility: String(input.visibility),
+  };
+}
+
+function noteAudience(visibility: SessionNoteVisibility) {
+  return {
+    visibility,
+    authorOnly: visibility === "AUTHOR_PRIVATE",
+    sessionAccessReaders: visibility === "SESSION_SHARED" || visibility === "CLIENT_SAFE",
+    projectTeamReaders: visibility === "PROJECT_TEAM",
+    clientFollowUpEligible: visibility === "CLIENT_SAFE",
+    externallyDelivered: false,
+    promise: visibility === "AUTHOR_PRIVATE"
+      ? "Only the author can read this note."
+      : visibility === "PROJECT_TEAM"
+        ? "Project owners, editors, and staff with Session access can read this note."
+        : visibility === "CLIENT_SAFE"
+          ? "Session participants can read this note; it is eligible for a separately reviewed client follow-up but is not sent."
+          : "People with Session access can read this note.",
+  };
+}
+
+function noteContentSha256(input: { title: string | null; body: string; kind: unknown; visibility: unknown }) {
+  return createHash("sha256").update(JSON.stringify({
+    title: input.title,
+    body: input.body,
+    kind: String(input.kind),
+    visibility: String(input.visibility),
+  })).digest("hex");
 }
 
 function noteReviewStatus(decision: TranscriptNoteReviewDecision) {
@@ -189,6 +244,10 @@ function serializedNote(row: any, actorUserId: string) {
     tags: (row.tagLinks || []).map((link: any) => link.tag),
     sourceAnchor: readTranscriptDerivedNoteSource(row.sourceJson),
     lastMergedSource: readLastTranscriptMergedNoteSource(row.sourceJson),
+    governance: readGovernedActionSourceReference(
+      record(row.sourceJson).governance
+      ?? record(record(row.sourceJson).lastTranscriptCandidateMerge).governance,
+    ),
     href: `/sessions/${encodeURIComponent(row.roomId)}?mode=notes`,
   };
 }
@@ -351,6 +410,7 @@ export async function POST(request: Request) {
         where: sessionMutationAccessWhere(roomId, session.user),
         select: {
           id: true,
+          projectId: true,
           bookingId: true,
           project: {
             select: {
@@ -687,6 +747,18 @@ export async function POST(request: Request) {
           recordingAssetId: desk.playback.recordingAssetId,
           playbackSourceId: desk.playback.sourceId,
         };
+        const mergeTargetBefore = canonicalNoteState(mergeTarget);
+        const mergeTargetAfter = canonicalNoteState({
+          id: mergeTarget.id,
+          roomId: mergeTarget.roomId,
+          authorUserId: mergeTarget.authorUserId,
+          title: mergedTitle || null,
+          body: mergedBody,
+          kind: mergedKind,
+          visibility: mergedVisibility,
+        });
+        const audienceBefore = noteAudience(String(mergeTarget.visibility) as SessionNoteVisibility);
+        const audienceAfter = noteAudience(mergedVisibility);
         const mergeReceipt = {
           id: receiptId,
           kind: NOTE_REVIEW_RECEIPT_KIND,
@@ -713,18 +785,10 @@ export async function POST(request: Request) {
           noteId: mergeTarget.id,
           noteRevisionId,
           mergeExpectedUpdatedAt: mergeExpectedUpdatedAtText,
-          mergeTargetBefore: {
-            title: mergeTarget.title,
-            body: mergeTarget.body,
-            kind: String(mergeTarget.kind),
-            visibility: String(mergeTarget.visibility),
-          },
-          mergeTargetAfter: {
-            title: mergedTitle,
-            body: mergedBody,
-            kind: mergedKind,
-            visibility: mergedVisibility,
-          },
+          mergeTargetBefore,
+          mergeTargetAfter,
+          audienceBefore,
+          audienceAfter,
           candidateSource,
           previousContentRetainedInRevision: true,
           externalSideEffects: false,
@@ -782,13 +846,100 @@ export async function POST(request: Request) {
             },
           },
         });
+        const noteBoundaries = {
+          ...transcriptDerivedNoteBoundaries(false, true, true),
+          titleChanged: mergeTarget.title !== (mergedTitle || null),
+          bodyChanged: mergeTarget.body !== mergedBody,
+          purposeChanged: String(mergeTarget.kind) !== mergedKind,
+          visibilityChanged: String(mergeTarget.visibility) !== mergedVisibility,
+          audienceBefore,
+          audienceAfter,
+          priorContentRetainedInRevision: true,
+          clientFollowUpCreated: false,
+        };
+        const governance = await recordSucceededTranscriptWorkAction(tx, {
+          capabilityId: TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
+          clientRequestId: receiptId,
+          projectId: currentRoom.projectId,
+          roomId,
+          actorUserId: actor.id,
+          actorEmail: actor.email || "unknown@quipsly.invalid",
+          sourceSurface: text(input.surface, 80) || "nest-session-packet-note-review",
+          targetObjectType: "CoachingNote",
+          targetObjectId: mergeTarget.id,
+          payload: {
+            contractKind: "quipsly-transcript-note-merge-payload-v1",
+            roomId,
+            segmentId,
+            segmentIds: sourceAnchor.segmentIds,
+            expectedProviderTextSha256: sourceAnchor.providerTextSha256,
+            expectedSourceTextSha256: packetSourceTextSha256 || null,
+            noteId: mergeTarget.id,
+            expectedTargetUpdatedAt: mergeExpectedUpdatedAtText,
+            noteRevisionId,
+            packetReviewReceiptId: receiptId,
+            previousContentSha256: noteContentSha256(mergeTargetBefore),
+            nextContentSha256: noteContentSha256(mergeTargetAfter),
+            previousVisibility: String(mergeTarget.visibility),
+            nextVisibility: mergedVisibility,
+          },
+          sourceEvidence: {
+            objectType: "TranscriptSegmentSpan",
+            roomId,
+            transcriptJobId: desk.transcriptJobId,
+            recordingAssetId: desk.playback.recordingAssetId,
+            playbackSourceId: desk.playback.sourceId,
+            transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
+            ...sourceAnchor,
+          },
+          result: {
+            targetObjectType: "CoachingNote",
+            targetObjectId: mergeTarget.id,
+            noteRevisionId,
+            targetBefore: mergeTargetBefore,
+            targetAfter: mergeTargetAfter,
+            audienceBefore,
+            audienceAfter,
+            previousContentRetainedInRevision: true,
+          },
+          boundaries: noteBoundaries,
+        });
+        const governedMergeReceipt = { ...mergeReceipt, governance };
+        await tx.coachingNote.update({
+          where: { id: mergeTarget.id },
+          data: {
+            sourceJson: {
+              ...record(mergeTarget.sourceJson),
+              lastTranscriptCandidateMerge: governedMergeReceipt,
+              governance,
+            },
+          },
+        });
+        await tx.coachingNoteRevision.update({
+          where: { id: noteRevisionId },
+          data: {
+            snapshotJson: {
+              receipt: governedMergeReceipt,
+              governance,
+              previous: {
+                title: mergeTarget.title,
+                body: mergeTarget.body,
+                kind: String(mergeTarget.kind),
+                visibility: String(mergeTarget.visibility),
+                sourceJson: mergeTarget.sourceJson,
+              },
+              next: mergeTargetAfter,
+              externalSideEffects: false,
+            },
+          },
+        });
         await tx.coachingNote.update({
           where: { id: packetContext.summaryNoteId },
           data: {
             sourceJson: {
               ...packetSummarySource,
-              noteCandidateReviewReceipts: [...packetReviewReceipts, mergeReceipt],
-              lastNoteCandidateReview: mergeReceipt,
+              noteCandidateReviewReceipts: [...packetReviewReceipts, governedMergeReceipt],
+              lastNoteCandidateReview: governedMergeReceipt,
             },
           },
         });
@@ -796,11 +947,12 @@ export async function POST(request: Request) {
         if (!saved) {
           throw new TranscriptCorrectionError("The merged note could not be read back.", 409, "PACKET_NOTE_MERGE_READBACK_FAILED");
         }
-        return { note: saved, receipt: mergeReceipt, decision, idempotentReplay: false, noteRevised: true };
+        return { note: saved, receipt: governedMergeReceipt, governance, decision, idempotentReplay: false, noteRevised: true };
       }
 
       const createdAt = new Date().toISOString();
       const reviewReceiptId = packetContext ? randomUUID() : null;
+      const noteRevisionId = randomUUID();
       const sourceJson = {
         schema: TRANSCRIPT_DERIVED_NOTE_SCHEMA,
         surface: text(input.surface, 80) || "quipsly-transcript-review",
@@ -830,7 +982,7 @@ export async function POST(request: Request) {
         aiGenerated: false,
         boundaries: transcriptDerivedNoteBoundaries(true, Boolean(packetContext)),
       };
-      const note = await tx.coachingNote.create({
+      let note = await tx.coachingNote.create({
         data: {
           id,
           roomId,
@@ -843,7 +995,7 @@ export async function POST(request: Request) {
           sourceJson,
           revisions: {
             create: {
-              id: randomUUID(),
+              id: noteRevisionId,
               revision: 1,
               operation: packetContext ? "created-from-transcript-packet" : "created-from-transcript",
               actorUserId: actor.id,
@@ -854,10 +1006,81 @@ export async function POST(request: Request) {
         select: NOTE_SELECT,
       });
       let receipt: Record<string, unknown> | null = null;
+      let governance: Awaited<ReturnType<typeof recordSucceededTranscriptWorkAction>> | null = null;
       if (packetContext) {
         if (!packetSummarySource || !packetCandidateDraftBefore || !packetDraftAfter || !reviewReceiptId) {
           throw new TranscriptCorrectionError("The packet note review state is unavailable. Refresh before accepting.", 409, "STALE_PACKET_NOTE_CANDIDATE");
         }
+        const targetAfter = canonicalNoteState(note);
+        const audience = noteAudience(visibility as SessionNoteVisibility);
+        const noteBoundaries = {
+          ...transcriptDerivedNoteBoundaries(true, true),
+          audienceAfter: audience,
+          priorContentRetainedInRevision: true,
+          clientFollowUpCreated: false,
+        };
+        governance = await recordSucceededTranscriptWorkAction(tx, {
+          capabilityId: TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+          clientRequestId: reviewReceiptId,
+          projectId: currentRoom.projectId,
+          roomId,
+          actorUserId: actor.id,
+          actorEmail: actor.email || "unknown@quipsly.invalid",
+          sourceSurface: text(input.surface, 80) || "nest-session-packet-note-review",
+          targetObjectType: "CoachingNote",
+          targetObjectId: note.id,
+          payload: {
+            contractKind: "quipsly-transcript-note-materialization-payload-v1",
+            roomId,
+            segmentId,
+            segmentIds: sourceAnchor.segmentIds,
+            expectedProviderTextSha256: sourceAnchor.providerTextSha256,
+            expectedSourceTextSha256: packetSourceTextSha256 || null,
+            noteId: note.id,
+            noteRevisionId,
+            packetReviewReceiptId: reviewReceiptId,
+            contentSha256: noteContentSha256(targetAfter),
+            kind: String(note.kind),
+            visibility: String(note.visibility),
+          },
+          sourceEvidence: {
+            objectType: "TranscriptSegmentSpan",
+            roomId,
+            transcriptJobId: desk.transcriptJobId,
+            recordingAssetId: desk.playback.recordingAssetId,
+            playbackSourceId: desk.playback.sourceId,
+            transcriptSnapshotSha256: packetTranscriptSnapshotSha256,
+            ...sourceAnchor,
+          },
+          result: {
+            targetObjectType: "CoachingNote",
+            targetObjectId: note.id,
+            noteRevisionId,
+            targetBefore: null,
+            targetAfter,
+            audienceAfter: audience,
+          },
+          boundaries: noteBoundaries,
+        });
+        const governedSourceJson = { ...sourceJson, governance };
+        note = await tx.coachingNote.update({
+          where: { id: note.id },
+          data: { sourceJson: governedSourceJson },
+          select: NOTE_SELECT,
+        });
+        await tx.coachingNoteRevision.update({
+          where: { id: noteRevisionId },
+          data: {
+            snapshotJson: {
+              title: note.title,
+              body: note.body,
+              kind: String(note.kind),
+              visibility: String(note.visibility),
+              sourceJson: governedSourceJson,
+              governance,
+            },
+          },
+        });
         receipt = {
           id: reviewReceiptId,
           kind: NOTE_REVIEW_RECEIPT_KIND,
@@ -882,6 +1105,9 @@ export async function POST(request: Request) {
           candidateDraftBefore: packetCandidateDraftBefore,
           candidateDraftAfter: packetDraftAfter,
           noteId: note.id,
+          noteRevisionId,
+          audienceAfter: audience,
+          governance,
           externalSideEffects: false,
           taskCreated: false,
           goalCreated: false,
@@ -901,7 +1127,7 @@ export async function POST(request: Request) {
           },
         });
       }
-      return { note, receipt, decision, idempotentReplay: false };
+      return { note, receipt, governance, decision, idempotentReplay: false };
     }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({
@@ -910,6 +1136,10 @@ export async function POST(request: Request) {
       decision: result.decision,
       reviewStatus: result.decision ? noteReviewStatus(result.decision) : null,
       receipt: result.receipt,
+      governance: ("governance" in result ? result.governance : null)
+        ?? readGovernedActionSourceReference(record(result.receipt).governance)
+        ?? readGovernedActionSourceReference(record(result.note?.sourceJson).governance)
+        ?? null,
       note: result.note ? serializedNote(result.note, actor.id) : null,
       boundaries: transcriptDerivedNoteBoundaries(
         Boolean(result.note) && result.decision !== "MERGE" && !result.idempotentReplay,

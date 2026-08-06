@@ -286,6 +286,7 @@ private struct CaptureTranscriptNoteMutationResponse: Codable {
         let packetNoteCandidateId: String
         let reviewedByUserId: String
         let noteId: String?
+        var governance: MobileCaptureGovernedActionReference? = nil
     }
     struct Boundaries: Codable {
         let packetCandidateReviewed: Bool
@@ -307,6 +308,7 @@ private struct CaptureTranscriptNoteMutationResponse: Codable {
     let reviewStatus: String?
     let receipt: ReviewReceipt?
     let note: NoteRecord?
+    var governance: MobileCaptureGovernedActionReference? = nil
     let boundaries: Boundaries?
 }
 
@@ -513,12 +515,6 @@ struct CapturePacketTaskMergeTarget: Codable, Identifiable, Equatable {
 }
 
 struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
-    struct LastHumanReview: Codable, Equatable {
-        let receiptId: String
-        let decision: String
-        let reviewedAt: String
-        let reviewedByUserId: String
-    }
     struct CarriedForwardDraft: Codable, Equatable {
         let receiptId: String
         let decision: String
@@ -556,7 +552,7 @@ struct CapturePacketNoteCandidate: Codable, Identifiable, Equatable {
     var reviewStatus: String? = nil
     let humanApprovalRequired: Bool
     let committedNoteId: String?
-    var lastHumanReview: LastHumanReview? = nil
+    var lastHumanReview: CapturePacketHumanReview? = nil
     var carriedForwardDraft: CarriedForwardDraft? = nil
 
     var accessibilityKey: String {
@@ -1255,11 +1251,11 @@ final class CaptureTranscriptCorrectionClient: ObservableObject {
                     }
                     message = payload.idempotentReplay == true
                         ? "That exact candidate merge was already applied; no revision was duplicated."
-                        : "Candidate merged into one existing Session note as a recoverable revision. Nothing was sent."
+                        : "Candidate merged into one existing Session note as a recoverable revision\(payload.governance.map { " under governed receipt \($0.shortActionID)" } ?? ""). Nothing was sent."
                 } else {
                     message = payload.idempotentReplay == true
                         ? "That exact packet note choice was already accepted."
-                        : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review"). Nothing was sent."
+                        : "\(MobileSessionNoteKind(rawValue: note.kind)?.title ?? "Session note") saved for \(MobileSessionNoteVisibility(rawValue: note.visibility)?.title.lowercased() ?? "review")\(payload.governance.map { " under governed receipt \($0.shortActionID)" } ?? ""). Nothing was sent."
                 }
             } else {
                 guard payload.note == nil, receipt.noteId == nil, !boundaries.noteCreated else {
@@ -3336,6 +3332,12 @@ private struct CapturePacketNoteCandidateCard: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("CapturePacketNoteSaved_\(candidate.accessibilityKey)")
+                if let governance = candidate.lastHumanReview?.governance {
+                    Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CapturePacketNoteGovernance_\(candidate.accessibilityKey)")
+                }
             } else if reviewMode != nil {
                 Divider()
                 Label(

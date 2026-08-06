@@ -5,6 +5,8 @@ import {
   SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
   TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID,
   TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+  TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+  TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
   TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
   governedCapabilityForAssistantToolKind,
 } from "@high-ground/quipsly-domain/governed-actions";
@@ -64,6 +66,16 @@ describe("governed action capability and ledger runtime", () => {
       expect.objectContaining({
         id: TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
         qualification: "OPERATED_LOCAL",
+      }),
+      expect.objectContaining({
+        id: TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+        qualification: "OPERATED_LOCAL",
+        consequences: expect.arrayContaining([expect.stringContaining("does not send or deliver")]),
+      }),
+      expect.objectContaining({
+        id: TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
+        riskLevel: "HIGH",
+        recovery: expect.arrayContaining(["COMPENSATE"]),
       }),
     ]));
   });
@@ -357,6 +369,97 @@ describe("governed action capability and ledger runtime", () => {
     });
     expect(tx.governedActionAttempt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ executorKind: "quipsly-transcript-evidence-merge-domain-service" }),
+      select: { id: true },
+    });
+    expect(readGovernedActionSourceReference(result)).toEqual(result);
+  });
+
+  it("records a reviewed note materialization with explicit audience and no delivery", async () => {
+    const tx = transaction();
+    const result = await recordSucceededTranscriptWorkAction(tx as never, {
+      capabilityId: TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID,
+      clientRequestId: "packet-note-receipt-1",
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      actorEmail: "coach@example.test",
+      sourceSurface: "nest-session-packet-note-review",
+      targetObjectType: "CoachingNote",
+      targetObjectId: "note-1",
+      payload: {
+        roomId: "room-1",
+        segmentId: "segment-1",
+        expectedProviderTextSha256: "a".repeat(64),
+        noteId: "note-1",
+        noteRevisionId: "note-revision-1",
+        contentSha256: "b".repeat(64),
+        visibility: "CLIENT_SAFE",
+      },
+      sourceEvidence: { objectType: "TranscriptSegmentSpan", transcriptJobId: "job-1", segmentIds: ["segment-1"] },
+      result: { targetObjectType: "CoachingNote", targetObjectId: "note-1", audienceAfter: { visibility: "CLIENT_SAFE", externallyDelivered: false } },
+      boundaries: { externalDelivery: false, clientFollowUpCreated: false },
+    });
+
+    expect(result.capabilityId).toBe(TRANSCRIPT_NOTE_MATERIALIZE_CAPABILITY_ID);
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actionKind: "MATERIALIZE_TRANSCRIPT_NOTE",
+        targetObjectType: "CoachingNote",
+        targetObjectId: "note-1",
+        recoveryJson: expect.objectContaining({ method: "append-a-note-revision-or-supersede-this-note" }),
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedActionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ executorKind: "quipsly-transcript-note-domain-service" }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        evidenceJson: expect.objectContaining({ contractKind: "quipsly-transcript-note-governed-action-receipt-v1" }),
+      }),
+      select: { id: true },
+    });
+  });
+
+  it("records a high-risk note merge with retained before and after revisions", async () => {
+    const tx = transaction();
+    const result = await recordSucceededTranscriptWorkAction(tx as never, {
+      capabilityId: TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID,
+      clientRequestId: "packet-note-merge-receipt-1",
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      actorEmail: "coach@example.test",
+      sourceSurface: "ios-capture-session-packet-review",
+      targetObjectType: "CoachingNote",
+      targetObjectId: "note-1",
+      payload: {
+        roomId: "room-1",
+        segmentId: "segment-1",
+        expectedProviderTextSha256: "a".repeat(64),
+        noteId: "note-1",
+        expectedTargetUpdatedAt: "2026-08-06T12:00:00.000Z",
+        noteRevisionId: "note-revision-2",
+        previousContentSha256: "b".repeat(64),
+        nextContentSha256: "c".repeat(64),
+      },
+      sourceEvidence: { objectType: "TranscriptSegmentSpan", transcriptJobId: "job-1", segmentIds: ["segment-1"] },
+      result: { targetObjectType: "CoachingNote", targetObjectId: "note-1", targetBefore: { visibility: "AUTHOR_PRIVATE" }, targetAfter: { visibility: "SESSION_SHARED" } },
+      boundaries: { visibilityChanged: true, priorContentRetainedInRevision: true, externalDelivery: false },
+    });
+
+    expect(result.capabilityId).toBe(TRANSCRIPT_NOTE_MERGE_CAPABILITY_ID);
+    expect(tx.governedActionRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ riskLevel: "HIGH", intent: expect.stringContaining("complete previous content and audience") }),
+      select: { id: true },
+    });
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actionKind: "MERGE_TRANSCRIPT_CANDIDATE_INTO_NOTE",
+        recoveryJson: expect.objectContaining({ method: "append-a-compensating-note-revision-and-supersede-this-decision" }),
+        resultJson: expect.objectContaining({ targetBefore: { visibility: "AUTHOR_PRIVATE" }, targetAfter: { visibility: "SESSION_SHARED" } }),
+      }),
       select: { id: true },
     });
     expect(readGovernedActionSourceReference(result)).toEqual(result);

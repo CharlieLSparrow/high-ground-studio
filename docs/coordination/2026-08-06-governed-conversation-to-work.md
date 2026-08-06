@@ -7,13 +7,13 @@ Status: implemented locally; production and physical-device qualification remain
 ## Outcome
 
 An explicit human decision to turn reviewed transcript evidence into a canonical
-Goal or Task now uses the same governed action runtime as writing operations and
-Session preflight. The canonical work object and its action run, attempt, and
-immutable execution receipt are committed atomically.
+Note, Goal, or Task now uses the same governed action runtime as writing
+operations and Session preflight. The canonical object and its action run,
+attempt, and immutable execution receipt are committed atomically.
 
 This does not introduce another goal, task, transcript, or agent model. It adds
-an execution and support ledger around the existing canonical `Goal` and
-`ActionItem` materialization paths.
+an execution and support ledger around the existing canonical `CoachingNote`,
+`Goal`, and `ActionItem` materialization paths.
 
 ## Existing product depth retained
 
@@ -35,20 +35,34 @@ applies.
 
 ## Capabilities
 
-Four capability manifests are registered:
+Six capability manifests are registered:
 
 - `quipsly.session.transcript-goal.materialize`
 - `quipsly.session.transcript-task.materialize`
 - `quipsly.session.transcript-goal-evidence.merge`
 - `quipsly.session.transcript-task-evidence.merge`
+- `quipsly.session.transcript-note.materialize`
+- `quipsly.session.transcript-note.merge`
 
-All are medium-consequence, user-initiated operations. Materialization requires
+Goal and Task operations are medium-consequence, user-initiated operations.
+Note materialization is medium-consequence; Note merge is high-consequence
+because it can change canonical wording, purpose, and in-app audience.
+Materialization requires
 an exact room, transcript segment, provider evidence hash, title, current
 authority, and playback/source evidence. Evidence merge additionally requires
 an explicitly selected existing target and its exact current revision. They are
 explicitly unable to rewrite transcript truth, mutate recording bytes or
 clocks, change an existing Goal or Task definition/status/ownership/planning,
 schedule a reminder or calendar event, deliver a message, or publish an output.
+
+Note materialization creates one actor-authored Note and its first revision with
+an explicit `AUTHOR_PRIVATE`, `SESSION_SHARED`, `CLIENT_SAFE`, or `PROJECT_TEAM`
+audience. Note MERGE retains exact before/after content and audience in a second
+revision and governed receipt. `CLIENT_SAFE` means eligible for a separately
+reviewed follow-up; it never means sent. A later compensating revision can
+restore content or narrow visibility, but cannot make text already seen by a
+previously authorized reader unseen, so the recovery contract is explicitly
+`COMPENSATE` plus `SUPERSEDE`, not a fictional undo.
 
 ## Transaction and receipt contract
 
@@ -61,7 +75,8 @@ The runtime records:
 - one succeeded attempt and one immutable execution receipt;
 - zero provider calls, external writes, and measured cost for this operation;
 - a plain-language result and explicit consequence boundaries; and
-- a source reference embedded in the canonical Goal or Task provenance.
+- a source reference embedded in canonical Note, Goal, or Task provenance and,
+  for Notes, the matching immutable Note revision.
 
 If target creation fails, the action records roll back. If action recording
 fails, target creation rolls back. Exact request replay returns the existing
@@ -80,13 +95,18 @@ evidence review, preserving both the original source and prior review decision.
 - MERGE of a reviewed packet Goal candidate into one explicitly selected Goal.
 - MERGE of a reviewed packet ActionItem candidate into one explicitly selected
   Task.
+- ACCEPT of a reviewed packet Note candidate with reviewed wording, purpose,
+  audience, and exact playback source.
+- MERGE of a reviewed packet Note candidate into one explicitly selected
+  actor-owned Note as one recoverable revision.
 - Session Review readback shows the short governed receipt identity after a
-  successful Goal or Task creation or evidence merge.
+  successful Note, Goal, or Task creation or merge.
 - Capture Today and Work show the latest merged evidence, governed receipt, and
   a direct return to the exact transcript source after relaunch.
 
 EDIT, REJECT, and DEFER remain append-only packet review decisions and do not
-materialize work. Notes and client-visible follow-up are not yet adapted.
+materialize canonical work. Client-visible follow-up remains a separate future
+delivery capability.
 
 ## Retained operation and fixture repair
 
@@ -111,17 +131,18 @@ played and human-confirmed all three exact-source segments, then materialized
 exactly one reviewed Note, one actor-owned Task, and one Goal with zero calendar
 links or external effects. The independent database readback correlated:
 
-- Goal `transcript-goal-01530fa9582239aa570aa157` to governed action
-  `cmsh7kpli002t24xl7h3zzboc` and receipt
-  `cmsh7kpll002v24xln50m4euw`;
-- Task `cmsh7kvow002w24xljotrvnyc` to governed action
-  `cmsh7kvp0002y24xlf1s1we2n` and receipt
-  `cmsh7kvp6003024xlxna7hkov`; and
-- Note `transcript-note-9476994713f4fbe0f997cf24` to its reviewed packet
-  decision.
+- Note `transcript-note-6e370ca0d9362712dbf6a4df` to governed action
+  `cmsha6w85009z24xl4stsvqrz` and receipt
+  `cmsha6w8f00a124xl78lnsccc`;
+- Goal `transcript-goal-413f86d2f7927466ea013c7d` to governed action
+  `cmsha74he00a324xlrxf1f7xq` and receipt
+  `cmsha74hh00a524xls5wu407o`; and
+- Task `cmsha7agv00a624xlvpk7yr1h` to governed action
+  `cmsha7agy00a824xlq2tjm96t` and receipt
+  `cmsha7ah100aa24xl2n0sl71y`.
 
 The result bundle is
-`/private/tmp/quipsly-reviewed-packet-materialization-1786002013294-49884.xcresult`.
+`/private/tmp/quipsly-reviewed-packet-materialization-1786006434543-80765.xcresult`.
 This proves the compiled application, local checksum-bound playback,
 authenticated HTTP mutation, canonical database state, Today discoverability,
 and governed receipts agree. It does not prove physical-iPhone storage/recovery
@@ -154,11 +175,26 @@ fixture now creates a real planned focus block and proves it remains unchanged,
 so discoverability is tested through the product's ranking contract rather
 than through an accidentally empty account.
 
+A fourth compiled simulator operation exercised Note MERGE through the real
+private-note picker. It played and confirmed all three exact source segments,
+selected an existing `AUTHOR_PRIVATE` Note, appended the reviewed wording as a
+new immutable revision, rendered the governed receipt after relaunch, returned
+to the exact transcript source, and proved replay did not append a second
+revision. The operation retained exact content and audience snapshots before
+and after the decision, recorded a compensating-revision recovery contract,
+and created no Goal, Task, calendar event, output, or delivery. Note
+`session-note-20c4493b13bd57230d879d1abce5993a` gained revision
+`54bb7c04-f680-4fa7-9162-d7396dce0acb`, governed action
+`cmsha2006008r24xl519hj3mj`, and governed receipt
+`cmsha2009008t24xlzsnhu2rc`. Result bundle:
+`/private/tmp/quipsly-packet-note-merge-1786006185167-79006.xcresult`.
+
 ## Honest limits and next slice
 
 The next conversation-to-work depth should adapt, in order:
 
-1. reviewed coaching Notes, including private/team/client visibility ceilings;
+1. a retained separate-account visibility operation proving private, Session,
+   client-safe, and project-team Note ceilings at the rendered boundary;
 2. client-visible follow-up and delivery, with a separate delivery capability
    and destination readback; and
 3. a central activity view that can explain and reopen source, target, run,

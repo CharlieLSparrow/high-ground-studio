@@ -278,7 +278,18 @@ describe("packet note candidates", () => {
         transcriptSnapshot: { sha256: snapshotSha256 },
         noteCandidateReviewReceipts: [
           receipt("user-2", "REJECT", "Other actor private rejection"),
-          receipt("user-1", "EDIT", "My reviewed insight"),
+          {
+            ...receipt("user-1", "EDIT", "My reviewed insight"),
+            governance: {
+              schema: "quipsly-governed-action-reference-v1",
+              runId: "run-note-1",
+              actionId: "action-note-1",
+              attemptId: "attempt-note-1",
+              receiptId: "governed-receipt-note-1",
+              capabilityId: "quipsly.session.transcript-note.materialize",
+              capabilityVersion: 1,
+            },
+          },
         ],
       },
     };
@@ -289,7 +300,7 @@ describe("packet note candidates", () => {
       suggestedKind: "DECISION",
       suggestedVisibility: "AUTHOR_PRIVATE",
       reviewStatus: "EDITED_FOR_REVIEW",
-      lastHumanReview: { receiptId: "receipt-user-1-EDIT", decision: "EDIT", reviewedByUserId: "user-1" },
+      lastHumanReview: { receiptId: "receipt-user-1-EDIT", decision: "EDIT", reviewedByUserId: "user-1", governance: { actionId: "action-note-1", capabilityId: "quipsly.session.transcript-note.materialize" } },
     });
     expect(buildPacketNoteCandidates({ summary, latestTranscriptJob, notes: [], packetBuildId, actorUserId: "user-3" })[0]).toMatchObject({
       suggestedTitle: "Insights and decisions",

@@ -960,10 +960,18 @@ describe("Session review goal candidates", () => {
       ...noteCandidate,
       humanApprovalRequired: false,
       committedNoteId: "note-1",
+      reviewStatus: "ACCEPTED_AS_NOTE",
+      lastHumanReview: {
+        receiptId: "note-receipt-1",
+        decision: "ACCEPT",
+        reviewedAt: "2026-08-03T12:00:00.000Z",
+        reviewedByUserId: "user-1",
+        governance: { actionId: "governed-action-note-1234", receiptId: "governed-receipt-note", capabilityId: "quipsly.session.transcript-note.materialize" },
+      },
     };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetWithNote()))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, note: { id: "note-1", visibility: "CLIENT_SAFE" } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, governance: acceptedNote.lastHumanReview?.governance, note: { id: "note-1", visibility: "CLIENT_SAFE" } }))
       .mockResolvedValueOnce(jsonResponse(packetWithNote(acceptedNote)));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -998,8 +1006,9 @@ describe("Session review goal candidates", () => {
       packetLaneId: "coaching-insights",
       decision: "ACCEPT",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("client-safe visibility");
+    expect(await screen.findByRole("status")).toHaveTextContent("client-safe visibility under governed receipt");
     expect(screen.getByRole("link", { name: "Open notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
+    expect(screen.getByText(/Governed receipt.*ote-1234/i)).toBeInTheDocument();
   });
 
   it("keeps an edited packet-note candidate non-canonical and auditable", async () => {
@@ -1038,11 +1047,11 @@ describe("Session review goal candidates", () => {
       ...noteCandidate,
       reviewStatus: "MERGED_INTO_NOTE",
       committedNoteId: "existing-note-1",
-      lastHumanReview: { receiptId: "merge-receipt-1", decision: "MERGE", reviewedAt: "2026-08-03T14:01:00.000Z", reviewedByUserId: "user-1" },
+      lastHumanReview: { receiptId: "merge-receipt-1", decision: "MERGE", reviewedAt: "2026-08-03T14:01:00.000Z", reviewedByUserId: "user-1", governance: { actionId: "governed-note-merge-5678", receiptId: "governed-note-merge-receipt", capabilityId: "quipsly.session.transcript-note.merge" } },
     };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetWithNote(noteCandidate, true)))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, decision: "MERGE", note: { id: "existing-note-1", visibility: "AUTHOR_PRIVATE" }, idempotentReplay: false }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, decision: "MERGE", governance: mergedCandidate.lastHumanReview?.governance, note: { id: "existing-note-1", visibility: "AUTHOR_PRIVATE" }, idempotentReplay: false }))
       .mockResolvedValueOnce(jsonResponse(packetWithNote(mergedCandidate, true)));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -1065,6 +1074,7 @@ describe("Session review goal candidates", () => {
     });
     expect(await screen.findByRole("status")).toHaveTextContent(/new recoverable revision/i);
     expect(screen.getByText(/Merged into one revisioned Session note/i)).toBeInTheDocument();
+    expect(screen.getByText(/Governed receipt.*rge-5678/i)).toBeInTheDocument();
   });
 
   it("persists an edited goal draft without creating a goal or task", async () => {

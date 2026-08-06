@@ -267,7 +267,8 @@ async function main() {
     assert(
       afterCandidate.reviewStatus === "MERGED_INTO_NOTE"
         && afterCandidate.committedNoteId === created.note.id
-        && afterCandidate.lastHumanReview?.decision === "MERGE",
+        && afterCandidate.lastHumanReview?.decision === "MERGE"
+        && afterCandidate.lastHumanReview?.governance?.capabilityId === "quipsly.session.transcript-note.merge",
       "The operated candidate did not return as one terminal merge into the selected note.",
     );
 
@@ -294,6 +295,8 @@ async function main() {
     const revisionPrevious = asObject(revisionSnapshot.previous);
     const revisionNext = asObject(revisionSnapshot.next);
     const candidateSource = asObject(mergeReceipt.candidateSource);
+    const governance = asObject(mergeReceipt.governance);
+    const revisionGovernance = asObject(revisionSnapshot.governance);
     assert(
       originalSource.schema === "quipsly-session-note-v1"
         && mergeReceipt.kind === "quipsly-note-candidate-review-receipt-v1"
@@ -301,6 +304,13 @@ async function main() {
         && mergeReceipt.noteId === mergedNote.id
         && mergeReceipt.noteRevisionId === mergedNote.revisions[1].id,
       "The updated note must retain its original identity and expose the latest merge receipt.",
+    );
+    assert(
+      governance.schema === "quipsly-governed-action-reference-v1"
+        && governance.capabilityId === "quipsly.session.transcript-note.merge"
+        && governance.actionId === afterCandidate.lastHumanReview.governance.actionId
+        && revisionGovernance.actionId === governance.actionId,
+      "The note, packet projection, and immutable revision must expose one matching governed action.",
     );
     assert(
       revisionPrevious.title === sourceTitle
@@ -317,6 +327,40 @@ async function main() {
         && JSON.stringify(candidateSource.segmentIds) === JSON.stringify(fixture.goalSegmentIDs)
         && candidateSource.effectiveTextSnapshot === EXPECTED_SOURCE_TEXT,
       "The merge receipt must preserve the complete immutable recording-backed source span.",
+    );
+
+    const governedAction = await prisma.governedAction.findFirst({
+      where: {
+        id: governance.actionId,
+        capabilityId: "quipsly.session.transcript-note.merge",
+        targetObjectType: "CoachingNote",
+        targetObjectId: mergedNote.id,
+        idempotencyKey: mergeReceipt.id,
+      },
+      include: {
+        run: true,
+        attempts: { orderBy: { attemptNumber: "asc" } },
+        receipts: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    const governedResult = asObject(governedAction?.resultJson);
+    const governedRecovery = asObject(governedAction?.recoveryJson);
+    const governedConsequence = asObject(governedAction?.consequenceJson);
+    const governedBoundaries = asObject(governedConsequence.boundaries);
+    assert(
+      governedAction?.status === "SUCCEEDED"
+        && governedAction?.riskLevel === "HIGH"
+        && governedAction?.run?.status === "SUCCEEDED"
+        && governedAction?.attempts?.length === 1
+        && governedAction.attempts[0].status === "SUCCEEDED"
+        && governedAction?.receipts?.length === 1
+        && governedAction.receipts[0].id === governance.receiptId
+        && governedRecovery.method === "append-a-compensating-note-revision-and-supersede-this-decision"
+        && asObject(governedResult.targetBefore).body === sourceBody
+        && asObject(governedResult.targetAfter).body === mergedBody
+        && governedBoundaries.priorContentRetainedInRevision === true
+        && governedBoundaries.externalDelivery === false,
+      "The governed ledger must prove the high-risk note revision, exact before/after state, recovery, and no delivery.",
     );
 
     const sideEffectsAfter = await sideEffectCounts(
@@ -386,6 +430,11 @@ async function main() {
       sourceSegmentIDs: fixture.goalSegmentIDs,
       noteID: mergedNote.id,
       noteRevisionID: mergedNote.revisions[1].id,
+      governedRunID: governance.runId,
+      governedActionID: governance.actionId,
+      governedAttemptID: governance.attemptId,
+      governedReceiptID: governance.receiptId,
+      governedCapabilityID: governance.capabilityId,
       revisionCount: replayRevisionCount,
       packetNoteCandidateID: mergeReceipt.packetNoteCandidateId,
       resultBundle,
@@ -400,6 +449,8 @@ async function main() {
         existingNoteSelectedExplicitly: true,
         completeSourcePlaybackReviewed: true,
         priorContentRecoverable: true,
+        beforeAndAfterAudienceRecorded: true,
+        governedCompensationAvailable: true,
         exactTranscriptReturnOperatedAfterRelaunch: true,
         taskCreated: false,
         goalCreated: false,

@@ -4,17 +4,20 @@ Date: 2026-08-06
 
 ## Governed conversation-to-work checkpoint
 
-- Explicit transcript-to-Goal and transcript-to-Task creation now commits the
-  canonical work object atomically with a typed governed action run, exact
-  authority/read set, target identity, one succeeded attempt, and one immutable
-  execution receipt. The same contract covers direct creation and ACCEPT of a
-  reviewed packet candidate.
+- Explicit transcript-to-Note, transcript-to-Goal, and transcript-to-Task
+  creation now commits the canonical work object atomically with a typed
+  governed action run, exact authority/read set, target identity, one succeeded
+  attempt, and one immutable execution receipt. The same contract covers direct
+  creation and ACCEPT of a reviewed packet candidate.
 - Reviewed packet MERGE now uses sibling governed capabilities for appending
-  source-bound evidence to one explicitly selected existing Goal or Task. The
-  operation records an immutable evidence receipt and exact target before/after
-  snapshots; it cannot quietly edit status, ownership, dates, planning,
-  reminders, recurrence, tags, goal links, progress, or project identity.
-- Goal and Task provenance points back to the action receipt; exact retries
+  source-bound evidence to one explicitly selected existing Goal or Task, or a
+  new immutable revision to one explicitly selected actor-owned Note. The
+  operation records exact target before/after snapshots; Goal and Task merge
+  cannot quietly edit status, ownership, dates, planning, reminders,
+  recurrence, tags, goal links, progress, or project identity. Note merge can
+  change reviewed wording, purpose, and audience, so it is high-consequence and
+  carries an explicit compensating-revision recovery contract.
+- Note, Goal, and Task provenance points back to the action receipt; exact retries
   return the same target, changed evidence fails closed, and legacy work is not
   assigned fabricated history. The operation cannot alter transcript/recording
   truth, schedule a reminder or calendar event, deliver a message, call a
@@ -23,14 +26,15 @@ Date: 2026-08-06
   or evidence merge. Capture Today and Work also expose the latest governed
   merge receipt and return to the exact transcript source after relaunch.
   Capture adds direct Notes, Goals, Tasks, Transcript, and review-queue jumps so
-  deep packets do not bury the next decision. Notes and client-visible
-  follow-up remain the next governed adapters.
+  deep packets do not bury the next decision. Note `CLIENT_SAFE` is only an
+  audience eligibility ceiling; client-visible follow-up remains a separate
+  future delivery capability.
 - Compiled Capture acceptance uncovered a vanished temporary retained-audio
   dependency. The local operation now uses a versioned durable exact-byte
   source for new clones without rewriting the old canonical fixture. Current
   iPhone 17 Pro simulator qualification passed after actual playback and human
   confirmation of the complete three-segment thought. It created and read back
-  exactly one Note, Goal, and actor-owned Task, plus the Goal and Task governed
+  exactly one Note, Goal, and actor-owned Task, plus all three governed
   receipts, with zero calendar links or external effects. Today also exercised
   the collapsed-task expansion needed to reveal reviewed work behind the top
   three due commitments. Full evidence is documented in
@@ -42,6 +46,13 @@ Date: 2026-08-06
   target state, and proved idempotent replay. The Task fixture now includes and
   protects a real planned focus block so a mature retained account does not
   depend on an accidentally sparse Today queue.
+- A fourth compiled simulator operation merged reviewed evidence into an
+  existing private Note as one immutable revision. It rendered the governed
+  receipt after relaunch, returned to the exact source, proved exact replay did
+  not duplicate the revision, retained exact content and audience before/after
+  state, and produced zero delivery or adjacent work. Separate-account
+  visibility proof and a separately governed client-delivery capability remain
+  open.
 
 ## Governed action runtime foundation
 
