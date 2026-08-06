@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA,
+  episodeAudioMixReviewCoverage,
   newAutomaticEpisodeAudioMixProposal,
   parseEpisodeAudioMixProposal,
+  parseEpisodeAudioMixReviewPlaybackEvidence,
   reviseEpisodeAudioMixProposal,
   type EpisodeAudioMixTrack,
 } from "@high-ground/quipsly-media-processing";
@@ -48,6 +51,9 @@ test("automatic mix suggestions attenuate only a uniquely lower-authority review
   assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).baselineOutput?.variantKind, "episode-mix-baseline");
   delete jsonbRoundTrip.baselineOutput;
   assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).baselineOutput, null, "retained v1 proposals without an A/B baseline stay readable");
+  const evidence = parseEpisodeAudioMixReviewPlaybackEvidence({ schema: EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA, baselineListenedSecondBins: [2, 11, 13, 16, 30, 58], proposalListenedSecondBins: [2, 11, 13, 16, 30, 58], switches: [{ from: "proposal", to: "baseline", atSecond: 13 }], completedAt: "2026-08-06T12:04:00.000Z" }, 60);
+  assert.equal(episodeAudioMixReviewCoverage(proposal, evidence).approvalReady, true);
+  assert.equal(episodeAudioMixReviewCoverage(proposal, { ...evidence, proposalListenedSecondBins: [2, 30, 58] }).approvalReady, false, "automation moments require both baseline and proposal playback");
 });
 
 test("ambiguous primary tracks stay unresolved instead of receiving guessed gain", () => {

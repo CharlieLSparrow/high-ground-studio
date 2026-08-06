@@ -3659,52 +3659,54 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace               StudioWorkspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents               StudioDocument[]
-  tags                    StudioTag[]
-  tagAliases              StudioTagAlias[]
-  tagCandidates           StudioTagCandidate[]
-  tagMergeReceipts        StudioTagMergeReceipt[]
-  viewDefinitions         StudioViewDefinition[]
-  knowledgeNodes          StudioKnowledgeNode[]
-  manuscript              StudioManuscript?                        @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets             StudioMediaAsset[]
-  mediaBins               MediaBin[]
-  episodeProductions      StudioEpisodeProduction[]
-  scenes                  Scene[]
-  shootDays               ShootDay[]
-  storyEntities           StoryEntity[]
-  storyBibleActions       StoryBibleAction[]
-  storyboards             StudioStoryboard[]
-  chatThreads             StudioNestChatThread[]
-  chatMessages            StudioNestChatMessage[]
-  accessGrants            StudioProjectAccessGrant[]
-  nestInvites             StudioNestInvite[]
-  assetAttachments        StudioAssetAttachment[]
-  assetProcessingJobs     StudioAssetProcessingJob[]
-  audioMasterReviews      StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
-  episodeOutputSelections StudioEpisodeOutputSelectionReceipt[]
-  episodeAudioDecisions   StudioEpisodeAudioTrackDecisionReceipt[]
-  episodeAudioAnalyses    StudioEpisodeAudioAnalysisReceipt[]
-  episodeAudioReviews     StudioEpisodeAudioReviewReceipt[]
-  sourceUnits             StudioSourceUnit[]
-  personalSourceFilings   StudioPersonalSourceFiling[]
-  sourceAnnotations       StudioSourceAnnotation[]
-  sourceAnnotationUses    StudioSourceAnnotationUse[]
-  documentOperations      StudioDocumentOperation[]
-  productionRooms         StudioProductionRoom[]
-  outputPackets           StudioOutputPacket[]
-  publishedArtifacts      StudioPublishedArtifact[]
-  workflowJobs            StudioWorkflowJob[]
-  goals                   Goal[]
-  actionItems             ActionItem[]
-  taskRecurrenceSeries    TaskRecurrenceSeries[]
-  callRooms               CallRoom[]
-  coachingEngagements     CoachingEngagement[]
-  calendarConnections     CalendarConnection[]
-  calendarCollections     CalendarCollection[]
+  workspace                 StudioWorkspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents                 StudioDocument[]
+  tags                      StudioTag[]
+  tagAliases                StudioTagAlias[]
+  tagCandidates             StudioTagCandidate[]
+  tagMergeReceipts          StudioTagMergeReceipt[]
+  viewDefinitions           StudioViewDefinition[]
+  knowledgeNodes            StudioKnowledgeNode[]
+  manuscript                StudioManuscript?                        @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets               StudioMediaAsset[]
+  mediaBins                 MediaBin[]
+  episodeProductions        StudioEpisodeProduction[]
+  scenes                    Scene[]
+  shootDays                 ShootDay[]
+  storyEntities             StoryEntity[]
+  storyBibleActions         StoryBibleAction[]
+  storyboards               StudioStoryboard[]
+  chatThreads               StudioNestChatThread[]
+  chatMessages              StudioNestChatMessage[]
+  accessGrants              StudioProjectAccessGrant[]
+  nestInvites               StudioNestInvite[]
+  assetAttachments          StudioAssetAttachment[]
+  assetProcessingJobs       StudioAssetProcessingJob[]
+  audioMasterReviews        StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
+  episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
+  episodeOutputSelections   StudioEpisodeOutputSelectionReceipt[]
+  episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
+  episodeAudioAnalyses      StudioEpisodeAudioAnalysisReceipt[]
+  episodeAudioReviews       StudioEpisodeAudioReviewReceipt[]
+  sourceUnits               StudioSourceUnit[]
+  personalSourceFilings     StudioPersonalSourceFiling[]
+  sourceAnnotations         StudioSourceAnnotation[]
+  sourceAnnotationUses      StudioSourceAnnotationUse[]
+  documentOperations        StudioDocumentOperation[]
+  productionRooms           StudioProductionRoom[]
+  outputPackets             StudioOutputPacket[]
+  publishedArtifacts        StudioPublishedArtifact[]
+  workflowJobs              StudioWorkflowJob[]
+  goals                     Goal[]
+  actionItems               ActionItem[]
+  taskRecurrenceSeries      TaskRecurrenceSeries[]
+  callRooms                 CallRoom[]
+  coachingEngagements       CoachingEngagement[]
+  calendarConnections       CalendarConnection[]
+  calendarCollections       CalendarCollection[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -3816,6 +3818,8 @@ model StudioEpisodeProduction {
   audioTrackDecisions StudioEpisodeAudioTrackDecisionReceipt[]
   audioAnalyses       StudioEpisodeAudioAnalysisReceipt[]
   audioReviews        StudioEpisodeAudioReviewReceipt[]
+  audioMixReviews     StudioEpisodeAudioMixReviewReceipt[]
+  audioMixPromotions  StudioEpisodeAudioMixPromotionReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4039,11 +4043,13 @@ model StudioAssetProcessingJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project               StudioProject?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset                 StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  audioMasterReviews    StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews  StudioAudioDeliveryReviewReceipt[]
+  project                   StudioProject?                          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset                     StudioMediaAsset                        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  audioMasterReviews        StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
+  episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
 
   @@index([assetId, status, createdAt])
   @@index([projectId, status])
@@ -4125,6 +4131,70 @@ model StudioAudioMasterPromotionReceipt {
   @@index([masteryJobId, occurredAt], map: "StudioAudioMasterPromotion_job_occurred_idx")
   @@index([projectId, assetId, occurredAt], map: "StudioAudioMasterPromotion_project_asset_occurred_idx")
   @@index([reviewReceiptId], map: "StudioAudioMasterPromotion_review_idx")
+}
+
+// An Episode mix review binds what a person heard to the exact canonical
+// program, immutable proposal, baseline bytes, proposal bytes, and playback
+// coverage. It is append-only and cannot promote or mutate any timeline.
+model StudioEpisodeAudioMixReviewReceipt {
+  id                       String                          @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  mixJobId                 String
+  actorEmail               String
+  clientRequestId          String
+  decision                 StudioAudioMasterReviewDecision
+  programFingerprintSha256 String
+  proposalSha256           String
+  baselineSha256           String
+  previewSha256            String
+  requestSha256            String
+  evidenceJson             Json
+  note                     String?
+  occurredAt               DateTime
+  createdAt                DateTime                        @default(now())
+
+  project           StudioProject                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction                 @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  mixJob            StudioAssetProcessingJob                @relation(fields: [mixJobId], references: [id], onDelete: Cascade)
+  promotions        StudioEpisodeAudioMixPromotionReceipt[]
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeMixReview_project_actor_request_key")
+  @@index([mixJobId, occurredAt], map: "StudioEpisodeMixReview_job_occurred_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeMixReview_episode_occurred_idx")
+}
+
+// Promotion is deliberately separate from listening approval. It marks the
+// exact approved preview as a candidate for the next finishing stage; it does
+// not replace sources, rewrite the Episode program, encode, or publish.
+model StudioEpisodeAudioMixPromotionReceipt {
+  id                       String                              @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  mixJobId                 String
+  reviewReceiptId          String?
+  actorEmail               String
+  clientRequestId          String
+  operation                StudioAudioMasterPromotionOperation
+  programFingerprintSha256 String
+  proposalSha256           String
+  baselineSha256           String
+  previewSha256            String
+  requestSha256            String
+  evidenceJson             Json
+  reason                   String?
+  occurredAt               DateTime
+  createdAt                DateTime                            @default(now())
+
+  project           StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction             @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  mixJob            StudioAssetProcessingJob            @relation(fields: [mixJobId], references: [id], onDelete: Cascade)
+  reviewReceipt     StudioEpisodeAudioMixReviewReceipt? @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeMixPromotion_project_actor_request_key")
+  @@index([mixJobId, occurredAt], map: "StudioEpisodeMixPromotion_job_occurred_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeMixPromotion_episode_occurred_idx")
+  @@index([reviewReceiptId], map: "StudioEpisodeMixPromotion_review_idx")
 }
 
 // Delivery review is separate from mastering review because the lossy encoded
@@ -4772,7 +4842,7 @@ model StudioEpisodeAudioAnalysisReceipt {
   project            StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   episodeProduction  StudioEpisodeProduction             @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
   supersedesAnalysis StudioEpisodeAudioAnalysisReceipt?  @relation("StudioEpisodeAudioAnalysisSupersession", fields: [supersedesAnalysisId], references: [id], onDelete: Restrict)
-  supersededBy       StudioEpisodeAudioAnalysisReceipt[]  @relation("StudioEpisodeAudioAnalysisSupersession")
+  supersededBy       StudioEpisodeAudioAnalysisReceipt[] @relation("StudioEpisodeAudioAnalysisSupersession")
   reviews            StudioEpisodeAudioReviewReceipt[]
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeAudioAnalysis_project_actor_request_key")
@@ -4806,9 +4876,9 @@ model StudioEpisodeAudioReviewReceipt {
   occurredAt               DateTime
   createdAt                DateTime                         @default(now())
 
-  project           StudioProject                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  episodeProduction StudioEpisodeProduction            @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
-  analysis          StudioEpisodeAudioAnalysisReceipt  @relation(fields: [analysisId], references: [id], onDelete: Restrict)
+  project           StudioProject                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction           @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  analysis          StudioEpisodeAudioAnalysisReceipt @relation(fields: [analysisId], references: [id], onDelete: Restrict)
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeAudioReview_project_actor_request_key")
   @@index([analysisId, eventId, occurredAt], map: "StudioEpisodeAudioReview_analysis_event_time_idx")

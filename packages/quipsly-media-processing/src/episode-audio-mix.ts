@@ -3,6 +3,7 @@ import { assessAudioMastery, parseAudioMasteryMeasurement, type AudioMasteryMeas
 export const EPISODE_AUDIO_MIX_CONTRACT_VERSION = 1 as const;
 export const EPISODE_AUDIO_MIX_PROPOSAL_KIND = "quipsly-episode-audio-mix-proposal-v1" as const;
 export const EPISODE_AUDIO_MIX_RESULT_KIND = "quipsly-episode-audio-mix-result-v1" as const;
+export const EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA = "quipsly-episode-audio-mix-review-evidence-v1" as const;
 
 export type EpisodeAudioMixTrack = {
   assetId: string;
@@ -140,6 +141,22 @@ export type EpisodeAudioMixResult = {
     proposalAndSourcesRemainImmutable: true;
     playbackReviewRequiredBeforePromotion: true;
   };
+};
+
+export type EpisodeAudioMixReviewPlaybackEvidence = {
+  schema: typeof EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA;
+  baselineListenedSecondBins: number[];
+  proposalListenedSecondBins: number[];
+  switches: Array<{ from: "baseline" | "proposal"; to: "baseline" | "proposal"; atSecond: number }>;
+  completedAt: string;
+};
+
+export type EpisodeAudioMixReviewCoverage = {
+  requiredSecondBins: number[];
+  missingBaselineSecondBins: number[];
+  missingProposalSecondBins: number[];
+  comparedAtSameClock: boolean;
+  approvalReady: boolean;
 };
 
 type AutomaticMixProposalInput = {
@@ -361,6 +378,36 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
   };
 }
 
+export function parseEpisodeAudioMixReviewPlaybackEvidence(value: unknown, durationSeconds: number): EpisodeAudioMixReviewPlaybackEvidence {
+  const row = record(value);
+  if (row.schema !== EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA) throw new Error("Episode mix playback evidence schema is unsupported.");
+  const duration = finite(durationSeconds, "durationSeconds", 0.001, 172_800);
+  const bins = (candidate: unknown, label: string) => uniqueSortedIntegers(candidate, label).filter((second) => second <= Math.ceil(duration));
+  const switches = array(row.switches, "switches").map((value, index) => {
+    const item = record(value);
+    const from = item.from === "baseline" || item.from === "proposal" ? item.from : invalid(`switches[${index}].from`);
+    const to = item.to === "baseline" || item.to === "proposal" ? item.to : invalid(`switches[${index}].to`);
+    const atSecond = finite(item.atSecond, `switches[${index}].atSecond`, 0, duration);
+    if (from === to) throw new Error("Episode mix A/B switches must change versions.");
+    return { from, to, atSecond };
+  });
+  return { schema: EPISODE_AUDIO_MIX_REVIEW_EVIDENCE_SCHEMA, baselineListenedSecondBins: bins(row.baselineListenedSecondBins, "baselineListenedSecondBins"), proposalListenedSecondBins: bins(row.proposalListenedSecondBins, "proposalListenedSecondBins"), switches, completedAt: isoDate(row.completedAt, "completedAt") };
+}
+
+export function episodeAudioMixReviewCoverage(proposalValue: EpisodeAudioMixProposal | unknown, evidenceValue: EpisodeAudioMixReviewPlaybackEvidence | unknown): EpisodeAudioMixReviewCoverage {
+  const proposal = parseEpisodeAudioMixProposal(proposalValue);
+  const duration = Math.max(...proposal.tracks.map((track) => Math.max(0, track.programOffsetSeconds) + Math.max(0, track.sourceDurationSeconds + Math.min(0, track.programOffsetSeconds))));
+  const evidence = parseEpisodeAudioMixReviewPlaybackEvidence(evidenceValue, duration);
+  const representative = [Math.min(2, duration / 2), duration / 2, Math.max(0, duration - 2)];
+  const actionMoments = proposal.actions.flatMap((action) => [Math.max(0, action.programStartSeconds - 1), (action.programStartSeconds + action.programEndSeconds) / 2, Math.min(duration, action.programEndSeconds + 1)]);
+  const requiredSecondBins = [...new Set([...representative, ...actionMoments].map((second) => Math.max(0, Math.min(Math.ceil(duration), Math.floor(second)))))].sort((left, right) => left - right);
+  const covered = (heard: number[], required: number) => heard.some((second) => Math.abs(second - required) <= 1);
+  const missingBaselineSecondBins = requiredSecondBins.filter((second) => !covered(evidence.baselineListenedSecondBins, second));
+  const missingProposalSecondBins = requiredSecondBins.filter((second) => !covered(evidence.proposalListenedSecondBins, second));
+  const comparedAtSameClock = evidence.switches.length > 0;
+  return { requiredSecondBins, missingBaselineSecondBins, missingProposalSecondBins, comparedAtSameClock, approvalReady: missingBaselineSecondBins.length === 0 && missingProposalSecondBins.length === 0 && comparedAtSameClock };
+}
+
 function parseTrack(value: unknown): EpisodeAudioMixTrack {
   const row = record(value);
   const role = ROLES.has(row.role as EpisodeAudioMixTrack["role"]) ? row.role as EpisodeAudioMixTrack["role"] : invalid("track.role");
@@ -465,4 +512,5 @@ function isoDate(value: unknown, field: string): string { const result = text(va
 function finite(value: unknown, field: string, minimum: number, maximum: number): number { const result = Number(value); if (!Number.isFinite(result) || result < minimum || result > maximum) throw new Error(`Episode mix ${field} is out of range.`); return Math.round(result * 1_000_000) / 1_000_000; }
 function positiveInteger(value: unknown, field: string): number { const result = Number(value); if (!Number.isSafeInteger(result) || result <= 0) throw new Error(`Episode mix ${field} must be a positive integer.`); return result; }
 function uniqueSortedIds(value: unknown, field: string): string[] { const result = array(value, field).map((entry) => id(entry, field)).sort(); if (new Set(result).size !== result.length) throw new Error(`Episode mix ${field} contains duplicates.`); return result; }
+function uniqueSortedIntegers(value: unknown, field: string): number[] { const result = array(value, field).map((entry) => { const parsed = Number(entry); if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`Episode mix ${field} must contain non-negative integer seconds.`); return parsed; }).sort((left, right) => left - right); if (new Set(result).size !== result.length) throw new Error(`Episode mix ${field} contains duplicates.`); return result; }
 function invalid(field: string): never { throw new Error(`Episode mix ${field} is invalid.`); }
