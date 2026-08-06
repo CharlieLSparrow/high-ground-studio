@@ -44,6 +44,8 @@ import { PriorSessionContinuityCard, PriorSessionFollowThroughCard, SessionConti
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import { SessionEpisodeBindingRepair } from "./session-episode-binding-repair";
+import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
+import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
@@ -1851,7 +1853,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1866,6 +1868,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
+  finishingEvidence?: SessionFinishingEvidence;
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
@@ -2260,6 +2263,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </div> : null}
 
       {mode === "recordings" ? <>
+        <SessionFinishingCockpitCard roomId={roomId} topology={readinessTopology} sourceEvidence={sourceEvidence} contentReadiness={contentReadiness} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} />
         <SessionReadinessTopologyCard roomId={roomId} topology={readinessTopology} />
         <SessionRecordingImportCard roomId={roomId} preparation={preparation} />
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
@@ -2282,6 +2286,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
       {mode === "outputs" ? (
         <div className="space-y-5">
+          <SessionFinishingCockpitCard roomId={roomId} topology={readinessTopology} sourceEvidence={sourceEvidence} contentReadiness={contentReadiness} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} />
           <SessionClientFollowUpCard roomId={roomId} />
           {studioHandoff
             ? <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />

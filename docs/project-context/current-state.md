@@ -2389,3 +2389,20 @@ These should be treated as cleanup candidates later, not as authoritative produc
   iOS simulator target builds for arm64 and x86_64. Production deployment and
   physical-iPhone receipt operation remain separate release gates. See
   `docs/coordination/2026-08-06-session-source-exit-readiness.md`.
+
+### 2026-08-06 Session Finishing Cockpit
+
+- Recordings and Outputs now share a ranked Recover → Understand → Repair →
+  Assemble → Finish projection over canonical source, transcript, audio
+  analysis, Studio attachment, Session output, and delivery evidence.
+- Missing evidence is `NOT_OBSERVED`; analysis is not repair approval,
+  attachment is not editorial completion, and delivery history is not a claim
+  that every master or destination is finished.
+- Authenticated operation on the retained coaching rehearsal separated a safe
+  recording exit from five downstream attention items: capture-test-only
+  content, incomplete provenance, held/failed transcript attempts, partial
+  audio-analysis coverage, and sources still awaiting Studio attachment.
+- Two focused suites pass five tests, Quipsly typecheck passes, and the real UI
+  was operated after correcting partial audio evidence from `NOT_OBSERVED` to
+  `IN_PROGRESS`. See
+  `docs/coordination/2026-08-06-session-finishing-cockpit.md`.

@@ -170,6 +170,28 @@ export default async function SessionReviewPage({
             createdAt: true,
           },
         },
+        transcriptJobs: {
+          orderBy: { updatedAt: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            assetId: true,
+            status: true,
+            updatedAt: true,
+            _count: { select: { segments: true } },
+          },
+        },
+        outputs: {
+          orderBy: { updatedAt: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            kind: true,
+            status: true,
+            updatedAt: true,
+            _count: { select: { deliveries: true } },
+          },
+        },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
@@ -577,7 +599,24 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    const finishingEvidence = {
+      transcriptJobs: room.transcriptJobs.map((job: any) => ({
+        id: job.id,
+        recordingAssetId: job.assetId,
+        status: String(job.status),
+        segmentCount: job._count?.segments ?? 0,
+        updatedAt: job.updatedAt.toISOString(),
+      })),
+      outputs: room.outputs.map((output: any) => ({
+        id: output.id,
+        kind: String(output.kind),
+        status: String(output.status),
+        deliveryCount: output._count?.deliveries ?? 0,
+        updatedAt: output.updatedAt.toISOString(),
+      })),
+      analyzedSourceCount: audibleEventSources.length,
+    };
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

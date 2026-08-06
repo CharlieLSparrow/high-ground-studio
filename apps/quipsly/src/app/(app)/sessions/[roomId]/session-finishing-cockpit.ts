@@ -1,0 +1,204 @@
+import type { SessionSourceEvidence } from "./session-source-evidence-model";
+import type { SessionReadinessTopology } from "./session-readiness-topology";
+
+export type SessionFinishingEvidence = {
+  transcriptJobs: Array<{
+    id: string;
+    recordingAssetId: string | null;
+    status: string;
+    segmentCount: number;
+    updatedAt: string;
+  }>;
+  outputs: Array<{
+    id: string;
+    kind: string;
+    status: string;
+    deliveryCount: number;
+    updatedAt: string;
+  }>;
+  analyzedSourceCount: number;
+};
+
+type ContentReadiness = {
+  status: "none" | "capture-proof-only" | "substantial";
+  captureAssetCount: number;
+  substantialRecordingCount: number;
+};
+
+type StudioHandoff = {
+  recordings: Array<{
+    status: "READY_FOR_HANDOFF" | "NOT_READY" | "ATTACHED" | "RECEIPT_MISSING" | "PROJECT_CONFLICT";
+  }>;
+} | null;
+
+export type SessionFinishingAttention = {
+  id: string;
+  severity: "BLOCKER" | "HIGH" | "REVIEW";
+  lane: "recordings" | "transcript" | "outputs";
+  title: string;
+  detail: string;
+  consequence: string;
+};
+
+export type SessionFinishingStage = {
+  id: "recover" | "understand" | "repair" | "assemble" | "finish";
+  label: string;
+  state: "BLOCKED" | "READY" | "IN_PROGRESS" | "NOT_OBSERVED";
+  summary: string;
+  evidence: string;
+  lane: "recordings" | "transcript" | "outputs";
+};
+
+export type SessionFinishingCockpit = {
+  attention: SessionFinishingAttention[];
+  stages: SessionFinishingStage[];
+  counts: { blockers: number; high: number; review: number };
+};
+
+const severityRank = { BLOCKER: 0, HIGH: 1, REVIEW: 2 } as const;
+
+export function buildSessionFinishingCockpit(input: {
+  topology: SessionReadinessTopology;
+  sourceEvidence: SessionSourceEvidence;
+  contentReadiness: ContentReadiness | null;
+  studioHandoff: StudioHandoff;
+  finishingEvidence: SessionFinishingEvidence;
+}): SessionFinishingCockpit {
+  const { topology, sourceEvidence, contentReadiness, studioHandoff, finishingEvidence } = input;
+  const attention: SessionFinishingAttention[] = [];
+  if (!topology.exitReadiness.safeToLeaveAllEndpoints) attention.push({
+    id: "source-exit",
+    severity: "BLOCKER",
+    lane: "recordings",
+    title: topology.exitReadiness.label,
+    detail: topology.exitReadiness.detail,
+    consequence: "A recording device may still hold the only recoverable source, or Nest may not have a released exact-byte copy.",
+  });
+  const sourceIntegrityCount = sourceEvidence.counts.HELD + sourceEvidence.counts.DRIFT + sourceEvidence.counts.INCOMPLETE;
+  if (sourceIntegrityCount) attention.push({
+    id: "source-integrity",
+    severity: sourceEvidence.counts.HELD + sourceEvidence.counts.DRIFT ? "BLOCKER" : "HIGH",
+    lane: "recordings",
+    title: `${sourceIntegrityCount} source ${sourceIntegrityCount === 1 ? "receipt needs" : "receipts need"} review`,
+    detail: `${sourceEvidence.counts.HELD} held · ${sourceEvidence.counts.DRIFT} drift · ${sourceEvidence.counts.INCOMPLETE} incomplete.`,
+    consequence: "Editor, transcript, or delivery work could attach to incomplete or mismatched provenance.",
+  });
+  if (contentReadiness && contentReadiness.status !== "substantial") attention.push({
+    id: "production-content",
+    severity: "HIGH",
+    lane: "recordings",
+    title: contentReadiness.status === "capture-proof-only" ? "Only capture-test content is retained" : "No substantial recording is retained",
+    detail: `${contentReadiness.substantialRecordingCount} substantial take${contentReadiness.substantialRecordingCount === 1 ? "" : "s"} across ${contentReadiness.captureAssetCount} capture asset${contentReadiness.captureAssetCount === 1 ? "" : "s"}.`,
+    consequence: "A technically verified test file is not a production spine for editing or publishing.",
+  });
+  const handoffHolds = studioHandoff?.recordings.filter((recording) => recording.status === "RECEIPT_MISSING" || recording.status === "PROJECT_CONFLICT").length ?? 0;
+  const readyForHandoff = studioHandoff?.recordings.filter((recording) => recording.status === "READY_FOR_HANDOFF").length ?? 0;
+  const attached = studioHandoff?.recordings.filter((recording) => recording.status === "ATTACHED").length ?? 0;
+  if (handoffHolds) attention.push({
+    id: "studio-integrity",
+    severity: "BLOCKER",
+    lane: "outputs",
+    title: `${handoffHolds} Studio handoff integrity hold${handoffHolds === 1 ? "" : "s"}`,
+    detail: "The project binding or immutable attachment receipt does not match this Session.",
+    consequence: "An editor could open the wrong project source or lose the provenance return path.",
+  });
+  if (readyForHandoff) attention.push({
+    id: "studio-handoff-ready",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: `${readyForHandoff} verified source${readyForHandoff === 1 ? " is" : "s are"} ready for explicit Studio attachment`,
+    detail: "The source bytes are safe, but no attachment receipt exists yet.",
+    consequence: "Transcript and editor work remain disconnected from the immutable Session source.",
+  });
+
+  const latestJobByAsset = new Map<string, SessionFinishingEvidence["transcriptJobs"][number]>();
+  for (const job of finishingEvidence.transcriptJobs) {
+    const key = job.recordingAssetId || `unbound:${job.id}`;
+    if (!latestJobByAsset.has(key)) latestJobByAsset.set(key, job);
+  }
+  const transcriptJobs = [...latestJobByAsset.values()];
+  const completedTranscripts = transcriptJobs.filter((job) => job.status === "COMPLETED" && job.segmentCount > 0);
+  const transcriptHolds = transcriptJobs.filter((job) => job.status === "FAILED" || job.status === "HELD");
+  if (transcriptHolds.length) attention.push({
+    id: "transcript-held",
+    severity: "HIGH",
+    lane: "transcript",
+    title: `${transcriptHolds.length} latest transcript attempt${transcriptHolds.length === 1 ? " is" : "s are"} held or failed`,
+    detail: "Provider text remains an attempt; source media and any prior corrections are unchanged.",
+    consequence: "Search, notes, tasks, chapters, and explainable edit proposals cannot rely on complete transcript evidence.",
+  });
+  if (!completedTranscripts.length && topology.exitReadiness.safeForServerObservedSources) attention.push({
+    id: "transcript-missing",
+    severity: "REVIEW",
+    lane: "transcript",
+    title: "No completed source-bound transcript is observed",
+    detail: "The retained source is ready for a released transcription attempt, but no completed segment set is projected here.",
+    consequence: "Understanding and assembly remain manual until transcript evidence exists and is reviewed.",
+  });
+
+  const analyzableSourceCount = Math.max(attached, topology.exitReadiness.serverSafeRequiredSourceCount);
+  if (analyzableSourceCount > finishingEvidence.analyzedSourceCount) attention.push({
+    id: "audio-analysis-coverage",
+    severity: "REVIEW",
+    lane: "transcript",
+    title: `Audio evidence covers ${finishingEvidence.analyzedSourceCount}/${analyzableSourceCount} retained source${analyzableSourceCount === 1 ? "" : "s"}`,
+    detail: "A complete decoded signal scan or audible-event analysis is not projected for every source.",
+    consequence: "Repair and automated assembly could miss clipping, silence, route loss, overlap, or boundary risk.",
+  });
+
+  const releasedOutputs = finishingEvidence.outputs.filter((output) => output.status === "RELEASED");
+  const deliveryCount = finishingEvidence.outputs.reduce((total, output) => total + output.deliveryCount, 0);
+  const stages: SessionFinishingStage[] = [
+    {
+      id: "recover",
+      label: "Recover",
+      state: topology.exitReadiness.safeToLeaveAllEndpoints ? "READY" : "BLOCKED",
+      summary: topology.exitReadiness.safeToLeaveAllEndpoints ? "All reconciled endpoint queues and required server masters agree." : "Source or endpoint recovery is still open.",
+      evidence: `${topology.exitReadiness.serverSafeRequiredSourceCount}/${topology.exitReadiness.requiredSourceCount} server-safe masters · ${topology.exitReadiness.drainedEndpointCount}/${topology.exitReadiness.endpointQueueCount} endpoint queues drained`,
+      lane: "recordings",
+    },
+    {
+      id: "understand",
+      label: "Understand",
+      state: completedTranscripts.length ? "IN_PROGRESS" : "NOT_OBSERVED",
+      summary: completedTranscripts.length ? "Source-bound transcript evidence is available for human review." : "No completed source-bound transcript is observed.",
+      evidence: `${completedTranscripts.length} completed transcript source${completedTranscripts.length === 1 ? "" : "s"} · ${completedTranscripts.reduce((total, job) => total + job.segmentCount, 0)} segments`,
+      lane: "transcript",
+    },
+    {
+      id: "repair",
+      label: "Repair",
+      state: finishingEvidence.analyzedSourceCount > 0 ? "IN_PROGRESS" : "NOT_OBSERVED",
+      summary: finishingEvidence.analyzedSourceCount ? "Audio evidence exists; treatment still requires audition and review." : "No complete audio-analysis coverage is observed.",
+      evidence: `${finishingEvidence.analyzedSourceCount}/${analyzableSourceCount} source analyses`,
+      lane: "transcript",
+    },
+    {
+      id: "assemble",
+      label: "Assemble",
+      state: attached ? "IN_PROGRESS" : handoffHolds ? "BLOCKED" : "NOT_OBSERVED",
+      summary: attached ? "Immutable Session sources are attached to Studio; editorial choice is not inferred." : "No verified Studio source attachment is observed.",
+      evidence: `${attached} attached · ${readyForHandoff} ready · ${handoffHolds} integrity holds`,
+      lane: "outputs",
+    },
+    {
+      id: "finish",
+      label: "Finish",
+      state: releasedOutputs.length && deliveryCount ? "IN_PROGRESS" : "NOT_OBSERVED",
+      summary: deliveryCount ? "A governed Session delivery history exists." : "No governed Session delivery is observed.",
+      evidence: `${releasedOutputs.length} released output${releasedOutputs.length === 1 ? "" : "s"} · ${deliveryCount} delivery event${deliveryCount === 1 ? "" : "s"}`,
+      lane: "outputs",
+    },
+  ];
+
+  attention.sort((left, right) => severityRank[left.severity] - severityRank[right.severity] || left.id.localeCompare(right.id));
+  return {
+    attention,
+    stages,
+    counts: {
+      blockers: attention.filter((item) => item.severity === "BLOCKER").length,
+      high: attention.filter((item) => item.severity === "HIGH").length,
+      review: attention.filter((item) => item.severity === "REVIEW").length,
+    },
+  };
+}
