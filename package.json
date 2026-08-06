@@ -70,6 +70,7 @@
     "quipsly:cloud:build-source-retention": "bash scripts/release/quipsly-cloud-build-source-retention.sh",
     "quipsly:local:session-collaboration-dogfood": "node --experimental-strip-types scripts/quipsly-local-session-collaboration-dogfood.mjs",
     "quipsly:local:session-topology-dogfood": "QUIPSLY_LOCAL_SESSION_TOPOLOGY_DOGFOOD=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-session-topology-dogfood.mjs",
+    "quipsly:local:endpoint-queue": "QUIPSLY_LOCAL_ENDPOINT_QUEUE_OPERATION=1 node scripts/quipsly-local-endpoint-queue-operation.mjs",
     "quipsly:local:native-session-preflight": "QUIPSLY_LOCAL_NATIVE_PREFLIGHT_OPERATION=1 node scripts/quipsly-local-native-session-preflight-operation.mjs",
     "quipsly:local:native-session-preflight:test": "node --test scripts/quipsly-local-native-session-preflight-operation.test.mjs",
     "quipsly:local:hgo-collaboration:converge": "node scripts/quipsly-local-hgo-collaboration-converge.mjs",

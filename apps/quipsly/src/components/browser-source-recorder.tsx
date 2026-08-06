@@ -38,6 +38,7 @@ import {
   loadBrowserSourceFile,
   saveBrowserSourceLedger,
 } from "@/lib/browser-source-vault";
+import { publishBrowserEndpointQueue } from "@/lib/browser-endpoint-queue";
 import {
   browserMonotonicNanoseconds,
   mergeBrowserCaptureClockSamples,
@@ -216,6 +217,22 @@ export function BrowserSourceRecorder({
   const retainedMeterSummaryRef = useRef<BrowserSourceCaptureMeterSummaryV2 | null>(null);
   const guardianCleanupRef = useRef<(() => void) | null>(null);
   const lastDurableChunkAtRef = useRef<number | null>(null);
+  const endpointQueueTimerRef = useRef<number | null>(null);
+
+  const reconcileEndpointQueue = useCallback(() => {
+    if (endpointQueueTimerRef.current !== null) window.clearTimeout(endpointQueueTimerRef.current);
+    endpointQueueTimerRef.current = window.setTimeout(() => {
+      endpointQueueTimerRef.current = null;
+      void publishBrowserEndpointQueue({ callRoomId, captureGroupId }).catch(() => undefined);
+    }, 350);
+  }, [callRoomId, captureGroupId]);
+
+  useEffect(() => {
+    reconcileEndpointQueue();
+    return () => {
+      if (endpointQueueTimerRef.current !== null) window.clearTimeout(endpointQueueTimerRef.current);
+    };
+  }, [reconcileEndpointQueue]);
 
   useEffect(() => {
     onSourceLockChange?.(sourceLocked);
@@ -384,7 +401,8 @@ export function BrowserSourceRecorder({
     ledgerRef.current = ledger;
     setActiveLedger(ledger);
     await saveBrowserSourceLedger(ledger);
-  }, []);
+    reconcileEndpointQueue();
+  }, [reconcileEndpointQueue]);
 
   const startRetainedSourceMeter = useCallback(async (
     stream: MediaStream,

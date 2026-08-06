@@ -101,6 +101,130 @@ describe("Session readiness topology", () => {
     });
   });
 
+  it("becomes safe only for a latest drained installation receipt covering the exact source", () => {
+    const input = {
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-audio",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+      }],
+      finalizations: [{
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      endpointQueues: [{
+        id: "queue-1",
+        participantId: participant.id,
+        clientInstanceId: "web-installation",
+        clientKind: "web",
+        queueRevision: "1",
+        queueState: "DRAINED",
+        localSourceCount: 1,
+        pendingSourceCount: 0,
+        failedSourceCount: 0,
+        observedCaptureIds: ["capture-1"],
+        recordingAssetIds: ["asset-audio"],
+        latestLocalMutationAt: "2026-08-05T17:59:31.000Z",
+        reconciledAt: "2026-08-05T17:59:32.000Z",
+        createdAt: "2026-08-05T17:59:32.000Z",
+      }],
+    };
+    const safe = buildSessionReadinessTopology(input);
+    expect(safe.exitReadiness).toMatchObject({
+      state: "SAFE_TO_LEAVE",
+      allEndpointQueuesConfirmedEmpty: true,
+      safeToLeaveAllEndpoints: true,
+    });
+
+    const invalidated = buildSessionReadinessTopology({
+      ...input,
+      endpointQueues: [...input.endpointQueues, {
+        ...input.endpointQueues[0],
+        id: "queue-2",
+        queueRevision: "2",
+        queueState: "NOT_EMPTY",
+        localSourceCount: 2,
+        pendingSourceCount: 1,
+        observedCaptureIds: ["capture-1", "capture-2"],
+        reconciledAt: "2026-08-05T18:00:00.000Z",
+        createdAt: "2026-08-05T18:00:00.000Z",
+      }],
+    });
+    expect(invalidated.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+      safeToLeaveAllEndpoints: false,
+      drainedEndpointCount: 0,
+    });
+  });
+
+  it("refuses global safety when a currently prepared installation has no queue receipt", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [{
+        id: "grant-unreconciled-ios",
+        participantId: participant.id,
+        clientInstanceId: "ios-installation-without-receipt",
+        clientKind: "ios",
+        deviceLabel: "Homer’s iPhone",
+        issuedAt: "2026-08-05T17:40:00.000Z",
+        expiresAt: "2026-08-05T19:40:00.000Z",
+      }],
+      recordings: [{
+        id: "asset-audio",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+      }],
+      captures: [],
+      finalizations: [{
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      endpointQueues: [{
+        id: "queue-web",
+        participantId: participant.id,
+        clientInstanceId: "web-installation",
+        clientKind: "web",
+        queueRevision: "1",
+        queueState: "DRAINED",
+        localSourceCount: 1,
+        pendingSourceCount: 0,
+        failedSourceCount: 0,
+        observedCaptureIds: ["capture-1"],
+        recordingAssetIds: ["asset-audio"],
+        latestLocalMutationAt: "2026-08-05T17:59:31.000Z",
+        reconciledAt: "2026-08-05T17:59:32.000Z",
+        createdAt: "2026-08-05T17:59:32.000Z",
+      }],
+    });
+
+    expect(topology.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+      endpointQueueCount: 2,
+      drainedEndpointCount: 1,
+      allEndpointQueuesConfirmedEmpty: false,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
   it("shows a closed phone capture as pending until a RecordingAsset exists", () => {
     const topology = buildSessionReadinessTopology({
       generatedAt,

@@ -21,6 +21,7 @@ const topology: SessionReadinessTopology = {
     attentionCount: 0,
     endpoints: [{
       id: "grant-1",
+      clientInstanceId: "ios-installation-1",
       clientKind: "ios",
       deviceLabel: "Quipsly Capture · iPhone 16",
       preparedAt: "2026-08-05T17:50:00.000Z",
@@ -47,6 +48,7 @@ const topology: SessionReadinessTopology = {
       expiresAt: "2026-08-05T19:55:00.000Z",
       current: true,
     }],
+    endpointQueues: [],
     sources: [{
       id: "asset-1",
       evidenceKind: "recording-asset",
@@ -80,6 +82,8 @@ const topology: SessionReadinessTopology = {
     retainedSourceCount: 1,
     verifiedSourceCount: 1,
     pendingCaptureCount: 0,
+    endpointQueueCount: 0,
+    drainedEndpointCount: 0,
     attentionCount: 0,
   },
   exitReadiness: {
@@ -89,6 +93,8 @@ const topology: SessionReadinessTopology = {
     requiredSourceCount: 1,
     serverSafeRequiredSourceCount: 1,
     pendingCaptureCount: 0,
+    endpointQueueCount: 0,
+    drainedEndpointCount: 0,
     safeForServerObservedSources: true,
     allEndpointQueuesConfirmedEmpty: false,
     safeToLeaveAllEndpoints: false,

@@ -7158,6 +7158,38 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
+    func sendEndpointQueueReceipt(
+        _ payload: CaptureEndpointQueuePayload,
+        roomID: String,
+        expectedOwnerAccountID: String
+    ) async -> CaptureEndpointQueueDelivery {
+        guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? roomID)/endpoint-queue") else {
+            return .retry("The configured Nest URL is not valid.")
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            request.httpBody = try encoder.encode(payload)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: expectedOwnerAccountID
+            )
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let ok = object?["ok"] as? Bool == true
+            if response.statusCode < 300, ok { return .acknowledged }
+            let message = object?["error"] as? String ?? "Nest did not acknowledge this iPhone queue snapshot."
+            let code = object?["code"] as? String
+            if let code, ["SERVER_COPY_INCOMPLETE", "UNKNOWN_ENDPOINT"].contains(code) { return .retry(message) }
+            if [400, 403, 409, 422].contains(response.statusCode) { return .held(message) }
+            return .retry(message)
+        } catch {
+            return .retry(error.localizedDescription)
+        }
+    }
+
     func prepareRoomJoin(for session: MobileCaptureSession) async -> MobileCaptureRoomJoinResponse? {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/rooms/join") else {
             status = "Bad Nest URL"

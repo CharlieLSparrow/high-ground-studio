@@ -386,7 +386,7 @@ final class CaptureSessionPreflightClient: ObservableObject {
 
         let payload = CaptureSessionPreflightPayload(
             requestId: checkID,
-            clientInstanceId: Self.clientInstanceID,
+            clientInstanceId: CaptureClientInstallation.id,
             clientKind: "ios",
             deviceLabel: Self.deviceLabel(),
             microphoneLabel: summary.routeName,
@@ -501,16 +501,6 @@ final class CaptureSessionPreflightClient: ObservableObject {
         } catch {
             return .retry(error.localizedDescription)
         }
-    }
-
-    private static var clientInstanceID: String {
-        let key = "quipsly.capture.client-instance-id.v1"
-        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
-            return existing
-        }
-        let created = "ios-\(UUID().uuidString.lowercased())"
-        UserDefaults.standard.set(created, forKey: key)
-        return created
     }
 
     private static func signalState(_ health: CaptureAudioSoundCheckHealth) -> String {

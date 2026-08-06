@@ -2365,8 +2365,8 @@ These should be treated as cleanup candidates later, not as authoritative produc
 
 ### 2026-08-06 Session source exit readiness
 
-- The first Finishing Cockpit slice now distinguishes pending local capture,
-  server-copy completion, and the still-unproven global `Safe to leave` state.
+- The Finishing Cockpit now distinguishes pending local capture,
+  server-copy completion, and installation-owned endpoint drain evidence.
   Exact RecordingAsset verification plus its matching finalization receipt is
   required; provider witness mixes do not count as required masters.
 - Authenticated local operation rendered both truth states: a one-source iPhone
@@ -2376,8 +2376,16 @@ These should be treated as cleanup candidates later, not as authoritative produc
   authenticated Session read fail safely. Governance evidence now comes from
   participant preflight receipts, not episode-binding receipts, with a
   page-query regression to preserve the boundary.
-- Desktop and 390 x 844 mobile rendering passed. Four focused suites pass 50
-  tests, Quipsly typecheck passes, and diff checks pass. Next is a durable,
-  installation-owned endpoint drain receipt before `Safe to leave` can ever be
-  true. See
+- `CallEndpointQueueReceipt` now appends monotonic, idempotent browser/iPhone
+  queue snapshots. The browser publishes from its durable ledger; Quipsly
+  Capture persists a protected native outbox and retries without risking local
+  media. The server rejects unknown installations, stale revisions, unmatched
+  captures, and sources without exact verified and released server bytes.
+- Authenticated local operation advanced one retained browser installation from
+  `NOT_EMPTY` revision 2 to `DRAINED` revision 3. The real page moved from 4/4
+  server-safe but not globally safe to 4/4 server-safe and 1/1 endpoint drained.
+  A later non-empty revision revokes the claim.
+- Six focused suites pass 26 tests, Quipsly typecheck passes, and the complete
+  iOS simulator target builds for arm64 and x86_64. Production deployment and
+  physical-iPhone receipt operation remain separate release gates. See
   `docs/coordination/2026-08-06-session-source-exit-readiness.md`.

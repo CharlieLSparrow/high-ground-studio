@@ -73,8 +73,27 @@ export type SessionTopologyPreflightInput = {
   expiresAt: Date | string;
 };
 
+export type SessionTopologyEndpointQueueInput = {
+  id: string;
+  participantId: string;
+  clientInstanceId: string;
+  clientKind: string;
+  deviceLabel?: string | null;
+  queueRevision: bigint | number | string;
+  queueState: string;
+  localSourceCount: number;
+  pendingSourceCount: number;
+  failedSourceCount: number;
+  observedCaptureIds: string[];
+  recordingAssetIds: string[];
+  latestLocalMutationAt: Date | string;
+  reconciledAt: Date | string;
+  createdAt: Date | string;
+};
+
 export type SessionReadinessEndpoint = {
   id: string;
+  clientInstanceId: string | null;
   clientKind: string;
   deviceLabel: string;
   preparedAt: string;
@@ -132,6 +151,22 @@ export type SessionReadinessPreflight = {
   current: boolean;
 };
 
+export type SessionReadinessEndpointQueue = {
+  id: string;
+  clientInstanceId: string;
+  clientKind: string;
+  deviceLabel: string;
+  queueRevision: string;
+  queueState: "NOT_EMPTY" | "DRAINED";
+  localSourceCount: number;
+  pendingSourceCount: number;
+  failedSourceCount: number;
+  observedCaptureIds: string[];
+  recordingAssetIds: string[];
+  latestLocalMutationAt: string;
+  reconciledAt: string;
+};
+
 export type SessionReadinessPerson = {
   id: string;
   label: string;
@@ -142,6 +177,7 @@ export type SessionReadinessPerson = {
   transcriptionConsent: boolean;
   endpoints: SessionReadinessEndpoint[];
   preflights: SessionReadinessPreflight[];
+  endpointQueues: SessionReadinessEndpointQueue[];
   sources: SessionReadinessSource[];
   attentionCount: number;
 };
@@ -158,21 +194,26 @@ export type SessionReadinessTopology = {
     retainedSourceCount: number;
     verifiedSourceCount: number;
     pendingCaptureCount: number;
+    endpointQueueCount: number;
+    drainedEndpointCount: number;
     attentionCount: number;
   };
   exitReadiness: {
     state:
       | "NO_CAPTURE_EVIDENCE"
       | "SERVER_COPY_INCOMPLETE"
-      | "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED";
+      | "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED"
+      | "SAFE_TO_LEAVE";
     label: string;
     detail: string;
     requiredSourceCount: number;
     serverSafeRequiredSourceCount: number;
     pendingCaptureCount: number;
     safeForServerObservedSources: boolean;
-    allEndpointQueuesConfirmedEmpty: false;
-    safeToLeaveAllEndpoints: false;
+    endpointQueueCount: number;
+    drainedEndpointCount: number;
+    allEndpointQueuesConfirmedEmpty: boolean;
+    safeToLeaveAllEndpoints: boolean;
   };
   boundaries: {
     personIsNotDevice: true;
@@ -196,6 +237,8 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     retainedSourceCount: 0,
     verifiedSourceCount: 0,
     pendingCaptureCount: 0,
+    endpointQueueCount: 0,
+    drainedEndpointCount: 0,
     attentionCount: 0,
   },
   exitReadiness: {
@@ -205,6 +248,8 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     requiredSourceCount: 0,
     serverSafeRequiredSourceCount: 0,
     pendingCaptureCount: 0,
+    endpointQueueCount: 0,
+    drainedEndpointCount: 0,
     safeForServerObservedSources: false,
     allEndpointQueuesConfirmedEmpty: false,
     safeToLeaveAllEndpoints: false,
@@ -321,6 +366,10 @@ function endpointKey(grant: SessionTopologyGrantInput) {
       ].join("\0");
 }
 
+function queueEndpointKey(participantId: string, clientInstanceId: string) {
+  return [participantId, clientInstanceId].join("\0");
+}
+
 export function buildSessionReadinessTopology(input: {
   participants: SessionTopologyParticipantInput[];
   grants: SessionTopologyGrantInput[];
@@ -328,6 +377,7 @@ export function buildSessionReadinessTopology(input: {
   captures: SessionTopologyCaptureInput[];
   finalizations?: SessionTopologyFinalizationInput[];
   preflights?: SessionTopologyPreflightInput[];
+  endpointQueues?: SessionTopologyEndpointQueueInput[];
   generatedAt?: Date;
 }): SessionReadinessTopology {
   const generatedAt = input.generatedAt ?? new Date();
@@ -396,10 +446,19 @@ export function buildSessionReadinessTopology(input: {
 
   const latestPreflightByEndpoint = new Map<string, SessionTopologyPreflightInput>();
   for (const preflight of input.preflights ?? []) {
-    const key = [preflight.participantId, preflight.clientInstanceId].join("\0");
+    const key = queueEndpointKey(preflight.participantId, preflight.clientInstanceId);
     const current = latestPreflightByEndpoint.get(key);
     if (!current || (iso(current.testedAt) ?? "") < (iso(preflight.testedAt) ?? "")) {
       latestPreflightByEndpoint.set(key, preflight);
+    }
+  }
+
+  const latestQueueByEndpoint = new Map<string, SessionTopologyEndpointQueueInput>();
+  for (const queue of input.endpointQueues ?? []) {
+    const key = queueEndpointKey(queue.participantId, queue.clientInstanceId);
+    const current = latestQueueByEndpoint.get(key);
+    if (!current || BigInt(queue.queueRevision) > BigInt(current.queueRevision)) {
+      latestQueueByEndpoint.set(key, queue);
     }
   }
 
@@ -408,6 +467,7 @@ export function buildSessionReadinessTopology(input: {
       .filter((grant) => grant.participantId === participant.id)
       .map((grant) => ({
         id: grant.id,
+        clientInstanceId: text(grant.clientInstanceId) || null,
         clientKind: grant.clientKind.toLowerCase() || "unknown",
         deviceLabel: text(grant.deviceLabel) || (grant.clientKind.toLowerCase() === "ios" ? "Quipsly Capture" : "Quipsly Web"),
         preparedAt: iso(grant.issuedAt) ?? generatedAt.toISOString(),
@@ -447,6 +507,24 @@ export function buildSessionReadinessTopology(input: {
         };
       })
       .sort((left, right) => right.testedAt.localeCompare(left.testedAt));
+    const endpointQueues = [...latestQueueByEndpoint.values()]
+      .filter((queue) => queue.participantId === participant.id)
+      .map((queue): SessionReadinessEndpointQueue => ({
+        id: queue.id,
+        clientInstanceId: queue.clientInstanceId,
+        clientKind: queue.clientKind.toLowerCase() || "unknown",
+        deviceLabel: text(queue.deviceLabel) || (queue.clientKind.toLowerCase() === "ios" ? "Quipsly Capture" : "Quipsly Web"),
+        queueRevision: String(queue.queueRevision),
+        queueState: queue.queueState === "DRAINED" ? "DRAINED" : "NOT_EMPTY",
+        localSourceCount: queue.localSourceCount,
+        pendingSourceCount: queue.pendingSourceCount,
+        failedSourceCount: queue.failedSourceCount,
+        observedCaptureIds: queue.observedCaptureIds.map((id) => id.toLowerCase()),
+        recordingAssetIds: queue.recordingAssetIds,
+        latestLocalMutationAt: iso(queue.latestLocalMutationAt) ?? generatedAt.toISOString(),
+        reconciledAt: iso(queue.reconciledAt) ?? generatedAt.toISOString(),
+      }))
+      .sort((left, right) => right.reconciledAt.localeCompare(left.reconciledAt));
     const consent = participant.role === "OBSERVER"
       ? "not-required" as const
       : participant.consent?.recordingReady
@@ -454,6 +532,7 @@ export function buildSessionReadinessTopology(input: {
         : "missing-or-stale" as const;
     const attentionCount = (consent === "missing-or-stale" ? 1 : 0)
       + preflights.filter((preflight) => preflight.status === "NEEDS_ATTENTION" && preflight.expiresAt > generatedAt.toISOString()).length
+      + endpointQueues.filter((queue) => queue.queueState !== "DRAINED").length
       + sources.filter((source) => source.evidenceKind === "capture-receipt" || source.status === "HELD" || source.status === "FAILED").length;
     return {
       id: participant.id,
@@ -465,6 +544,7 @@ export function buildSessionReadinessTopology(input: {
       transcriptionConsent: participant.consent?.transcriptionReady === true,
       endpoints,
       preflights,
+      endpointQueues,
       sources,
       attentionCount,
     };
@@ -481,17 +561,61 @@ export function buildSessionReadinessTopology(input: {
   const safeForServerObservedSources = requiredSources.length > 0
     && pendingCaptureSources.length === 0
     && serverSafeRequiredSources.length === requiredSources.length;
-  const exitReadiness = safeForServerObservedSources
+  const requiredEndpointQueueKeys = new Set<string>(latestQueueByEndpoint.keys());
+  for (const grant of latestGrantByEndpoint.values()) {
+    if ((iso(grant.expiresAt) ?? "") <= generatedAt.toISOString()) continue;
+    const instanceId = text(grant.clientInstanceId);
+    requiredEndpointQueueKeys.add(instanceId
+      ? queueEndpointKey(grant.participantId, instanceId)
+      : endpointKey(grant));
+  }
+  for (const preflight of latestPreflightByEndpoint.values()) {
+    if ((iso(preflight.expiresAt) ?? "") <= generatedAt.toISOString()) continue;
+    requiredEndpointQueueKeys.add(queueEndpointKey(preflight.participantId, preflight.clientInstanceId));
+  }
+  const drainedEndpointQueues = [...latestQueueByEndpoint.entries()]
+    .filter(([key, queue]) => requiredEndpointQueueKeys.has(key) && queue.queueState === "DRAINED")
+    .map(([, queue]) => queue);
+  const endpointOwnedRequiredSources = requiredSources.filter((source) => (
+    source.clientKind === "web" || source.clientKind === "ios" || source.clientKind === "macos" || Boolean(source.captureId)
+  ));
+  const drainedCaptureIds = new Set(drainedEndpointQueues.flatMap((queue) => queue.observedCaptureIds));
+  const drainedRecordingAssetIds = new Set(drainedEndpointQueues.flatMap((queue) => queue.recordingAssetIds));
+  const endpointSourcesCovered = endpointOwnedRequiredSources.every((source) => (
+    Boolean(source.captureId && drainedCaptureIds.has(source.captureId.toLowerCase()))
+    && (source.evidenceKind !== "recording-asset" || drainedRecordingAssetIds.has(source.id))
+  ));
+  const allEndpointQueuesConfirmedEmpty = requiredEndpointQueueKeys.size > 0
+    && drainedEndpointQueues.length === requiredEndpointQueueKeys.size
+    && endpointSourcesCovered;
+  const safeToLeaveAllEndpoints = safeForServerObservedSources && allEndpointQueuesConfirmedEmpty;
+  const exitReadiness = safeToLeaveAllEndpoints
     ? {
-        state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED" as const,
-        label: "Server copy complete · check each recording device",
-        detail: "Every server-observed required master has exact verified bytes and a released finalization receipt. Quipsly still needs each browser and iPhone to confirm that its local upload queue is empty before calling the whole Session safe to leave.",
+        state: "SAFE_TO_LEAVE" as const,
+        label: "Safe to leave every reconciled recording endpoint",
+        detail: `Every server-observed required master is byte-verified and released. The latest durable snapshot from all ${requiredEndpointQueueKeys.size} recording installation${requiredEndpointQueueKeys.size === 1 ? "" : "s"} reports an empty local recovery queue and covers this exact source set.`,
         requiredSourceCount: requiredSources.length,
         serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
         pendingCaptureCount: pendingCaptureSources.length,
+        endpointQueueCount: requiredEndpointQueueKeys.size,
+        drainedEndpointCount: drainedEndpointQueues.length,
         safeForServerObservedSources: true,
-        allEndpointQueuesConfirmedEmpty: false as const,
-        safeToLeaveAllEndpoints: false as const,
+        allEndpointQueuesConfirmedEmpty: true,
+        safeToLeaveAllEndpoints: true,
+      }
+    : safeForServerObservedSources
+    ? {
+        state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED" as const,
+        label: "Server copy complete · check each recording device",
+        detail: `Every server-observed required master has exact verified bytes and a released finalization receipt. ${drainedEndpointQueues.length} of ${requiredEndpointQueueKeys.size || "the required"} recording endpoint queue${requiredEndpointQueueKeys.size === 1 ? " is" : "s are"} durably reconciled against this source set.`,
+        requiredSourceCount: requiredSources.length,
+        serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+        pendingCaptureCount: pendingCaptureSources.length,
+        endpointQueueCount: requiredEndpointQueueKeys.size,
+        drainedEndpointCount: drainedEndpointQueues.length,
+        safeForServerObservedSources: true,
+        allEndpointQueuesConfirmedEmpty: false,
+        safeToLeaveAllEndpoints: false,
       }
     : requiredSources.length > 0 || pendingCaptureSources.length > 0
       ? {
@@ -501,9 +625,11 @@ export function buildSessionReadinessTopology(input: {
           requiredSourceCount: requiredSources.length,
           serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
           pendingCaptureCount: pendingCaptureSources.length,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
           safeForServerObservedSources: false,
-          allEndpointQueuesConfirmedEmpty: false as const,
-          safeToLeaveAllEndpoints: false as const,
+          allEndpointQueuesConfirmedEmpty: false,
+          safeToLeaveAllEndpoints: false,
         }
       : {
           state: "NO_CAPTURE_EVIDENCE" as const,
@@ -512,9 +638,11 @@ export function buildSessionReadinessTopology(input: {
           requiredSourceCount: 0,
           serverSafeRequiredSourceCount: 0,
           pendingCaptureCount: 0,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
           safeForServerObservedSources: false,
-          allEndpointQueuesConfirmedEmpty: false as const,
-          safeToLeaveAllEndpoints: false as const,
+          allEndpointQueuesConfirmedEmpty: false,
+          safeToLeaveAllEndpoints: false,
         };
   const attentionCount = people.reduce((total, person) => total + person.attentionCount, 0)
     + unassignedSources.length;
@@ -530,6 +658,8 @@ export function buildSessionReadinessTopology(input: {
       retainedSourceCount: recordingSources.length,
       verifiedSourceCount: sources.filter((source) => source.verified).length,
       pendingCaptureCount: pendingCaptureSources.length,
+      endpointQueueCount: requiredEndpointQueueKeys.size,
+      drainedEndpointCount: drainedEndpointQueues.length,
       attentionCount,
     },
     exitReadiness,

@@ -1907,6 +1907,7 @@ model CallRoom {
   participantAccessReceipts     CallParticipantAccessReceipt[]
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
   participantPreflightReceipts  CallParticipantPreflightReceipt[]
+  endpointQueueReceipts         CallEndpointQueueReceipt[]
   invitations                   CallRoomInvitation[]
   episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
@@ -2108,6 +2109,7 @@ model CallParticipant {
   accessReceipts                CallParticipantAccessReceipt[]
   providerGrantReceipts         CallParticipantProviderGrantReceipt[]
   preflightReceipts             CallParticipantPreflightReceipt[]
+  endpointQueueReceipts         CallEndpointQueueReceipt[]
   recordingConsents             RecordingConsent[]
   recordingAssets               RecordingAsset[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
@@ -2215,6 +2217,44 @@ model CallParticipantPreflightReceipt {
   @@index([participantId, clientInstanceId, testedAt], map: "CallPreflight_participant_client_tested_idx")
   @@index([roomId, status, expiresAt])
   @@index([actorUserId, testedAt])
+}
+
+/// Append-only, installation-scoped snapshots of a recording endpoint's
+/// durable local source queue. A verified RecordingAsset proves server bytes;
+/// this receipt separately proves what one exact browser/iPhone installation
+/// most recently knew about its local recovery queue.
+model CallEndpointQueueReceipt {
+  id                    String   @id @default(cuid())
+  requestId             String   @unique @db.Uuid
+  requestSha256         String
+  roomId                String
+  captureGroupId        String   @db.Uuid
+  participantId         String
+  actorUserId           String
+  clientInstanceId      String
+  clientKind            String
+  deviceLabel           String?
+  queueRevision         BigInt
+  queueState            String
+  queueStateSha256      String
+  localSourceCount      Int
+  pendingSourceCount    Int
+  failedSourceCount     Int
+  observedCaptureIds    String[] @default([])
+  recordingAssetIds     String[] @default([])
+  latestLocalMutationAt DateTime
+  reconciledAt          DateTime
+  serverSourceSetSha256 String
+  createdAt             DateTime @default(now())
+
+  room        CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, clientInstanceId, queueRevision], map: "CallEndpointQueue_room_client_revision_key")
+  @@index([roomId, createdAt])
+  @@index([participantId, clientInstanceId, queueRevision], map: "CallEndpointQueue_participant_client_revision_idx")
+  @@index([actorUserId, createdAt])
+  @@index([roomId, queueState, createdAt])
 }
 
 model CallRoomInvitation {

@@ -30,6 +30,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
+import { browserClientInstanceId } from "@/lib/browser-client-instance";
 import {
   StudioSoundCheck,
   type StudioSoundCheckDecision,
@@ -132,15 +133,6 @@ export type LiveSessionRoomStatus = "preflight" | "checking" | "ready" | "joinin
 
 function readableDeviceLabel(device: MediaDeviceInfo, index: number) {
   return device.label || `${device.kind === "audioinput" ? "Microphone" : device.kind === "videoinput" ? "Camera" : "Output"} ${index + 1}`;
-}
-
-function browserDeviceId() {
-  const key = "quipsly-live-device-id";
-  const stored = window.localStorage.getItem(key);
-  if (stored) return stored;
-  const value = `web-${crypto.randomUUID()}`;
-  window.localStorage.setItem(key, value);
-  return value;
 }
 
 function stopStream(stream: MediaStream | null) {
@@ -447,7 +439,7 @@ export function LiveSessionRoom({
         credentials: "same-origin",
         body: JSON.stringify({
           ...decision,
-          clientInstanceId: browserDeviceId(),
+          clientInstanceId: browserClientInstanceId(),
           clientKind: "web",
           deviceLabel: navigator.platform ? `Quipsly Web · ${navigator.platform}` : "Quipsly Web",
           microphoneLabel,
@@ -760,7 +752,7 @@ export function LiveSessionRoom({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           callRoomId,
-          clientInstanceId: browserDeviceId(),
+          clientInstanceId: browserClientInstanceId(),
           clientKind: "web",
           deviceLabel: navigator.platform ? `Quipsly Web · ${navigator.platform}` : "Quipsly Web",
         }),

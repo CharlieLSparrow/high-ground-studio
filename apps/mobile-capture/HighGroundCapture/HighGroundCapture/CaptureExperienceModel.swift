@@ -284,6 +284,7 @@ final class CaptureExperienceModel: ObservableObject {
     let readinessClient = CaptureReadinessClient()
     let uploadManager = UploadManager.shared
     let receiptStore = CaptureRoomReceiptStore.shared
+    let endpointQueueOutbox = CaptureEndpointQueueOutbox.shared
     let quickEntryOutbox = MobileQuickEntryOutbox.shared
     let sessionNoteEditOutbox = SessionNoteEditOutbox.shared
     let taskReminderScheduler = TaskReminderScheduler.shared
@@ -342,6 +343,17 @@ final class CaptureExperienceModel: ObservableObject {
         receiptStore.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        endpointQueueOutbox.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        LocalRecordingLibrary.shared.$recordings
+            .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
+            .sink { [weak self] recordings in
+                guard let self else { return }
+                self.endpointQueueOutbox.reconcile(recordings: recordings, client: self.sessionClient)
+            }
             .store(in: &cancellables)
         quickEntryOutbox.objectWillChange
             .receive(on: DispatchQueue.main)

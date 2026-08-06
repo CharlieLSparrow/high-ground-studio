@@ -2,7 +2,7 @@
 
 Date: 2026-08-06
 
-Status: implemented, tested, and operated in the authenticated local Nest
+Status: endpoint receipt contract implemented, tested, and operated in the authenticated local Nest
 
 ## Outcome
 
@@ -102,21 +102,78 @@ dogfood.
   server-copy-complete states.
 - Visual inspection passed at normal desktop and 390 x 844 mobile viewport.
 
+## Endpoint drain acceptance slice
+
+Quipsly now has the append-only endpoint drain receipt this first pass
+deliberately refused to fake. `CallEndpointQueueReceipt` is owned by one exact
+browser or app installation and is bound to the Session, capture group,
+participant, actor, and monotonically increasing queue revision.
+
+The browser publishes only after its durable local source ledger changes. The
+iPhone uses a protected Application Support outbox, persists its next snapshot
+before network delivery, and retries transient or still-processing server
+states without deleting local recordings. Both send stable request IDs for
+idempotent replay. A later `NOT_EMPTY` revision revokes an earlier drain.
+
+The server serializes writes for one Session and installation with a PostgreSQL
+advisory transaction lock. It refuses:
+
+- an installation with no matching provider-grant or private-preflight receipt;
+- a stale or replay-conflicting request ID;
+- a drain that does not enumerate one capture ID and one RecordingAsset for
+  every local source; or
+- a source whose exact server bytes are not verified and whose finalization is
+  not released.
+
+An iPhone deletion tombstone counts as complete only when the local deletion
+audit says a verified cloud copy existed at deletion time. Merely retaining an
+asset ID cannot turn an unsafe historical deletion into a green endpoint.
+
+The topology reads the latest receipt for each installation. Global
+`SAFE_TO_LEAVE` requires every server-required master to be safe and every
+latest endpoint receipt to be `DRAINED`, with the exact capture and asset sets
+still covered. A missing receipt, a stale source set, or any later non-empty
+revision fails closed.
+
+### Authenticated operation
+
+The retained coaching Session was first rendered with `4/4 server-safe
+masters` and `0/0 latest installation queue receipts drained`; Quipsly did not
+claim it was safe to leave. The local operation harness then posted revision 2
+`NOT_EMPTY` and revision 3 `DRAINED` for a retained QA browser installation
+covering all three of its local sources. The same signed-in Session page then
+rendered:
+
+- `Safe to leave every reconciled recording endpoint`;
+- `4/4 SERVER-SAFE MASTERS`;
+- `SAFE TO LEAVE EVERY ENDPOINT: YES`; and
+- `1/1 LATEST INSTALLATION QUEUE RECEIPTS DRAINED`.
+
+This proves a real before/after database, route, authorization, and rendered-UI
+loop. It does not claim production deployment or a physical-iPhone receipt yet.
+
+### Verification
+
+- Six focused Jest suites pass 26 tests, including route authentication,
+  latest-installation projection, unknown endpoint, stale revision, incomplete
+  server copy, monotonic drain, and idempotent replay.
+- Quipsly route generation and TypeScript typecheck pass.
+- The browser outbox test also proves that a lost first response replays the
+  exact durable request and that a corrupt local revision repairs from server
+  readback before advancing.
+- The complete Quipsly Capture iOS simulator target builds successfully for
+  arm64 and x86_64 with the protected outbox compiled into the app.
+- The local database reports all migrations applied, and the authenticated
+  operation harness completed without printing credentials.
+
 ## Next acceptance slice
 
-Add an append-only endpoint drain receipt owned by the browser/iPhone client
-installation and bound to the Session capture group. It must prove:
+The Finishing Cockpit can now build on a truthful exit boundary. Its next
+ranked slice should:
 
-1. no protected local capture remains in preparing, recording, finalizing, or
-   failed-recovery state;
-2. every completed local source is linked to a released server finalization;
-3. the client performed a fresh reconciliation after the latest local queue
-   mutation;
-4. a stale, missing, or different-installation receipt cannot clear another
-   endpoint; and
-5. only when every required endpoint and every required server master agree may
-   Quipsly render `Safe to leave`.
-
-After that boundary is real, the Finishing Cockpit can rank recovery problems,
-transcript/audio attention, assembly decisions, and mastered outputs without
-building trust on top of an unsafe capture exit.
+1. rank recovery problems across endpoints and retained sources;
+2. rank transcript, audio, and assembly attention without treating proposals
+   as source truth;
+3. expose the output/master graph and exact blockers; and
+4. operate the native receipt path on a physical iPhone before production
+   release promotion.
