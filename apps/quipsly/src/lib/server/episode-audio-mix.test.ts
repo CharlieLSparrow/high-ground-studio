@@ -47,6 +47,7 @@ describe("Episode audio mix server boundary", () => {
     const status = await queueEpisodeAudioMix({ prisma, projectSlug: "nest-one", episodeProductionId: "episode_0001", actorEmail: "Editor@Example.test" });
     expect(status.status).toBe("queued");
     expect(status.actionCount).toBe(1);
+    expect(status.actions[0]).toMatchObject({ targetAssetId: "asset_scratch", targetTitle: "Scratch", participantLabel: "Camera", startSeconds: 12, endSeconds: 15, gainDb: -18, reason: "mic-bleed" });
     expect(created.assetId).toBe("asset_primary");
     const proposal = parseEpisodeAudioMixProposal(created.inputJson);
     expect(proposal.tracks).toHaveLength(2);

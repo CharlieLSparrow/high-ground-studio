@@ -13,13 +13,15 @@ type MixStatus = {
   programFingerprintSha256: string | null;
   actionCount: number;
   unresolvedCount: number;
+  actions: Array<{ id: string; targetAssetId: string; targetTitle: string; participantLabel: string | null; startSeconds: number; endSeconds: number; gainDb: number; reason: string; evidenceReviewReceiptIds: string[] }>;
+  unresolved: Array<{ eventId: string; reason: string; involvedAssetIds: string[] }>;
   requiredReviewSecondBins: number[];
   preview: MixPreview | null;
   error: string | null;
   updatedAt: string | null;
 };
 
-const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, requiredReviewSecondBins: [], preview: null, error: null, updatedAt: null };
+const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], preview: null, error: null, updatedAt: null };
 
 export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionId, programFingerprintSha256, canWrite, eligible, eligibilityDetail }: { projectId: string; projectSlug: string; episodeProductionId: string; programFingerprintSha256: string | null; canWrite: boolean; eligible: boolean; eligibilityDetail: string }) {
   const [status, setStatus] = useState<MixStatus>(EMPTY);
@@ -90,6 +92,8 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
         <Metric label="Delivery target" value="−16" detail="LUFS dialogue · true peak independently checked." />
       </div>
       {!eligible ? <div className="mt-4 flex gap-2 rounded-xl border border-amber-500/50 bg-amber-950/60 px-3 py-3 text-xs font-bold leading-5 text-amber-100"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{eligibilityDetail}</div> : null}
+      {status.actions.length > 0 ? <MixActionMap actions={status.actions} durationSeconds={status.preview?.durationSeconds ?? Math.max(...status.actions.map((action) => action.endSeconds), 1)} /> : status.status === "completed" ? <div className="mt-4 rounded-xl border border-sky-700/60 bg-sky-950/40 px-3 py-3 text-xs font-bold leading-5 text-sky-100">Transparent result: no protected listening receipt authorized a gain move, so proposal and baseline remain sonically identical.</div> : null}
+      {status.unresolved.length > 0 ? <div className="mt-3 rounded-xl border border-amber-700/60 bg-amber-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-amber-200">Held for human judgment</div>{status.unresolved.map((event) => <div key={`${event.eventId}:${event.reason}`} className="mt-2 text-[10px] font-bold text-amber-100">{event.eventId} · {event.reason.replaceAll("-", " ")} · {event.involvedAssetIds.length} track{event.involvedAssetIds.length === 1 ? "" : "s"}</div>)}</div> : null}
       {status.preview?.playbackUrl && !stale ? auditionReady(status.preview)
         ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} coordinates={coordinates()} canWrite={canWrite} />
         : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified legacy preview retained</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">This earlier result predates matched baseline rendering. Build a new proposal for trustworthy A/B review.</p></div>
@@ -105,6 +109,8 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
 }
 
 function Metric({ label, value, detail }: { label: string; value: string | number; detail: string }) { return <div className="rounded-xl border border-white/10 bg-white/5 p-3"><div className="text-[9px] font-black uppercase tracking-[0.12em] text-violet-200">{label}</div><div className="mt-1 text-2xl font-black">{value}</div><div className="mt-1 text-[10px] font-semibold leading-4 text-slate-400">{detail}</div></div>; }
+
+function MixActionMap({ actions, durationSeconds }: { actions: MixStatus["actions"]; durationSeconds: number }) { return <div className="mt-4 rounded-xl border border-violet-700/60 bg-violet-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-violet-200">Explainable automation map</div><p className="mt-1 text-[10px] font-bold leading-4 text-slate-300">Every bar is an exact program-clock change authorized by a named listening receipt.</p><div className="relative mt-3 h-7 overflow-hidden rounded-md border border-violet-800 bg-slate-950" aria-label="Episode mix automation timeline">{actions.map((action) => <span key={action.id} className="absolute inset-y-0 min-w-1 border-x border-fuchsia-200 bg-fuchsia-500/70" style={{ left: `${Math.max(0, Math.min(100, action.startSeconds / durationSeconds * 100))}%`, width: `${Math.max(0.5, Math.min(100, (action.endSeconds - action.startSeconds) / durationSeconds * 100))}%` }} title={`${action.targetTitle}: ${action.gainDb} dB at ${clock(action.startSeconds)}–${clock(action.endSeconds)}`} />)}</div><div className="mt-3 space-y-2">{actions.map((action) => <div key={action.id} className="rounded-lg border border-white/10 bg-slate-950/70 p-2 text-[10px] font-bold leading-4 text-slate-200"><div className="flex flex-wrap justify-between gap-2"><span>{action.targetTitle}{action.participantLabel ? ` · ${action.participantLabel}` : ""}</span><span className="font-mono text-fuchsia-200">{clock(action.startSeconds)}–{clock(action.endSeconds)} · {action.gainDb.toFixed(1)} dB</span></div><div className="mt-1 text-slate-400">{action.reason.replaceAll("-", " ")} · {action.evidenceReviewReceiptIds.length} listening receipt{action.evidenceReviewReceiptIds.length === 1 ? "" : "s"}</div></div>)}</div></div>; }
 
 type MixDecisionSummary = {
   review: { latest: null | { id: string; decision: "approved" | "rejected"; note: string | null; reviewedAt: string; actorEmail: string }; approvalCount: number; rejectionCount: number };
