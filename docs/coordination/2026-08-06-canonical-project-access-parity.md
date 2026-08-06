@@ -61,12 +61,11 @@ agreed for the same authenticated account and exact source binding.
 
 ## Remaining boundary work
 
-Project routes still use a slug without workspace identity even though the
-database uniqueness constraint is `(workspaceId, slug)`. The current retained
-database has no duplicate project slugs, but the schema permits them. Before
-multi-workspace tenancy is public, Quipsly must either make project slugs
-globally unique or carry a stable project/workspace identity through every
-route and API. An ambiguous slug must never be resolved by recency.
+Project slugs are unique only inside a workspace. The next slice established a
+stable ID-plus-slug locator in the canonical resolver and Audio Studio inventory
+boundary; ambiguous slug-only requests now fail closed instead of resolving by
+recency. Remaining project-scoped APIs and human-facing routes still need to
+carry that stable identity before multi-workspace tenancy is public.
 
 This slice proves local retained access parity. It does not replace a fresh
 rendered second-account browser attempt, production authorization readback, or

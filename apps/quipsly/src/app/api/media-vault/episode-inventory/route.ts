@@ -333,6 +333,7 @@ function importedMediaPublic(
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const projectSlug = text(url.searchParams.get("projectSlug") || url.searchParams.get("nestSlug"));
+  const projectId = text(url.searchParams.get("projectId"));
   const episodeSlug = text(url.searchParams.get("episodeSlug") || url.searchParams.get("episode"));
 
   if (!projectSlug || !episodeSlug) {
@@ -346,6 +347,7 @@ export async function GET(request: Request) {
   const access = await resolveEpisodeProductionAccess({
     request,
     projectSlug,
+    ...(projectId ? { projectId } : {}),
     action: "read",
     prisma,
   });
@@ -406,6 +408,8 @@ export async function GET(request: Request) {
         noOriginalMutation: true,
         noExternalMutation: true,
         inventoryOnly: true,
+        projectLocatorRule:
+          "When supplied, projectId and projectSlug must identify the same Nest. A slug-only locator is accepted only while globally unambiguous.",
       },
     });
   }
@@ -647,6 +651,8 @@ export async function GET(request: Request) {
         "Whole sources stay intact. Proxy, transcript, sync, and edit decisions are inspectable metadata.",
       processingRule:
         "Recording status proves preservation, not processing permission. Normalized media and transcript release gates independently control readiness and next actions.",
+      projectLocatorRule:
+        "When supplied, projectId and projectSlug must identify the same Nest. A slug-only locator is accepted only while globally unambiguous.",
     },
   });
 }

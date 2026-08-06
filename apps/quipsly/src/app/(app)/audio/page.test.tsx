@@ -81,8 +81,60 @@ describe("AudioMasteryWorkspacePage project authorization", () => {
     const props = JSON.parse(screen.getByTestId("audio-workspace-props").textContent || "{}");
     expect(props).toMatchObject({
       projects: [{ slug: "allowed-project" }],
+      initialProjectId: "project-allowed",
       initialProjectSlug: "allowed-project",
       initialEpisodeSlug: "episode-allowed",
+    });
+  });
+
+  it("does not substitute another project for a stale ID and slug pair", async () => {
+    jest.mocked(getQuipslySession).mockResolvedValue({
+      user: {
+        id: "actor",
+        firebaseUid: "firebase-actor",
+        email: "actor@example.test",
+        primaryEmail: "actor@example.test",
+        name: "Actor",
+        image: null,
+        emailVerified: new Date(),
+        roles: [],
+        isStaff: false,
+        hasBetaAccess: true,
+      },
+    });
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{
+      id: "project-allowed",
+      workspaceId: "workspace-1",
+      slug: "allowed-project",
+      name: "Allowed project",
+      description: null,
+      sourceLabel: null,
+      isPrivate: true,
+      workspaceName: "Workspace",
+      workspaceSlug: "workspace",
+      role: "OWNER",
+      accessSource: "grant",
+      updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      collaborators: [],
+    }]);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
+    } as never);
+
+    render(await AudioMasteryWorkspacePage({
+      searchParams: Promise.resolve({
+        projectId: "stale-project-id",
+        project: "allowed-project",
+        episode: "episode-9",
+      }),
+    }));
+
+    const props = JSON.parse(screen.getByTestId("audio-workspace-props").textContent || "{}");
+    expect(props).toMatchObject({
+      initialProjectId: "stale-project-id",
+      initialProjectSlug: "allowed-project",
+      initialEpisodeSlug: "",
+      loadError: expect.stringContaining("did not substitute another project"),
     });
   });
 });

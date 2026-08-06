@@ -155,7 +155,7 @@ describe("AudioMasteryWorkspaceClient", () => {
   it("opens a real episode source and exposes its source-to-delivery workflow", async () => {
     global.fetch = workspaceFetch({ released: true });
 
-    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectId="project-1" initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
 
     expect(await screen.findByRole("heading", { name: "Homer local master.wav" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Measure and prepare mastering preview/ })).toBeEnabled();
@@ -164,6 +164,10 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByRole("button", { name: /Build signal map/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Transcribe canonical source/ })).toBeEnabled();
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/media-vault/audio-mastery?"), expect.objectContaining({ cache: "no-store" })));
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("episode-inventory?projectId=project-1&projectSlug=high-ground-odyssey"),
+      expect.objectContaining({ cache: "no-store" }),
+    );
   });
 
   it("opens an exact source-clock handoff without claiming playback", async () => {
@@ -213,5 +217,24 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByText("Provider transcript evidence was unavailable.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Retry signal map/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Retry source transcription/ })).toBeEnabled();
+  });
+
+  it("holds a stale project locator without fetching or substituting a different Nest", async () => {
+    global.fetch = workspaceFetch({ released: true });
+
+    render(<AudioMasteryWorkspaceClient
+      projects={projects}
+      initialProjectId="stale-project-id"
+      initialProjectSlug="high-ground-odyssey"
+      initialEpisodeSlug=""
+      initialAssetId={null}
+      loadError="This Audio Studio link has a stale or mismatched Nest identity."
+    />);
+
+    expect(screen.getByText(/stale or mismatched Nest identity/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(replace).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
   });
 });

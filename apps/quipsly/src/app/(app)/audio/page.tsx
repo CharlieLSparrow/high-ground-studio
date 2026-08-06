@@ -11,6 +11,7 @@ import type { AudioWorkspaceProjectOption } from "./audio-mastery-workspace-mode
 export const dynamic = "force-dynamic";
 
 type SearchParams = {
+  projectId?: string;
   project?: string;
   episode?: string;
   asset?: string;
@@ -94,11 +95,19 @@ export default async function AudioMasteryWorkspacePage({
   }
 
   const requestedProjectSlug = text(resolved.project);
+  const requestedProjectId = text(resolved.projectId);
   const requestedEpisodeSlug = text(resolved.episode);
-  const selectedProject = projects.find((project) => project.slug === requestedProjectSlug)
-    ?? projects.find((project) => project.episodes.length > 0)
-    ?? projects[0]
-    ?? null;
+  const exactRequestedProject = requestedProjectId
+    ? projects.find((project) => project.id === requestedProjectId && project.slug === requestedProjectSlug) ?? null
+    : null;
+  const projectLocatorMismatch = Boolean(requestedProjectId && !exactRequestedProject);
+  const selectedProject = projectLocatorMismatch
+    ? null
+    : exactRequestedProject
+      ?? projects.find((project) => project.slug === requestedProjectSlug)
+      ?? projects.find((project) => project.episodes.length > 0)
+      ?? projects[0]
+      ?? null;
   const selectedEpisode = selectedProject?.episodes.find((episode) => episode.slug === requestedEpisodeSlug)
     ?? selectedProject?.episodes[0]
     ?? null;
@@ -106,12 +115,15 @@ export default async function AudioMasteryWorkspacePage({
   return (
     <AudioMasteryWorkspaceClient
       projects={projects}
-      initialProjectSlug={selectedProject?.slug ?? ""}
+      initialProjectId={projectLocatorMismatch ? requestedProjectId : selectedProject?.id ?? ""}
+      initialProjectSlug={projectLocatorMismatch ? requestedProjectSlug : selectedProject?.slug ?? ""}
       initialEpisodeSlug={selectedEpisode?.slug ?? ""}
       initialAssetId={text(resolved.asset) || null}
       initialFocusSeconds={sourceClockSeconds(resolved.at)}
       initialFocusId={text(resolved.focus).slice(0, 240) || null}
-      loadError={loadError}
+      loadError={projectLocatorMismatch
+        ? "This Audio Studio link has a stale or mismatched Nest identity. Choose the intended Nest again; Quipsly did not substitute another project."
+        : loadError}
     />
   );
 }

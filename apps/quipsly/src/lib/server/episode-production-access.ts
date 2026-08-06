@@ -68,11 +68,13 @@ export async function resolveEpisodeProductionActor(request: Request): Promise<E
 export async function resolveEpisodeProductionAccess({
   request,
   projectSlug,
+  projectId,
   action = "write",
   prisma,
 }: {
   request: Request;
   projectSlug: string;
+  projectId?: string | null;
   action?: StudioProjectAccessAction;
   prisma: PrismaClient;
 }): Promise<EpisodeProductionAccessResult> {
@@ -91,6 +93,7 @@ export async function resolveEpisodeProductionAccess({
 
   const access = await resolveStudioProjectAccess({
     projectSlug,
+    ...(projectId ? { projectId } : {}),
     email: actor.email,
     action,
     prisma,

@@ -38,8 +38,12 @@ runLocalDatabaseSmoke("canonical project list and direct access parity", () => {
   const ownerProjectSlug = `owner-project-${nonce}`;
   const grantProjectSlug = `grant-project-${nonce}`;
   let workspaceId = "";
+  let ambiguousWorkspaceId = "";
   let ownerProjectId = "";
   let grantProjectId = "";
+  let ambiguousOwnedProjectId = "";
+  let ambiguousForeignProjectId = "";
+  const ambiguousSlug = `ambiguous-project-${nonce}`;
   const userIds: string[] = [];
 
   beforeAll(async () => {
@@ -89,11 +93,39 @@ runLocalDatabaseSmoke("canonical project list and direct access parity", () => {
         createdByEmail: aliasOwnerPrimary,
       },
     });
+    const ambiguousWorkspace = await prisma.studioWorkspace.create({
+      data: {
+        slug: `project-access-ambiguous-${nonce}`,
+        name: "Ambiguous project locator",
+      },
+    });
+    ambiguousWorkspaceId = ambiguousWorkspace.id;
+    const [ambiguousOwned, ambiguousForeign] = await Promise.all([
+      prisma.studioProject.create({
+        data: { workspaceId, slug: ambiguousSlug, name: "Accessible ambiguous project" },
+      }),
+      prisma.studioProject.create({
+        data: { workspaceId: ambiguousWorkspaceId, slug: ambiguousSlug, name: "Foreign ambiguous project" },
+      }),
+    ]);
+    ambiguousOwnedProjectId = ambiguousOwned.id;
+    ambiguousForeignProjectId = ambiguousForeign.id;
+    await prisma.studioProjectAccessGrant.create({
+      data: {
+        projectId: ambiguousOwnedProjectId,
+        email: aliasOwnerPrimary,
+        role: "OWNER",
+        status: "ACTIVE",
+        createdByUserId: owner.id,
+        createdByEmail: aliasOwnerPrimary,
+      },
+    });
   });
 
   afterAll(async () => {
     try {
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      if (ambiguousWorkspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: ambiguousWorkspaceId } });
       if (userIds.length) await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     } finally {
       await prisma.$disconnect();
@@ -150,5 +182,41 @@ runLocalDatabaseSmoke("canonical project list and direct access parity", () => {
       action: "read",
       prisma,
     })).resolves.toMatchObject({ allowed: false, role: null, source: "none", projectId: ownerProjectId });
+  });
+
+  it("rejects an ambiguous legacy slug but accepts one exact ID and slug pair", async () => {
+    const [legacy, exact, foreign, stale] = await Promise.all([
+      resolveStudioProjectAccess({
+        projectSlug: ambiguousSlug,
+        email: aliasOwnerPrimary,
+        action: "read",
+        prisma,
+      }),
+      resolveStudioProjectAccess({
+        projectId: ambiguousOwnedProjectId,
+        projectSlug: ambiguousSlug,
+        email: aliasOwnerPrimary,
+        action: "read",
+        prisma,
+      }),
+      resolveStudioProjectAccess({
+        projectId: ambiguousForeignProjectId,
+        projectSlug: ambiguousSlug,
+        email: aliasOwnerPrimary,
+        action: "read",
+        prisma,
+      }),
+      resolveStudioProjectAccess({
+        projectId: ambiguousOwnedProjectId,
+        projectSlug: `${ambiguousSlug}-stale`,
+        email: aliasOwnerPrimary,
+        action: "read",
+        prisma,
+      }),
+    ]);
+    expect(legacy).toMatchObject({ allowed: false, projectId: null, source: "none" });
+    expect(exact).toMatchObject({ allowed: true, projectId: ambiguousOwnedProjectId, source: "workspace-owner-label" });
+    expect(foreign).toMatchObject({ allowed: false, projectId: ambiguousForeignProjectId, source: "none" });
+    expect(stale).toMatchObject({ allowed: false, projectId: null, source: "none" });
   });
 });

@@ -48,8 +48,9 @@ function statusTone(status: AudioMasteryClientStatus | null) {
   return "border-amber-700 bg-amber-950 text-amber-100";
 }
 
-function selectionHref(projectSlug: string, episodeSlug: string, assetId?: string | null) {
+function selectionHref(projectId: string, projectSlug: string, episodeSlug: string, assetId?: string | null) {
   const query = new URLSearchParams();
+  if (projectId) query.set("projectId", projectId);
   if (projectSlug) query.set("project", projectSlug);
   if (episodeSlug) query.set("episode", episodeSlug);
   if (assetId) query.set("asset", assetId);
@@ -72,6 +73,7 @@ function sleep(milliseconds: number) {
 
 export function AudioMasteryWorkspaceClient({
   projects,
+  initialProjectId = "",
   initialProjectSlug,
   initialEpisodeSlug,
   initialAssetId,
@@ -80,6 +82,7 @@ export function AudioMasteryWorkspaceClient({
   loadError = null,
 }: {
   projects: AudioWorkspaceProjectOption[];
+  initialProjectId?: string;
   initialProjectSlug: string;
   initialEpisodeSlug: string;
   initialAssetId: string | null;
@@ -88,6 +91,7 @@ export function AudioMasteryWorkspaceClient({
   loadError?: string | null;
 }) {
   const router = useRouter();
+  const [projectId, setProjectId] = useState(initialProjectId);
   const [projectSlug, setProjectSlug] = useState(initialProjectSlug);
   const [episodeSlug, setEpisodeSlug] = useState(initialEpisodeSlug);
   const [selectedAssetId, setSelectedAssetId] = useState(initialAssetId);
@@ -109,8 +113,10 @@ export function AudioMasteryWorkspaceClient({
   const sourceClockFocusAppliedRef = useRef("");
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.slug === projectSlug) ?? null,
-    [projectSlug, projects],
+    () => projectId
+      ? projects.find((project) => project.id === projectId && project.slug === projectSlug) ?? null
+      : projects.find((project) => project.slug === projectSlug) ?? null,
+    [projectId, projectSlug, projects],
   );
   const projectEpisodes = selectedProject?.episodes ?? [];
   const selectedEpisode = projectEpisodes.find((episode) => episode.slug === episodeSlug) ?? null;
@@ -139,23 +145,25 @@ export function AudioMasteryWorkspaceClient({
     applyInitialSourceClockFocus(media);
   }, [applyInitialSourceClockFocus]);
 
-  const replaceSelection = useCallback((nextProject: string, nextEpisode: string, nextAsset?: string | null) => {
-    setProjectSlug(nextProject);
+  const replaceSelection = useCallback((nextProjectId: string, nextProjectSlug: string, nextEpisode: string, nextAsset?: string | null) => {
+    setProjectId(nextProjectId);
+    setProjectSlug(nextProjectSlug);
     setEpisodeSlug(nextEpisode);
     setSelectedAssetId(nextAsset ?? null);
-    router.replace(selectionHref(nextProject, nextEpisode, nextAsset));
+    router.replace(selectionHref(nextProjectId, nextProjectSlug, nextEpisode, nextAsset));
   }, [router]);
 
   useEffect(() => {
     if (selectedProject && selectedEpisode) return;
+    if (projectId && !selectedProject) return;
     const fallbackProject = projects.find((project) => project.episodes.length > 0) ?? projects[0];
     const fallbackEpisode = fallbackProject?.episodes[0];
     if (!fallbackProject || !fallbackEpisode) return;
-    replaceSelection(fallbackProject.slug, fallbackEpisode.slug, initialAssetId);
-  }, [initialAssetId, projects, replaceSelection, selectedEpisode, selectedProject]);
+    replaceSelection(fallbackProject.id, fallbackProject.slug, fallbackEpisode.slug, initialAssetId);
+  }, [initialAssetId, projectId, projects, replaceSelection, selectedEpisode, selectedProject]);
 
   useEffect(() => {
-    if (!projectSlug || !episodeSlug) {
+    if (!selectedProject || !projectSlug || !episodeSlug) {
       setInventory(null);
       setInventoryState("idle");
       return;
@@ -165,7 +173,7 @@ export function AudioMasteryWorkspaceClient({
     setInventoryState("loading");
     setInventoryError(null);
     setNotice(null);
-    const query = new URLSearchParams({ projectSlug, episodeSlug });
+    const query = new URLSearchParams({ projectId: selectedProject.id, projectSlug, episodeSlug });
 
     void fetch(`/api/media-vault/episode-inventory?${query.toString()}`, {
       cache: "no-store",
@@ -191,7 +199,7 @@ export function AudioMasteryWorkspaceClient({
       });
 
     return () => controller.abort();
-  }, [episodeSlug, inventoryRefreshToken, projectSlug]);
+  }, [episodeSlug, inventoryRefreshToken, projectSlug, selectedProject]);
 
   useEffect(() => {
     if (assets.length === 0) {
@@ -634,13 +642,14 @@ export function AudioMasteryWorkspaceClient({
     }
   }, [projectSlug, selectedAsset, status?.delivery.jobId]);
 
-  const changeProject = (nextSlug: string) => {
-    const nextProject = projects.find((project) => project.slug === nextSlug);
-    replaceSelection(nextSlug, nextProject?.episodes[0]?.slug ?? "");
+  const changeProject = (nextProjectId: string) => {
+    const nextProject = projects.find((project) => project.id === nextProjectId);
+    if (!nextProject) return;
+    replaceSelection(nextProject.id, nextProject.slug, nextProject.episodes[0]?.slug ?? "");
   };
 
   const changeEpisode = (nextSlug: string) => {
-    replaceSelection(projectSlug, nextSlug);
+    replaceSelection(selectedProject?.id ?? projectId, projectSlug, nextSlug);
   };
 
   return (
@@ -680,8 +689,8 @@ export function AudioMasteryWorkspaceClient({
           <div className="grid w-full gap-3 sm:grid-cols-2 xl:max-w-3xl">
             <label className="text-[10px] font-black uppercase tracking-[0.12em] text-[#765f40]">
               Nest
-              <select aria-label="Audio Studio Nest" value={projectSlug} onChange={(event) => changeProject(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border-2 border-[#d9c7a5] bg-white px-3 text-sm font-bold normal-case tracking-normal outline-none focus:border-fuchsia-600">
-                {projects.map((project) => <option key={project.id} value={project.slug}>{project.name} · {project.role.toLowerCase()}</option>)}
+              <select aria-label="Audio Studio Nest" value={selectedProject?.id ?? ""} onChange={(event) => changeProject(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border-2 border-[#d9c7a5] bg-white px-3 text-sm font-bold normal-case tracking-normal outline-none focus:border-fuchsia-600">
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.name} · {project.role.toLowerCase()}</option>)}
               </select>
             </label>
             <label className="text-[10px] font-black uppercase tracking-[0.12em] text-[#765f40]">
@@ -738,7 +747,7 @@ export function AudioMasteryWorkspaceClient({
                         aria-pressed={active}
                         onClick={() => {
                           setSelectedAssetId(asset.id);
-                          router.replace(selectionHref(projectSlug, episodeSlug, asset.id));
+                          router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, asset.id));
                         }}
                         className={`w-full rounded-xl border px-3 py-3 text-left transition ${active ? "border-fuchsia-400 bg-fuchsia-50 shadow-sm" : "border-transparent bg-[#fffaf0] hover:border-[#d9c7a5]"}`}
                       >

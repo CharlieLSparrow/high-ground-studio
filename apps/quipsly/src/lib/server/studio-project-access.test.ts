@@ -22,12 +22,12 @@ describe("resolveStudioProjectAccess", () => {
     process.env.QUIPSLY_OWNER_OVERRIDE = "true";
     const prisma = {
       studioProject: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "project-1",
           slug: "private-nest",
           workspace: { ownerLabel: "owner@example.com" },
           accessGrants: [],
-        }),
+        }]),
       },
       user: { findFirst: jest.fn().mockResolvedValue(null) },
     };
@@ -47,12 +47,12 @@ describe("resolveStudioProjectAccess", () => {
     process.env.QUIPSLY_OWNER_OVERRIDE = "false";
     const prisma = {
       studioProject: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "project-1",
           slug: "private-nest",
           workspace: { ownerLabel: "owner@example.com" },
           accessGrants: [{ email: "owner@example.com", role: "OWNER", status: "ACTIVE" }],
-        }),
+        }]),
       },
       user: { findFirst: jest.fn().mockResolvedValue(null) },
     };
@@ -71,14 +71,14 @@ describe("resolveStudioProjectAccess", () => {
   it("honors a Nest grant attached to another verified email for the same person", async () => {
     const prisma = {
       studioProject: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "project-1",
           slug: "private-nest",
           workspace: { ownerLabel: "someone-else@example.com" },
           accessGrants: [
             { email: "personal@example.com", role: "OWNER", status: "ACTIVE" },
           ],
-        }),
+        }]),
       },
       user: {
         findFirst: jest.fn().mockResolvedValue({
@@ -106,7 +106,7 @@ describe("resolveStudioProjectAccess", () => {
   it("uses the strongest active grant across a person's verified emails", async () => {
     const prisma = {
       studioProject: {
-        findFirst: jest.fn().mockResolvedValue({
+        findMany: jest.fn().mockResolvedValue([{
           id: "project-1",
           slug: "private-nest",
           workspace: { ownerLabel: "someone-else@example.com" },
@@ -114,7 +114,7 @@ describe("resolveStudioProjectAccess", () => {
             { email: "work@example.com", role: "VIEWER", status: "ACTIVE" },
             { email: "personal@example.com", role: "EDITOR", status: "ACTIVE" },
           ],
-        }),
+        }]),
       },
       user: {
         findFirst: jest.fn().mockResolvedValue({
@@ -135,5 +135,49 @@ describe("resolveStudioProjectAccess", () => {
       role: "EDITOR",
       source: "grant",
     }));
+  });
+
+  it("fails closed when a legacy slug identifies more than one project", async () => {
+    const prisma = {
+      studioProject: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "project-1", slug: "shared", workspaceId: "workspace-1" },
+          { id: "project-2", slug: "shared", workspaceId: "workspace-2" },
+        ]),
+      },
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    await expect(resolveStudioProjectAccess({
+      projectSlug: "shared",
+      email: "owner@example.com",
+      prisma: prisma as never,
+    })).resolves.toMatchObject({ allowed: false, projectId: null, source: "none" });
+  });
+
+  it("accepts an exact ID and slug pair while rejecting a stale pair", async () => {
+    const project = {
+      id: "project-2",
+      slug: "shared",
+      workspace: { ownerLabel: "owner@example.com" },
+      accessGrants: [],
+    };
+    const prisma = {
+      studioProject: { findUnique: jest.fn().mockResolvedValue(project) },
+      user: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+
+    await expect(resolveStudioProjectAccess({
+      projectId: "project-2",
+      projectSlug: "shared",
+      email: "owner@example.com",
+      prisma: prisma as never,
+    })).resolves.toMatchObject({ allowed: true, projectId: "project-2", source: "workspace-owner-label" });
+    await expect(resolveStudioProjectAccess({
+      projectId: "project-2",
+      projectSlug: "stale-shared",
+      email: "owner@example.com",
+      prisma: prisma as never,
+    })).resolves.toMatchObject({ allowed: false, projectId: null, source: "none" });
   });
 });

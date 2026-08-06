@@ -94,4 +94,39 @@ describe("Episode production shared authentication", () => {
     });
     expect(resolveStudioProjectAccess).not.toHaveBeenCalled();
   });
+
+  it("keeps a stable project ID and slug paired at the canonical resolver", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "user-homer",
+        firebaseUid: "firebase-homer",
+        email: "shomers@gmail.com",
+        primaryEmail: "shomers@gmail.com",
+        name: "Homer",
+        image: null,
+        emailVerified: new Date("2026-07-29T00:00:00.000Z"),
+        roles: [],
+        isStaff: false,
+        hasBetaAccess: true,
+      },
+    });
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: true } as never);
+    const request = new Request("https://nest.quipsly.com/api/media-vault/episode-inventory");
+
+    await resolveEpisodeProductionAccess({
+      request,
+      projectId: "project-hgo",
+      projectSlug: "high-ground-odyssey",
+      action: "read",
+      prisma,
+    });
+
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith({
+      projectId: "project-hgo",
+      projectSlug: "high-ground-odyssey",
+      email: "shomers@gmail.com",
+      action: "read",
+      prisma,
+    });
+  });
 });

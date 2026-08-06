@@ -1,6 +1,15 @@
 /** @jest-environment node */
 
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
+import { getPrismaClient } from "@/lib/prisma";
+import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
+
+import { GET } from "./route";
+
+jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/episode-production-access", () => ({
+  resolveEpisodeProductionAccess: jest.fn(),
+}));
 
 function assetWithPromotion(operation: "PROMOTE" | "WITHDRAW") {
   return {
@@ -55,6 +64,32 @@ describe("Episode media inventory audio master candidate", () => {
       operation: "withdraw",
       playbackUrl: null,
       reason: "Needs another listening pass.",
+    });
+  });
+});
+
+describe("Episode media inventory project locator", () => {
+  it("forwards the stable project ID and slug to the shared access boundary", async () => {
+    const prisma = {};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: false,
+      status: 403,
+      code: "episode-production-access-denied",
+      error: "denied",
+      actor: { source: "embedded-cookie" },
+      access: null,
+    } as never);
+
+    const response = await GET(new Request("http://local.test/api/media-vault/episode-inventory?projectId=project-hgo&projectSlug=high-ground-odyssey&episodeSlug=episode-9"));
+
+    expect(response.status).toBe(403);
+    expect(resolveEpisodeProductionAccess).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      projectId: "project-hgo",
+      projectSlug: "high-ground-odyssey",
+      action: "read",
+      prisma,
     });
   });
 });

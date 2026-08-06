@@ -131,12 +131,20 @@ export async function hasAnyActiveStudioProjectAccessGrantForEmail(
 export async function findStudioProjectForAccess(
   projectSlug: string,
   prisma: PrismaClient = getPrismaClient(),
+  projectId?: string | null,
 ): Promise<ProjectWithAccess | null> {
-  const project = await prisma.studioProject.findFirst({
-    where: { slug: projectSlug },
-    orderBy: { updatedAt: "desc" },
-  });
+  const exactProjectId = String(projectId ?? "").trim();
+  const project = exactProjectId
+    ? await prisma.studioProject.findUnique({ where: { id: exactProjectId } })
+    : await prisma.studioProject.findMany({
+        where: { slug: projectSlug },
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        take: 2,
+      }).then((projects) => projects.length === 1 ? projects[0] : null);
   if (!project) return null;
+  // A stable ID and a human-readable slug form one locator. Refuse stale or
+  // cross-project pairs instead of treating either field as a fallback.
+  if (project.slug !== projectSlug) return null;
 
   // A few isolated unit callers supply the already-shaped result. Production
   // Prisma reads the relations sequentially so this resolver remains valid on
@@ -162,18 +170,20 @@ function workspaceOwnerLabelAllows(
 
 export async function resolveStudioProjectAccess({
   projectSlug,
+  projectId,
   email,
   action = "read",
   prisma = getPrismaClient(),
 }: {
   projectSlug: string;
+  projectId?: string | null;
   email?: string | null;
   action?: StudioProjectAccessAction;
   prisma?: PrismaClient;
 }): Promise<StudioProjectAccessResolution> {
   const normalizedEmail = normalizeAccessEmail(email);
   // Keep these reads sequential for interactive-transaction callers.
-  const project = await findStudioProjectForAccess(projectSlug, prisma);
+  const project = await findStudioProjectForAccess(projectSlug, prisma, projectId);
   const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
 
   if (!project || !normalizedEmail) {
