@@ -7,7 +7,7 @@ export const TRACK_PREFIX_AUDIO = "A" as const;
 export const DEFAULT_VIDEO_TRACK = `${TRACK_PREFIX_VIDEO}1`;
 export const DEFAULT_AUDIO_TRACK = `${TRACK_PREFIX_AUDIO}1`;
 import { canonicalSpeakerKey, normalizeCameraAssemblyPolicy } from "@high-ground/quipsly-domain";
-import type { CameraAssemblyPolicy, CameraAssemblyReason, CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
+import type { CameraAssemblyPolicy, CameraAssemblyReason, CameraSwitchDecision, CaptureTakeMaterializationReceipt, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
 export type { CameraAssemblyPolicy, CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
 
 type TrackPrefix = typeof TRACK_PREFIX_VIDEO | typeof TRACK_PREFIX_AUDIO;
@@ -70,9 +70,57 @@ function sanitizeTranscriptBlock(block: TranscriptBlock) {
     deleted: Boolean(block.deleted),
     alert: block.alert ?? null,
     speaker: typeof block.speaker === "string" ? block.speaker.trim() || null : null,
+    speakerParticipantId: typeof block.speakerParticipantId === "string" ? block.speakerParticipantId.trim() || null : null,
+    speakerUserId: typeof block.speakerUserId === "string" ? block.speakerUserId.trim() || null : null,
+    sourceTranscriptJobId: typeof block.sourceTranscriptJobId === "string" ? block.sourceTranscriptJobId.trim() || undefined : undefined,
+    sourceSegmentId: typeof block.sourceSegmentId === "string" ? block.sourceSegmentId.trim() || undefined : undefined,
+    sourceRecordingAssetId: typeof block.sourceRecordingAssetId === "string" ? block.sourceRecordingAssetId.trim() || undefined : undefined,
+    sourceStartSeconds: block.sourceStartSeconds === undefined ? undefined : Math.max(0, toFiniteNumber(block.sourceStartSeconds, 0)),
+    sourceEndSeconds: block.sourceEndSeconds === undefined ? undefined : Math.max(0, toFiniteNumber(block.sourceEndSeconds, 0)),
+    reviewStatus: block.reviewStatus === "human-reviewed" ? "human-reviewed" : block.reviewStatus === "provider" ? "provider" : undefined,
+    acceptedReviewId: typeof block.acceptedReviewId === "string" ? block.acceptedReviewId.trim() || null : null,
     aiSuggested: Boolean(block.aiSuggested),
     deactivated: Boolean(block.deactivated),
   } satisfies TranscriptBlock;
+}
+
+function sanitizeCaptureTakeMaterialization(
+  value: CaptureTakeMaterializationReceipt,
+): CaptureTakeMaterializationReceipt | null {
+  if (
+    value?.schema !== "quipsly-capture-take-materialization-v1"
+    || typeof value.id !== "string"
+    || !value.id.trim()
+    || typeof value.captureGroupId !== "string"
+    || !value.captureGroupId.trim()
+    || typeof value.roomId !== "string"
+    || !value.roomId.trim()
+    || !Array.isArray(value.sourceBindings)
+  ) return null;
+
+  const sourceBindings = value.sourceBindings.filter((binding) => (
+    binding?.schema === "quipsly-capture-take-source-v1"
+    && typeof binding.recordingAssetId === "string"
+    && Boolean(binding.recordingAssetId.trim())
+    && typeof binding.clipId === "string"
+    && Boolean(binding.clipId.trim())
+  ));
+  if (!sourceBindings.length) return null;
+
+  return {
+    ...value,
+    id: value.id.trim(),
+    captureGroupId: value.captureGroupId.trim(),
+    roomId: value.roomId.trim(),
+    sourceBindings,
+    transcriptBinding: value.transcriptBinding?.schema === "quipsly-capture-take-transcript-v1"
+      ? {
+          ...value.transcriptBinding,
+          blockIds: Array.from(new Set(value.transcriptBinding.blockIds.filter(Boolean))),
+        }
+      : null,
+    speakerCameraMappingIds: Array.from(new Set(value.speakerCameraMappingIds.filter(Boolean))),
+  };
 }
 
 export function sanitizeTimelineRangeEdit(range: TimelineRangeEdit): TimelineRangeEdit | null {
@@ -335,6 +383,7 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
     ? normalizeCameraAssemblyPolicy(nextState.cameraAssemblyPolicy)
     : undefined;
   const rawCameraSwitchDecisions = Array.isArray(nextState.cameraSwitchDecisions) ? nextState.cameraSwitchDecisions : [];
+  const rawCaptureTakeMaterializations = Array.isArray(nextState.captureTakeMaterializations) ? nextState.captureTakeMaterializations : [];
   const editorMode: "play-all" | "play-edit" = nextState.editorMode === "play-all" ? "play-all" : "play-edit";
 
   const sanitized = {
@@ -352,6 +401,9 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
       .map(sanitizeCameraSwitchDecision)
       .filter((decision): decision is CameraSwitchDecision => Boolean(decision))
       .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id)),
+    captureTakeMaterializations: rawCaptureTakeMaterializations
+      .map(sanitizeCaptureTakeMaterialization)
+      .filter((receipt): receipt is CaptureTakeMaterializationReceipt => Boolean(receipt)),
     editorMode,
   };
 

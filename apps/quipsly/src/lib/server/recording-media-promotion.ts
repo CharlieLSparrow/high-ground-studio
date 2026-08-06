@@ -90,7 +90,8 @@ export function recordingPromotionSyncEvidence(
   const captureGroupId =
     text(manifest.captureGroupId)
     || text(promotion.captureGroupId)
-    || text(alignment?.captureGroupId);
+    || text(alignment?.captureGroupId)
+    || text(recordingAsset?.room?.captureGroupId);
   const uploadSessionId = text(manifest.sessionId);
   const capturePurpose = text(manifest.capturePurpose);
   const expectedSha256 =
@@ -98,6 +99,20 @@ export function recordingPromotionSyncEvidence(
     || text(recordingAsset?.checksum);
   const storageGeneration = text(manifest.storageGeneration);
   const reportedSourceProfile = asRecord(manifest.reportedSourceProfile);
+  const participant = asRecord(recordingAsset?.participant);
+  const participantIdentity = text(participant.id)
+    ? {
+        participantId: text(participant.id),
+        userId: text(participant.userId) || null,
+        displayLabel:
+          text(participant.displayName)
+          || text(participant.email)
+          || "Unnamed participant",
+        email: text(participant.email).toLowerCase() || null,
+        role: text(participant.role) || null,
+        deviceLabel: text(participant.deviceLabel) || null,
+      }
+    : null;
   const recordingSegments =
     Array.isArray(recordingAsset?.segmentsJson)
     || isObject(recordingAsset?.segmentsJson)
@@ -108,6 +123,7 @@ export function recordingPromotionSyncEvidence(
     recordingAssetId: recordingAsset.id,
     callRoomId: recordingAsset.roomId,
     participantId: recordingAsset.participantId ?? null,
+    participant: participantIdentity,
     recordingConsentId: text(manifest.recordingConsentId) || null,
     ...(typeof manifest.recordingConsentGranted === "boolean"
       ? { recordingConsentGranted: manifest.recordingConsentGranted }
@@ -123,6 +139,9 @@ export function recordingPromotionSyncEvidence(
     ...(storageGeneration ? { storageGeneration } : {}),
     ...(Object.keys(reportedSourceProfile).length > 0
       ? { reportedSourceProfile }
+      : {}),
+    ...(text(reportedSourceProfile.cameraPosition)
+      ? { cameraPosition: text(reportedSourceProfile.cameraPosition) }
       : {}),
     ...(alignment ? { alignment } : {}),
     promotedAt,
@@ -1044,6 +1063,7 @@ export function captureGroupIdForRecordingAsset(
     || text(manifest.captureId)
     || text(receipt?.captureGroupId)
     || text(receipt?.captureId)
+    || text(asset?.room?.captureGroupId)
     || text(asset?.id)
   ).toLowerCase();
 }
@@ -1201,6 +1221,9 @@ export async function promoteRecordingCaptureGroupToStudioMedia(
 
   const assets = await prisma.recordingAsset.findMany({
     where: canAccessRecordingRoomAssetsWhere({ ...input, roomId }),
+    include: {
+      room: { select: { captureGroupId: true } },
+    },
     orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
   });
   const assetIds = assets.map((asset: any) => asset.id);

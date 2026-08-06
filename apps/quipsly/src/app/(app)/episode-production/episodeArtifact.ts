@@ -1,8 +1,19 @@
-import type { CameraAssemblyPolicy, CameraSwitchDecision, SpeakerCameraMapping, TimelineRangeEdit } from "@high-ground/quipsly-domain";
+import { normalizeCameraAssemblyPolicy } from "@high-ground/quipsly-domain";
+import type {
+  CameraAssemblyPolicy,
+  CameraSwitchDecision,
+  CaptureTakeMaterializationReceipt,
+  CaptureTakeSourceBinding,
+  SpeakerCameraMapping,
+  TimelineClip,
+  TimelineRangeEdit,
+  TimelineState,
+} from "@high-ground/quipsly-domain";
 
 export type EpisodeArtifactTimelineClip = {
   id: string;
   assetId: string;
+  sourceId?: string;
   trackId: string;
   startIn: number;
   duration: number;
@@ -13,6 +24,7 @@ export type EpisodeArtifactTimelineClip = {
   kind?: "audio" | "video";
   generatedFrom?: string;
   recordingSync?: Record<string, unknown>;
+  captureTakeSource?: CaptureTakeSourceBinding;
   takeOrder?: number;
   segmentOrder?: number;
 };
@@ -25,6 +37,15 @@ export type EpisodeArtifactTranscript = {
   deleted: boolean;
   alert: string | null;
   speaker?: string | null;
+  speakerParticipantId?: string | null;
+  speakerUserId?: string | null;
+  sourceTranscriptJobId?: string;
+  sourceSegmentId?: string;
+  sourceRecordingAssetId?: string;
+  sourceStartSeconds?: number;
+  sourceEndSeconds?: number;
+  reviewStatus?: "provider" | "human-reviewed";
+  acceptedReviewId?: string | null;
   deactivated?: boolean;
 };
 
@@ -125,6 +146,7 @@ export type EpisodeArtifactPayload = {
   speakerCameraMappings?: SpeakerCameraMapping[];
   cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
+  captureTakeMaterializations?: CaptureTakeMaterializationReceipt[];
   importedMedia?: EpisodeImportedMediaAsset[];
   contentFingerprint?: string;
   generatedFrom: string;
@@ -153,7 +175,7 @@ export type EpisodeArtifactLegacyInput = {
   // old key variants from early recorder/editor saves
   project?: string;
   episode?: string;
-  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[]; deactivatedRanges?: TimelineRangeEdit[]; speakerCameraMappings?: SpeakerCameraMapping[]; cameraAssemblyPolicy?: CameraAssemblyPolicy; cameraSwitchDecisions?: CameraSwitchDecision[] };
+  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[]; deactivatedRanges?: TimelineRangeEdit[]; speakerCameraMappings?: SpeakerCameraMapping[]; cameraAssemblyPolicy?: CameraAssemblyPolicy; cameraSwitchDecisions?: CameraSwitchDecision[]; captureTakeMaterializations?: CaptureTakeMaterializationReceipt[] };
   room?: {
     project?: string;
     episode?: string;
@@ -167,6 +189,7 @@ export type EpisodeArtifactLegacyInput = {
     speakerCameraMappings?: SpeakerCameraMapping[];
     cameraAssemblyPolicy?: CameraAssemblyPolicy;
     cameraSwitchDecisions?: CameraSwitchDecision[];
+    captureTakeMaterializations?: CaptureTakeMaterializationReceipt[];
   };
   savedAt?: string;
   [key: string]: unknown;
@@ -180,6 +203,191 @@ function normalizeStringRecord(value: unknown) {
 
 function toString(value: unknown, fallback?: string) {
   return typeof value === "string" ? value : fallback;
+}
+
+function roundSeconds(value: number) {
+  return Number(value.toFixed(3));
+}
+
+function stableCaptureTakeMaterializations(timeline: TimelineState) {
+  return [...(timeline.captureTakeMaterializations ?? [])]
+    .map((receipt) => ({
+      ...receipt,
+      sourceBindings: [...receipt.sourceBindings]
+        .map((binding) => ({ ...binding }))
+        .sort((left, right) => left.recordingAssetId.localeCompare(right.recordingAssetId)),
+      transcriptBinding: receipt.transcriptBinding
+        ? {
+            ...receipt.transcriptBinding,
+            blockIds: [...receipt.transcriptBinding.blockIds].sort(),
+          }
+        : null,
+      speakerCameraMappingIds: [...receipt.speakerCameraMappingIds].sort(),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
+export function episodeTimelineContentFingerprint(timeline: TimelineState): string {
+  const clips = [...timeline.clips]
+    .map((clip) => ({
+      id: clip.id,
+      assetId: clip.assetId,
+      sourceId: clip.sourceId,
+      trackId: clip.trackId,
+      startIn: roundSeconds(clip.startIn),
+      duration: roundSeconds(Math.max(clip.duration, 0.05)),
+      sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
+      sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart)),
+      name: clip.name,
+      color: clip.color,
+      kind: clip.kind,
+      generatedFrom: clip.generatedFrom,
+      recordingSync: clip.recordingSync,
+      captureTakeSource: clip.captureTakeSource,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const transcript = [...timeline.transcript]
+    .map((block) => ({
+      ...block,
+      time: roundSeconds(Math.max(block.time, 0)),
+      duration: roundSeconds(Math.max(block.duration, 0.05)),
+      speaker: block.speaker ?? null,
+      speakerParticipantId: block.speakerParticipantId ?? null,
+      speakerUserId: block.speakerUserId ?? null,
+      sourceStartSeconds: block.sourceStartSeconds === undefined ? undefined : roundSeconds(block.sourceStartSeconds),
+      sourceEndSeconds: block.sourceEndSeconds === undefined ? undefined : roundSeconds(block.sourceEndSeconds),
+      deleted: Boolean(block.deleted),
+      deactivated: Boolean(block.deactivated),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const deactivatedRanges = [...(timeline.deactivatedRanges ?? [])]
+    .map((range) => ({
+      ...range,
+      startSeconds: roundSeconds(range.startSeconds),
+      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  const speakerCameraMappings = [...(timeline.speakerCameraMappings ?? [])]
+    .map((mapping) => ({ ...mapping }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const cameraAssemblyPolicy = normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy);
+  const cameraSwitchDecisions = [...(timeline.cameraSwitchDecisions ?? [])]
+    .map((decision) => ({
+      ...decision,
+      startSeconds: roundSeconds(decision.startSeconds),
+      durationSeconds: roundSeconds(Math.max(decision.durationSeconds, 0.05)),
+      evidence: {
+        ...decision.evidence,
+        transcriptBlockIds: [...decision.evidence.transcriptBlockIds].sort(),
+      },
+    }))
+    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  const paperEditSnapshots = Object.entries(timeline.paperEditSnapshots ?? {})
+    .map(([blockId, snapshot]) => ({
+      blockId,
+      clips: snapshot.clips
+        .map((clip) => ({
+          id: clip.id,
+          assetId: clip.assetId,
+          trackId: clip.trackId,
+          startIn: roundSeconds(clip.startIn),
+          duration: roundSeconds(Math.max(clip.duration, 0.05)),
+          sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
+          sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart)),
+          name: clip.name,
+          color: clip.color,
+          kind: clip.kind,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+      transcript: snapshot.transcript
+        .map((block) => ({
+          id: block.id,
+          time: roundSeconds(Math.max(block.time, 0)),
+          duration: roundSeconds(Math.max(block.duration, 0.05)),
+          text: block.text,
+          deleted: Boolean(block.deleted),
+          alert: block.alert ?? null,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    }))
+    .sort((left, right) => left.blockId.localeCompare(right.blockId));
+
+  return JSON.stringify({
+    clips,
+    transcript,
+    deactivatedRanges,
+    speakerCameraMappings,
+    cameraAssemblyPolicy,
+    cameraSwitchDecisions,
+    captureTakeMaterializations: stableCaptureTakeMaterializations(timeline),
+    paperEditSnapshots,
+  });
+}
+
+export function buildEpisodeArtifactPayload(input: {
+  timeline: TimelineState;
+  projectSlug: string;
+  episodeSlug: string;
+  generatedFrom: string;
+  savedAt: string;
+  source?: EpisodeArtifactSource;
+}): EpisodeArtifact {
+  const { timeline } = input;
+  return {
+    payloadVersion: EPISODE_ARTIFACT_CURRENT_VERSION,
+    projectSlug: input.projectSlug,
+    episodeSlug: input.episodeSlug,
+    source: input.source ?? "quipsly-editor",
+    timelineClips: timeline.clips.map((clip) => ({
+      id: clip.id,
+      assetId: clip.assetId,
+      sourceId: clip.sourceId,
+      trackId: clip.trackId,
+      startIn: roundSeconds(clip.startIn),
+      duration: roundSeconds(Math.max(clip.duration, 0.05)),
+      sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
+      sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart + 0.05, clip.sourceStart)),
+      name: clip.name,
+      color: clip.color,
+      kind: clip.kind,
+      generatedFrom: clip.generatedFrom,
+      recordingSync: clip.recordingSync as Record<string, unknown> | undefined,
+      captureTakeSource: clip.captureTakeSource,
+    })),
+    transcript: timeline.transcript.map((block) => ({
+      id: block.id,
+      time: roundSeconds(Math.max(block.time, 0)),
+      duration: roundSeconds(Math.max(block.duration, 0.05)),
+      text: block.text,
+      deleted: Boolean(block.deleted),
+      alert: block.alert ?? null,
+      speaker: block.speaker ?? null,
+      speakerParticipantId: block.speakerParticipantId ?? null,
+      speakerUserId: block.speakerUserId ?? null,
+      sourceTranscriptJobId: block.sourceTranscriptJobId,
+      sourceSegmentId: block.sourceSegmentId,
+      sourceRecordingAssetId: block.sourceRecordingAssetId,
+      sourceStartSeconds: block.sourceStartSeconds,
+      sourceEndSeconds: block.sourceEndSeconds,
+      reviewStatus: block.reviewStatus,
+      acceptedReviewId: block.acceptedReviewId ?? null,
+      deactivated: Boolean(block.deactivated),
+    })),
+    deactivatedRanges: (timeline.deactivatedRanges ?? []).map((range) => ({
+      ...range,
+      startSeconds: roundSeconds(range.startSeconds),
+      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
+    })),
+    speakerCameraMappings: timeline.speakerCameraMappings,
+    cameraAssemblyPolicy: normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy),
+    cameraSwitchDecisions: timeline.cameraSwitchDecisions,
+    captureTakeMaterializations: timeline.captureTakeMaterializations,
+    paperEditSnapshots: timeline.paperEditSnapshots,
+    contentFingerprint: episodeTimelineContentFingerprint(timeline),
+    generatedFrom: input.generatedFrom,
+    savedAt: input.savedAt,
+    generatedAt: input.savedAt,
+  };
 }
 
 export function getEpisodePayloadVersion(value: EpisodeArtifactShape): number {
@@ -212,6 +420,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
   const speakerCameraMappings = Array.isArray(record.speakerCameraMappings) ? record.speakerCameraMappings : Array.isArray(nestedTimeline?.speakerCameraMappings) ? nestedTimeline?.speakerCameraMappings : Array.isArray(nestedData?.speakerCameraMappings) ? nestedData?.speakerCameraMappings : [];
   const cameraAssemblyPolicy = normalizeStringRecord(record.cameraAssemblyPolicy) ?? normalizeStringRecord(nestedTimeline?.cameraAssemblyPolicy) ?? normalizeStringRecord(nestedData?.cameraAssemblyPolicy);
   const cameraSwitchDecisions = Array.isArray(record.cameraSwitchDecisions) ? record.cameraSwitchDecisions : Array.isArray(nestedTimeline?.cameraSwitchDecisions) ? nestedTimeline?.cameraSwitchDecisions : Array.isArray(nestedData?.cameraSwitchDecisions) ? nestedData?.cameraSwitchDecisions : [];
+  const captureTakeMaterializations = Array.isArray(record.captureTakeMaterializations) ? record.captureTakeMaterializations : Array.isArray(nestedTimeline?.captureTakeMaterializations) ? nestedTimeline?.captureTakeMaterializations : Array.isArray(nestedData?.captureTakeMaterializations) ? nestedData?.captureTakeMaterializations : [];
 
   if (!Array.isArray(timelineClips) || !Array.isArray(transcript)) return null;
 
@@ -226,6 +435,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
     speakerCameraMappings: speakerCameraMappings as SpeakerCameraMapping[],
     cameraAssemblyPolicy: cameraAssemblyPolicy as CameraAssemblyPolicy | undefined,
     cameraSwitchDecisions: cameraSwitchDecisions as CameraSwitchDecision[],
+    captureTakeMaterializations: captureTakeMaterializations as CaptureTakeMaterializationReceipt[],
     paperEditSnapshots: normalizeStringRecord(record.paperEditSnapshots) as Record<string, EpisodeArtifactPaperEditSnapshot> | undefined,
     importedMedia: Array.isArray(record.importedMedia) ? record.importedMedia as EpisodeImportedMediaAsset[] : undefined,
     contentFingerprint: toString(record.contentFingerprint, undefined),
@@ -233,6 +443,36 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
     savedAt: toString(record.savedAt, new Date().toISOString()),
     generatedAt: toString(record.generatedAt, undefined),
   } as EpisodeArtifactPayload;
+}
+
+export function timelineStateFromEpisodeArtifact(value: unknown): TimelineState {
+  const artifact = normalizeEpisodeArtifact(value);
+  if (!artifact) return { clips: [], transcript: [] };
+  const timelineClip = (clip: EpisodeArtifactTimelineClip): TimelineClip => ({
+    ...clip,
+    kind: clip.kind ?? (clip.trackId.toUpperCase().startsWith("A") ? "audio" : "video"),
+    transforms: [],
+  } as TimelineClip);
+  const paperEditSnapshots = artifact.paperEditSnapshots
+    ? Object.fromEntries(Object.entries(artifact.paperEditSnapshots).map(([blockId, snapshot]) => [
+        blockId,
+        {
+          ...snapshot,
+          clips: snapshot.clips.map(timelineClip),
+          transcript: snapshot.transcript.map((block) => ({ ...block })),
+        },
+      ]))
+    : undefined;
+  return {
+    clips: artifact.timelineClips.map(timelineClip),
+    transcript: artifact.transcript.map((block) => ({ ...block })),
+    deactivatedRanges: artifact.deactivatedRanges ?? [],
+    paperEditSnapshots,
+    speakerCameraMappings: artifact.speakerCameraMappings ?? [],
+    cameraAssemblyPolicy: artifact.cameraAssemblyPolicy,
+    cameraSwitchDecisions: artifact.cameraSwitchDecisions ?? [],
+    captureTakeMaterializations: artifact.captureTakeMaterializations ?? [],
+  };
 }
 
 export type EpisodeArtifactVersionedTimelinePayload = EpisodeArtifactPayload & {
@@ -254,6 +494,7 @@ export type EpisodeArtifactLegacyShape = {
   speakerCameraMappings?: SpeakerCameraMapping[];
   cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
+  captureTakeMaterializations?: CaptureTakeMaterializationReceipt[];
   blocks?: EpisodeArtifactTranscript[];
   source?: string;
   generatedFrom?: string;

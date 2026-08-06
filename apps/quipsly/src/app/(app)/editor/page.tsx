@@ -36,10 +36,15 @@ import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./Automa
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
 import { sourceBoundSpectralEditMarkers } from "@/components/audio/spectral-evidence-overlay";
 import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
+import { CaptureTakeMaterializationPanel } from "./CaptureTakeMaterializationPanel";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
-import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
+import {
+  buildEpisodeArtifactPayload as buildCanonicalEpisodeArtifactPayload,
+  EPISODE_ARTIFACT_CURRENT_VERSION,
+  episodeTimelineContentFingerprint,
+} from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
-import type { CameraAssemblyPolicy, CameraAssemblyStyle, CameraCutAssemblyHold, CameraCutAssemblyWarning, CameraSwitchDecision, SpeakerCameraMapping } from "@high-ground/quipsly-domain";
+import type { CameraAssemblyPolicy, CameraAssemblyStyle, CameraCutAssemblyHold, CameraCutAssemblyWarning, CameraSwitchDecision, CaptureTakeMaterializationReceipt, CaptureTakeSourceBinding, SpeakerCameraMapping } from "@high-ground/quipsly-domain";
 import { assembleSpeakerCameraCut, cameraAssemblyPolicyPreset, cameraAssemblyReadiness, cameraClipAtTime, canonicalSpeakerKey, normalizeCameraAssemblyPolicy } from "@high-ground/quipsly-domain";
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
@@ -1462,6 +1467,19 @@ function sanitizeLegacyAssetId(value: unknown, fallback = "") {
   return raw;
 }
 
+function normalizeCaptureTakeSource(value: unknown): CaptureTakeSourceBinding | undefined {
+  const record = asObject(value);
+  if (
+    record?.schema !== "quipsly-capture-take-source-v1"
+    || !coerceString(record.captureGroupId)
+    || !coerceString(record.roomId)
+    || !coerceString(record.recordingAssetId)
+    || !coerceString(record.mediaAssetId)
+    || !coerceString(record.sourceId)
+  ) return undefined;
+  return record as CaptureTakeSourceBinding;
+}
+
 function normalizeTimelineClip(raw: unknown): TimelineClip | null {
   if (!raw || typeof raw !== "object") return null;
   const record = asObject(raw);
@@ -1487,6 +1505,7 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
   const safeSourceDuration = Math.max(RECORDER_SEGMENT_MIN_DURATION_SECONDS, safeDuration);
 
   const recordingSync = asObject(record.recordingSync);
+  const captureTakeSource = normalizeCaptureTakeSource(record.captureTakeSource);
   const episodeRoomSessionId = coerceString(recordingSync?.episodeRoomSessionId);
   const watchSegmentId = coerceString(recordingSync?.watchSegmentId);
   const startReceiptId = coerceString(recordingSync?.startReceiptId);
@@ -1503,6 +1522,7 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
   return {
     id: coerceString(record.id, makeId("clip")),
     assetId: explicitSourceId || "unknown-asset",
+    sourceId: coerceOptionalString(record.sourceId, undefined),
     trackId: safeTrackId,
     startIn: Math.max(0, coerceNumber(record.startIn, 0)),
     duration: safeSourceDuration,
@@ -1512,6 +1532,7 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
     name: coerceString(record.name, "Clip"),
     color: coerceString(record.color, "#2563eb"),
     generatedFrom: coerceOptionalString(record.generatedFrom),
+    ...(captureTakeSource ? { captureTakeSource } : {}),
     ...(hasRecordingSync ? {
       recordingSync: {
         episodeRoomSessionId,
@@ -1547,6 +1568,15 @@ function normalizeTranscriptBlock(raw: unknown): TranscriptBlock | null {
     deleted: coerceBoolean(record.deleted, false),
     alert: typeof record.alert === "string" ? record.alert : null,
     speaker: coerceOptionalString(record.speaker ?? record.speakerLabel, undefined) ?? null,
+    speakerParticipantId: coerceOptionalString(record.speakerParticipantId, undefined) ?? null,
+    speakerUserId: coerceOptionalString(record.speakerUserId, undefined) ?? null,
+    sourceTranscriptJobId: coerceOptionalString(record.sourceTranscriptJobId, undefined),
+    sourceSegmentId: coerceOptionalString(record.sourceSegmentId, undefined),
+    sourceRecordingAssetId: coerceOptionalString(record.sourceRecordingAssetId, undefined),
+    sourceStartSeconds: record.sourceStartSeconds === undefined ? undefined : Math.max(0, coerceNumber(record.sourceStartSeconds, 0)),
+    sourceEndSeconds: record.sourceEndSeconds === undefined ? undefined : Math.max(0, coerceNumber(record.sourceEndSeconds, 0)),
+    reviewStatus: record.reviewStatus === "human-reviewed" ? "human-reviewed" : record.reviewStatus === "provider" ? "provider" : undefined,
+    acceptedReviewId: coerceOptionalString(record.acceptedReviewId, undefined) ?? null,
     deactivated: coerceBoolean(record.deactivated, false),
   };
 }
@@ -1829,6 +1859,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
     const nestedSpeakerCameraMappings = asObject((record as Record<string, unknown>).timeline)?.speakerCameraMappings;
     const nestedCameraAssemblyPolicy = asObject((record as Record<string, unknown>).timeline)?.cameraAssemblyPolicy;
     const nestedCameraSwitchDecisions = asObject((record as Record<string, unknown>).timeline)?.cameraSwitchDecisions;
+    const nestedCaptureTakeMaterializations = asObject((record as Record<string, unknown>).timeline)?.captureTakeMaterializations;
     const nestedData = asObject((record as Record<string, unknown>).data);
     const transcriptSource = Array.isArray(record.transcript)
       ? record.transcript
@@ -1850,6 +1881,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
       speakerCameraMappings: coerceArray(record.speakerCameraMappings ?? nestedSpeakerCameraMappings ?? nestedData?.speakerCameraMappings) as SpeakerCameraMapping[],
       cameraAssemblyPolicy: (asObject(record.cameraAssemblyPolicy ?? nestedCameraAssemblyPolicy ?? nestedData?.cameraAssemblyPolicy) ?? undefined) as CameraAssemblyPolicy | undefined,
       cameraSwitchDecisions: coerceArray(record.cameraSwitchDecisions ?? nestedCameraSwitchDecisions ?? nestedData?.cameraSwitchDecisions) as CameraSwitchDecision[],
+      captureTakeMaterializations: coerceArray(record.captureTakeMaterializations ?? nestedCaptureTakeMaterializations ?? nestedData?.captureTakeMaterializations) as CaptureTakeMaterializationReceipt[],
     };
   }
 
@@ -2868,143 +2900,17 @@ function buildEpisodeArtifactPayload(
   generatedFrom: string,
   savedAt: string,
 ): EpisodeArtifact {
-  const contentFingerprint = timelineContentFingerprint(timeline);
-  return {
-    payloadVersion: EPISODE_ARTIFACT_PAYLOAD_VERSION,
+  return buildCanonicalEpisodeArtifactPayload({
+    timeline,
     projectSlug,
     episodeSlug,
-    source: "quipsly-editor",
-    timelineClips: timeline.clips.map((clip) => ({
-      id: clip.id,
-      assetId: clip.assetId,
-      trackId: clip.trackId,
-      startIn: roundSeconds(clip.startIn),
-      duration: roundSeconds(Math.max(clip.duration, 0.05)),
-      sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
-      sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart + 0.05, clip.sourceStart)),
-      name: clip.name,
-      color: clip.color,
-      kind: clip.kind,
-      generatedFrom: clip.generatedFrom,
-      recordingSync: clip.recordingSync,
-    })),
-    transcript: timeline.transcript.map((block) => ({
-      id: block.id,
-      time: roundSeconds(Math.max(block.time, 0)),
-      duration: roundSeconds(Math.max(block.duration, 0.05)),
-      text: block.text,
-      deleted: Boolean(block.deleted),
-      alert: block.alert ?? null,
-      speaker: block.speaker ?? null,
-      deactivated: Boolean(block.deactivated),
-    })),
-    deactivatedRanges: (timeline.deactivatedRanges ?? []).map((range) => ({
-      ...range,
-      startSeconds: roundSeconds(range.startSeconds),
-      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
-    })),
-    speakerCameraMappings: timeline.speakerCameraMappings,
-    cameraAssemblyPolicy: normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy),
-    cameraSwitchDecisions: timeline.cameraSwitchDecisions,
-    paperEditSnapshots: timeline.paperEditSnapshots,
-    contentFingerprint,
     generatedFrom,
     savedAt,
-    generatedAt: savedAt,
-  };
+  });
 }
 
 function timelineContentFingerprint(timeline: TimelineState): string {
-  const sortedClips = [...timeline.clips]
-    .map((clip) => ({
-      id: clip.id,
-      assetId: clip.assetId,
-      trackId: clip.trackId,
-      startIn: roundSeconds(clip.startIn),
-      duration: roundSeconds(Math.max(clip.duration, 0.05)),
-      sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
-      sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart)),
-      name: clip.name,
-      color: clip.color,
-      kind: clip.kind,
-      generatedFrom: clip.generatedFrom,
-      recordingSync: clip.recordingSync,
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-
-  const sortedTranscript = [...timeline.transcript]
-    .map((block) => ({
-      id: block.id,
-      time: roundSeconds(Math.max(block.time, 0)),
-      duration: roundSeconds(Math.max(block.duration, 0.05)),
-      text: block.text,
-      deleted: Boolean(block.deleted),
-      alert: block.alert ?? null,
-      speaker: block.speaker ?? null,
-      deactivated: Boolean(block.deactivated),
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-  const sortedSnapshots = Object.entries(timeline.paperEditSnapshots ?? {})
-    .map(([blockId, snapshot]) => ({
-      blockId,
-      clips: snapshot.clips
-        .map((clip) => ({
-          id: clip.id,
-          assetId: clip.assetId,
-          trackId: clip.trackId,
-          startIn: roundSeconds(clip.startIn),
-          duration: roundSeconds(Math.max(clip.duration, 0.05)),
-          sourceStart: roundSeconds(Math.max(clip.sourceStart, 0)),
-          sourceEnd: roundSeconds(Math.max(clip.sourceEnd ?? (clip.sourceStart + clip.duration), clip.sourceStart)),
-          name: clip.name,
-          color: clip.color,
-          kind: clip.kind,
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
-      transcript: snapshot.transcript
-        .map((block) => ({
-          id: block.id,
-          time: roundSeconds(Math.max(block.time, 0)),
-          duration: roundSeconds(Math.max(block.duration, 0.05)),
-          text: block.text,
-          deleted: Boolean(block.deleted),
-          alert: block.alert ?? null,
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
-    }))
-    .sort((a, b) => a.blockId.localeCompare(b.blockId));
-  const sortedDeactivatedRanges = [...(timeline.deactivatedRanges ?? [])]
-    .map((range) => ({
-      ...range,
-      startSeconds: roundSeconds(range.startSeconds),
-      durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
-    }))
-    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
-  const sortedSpeakerCameraMappings = [...(timeline.speakerCameraMappings ?? [])]
-    .map((mapping) => ({ ...mapping }))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const cameraAssemblyPolicy = normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy);
-  const sortedCameraSwitchDecisions = [...(timeline.cameraSwitchDecisions ?? [])]
-    .map((decision) => ({
-      ...decision,
-      startSeconds: roundSeconds(decision.startSeconds),
-      durationSeconds: roundSeconds(Math.max(decision.durationSeconds, 0.05)),
-      evidence: {
-        ...decision.evidence,
-        transcriptBlockIds: [...decision.evidence.transcriptBlockIds].sort(),
-      },
-    }))
-    .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
-
-  return JSON.stringify({
-    clips: sortedClips,
-    transcript: sortedTranscript,
-    deactivatedRanges: sortedDeactivatedRanges,
-    speakerCameraMappings: sortedSpeakerCameraMappings,
-    cameraAssemblyPolicy,
-    cameraSwitchDecisions: sortedCameraSwitchDecisions,
-    paperEditSnapshots: sortedSnapshots,
-  });
+  return episodeTimelineContentFingerprint(timeline);
 }
 
 async function browserSha256(value: string): Promise<string> {
@@ -9120,6 +9026,30 @@ function CloudEditorContent() {
                           </p>
                         ) : null}
                       </section>
+                      <CaptureTakeMaterializationPanel
+                        projectSlug={resolvedProjectSlug}
+                        episodeSlug={episodeSlug}
+                        captureGroupId={captureGroupFocus.requestedCaptureGroupId}
+                        expectedTimelineFingerprint={timelineFingerprint}
+                        disabled={!isTimelineHydrated || productionState?.mode !== "database"}
+                        onMaterialized={(payload) => {
+                          const nextTimeline = extractTimelineFromPayload(payload.timelineJson);
+                          if (!nextTimeline) {
+                            setMediaImportStatus("The take was saved, but the editor could not read the returned canonical artifact. Refresh before editing.");
+                            return;
+                          }
+                          replaceTimeline(nextTimeline);
+                          timelineSavedFingerprintRef.current = timelineContentFingerprint(nextTimeline);
+                          setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
+                          setTimelineSaveStateSafe("saved");
+                          setTimelineHydrationSource("saved timeline");
+                          setSessionSummary(payload.plan.status === "assembly-ready"
+                            ? "Capture take, corrected transcript, and explicit speaker cameras are ready for edit review."
+                            : "Capture source lanes are ready; transcript or speaker-camera review can continue without blocking media work.");
+                          setMediaImportStatus(payload.plan.nextAction);
+                          setTimelineReloadToken((token) => token + 1);
+                        }}
+                      />
                     </>
                   )}
                 </div>

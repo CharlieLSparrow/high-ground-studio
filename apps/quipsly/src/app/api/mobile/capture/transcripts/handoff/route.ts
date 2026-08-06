@@ -33,6 +33,13 @@ type CanonicalDeskSegment = {
   confidence: number | null;
   acceptedCorrection: { id: string } | null;
   acceptedVerification: { id: string } | null;
+  speakerAttribution: {
+    id: string;
+    participantId: string | null;
+    participantUserId: string | null;
+    attributedLabel: string;
+    reviewedAt: string;
+  } | null;
   words: CanonicalDeskWord[];
 };
 
@@ -110,6 +117,7 @@ export async function GET(request: Request) {
         id: segment.id,
         speaker: segment.speakerLabel,
         providerSpeaker: segment.providerSpeakerLabel,
+        speakerAttribution: segment.speakerAttribution,
         startTime: segment.startSeconds,
         endTime: segment.endSeconds,
         text: segment.text,

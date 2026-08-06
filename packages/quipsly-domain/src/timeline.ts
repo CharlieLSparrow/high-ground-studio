@@ -1,5 +1,66 @@
 export type TimelineTrackKind = "audio" | "video";
 
+export type CaptureTakeParticipantIdentity = {
+  participantId: string;
+  userId: string | null;
+  displayLabel: string;
+  email: string | null;
+  role: string | null;
+  deviceLabel: string | null;
+};
+
+export type CaptureTakeSourceBinding = {
+  schema: "quipsly-capture-take-source-v1";
+  captureGroupId: string;
+  roomId: string;
+  recordingAssetId: string;
+  mediaAssetId: string;
+  sourceId: string;
+  sourceSha256: string | null;
+  storageGeneration: string | null;
+  participant: CaptureTakeParticipantIdentity | null;
+  cameraPosition: string | null;
+  alignmentReviewId: string | null;
+  alignmentMethod: string;
+};
+
+export type CaptureTakeTranscriptBinding = {
+  schema: "quipsly-capture-take-transcript-v1";
+  transcriptJobId: string;
+  recordingAssetId: string;
+  sourceClipId: string;
+  blockIds: string[];
+  providerWordsImmutable: true;
+  reviewedCorrectionsAreOverlays: true;
+  speakerAttributionComplete: boolean;
+};
+
+export type CaptureTakeMaterializationReceipt = {
+  schema: "quipsly-capture-take-materialization-v1";
+  id: string;
+  captureGroupId: string;
+  roomId: string;
+  sourceSetFingerprintSha256: string;
+  status: "media-materialized" | "assembly-ready";
+  sourceBindings: Array<CaptureTakeSourceBinding & {
+    clipId: string;
+    trackId: string;
+  }>;
+  transcriptBinding: CaptureTakeTranscriptBinding | null;
+  speakerCameraMappingIds: string[];
+  materializedByUserId: string;
+  materializedByEmail: string;
+  materializedAt: string;
+  boundaries: {
+    sourceMediaUnchanged: true;
+    providerWordsUnchanged: true;
+    reviewedAlignmentRequiredForNonSpineSources: true;
+    speakerIdentityNeverGuessed: true;
+    existingHumanTimelineDecisionsPreserved: true;
+    publicationNotStarted: true;
+  };
+};
+
 export type TransformKeyframe = {
   id: string;
   timeOffset: number; // Seconds from the start of the clip
@@ -33,6 +94,8 @@ export type TimelineClip = {
    * without mutating the protected source recording.
    */
   generatedFrom?: string;
+  /** Immutable Capture-to-Episode identity and reviewed placement evidence. */
+  captureTakeSource?: CaptureTakeSourceBinding;
   /** Receipt-backed Episode Room clock evidence for Shared Watch spans. */
   recordingSync?: {
     episodeRoomSessionId: string;
@@ -53,6 +116,15 @@ export type TranscriptBlock = {
   deleted: boolean;
   alert: string | null;
   speaker?: string | null;
+  speakerParticipantId?: string | null;
+  speakerUserId?: string | null;
+  sourceTranscriptJobId?: string;
+  sourceSegmentId?: string;
+  sourceRecordingAssetId?: string;
+  sourceStartSeconds?: number;
+  sourceEndSeconds?: number;
+  reviewStatus?: "provider" | "human-reviewed";
+  acceptedReviewId?: string | null;
   deactivated?: boolean;
   aiSuggested?: boolean;
 };
@@ -241,6 +313,7 @@ export type TimelineState = {
   speakerCameraMappings?: SpeakerCameraMapping[];
   cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
+  captureTakeMaterializations?: CaptureTakeMaterializationReceipt[];
   editorMode?: "play-all" | "play-edit";
 };
 

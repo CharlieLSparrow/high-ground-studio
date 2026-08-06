@@ -4,6 +4,7 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
 import {
+  captureGroupIdForRecordingAsset,
   promoteRecordingCaptureGroupToStudioMedia,
   recordingPromotionSyncEvidence,
   recordingSessionHandoffContext,
@@ -102,6 +103,15 @@ describe("capture Session to Studio handoff boundary", () => {
       id: "recording-1",
       roomId: "room-1",
       participantId: "participant-1",
+      room: { captureGroupId: "room-take-fallback" },
+      participant: {
+        id: "participant-1",
+        userId: "user-1",
+        displayName: "Homer",
+        email: "HOMER@example.com",
+        role: "GUEST",
+        deviceLabel: "Homer iPhone",
+      },
       checksum: "a".repeat(64),
       recordedStartedAt: new Date("2026-07-29T12:00:00.000Z"),
       recordedStoppedAt: new Date("2026-07-29T12:01:00.000Z"),
@@ -117,6 +127,7 @@ describe("capture Session to Studio handoff boundary", () => {
         reportedSourceProfile: {
           schemaVersion: 3,
           codec: "h264",
+          cameraPosition: "front",
         },
         alignment,
       },
@@ -126,6 +137,14 @@ describe("capture Session to Studio handoff boundary", () => {
       recordingAssetId: "recording-1",
       callRoomId: "room-1",
       participantId: "participant-1",
+      participant: {
+        participantId: "participant-1",
+        userId: "user-1",
+        displayLabel: "Homer",
+        email: "homer@example.com",
+        role: "GUEST",
+        deviceLabel: "Homer iPhone",
+      },
       recordingConsentId: "consent-1",
       capturePurpose: "podcast-av",
       captureGroupId: "take-1",
@@ -136,7 +155,9 @@ describe("capture Session to Studio handoff boundary", () => {
       reportedSourceProfile: {
         schemaVersion: 3,
         codec: "h264",
+        cameraPosition: "front",
       },
+      cameraPosition: "front",
       alignment: {
         schema: "quipsly-capture-alignment-proposal-v1",
         sampleAccurateClaimed: false,
@@ -144,6 +165,14 @@ describe("capture Session to Studio handoff boundary", () => {
       },
       promotedAt: "2026-07-29T12:02:00.000Z",
     });
+  });
+
+  it("falls back to the canonical room capture group when an older manifest omitted it", () => {
+    expect(captureGroupIdForRecordingAsset({
+      id: "recording-legacy",
+      localManifestJson: {},
+      room: { captureGroupId: "ROOM-TAKE-9" },
+    })).toBe("room-take-9");
   });
 
   it("drops a malformed alignment contract instead of promoting it as clock evidence", () => {

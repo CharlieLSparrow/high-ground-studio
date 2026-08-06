@@ -115,6 +115,7 @@
     "quipsly:retained:protected-edit-proof": "node scripts/quipsly-retained-protected-edit-proof-operation.mjs",
     "test:quipsly:retained:protected-edit-proof": "node --test scripts/quipsly-retained-protected-edit-proof-operation.test.mjs",
     "quipsly:retained:sync-evidence-map": "node scripts/quipsly-retained-sync-evidence-map-operation.mjs",
+    "quipsly:retained:capture-take-fixture": "bash scripts/dev/quipsly-retained-capture-take-fixture.sh",
     "test:quipsly:retained:sync-evidence-map": "node --test scripts/quipsly-retained-sync-evidence-map-operation.test.mjs",
     "quipsly:retained:audio-signal-profile": "QUIPSLY_RETAINED_AUDIO_SIGNAL_PROFILE_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-audio-signal-profile-operation.mjs",
     "quipsly:retained:spectral-evidence": "QUIPSLY_RETAINED_SPECTRAL_EVIDENCE_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-spectral-evidence-operation.mjs",

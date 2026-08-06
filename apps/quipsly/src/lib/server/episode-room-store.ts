@@ -752,6 +752,7 @@ export async function recordingSessionsFor(
     take: 20,
     select: {
       id: true,
+      captureGroupId: true,
       title: true,
       purpose: true,
       status: true,

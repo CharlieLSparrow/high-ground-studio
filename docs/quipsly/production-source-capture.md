@@ -1,7 +1,7 @@
 # Quipsly production source capture
 
 Status: architecture decision and delivery contract
-Last reviewed: 2026-07-27
+Last reviewed: 2026-08-06
 
 Implementation checkpoint: the protected local ledger and canonical resumable
 manifest now carry a backward-compatible `audio | video` media kind,
@@ -39,6 +39,14 @@ command. The Episode Room, editor API, media inventory, mobile session readback,
 and native Mac catalog all consume the same merged projection. A byte-verified
 video remains visible as **Proxying** and cannot enter shared Watch until a
 registered playback derivative exists.
+
+The next Capture-to-editor boundary is now implemented as an explicit guarded
+materialization rather than an implied side effect of upload. It creates
+deterministic source lanes, translates the canonical corrected transcript onto
+reviewed source clocks, and maps a speaker to a camera only from unambiguous
+participant identity. It preserves every unrelated human edit and appends a
+replay-safe receipt. See
+[`capture-take-materialization.md`](../architecture/capture-take-materialization.md).
 
 The collaboration-proxy path is now executable rather than a placeholder:
 released, exact-byte-verified video finalization creates a generation-bound
