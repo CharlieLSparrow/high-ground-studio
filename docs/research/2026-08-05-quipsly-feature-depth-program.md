@@ -6,6 +6,9 @@ Status: current-market validation and implementation program
 
 Companion: `2026-08-05-quipsly-product-expansion-opportunity-audit.md`
 
+Architecture continuation:
+`2026-08-06-quipsly-capability-depth-and-operating-agent.md`
+
 ## 2026-08-06 implementation checkpoint
 
 The first reusable Audio Studio qualification loop now exists across Capture

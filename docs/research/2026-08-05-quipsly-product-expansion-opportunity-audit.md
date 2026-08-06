@@ -4,6 +4,9 @@ Date: 2026-08-05
 
 Status: first research synthesis; implementation sequencing recommended
 
+Architecture continuation:
+`2026-08-06-quipsly-capability-depth-and-operating-agent.md`
+
 ## Executive verdict
 
 Quipsly already has enough breadth to become an unusually capable product. The

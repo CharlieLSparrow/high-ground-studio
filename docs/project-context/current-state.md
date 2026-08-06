@@ -2226,3 +2226,43 @@ These should be treated as cleanup candidates later, not as authoritative produc
   precision/recall, false positives per hour, temporal error, long-take latency,
   battery, memory, and thermal cost still require retained physical-iPhone
   qualification before any detector may be called qualified.
+
+### 2026-08-06 canonical audible-event analysis and cross-workflow operation
+
+- Detector analysis is now an immutable source-bound ledger rather than
+  Episode JSON. The same qualification lab projects into Audio Studio,
+  Dialogue Repair, and coaching Session review while keeping machine
+  suggestions, human truth, repair candidates, and edit authority separate.
+- Real Apple Sound Analysis receipts were registered for the retained High
+  Ground Odyssey beep source and the retained 80-second coaching source.
+  Signed-in coach operation opened both coaching suggestions, played the full
+  bounded context, and correctly refused to save without a human note. No
+  audibility decision was fabricated.
+- Dogfooding rejected registrations whose operation scripts disagreed with the
+  server about canonical macOS paths and optional-null receipt fields. The
+  scripts now hash the same canonical request the server verifies; four invalid
+  local-only rows with no review dependents were removed by exact ID, and the
+  original media and human evidence were untouched.
+- Eight focused Jest suites pass 72 tests, the retained operation harness passes
+  two tests, Quipsly typecheck and production build pass, Prisma reports all 73
+  migrations applied, and the full local doctor passes.
+
+### 2026-08-06 capability-depth and operating-agent decision
+
+- Current product research now converges Quipsly around four shared primitives:
+  source/evidence graph, Session/endpoint graph, canonical work/outcome graph,
+  and a governed action runtime.
+- The next depth portfolio is Session Control Plane; Audio Intelligence and
+  Mastery Graph; Transcript and Explainable Assembly; Evidence Lens and
+  Research Studio; Conversation Memory and Coaching OS; and Outcome Compiler.
+  These are connected product systems rather than new detached navigation
+  categories.
+- The repository's generic agent registry remains retired. Machine-worker
+  scheduling stays an infrastructure concern. The mature writing-assistant
+  proposal path—authorization, source anchoring, advisory locking, stale-source
+  refusal, append-only receipts, and undo—is the seed for a typed operating-
+  agent runtime shared by UI, scheduled workflows, API, and future MCP.
+- The recommended first non-writing agent operation is Session preflight. It is
+  reversible, observable, immediately useful, and exercises device/provider
+  boundaries without mutating source truth. See
+  `docs/research/2026-08-06-quipsly-capability-depth-and-operating-agent.md`.
