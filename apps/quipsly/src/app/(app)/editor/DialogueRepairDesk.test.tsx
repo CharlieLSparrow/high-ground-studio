@@ -58,6 +58,14 @@ const status: DialogueRepairStatus = {
   boundaries: { originalRemainsSourceTruth: true, candidateStateComesFromAppendOnlyReceipts: true, detectorSuggestionsRequireHumanListening: true, confirmedCandidateAuthorizesExperimentOnly: true },
 };
 
+const audibleReviewStatus = {
+  available: true,
+  analysis: audibleEventAnalysis,
+  entries: [{ suggestion: audibleEventAnalysis.suggestions[0], latestReview: null, reviewCounts: { confirmed: 0, falsePositive: 0, needsComparison: 0 } }],
+  summary: { suggestionCount: 1, reviewedSuggestionCount: 0, confirmedSuggestionCount: 0, falsePositiveSuggestionCount: 0, needsComparisonSuggestionCount: 0, pendingSuggestionCount: 1 },
+  boundaries: { detectorOutputIsListeningTriageOnly: true, humanStateComesFromAppendOnlyReceipts: true, reviewDoesNotAuthorizeRepairOrEdit: true, sourceIdentityIsReverifiedServerSide: true, surfacedSuggestionsAloneCannotMeasureRecall: true },
+};
+
 function response(payload: unknown, code = 200) {
   return Promise.resolve({ ok: code >= 200 && code < 300, status: code, json: async () => payload } as Response);
 }
@@ -65,7 +73,11 @@ function response(payload: unknown, code = 200) {
 describe("DialogueRepairDesk", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
-    global.fetch = jest.fn((_input, init) => init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...status }));
+    global.fetch = jest.fn((input, init) => {
+      const url = String(input);
+      if (url.includes("audible-event-reviews")) return init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...audibleReviewStatus });
+      return init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...status });
+    });
   });
 
   it("links source-clock, speaker, transcript, and append-only review evidence", async () => {
@@ -114,5 +126,22 @@ describe("DialogueRepairDesk", () => {
     audio.currentTime = 9.8;
     fireEvent.timeUpdate(audio);
     expect(pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("records a classifier decision only after the bounded protected context is heard", async () => {
+    render(<DialogueRepairDesk projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} audibleEventAnalysis={audibleEventAnalysis} />);
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
+    Object.defineProperty(audio, "paused", { configurable: true, get: () => false });
+    fireEvent.click(await screen.findByRole("button", { name: /00:08 dialogue cough unreviewed/i }));
+    expect(screen.getByRole("region", { name: "Classifier suggestion review" })).toHaveTextContent("It cannot authorize repair, editing, or promotion");
+    const confirm = await screen.findByRole("button", { name: "Confirm classifier suggestion" });
+    expect(confirm).toBeDisabled();
+    for (const second of [7.1, 8.1, 9.1]) { audio.currentTime = second; fireEvent.timeUpdate(audio); }
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST")).toBe(true));
+    const postCall = jest.mocked(global.fetch).mock.calls.find(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST");
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "review-suggestion", analysisId: audibleEventAnalysis.analysisId, eventId: audibleEventAnalysis.suggestions[0].eventId, decision: "confirmed", playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [7, 8, 9] } });
   });
 });

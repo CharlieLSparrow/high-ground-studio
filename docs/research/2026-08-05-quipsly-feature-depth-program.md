@@ -6,6 +6,26 @@ Status: current-market validation and implementation program
 
 Companion: `2026-08-05-quipsly-product-expansion-opportunity-audit.md`
 
+## 2026-08-06 implementation checkpoint
+
+The first reusable Audio Studio qualification loop now exists across Capture
+and Nest: a real Apple classifier produces an immutable source-bound suggestion
+receipt; the Audible Event Map opens bounded protected playback; and Nest
+stores confirmed, false-positive, or needs-comparison decisions in a separate
+append-only ledger. A review cannot create a repair candidate or authorize an
+edit. The retained eight-second beep source proved native analysis, canonical
+episode attachment, authenticated web projection, and complete-context UI
+playback. A human audibility decision was deliberately not fabricated during
+agent operation.
+
+This advances Epic 2 from visualization toward corpus-building, but it does not
+qualify the detector. The next research wave should label independent positive
+and negative windows from real High Ground Odyssey and coaching material, then
+compare Apple and candidate custom detectors by per-label precision, recall,
+false positives per hour, boundary error, runtime, battery, thermal behavior,
+and reviewer effort. Physical-iPhone long-take operation remains the release
+gate.
+
 ## Executive decision
 
 Quipsly should not measure progress by how many categories appear in the

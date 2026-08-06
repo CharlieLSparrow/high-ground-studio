@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AudibleEventMap, audibleEventMapMoments } from "@/components/audio/AudibleEventMap";
 import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
+import type { AudibleEventReviewDecision, AudibleEventReviewStatus } from "@/lib/audio/audible-event-review";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 import type { AudioMasteryMeasurement, AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
@@ -76,6 +77,7 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const repairedRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
   const [status, setStatus] = useState<DialogueRepairStatus | null>(null);
+  const [audibleReviewStatus, setAudibleReviewStatus] = useState<AudibleEventReviewStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -83,8 +85,11 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const [startSeconds, setStartSeconds] = useState(0);
   const [endSeconds, setEndSeconds] = useState(0.03);
   const [activeCandidateId, setActiveCandidateId] = useState<string | null>(null);
+  const [activeDetectorEventId, setActiveDetectorEventId] = useState<string | null>(null);
   const [listenedBins, setListenedBins] = useState<Set<number>>(() => new Set());
+  const [detectorListenedBins, setDetectorListenedBins] = useState<Set<number>>(() => new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [detectorNotes, setDetectorNotes] = useState<Record<string, string>>({});
   const [comparisonMode, setComparisonMode] = useState<"source" | "repaired">("source");
 
   const coordinates = useMemo(() => ({ projectSlug, assetId, sourceId }), [assetId, projectSlug, sourceId]);
@@ -98,11 +103,21 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
     return payload as { ok: true } & DialogueRepairStatus;
   }, [coordinates]);
 
+  const refreshAudibleReviews = useCallback(async () => {
+    if (!audibleEventAnalysis) { setAudibleReviewStatus(null); return null; }
+    const query = new URLSearchParams(coordinates);
+    const response = await fetch(`/api/media-vault/audible-event-reviews?${query}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudibleEventReviewStatus>) | null;
+    if (!response.ok || !payload?.ok || !payload.summary || !payload.entries) throw new Error(payload?.error || `Audible-event reviews returned HTTP ${response.status}.`);
+    setAudibleReviewStatus(payload as { ok: true } & AudibleEventReviewStatus);
+    return payload as { ok: true } & AudibleEventReviewStatus;
+  }, [audibleEventAnalysis, coordinates]);
+
   useEffect(() => {
     let canceled = false;
-    void refresh().catch((reason) => { if (!canceled) setError(reason instanceof Error ? reason.message : "Dialogue Repair could not load."); });
+    void Promise.all([refresh(), refreshAudibleReviews()]).catch((reason) => { if (!canceled) setError(reason instanceof Error ? reason.message : "Dialogue Repair could not load."); });
     return () => { canceled = true; };
-  }, [refresh]);
+  }, [refresh, refreshAudibleReviews]);
 
   const activeEntry = status?.candidates.find((entry) => entry.candidate.candidateId === activeCandidateId) ?? status?.candidates[0] ?? null;
   const activeCandidate = activeEntry?.candidate ?? null;
@@ -110,9 +125,16 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const activeWindow = activeCandidate ? contextWindow(activeCandidate) : null;
   const requiredBins = activeWindow ? secondBins(activeWindow.startSeconds, activeWindow.endSeconds) : [];
   const contextListened = requiredBins.length > 0 && requiredBins.every((bin) => listenedBins.has(bin));
+  const activeDetectorEntry = audibleReviewStatus?.entries.find((entry) => entry.suggestion.eventId === activeDetectorEventId) ?? null;
+  const activeDetectorWindow = activeDetectorEntry ? {
+    startSeconds: Math.max(0, activeDetectorEntry.suggestion.startSeconds - 1),
+    endSeconds: Math.min(sourceMeasurement.durationSeconds, activeDetectorEntry.suggestion.endSeconds + 1),
+  } : null;
+  const detectorRequiredBins = activeDetectorWindow ? secondBins(activeDetectorWindow.startSeconds, activeDetectorWindow.endSeconds) : [];
+  const detectorContextListened = detectorRequiredBins.length > 0 && detectorRequiredBins.every((bin) => detectorListenedBins.has(bin));
   const audibleMoments = useMemo(
-    () => audibleEventMapMoments(audioSignal, status?.candidates ?? [], audibleEventAnalysis),
-    [audioSignal, audibleEventAnalysis, status?.candidates],
+    () => audibleEventMapMoments(audioSignal, status?.candidates ?? [], audibleEventAnalysis, audibleReviewStatus),
+    [audioSignal, audibleEventAnalysis, audibleReviewStatus, status?.candidates],
   );
 
   const request = useCallback(async (body: Record<string, unknown>) => {
@@ -164,7 +186,10 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
     if (!element) return;
     if (kind === "source") {
       setPlayhead(element.currentTime);
-      if (!element.paused) setListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
+      if (!element.paused) {
+        setListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
+        setDetectorListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
+      }
     }
     if (stopAtRef.current !== null && element.currentTime >= stopAtRef.current) {
       element.pause();
@@ -180,6 +205,10 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
       setActiveCandidateId(moment.dialogueCandidateId);
       setListenedBins(new Set());
     }
+    if (moment?.detectorAnalysisId && moment.detectorEventId) {
+      setActiveDetectorEventId(moment.detectorEventId);
+      setDetectorListenedBins(new Set());
+    }
     const source = sourceRef.current;
     if (!source) return;
     const candidateWindow = entry ? contextWindow(entry.candidate) : null;
@@ -191,6 +220,41 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
     stopAtRef.current = play ? contextEnd : null;
     setPlayhead(clamp(seconds, 0, sourceMeasurement.durationSeconds));
     if (play) void source.play().catch(() => setError("Playback did not start. Use the protected source controls and try again."));
+  };
+
+  const reviewDetectorSuggestion = async (decision: AudibleEventReviewDecision) => {
+    if (!activeDetectorEntry || !activeDetectorWindow || !audibleReviewStatus?.analysis || !detectorContextListened) return;
+    const note = detectorNotes[activeDetectorEntry.suggestion.eventId]?.trim() || null;
+    if (decision !== "confirmed" && !note) { setError("Add a short note explaining the false positive or why comparison is still needed."); return; }
+    const key = `detector-review:${activeDetectorEntry.suggestion.eventId}`;
+    setBusyKey(key);
+    setError(null);
+    try {
+      const response = await fetch("/api/media-vault/audible-event-reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...coordinates,
+          action: "review-suggestion",
+          analysisId: audibleReviewStatus.analysis.analysisId,
+          eventId: activeDetectorEntry.suggestion.eventId,
+          clientRequestId: crypto.randomUUID(),
+          decision,
+          playbackEvidence: {
+            protectedPlaybackSourceId: sourceId,
+            contextStartSeconds: activeDetectorWindow.startSeconds,
+            contextEndSeconds: activeDetectorWindow.endSeconds,
+            listenedSecondBins: detectorRequiredBins,
+            clientTrackedPlaybackIsNotProofOfAudibility: true,
+          },
+          note,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Audible-event review returned HTTP ${response.status}.`);
+      await refreshAudibleReviews();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The listening review could not be saved."); }
+    finally { setBusyKey(null); }
   };
 
   const review = async (decision: DialogueRepairDecision) => {
@@ -266,6 +330,28 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
         selectedSeconds={playhead}
         onSelect={inspectAudibleMoment}
       />
+      {activeDetectorEntry && activeDetectorWindow && audibleReviewStatus?.analysis && (
+        <section className="mt-3 rounded-xl border border-fuchsia-500/60 bg-fuchsia-950/25 p-3" aria-label="Classifier suggestion review">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="flex flex-wrap items-center gap-2"><span className="font-black">{activeDetectorEntry.suggestion.displayLabel}</span><span className="rounded-full border border-fuchsia-500/70 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-fuchsia-200">{activeDetectorEntry.suggestion.family}</span><span className="font-mono text-[10px] text-fuchsia-200">{Math.round(activeDetectorEntry.suggestion.confidence * 100)}% classifier score</span></div>
+              <p className="mt-1 text-[10px] font-bold leading-4 text-slate-300">Unqualified Apple classifier suggestion at {activeDetectorEntry.suggestion.startSeconds.toFixed(3)}–{activeDetectorEntry.suggestion.endSeconds.toFixed(3)} s. The score prioritizes listening; it does not establish audibility, meaning, or a production defect.</p>
+            </div>
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-wide ${activeDetectorEntry.latestReview?.decision === "confirmed" ? "border-emerald-500 text-emerald-200" : activeDetectorEntry.latestReview?.decision === "false-positive" ? "border-slate-600 text-slate-300" : "border-fuchsia-500 text-fuchsia-200"}`}>{activeDetectorEntry.latestReview?.decision ?? "unreviewed"}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => inspectAudibleMoment(audibleMoments.find((moment) => moment.detectorEventId === activeDetectorEntry.suggestion.eventId) ?? null, activeDetectorEntry.suggestion.startSeconds, true)} className="rounded-md border border-cyan-500 bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950">Play bounded protected context</button>
+            <span className="text-[10px] font-bold text-slate-400">{detectorContextListened ? "Complete context observed" : `Listen through ${detectorRequiredBins.length} source-clock bins to review`}</span>
+          </div>
+          <textarea value={detectorNotes[activeDetectorEntry.suggestion.eventId] ?? ""} onChange={(event) => setDetectorNotes((previous) => ({ ...previous, [activeDetectorEntry.suggestion.eventId]: event.target.value }))} placeholder="Listening note (required for false positive or needs comparison)" className="mt-2 min-h-16 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500" />
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <button type="button" onClick={() => void reviewDetectorSuggestion("confirmed")} disabled={!detectorContextListened || busyKey !== null} className="rounded-md border border-emerald-500 bg-emerald-300 px-3 py-2 text-xs font-black text-emerald-950 disabled:opacity-40">Confirm classifier suggestion</button>
+            <button type="button" onClick={() => void reviewDetectorSuggestion("false-positive")} disabled={!detectorContextListened || busyKey !== null} className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-xs font-black disabled:opacity-40">Mark classifier false positive</button>
+            <button type="button" onClick={() => void reviewDetectorSuggestion("needs-comparison")} disabled={!detectorContextListened || busyKey !== null} className="rounded-md border border-violet-500 bg-violet-950 px-3 py-2 text-xs font-black text-violet-100 disabled:opacity-40">Hold for comparison</button>
+          </div>
+          <p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">This receipt improves the detector corpus. It cannot authorize repair, editing, or promotion.</p>
+        </section>
+      )}
       <div className="mt-2 flex flex-wrap items-end gap-2">
         <label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Event
           <select value={label} onChange={(event) => setLabel(event.target.value as DialogueRepairLabel)} className="mt-1 block rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white">

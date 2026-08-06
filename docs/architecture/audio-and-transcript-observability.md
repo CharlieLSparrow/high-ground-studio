@@ -1,7 +1,7 @@
 # Audio and transcript observability
 
-Status: implemented local and generation-bound cloud signal observability; production corpus gate remains
-Last reviewed: 2026-08-05
+Status: implemented local and generation-bound cloud signal observability plus append-only classifier review; production corpus gate remains
+Last reviewed: 2026-08-06
 
 Quipsly treats captured audio, provider inference, and playback-backed review as
 three different kinds of evidence. The product must never collapse them into a
@@ -124,6 +124,38 @@ playback clock in Studio and coaching, preserves fractional source tails, and
 never presents visible energy as an automatic EQ or edit decision. See
 `docs/architecture/audio-spectral-evidence.md`.
 
+## Audible-event classifier qualification
+
+Capture can now run Apple's versioned general sound classifier over a finalized
+local source after byte finalization. The durable receipt records the exact
+source SHA-256 and byte count, detector and classifier identities, window and
+overlap configuration, known-classification-set hash, source-clock suggestions,
+and explicit no-edit boundaries. The classifier output is listening triage; its
+score is neither audibility nor accuracy.
+
+Nest exposes those suggestions on the shared Audible Event Map. A reviewer must
+play the complete bounded protected-source context before appending one of three
+decisions: confirmed, false positive, or needs comparison. The server derives
+the suggestion from the canonical episode source profile, re-inspects the
+immutable media source through the Audio Mastery boundary, and rejects stale
+analysis IDs, event IDs, source identities, incomplete playback coverage, and
+idempotency conflicts.
+
+`StudioAudibleEventReviewReceipt` is intentionally separate from Dialogue
+Repair. It snapshots the source, detector configuration, suggestion, actor,
+decision, and playback evidence without creating a treatment candidate or
+authorizing a timeline/edit/promotion change. Current UI state is a projection
+over append-only receipts. Surface-level confirmation rates can measure the
+precision of reviewed suggestions and false positives per source hour; they
+cannot measure recall because the detector never surfaced the missing events.
+Recall requires independently labeled positive and negative corpus windows.
+
+The guarded retained operation
+`scripts/quipsly-retained-audible-event-review-operation.mjs` runs the real
+Apple framework against exact local episode bytes, verifies the returned source
+binding, and attaches the receipt using an optimistic episode update. Dry-run is
+the default. It never manufactures a listening review.
+
 ## Correction and provenance
 
 Provider segments remain immutable. A reviewer can play an exact time range,
@@ -141,8 +173,10 @@ person.
 The next audio-observability slice should extend this deterministic source
 analysis and operate a real evaluation corpus:
 
-- standards-conformant integrated loudness and true-peak analysis in the media
-  worker, preserving the on-device RMS/sample-peak evidence separately;
+- physical-iPhone runtime, real-time-factor, battery, thermal, and interruption
+  qualification over short and 60–120 minute retained captures;
+- independently labeled audible-event corpus windows so precision, recall,
+  false positives per hour, and boundary error can be calculated honestly;
 - cloud execution for the same source-bound spectral contract;
 - capture-route changes and pause/interruption boundaries on the same timeline;
 - side-by-side provider candidates without replacing the canonical source;
@@ -174,6 +208,11 @@ condition, never merely express that a model is uncertain.
   hash readback, and create-once replay.
 - A full-transcript accuracy claim requires complete playback-backed review or
   a separately identified, controlled reference transcript.
+- A classifier suggestion remains unqualified until the complete bounded source
+  context is played and an append-only review receipt is recorded.
+- A classifier review never authorizes repair, editing, timeline changes, or
+  derivative promotion.
+- Confirmation rate over surfaced suggestions is never labeled recall.
 
 The committed `b3d257d85a78231a87131dcda3a73dc142ae5c0d` credentialed fixture
 proved the cloud boundary against `high-ground-odyssey-media`: one 8-second

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { importedMediaProxyReadiness } from "@/lib/episode-production/media-proxy-readiness";
+import { parseAudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 
 import {
   canonicalEpisodeImportedMedia,
@@ -279,6 +280,12 @@ function importedMediaPublic(
   const sync = nestedRecord(item, "sync");
   const proxy = nestedRecord(item, "proxy");
   const itemMetadata = nestedRecord(item, "metadata");
+  const metadataRecordingSync = nestedRecord(itemMetadata, "recordingSync");
+  const syncRecordingSync = nestedRecord(sync, "recordingSync");
+  const reportedSourceProfile = Object.keys(nestedRecord(syncRecordingSync, "reportedSourceProfile")).length > 0
+    ? nestedRecord(syncRecordingSync, "reportedSourceProfile")
+    : nestedRecord(metadataRecordingSync, "reportedSourceProfile");
+  const audibleEventAnalysis = parseAudibleEventDetectorReceipt(reportedSourceProfile.audibleEventAnalysis);
   const importedContext = publicSessionContext(itemMetadata.sessionContext);
   const attachmentContext = assetView?.attachments
     ?.map((attachment: any) => publicSessionContext(jsonObject(attachment.metadataJson).sessionContext))
@@ -295,6 +302,10 @@ function importedMediaPublic(
     recordingAssetId,
     unresolvedRecordingReference,
     syncStatus: text(sync.status) || null,
+    sync: {
+      status: text(sync.status) || null,
+      recordingSync: audibleEventAnalysis ? { reportedSourceProfile: { audibleEventAnalysis } } : null,
+    },
     proxyStatus: text(proxy.status) || null,
     sessionContext,
     storage: {

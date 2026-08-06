@@ -94,6 +94,8 @@
     "quipsly:retained:recording-editor": "node scripts/quipsly-retained-recording-editor-operation.mjs",
     "quipsly:retained:audio-processing": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-audio-mastery-transparency-operation.mjs",
     "quipsly:retained:audio-evidence-ui": "node scripts/quipsly-retained-audio-evidence-browser-smoke.mjs",
+    "quipsly:retained:audible-event-review": "node scripts/quipsly-retained-audible-event-review-operation.mjs",
+    "test:quipsly:retained:audible-event-review": "node --test scripts/quipsly-retained-audible-event-review-operation.test.mjs",
     "quipsly:retained:studio-frequency-ui": "node scripts/quipsly-retained-studio-frequency-evidence-browser-smoke.mjs",
     "test:quipsly:retained:studio-frequency-ui": "node --test scripts/quipsly-retained-studio-frequency-evidence-browser-smoke.test.mjs",
     "quipsly:retained:measured-transcript-ui": "node scripts/quipsly-retained-measured-transcript-contributors-browser-smoke.mjs",

@@ -3459,6 +3459,7 @@ model StudioProject {
   transcriptJobs                     TranscriptJob[]
   studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
   studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
+  audibleEventReviewReceipts         StudioAudibleEventReviewReceipt[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3954,6 +3955,47 @@ model StudioDialogueRepairReviewReceipt {
   @@index([projectId, assetId, occurredAt], map: "StudioDialogueRepairReview_project_asset_occurred_idx")
 }
 
+// Human listening decisions over immutable on-device classifier suggestions.
+// These receipts qualify detector behavior; they never authorize repair,
+// editing, timeline changes, or promotion of derivative media.
+model StudioAudibleEventReviewReceipt {
+  id                          String                             @id @default(cuid())
+  projectId                   String
+  assetId                     String
+  sourceId                    String
+  analysisId                  String
+  eventId                     String
+  actorUserId                 String?
+  actorEmail                  String
+  clientRequestId             String
+  decision                    StudioDialogueRepairReviewDecision
+  classificationIdentifier    String
+  displayLabel                String
+  family                      String
+  detectorAlgorithm           String
+  classifierIdentifier        String
+  detectorConfigurationSha256 String
+  sourceSha256                String
+  sourceGeneration            String
+  startSeconds                Float
+  endSeconds                  Float
+  confidence                  Float
+  requestSha256               String
+  evidenceJson                Json
+  note                        String?
+  occurredAt                  DateTime
+  createdAt                   DateTime                           @default(now())
+
+  project StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   StudioMediaAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  source  StudioVideoSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudibleEventReview_project_actor_request_key")
+  @@index([analysisId, eventId, occurredAt], map: "StudioAudibleEventReview_analysis_event_idx")
+  @@index([projectId, assetId, occurredAt], map: "StudioAudibleEventReview_project_asset_idx")
+  @@index([sourceId, occurredAt], map: "StudioAudibleEventReview_source_idx")
+}
+
 model StudioSourceUnit {
   id             String    @id @default(cuid())
   projectId      String
@@ -4322,6 +4364,7 @@ model StudioVideoSource {
   updatedAt        DateTime @updatedAt
 
   dialogueRepairCandidates StudioDialogueRepairCandidate[]
+  audibleEventReviews      StudioAudibleEventReviewReceipt[]
 
   @@index([provider])
   @@index([providerSourceId])
@@ -5155,6 +5198,7 @@ model StudioMediaAsset {
   audioDeliveryReviews     StudioAudioDeliveryReviewReceipt[]
   dialogueRepairCandidates StudioDialogueRepairCandidate[]
   dialogueRepairReviews    StudioDialogueRepairReviewReceipt[]
+  audibleEventReviews      StudioAudibleEventReviewReceipt[]
   sourceUnits              StudioSourceUnit[]
   workflowJobs             StudioWorkflowJob[]
   transcriptJobs           TranscriptJob[]

@@ -81,6 +81,12 @@ describe("Audio Studio workspace projections", () => {
     ]);
   });
 
+  it("keeps a validated classifier receipt available without exposing arbitrary capture profile fields", () => {
+    const projected = audioWorkspaceAssets(inventory(true))[0];
+    expect(projected.audibleEventAnalysis).toEqual(expect.objectContaining({ analysisId: "audible_analysis_test_receipt_001", sourceByteCount: 42_000 }));
+    expect(projected.audibleEventAnalysis?.boundaries.noRepairOrEditAuthorized).toBe(true);
+  });
+
   it("parses only validated durable signal evidence for shared-clock review", () => {
     const status = {
       audioSignal: {

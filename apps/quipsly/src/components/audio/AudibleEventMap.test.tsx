@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
+import type { AudibleEventReviewStatus } from "@/lib/audio/audible-event-review";
 
 import {
   AudibleEventMap,
@@ -75,6 +76,14 @@ const detectorReceipt: AudibleEventDetectorReceipt = {
   boundaries: { classifierOutputIsListeningTriageOnly: true, classifierScoreIsNotAudibility: true, noMediaChanged: true, noRepairOrEditAuthorized: true, humanReviewRequired: true },
 };
 
+const detectorReviewStatus: AudibleEventReviewStatus = {
+  available: true,
+  analysis: detectorReceipt,
+  entries: [{ suggestion: detectorReceipt.suggestions[0], latestReview: { id: "review_001", analysisId: detectorReceipt.analysisId, eventId: detectorReceipt.suggestions[0].eventId, decision: "confirmed", actorEmail: "editor@example.test", note: null, occurredAt: "2026-08-05T19:00:00Z" }, reviewCounts: { confirmed: 1, falsePositive: 0, needsComparison: 0 } }],
+  summary: { suggestionCount: 1, reviewedSuggestionCount: 1, confirmedSuggestionCount: 1, falsePositiveSuggestionCount: 0, needsComparisonSuggestionCount: 0, pendingSuggestionCount: 0 },
+  boundaries: { detectorOutputIsListeningTriageOnly: true, humanStateComesFromAppendOnlyReceipts: true, reviewDoesNotAuthorizeRepairOrEdit: true, sourceIdentityIsReverifiedServerSide: true, surfacedSuggestionsAloneCannotMeasureRecall: true },
+};
+
 describe("AudibleEventMap", () => {
   it("projects measured evidence and append-only dialogue review onto one source clock", () => {
     const moments = audibleEventMapMoments(signal, dialogueEntries, detectorReceipt);
@@ -88,6 +97,11 @@ describe("AudibleEventMap", () => {
     expect(moments[2]).toEqual(expect.objectContaining({ originLabel: "Human source-clock mark", dialogueCandidateId: "candidate_mouth_001" }));
     expect(moments[3]).toEqual(expect.objectContaining({ confidence: 0.78, originLabel: "Unqualified detector suggestion · sound-analysis-v1" }));
     expect(audibleEventMapSummary(moments)).toEqual({ total: 4, needsReview: 2, confirmed: 1, dismissed: 1, detectorSuggestions: 2 });
+  });
+
+  it("projects append-only classifier reviews without turning them into repair candidates", () => {
+    const moments = audibleEventMapMoments(signal, dialogueEntries, detectorReceipt, detectorReviewStatus);
+    expect(moments[0]).toEqual(expect.objectContaining({ reviewState: "confirmed", detectorAnalysisId: detectorReceipt.analysisId, detectorEventId: detectorReceipt.suggestions[0].eventId, dialogueCandidateId: null }));
   });
 
   it("keeps zoom bounded and makes filtered event navigation operate the protected source playhead", () => {

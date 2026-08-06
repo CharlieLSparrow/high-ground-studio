@@ -3,6 +3,7 @@
 import { useMemo, useState, type MouseEvent } from "react";
 
 import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
+import type { AudibleEventReviewStatus } from "@/lib/audio/audible-event-review";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 type SignalEvidence = NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
@@ -26,6 +27,8 @@ export type AudibleEventMoment = {
   confidence: number | null;
   reviewState: AudibleEventReviewState;
   dialogueCandidateId: string | null;
+  detectorAnalysisId: string | null;
+  detectorEventId: string | null;
 };
 
 export type AudibleEventDialogueEntry = {
@@ -93,7 +96,13 @@ export function audibleEventMapMoments(
   signal: SignalEvidence | null,
   dialogueEntries: AudibleEventDialogueEntry[],
   detectorReceipt: AudibleEventDetectorReceipt | null = null,
+  detectorReviewStatus: AudibleEventReviewStatus | null = null,
 ): AudibleEventMoment[] {
+  const detectorReviews = new Map(
+    detectorReviewStatus && detectorReceipt && detectorReviewStatus.analysis?.analysisId === detectorReceipt.analysisId
+      ? detectorReviewStatus.entries.map((entry) => [entry.suggestion.eventId, entry.latestReview?.decision ?? "unreviewed"] as const)
+      : [],
+  );
   const measured = signal?.observations.map((observation, index): AudibleEventMoment => ({
     id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
     family: "signal",
@@ -106,6 +115,8 @@ export function audibleEventMapMoments(
     confidence: null,
     reviewState: "measured-needs-listening",
     dialogueCandidateId: null,
+    detectorAnalysisId: null,
+    detectorEventId: null,
   })) ?? [];
 
   const dialogue = dialogueEntries.map((entry): AudibleEventMoment => {
@@ -134,6 +145,8 @@ export function audibleEventMapMoments(
       confidence,
       reviewState,
       dialogueCandidateId: entry.candidate.candidateId,
+      detectorAnalysisId: null,
+      detectorEventId: null,
     };
   });
 
@@ -148,8 +161,10 @@ export function audibleEventMapMoments(
       severity: "attention",
       originLabel: "Unqualified on-device detector suggestion · Apple general sound classifier",
       confidence: suggestion.confidence,
-      reviewState: "unreviewed",
+      reviewState: detectorReviews.get(suggestion.eventId) ?? "unreviewed",
       dialogueCandidateId: null,
+      detectorAnalysisId: detectorReceipt.analysisId,
+      detectorEventId: suggestion.eventId,
     }))
     : [];
 
