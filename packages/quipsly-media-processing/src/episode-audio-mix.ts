@@ -271,7 +271,7 @@ export function parseEpisodeAudioMixProposal(value: unknown): EpisodeAudioMixPro
   const unresolvedEvents = array(row.unresolvedEvents, "unresolvedEvents").map(parseUnresolved);
   const output = parseOutput(row.output);
   const boundary = record(row.boundaries);
-  if (JSON.stringify(boundary) !== JSON.stringify(boundaries())) throw new Error("Episode mix safety boundaries are invalid.");
+  if (!sameExactRecord(boundary, boundaries())) throw new Error("Episode mix safety boundaries are invalid.");
   const parentProposalId = row.parentProposalId === null ? null : id(row.parentProposalId, "parentProposalId");
   const revision = positiveInteger(row.revision, "revision");
   const createdBy = row.createdBy === "quipsly-deterministic-v1" || row.createdBy === "human-revision" ? row.createdBy : invalid("createdBy");
@@ -302,7 +302,7 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
   const row = record(value);
   const proposal = parseEpisodeAudioMixProposal(row.proposal);
   const expected = expectedProposal ? parseEpisodeAudioMixProposal(expectedProposal) : null;
-  if (expected && JSON.stringify(proposal) !== JSON.stringify(expected)) throw new Error("Episode mix result proposal does not match the queued immutable proposal.");
+  if (expected && stableJson(proposal) !== stableJson(expected)) throw new Error("Episode mix result proposal does not match the queued immutable proposal.");
   const derivativeRow = record(row.derivative);
   const derivative = parseSource(derivativeRow);
   const measurement = parseAudioMasteryMeasurement(derivativeRow.measurement);
@@ -395,6 +395,20 @@ function parseSource(value: unknown): AudioMasterySourceBinding {
 }
 
 function boundaries(): EpisodeAudioMixProposal["boundaries"] { return { originalTracksRemainSourceTruth: true, proposalDoesNotChangeTimelineOrMedia: true, reviewEvidenceAuthorizesSuggestionsOnly: true, correlationNeverAuthorizesAutomation: true, previewMustBeIndependentlyMeasured: true, promotionRequiresPlaybackBoundApproval: true }; }
+function sameExactRecord(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
+}
+function stableJson(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    const row = value as Record<string, unknown>;
+    return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${stableJson(row[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 function record(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
 function array(value: unknown, field: string): unknown[] { if (!Array.isArray(value)) throw new Error(`Episode mix ${field} must be an array.`); return value; }
 function text(value: unknown, field: string, maximum = 180): string { const result = typeof value === "string" ? value.trim() : ""; if (!result || result.length > maximum) throw new Error(`Episode mix ${field} is invalid.`); return result; }

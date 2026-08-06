@@ -41,6 +41,9 @@ test("automatic mix suggestions attenuate only a uniquely lower-authority review
   assert.deepEqual(proposal.activeDecisionReceiptIds, ["decision_0001", "decision_0002"]);
   assert.equal(proposal.unresolvedEvents.length, 0);
   assert.equal(parseEpisodeAudioMixProposal(proposal).boundaries.correlationNeverAuthorizesAutomation, true);
+  const jsonbRoundTrip = JSON.parse(JSON.stringify(proposal));
+  jsonbRoundTrip.boundaries = Object.fromEntries(Object.entries(jsonbRoundTrip.boundaries).reverse());
+  assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).proposalId, proposal.proposalId, "JSONB key ordering must not invalidate an exact safety contract");
 });
 
 test("ambiguous primary tracks stay unresolved instead of receiving guessed gain", () => {
