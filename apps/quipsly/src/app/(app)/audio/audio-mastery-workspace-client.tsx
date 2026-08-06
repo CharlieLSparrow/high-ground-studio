@@ -22,6 +22,7 @@ import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-me
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
 import { EpisodeAudioActivityMap } from "@/components/audio/EpisodeAudioActivityMap";
 import { EpisodeAudioMatchedAudition } from "@/components/audio/EpisodeAudioMatchedAudition";
+import { EpisodeAudioMixDesk } from "@/components/audio/EpisodeAudioMixDesk";
 import { EpisodeAudioProgramMap } from "@/components/audio/EpisodeAudioProgramMap";
 import {
   buildEpisodeAudioActivityMap,
@@ -1053,6 +1054,15 @@ export function AudioMasteryWorkspaceClient({
               reviewsByEvent={Object.fromEntries(Object.entries(activityReviewLedger?.latestByEvent ?? {}).filter(([, review]) => review.analysisId === currentAnalysisId))}
               reviewLedgerError={activityReviewError}
             />
+            {selectedEpisode ? <EpisodeAudioMixDesk
+              projectId={activeProjectId}
+              projectSlug={projectSlug}
+              episodeProductionId={selectedEpisode.id}
+              programFingerprintSha256={audioProgram.fingerprintSha256}
+              canWrite={selectedProject?.role !== "VIEWER"}
+              eligible={Boolean(audioProgram.summary.hasProgramClock && audioProgram.tracks.filter((track) => track.mixDisposition === "include").every((track) => track.processing.alignment.qualifiedForReview || audioProgram.activeDecisions.some((decision) => decision.kind === "program-clock" && decision.assetId === track.assetId && decision.sourceId === track.sourceId)))}
+              eligibilityDetail="Choose one program clock, classify included track roles, and qualify every other included track on that shared clock."
+            /> : null}
             {comparisonPlan ? (
               <EpisodeAudioMatchedAudition
                 plan={comparisonPlan}

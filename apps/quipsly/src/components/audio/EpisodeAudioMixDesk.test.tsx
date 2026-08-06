@@ -1,0 +1,27 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import { EpisodeAudioMixDesk } from "./EpisodeAudioMixDesk";
+
+describe("EpisodeAudioMixDesk", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => { global.fetch = originalFetch; });
+  it("queues a reversible mix proposal and explains held judgments", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, status: "not-queued", jobId: null, actionCount: 0, unresolvedCount: 0 }) })
+      .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ ok: true, status: "queued", jobId: "mix_0001", proposalId: "mix_0001", programFingerprintSha256: "f".repeat(64), actionCount: 1, unresolvedCount: 2 }) });
+    global.fetch = fetchMock;
+    render(<EpisodeAudioMixDesk projectId="project_0001" projectSlug="nest-one" episodeProductionId="episode_0001" programFingerprintSha256={"f".repeat(64)} canWrite eligible eligibilityDetail="Ready" />);
+    expect(await screen.findByText("Automatic, inspectable, undoable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Build mix proposal" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/Proposed 1 evidence-linked gain move/)).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "POST" });
+  });
+  it("keeps queueing unreachable when the canonical program is incomplete", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, status: "not-queued", jobId: null }) });
+    render(<EpisodeAudioMixDesk projectId="project_0001" projectSlug="nest-one" episodeProductionId="episode_0001" programFingerprintSha256={null} canWrite eligible={false} eligibilityDetail="Choose a program clock and align every included track." />);
+    expect(await screen.findByText("Choose a program clock and align every included track.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build mix proposal" })).toBeDisabled();
+  });
+});
