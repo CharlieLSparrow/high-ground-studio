@@ -4,6 +4,7 @@ import { parseAudioSignalDiagnosis, type AudioSignalDiagnosis } from "./audio-si
 export const DIALOGUE_REPAIR_CONTRACT_VERSION = 1 as const;
 export const DIALOGUE_REPAIR_CANDIDATE_KIND = "quipsly-dialogue-repair-candidate-v1" as const;
 export const DIALOGUE_REPAIR_REVIEW_KIND = "quipsly-dialogue-repair-review-v1" as const;
+export const DIALOGUE_REPAIR_AUDITION_KIND = "quipsly-dialogue-repair-audition-v1" as const;
 export const DIALOGUE_REPAIR_PROPOSAL_KIND = "quipsly-dialogue-repair-proposal-v1" as const;
 export const DIALOGUE_REPAIR_JOB_KIND = "quipsly-dialogue-repair-job-v1" as const;
 export const DIALOGUE_REPAIR_RESULT_KIND = "quipsly-dialogue-repair-result-v1" as const;
@@ -88,6 +89,45 @@ export type DialogueRepairReviewReceipt = {
     noMediaChanged: true;
     confirmedDecisionAuthorizesExperimentOnly: true;
     promotionRequiresSeparateReview: true;
+  };
+};
+
+export type DialogueRepairAuditionDecision = "repair-preferred" | "source-preferred" | "indistinguishable" | "needs-work";
+
+export type DialogueRepairAuditionReceipt = {
+  kind: typeof DIALOGUE_REPAIR_AUDITION_KIND;
+  version: typeof DIALOGUE_REPAIR_CONTRACT_VERSION;
+  receiptId: string;
+  candidateId: string;
+  jobId: string;
+  occurredAt: string;
+  actorEmail: string;
+  decision: DialogueRepairAuditionDecision;
+  source: AudioMasterySourceBinding;
+  candidateRange: DialogueRepairRange;
+  experiment: {
+    profileId: typeof DIALOGUE_REPAIR_PROFILE_ID;
+    previewSha256: string;
+    previewGeneration: string;
+  };
+  evidence: {
+    protectedPlaybackSourceId: string;
+    protectedPlaybackJobId: string;
+    contextStartSeconds: number;
+    contextEndSeconds: number;
+    sourceListenedSecondBins: number[];
+    repairedListenedSecondBins: number[];
+    comparisonMode: "matched-loudness";
+    completedAt: string;
+    clientTrackedPlaybackIsNotProofOfAudibility: true;
+  };
+  note: string | null;
+  boundaries: {
+    appendOnlyDecision: true;
+    originalRemainsSourceTruth: true;
+    noMediaChanged: true;
+    repairPreferenceDoesNotPromote: true;
+    promotionRequiresSeparateApproval: true;
   };
 };
 
@@ -339,6 +379,149 @@ export function parseDialogueRepairReviewReceipt(value: unknown, expectedCandida
     },
     note: nullableText(row.note, "note", 1_000),
     boundaries: { appendOnlyDecision: true, noMediaChanged: true, confirmedDecisionAuthorizesExperimentOnly: true, promotionRequiresSeparateReview: true },
+  };
+}
+
+export function newDialogueRepairAuditionReceipt(input: {
+  receiptId: string;
+  occurredAt: string;
+  actorEmail: string;
+  decision: DialogueRepairAuditionDecision;
+  candidate: DialogueRepairCandidate;
+  job: DialogueRepairJob;
+  result: DialogueRepairResult;
+  evidence: DialogueRepairAuditionReceipt["evidence"];
+  note?: string | null;
+}) {
+  const candidate = parseDialogueRepairCandidate(input.candidate);
+  const job = parseDialogueRepairJob(input.job);
+  const result = parseDialogueRepairResult(input.result, job);
+  return parseDialogueRepairAuditionReceipt({
+    kind: DIALOGUE_REPAIR_AUDITION_KIND,
+    version: DIALOGUE_REPAIR_CONTRACT_VERSION,
+    receiptId: input.receiptId,
+    candidateId: candidate.candidateId,
+    jobId: job.jobId,
+    occurredAt: input.occurredAt,
+    actorEmail: input.actorEmail,
+    decision: input.decision,
+    source: candidate.source,
+    candidateRange: candidate.range,
+    experiment: {
+      profileId: job.proposal.profileId,
+      previewSha256: result.derivative.sha256,
+      previewGeneration: result.derivative.generation,
+    },
+    evidence: input.evidence,
+    note: input.note ?? null,
+    boundaries: {
+      appendOnlyDecision: true,
+      originalRemainsSourceTruth: true,
+      noMediaChanged: true,
+      repairPreferenceDoesNotPromote: true,
+      promotionRequiresSeparateApproval: true,
+    },
+  }, candidate, job, result);
+}
+
+export function parseDialogueRepairAuditionReceipt(
+  value: unknown,
+  expectedCandidate?: DialogueRepairCandidate | unknown,
+  expectedJob?: DialogueRepairJob | unknown,
+  expectedResult?: DialogueRepairResult | unknown,
+): DialogueRepairAuditionReceipt {
+  const row = record(value);
+  const candidate = expectedCandidate ? parseDialogueRepairCandidate(expectedCandidate) : null;
+  const job = expectedJob ? parseDialogueRepairJob(expectedJob) : null;
+  const result = expectedResult ? parseDialogueRepairResult(expectedResult, job ?? undefined) : null;
+  const source = sourceBinding(row.source);
+  const range = repairRange(row.candidateRange);
+  const experimentRow = record(row.experiment);
+  const experiment = {
+    profileId: experimentRow.profileId,
+    previewSha256: boundedText(experimentRow.previewSha256, "experiment.previewSha256", 64),
+    previewGeneration: boundedText(experimentRow.previewGeneration, "experiment.previewGeneration", 200),
+  };
+  const evidenceRow = record(row.evidence);
+  const contextStartSeconds = finiteSeconds(evidenceRow.contextStartSeconds, "evidence.contextStartSeconds");
+  const contextEndSeconds = finiteSeconds(evidenceRow.contextEndSeconds, "evidence.contextEndSeconds");
+  const expectedStart = Math.max(0, range.startSeconds - range.auditionPreRollSeconds);
+  const expectedEnd = Math.min(range.sourceDurationSeconds, range.endSeconds + range.auditionPostRollSeconds);
+  const requiredBins = secondBins(expectedStart, expectedEnd);
+  const sourceListenedSecondBins = listenedBins(evidenceRow.sourceListenedSecondBins, "evidence.sourceListenedSecondBins");
+  const repairedListenedSecondBins = listenedBins(evidenceRow.repairedListenedSecondBins, "evidence.repairedListenedSecondBins");
+  const completedAt = date(evidenceRow.completedAt, "evidence.completedAt");
+  const completedAtMs = Date.parse(completedAt);
+  const now = Date.now();
+  const decision = auditionDecision(row.decision);
+  const note = nullableText(row.note, "note", 1_000);
+  const boundaries = record(row.boundaries);
+  if (
+    row.kind !== DIALOGUE_REPAIR_AUDITION_KIND || row.version !== DIALOGUE_REPAIR_CONTRACT_VERSION
+    || experiment.profileId !== DIALOGUE_REPAIR_PROFILE_ID || !SHA256.test(experiment.previewSha256)
+    || contextStartSeconds > expectedStart || contextEndSeconds < expectedEnd || contextEndSeconds > range.sourceDurationSeconds
+    || requiredBins.some((bin) => !sourceListenedSecondBins.includes(bin) || !repairedListenedSecondBins.includes(bin))
+    || evidenceRow.comparisonMode !== "matched-loudness"
+    || evidenceRow.clientTrackedPlaybackIsNotProofOfAudibility !== true
+    || completedAtMs > now + 5 * 60_000 || completedAtMs < now - 24 * 60 * 60_000
+    || boundaries.appendOnlyDecision !== true || boundaries.originalRemainsSourceTruth !== true
+    || boundaries.noMediaChanged !== true || boundaries.repairPreferenceDoesNotPromote !== true
+    || boundaries.promotionRequiresSeparateApproval !== true
+  ) throw new Error("Dialogue repair matched-audition evidence or safety boundary is invalid.");
+  if ((decision === "source-preferred" || decision === "needs-work") && !note) {
+    throw new Error("Rejecting or holding a dialogue repair requires a listening note.");
+  }
+  if (candidate && (
+    row.candidateId !== candidate.candidateId
+    || !sameSource(source, candidate.source)
+    || !sameJson(range, candidate.range)
+  )) throw new Error("Dialogue repair audition does not match the immutable candidate snapshot.");
+  if (job && (
+    row.jobId !== job.jobId
+    || job.proposal.candidate.candidateId !== row.candidateId
+    || !sameSource(job.source, source)
+    || experiment.profileId !== job.proposal.profileId
+  )) throw new Error("Dialogue repair audition does not match the experiment job.");
+  if (result && (
+    result.jobId !== row.jobId
+    || result.derivative.sha256 !== experiment.previewSha256
+    || result.derivative.generation !== experiment.previewGeneration
+  )) throw new Error("Dialogue repair audition does not match the verified preview bytes.");
+  return {
+    kind: DIALOGUE_REPAIR_AUDITION_KIND,
+    version: DIALOGUE_REPAIR_CONTRACT_VERSION,
+    receiptId: identifier(row.receiptId, "receiptId"),
+    candidateId: identifier(row.candidateId, "candidateId"),
+    jobId: identifier(row.jobId, "jobId"),
+    occurredAt: date(row.occurredAt, "occurredAt"),
+    actorEmail: email(row.actorEmail, "actorEmail"),
+    decision,
+    source,
+    candidateRange: range,
+    experiment: {
+      profileId: DIALOGUE_REPAIR_PROFILE_ID,
+      previewSha256: experiment.previewSha256,
+      previewGeneration: experiment.previewGeneration,
+    },
+    evidence: {
+      protectedPlaybackSourceId: identifier(evidenceRow.protectedPlaybackSourceId, "evidence.protectedPlaybackSourceId"),
+      protectedPlaybackJobId: identifier(evidenceRow.protectedPlaybackJobId, "evidence.protectedPlaybackJobId"),
+      contextStartSeconds,
+      contextEndSeconds,
+      sourceListenedSecondBins,
+      repairedListenedSecondBins,
+      comparisonMode: "matched-loudness",
+      completedAt,
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    },
+    note,
+    boundaries: {
+      appendOnlyDecision: true,
+      originalRemainsSourceTruth: true,
+      noMediaChanged: true,
+      repairPreferenceDoesNotPromote: true,
+      promotionRequiresSeparateApproval: true,
+    },
   };
 }
 
@@ -606,6 +789,8 @@ function secondBins(startSeconds: number, endSeconds: number) {
 
 function dialogueLabel(value: unknown): DialogueRepairLabel { if (typeof value !== "string" || !LABELS.has(value as DialogueRepairLabel)) throw new Error("Dialogue repair label is invalid."); return value as DialogueRepairLabel; }
 function reviewDecision(value: unknown): DialogueRepairReviewReceipt["decision"] { if (value !== "confirmed" && value !== "false-positive" && value !== "needs-comparison") throw new Error("Dialogue repair decision is invalid."); return value; }
+function auditionDecision(value: unknown): DialogueRepairAuditionDecision { if (value !== "repair-preferred" && value !== "source-preferred" && value !== "indistinguishable" && value !== "needs-work") throw new Error("Dialogue repair audition decision is invalid."); return value; }
+function listenedBins(value: unknown, field: string) { const bins = array(value, field).map((entry) => nonNegativeInteger(entry, field)); const unique = [...new Set(bins)].sort((left, right) => left - right); if (bins.length !== unique.length || unique.length > 22) throw new Error(`Dialogue repair ${field} is invalid or unbounded.`); return unique; }
 function record(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
 function array(value: unknown, field: string): unknown[] { if (!Array.isArray(value)) throw new Error(`Dialogue repair ${field} must be an array.`); return value; }
 function boundedText(value: unknown, field: string, maximum: number) { const result = typeof value === "string" ? value.trim() : ""; if (!result || result.length > maximum) throw new Error(`Dialogue repair ${field} is invalid.`); return result; }

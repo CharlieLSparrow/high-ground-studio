@@ -12,6 +12,7 @@ import type { AudioMasteryMeasurement, AudioSignalDiagnosisSummary } from "./Aud
 
 type DialogueRepairLabel = "mouth-click" | "plosive" | "sibilance" | "breath" | "clipping" | "noise-event";
 type DialogueRepairDecision = "confirmed" | "false-positive" | "needs-comparison";
+type DialogueAuditionDecision = "repair-preferred" | "source-preferred" | "indistinguishable" | "needs-work";
 
 type DialogueCandidate = {
   kind: "quipsly-dialogue-repair-candidate-v1";
@@ -35,6 +36,8 @@ type DialogueExperiment = {
   error: string | null;
   verification: null | { durationDeltaSeconds: number; sourceChannelCount: number; outputChannelCount: number; completeOutputDecode: true; passes: true };
   derivative: null | { durationSeconds: number; measured: AudioMasteryMeasurement; diagnosis: AudioSignalDiagnosisSummary };
+  latestAudition: null | { id: string; decision: DialogueAuditionDecision; actorEmail: string; note: string | null; occurredAt: string };
+  auditionCounts: { repairPreferred: number; sourcePreferred: number; indistinguishable: number; needsWork: number };
 };
 
 export type DialogueRepairStatus = {
@@ -78,6 +81,7 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
   const sourceRef = useRef<HTMLAudioElement | null>(null);
   const repairedRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
+  const playbackPurposeRef = useRef<"candidate-source" | "comparison-source" | "comparison-repaired" | null>(null);
   const [status, setStatus] = useState<DialogueRepairStatus | null>(null);
   const [audibleReviewStatus, setAudibleReviewStatus] = useState<AudibleEventReviewStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,8 +95,11 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
   const [listenedBins, setListenedBins] = useState<Set<number>>(() => new Set());
   const [detectorListenedBins, setDetectorListenedBins] = useState<Set<number>>(() => new Set());
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [auditionNotes, setAuditionNotes] = useState<Record<string, string>>({});
   const [detectorNotes, setDetectorNotes] = useState<Record<string, string>>({});
   const [comparisonMode, setComparisonMode] = useState<"source" | "repaired">("source");
+  const [sourceComparisonBins, setSourceComparisonBins] = useState<Set<number>>(() => new Set());
+  const [repairedComparisonBins, setRepairedComparisonBins] = useState<Set<number>>(() => new Set());
 
   const coordinates = useMemo(
     () => ({ ...(projectId ? { projectId } : {}), projectSlug, assetId, sourceId }),
@@ -130,6 +137,9 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
   const activeWindow = activeCandidate ? contextWindow(activeCandidate) : null;
   const requiredBins = activeWindow ? secondBins(activeWindow.startSeconds, activeWindow.endSeconds) : [];
   const contextListened = requiredBins.length > 0 && requiredBins.every((bin) => listenedBins.has(bin));
+  const sourceCompared = requiredBins.length > 0 && requiredBins.every((bin) => sourceComparisonBins.has(bin));
+  const repairedCompared = requiredBins.length > 0 && requiredBins.every((bin) => repairedComparisonBins.has(bin));
+  const auditionReady = sourceCompared && repairedCompared;
   const activeDetectorEntry = audibleReviewStatus?.entries.find((entry) => entry.suggestion.eventId === activeDetectorEventId) ?? null;
   const activeDetectorWindow = activeDetectorEntry ? {
     startSeconds: Math.max(0, activeDetectorEntry.suggestion.startSeconds - 1),
@@ -182,6 +192,9 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
     element.volume = sourceGain;
     element.currentTime = activeWindow.startSeconds;
     stopAtRef.current = activeWindow.endSeconds;
+    playbackPurposeRef.current = kind === "source"
+      ? activeExperiment?.status === "completed" ? "comparison-source" : "candidate-source"
+      : "comparison-repaired";
     setComparisonMode(kind);
     await element.play();
   };
@@ -194,11 +207,16 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
       if (!element.paused) {
         setListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
         setDetectorListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
+        if (playbackPurposeRef.current === "comparison-source") setSourceComparisonBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
       }
+    }
+    if (kind === "repaired" && !element.paused && playbackPurposeRef.current === "comparison-repaired") {
+      setRepairedComparisonBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
     }
     if (stopAtRef.current !== null && element.currentTime >= stopAtRef.current) {
       element.pause();
       stopAtRef.current = null;
+      playbackPurposeRef.current = null;
     }
   };
 
@@ -225,6 +243,7 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
       ?? Math.min(sourceMeasurement.durationSeconds, Math.max(moment?.endSeconds ?? seconds, seconds) + 1);
     source.currentTime = clamp(play ? contextStart : seconds, 0, sourceMeasurement.durationSeconds);
     stopAtRef.current = play ? contextEnd : null;
+    playbackPurposeRef.current = "candidate-source";
     setPlayhead(clamp(seconds, 0, sourceMeasurement.durationSeconds));
     if (play) void source.play().catch(() => setError("Playback did not start. Use the protected source controls and try again."));
   };
@@ -306,8 +325,45 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
         await refresh();
       }
       if (!experiment || experiment.status !== "completed") throw new Error("Dialogue Repair is still processing. Resume it safely from this candidate.");
+      setSourceComparisonBins(new Set());
+      setRepairedComparisonBins(new Set());
       await refresh();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The range experiment could not be completed."); }
+    finally { setBusyKey(null); }
+  };
+
+  const reviewExperiment = async (decision: DialogueAuditionDecision) => {
+    if (!activeCandidate || !activeExperiment || !activeWindow || !auditionReady) return;
+    const note = auditionNotes[activeExperiment.jobId]?.trim() || null;
+    if ((decision === "source-preferred" || decision === "needs-work") && !note) {
+      setError("Add a short note explaining why the source is preferable or what the repair still needs.");
+      return;
+    }
+    const key = `audition:${activeExperiment.jobId}`;
+    setBusyKey(key);
+    setError(null);
+    try {
+      await request({
+        action: "review-experiment",
+        candidateId: activeCandidate.candidateId,
+        jobId: activeExperiment.jobId,
+        clientRequestId: crypto.randomUUID(),
+        decision,
+        playbackEvidence: {
+          protectedPlaybackSourceId: sourceId,
+          protectedPlaybackJobId: activeExperiment.jobId,
+          contextStartSeconds: activeWindow.startSeconds,
+          contextEndSeconds: activeWindow.endSeconds,
+          sourceListenedSecondBins: requiredBins,
+          repairedListenedSecondBins: requiredBins,
+          comparisonMode: "matched-loudness",
+          completedAt: new Date().toISOString(),
+          clientTrackedPlaybackIsNotProofOfAudibility: true,
+        },
+        note,
+      });
+      await refresh();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The matched A/B decision could not be saved."); }
     finally { setBusyKey(null); }
   };
 
@@ -390,7 +446,7 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
           <ul className="max-h-72 space-y-1 overflow-y-auto pr-1" aria-label="Dialogue repair candidates">
             {status.candidates.map((entry) => {
               const selected = entry.candidate.candidateId === activeCandidate?.candidateId;
-              return <li key={entry.candidate.candidateId}><button type="button" aria-pressed={selected} onClick={() => { setActiveCandidateId(entry.candidate.candidateId); setListenedBins(new Set()); }} className={`w-full rounded-lg border px-3 py-2 text-left ${selected ? "border-amber-300 bg-amber-300/15" : "border-slate-700 bg-slate-900 hover:bg-slate-800"}`}>
+              return <li key={entry.candidate.candidateId}><button type="button" aria-pressed={selected} onClick={() => { setActiveCandidateId(entry.candidate.candidateId); setListenedBins(new Set()); setSourceComparisonBins(new Set()); setRepairedComparisonBins(new Set()); }} className={`w-full rounded-lg border px-3 py-2 text-left ${selected ? "border-amber-300 bg-amber-300/15" : "border-slate-700 bg-slate-900 hover:bg-slate-800"}`}>
                 <span className="flex items-center justify-between gap-2"><span className="font-black">{labelName(entry.candidate.label)}</span><span className="font-mono text-[10px] text-slate-300">{formatClock(entry.candidate.range.startSeconds)}</span></span>
                 <span className="mt-1 block text-[10px] font-bold text-slate-400">{entry.latestReview ? entry.latestReview.decision.replace("-", " ") : "awaiting source review"}{entry.candidate.origin.kind === "human-marked" ? " · human mark" : entry.candidate.origin.kind === "qualified-detector" ? " · qualified detector" : " · detector suggestion"}{entry.experiment ? ` · ${entry.experiment.status}` : ""}</span>
               </button></li>;
@@ -430,6 +486,29 @@ export function DialogueRepairDesk({ projectId, projectSlug, assetId, sourceId, 
                 <div className="mt-3 rounded-lg border border-violet-500/50 bg-violet-950/50 p-3">
                   <audio ref={repairedRef} src={activeExperiment.playbackUrl} preload="metadata" className="w-full" onTimeUpdate={() => handleTimeUpdate("repaired")} />
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold text-violet-100"><span>Matched A/B · currently {comparisonMode}</span><span>{activeExperiment.verification?.durationDeltaSeconds.toFixed(6)} s clock delta · {activeExperiment.verification?.sourceChannelCount}→{activeExperiment.verification?.outputChannelCount} channels</span></div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button type="button" aria-pressed={comparisonMode === "source"} onClick={() => void playContext("source")} className={`rounded-lg border px-3 py-3 text-left text-xs font-black ${comparisonMode === "source" ? "border-cyan-300 bg-cyan-300 text-slate-950" : "border-cyan-700 bg-slate-950 text-cyan-100"}`}>
+                      A · Immutable source
+                      <span className="mt-1 block text-[10px] font-bold opacity-75">{sourceCompared ? "Full matched context heard" : "Play the complete bounded context"}</span>
+                    </button>
+                    <button type="button" aria-pressed={comparisonMode === "repaired"} onClick={() => void playContext("repaired")} className={`rounded-lg border px-3 py-3 text-left text-xs font-black ${comparisonMode === "repaired" ? "border-violet-300 bg-violet-300 text-slate-950" : "border-violet-700 bg-slate-950 text-violet-100"}`}>
+                      B · Conservative repair
+                      <span className="mt-1 block text-[10px] font-bold opacity-75">{repairedCompared ? "Full matched context heard" : "Play the complete bounded context"}</span>
+                    </button>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800" aria-label="Matched audition coverage"><div className="h-full bg-gradient-to-r from-cyan-300 to-violet-300 transition-all" style={{ width: auditionReady ? "100%" : sourceCompared || repairedCompared ? "50%" : "0%" }} /></div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold text-slate-300">
+                    <span>{auditionReady ? "Both exact contexts heard at matched loudness" : "Hear both contexts before recording a judgment"}</span>
+                    {activeExperiment.latestAudition && <span className="rounded-full border border-emerald-500/60 px-2 py-1 text-emerald-200">Latest: {activeExperiment.latestAudition.decision.replaceAll("-", " ")}</span>}
+                  </div>
+                  <textarea value={auditionNotes[activeExperiment.jobId] ?? ""} onChange={(event) => setAuditionNotes((previous) => ({ ...previous, [activeExperiment.jobId]: event.target.value }))} placeholder="What improved, survived, or still sounds wrong? Required when preferring the source or holding the repair." className="mt-3 min-h-16 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500" />
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <button type="button" onClick={() => void reviewExperiment("repair-preferred")} disabled={!auditionReady || busyKey !== null} className="rounded-md border border-emerald-500 bg-emerald-300 px-3 py-2 text-xs font-black text-emerald-950 disabled:opacity-40">Prefer repair</button>
+                    <button type="button" onClick={() => void reviewExperiment("source-preferred")} disabled={!auditionReady || busyKey !== null} className="rounded-md border border-cyan-600 bg-cyan-950 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-40">Prefer source</button>
+                    <button type="button" onClick={() => void reviewExperiment("indistinguishable")} disabled={!auditionReady || busyKey !== null} className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-xs font-black disabled:opacity-40">No audible difference</button>
+                    <button type="button" onClick={() => void reviewExperiment("needs-work")} disabled={!auditionReady || busyKey !== null} className="rounded-md border border-amber-500 bg-amber-950 px-3 py-2 text-xs font-black text-amber-100 disabled:opacity-40">Needs another treatment</button>
+                  </div>
+                  <p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">This append-only judgment evaluates one exact preview. Preferring it does not promote, replace, master, deliver, or publish media.</p>
                 </div>
               )}
               {activeExperiment?.error && <div className="mt-2 rounded-md border border-rose-500 bg-rose-950 px-3 py-2 text-xs font-bold text-rose-100">{activeExperiment.error}</div>}

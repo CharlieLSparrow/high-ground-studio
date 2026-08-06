@@ -58,6 +58,26 @@ const status: DialogueRepairStatus = {
   boundaries: { originalRemainsSourceTruth: true, candidateStateComesFromAppendOnlyReceipts: true, detectorSuggestionsRequireHumanListening: true, confirmedCandidateAuthorizesExperimentOnly: true },
 };
 
+const completedStatus: DialogueRepairStatus = {
+  ...status,
+  candidates: [{
+    ...status.candidates[0],
+    latestReview: { id: "dialogue_review_001", decision: "confirmed", actorEmail: "editor@example.test", note: null, occurredAt: "2026-08-05T20:02:00.000Z" },
+    reviewCounts: { confirmed: 1, falsePositive: 0, needsComparison: 0 },
+    experiment: {
+      jobId: "dialogue_repair_completed_001",
+      status: "completed",
+      authorizingReviewReceiptId: "dialogue_review_001",
+      playbackUrl: "/api/ingest/media/dialogue_preview_001",
+      error: null,
+      verification: { durationDeltaSeconds: 0, sourceChannelCount: 1, outputChannelCount: 1, completeOutputDecode: true, passes: true },
+      derivative: { durationSeconds: 10, measured: { ...measurement, integratedLufs: -19.5 }, diagnosis: {} as never },
+      latestAudition: null,
+      auditionCounts: { repairPreferred: 0, sourcePreferred: 0, indistinguishable: 0, needsWork: 0 },
+    },
+  }],
+};
+
 const audibleReviewStatus = {
   available: true,
   analysis: audibleEventAnalysis,
@@ -153,6 +173,43 @@ describe("DialogueRepairDesk", () => {
     await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST")).toBe(true));
     const postCall = jest.mocked(global.fetch).mock.calls.find(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST");
     expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "review-suggestion", analysisId: audibleEventAnalysis.analysisId, eventId: audibleEventAnalysis.suggestions[0].eventId, decision: "confirmed", playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [7, 8, 9] } });
+  });
+
+  it("requires both matched contexts before appending a repair audition judgment", async () => {
+    global.fetch = jest.fn((input, init) => init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...completedStatus }));
+    render(<DialogueRepairDesk projectId="project_001" projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} />);
+    const preferRepair = await screen.findByRole("button", { name: /Prefer repair/ });
+    expect(preferRepair).toBeDisabled();
+    const [sourceAudio, repairedAudio] = [...document.querySelectorAll("audio")] as HTMLAudioElement[];
+    for (const audio of [sourceAudio, repairedAudio]) {
+      Object.defineProperty(audio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
+      Object.defineProperty(audio, "pause", { configurable: true, value: jest.fn() });
+      Object.defineProperty(audio, "paused", { configurable: true, get: () => false });
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /A · Immutable source/ }));
+    for (const second of [2.6, 3.1, 4.1, 5.1]) { sourceAudio.currentTime = second; fireEvent.timeUpdate(sourceAudio); }
+    expect(preferRepair).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /B · Conservative repair/ }));
+    for (const second of [2.6, 3.1, 4.1, 5.1]) { repairedAudio.currentTime = second; fireEvent.timeUpdate(repairedAudio); }
+    await waitFor(() => expect(preferRepair).toBeEnabled());
+    fireEvent.click(preferRepair);
+    await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const postCall = jest.mocked(global.fetch).mock.calls.find(([, init]) => init?.method === "POST");
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+      action: "review-experiment",
+      projectId: "project_001",
+      candidateId: "dialogue_candidate_001",
+      jobId: "dialogue_repair_completed_001",
+      decision: "repair-preferred",
+      playbackEvidence: {
+        protectedPlaybackSourceId: "source_001",
+        protectedPlaybackJobId: "dialogue_repair_completed_001",
+        sourceListenedSecondBins: [2, 3, 4, 5],
+        repairedListenedSecondBins: [2, 3, 4, 5],
+        comparisonMode: "matched-loudness",
+      },
+    });
   });
 
   it("labels independent corpus truth only after complete protected-window playback", async () => {

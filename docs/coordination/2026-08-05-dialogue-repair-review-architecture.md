@@ -303,3 +303,29 @@ energy map, provider-timed words, source loudness evidence, the retained
 unreviewed Dialogue Repair event, and disabled correction actions until exact
 source playback occurs. The operation closed the dialog without recording a
 correction, review, treatment, promotion, delivery, or publication decision.
+
+## Post-render matched-audition checkpoint
+
+Dialogue Repair no longer ends its evidence chain at “the derivative decoded.”
+A completed range experiment can now receive a separate append-only matched A/B
+receipt with one of four deliberate judgments: repair preferred, source
+preferred, indistinguishable, or needs work. The receipt binds the immutable
+source, candidate snapshot, exact processing job, verified preview SHA-256 and
+generation, bounded source-clock context, and playback coverage for both A and
+B. Preferring the repair still cannot promote, replace, master, deliver, or
+publish media.
+
+The browser desk exposes two explicit matched-loudness lanes and keeps every
+judgment disabled until the complete bounded context has been observed on both
+lanes. Source-preferred and needs-work judgments require a listening note. The
+current projection shows the latest decision plus append-only counts without
+rewriting the candidate or processing job.
+
+The additive local migration was applied successfully and the restarted Audio
+Studio recovered the retained `quipsly-audio-mastery-dogfood.wav` candidate
+from PostgreSQL through the extended projection. Focused UI, route, and server
+tests cover the new write path, idempotency, and no-promotion boundary; the
+real FFmpeg contract suite covers exact preview-byte binding. No real High
+Ground Odyssey treatment preference was manufactured during this checkpoint.
+The remaining acceptance gate is a person listening to both versions of a
+retained defect and recording the matched judgment in the live desk.

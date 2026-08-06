@@ -8,6 +8,7 @@ import path from "node:path";
 import { Prisma } from "@prisma/client";
 import {
   newDialogueRepairCandidate,
+  newDialogueRepairAuditionReceipt,
   newDialogueRepairJob,
   newDialogueRepairProposal,
   newDialogueRepairReviewReceipt,
@@ -19,6 +20,8 @@ import {
   parseDialogueRepairResult,
   parseDialogueRepairReviewReceipt,
   type DialogueRepairCandidate,
+  type DialogueRepairAuditionDecision,
+  type DialogueRepairAuditionReceipt,
   type DialogueRepairLabel,
   type DialogueRepairReviewReceipt,
 } from "@high-ground/quipsly-media-processing";
@@ -69,6 +72,14 @@ export type PublicDialogueRepairStatus = {
         measured: ReturnType<typeof publicMeasurement>;
         diagnosis: ReturnType<typeof publicSignalDiagnosis>;
       };
+      latestAudition: null | {
+        id: string;
+        decision: DialogueRepairAuditionDecision;
+        actorEmail: string;
+        note: string | null;
+        occurredAt: string;
+      };
+      auditionCounts: { repairPreferred: number; sourcePreferred: number; indistinguishable: number; needsWork: number };
     };
   }>;
   boundaries: {
@@ -84,7 +95,10 @@ export async function readDialogueRepairStatus(input: Coordinates): Promise<Publ
   const [rows, jobRows] = await Promise.all([
     input.prisma.studioDialogueRepairCandidate.findMany({
       where: { projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id },
-      include: { reviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }] } },
+      include: {
+        reviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }] },
+        auditions: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }] },
+      },
       orderBy: [{ startSeconds: "asc" }, { id: "asc" }],
       take: 200,
     }),
@@ -386,6 +400,107 @@ export async function reconcileDialogueRepairExperiment(input: Coordinates & { c
   return { ok: true, experiment: publicExperiment(updated) };
 }
 
+export async function appendDialogueRepairAudition(input: Coordinates & {
+  actor: Actor;
+  candidateId: string;
+  jobId: string;
+  clientRequestId: string;
+  decision: DialogueRepairAuditionDecision;
+  playbackEvidence: unknown;
+  note?: string | null;
+}) {
+  const candidateId = requiredId(input.candidateId, "candidateId");
+  const jobId = requiredId(input.jobId, "jobId");
+  const clientRequestId = requiredId(input.clientRequestId, "clientRequestId");
+  const actorEmail = requiredEmail(input.actor.email);
+  const note = optionalText(input.note, 2_000);
+  const context = await loadDialogueRepairContext(input);
+  const [candidateRow, jobRow] = await Promise.all([
+    input.prisma.studioDialogueRepairCandidate.findFirst({ where: { id: candidateId, projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id } }),
+    input.prisma.studioAssetProcessingJob.findFirst({ where: { id: jobId, projectId: context.project.id, assetId: context.asset.id, type: "dialogue-repair", status: "completed" } }),
+  ]);
+  if (!candidateRow) throw new DialogueRepairError("Dialogue repair candidate was not found for this exact source.", 404, "DIALOGUE_REPAIR_CANDIDATE_NOT_FOUND");
+  if (!jobRow) throw new DialogueRepairError("Only a completed Dialogue Repair experiment can receive a matched audition.", 409, "DIALOGUE_REPAIR_AUDITION_EXPERIMENT_REQUIRED");
+  let candidate: DialogueRepairCandidate;
+  let job: ReturnType<typeof parseDialogueRepairJob>;
+  let result: ReturnType<typeof parseDialogueRepairResult>;
+  try {
+    candidate = parseDialogueRepairCandidate(candidateRow.candidateJson);
+    job = parseDialogueRepairJob(jobRow.inputJson, jobRow.id);
+    result = parseDialogueRepairResult(object(jobRow.resultJson).receipt, job);
+  } catch (error) {
+    throw new DialogueRepairError(error instanceof Error ? `The Dialogue Repair audition subject is invalid: ${error.message}` : "The Dialogue Repair audition subject is invalid.", 409, "DIALOGUE_REPAIR_AUDITION_SUBJECT_INVALID");
+  }
+  if (job.proposal.candidate.candidateId !== candidate.candidateId) throw new DialogueRepairError("The experiment does not belong to this dialogue candidate.", 409, "DIALOGUE_REPAIR_JOB_CANDIDATE_MISMATCH");
+
+  const registration = object(object(jobRow.resultJson).registration);
+  if (typeof registration.playbackUrl !== "string") throw new DialogueRepairError("The verified repair preview is not playable.", 409, "DIALOGUE_REPAIR_AUDITION_PREVIEW_UNAVAILABLE");
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const previewPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
+  if (!previewPath) throw new DialogueRepairError("The Dialogue Repair preview escaped the authorized media root.", 409, "DIALOGUE_REPAIR_OUTPUT_PATH_INVALID");
+  const [previewStat, previewEvidence] = await Promise.all([stat(previewPath), inspectImmutableStudioMediaSource(previewPath, "audio/wav")]);
+  if (!previewStat.isFile() || previewEvidence.sha256 !== result.derivative.sha256 || previewEvidence.sizeBytes !== result.derivative.sizeBytes) {
+    throw new DialogueRepairError("The Dialogue Repair preview no longer matches its verified receipt.", 409, "DIALOGUE_REPAIR_OUTPUT_DRIFT");
+  }
+
+  const occurredAt = new Date();
+  let receipt: DialogueRepairAuditionReceipt;
+  try {
+    receipt = newDialogueRepairAuditionReceipt({
+      receiptId: `dialogue_audition_${randomUUID().replaceAll("-", "")}`,
+      occurredAt: occurredAt.toISOString(),
+      actorEmail,
+      decision: input.decision,
+      candidate,
+      job,
+      result,
+      evidence: input.playbackEvidence as DialogueRepairAuditionReceipt["evidence"],
+      note,
+    });
+  } catch (error) {
+    throw new DialogueRepairError(error instanceof Error ? error.message : "Dialogue Repair matched-audition evidence is invalid.", 400, "DIALOGUE_REPAIR_AUDITION_INVALID");
+  }
+  if (receipt.evidence.protectedPlaybackSourceId !== context.source.id || receipt.evidence.protectedPlaybackJobId !== job.jobId) {
+    throw new DialogueRepairError("Matched-audition playback evidence does not name the exact source and repair job.", 409, "DIALOGUE_REPAIR_AUDITION_PLAYBACK_MISMATCH");
+  }
+  const intent = auditionIntent(receipt);
+  const request = { schema: "quipsly-dialogue-repair-audition-request-v1", projectId: context.project.id, assetId: context.asset.id, actorUserId: input.actor.id, actorEmail, clientRequestId, receipt: intent };
+  const requestSha256 = hashJson(request);
+  const existing = await input.prisma.studioDialogueRepairAuditionReceipt.findUnique({ where: { projectId_actorEmail_clientRequestId: { projectId: context.project.id, actorEmail, clientRequestId } } });
+  if (existing) {
+    if (existing.requestSha256 !== requestSha256) throw new DialogueRepairError("That request id is already bound to a different matched audition.", 409, "DIALOGUE_REPAIR_AUDITION_IDEMPOTENCY_CONFLICT");
+    return { ok: true, idempotentReplay: true, receipt: publicAudition(existing), status: await readDialogueRepairStatus(input) };
+  }
+  const stored = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `dialogue-audition:${job.jobId}:${actorEmail}`);
+    const replay = await tx.studioDialogueRepairAuditionReceipt.findUnique({ where: { projectId_actorEmail_clientRequestId: { projectId: context.project.id, actorEmail, clientRequestId } } });
+    if (replay) {
+      if (replay.requestSha256 !== requestSha256) throw new DialogueRepairError("That request id won a race with different audition evidence.", 409, "DIALOGUE_REPAIR_AUDITION_IDEMPOTENCY_CONFLICT");
+      return replay;
+    }
+    return tx.studioDialogueRepairAuditionReceipt.create({ data: {
+      id: receipt.receiptId,
+      projectId: context.project.id,
+      assetId: context.asset.id,
+      candidateId: candidate.candidateId,
+      repairJobId: job.jobId,
+      actorUserId: input.actor.id,
+      actorEmail,
+      clientRequestId,
+      decision: auditionDecisionToDatabase(receipt.decision),
+      sourceSha256: receipt.source.sha256,
+      sourceGeneration: receipt.source.generation,
+      previewSha256: receipt.experiment.previewSha256,
+      previewGeneration: receipt.experiment.previewGeneration,
+      requestSha256,
+      evidenceJson: json(receipt),
+      note,
+      occurredAt,
+    } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return { ok: true, idempotentReplay: false, receipt: publicAudition(stored), status: await readDialogueRepairStatus(input) };
+}
+
 export async function loadDialogueRepairContext(input: Coordinates) {
   const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true, slug: true } });
   if (!project) throw new DialogueRepairError("Nest not found for dialogue repair.", 404, "DIALOGUE_REPAIR_PROJECT_NOT_FOUND");
@@ -424,11 +539,11 @@ function publicCandidate(row: any, jobRow: any = null) {
       falsePositive: reviews.filter((review: any) => review.decision === "FALSE_POSITIVE").length,
       needsComparison: reviews.filter((review: any) => review.decision === "NEEDS_COMPARISON").length,
     },
-    experiment: jobRow ? publicExperiment(jobRow) : null,
+    experiment: jobRow ? publicExperiment(jobRow, Array.isArray(row.auditions) ? row.auditions : []) : null,
   };
 }
 
-function publicExperiment(row: any): NonNullable<PublicDialogueRepairStatus["candidates"][number]["experiment"]> {
+function publicExperiment(row: any, auditionRows: any[] = []): NonNullable<PublicDialogueRepairStatus["candidates"][number]["experiment"]> {
   let job: ReturnType<typeof parseDialogueRepairJob> | null = null;
   let result: ReturnType<typeof parseDialogueRepairResult> | null = null;
   try { job = parseDialogueRepairJob(row.inputJson, row.id); } catch { /* surfaced below */ }
@@ -436,6 +551,7 @@ function publicExperiment(row: any): NonNullable<PublicDialogueRepairStatus["can
   const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(row.status) ? row.status as "queued" | "processing" | "output-ready" | "completed" | "failed" : "failed";
   const integrityFailure = !job || ((declared === "output-ready" || declared === "completed") && !result);
   const registration = object(object(row.resultJson).registration);
+  const matchingAuditions = auditionRows.filter((audition) => audition.repairJobId === row.id);
   return {
     jobId: String(row.id),
     status: integrityFailure ? "failed" : declared,
@@ -444,11 +560,21 @@ function publicExperiment(row: any): NonNullable<PublicDialogueRepairStatus["can
     error: integrityFailure ? "Dialogue Repair evidence failed integrity validation." : typeof row.error === "string" ? row.error : null,
     verification: result ? { ...result.verification, completeOutputDecode: true, passes: true } : null,
     derivative: result ? { durationSeconds: result.derivative.diagnosis.durationSeconds, measured: publicMeasurement(result.derivative.measurement), diagnosis: publicSignalDiagnosis(result.derivative.diagnosis) } : null,
+    latestAudition: matchingAuditions[0] ? publicAudition(matchingAuditions[0]) : null,
+    auditionCounts: {
+      repairPreferred: matchingAuditions.filter((audition) => audition.decision === "REPAIR_PREFERRED").length,
+      sourcePreferred: matchingAuditions.filter((audition) => audition.decision === "SOURCE_PREFERRED").length,
+      indistinguishable: matchingAuditions.filter((audition) => audition.decision === "INDISTINGUISHABLE").length,
+      needsWork: matchingAuditions.filter((audition) => audition.decision === "NEEDS_WORK").length,
+    },
   };
 }
 
 function publicReview(row: any) {
   return { id: String(row.id), decision: databaseToDecision(row.decision), actorEmail: String(row.actorEmail), note: typeof row.note === "string" ? row.note : null, occurredAt: row.occurredAt?.toISOString?.() ?? String(row.occurredAt) };
+}
+function publicAudition(row: any) {
+  return { id: String(row.id), decision: databaseToAuditionDecision(row.decision), actorEmail: String(row.actorEmail), note: typeof row.note === "string" ? row.note : null, occurredAt: row.occurredAt?.toISOString?.() ?? String(row.occurredAt) };
 }
 function publicMeasurement(value: ReturnType<typeof parseDialogueRepairResult>["derivative"]["measurement"]) {
   return { measuredAt: value.measuredAt, durationSeconds: value.durationSeconds, integratedLufs: value.integratedLufs, truePeakDbtp: value.truePeakDbtp, loudnessRangeLu: value.loudnessRangeLu, thresholdLufs: value.thresholdLufs, seriesResolutionMs: value.seriesResolutionMs, series: value.series };
@@ -469,8 +595,25 @@ function reviewIntent(receipt: DialogueRepairReviewReceipt) {
     note: receipt.note,
   };
 }
+function auditionIntent(receipt: DialogueRepairAuditionReceipt) {
+  return {
+    kind: receipt.kind,
+    version: receipt.version,
+    candidateId: receipt.candidateId,
+    jobId: receipt.jobId,
+    source: receipt.source,
+    candidateRange: receipt.candidateRange,
+    experiment: receipt.experiment,
+    actorEmail: receipt.actorEmail,
+    decision: receipt.decision,
+    evidence: receipt.evidence,
+    note: receipt.note,
+  };
+}
 function decisionToDatabase(decision: DialogueRepairReviewReceipt["decision"]) { return decision === "confirmed" ? "CONFIRMED" : decision === "false-positive" ? "FALSE_POSITIVE" : "NEEDS_COMPARISON"; }
 function databaseToDecision(decision: unknown): DialogueRepairReviewReceipt["decision"] { return decision === "CONFIRMED" ? "confirmed" : decision === "FALSE_POSITIVE" ? "false-positive" : "needs-comparison"; }
+function auditionDecisionToDatabase(decision: DialogueRepairAuditionDecision) { return decision === "repair-preferred" ? "REPAIR_PREFERRED" : decision === "source-preferred" ? "SOURCE_PREFERRED" : decision === "indistinguishable" ? "INDISTINGUISHABLE" : "NEEDS_WORK"; }
+function databaseToAuditionDecision(decision: unknown): DialogueRepairAuditionDecision { return decision === "REPAIR_PREFERRED" ? "repair-preferred" : decision === "SOURCE_PREFERRED" ? "source-preferred" : decision === "INDISTINGUISHABLE" ? "indistinguishable" : "needs-work"; }
 function boundaries(): PublicDialogueRepairStatus["boundaries"] { return { originalRemainsSourceTruth: true, candidateStateComesFromAppendOnlyReceipts: true, detectorSuggestionsRequireHumanListening: true, confirmedCandidateAuthorizesExperimentOnly: true }; }
 function singleSpeaker(words: any[]) { const labels = [...new Set(words.map((word) => typeof word.speakerLabel === "string" ? word.speakerLabel.trim() : "").filter(Boolean))]; return labels.length === 1 ? labels[0] : null; }
 function object(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }

@@ -42,6 +42,17 @@ test("build output overrides stay confined to project-local generated directorie
   assert.match(webConfig, /\^\\\.next\(\?:-\[a-z0-9\]\+\)\*\$/);
 });
 
+test("local release verification can disable only rebuild caching on constrained disks", () => {
+  assert.match(
+    quipslyConfig,
+    /const disableWebpackCache = process\.env\.QUIPSLY_DISABLE_WEBPACK_CACHE === "1";/,
+  );
+  assert.match(
+    quipslyConfig,
+    /if \(disableWebpackCache\) webpackConfig\.cache = false;/,
+  );
+});
+
 test("TypeScript includes both developer and isolated release route types", () => {
   for (const config of [quipslyTypeScript, webTypeScript]) {
     assert.ok(config.include.includes(".next/types/**/*.ts"));

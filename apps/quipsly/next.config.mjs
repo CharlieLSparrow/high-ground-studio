@@ -6,6 +6,7 @@ const repoRoot = path.join(studioDir, "../..");
 const ignoreBuildTypeErrors =
   process.env.QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS === "1";
 const buildDistDir = process.env.QUIPSLY_BUILD_DIST_DIR || ".next";
+const disableWebpackCache = process.env.QUIPSLY_DISABLE_WEBPACK_CACHE === "1";
 if (!/^\.next(?:-[a-z0-9]+)*$/.test(buildDistDir)) {
   throw new Error(
     "QUIPSLY_BUILD_DIST_DIR must name a project-local .next directory.",
@@ -54,6 +55,9 @@ const config = {
     ignoreBuildErrors: ignoreBuildTypeErrors,
   },
   webpack(webpackConfig) {
+    // Local release verification must remain possible on a constrained disk.
+    // This only removes rebuild acceleration; it does not change emitted code.
+    if (disableWebpackCache) webpackConfig.cache = false;
     webpackConfig.resolve.extensionAlias = {
       ...(webpackConfig.resolve.extensionAlias || {}),
       ".js": [".ts", ".tsx", ".js"],

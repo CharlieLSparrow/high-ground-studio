@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
 import {
+  appendDialogueRepairAudition,
   appendDialogueRepairReview,
   createDialogueRepairCandidate,
   queueDialogueRepairExperiment,
@@ -23,6 +24,7 @@ jest.mock("@/lib/server/dialogue-repair", () => ({
     constructor(message: string, readonly status: number, readonly code: string) { super(message); }
   },
   appendDialogueRepairReview: jest.fn(),
+  appendDialogueRepairAudition: jest.fn(),
   createDialogueRepairCandidate: jest.fn(),
   queueDialogueRepairExperiment: jest.fn(),
   readDialogueRepairStatus: jest.fn(),
@@ -151,6 +153,43 @@ describe("dialogue repair route", () => {
     const response = await POST(postRequest({ ...coordinates, action: "reconcile-experiment", candidateId: "dialogue_candidate_1", jobId: "dialogue_repair_1" }));
     expect(response.status).toBe(200);
     expect(reconcileDialogueRepairExperiment).toHaveBeenCalledWith({ prisma: {}, ...coordinates, candidateId: "dialogue_candidate_1", jobId: "dialogue_repair_1" });
+  });
+
+  it("appends a matched A/B judgment without promoting the experiment", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({ allowed: true, actor, access: { allowed: true, projectId: "project-1", role: "EDITOR" } } as never);
+    jest.mocked(authorizeStudioMediaSource).mockResolvedValue({ allowed: true } as never);
+    jest.mocked(appendDialogueRepairAudition).mockResolvedValue({ ok: true, idempotentReplay: false, receipt: { id: "dialogue_audition_1", decision: "repair-preferred" } } as never);
+    const playbackEvidence = {
+      protectedPlaybackSourceId: coordinates.sourceId,
+      protectedPlaybackJobId: "dialogue_repair_1",
+      contextStartSeconds: 2.5,
+      contextEndSeconds: 5.53,
+      sourceListenedSecondBins: [2, 3, 4, 5],
+      repairedListenedSecondBins: [2, 3, 4, 5],
+      comparisonMode: "matched-loudness",
+      completedAt: new Date().toISOString(),
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    };
+    const response = await POST(postRequest({
+      ...coordinates,
+      action: "review-experiment",
+      candidateId: "dialogue_candidate_1",
+      jobId: "dialogue_repair_1",
+      clientRequestId: "request-audition-1",
+      decision: "repair-preferred",
+      playbackEvidence,
+      note: "The transient is gone without dulling the consonant.",
+    }));
+    expect(response.status).toBe(200);
+    expect(appendDialogueRepairAudition).toHaveBeenCalledWith(expect.objectContaining({
+      prisma: {},
+      actor: { id: actor.id, email: actor.email },
+      ...coordinates,
+      candidateId: "dialogue_candidate_1",
+      jobId: "dialogue_repair_1",
+      decision: "repair-preferred",
+      playbackEvidence,
+    }));
   });
 
   it("returns a bounded service rejection instead of a generic server error", async () => {

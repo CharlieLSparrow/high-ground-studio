@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import type { DialogueRepairLabel, DialogueRepairReviewReceipt } from "@high-ground/quipsly-media-processing";
+import type { DialogueRepairAuditionDecision, DialogueRepairLabel, DialogueRepairReviewReceipt } from "@high-ground/quipsly-media-processing";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { appendDialogueRepairReview, createDialogueRepairCandidate, DialogueRepairError, queueDialogueRepairExperiment, readDialogueRepairStatus, reconcileDialogueRepairExperiment } from "@/lib/server/dialogue-repair";
+import { appendDialogueRepairAudition, appendDialogueRepairReview, createDialogueRepairCandidate, DialogueRepairError, queueDialogueRepairExperiment, readDialogueRepairStatus, reconcileDialogueRepairExperiment } from "@/lib/server/dialogue-repair";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
 
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as Record<string, unknown>;
     const input = coordinates(body);
     const action = text(body.action);
-    if (!input || !["create-candidate", "review-candidate", "queue-experiment", "reconcile-experiment"].includes(action)) return NextResponse.json({ ok: false, error: "Exact source coordinates and a supported Dialogue Repair action are required." }, { status: 400 });
+    if (!input || !["create-candidate", "review-candidate", "queue-experiment", "reconcile-experiment", "review-experiment"].includes(action)) return NextResponse.json({ ok: false, error: "Exact source coordinates and a supported Dialogue Repair action are required." }, { status: 400 });
     const prisma = getPrismaClient();
     const access = await resolveEpisodeProductionAccess({ request, ...(input.projectId ? { projectId: input.projectId } : {}), projectSlug: input.projectSlug, action: "write", prisma });
     if (!access.allowed) return NextResponse.json({ ok: false, code: access.code, error: access.error }, { status: access.status });
@@ -61,6 +61,12 @@ export async function POST(request: NextRequest) {
     if (action === "reconcile-experiment") {
       const result = await reconcileDialogueRepairExperiment({ prisma, ...sourceCoordinates, candidateId: text(body.candidateId), jobId: text(body.jobId) });
       return NextResponse.json(result, { status: result.experiment.status === "completed" ? 200 : 202, headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (action === "review-experiment") {
+      const decision = text(body.decision) as DialogueRepairAuditionDecision;
+      if (decision !== "repair-preferred" && decision !== "source-preferred" && decision !== "indistinguishable" && decision !== "needs-work") return NextResponse.json({ ok: false, error: "A supported matched-audition decision is required." }, { status: 400 });
+      const result = await appendDialogueRepairAudition({ prisma, ...sourceCoordinates, actor, candidateId: text(body.candidateId), jobId: text(body.jobId), clientRequestId: text(body.clientRequestId), decision, playbackEvidence: body.playbackEvidence, note: typeof body.note === "string" ? body.note : null });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
     }
     const decision = text(body.decision) as DialogueRepairReviewReceipt["decision"];
     if (decision !== "confirmed" && decision !== "false-positive" && decision !== "needs-comparison") return NextResponse.json({ ok: false, error: "A supported dialogue review decision is required." }, { status: 400 });

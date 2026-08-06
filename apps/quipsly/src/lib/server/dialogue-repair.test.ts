@@ -2,16 +2,27 @@
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
-import { parseAudioMasteryJob, parseAudioMasteryResult } from "@high-ground/quipsly-media-processing";
+import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
+import { stat } from "node:fs/promises";
+import { newDialogueRepairAuditionReceipt, parseAudioMasteryJob, parseAudioMasteryResult, parseDialogueRepairJob, parseDialogueRepairResult } from "@high-ground/quipsly-media-processing";
 
-import { appendDialogueRepairReview, createDialogueRepairCandidate, DialogueRepairError, queueDialogueRepairExperiment, readDialogueRepairStatus } from "./dialogue-repair";
+import { appendDialogueRepairAudition, appendDialogueRepairReview, createDialogueRepairCandidate, DialogueRepairError, queueDialogueRepairExperiment, readDialogueRepairStatus } from "./dialogue-repair";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/server/episode-collaboration-proxy", () => ({ inspectImmutableStudioMediaSource: jest.fn() }));
 jest.mock("@/lib/server/prisma-advisory-lock", () => ({ acquirePrismaAdvisoryTransactionLock: jest.fn() }));
+jest.mock("@/lib/server/studio-media-location-security", () => ({ resolveAllowedLocalStudioMediaPath: jest.fn() }));
+jest.mock("node:fs/promises", () => ({ stat: jest.fn() }));
 jest.mock("@high-ground/quipsly-media-processing", () => {
   const actual = jest.requireActual("@high-ground/quipsly-media-processing");
-  return { ...actual, parseAudioMasteryJob: jest.fn(), parseAudioMasteryResult: jest.fn() };
+  return {
+    ...actual,
+    newDialogueRepairAuditionReceipt: jest.fn(actual.newDialogueRepairAuditionReceipt),
+    parseAudioMasteryJob: jest.fn(),
+    parseAudioMasteryResult: jest.fn(),
+    parseDialogueRepairJob: jest.fn(actual.parseDialogueRepairJob),
+    parseDialogueRepairResult: jest.fn(actual.parseDialogueRepairResult),
+  };
 });
 
 const source = {
@@ -29,8 +40,13 @@ const actor = { id: "actor_dialogue_server_001", email: "Editor@Example.test" };
 function createPrisma() {
   const candidates = new Map<string, any>();
   const reviews = new Map<string, any>();
+  const auditions = new Map<string, any>();
   const jobs = new Map<string, any>();
-  const withReviews = (candidate: any) => candidate ? { ...candidate, reviews: [...reviews.values()].filter((review) => review.candidateId === candidate.id).reverse() } : null;
+  const withReviews = (candidate: any) => candidate ? {
+    ...candidate,
+    reviews: [...reviews.values()].filter((review) => review.candidateId === candidate.id).reverse(),
+    auditions: [...auditions.values()].filter((audition) => audition.candidateId === candidate.id).reverse(),
+  } : null;
   const models = {
     studioProject: { findFirst: jest.fn().mockResolvedValue({ id: "project_dialogue_server_001", slug: coordinates.projectSlug }) },
     studioMediaAsset: { findUnique: jest.fn().mockResolvedValue({ id: source.assetId, filename: "source.wav", url: `/api/ingest/media/${coordinates.sourceId}`, mimeType: "audio/wav", isProxy: false, assetAttachments: [{ metadataJson: { sourceId: coordinates.sourceId } }] }) },
@@ -61,8 +77,15 @@ function createPrisma() {
       }),
       create: jest.fn().mockImplementation(async ({ data }) => { const row = { ...data, createdAt: new Date() }; reviews.set(row.id, row); return row; }),
     },
+    studioDialogueRepairAuditionReceipt: {
+      findUnique: jest.fn().mockImplementation(async ({ where }) => {
+        const key = where.projectId_actorEmail_clientRequestId;
+        return [...auditions.values()].find((audition) => !key || (audition.projectId === key.projectId && audition.actorEmail === key.actorEmail && audition.clientRequestId === key.clientRequestId)) ?? null;
+      }),
+      create: jest.fn().mockImplementation(async ({ data }) => { const row = { ...data, createdAt: new Date() }; auditions.set(row.id, row); return row; }),
+    },
   };
-  return { ...models, $transaction: jest.fn().mockImplementation(async (callback) => callback(models)), candidates, reviews, jobs };
+  return { ...models, $transaction: jest.fn().mockImplementation(async (callback) => callback(models)), candidates, reviews, auditions, jobs };
 }
 
 describe("dialogue repair append-only evidence", () => {
@@ -71,6 +94,8 @@ describe("dialogue repair append-only evidence", () => {
     jest.mocked(parseAudioMasteryJob).mockReturnValue({ jobId: "audio_mastery_dialogue_server_001", source } as never);
     jest.mocked(parseAudioMasteryResult).mockReturnValue({ sourceMeasurement: { durationSeconds: 10 } } as never);
     jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValue(source as never);
+    jest.mocked(resolveAllowedLocalStudioMediaPath).mockImplementation(async (value) => value);
+    jest.mocked(stat).mockResolvedValue({ isFile: () => true } as never);
   });
 
   it("creates an immutable candidate, replays idempotently, and never creates a review", async () => {
@@ -129,5 +154,65 @@ describe("dialogue repair append-only evidence", () => {
     await appendDialogueRepairReview({ prisma, ...coordinates, actor, candidateId: created.candidate.candidateId, clientRequestId: "review_request_005", decision: "false-positive", playbackEvidence, note: "On a second listen this is an intentional consonant." });
     await expect(queueDialogueRepairExperiment({ prisma, ...coordinates, actor, candidateId: created.candidate.candidateId })).rejects.toMatchObject({ code: "DIALOGUE_REPAIR_CONFIRMATION_REQUIRED" });
     expect(prisma.jobs.size).toBe(1);
+  });
+
+  it("appends an idempotent post-render A/B judgment without promoting media", async () => {
+    const prisma = createPrisma();
+    const created = await createDialogueRepairCandidate({ prisma, ...coordinates, actor, clientRequestId: "candidate_request_006", label: "mouth-click", startSeconds: 4, endSeconds: 4.03 });
+    const jobId = "dialogue_repair_completed_001";
+    const job = { jobId, source, proposal: { profileId: "dialogue-declick-conservative-v1", candidate: { candidateId: created.candidate.candidateId } } };
+    const result = {
+      jobId,
+      source,
+      derivative: {
+        locator: "media-vault/treatments/preview.wav",
+        generation: `sha256:${"a".repeat(64)}`,
+        sha256: "a".repeat(64),
+        sizeBytes: source.sizeBytes,
+        diagnosis: { durationSeconds: 10, channelCount: 1 },
+        measurement: { measuredAt: new Date().toISOString(), durationSeconds: 10, integratedLufs: -18, truePeakDbtp: -2, loudnessRangeLu: 4, thresholdLufs: -28, seriesResolutionMs: 1000, series: [] },
+      },
+      verification: { sourceDurationSeconds: 10, outputDurationSeconds: 10, durationDeltaSeconds: 0, sourceChannelCount: 1, outputChannelCount: 1 },
+    };
+    prisma.jobs.set(jobId, { id: jobId, projectId: "project_dialogue_server_001", assetId: source.assetId, type: "dialogue-repair", status: "completed", inputJson: {}, resultJson: { receipt: {}, registration: { playbackUrl: "/api/ingest/media/preview_001" } }, error: null });
+    jest.mocked(parseDialogueRepairJob).mockReturnValue(job as never);
+    jest.mocked(parseDialogueRepairResult).mockReturnValue(result as never);
+    const completedAt = new Date().toISOString();
+    const playbackEvidence = {
+      protectedPlaybackSourceId: coordinates.sourceId,
+      protectedPlaybackJobId: jobId,
+      contextStartSeconds: 2.5,
+      contextEndSeconds: 5.53,
+      sourceListenedSecondBins: [2, 3, 4, 5],
+      repairedListenedSecondBins: [2, 3, 4, 5],
+      comparisonMode: "matched-loudness" as const,
+      completedAt,
+      clientTrackedPlaybackIsNotProofOfAudibility: true as const,
+    };
+    const receipt = {
+      kind: "quipsly-dialogue-repair-audition-v1" as const,
+      version: 1 as const,
+      receiptId: "dialogue_audition_receipt_001",
+      candidateId: created.candidate.candidateId,
+      jobId,
+      occurredAt: completedAt,
+      actorEmail: actor.email.toLowerCase(),
+      decision: "repair-preferred" as const,
+      source,
+      candidateRange: created.candidate.range,
+      experiment: { profileId: "dialogue-declick-conservative-v1" as const, previewSha256: "a".repeat(64), previewGeneration: `sha256:${"a".repeat(64)}` },
+      evidence: playbackEvidence,
+      note: "The transient is gone without dulling the consonant.",
+      boundaries: { appendOnlyDecision: true as const, originalRemainsSourceTruth: true as const, noMediaChanged: true as const, repairPreferenceDoesNotPromote: true as const, promotionRequiresSeparateApproval: true as const },
+    };
+    jest.mocked(newDialogueRepairAuditionReceipt).mockReturnValue(receipt);
+    const input = { prisma, ...coordinates, actor, candidateId: created.candidate.candidateId, jobId, clientRequestId: "audition_request_001", decision: "repair-preferred" as const, playbackEvidence, note: receipt.note };
+    const first = await appendDialogueRepairAudition(input);
+    const replay = await appendDialogueRepairAudition(input);
+    expect(first).toMatchObject({ ok: true, idempotentReplay: false, receipt: { decision: "repair-preferred" }, status: { candidates: [{ experiment: { latestAudition: { decision: "repair-preferred" }, auditionCounts: { repairPreferred: 1 } } }] } });
+    expect(replay).toMatchObject({ ok: true, idempotentReplay: true, receipt: { id: first.receipt.id } });
+    expect(prisma.auditions.size).toBe(1);
+    expect(prisma.jobs.get(jobId).status).toBe("completed");
+    expect(acquirePrismaAdvisoryTransactionLock).toHaveBeenCalledWith(expect.anything(), `dialogue-audition:${jobId}:${actor.email.toLowerCase()}`);
   });
 });

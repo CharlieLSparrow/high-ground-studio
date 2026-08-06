@@ -3723,6 +3723,7 @@ model StudioProject {
   transcriptJobs                     TranscriptJob[]
   studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
   studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
+  studioDialogueRepairAuditions      StudioDialogueRepairAuditionReceipt[]
   audibleEventAnalysisReceipts       StudioAudibleEventAnalysisReceipt[]
   audibleEventReviewReceipts         StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts          StudioAudibleEventTruthReceipt[]
@@ -4050,6 +4051,7 @@ model StudioAssetProcessingJob {
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
   episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
   episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
+  dialogueRepairAuditions   StudioDialogueRepairAuditionReceipt[]
 
   @@index([assetId, status, createdAt])
   @@index([projectId, status])
@@ -4236,6 +4238,13 @@ enum StudioDialogueRepairReviewDecision {
   NEEDS_COMPARISON
 }
 
+enum StudioDialogueRepairAuditionDecision {
+  REPAIR_PREFERRED
+  SOURCE_PREFERRED
+  INDISTINGUISHABLE
+  NEEDS_WORK
+}
+
 // Candidates are immutable source-clock evidence. Current review state is
 // projected from append-only receipts; detector or UI state never rewrites the
 // candidate that a person actually heard.
@@ -4257,14 +4266,49 @@ model StudioDialogueRepairCandidate {
   occurredAt       DateTime
   createdAt        DateTime @default(now())
 
-  project StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  asset   StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  source  StudioVideoSource                   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
-  reviews StudioDialogueRepairReviewReceipt[]
+  project   StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset     StudioMediaAsset                      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  source    StudioVideoSource                     @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  reviews   StudioDialogueRepairReviewReceipt[]
+  auditions StudioDialogueRepairAuditionReceipt[]
 
   @@unique([projectId, createdByEmail, clientRequestId], map: "StudioDialogueRepairCandidate_project_actor_request_key")
   @@index([projectId, assetId, occurredAt], map: "StudioDialogueRepairCandidate_project_asset_occurred_idx")
   @@index([sourceId, occurredAt], map: "StudioDialogueRepairCandidate_source_occurred_idx")
+}
+
+// A post-render matched A/B judgment binds both listened contexts to the exact
+// source, candidate, processing job, and verified preview bytes. It is
+// append-only and still cannot promote or replace any media.
+model StudioDialogueRepairAuditionReceipt {
+  id                String                               @id @default(cuid())
+  projectId         String
+  assetId           String
+  candidateId       String
+  repairJobId       String
+  actorUserId       String?
+  actorEmail        String
+  clientRequestId   String
+  decision          StudioDialogueRepairAuditionDecision
+  sourceSha256      String
+  sourceGeneration  String
+  previewSha256     String
+  previewGeneration String
+  requestSha256     String
+  evidenceJson      Json
+  note              String?
+  occurredAt        DateTime
+  createdAt         DateTime                             @default(now())
+
+  project   StudioProject                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset     StudioMediaAsset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  candidate StudioDialogueRepairCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  repairJob StudioAssetProcessingJob      @relation(fields: [repairJobId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioDialogueRepairAudition_project_actor_request_key")
+  @@index([candidateId, occurredAt], map: "StudioDialogueRepairAudition_candidate_occurred_idx")
+  @@index([repairJobId, occurredAt], map: "StudioDialogueRepairAudition_job_occurred_idx")
+  @@index([projectId, assetId, occurredAt], map: "StudioDialogueRepairAudition_project_asset_occurred_idx")
 }
 
 // A receipt records what one actor decided after source-context playback. It
@@ -5805,6 +5849,7 @@ model StudioMediaAsset {
   episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
   dialogueRepairCandidates  StudioDialogueRepairCandidate[]
   dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]
+  dialogueRepairAuditions   StudioDialogueRepairAuditionReceipt[]
   audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]
   audibleEventReviews       StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]

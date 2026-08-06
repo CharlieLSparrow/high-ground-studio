@@ -21,10 +21,12 @@ import {
   newAudioTreatmentProposal,
   newAudioTreatmentJob,
   newDialogueRepairCandidate,
+  newDialogueRepairAuditionReceipt,
   newDialogueRepairJob,
   newDialogueRepairProposal,
   newDialogueRepairReviewReceipt,
   parseDialogueRepairResult,
+  parseDialogueRepairAuditionReceipt,
   parseDialogueRepairReviewReceipt,
   parseAudioSignalDiagnosis,
   parseAudioTreatmentResult,
@@ -363,6 +365,32 @@ test("local Dialogue Repair worker renders only an exact confirmed range and rec
   assert.equal(receipt.boundaries.outputIsUnpromotedExperiment, true);
   assert.equal(receipt.verification.completeOutputDecode, true);
   assert.equal(await sha256File(sourcePath), sourceSha256);
+  const completedAt = new Date().toISOString();
+  const audition = newDialogueRepairAuditionReceipt({
+    receiptId: "dialogue_audition_worker_001",
+    occurredAt: completedAt,
+    actorEmail: "editor@example.test",
+    decision: "repair-preferred",
+    candidate,
+    job,
+    result: receipt,
+    evidence: {
+      protectedPlaybackSourceId: "source_dialogue_worker_001",
+      protectedPlaybackJobId: job.jobId,
+      contextStartSeconds: 1.04,
+      contextEndSeconds: 1.96,
+      sourceListenedSecondBins: [1],
+      repairedListenedSecondBins: [1],
+      comparisonMode: "matched-loudness",
+      completedAt,
+      clientTrackedPlaybackIsNotProofOfAudibility: true,
+    },
+    note: "The impulse is reduced without changing the surrounding tone.",
+  });
+  assert.equal(audition.boundaries.repairPreferenceDoesNotPromote, true);
+  assert.equal(parseDialogueRepairAuditionReceipt(audition, candidate, job, receipt).decision, "repair-preferred");
+  assert.throws(() => parseDialogueRepairAuditionReceipt({ ...audition, evidence: { ...audition.evidence, repairedListenedSecondBins: [] } }, candidate, job, receipt), /matched-audition evidence/);
+  assert.throws(() => newDialogueRepairAuditionReceipt({ ...audition, decision: "source-preferred", candidate, job, result: receipt, evidence: audition.evidence, note: null }), /requires a listening note/);
 
   const recoveryStore = new FakeDialogueRepairStore(job);
   const recovered = await runOneLocalDialogueRepairJob(recoveryStore, new FfmpegAudioMasteringEngine(), options);
