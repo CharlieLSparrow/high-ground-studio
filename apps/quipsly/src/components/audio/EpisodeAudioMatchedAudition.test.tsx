@@ -64,4 +64,24 @@ describe("EpisodeAudioMatchedAudition", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("could not all start together");
     expect(pause).toHaveBeenCalled();
   });
+
+  it("binds a partial needs-comparison receipt to observed playback bins", async () => {
+    const onSubmitReview = jest.fn();
+    render(<EpisodeAudioMatchedAudition plan={plan} analysisId="analysis-1" onClose={jest.fn()} onSubmitReview={onSubmitReview} />);
+    const media = document.querySelectorAll("audio");
+    media.forEach((element) => fireEvent.loadedMetadata(element));
+    fireEvent.click(screen.getByRole("button", { name: "Play together" }));
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    await screen.findByRole("button", { name: "Pause together" });
+    media[0].currentTime = 28.75;
+    fireEvent.timeUpdate(media[0]);
+    fireEvent.change(screen.getByLabelText("What did you hear?"), { target: { value: "needs-comparison" } });
+    fireEvent.change(screen.getByLabelText(/Listening note/), { target: { value: "Need a cleaner solo pass." } });
+    const submit = await screen.findByRole("button", { name: "Record listening conclusion" });
+    fireEvent.click(submit);
+    expect(onSubmitReview).toHaveBeenCalledWith(expect.objectContaining({
+      decision: "needs-comparison",
+      playbackEvidence: expect.objectContaining({ analysisId: "analysis-1", eventId: "overlap-1", coverage: expect.objectContaining({ allMonitorBins: [1] }) }),
+    }));
+  });
 });

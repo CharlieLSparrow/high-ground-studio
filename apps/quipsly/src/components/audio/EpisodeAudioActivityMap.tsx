@@ -30,6 +30,8 @@ export function EpisodeAudioActivityMap({
   canRegisterAnalysis = false,
   onRegisterAnalysis,
   analysisError = null,
+  reviewsByEvent = {},
+  reviewLedgerError = null,
 }: {
   map: ActivityMap;
   selectedAssetId: string | null;
@@ -40,6 +42,8 @@ export function EpisodeAudioActivityMap({
   canRegisterAnalysis?: boolean;
   onRegisterAnalysis?: () => void;
   analysisError?: string | null;
+  reviewsByEvent?: Record<string, { analysisId: string; decision: string; actorEmail: string; occurredAt: string; note?: string | null }>;
+  reviewLedgerError?: string | null;
 }) {
   const tickSeconds = [0, 0.25, 0.5, 0.75, 1].map((fraction) => map.programDurationSeconds * fraction);
   return (
@@ -79,6 +83,7 @@ export function EpisodeAudioActivityMap({
           </div>
         ) : null}
         {analysisError ? <p className="mt-2 rounded-lg border border-rose-800 bg-rose-950/50 p-2 text-[10px] font-bold text-rose-100" role="alert">{analysisError}</p> : null}
+        {reviewLedgerError ? <p className="mt-2 rounded-lg border border-rose-800 bg-rose-950/50 p-2 text-[10px] font-bold text-rose-100" role="alert">{reviewLedgerError}</p> : null}
       </div>
 
       {map.programClock && map.lanes.length > 0 ? (
@@ -109,12 +114,14 @@ export function EpisodeAudioActivityMap({
               <div><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200"><Activity className="h-4 w-4" aria-hidden="true" /> Listen-first attention</div><p className="mt-1 text-[9px] font-semibold leading-4 text-slate-400">Deterministic source-clock regions derived from each track's own energy distribution. Confirmation still requires protected playback.</p></div>
               {map.moments.length === 0 ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950/40 px-2 py-1 text-[9px] font-black text-emerald-200"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> No derived region</span> : null}
             </div>
-            {map.moments.length > 0 ? <div className="mt-3 grid gap-2 md:grid-cols-2" aria-label="Program sound attention queue">{map.moments.slice(0, 12).map((moment) => (
-              <button key={moment.id} type="button" onClick={() => onInspectMoment(moment)} className={`rounded-lg border p-3 text-left ${momentTone(moment.kind)}`}>
+            {map.moments.length > 0 ? <div className="mt-3 grid gap-2 md:grid-cols-2" aria-label="Program sound attention queue">{map.moments.slice(0, 12).map((moment) => {
+              const review = reviewsByEvent[moment.id] ?? null;
+              return <button key={moment.id} type="button" onClick={() => onInspectMoment(moment)} className={`rounded-lg border p-3 text-left ${momentTone(moment.kind)}`}>
                 <span className="flex items-center gap-2 text-[10px] font-black"><Layers3 className="h-3.5 w-3.5" aria-hidden="true" /> <span className="font-mono">{timestamp(moment.startSeconds)}–{timestamp(moment.endSeconds)}</span> · {moment.label}</span>
                 <span className="mt-1 block text-[9px] font-semibold leading-4 opacity-80">{moment.detail}</span>
-              </button>
-            ))}</div> : null}
+                {review ? <span className="mt-2 block rounded-md border border-current/20 bg-white/60 px-2 py-1 text-[9px] font-black">Reviewed · {review.decision.replaceAll("-", " ")} · {review.actorEmail} · {new Date(review.occurredAt).toLocaleString()}</span> : null}
+              </button>;
+            })}</div> : null}
             {map.moments.length > 12 ? <p className="mt-2 text-[9px] font-bold text-slate-500">Showing the first 12 of {map.moments.length} regions. A filtered, reviewable queue comes with the episode-analysis receipt phase.</p> : null}
           </div>
         </div>

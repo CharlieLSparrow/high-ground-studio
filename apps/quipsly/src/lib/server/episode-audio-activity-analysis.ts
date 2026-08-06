@@ -133,7 +133,7 @@ function analysisSnapshot(map: ReturnType<typeof buildEpisodeAudioActivityMap>) 
   };
 }
 
-async function loadContext(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
+export async function loadEpisodeAudioActivityAnalysisContext(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
   const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true, slug: true } });
   if (!project) throw new EpisodeAudioActivityAnalysisError("Nest not found for Episode audio analysis.", 404, "EPISODE_AUDIO_ANALYSIS_PROJECT_NOT_FOUND");
   const episode = await input.prisma.studioEpisodeProduction.findFirst({
@@ -231,7 +231,7 @@ export async function registerEpisodeAudioActivityAnalysis(input: {
   const clientRequestId = text(input.clientRequestId, 160);
   if (!actorUserId || !actorEmail) throw new EpisodeAudioActivityAnalysisError("A signed-in actor is required.", 401, "EPISODE_AUDIO_ANALYSIS_ACTOR_REQUIRED");
   if (!clientRequestId) throw new EpisodeAudioActivityAnalysisError("A stable request id is required.", 400, "EPISODE_AUDIO_ANALYSIS_REQUEST_ID_REQUIRED");
-  const context = await loadContext(input);
+  const context = await loadEpisodeAudioActivityAnalysisContext(input);
   if (text(input.programFingerprintSha256) !== context.programFingerprintSha256) throw new EpisodeAudioActivityAnalysisError("The Episode source set changed. Refresh before analyzing.", 409, "EPISODE_AUDIO_ANALYSIS_PROGRAM_CHANGED");
   const configurationSha256 = sha256(context.analysisInput.configuration);
   const inputSha256 = sha256(context.analysisInput);
@@ -278,7 +278,7 @@ export async function registerEpisodeAudioActivityAnalysis(input: {
 }
 
 export async function readEpisodeAudioActivityAnalyses(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
-  const context = await loadContext(input);
+  const context = await loadEpisodeAudioActivityAnalysisContext(input);
   const rows = await input.prisma.studioEpisodeAudioAnalysisReceipt.findMany({ where: { episodeProductionId: context.episode.id }, orderBy: [{ analyzedAt: "desc" }, { id: "desc" }], take: 20 });
   const projection = { fingerprint: context.programFingerprintSha256, activeDecisionReceiptIds: context.program.activeDecisions.map((decision) => decision.id).sort() };
   return {

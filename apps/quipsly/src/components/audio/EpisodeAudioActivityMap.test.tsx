@@ -48,4 +48,9 @@ describe("EpisodeAudioActivityMap", () => {
     expect(onRegisterAnalysis).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Register the current evidence references and derived regions/i)).not.toBeInTheDocument();
   });
+
+  it("projects the latest immutable human conclusion onto its analyzed event", () => {
+    render(<EpisodeAudioActivityMap map={map()} selectedAssetId={null} onSelectTrack={jest.fn()} onInspectMoment={jest.fn()} reviewsByEvent={{ "overlap-1": { analysisId: "analysis-1", decision: "confirmed-overlap", actorEmail: "editor@example.test", occurredAt: "2026-08-06T20:00:00.000Z" } }} />);
+    expect(screen.getByText(/Reviewed · confirmed overlap · editor@example.test/i)).toBeInTheDocument();
+  });
 });

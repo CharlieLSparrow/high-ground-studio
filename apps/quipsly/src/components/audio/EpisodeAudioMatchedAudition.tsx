@@ -4,6 +4,15 @@ import { Headphones, Pause, Play, RotateCcw, ShieldCheck, X } from "lucide-react
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { EpisodeAudioComparisonPlan } from "@/lib/episode-audio-comparison";
+import {
+  buildEpisodeAudioReviewPlaybackEvidence,
+  episodeAudioReviewDecisionOptions,
+  episodeAudioReviewDecisionRequiresNote,
+  episodeAudioReviewPlaybackCoverage,
+  episodeAudioReviewPlaybackReady,
+  type EpisodeAudioReviewDecision,
+  type EpisodeAudioReviewPlaybackEvidence,
+} from "@/lib/episode-audio-review";
 
 function timestamp(seconds: number) {
   const safe = Math.max(0, seconds);
@@ -15,10 +24,18 @@ export function EpisodeAudioMatchedAudition({
   plan,
   onClose,
   onPausePrimarySource,
+  analysisId = null,
+  reviewBusy = false,
+  reviewNotice = null,
+  onSubmitReview,
 }: {
   plan: EpisodeAudioComparisonPlan;
   onClose: () => void;
   onPausePrimarySource?: () => void;
+  analysisId?: string | null;
+  reviewBusy?: boolean;
+  reviewNotice?: string | null;
+  onSubmitReview?: (input: { decision: EpisodeAudioReviewDecision; note: string; playbackEvidence: EpisodeAudioReviewPlaybackEvidence }) => void;
 }) {
   const mediaByAsset = useRef(new Map<string, HTMLMediaElement>());
   const [monitor, setMonitor] = useState<"all" | string>("all");
@@ -26,9 +43,18 @@ export function EpisodeAudioMatchedAudition({
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [readyAssetIds, setReadyAssetIds] = useState<string[]>([]);
+  const allMonitorBins = useRef(new Set<number>());
+  const soloMonitorBinsByAsset = useRef(new Map<string, Set<number>>());
+  const [coverageRevision, setCoverageRevision] = useState(0);
+  const decisionOptions = useMemo(() => episodeAudioReviewDecisionOptions(plan.momentKind), [plan.momentKind]);
+  const [reviewDecision, setReviewDecision] = useState<EpisodeAudioReviewDecision>(decisionOptions[0].value);
+  const [reviewNote, setReviewNote] = useState("");
   const leaderAssetId = monitor === "all" ? plan.sources[0]?.assetId ?? null : monitor;
   const monitorGain = useMemo(() => Math.min(0.68, 0.96 / Math.sqrt(Math.max(1, plan.sources.length))), [plan.sources.length]);
   const allSourcesReady = readyAssetIds.length === plan.sources.length;
+  const playbackEvidence = useMemo(() => analysisId ? buildEpisodeAudioReviewPlaybackEvidence({ analysisId, plan, allMonitorBins: allMonitorBins.current, soloMonitorBinsByAsset: soloMonitorBinsByAsset.current }) : null, [analysisId, coverageRevision, plan]);
+  const playbackCoverage = playbackEvidence ? episodeAudioReviewPlaybackCoverage(playbackEvidence) : null;
+  const reviewReady = Boolean(playbackEvidence && episodeAudioReviewPlaybackReady(playbackEvidence, reviewDecision) && (!episodeAudioReviewDecisionRequiresNote(reviewDecision) || reviewNote.trim().length >= 3));
 
   const pauseAll = useCallback(() => {
     for (const media of mediaByAsset.current.values()) media.pause();
@@ -98,8 +124,18 @@ export function EpisodeAudioMatchedAudition({
       const expected = source.sourceStartSeconds + progress;
       if (Math.abs(follower.currentTime - expected) > 0.08) follower.currentTime = expected;
     }
+    if (playing && progress < plan.durationSeconds) {
+      const bin = Math.max(0, Math.min(Math.ceil(plan.durationSeconds / 0.25) - 1, Math.floor(progress / 0.25)));
+      const target = monitor === "all"
+        ? allMonitorBins.current
+        : soloMonitorBinsByAsset.current.get(monitor) ?? new Set<number>();
+      if (monitor !== "all" && !soloMonitorBinsByAsset.current.has(monitor)) soloMonitorBinsByAsset.current.set(monitor, target);
+      const before = target.size;
+      target.add(bin);
+      if (target.size !== before) setCoverageRevision((current) => current + 1);
+    }
     setProgressSeconds(progress);
-  }, [leaderAssetId, pauseAll, plan, seekAll]);
+  }, [leaderAssetId, monitor, pauseAll, plan, playing, seekAll]);
 
   useEffect(() => {
     pauseAll();
@@ -107,8 +143,13 @@ export function EpisodeAudioMatchedAudition({
     setMonitor("all");
     setError(null);
     setReadyAssetIds([]);
+    allMonitorBins.current = new Set();
+    soloMonitorBinsByAsset.current = new Map();
+    setCoverageRevision(0);
+    setReviewDecision(decisionOptions[0].value);
+    setReviewNote("");
     return pauseAll;
-  }, [pauseAll, plan.momentId, seekAll]);
+  }, [decisionOptions, pauseAll, plan.momentId, seekAll]);
 
   useEffect(() => applyMonitor(monitor), [applyMonitor, monitor]);
 
@@ -165,6 +206,19 @@ export function EpisodeAudioMatchedAudition({
 
         {error ? <p className="mt-3 rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs font-bold text-rose-950" role="alert">{error}</p> : null}
         {plan.omitted.length ? <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-semibold text-amber-950"><span className="font-black">Coverage limit:</span> {plan.omitted.map((item) => item.reason).join(" ")}</div> : null}
+        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-950" aria-label="Matched-source listening coverage">
+          <div className="text-[10px] font-black uppercase tracking-wide">Listening coverage</div>
+          {analysisId && playbackCoverage ? <div className="mt-2 grid gap-2 text-[10px] font-bold sm:grid-cols-3"><div className="rounded-lg bg-white p-2">All together · {Math.round(playbackCoverage.allRatio * 100)}%</div>{playbackCoverage.soloRatios.map((entry) => <div key={entry.assetId} className="rounded-lg bg-white p-2">{plan.sources.find((source) => source.assetId === entry.assetId)?.participantLabel || "Source"} solo · {Math.round(entry.ratio * 100)}%</div>)}</div> : <p className="mt-1 text-[10px] font-semibold">Register the current analysis before Quipsly can bind listening coverage to an immutable event.</p>}
+          <p className="mt-2 text-[9px] font-semibold leading-4 opacity-75">Quipsly records client-observed playback, not a claim that sound reached human ears. A definitive conclusion requires at least 75% all-source coverage and 60% solo coverage for every involved source; the signed-in reviewer supplies the human attestation.</p>
+        </div>
+        {analysisId && onSubmitReview && playbackEvidence ? <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-violet-950">
+          <label className="text-[10px] font-black" htmlFor={`episode-audio-review-decision-${plan.momentId}`}>What did you hear?</label>
+          <select id={`episode-audio-review-decision-${plan.momentId}`} value={reviewDecision} onChange={(event) => setReviewDecision(event.currentTarget.value as EpisodeAudioReviewDecision)} className="mt-1 min-h-11 w-full rounded-lg border border-violet-300 bg-white px-3 text-xs font-bold">{decisionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          <label className="mt-3 block text-[10px] font-black" htmlFor={`episode-audio-review-note-${plan.momentId}`}>Listening note {episodeAudioReviewDecisionRequiresNote(reviewDecision) ? "(required)" : "(optional)"}</label>
+          <textarea id={`episode-audio-review-note-${plan.momentId}`} value={reviewNote} onChange={(event) => setReviewNote(event.currentTarget.value)} rows={2} maxLength={2_000} className="mt-1 w-full rounded-lg border border-violet-300 bg-white p-3 text-xs font-semibold" placeholder="Name the audible evidence or why more comparison is needed." />
+          <button type="button" disabled={!reviewReady || reviewBusy} onClick={() => onSubmitReview({ decision: reviewDecision, note: reviewNote.trim(), playbackEvidence })} className="mt-2 min-h-11 w-full rounded-lg bg-violet-800 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{reviewBusy ? "Recording review receipt…" : reviewReady ? "Record listening conclusion" : "Listen through the required coverage"}</button>
+          {reviewNotice ? <p className="mt-2 text-[10px] font-bold" role="status">{reviewNotice}</p> : null}
+        </div> : null}
         <div className="mt-3 flex items-start gap-2 text-[10px] font-semibold leading-4 text-slate-600"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" /><p>All mode applies monitor-only attenuation to reduce summed playback level. Solo and timing controls never alter retained bytes, alignment, the timeline, or a classification. A later review receipt must still name what was actually heard.</p></div>
       </div>
     </section>

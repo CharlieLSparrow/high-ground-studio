@@ -31,6 +31,10 @@ import {
   buildEpisodeAudioComparisonPlan,
   type EpisodeAudioComparisonPlan,
 } from "@/lib/episode-audio-comparison";
+import type {
+  EpisodeAudioReviewDecision,
+  EpisodeAudioReviewPlaybackEvidence,
+} from "@/lib/episode-audio-review";
 import {
   buildEpisodeAudioProgram,
   type EpisodeAudioProgramDecision,
@@ -56,6 +60,10 @@ type BusyOperation = "signal" | "transcript" | "mastery" | "review" | "promotion
 type EpisodeAudioAnalysisLedgerClient = {
   currentInputSha256: string;
   latest: null | { id: string; stale: boolean; inputSha256: string; analyzedAt: string; momentCount: number };
+};
+
+type EpisodeAudioReviewLedgerClient = {
+  latestByEvent: Record<string, { id: string; analysisId: string; eventId: string; decision: string; actorEmail: string; occurredAt: string; note?: string | null }>;
 };
 
 function errorMessage(value: unknown, fallback: string) {
@@ -138,6 +146,11 @@ export function AudioMasteryWorkspaceClient({
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [analysisRefreshToken, setAnalysisRefreshToken] = useState(0);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [activityReviewBusy, setActivityReviewBusy] = useState(false);
+  const [activityReviewNotice, setActivityReviewNotice] = useState<string | null>(null);
+  const [activityReviewLedger, setActivityReviewLedger] = useState<EpisodeAudioReviewLedgerClient | null>(null);
+  const [activityReviewRefreshToken, setActivityReviewRefreshToken] = useState(0);
+  const [activityReviewError, setActivityReviewError] = useState<string | null>(null);
   const operationSequence = useRef(0);
   const immutableSourceRef = useRef<HTMLMediaElement | null>(null);
   const sourceClockFocusAppliedRef = useRef("");
@@ -154,6 +167,11 @@ export function AudioMasteryWorkspaceClient({
   const assets = useMemo(() => audioWorkspaceAssets(inventory), [inventory]);
   const audioProgram = useMemo(() => buildEpisodeAudioProgram(inventory), [inventory]);
   const audioActivityMap = useMemo(() => buildEpisodeAudioActivityMap(audioProgram), [audioProgram]);
+  const currentAnalysisId = analysisLedger?.latest
+    && !analysisLedger.latest.stale
+    && analysisLedger.latest.inputSha256 === analysisLedger.currentInputSha256
+    ? analysisLedger.latest.id
+    : null;
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId || asset.sourceId === selectedAssetId)
     ?? assets[0]
     ?? null;
@@ -261,6 +279,30 @@ export function AudioMasteryWorkspaceClient({
       .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
     return () => controller.abort();
   }, [activeProjectId, analysisRefreshToken, inventoryRefreshToken, projectSlug, selectedEpisode]);
+
+  useEffect(() => {
+    if (!selectedEpisode || !projectSlug) {
+      setActivityReviewLedger(null);
+      setActivityReviewError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setActivityReviewError(null);
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, episodeProductionId: selectedEpisode.id });
+    void fetch(`/api/media-vault/episode-audio-program/reviews?${query.toString()}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; ledger?: EpisodeAudioReviewLedgerClient } | null;
+        if (!response.ok || !payload?.ok || !payload.ledger) throw new Error(payload?.error || `Episode listening ledger returned HTTP ${response.status}.`);
+        return payload.ledger;
+      })
+      .then((ledger) => { if (!controller.signal.aborted) setActivityReviewLedger(ledger); })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setActivityReviewLedger(null);
+        setActivityReviewError(errorMessage(error, "Quipsly could not load the human listening ledger."));
+      });
+    return () => controller.abort();
+  }, [activeProjectId, activityReviewRefreshToken, projectSlug, selectedEpisode]);
 
   useEffect(() => {
     if (assets.length === 0) {
@@ -792,6 +834,7 @@ export function AudioMasteryWorkspaceClient({
       playbackSources: assets.map((asset) => ({ assetId: asset.id, sourceId: asset.sourceId, playbackUrl: asset.playbackUrl })),
     });
     setComparisonPlan(nextComparisonPlan);
+    setActivityReviewNotice(null);
     const preferredAssetId = moment.assetIds.find((assetId) => audioActivityMap.lanes.some((lane) => lane.assetId === assetId))
       ?? audioActivityMap.programClock?.assetId
       ?? null;
@@ -830,6 +873,37 @@ export function AudioMasteryWorkspaceClient({
       setAnalysisBusy(false);
     }
   }, [activeProjectId, analysisBusy, audioActivityMap.moments.length, audioProgram.fingerprintSha256, projectSlug, selectedEpisode, selectedProject?.role]);
+
+  const submitActivityReview = useCallback(async (input: { decision: EpisodeAudioReviewDecision; note: string; playbackEvidence: EpisodeAudioReviewPlaybackEvidence }) => {
+    if (activityReviewBusy || !selectedEpisode || !comparisonPlan || !currentAnalysisId || selectedProject?.role === "VIEWER") return;
+    setActivityReviewBusy(true);
+    setActivityReviewNotice(null);
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: activeProjectId,
+          projectSlug,
+          episodeProductionId: selectedEpisode.id,
+          analysisId: currentAnalysisId,
+          eventId: comparisonPlan.momentId,
+          decision: input.decision,
+          note: input.note,
+          playbackEvidence: input.playbackEvidence,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; review?: { decision?: string } } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Episode listening review returned HTTP ${response.status}.`);
+      setActivityReviewNotice(`Recorded ${String(payload.review?.decision ?? input.decision).replaceAll("-", " ")} as an immutable human listening receipt. Source media, timeline, and mix remain unchanged.`);
+      setActivityReviewRefreshToken((current) => current + 1);
+    } catch (error) {
+      setActivityReviewNotice(errorMessage(error, "Quipsly could not record the listening conclusion."));
+    } finally {
+      setActivityReviewBusy(false);
+    }
+  }, [activeProjectId, activityReviewBusy, comparisonPlan, currentAnalysisId, projectSlug, selectedEpisode, selectedProject?.role]);
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 pb-16 text-[#3d3122]">
@@ -976,12 +1050,18 @@ export function AudioMasteryWorkspaceClient({
               canRegisterAnalysis={Boolean(audioProgram.fingerprintSha256 && selectedEpisode && selectedProject?.role !== "VIEWER")}
               onRegisterAnalysis={() => void registerActivityAnalysis()}
               analysisError={analysisError}
+              reviewsByEvent={Object.fromEntries(Object.entries(activityReviewLedger?.latestByEvent ?? {}).filter(([, review]) => review.analysisId === currentAnalysisId))}
+              reviewLedgerError={activityReviewError}
             />
             {comparisonPlan ? (
               <EpisodeAudioMatchedAudition
                 plan={comparisonPlan}
-                onClose={() => setComparisonPlan(null)}
+                onClose={() => { setComparisonPlan(null); setActivityReviewNotice(null); }}
                 onPausePrimarySource={() => immutableSourceRef.current?.pause()}
+                analysisId={currentAnalysisId}
+                reviewBusy={activityReviewBusy}
+                reviewNotice={activityReviewNotice}
+                onSubmitReview={selectedProject?.role === "VIEWER" ? undefined : (input) => void submitActivityReview(input)}
               />
             ) : null}
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
