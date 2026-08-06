@@ -9,6 +9,10 @@ import { getPrismaClient } from "@/lib/prisma";
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
 import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
 import { episodeAudioProcessingEvidence } from "@/lib/episode-audio-processing-evidence";
+import {
+  episodeAudioProgramFingerprint,
+  projectEpisodeAudioTrackDecisions,
+} from "@/lib/server/episode-audio-track-decisions";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import {
@@ -231,6 +235,13 @@ function publicRecording(recording: any, gates?: { media: PublicProcessingGate; 
     id: recording.id,
     roomId: recording.roomId,
     participantId: recording.participantId,
+    participant: recording.participant ? {
+      id: recording.participant.id,
+      displayName: recording.participant.displayName,
+      email: recording.participant.email,
+      role: String(recording.participant.role || "").toLowerCase() || null,
+      deviceLabel: recording.participant.deviceLabel,
+    } : null,
     kind: recording.kind,
     status: recording.status,
     fileName: recording.fileName,
@@ -424,6 +435,27 @@ export async function GET(request: Request) {
     episodeProduction.productionJson,
     episodeProduction.timelineJson,
   );
+  const audioProgramFingerprintSha256 = episodeAudioProgramFingerprint({
+    episodeProductionId: episodeProduction.id,
+    importedMedia,
+  });
+  const [audioDecisionRows, episodeParticipants] = await Promise.all([
+    prisma.studioEpisodeAudioTrackDecisionReceipt.findMany({
+      where: { episodeProductionId: episodeProduction.id },
+      orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
+      take: 500,
+    }),
+    prisma.callParticipant.findMany({
+      where: { room: { episodeProductionId: episodeProduction.id } },
+      select: { id: true, displayName: true, email: true, role: true, deviceLabel: true, roomId: true },
+      orderBy: [{ displayName: "asc" }, { email: "asc" }, { id: "asc" }],
+      take: 100,
+    }),
+  ]);
+  const audioDecisionLedger = projectEpisodeAudioTrackDecisions(
+    audioDecisionRows,
+    audioProgramFingerprintSha256,
+  );
   const assetIds = collectAssetIds(importedMedia);
   const recordingAssetIds = [...new Set(importedMedia.map(recordingAssetIdFromImportedMedia).filter(Boolean) as string[])];
 
@@ -528,6 +560,7 @@ export async function GET(request: Request) {
         },
       },
       include: {
+        participant: { select: { id: true, displayName: true, email: true, role: true, deviceLabel: true } },
         transcriptJobs: {
           orderBy: { createdAt: "desc" },
           take: 5,
@@ -629,6 +662,19 @@ export async function GET(request: Request) {
     recordingEvidence: recordingEvidence.map((recording: any) => (
       publicRecording(recording, processingByRecordingId.get(recording.id))
     )),
+    audioProgram: {
+      fingerprintSha256: audioProgramFingerprintSha256,
+      decisions: audioDecisionLedger,
+      participants: episodeParticipants.map((participant: any) => ({
+        id: participant.id,
+        displayName: participant.displayName,
+        email: participant.email,
+        role: String(participant.role || "").toLowerCase() || null,
+        deviceLabel: participant.deviceLabel,
+        roomId: participant.roomId,
+      })),
+      actions: { decisions: "/api/media-vault/episode-audio-program/decisions" },
+    },
     summary: {
       importedMediaCount: imported.length,
       videoCount: imported.filter((item: any) => item.kind === "video" || String(item.contentType || "").startsWith("video/")).length,

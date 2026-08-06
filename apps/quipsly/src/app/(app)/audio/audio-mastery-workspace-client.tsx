@@ -21,7 +21,11 @@ import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-me
 
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
 import { EpisodeAudioProgramMap } from "@/components/audio/EpisodeAudioProgramMap";
-import { buildEpisodeAudioProgram } from "@/lib/episode-audio-program";
+import {
+  buildEpisodeAudioProgram,
+  type EpisodeAudioProgramDecision,
+  type EpisodeAudioProgramTrack,
+} from "@/lib/episode-audio-program";
 import { AudioMasteryAudition } from "../editor/AudioMasteryAudition";
 import { DialogueRepairDesk } from "../editor/DialogueRepairDesk";
 import { StudioTranscriptReviewDesk } from "../editor/StudioTranscriptReviewDesk";
@@ -110,6 +114,8 @@ export function AudioMasteryWorkspaceClient({
   const [notice, setNotice] = useState<string | null>(null);
   const [statusRefreshToken, setStatusRefreshToken] = useState(0);
   const [inventoryRefreshToken, setInventoryRefreshToken] = useState(0);
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
   const operationSequence = useRef(0);
   const immutableSourceRef = useRef<HTMLMediaElement | null>(null);
   const sourceClockFocusAppliedRef = useRef("");
@@ -662,6 +668,72 @@ export function AudioMasteryWorkspaceClient({
     replaceSelection(selectedProject?.id ?? projectId, projectSlug, nextSlug);
   };
 
+  const setTrackDecision = useCallback(async (
+    track: EpisodeAudioProgramTrack,
+    kind: EpisodeAudioProgramDecision["kind"],
+    value: string,
+  ) => {
+    if (!selectedEpisode?.id || !audioProgram.fingerprintSha256 || decisionBusy) return;
+    setDecisionBusy(true);
+    setDecisionNotice("Recording canonical Episode audio truth…");
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set",
+          projectId: activeProjectId,
+          projectSlug,
+          episodeProductionId: selectedEpisode.id,
+          assetId: track.assetId,
+          sourceId: track.sourceId,
+          kind,
+          value,
+          programFingerprintSha256: audioProgram.fingerprintSha256,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Audio decision returned HTTP ${response.status}.`);
+      setDecisionNotice("Decision recorded. The previous value remains in the append-only history.");
+      setInventoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setDecisionNotice(errorMessage(error, "Quipsly could not record this audio decision."));
+    } finally {
+      setDecisionBusy(false);
+    }
+  }, [activeProjectId, audioProgram.fingerprintSha256, decisionBusy, projectSlug, selectedEpisode?.id]);
+
+  const withdrawTrackDecision = useCallback(async (decision: EpisodeAudioProgramDecision, reason: string) => {
+    if (!selectedEpisode?.id || !audioProgram.fingerprintSha256 || decisionBusy) return;
+    setDecisionBusy(true);
+    setDecisionNotice("Withdrawing the active decision while preserving its history…");
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/decisions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "withdraw",
+          projectId: activeProjectId,
+          projectSlug,
+          episodeProductionId: selectedEpisode.id,
+          decisionId: decision.id,
+          programFingerprintSha256: audioProgram.fingerprintSha256,
+          clientRequestId: crypto.randomUUID(),
+          reason,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Audio decision withdrawal returned HTTP ${response.status}.`);
+      setDecisionNotice("Decision withdrawn. Its receipt remains available for audit and rollback reasoning.");
+      setInventoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setDecisionNotice(errorMessage(error, "Quipsly could not withdraw this audio decision."));
+    } finally {
+      setDecisionBusy(false);
+    }
+  }, [activeProjectId, audioProgram.fingerprintSha256, decisionBusy, projectSlug, selectedEpisode?.id]);
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 pb-16 text-[#3d3122]">
       <header className="overflow-hidden rounded-[2rem] border border-fuchsia-200 bg-[radial-gradient(circle_at_top_right,_rgba(232,121,249,0.25),_transparent_38%),linear-gradient(135deg,#171020,#27143a_54%,#10283c)] p-6 text-white shadow-xl shadow-fuchsia-950/10 md:p-8">
@@ -789,6 +861,10 @@ export function AudioMasteryWorkspaceClient({
                 setSelectedAssetId(assetId);
                 router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
               }}
+              decisionBusy={decisionBusy}
+              decisionNotice={decisionNotice}
+              onSetDecision={(track, kind, value) => void setTrackDecision(track, kind, value)}
+              onWithdrawDecision={(decision, reason) => void withdrawTrackDecision(decision, reason)}
             />
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

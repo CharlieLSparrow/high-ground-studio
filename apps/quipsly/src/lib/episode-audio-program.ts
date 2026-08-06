@@ -19,7 +19,10 @@ export type EpisodeAudioProgramTrack = {
   title: string;
   kind: EpisodeAudioProgramTrackKind;
   role: string;
+  importedRole: string;
   participantId: string | null;
+  participantLabel: string | null;
+  mixDisposition: "include" | "exclude" | "backup" | "reference-only";
   groupKey: string;
   contentType: string | null;
   durationSeconds: number | null;
@@ -28,6 +31,21 @@ export type EpisodeAudioProgramTrack = {
   attentionReason: string;
   stages: EpisodeAudioProgramStage[];
   processing: EpisodeAudioProcessingEvidence;
+  decisions: EpisodeAudioProgramDecision[];
+};
+
+export type EpisodeAudioProgramDecision = {
+  id: string;
+  operation: "set" | "withdrawn";
+  kind: "track-role" | "participant" | "program-clock" | "mix-disposition";
+  assetId: string;
+  sourceId: string;
+  value: string;
+  label: string | null;
+  targetReceiptId: string | null;
+  stale: boolean;
+  actorEmail: string;
+  occurredAt: string;
 };
 
 export type EpisodeAudioProgram = {
@@ -46,7 +64,13 @@ export type EpisodeAudioProgram = {
     understoodTrackCount: number;
     finishedTrackCount: number;
     multiDeviceGroupCount: number;
+    activeDecisionCount: number;
+    staleDecisionCount: number;
+    hasProgramClock: boolean;
   };
+  fingerprintSha256: string | null;
+  participantCatalog: Array<{ id: string; label: string; email: string | null; role: string | null; deviceLabel: string | null }>;
+  activeDecisions: EpisodeAudioProgramDecision[];
   nextAttention: EpisodeAudioProgramTrack | null;
   boundaries: {
     readOnlyProjection: true;
@@ -202,6 +226,19 @@ function attention(stages: EpisodeAudioProgramStage[], kind: EpisodeAudioProgram
 
 export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgram {
   const root = record(inventory);
+  const audioProgram = record(root.audioProgram);
+  const decisionLedger = record(audioProgram.decisions);
+  const activeDecisions = (Array.isArray(decisionLedger.active) ? decisionLedger.active : [])
+    .map((value) => record(value) as unknown as EpisodeAudioProgramDecision)
+    .filter((decision) => decision.operation === "set" && decision.stale !== true);
+  const participantCatalog = (Array.isArray(audioProgram.participants) ? audioProgram.participants : []).flatMap((value) => {
+    const participant = record(value);
+    const id = text(participant.id);
+    if (!id) return [];
+    const email = text(participant.email) || null;
+    return [{ id, label: text(participant.displayName) || email || "Episode participant", email, role: text(participant.role) || null, deviceLabel: text(participant.deviceLabel) || null }];
+  });
+  const programClockDecision = activeDecisions.find((decision) => decision.kind === "program-clock") ?? null;
   const imported = Array.isArray(root.importedMedia) ? root.importedMedia : [];
   const tracks = imported.flatMap((raw): EpisodeAudioProgramTrack[] => {
     const item = record(raw);
@@ -215,8 +252,24 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
     const assetId = text(item.id);
     const sourceId = text(item.sourceId);
     if (!assetId || !sourceId) return [];
-    const role = (text(item.importRole) || "unassigned-source").toLowerCase();
-    const participantId = text(recording.participantId) || null;
+    const importedRole = (text(item.importRole) || "unassigned-source").toLowerCase();
+    const trackDecisions = activeDecisions.filter((decision) => decision.assetId === assetId && decision.sourceId === sourceId);
+    const roleDecision = trackDecisions.find((decision) => decision.kind === "track-role") ?? null;
+    const participantDecision = trackDecisions.find((decision) => decision.kind === "participant") ?? null;
+    const mixDecision = trackDecisions.find((decision) => decision.kind === "mix-disposition") ?? null;
+    const role = roleDecision?.value || importedRole;
+    const participantId = participantDecision?.value.startsWith("call-participant:")
+      ? participantDecision.value.slice("call-participant:".length)
+      : text(recording.participantId) || null;
+    const recordingParticipant = record(recording.participant);
+    const participantLabel = participantDecision?.label
+      || text(recordingParticipant.displayName)
+      || text(recordingParticipant.email)
+      || participantCatalog.find((participant) => participant.id === participantId)?.label
+      || null;
+    const mixDisposition = (["include", "exclude", "backup", "reference-only"].includes(mixDecision?.value || "")
+      ? mixDecision!.value
+      : "include") as EpisodeAudioProgramTrack["mixDisposition"];
     const groupKey = participantId ? `participant:${participantId}` : `source:${sourceId}`;
     const processing = processingEvidence(asset.audioProcessingEvidence);
     const delivery = record(asset.audioDeliveryArtifact);
@@ -229,7 +282,7 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       syncStatus,
       processing,
       deliveryApproved: deliveryReadiness.proofListenApproved === true,
-      isSpine: /^(spine-audio|program-master|mixed-master)$/.test(role),
+      isSpine: programClockDecision?.assetId === assetId && programClockDecision.sourceId === sourceId,
     });
     const trackType = trackKind(role);
     const ranked = attention(stages, trackType);
@@ -239,7 +292,10 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       title: text(item.originalName) || text(asset.filename) || "Unnamed retained source",
       kind: trackType,
       role,
+      importedRole,
       participantId,
+      participantLabel,
+      mixDisposition,
       groupKey,
       contentType,
       durationSeconds: number(asset.duration) ?? number(processing.signal.durationSeconds),
@@ -248,6 +304,7 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       attentionReason: ranked.reason,
       stages,
       processing,
+      decisions: trackDecisions,
     }];
   }).sort((left, right) => right.attentionScore - left.attentionScore || left.title.localeCompare(right.title));
 
@@ -255,7 +312,7 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
   for (const track of tracks) grouped.set(track.groupKey, [...(grouped.get(track.groupKey) ?? []), track]);
   const groups = [...grouped.entries()].map(([key, entries]) => ({
     key,
-    label: key.startsWith("participant:") ? `Participant ${key.slice("participant:".length)}` : entries[0].title,
+    label: key.startsWith("participant:") ? entries[0].participantLabel || `Participant ${key.slice("participant:".length)}` : entries[0].title,
     trackCount: entries.length,
     multiDevice: key.startsWith("participant:") && entries.length > 1,
   }));
@@ -272,7 +329,13 @@ export function buildEpisodeAudioProgram(inventory: unknown): EpisodeAudioProgra
       understoodTrackCount: tracks.filter((track) => completed(track, "understand")).length,
       finishedTrackCount: tracks.filter((track) => completed(track, "finish")).length,
       multiDeviceGroupCount: groups.filter((group) => group.multiDevice).length,
+      activeDecisionCount: activeDecisions.length,
+      staleDecisionCount: Number(record(decisionLedger.summary).staleCount) || 0,
+      hasProgramClock: Boolean(programClockDecision),
     },
+    fingerprintSha256: text(audioProgram.fingerprintSha256) || null,
+    participantCatalog,
+    activeDecisions,
     nextAttention: tracks.find((track) => track.attentionScore > 0) ?? null,
     boundaries: {
       readOnlyProjection: true,

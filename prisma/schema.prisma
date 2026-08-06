@@ -3659,7 +3659,7 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace               StudioWorkspace                       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace               StudioWorkspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   documents               StudioDocument[]
   tags                    StudioTag[]
   tagAliases              StudioTagAlias[]
@@ -3667,7 +3667,7 @@ model StudioProject {
   tagMergeReceipts        StudioTagMergeReceipt[]
   viewDefinitions         StudioViewDefinition[]
   knowledgeNodes          StudioKnowledgeNode[]
-  manuscript              StudioManuscript?                     @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  manuscript              StudioManuscript?                        @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
   mediaAssets             StudioMediaAsset[]
   mediaBins               MediaBin[]
   episodeProductions      StudioEpisodeProduction[]
@@ -3686,6 +3686,7 @@ model StudioProject {
   audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
   audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
   episodeOutputSelections StudioEpisodeOutputSelectionReceipt[]
+  episodeAudioDecisions   StudioEpisodeAudioTrackDecisionReceipt[]
   sourceUnits             StudioSourceUnit[]
   personalSourceFilings   StudioPersonalSourceFiling[]
   sourceAnnotations       StudioSourceAnnotation[]
@@ -3801,15 +3802,16 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project            StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document           StudioDocument                        @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  milestones         StudioEpisodeMilestone[]
-  editProposalSets   StudioEpisodeEditProposalSet[]
-  editReviewReceipts StudioEpisodeEditReviewReceipt[]
-  transcriptJobs     TranscriptJob[]
-  recordingRooms     CallRoom[]
-  outputPackets      StudioOutputPacket[]
-  outputSelections   StudioEpisodeOutputSelectionReceipt[]
+  project             StudioProject                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document            StudioDocument                           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  milestones          StudioEpisodeMilestone[]
+  editProposalSets    StudioEpisodeEditProposalSet[]
+  editReviewReceipts  StudioEpisodeEditReviewReceipt[]
+  transcriptJobs      TranscriptJob[]
+  recordingRooms      CallRoom[]
+  outputPackets       StudioOutputPacket[]
+  outputSelections    StudioEpisodeOutputSelectionReceipt[]
+  audioTrackDecisions StudioEpisodeAudioTrackDecisionReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4677,6 +4679,61 @@ model StudioEpisodeOutputSelectionReceipt {
   @@index([outputPacketId, occurredAt], map: "StudioEpisodeOutputSelection_packet_time_idx")
 }
 
+enum StudioEpisodeAudioTrackDecisionOperation {
+  SET
+  WITHDRAW
+}
+
+enum StudioEpisodeAudioTrackDecisionKind {
+  TRACK_ROLE
+  PARTICIPANT
+  PROGRAM_CLOCK
+  MIX_DISPOSITION
+}
+
+// Episode audio identity and mix-intent decisions append here. Current state is
+// projected from this ledger; changing a role, participant, clock, or inclusion
+// never rewrites retained media, an older receipt, or the Episode timeline.
+// The program fingerprint makes decisions visibly stale when the attached
+// source set changes instead of silently applying them to a different program.
+model StudioEpisodeAudioTrackDecisionReceipt {
+  id                       String                                   @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  assetId                  String
+  sourceId                 String
+  actorUserId              String?
+  actorEmail               String
+  clientRequestId          String
+  operation                StudioEpisodeAudioTrackDecisionOperation
+  decisionKind             StudioEpisodeAudioTrackDecisionKind
+  decisionValue            String
+  decisionLabel            String?
+  targetReceiptId          String?
+  programFingerprintSha256 String
+  sourceSha256             String
+  sourceGeneration         String
+  sourceSizeBytes          BigInt
+  requestSha256            String
+  evidenceJson             Json                                     @default("{}")
+  reason                   String?
+  occurredAt               DateTime
+  createdAt                DateTime                                 @default(now())
+
+  project            StudioProject                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction  StudioEpisodeProduction                  @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  asset              StudioMediaAsset                         @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  source             StudioVideoSource                        @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  targetReceipt      StudioEpisodeAudioTrackDecisionReceipt?  @relation("StudioEpisodeAudioDecisionWithdrawal", fields: [targetReceiptId], references: [id], onDelete: Restrict)
+  withdrawalReceipts StudioEpisodeAudioTrackDecisionReceipt[] @relation("StudioEpisodeAudioDecisionWithdrawal")
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeAudioDecision_project_actor_request_key")
+  @@index([episodeProductionId, decisionKind, occurredAt], map: "StudioEpisodeAudioDecision_episode_kind_time_idx")
+  @@index([assetId, sourceId, decisionKind, occurredAt], map: "StudioEpisodeAudioDecision_track_kind_time_idx")
+  @@index([targetReceiptId], map: "StudioEpisodeAudioDecision_target_idx")
+  @@index([programFingerprintSha256], map: "StudioEpisodeAudioDecision_program_fingerprint_idx")
+}
+
 model StudioPublishAttempt {
   id               String    @id @default(cuid())
   outputPacketId   String
@@ -4762,6 +4819,7 @@ model StudioVideoSource {
   audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]
   audibleEventReviews       StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
+  episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
 
   @@index([provider])
   @@index([providerSourceId])
@@ -5584,7 +5642,7 @@ model StudioMediaAsset {
   updatedAt DateTime @updatedAt
 
   projects                  StudioProject[]
-  mediaBin                  MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  mediaBin                  MediaBin?                                @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
   clips                     MediaClip[]
   mediaTags                 StudioMediaTag[]
   assetAttachments          StudioAssetAttachment[]
@@ -5593,6 +5651,7 @@ model StudioMediaAsset {
   audioMasterReviews        StudioAudioMasterReviewReceipt[]
   audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
   dialogueRepairCandidates  StudioDialogueRepairCandidate[]
   dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]
   audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]

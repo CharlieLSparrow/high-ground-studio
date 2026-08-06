@@ -91,4 +91,43 @@ describe("buildEpisodeAudioProgram", () => {
       detail: "No reviewed shared-clock evidence yet",
     });
   });
+
+  it("applies active human decisions to identity, role, mix disposition, and the shared clock", () => {
+    const program = buildEpisodeAudioProgram({
+      importedMedia: [
+        source({ id: "camera", role: "camera-video" }),
+        source({ id: "mic", role: "phone-audio" }),
+      ],
+      audioProgram: {
+        fingerprintSha256: "fingerprint-1",
+        participants: [{ id: "participant-homer", displayName: "Homer Sparrow", email: "homer@example.test", role: "host", deviceLabel: "iPhone" }],
+        decisions: {
+          active: [
+            { id: "participant-1", operation: "set", kind: "participant", assetId: "camera", sourceId: "source-camera", value: "call-participant:participant-homer", label: "Homer Sparrow", stale: false },
+            { id: "role-1", operation: "set", kind: "track-role", assetId: "camera", sourceId: "source-camera", value: "camera-scratch", label: "Camera scratch audio", stale: false },
+            { id: "mix-1", operation: "set", kind: "mix-disposition", assetId: "camera", sourceId: "source-camera", value: "backup", label: "Backup only", stale: false },
+            { id: "clock-1", operation: "set", kind: "program-clock", assetId: "mic", sourceId: "source-mic", value: "primary", label: "Program clock", stale: false },
+          ],
+          summary: { activeCount: 4, staleCount: 0, hasProgramClock: true },
+        },
+      },
+    });
+
+    expect(program).toMatchObject({
+      fingerprintSha256: "fingerprint-1",
+      summary: { activeDecisionCount: 4, staleDecisionCount: 0, hasProgramClock: true, alignedTrackCount: 1 },
+    });
+    expect(program.tracks.find((track) => track.assetId === "camera")).toMatchObject({
+      role: "camera-scratch",
+      importedRole: "camera-video",
+      participantId: "participant-homer",
+      participantLabel: "Homer Sparrow",
+      mixDisposition: "backup",
+      groupKey: "participant:participant-homer",
+    });
+    expect(program.tracks.find((track) => track.assetId === "mic")?.stages.find((stage) => stage.id === "align")).toMatchObject({
+      state: "ready",
+      detail: "Program reference clock",
+    });
+  });
 });
