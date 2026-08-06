@@ -22,6 +22,7 @@ struct CaptureSourceEvidenceView: View {
                     identityCard(recording)
                     captureCard(recording)
                     audioSignalCard(recording)
+                    audibleEventAnalysisCard(recording)
                     roomCard(recording)
                     cloudCard(recording)
                     nestComparisonCard(recording)
@@ -195,10 +196,10 @@ struct CaptureSourceEvidenceView: View {
 
                     ForEach(Array(signal.observations.enumerated()), id: \.offset) { _, observation in
                         Button {
-                            playback.play(
-                                recording: recording,
-                                library: library,
-                                from: observation.startSeconds
+                            playEvent(
+                                recording,
+                                startSeconds: observation.startSeconds,
+                                endSeconds: observation.endSeconds
                             )
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
@@ -214,10 +215,10 @@ struct CaptureSourceEvidenceView: View {
 
                     ForEach(Array(captureTimelineEvents(recording).enumerated()), id: \.offset) { _, event in
                         Button {
-                            playback.play(
-                                recording: recording,
-                                library: library,
-                                from: event.startSeconds
+                            playEvent(
+                                recording,
+                                startSeconds: event.startSeconds,
+                                endSeconds: event.startSeconds + 1
                             )
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
@@ -248,6 +249,97 @@ struct CaptureSourceEvidenceView: View {
                     }
                 } else {
                     Text("This source does not yet have a complete decoded signal scan. Quipsly will not infer loudness, clipping, silence, or dropout from transcript confidence.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func audibleEventAnalysisCard(_ recording: LocalRecording) -> some View {
+        if recording.sourceProfile?.includesAudio == true,
+           let analysis = recording.sourceProfile?.audibleEventAnalysis {
+            evidenceCard(title: "Audible event map", systemImage: "waveform.badge.magnifyingglass") {
+                if analysis.status == "completed" {
+                    HStack(alignment: .top, spacing: 14) {
+                        signalMetric(
+                            "Suggestions",
+                            value: "\(analysis.suggestions.count)",
+                            detail: "Need listening"
+                        )
+                        signalMetric(
+                            "Coverage",
+                            value: durationLabel(analysis.durationSeconds),
+                            detail: "\(analysis.resultWindowCount) windows"
+                        )
+                    }
+                    EvidenceRow(
+                        label: "Detector",
+                        value: "Apple general sound classifier · \(String(format: "%.2f", analysis.effectiveWindowDurationSeconds)) s · \(Int((analysis.overlapFactor * 100).rounded()))% overlap"
+                    )
+                    EvidenceRow(
+                        label: "Receipt",
+                        value: analysis.analysisId
+                    )
+                    EvidenceRow(
+                        label: "Source binding",
+                        value: analysis.sourceSHA256 ?? "Unavailable"
+                    )
+                    Text("These are unqualified navigation suggestions. A score is not proof that an event is audible, distracting, or safe to edit, and Apple’s general classifier does not identify Quipsly mouth-click or plosive repair candidates.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    ForEach(analysis.suggestions.prefix(30), id: \.eventId) { suggestion in
+                        Button {
+                            playEvent(
+                                recording,
+                                startSeconds: suggestion.startSeconds,
+                                endSeconds: suggestion.endSeconds
+                            )
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text("\(durationLabel(suggestion.startSeconds)) · \(suggestion.displayLabel)")
+                                        .font(.caption.weight(.bold))
+                                    Spacer()
+                                    Text("\(Int((suggestion.confidence * 100).rounded()))% score")
+                                        .font(.caption2.monospacedDigit().weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("\(suggestion.family.capitalized) · \(suggestion.detail)")
+                                    .font(.caption)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if analysis.suggestions.count > 30 {
+                        Text("Showing the first 30 of \(analysis.suggestions.count) suggestions. The portable receipt preserves the complete bounded set.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if analysis.suggestions.isEmpty {
+                        Label(
+                            "No selected classifier label crossed its review threshold. This is not proof that the recording contains no notable sounds.",
+                            systemImage: "checkmark.circle"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Label(
+                        analysis.failureDetail ?? "Audible-event analysis did not complete.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    EvidenceRow(
+                        label: "Failure receipt",
+                        value: analysis.failureCode ?? "analysis-incomplete"
+                    )
+                    Text("The original remains validated independently. Playback and upload are not held by this optional classifier layer.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -659,6 +751,25 @@ struct CaptureSourceEvidenceView: View {
         }
     }
 
+    private func playEvent(
+        _ recording: LocalRecording,
+        startSeconds: Double,
+        endSeconds: Double
+    ) {
+        let contextStart = max(0, startSeconds - 1)
+        let contextEnd = min(
+            recording.durationSeconds,
+            max(endSeconds, startSeconds) + 1
+        )
+        selectedAudioSeconds = startSeconds
+        playback.play(
+            recording: recording,
+            library: library,
+            from: contextStart,
+            until: contextEnd
+        )
+    }
+
     private func captureTimelineEvents(
         _ recording: LocalRecording
     ) -> [CaptureAudioTimelineEvent] {
@@ -807,6 +918,21 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("Preview values demonstrate the signal-review vocabulary only. No source was decoded and no audio-health claim was created.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                previewCard(title: "Audible event map", systemImage: "waveform.badge.magnifyingglass") {
+                    EvidenceRow(label: "Detector", value: "Apple general sound classifier · preview vocabulary")
+                    EvidenceRow(label: "Source binding", value: "Preview only · no source hash")
+                    EvidenceRow(label: "Suggestion", value: "00:12 · Cough · 86% score")
+                    Text("A real suggestion is an unqualified place to listen, not proof that a sound is distracting or safe to edit. Quipsly keeps detector results separate from source integrity and repair decisions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Label(
+                        "Preview only · no classifier request or receipt",
+                        systemImage: "ear.badge.checkmark"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("CaptureAudibleEventPreviewBoundary")
                 }
 
                 previewCard(title: "Room boundary", systemImage: "lock.shield.fill") {

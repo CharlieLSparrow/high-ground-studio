@@ -9,6 +9,7 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
 
     private var audioPlayer: AVAudioPlayer?
     private var videoCompletionObserver: NSObjectProtocol?
+    private var boundedStopTask: Task<Void, Never>?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var accountCancellable: AnyCancellable?
 
@@ -33,7 +34,8 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     func play(
         recording: LocalRecording,
         library: LocalRecordingLibrary,
-        from startSeconds: TimeInterval
+        from startSeconds: TimeInterval,
+        until endSeconds: TimeInterval? = nil
     ) {
         stop()
         guard recording.status.isPlaybackEligible else {
@@ -66,9 +68,16 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
                 fileURL: fileURL,
                 startSeconds: startSeconds
             )
+        scheduleBoundedStop(
+            recordingID: recording.id,
+            startSeconds: startSeconds,
+            endSeconds: endSeconds
+        )
     }
 
     func stop() {
+        boundedStopTask?.cancel()
+        boundedStopTask = nil
         audioPlayer?.stop()
         audioPlayer = nil
         videoPlayer?.pause()
@@ -79,6 +88,26 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
         }
         playingRecordingID = nil
         audioSessionCoordinator.endLocalPlayback()
+    }
+
+    private func scheduleBoundedStop(
+        recordingID: UUID,
+        startSeconds: TimeInterval,
+        endSeconds: TimeInterval?
+    ) {
+        guard playingRecordingID == recordingID,
+              let endSeconds,
+              endSeconds.isFinite,
+              endSeconds > startSeconds else { return }
+        let duration = min(max(endSeconds - max(startSeconds, 0), 0.05), 30)
+        boundedStopTask = Task { [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64((duration * 1_000_000_000).rounded())
+            )
+            guard !Task.isCancelled,
+                  self?.playingRecordingID == recordingID else { return }
+            self?.stop()
+        }
     }
 
     private func beginAudioPlayback(

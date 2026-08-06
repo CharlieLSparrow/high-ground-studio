@@ -45,6 +45,7 @@ import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studi
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
 import { parseAudioSignalEvidence } from "@/lib/transcript-evidence";
+import { parseAudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 import type { AudioSignalProfileClientStatus, StudioSourceTranscriptClientStatus } from "@/lib/media-workflow-client-status";
 import { projectSharedWatchTimeline } from "@/lib/episode-production/shared-watch-timeline";
 import type { RecordingSessionEvent } from "@high-ground/quipsly-domain/recording";
@@ -1083,6 +1084,12 @@ function importedAssetAudioSignal(asset: ImportedMediaAsset | null, durableProfi
   const recordingSync = asObject(asset?.sync?.recordingSync);
   const sourceProfile = asObject(recordingSync?.reportedSourceProfile);
   return parseAudioSignalEvidence(sourceProfile?.audioSignal, { maximumWaveformPoints });
+}
+
+function importedAssetAudibleEventAnalysis(asset: ImportedMediaAsset | null) {
+  const recordingSync = asObject(asset?.sync?.recordingSync);
+  const sourceProfile = asObject(recordingSync?.reportedSourceProfile);
+  return parseAudibleEventDetectorReceipt(sourceProfile?.audibleEventAnalysis);
 }
 
 function importedAssetDurationSeconds(asset: ImportedMediaAsset | null, durableProfile?: AudioSignalProfileClientStatus | null) {
@@ -10293,6 +10300,7 @@ function CloudEditorContent() {
                             sourceUrl={asset.playbackUrl}
                             sourceMeasurement={audioMasteryStatus.sourceMeasurement}
                             audioSignal={importedAssetAudioSignal(asset, audioSignalProfileStatus, 1_200)}
+                            audibleEventAnalysis={importedAssetAudibleEventAnalysis(asset)}
                           />
                           {audioMasteryStatus.derivative?.playbackUrl && audioMasteryStatus.proposal && (
                             <AudioMasteryAudition

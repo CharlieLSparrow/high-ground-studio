@@ -161,6 +161,37 @@ laughter or applause navigation.
   saved a false-positive receipt with an explicit test note, and correctly
   projected `1 mapped / 0 needs listening / 1 false positive` through the map
   and filter.
-- Focused component tests and the Quipsly TypeScript 7 typecheck pass. Native
-  file and stream analysis, detector receipt persistence, corpus qualification,
-  and physical-iPhone resource measurement remain the next gates.
+- Capture now performs an Apple `SNAudioFileAnalyzer` pass with
+  `SNClassifierIdentifierVersion1` while its deterministic complete PCM scan is
+  in flight. The native versioned receipt preserves analysis/supersession ID,
+  source SHA-256, duration and byte count, requested/effective 1.5-second
+  window, 50% overlap, the hash and count of known labels, raw result-window
+  count, bounded merged suggestions, score, and explicit review-only
+  boundaries. Nest rejects a completed receipt whose source hash or byte count
+  disagrees with the canonical upload manifest. A classifier failure is
+  retained but cannot fail source integrity, playback, or upload.
+- The first label policy deliberately excludes ordinary `speech` and `silence`
+  to avoid flooding the proof queue. It maps selected dialogue, content,
+  environment, and capture labels into unqualified source-clock suggestions.
+  Apple's general classifier does not claim Quipsly mouth-click, plosive, or
+  sibilance repair detection.
+- Nest has a fail-closed TypeScript receipt parser. Capture-linked sources in
+  Audio Studio and the episode editor project valid receipts into the shared
+  event map. Native and browser event buttons audition bounded context.
+- A read-only macOS operation analyzed a 0.400-second beep fixture in about
+  0.087 seconds: the framework completed with zero windows because the source
+  was shorter than the configured window. A 2.508-second speech fixture
+  completed in about 0.088 seconds with two classifier windows and zero Quipsly
+  suggestions, as intended because ordinary speech is excluded. Both receipts
+  carry the exact read-only source SHA-256. These are API wiring checks, not
+  corpus accuracy or iPhone performance evidence.
+- The native reducer harness, four focused Nest suites (14 tests), the full
+  generic iOS Simulator application build, and the operated Source Evidence UI
+  test pass. The UI test opens Library, enters the read-only evidence surface,
+  verifies the detector suggestion and no-receipt preview boundary, and passes
+  the app's hit-region, description, and text-clipping accessibility audit.
+  Physical-iPhone real-time,
+  energy, thermal, memory, long-take finalization latency, false-positive, and
+  retained-corpus qualification remain required before the detector is called
+  qualified. Stream analysis is still a later lane and must not compete with
+  realtime capture safety.

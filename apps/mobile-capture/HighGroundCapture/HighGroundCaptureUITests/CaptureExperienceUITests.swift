@@ -1889,6 +1889,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["00:08 · Possible dropout · listen before classifying"].exists
         )
+        XCTAssertTrue(app.staticTexts["Audible event map"].exists)
+        XCTAssertTrue(app.staticTexts["00:12 · Cough · 86% score"].exists)
+        let audibleEventBoundary = app.descendants(matching: .any)["CaptureAudibleEventPreviewBoundary"]
+        XCTAssertTrue(audibleEventBoundary.exists)
+        XCTAssertTrue(audibleEventBoundary.label.contains("no classifier request or receipt"))
         XCTAssertFalse(app.buttons["CaptureSourceEvidencePrepare"].exists)
         XCTAssertFalse(app.buttons["CaptureSourceEvidenceShare"].exists)
         XCTAssertFalse(app.buttons["CaptureNestEvidenceCompare"].exists)

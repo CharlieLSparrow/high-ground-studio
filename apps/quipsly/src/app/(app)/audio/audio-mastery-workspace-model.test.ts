@@ -22,6 +22,35 @@ function inventory(released: boolean): AudioWorkspaceInventory {
       recordingAssetId: "recording-1",
       unresolvedRecordingReference: false,
       syncStatus: "synced",
+      sync: {
+        recordingSync: {
+          reportedSourceProfile: {
+            audibleEventAnalysis: {
+              schemaVersion: 1,
+              analysisId: "audible_analysis_test_receipt_001",
+              supersedesAnalysisId: null,
+              status: "completed",
+              algorithm: "apple-sound-classifier-file-v1",
+              classifierIdentifier: "SNClassifierIdentifierVersion1",
+              analyzedAt: "2026-08-05T18:00:00Z",
+              sourceSHA256: "b".repeat(64),
+              sourceByteCount: 42_000,
+              durationSeconds: 10,
+              requestedWindowDurationSeconds: 1.5,
+              effectiveWindowDurationSeconds: 1.5,
+              overlapFactor: 0.5,
+              minimumCandidateConfidence: 0.35,
+              knownClassificationCount: 300,
+              knownClassificationsSHA256: "a".repeat(64),
+              resultWindowCount: 12,
+              suggestions: [],
+              failureCode: null,
+              failureDetail: null,
+              boundaries: { classifierOutputIsListeningTriageOnly: true, classifierScoreIsNotAudibility: true, noMediaChanged: true, noRepairOrEditAuthorized: true, humanReviewRequired: true },
+            },
+          },
+        },
+      },
       storage: { playbackUrl: "/api/media-vault/source/source-1" },
       asset: { readiness: { sourceSafe: true } },
       recording: {
@@ -47,6 +76,7 @@ describe("Audio Studio workspace projections", () => {
         canProcess: false,
         transcriptProcessingReleased: false,
         canTranscribe: false,
+        audibleEventAnalysis: expect.objectContaining({ analysisId: "audible_analysis_test_receipt_001" }),
       }),
     ]);
   });

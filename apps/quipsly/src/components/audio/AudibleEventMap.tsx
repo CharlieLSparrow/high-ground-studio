@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type MouseEvent } from "react";
 
+import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 type SignalEvidence = NonNullable<AudioTranscriptEvidence["audio"]["signal"]>;
@@ -91,6 +92,7 @@ export function audibleEventViewSpan(durationSeconds: number, selectedSeconds: n
 export function audibleEventMapMoments(
   signal: SignalEvidence | null,
   dialogueEntries: AudibleEventDialogueEntry[],
+  detectorReceipt: AudibleEventDetectorReceipt | null = null,
 ): AudibleEventMoment[] {
   const measured = signal?.observations.map((observation, index): AudibleEventMoment => ({
     id: `signal-${observation.kind}-${observation.startSeconds}-${index}`,
@@ -135,7 +137,23 @@ export function audibleEventMapMoments(
     };
   });
 
-  return [...measured, ...dialogue]
+  const detector = detectorReceipt?.status === "completed"
+    ? detectorReceipt.suggestions.map((suggestion): AudibleEventMoment => ({
+      id: `detector-${detectorReceipt.analysisId}-${suggestion.eventId}`,
+      family: suggestion.family,
+      label: suggestion.displayLabel,
+      startSeconds: suggestion.startSeconds,
+      endSeconds: suggestion.endSeconds,
+      detail: suggestion.detail,
+      severity: "attention",
+      originLabel: "Unqualified on-device detector suggestion · Apple general sound classifier",
+      confidence: suggestion.confidence,
+      reviewState: "unreviewed",
+      dialogueCandidateId: null,
+    }))
+    : [];
+
+  return [...measured, ...dialogue, ...detector]
     .filter((moment) => Number.isFinite(moment.startSeconds) && Number.isFinite(moment.endSeconds) && moment.endSeconds >= moment.startSeconds)
     .sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id))
     .slice(0, 5_000);

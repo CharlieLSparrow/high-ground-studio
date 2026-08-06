@@ -197,6 +197,22 @@ candidate until someone listens. Structurally valid silence remains preserved;
 an incomplete decode is preserved in the repair state and never uploaded as a
 trusted source.
 
+Audio finalization also runs Apple's version-one general sound classifier over
+the same protected file while the deterministic complete decode is in flight.
+The source profile carries a versioned `apple-sound-classifier-file-v1`
+receipt: analysis/supersession identity, exact requested and effective window,
+overlap, source SHA-256, duration and byte count, hash of Apple's advertised
+label set, result-window count, bounded source-clock suggestions, scores, and
+explicit failure evidence. Nest rejects a completed detector receipt unless its
+hash and byte count match the canonical upload manifest. Ordinary speech and silence are excluded from the suggestion
+queue because transcript timing and deterministic signal scans are the more
+honest evidence. The selected navigation labels include breaths, coughs,
+laughter, applause, music, wind noise, alarms, and similar production-relevant
+events. They remain unqualified listening suggestions; a score is not
+audibility, the general classifier does not identify Quipsly mouth-click or
+plosive repair candidates, and no result can authorize treatment or an edit.
+Classifier failure never changes a playable integrity result or holds upload.
+
 Capture state is explicit; microphone permission is a separate preflight state:
 
 ```text
@@ -401,6 +417,7 @@ Events include opaque IDs and state changes, never tokens or media payloads. Bui
 - Local-ledger atomic persistence and disk reconciliation tests.
 - Owner-isolation and confirmed local-original deletion/tombstone recovery tests.
 - Upload job reconciliation, idempotency, retry/backoff, auth refresh, and retention tests.
+- Audible-event reducer determinism, temporal merge/clamp, receipt JSON round-trip, malformed cross-surface receipt rejection, and bounded event audition tests.
 - API decoding and authorization-boundary contract tests.
 - SwiftUI happy-path tests for Today -> consent -> Record -> Stop -> Library.
 - UI accessibility audit at default and large Dynamic Type.
@@ -410,6 +427,7 @@ Events include opaque IDs and state changes, never tokens or media payloads. Bui
 
 - Oldest supported iPhone plus current standard and Pro phones.
 - Built-in, wired/USB, and Bluetooth microphones.
+- Apple classifier real-time factor, battery, thermal state, memory, retained-window count, and false positives per recorded hour on clean and difficult podcast/coaching sources.
 - Lock/unlock, app background, alarm/call/Siri interruption, route loss, low storage, thermal pressure.
 - Offline, cellular, Low Data Mode, constrained network, expired auth, server 4xx/5xx, force quit, and relaunch.
 - A real Nest-issued LiveKit join packet, participant changes, reconnect, CallKit reset, and simultaneous room/local-source behavior.

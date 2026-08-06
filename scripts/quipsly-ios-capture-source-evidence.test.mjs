@@ -23,6 +23,9 @@ const [
   playback,
   phoneShell,
   uiTests,
+  audibleAnalysis,
+  audibleReceiptParser,
+  resumableRoute,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "CaptureRuntimeEvidence.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingLibrary.swift"), "utf8"),
@@ -38,6 +41,15 @@ const [
       repositoryRoot,
       "apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureExperienceUITests.swift",
     ),
+    "utf8",
+  ),
+  readFile(path.join(captureRoot, "LocalAudibleEventAnalysis.swift"), "utf8"),
+  readFile(
+    path.join(repositoryRoot, "apps/quipsly/src/lib/audio/audible-event-analysis.ts"),
+    "utf8",
+  ),
+  readFile(
+    path.join(repositoryRoot, "apps/quipsly/src/app/api/ingest/mobile/resumable/route.ts"),
     "utf8",
   ),
 ]);
@@ -195,6 +207,26 @@ check(
     && library.includes("sourceProfile.audioSignal = validation.audioSignal"),
 );
 check(
+  "native audible-event analysis is versioned, bounded, review-only, and persisted before upload",
+  library.includes("async let pendingAudibleEventAnalysis = LocalAudibleEventAnalyzer.analyze(")
+    && library.includes("sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis")
+    && audibleAnalysis.includes('static let algorithm = "apple-sound-classifier-file-v1"')
+    && audibleAnalysis.includes("static let maximumSuggestions = 500")
+    && audibleAnalysis.includes("classifierOutputIsListeningTriageOnly: true")
+    && audibleAnalysis.includes("noRepairOrEditAuthorized: true")
+    && audibleAnalysis.includes("`speech` and")
+    && audio.indexOf("await localRecordingLibrary.validateFinalizedSource(")
+      < audio.indexOf("queueUploadIfPossible(recording: finalized"),
+);
+check(
+  "audible-event receipts bind to immutable source bytes before crossing into Nest",
+  audibleAnalysis.includes("let sourceSHA256: String?")
+    && audibleAnalysis.includes("try sourceDigest(at: fileURL)")
+    && audibleAnalysis.includes("digest.sizeBytes == sourceByteCount")
+    && audibleReceiptParser.includes("audibleEventDetectorReceiptMatchesSource")
+    && resumableRoute.includes("audibleEventAnalysis must be a valid receipt bound to this exact source SHA-256 and byte count"),
+);
+check(
   "signal evidence avoids stereo phase cancellation and bounds its payload",
   library.includes("let square = channelEnergy / Double(channelCount)")
     && library.includes("let boundedPointCount: Int64 = 1_200")
@@ -214,12 +246,14 @@ check(
     && audio.includes("boundaryAudioRoutePortType: boundaryRoutePortType"),
 );
 check(
-  "waveform and observations can start local playback at exact source time",
+  "waveform and event observations can start bounded local playback at exact source time",
   evidenceView.includes("playback.play(")
-    && evidenceView.includes("from: observation.startSeconds")
-    && evidenceView.includes("from: event.startSeconds")
+    && evidenceView.includes("playEvent(")
+    && evidenceView.includes("until: contextEnd")
     && evidenceView.includes('accessibilityIdentifier("CaptureAudioSignalPlaySelected")')
     && playback.includes("from startSeconds: TimeInterval")
+    && playback.includes("until endSeconds: TimeInterval? = nil")
+    && playback.includes("scheduleBoundedStop(")
     && playback.includes("player.currentTime = min(max(startSeconds, 0), player.duration)")
     && playback.includes("toleranceBefore: .zero")
     && playback.includes("toleranceAfter: .zero"),

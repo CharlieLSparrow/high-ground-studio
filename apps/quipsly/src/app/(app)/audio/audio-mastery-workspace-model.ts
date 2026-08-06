@@ -5,6 +5,7 @@ import type {
   AudioSignalDiagnosisSummary,
 } from "../editor/AudioMasteryAudition";
 import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import { parseAudibleEventDetectorReceipt, type AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 import type { AudioSignalProfileClientStatus } from "@/lib/media-workflow-client-status";
 
 export type { AudioSignalProfileClientStatus, StudioSourceTranscriptClientStatus } from "@/lib/media-workflow-client-status";
@@ -97,6 +98,7 @@ export type AudioWorkspaceAsset = {
   transcriptProcessingReleased: boolean | null;
   canProcess: boolean;
   canTranscribe: boolean;
+  audibleEventAnalysis: AudibleEventDetectorReceipt | null;
 };
 
 export type AudioWorkspaceInventory = {
@@ -141,6 +143,9 @@ export function audioWorkspaceAssets(inventory: AudioWorkspaceInventory | null) 
     const storage = record(raw.storage);
     const asset = record(raw.asset);
     const recording = record(raw.recording);
+    const sync = record(raw.sync);
+    const recordingSync = record(sync.recordingSync);
+    const reportedSourceProfile = record(recordingSync.reportedSourceProfile);
     const assetReadiness = record(asset.readiness);
     const recordingReadiness = record(recording.readiness);
     const id = text(raw.id);
@@ -184,6 +189,7 @@ export function audioWorkspaceAssets(inventory: AudioWorkspaceInventory | null) 
       canTranscribe: sourceSafe
         && raw.unresolvedRecordingReference !== true
         && transcriptProcessingReleased !== false,
+      audibleEventAnalysis: parseAudibleEventDetectorReceipt(reportedSourceProfile.audibleEventAnalysis),
     }];
   });
 }

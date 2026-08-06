@@ -56,6 +56,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var clockSamples: [LocalRecordingClockSample]?
     var recordedMedia: LocalRecordingRecordedMediaProfile?
     var audioSignal: LocalRecordingAudioSignalProfile?
+    var audibleEventAnalysis: LocalRecordingAudibleEventAnalysisProfile?
 
     nonisolated init(
         schemaVersion: Int = 1,
@@ -88,7 +89,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         monotonicStoppedNanoseconds: UInt64? = nil,
         clockSamples: [LocalRecordingClockSample]? = nil,
         recordedMedia: LocalRecordingRecordedMediaProfile? = nil,
-        audioSignal: LocalRecordingAudioSignalProfile? = nil
+        audioSignal: LocalRecordingAudioSignalProfile? = nil,
+        audibleEventAnalysis: LocalRecordingAudibleEventAnalysisProfile? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.container = container
@@ -121,6 +123,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.clockSamples = clockSamples
         self.recordedMedia = recordedMedia
         self.audioSignal = audioSignal
+        self.audibleEventAnalysis = audibleEventAnalysis
     }
 }
 
@@ -529,6 +532,7 @@ final class LocalRecordingLibrary: ObservableObject {
         let failureMessage: String?
         let recordedMedia: LocalRecordingRecordedMediaProfile?
         let audioSignal: LocalRecordingAudioSignalProfile?
+        let audibleEventAnalysis: LocalRecordingAudibleEventAnalysisProfile?
         let sourceIntegrityHoldReason: String?
 
         nonisolated init(
@@ -537,6 +541,7 @@ final class LocalRecordingLibrary: ObservableObject {
             failureMessage: String?,
             recordedMedia: LocalRecordingRecordedMediaProfile? = nil,
             audioSignal: LocalRecordingAudioSignalProfile? = nil,
+            audibleEventAnalysis: LocalRecordingAudibleEventAnalysisProfile? = nil,
             sourceIntegrityHoldReason: String? = nil
         ) {
             self.isPlayable = isPlayable
@@ -544,6 +549,7 @@ final class LocalRecordingLibrary: ObservableObject {
             self.failureMessage = failureMessage
             self.recordedMedia = recordedMedia
             self.audioSignal = audioSignal
+            self.audibleEventAnalysis = audibleEventAnalysis
             self.sourceIntegrityHoldReason = sourceIntegrityHoldReason
         }
     }
@@ -1016,6 +1022,7 @@ final class LocalRecordingLibrary: ObservableObject {
                var sourceProfile = recording.sourceProfile {
                 sourceProfile.recordedMedia = recordedMedia
                 sourceProfile.audioSignal = validation.audioSignal
+                sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
                 recording.sourceProfile = sourceProfile
             }
             recording.sourceIntegrityHoldReason =
@@ -1605,6 +1612,8 @@ final class LocalRecordingLibrary: ObservableObject {
                         if let recordedMedia = validation.recordedMedia,
                            var sourceProfile = recording.sourceProfile {
                             sourceProfile.recordedMedia = recordedMedia
+                            sourceProfile.audioSignal = validation.audioSignal
+                            sourceProfile.audibleEventAnalysis = validation.audibleEventAnalysis
                             recording.sourceProfile = sourceProfile
                         }
                         recording.sourceIntegrityHoldReason =
@@ -1648,7 +1657,33 @@ final class LocalRecordingLibrary: ObservableObject {
     ) async -> SourceValidation {
         switch mediaKind {
         case .audio:
-            return validateAudioSource(at: fileURL, readsToEnd: true)
+            let header = validateAudioSource(at: fileURL, readsToEnd: false)
+            guard header.isPlayable,
+                  let headerDurationSeconds = header.durationSeconds else {
+                return header
+            }
+            async let pendingAudibleEventAnalysis = LocalAudibleEventAnalyzer.analyze(
+                fileURL: fileURL,
+                durationSeconds: headerDurationSeconds,
+                sourceByteCount: fileByteCountForValidation(at: fileURL),
+                supersedesAnalysisId: expectedSourceProfile?.audibleEventAnalysis?.analysisId
+            )
+            let validation = validateAudioSource(at: fileURL, readsToEnd: true)
+            guard validation.isPlayable,
+                  validation.durationSeconds != nil else {
+                _ = await pendingAudibleEventAnalysis
+                return validation
+            }
+            let audibleEventAnalysis = await pendingAudibleEventAnalysis
+            return SourceValidation(
+                isPlayable: validation.isPlayable,
+                durationSeconds: validation.durationSeconds,
+                failureMessage: validation.failureMessage,
+                recordedMedia: validation.recordedMedia,
+                audioSignal: validation.audioSignal,
+                audibleEventAnalysis: audibleEventAnalysis,
+                sourceIntegrityHoldReason: validation.sourceIntegrityHoldReason
+            )
         case .video:
             return await validateVideoSourceThroughEnd(
                 at: fileURL,

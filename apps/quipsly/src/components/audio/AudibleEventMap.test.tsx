@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 
 import {
   AudibleEventMap,
@@ -50,17 +51,43 @@ const dialogueEntries: AudibleEventDialogueEntry[] = [
   },
 ];
 
+const detectorReceipt: AudibleEventDetectorReceipt = {
+  schemaVersion: 1,
+  analysisId: "audible_analysis_test_receipt_001",
+  supersedesAnalysisId: null,
+  status: "completed",
+  algorithm: "apple-sound-classifier-file-v1",
+  classifierIdentifier: "SNClassifierIdentifierVersion1",
+  analyzedAt: "2026-08-05T18:00:00Z",
+  sourceSHA256: "b".repeat(64),
+  sourceByteCount: 42_000,
+  durationSeconds: 100,
+  requestedWindowDurationSeconds: 1.5,
+  effectiveWindowDurationSeconds: 1.5,
+  overlapFactor: 0.5,
+  minimumCandidateConfidence: 0.35,
+  knownClassificationCount: 300,
+  knownClassificationsSHA256: "a".repeat(64),
+  resultWindowCount: 80,
+  suggestions: [{ eventId: "audible_cough_test_001", classificationIdentifier: "cough", displayLabel: "Cough", family: "dialogue", startSeconds: 10, endSeconds: 11.5, confidence: 0.82, contributingWindowCount: 2, detail: "Listen to the protected source context." }],
+  failureCode: null,
+  failureDetail: null,
+  boundaries: { classifierOutputIsListeningTriageOnly: true, classifierScoreIsNotAudibility: true, noMediaChanged: true, noRepairOrEditAuthorized: true, humanReviewRequired: true },
+};
+
 describe("AudibleEventMap", () => {
   it("projects measured evidence and append-only dialogue review onto one source clock", () => {
-    const moments = audibleEventMapMoments(signal, dialogueEntries);
+    const moments = audibleEventMapMoments(signal, dialogueEntries, detectorReceipt);
     expect(moments.map((moment) => [moment.family, moment.startSeconds, moment.reviewState])).toEqual([
+      ["dialogue", 10, "unreviewed"],
       ["signal", 25, "measured-needs-listening"],
       ["dialogue", 61.2, "confirmed"],
       ["dialogue", 82, "false-positive"],
     ]);
-    expect(moments[1]).toEqual(expect.objectContaining({ originLabel: "Human source-clock mark", dialogueCandidateId: "candidate_mouth_001" }));
-    expect(moments[2]).toEqual(expect.objectContaining({ confidence: 0.78, originLabel: "Unqualified detector suggestion · sound-analysis-v1" }));
-    expect(audibleEventMapSummary(moments)).toEqual({ total: 3, needsReview: 1, confirmed: 1, dismissed: 1, detectorSuggestions: 1 });
+    expect(moments[0]).toEqual(expect.objectContaining({ confidence: 0.82, originLabel: expect.stringContaining("Unqualified on-device detector") }));
+    expect(moments[2]).toEqual(expect.objectContaining({ originLabel: "Human source-clock mark", dialogueCandidateId: "candidate_mouth_001" }));
+    expect(moments[3]).toEqual(expect.objectContaining({ confidence: 0.78, originLabel: "Unqualified detector suggestion · sound-analysis-v1" }));
+    expect(audibleEventMapSummary(moments)).toEqual({ total: 4, needsReview: 2, confirmed: 1, dismissed: 1, detectorSuggestions: 2 });
   });
 
   it("keeps zoom bounded and makes filtered event navigation operate the protected source playhead", () => {

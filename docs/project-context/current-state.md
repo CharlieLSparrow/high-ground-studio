@@ -2196,6 +2196,17 @@ These should be treated as cleanup candidates later, not as authoritative produc
   `1 mapped / 0 needs listening / 1 false positive` including the filter.
 - Current Apple Sound Analysis research and the detector qualification plan are
   retained in `docs/research/2026-08-05-audible-event-map-architecture.md`.
-  Native file/stream attempts remain suggestions until exact model/window/input
-  identity, corpus metrics, false positives per hour, temporal error, and
-  physical-device cost are retained and reviewed.
+  Capture now emits a versioned Apple file-classifier receipt into its protected
+  source profile, Nest rejects malformed receipts, and valid capture-linked
+  suggestions appear in Audio Studio and the episode editor without becoming
+  Dialogue Repair authority. Completed receipts are bound to the exact upload
+  SHA-256 and byte count at the Nest boundary. Native evidence UI exposes
+  classifier identity, timing, score, receipt ID, failure state, and bounded source audition.
+- The reducer harness passes, four focused Nest suites pass 14 tests, the
+  complete generic iOS Simulator application build succeeds, and the operated
+  Source Evidence preview passes its focused UI and accessibility test. Two read-only
+  local framework operations confirmed the short-file/no-window and ordinary-
+  speech/no-suggestion paths. These are wiring evidence only: exact corpus
+  precision/recall, false positives per hour, temporal error, long-take latency,
+  battery, memory, and thermal cost still require retained physical-iPhone
+  qualification before any detector may be called qualified.

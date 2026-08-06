@@ -43,6 +43,7 @@ import {
 import {
   longSourceVerifierEnabled,
 } from "@/lib/server/mobile-capture-long-verification";
+import { audibleEventDetectorReceiptMatchesSource } from "@/lib/audio/audible-event-analysis";
 
 export const runtime = "nodejs";
 
@@ -257,6 +258,19 @@ function parseCreatePayload(value: unknown):
   }
   if (hasSourceProfile && normalizedSourceProfile == null) {
     return { ok: false, error: `sourceProfileJson must be a JSON object no larger than ${MAX_SOURCE_PROFILE_JSON_BYTES} bytes.` };
+  }
+  if (normalizedSourceProfile) {
+    const profile = JSON.parse(normalizedSourceProfile) as Record<string, unknown>;
+    if (
+      Object.prototype.hasOwnProperty.call(profile, "audibleEventAnalysis")
+      && !audibleEventDetectorReceiptMatchesSource(
+        profile.audibleEventAnalysis,
+        sha256,
+        expectedSizeBytes,
+      )
+    ) {
+      return { ok: false, error: "audibleEventAnalysis must be a valid receipt bound to this exact source SHA-256 and byte count." };
+    }
   }
 
   return {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AudibleEventMap, audibleEventMapMoments } from "@/components/audio/AudibleEventMap";
+import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
 import type { AudioMasteryMeasurement, AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
@@ -58,6 +59,7 @@ type Props = {
   sourceUrl: string;
   sourceMeasurement: AudioMasteryMeasurement;
   audioSignal?: AudioTranscriptEvidence["audio"]["signal"];
+  audibleEventAnalysis?: AudibleEventDetectorReceipt | null;
 };
 
 const LABELS: Array<{ value: DialogueRepairLabel; label: string }> = [
@@ -69,7 +71,7 @@ const LABELS: Array<{ value: DialogueRepairLabel; label: string }> = [
   { value: "noise-event", label: "Noise event" },
 ];
 
-export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement, audioSignal = null }: Props) {
+export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement, audioSignal = null, audibleEventAnalysis = null }: Props) {
   const sourceRef = useRef<HTMLAudioElement | null>(null);
   const repairedRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
@@ -109,8 +111,8 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const requiredBins = activeWindow ? secondBins(activeWindow.startSeconds, activeWindow.endSeconds) : [];
   const contextListened = requiredBins.length > 0 && requiredBins.every((bin) => listenedBins.has(bin));
   const audibleMoments = useMemo(
-    () => audibleEventMapMoments(audioSignal, status?.candidates ?? []),
-    [audioSignal, status?.candidates],
+    () => audibleEventMapMoments(audioSignal, status?.candidates ?? [], audibleEventAnalysis),
+    [audioSignal, audibleEventAnalysis, status?.candidates],
   );
 
   const request = useCallback(async (body: Record<string, unknown>) => {
