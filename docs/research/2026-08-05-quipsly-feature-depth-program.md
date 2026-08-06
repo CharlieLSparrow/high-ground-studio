@@ -1,0 +1,340 @@
+# Quipsly feature-depth research program
+
+Date: 2026-08-05
+
+Status: current-market validation and implementation program
+
+Companion: `2026-08-05-quipsly-product-expansion-opportunity-audit.md`
+
+## Executive decision
+
+Quipsly should not measure progress by how many categories appear in the
+navigation. It should measure whether a person can complete a consequential
+workflow without changing tools, losing source truth, or wondering what became
+real.
+
+The current market review reinforces three product wedges:
+
+1. **Session certainty** — the easiest place to prepare, talk, preserve local
+   masters, watch material together, recover uploads, and land in useful work.
+2. **Speech intelligence with professional evidence** — transcript, waveform,
+   signal, repair, mix, edit, and delivery on one source clock, with much more
+   transparency than creator-first competitors.
+3. **Evidence to follow-through** — accepted moments become cited notes,
+   decisions, tasks, goals, calendar commitments, writing, and publishable
+   outputs without duplicate records.
+
+Large additions remain welcome, but each should deepen those systems or reuse
+their primitives. A course builder, social suite, storyboard, or research graph
+becomes dramatically more valuable after it can consume reviewed sources,
+stable structure, canonical actions, and versioned outputs.
+
+## The feature-depth ladder
+
+A feature is not mature merely because its route and happy path exist. Quipsly
+will use this ladder for architecture, UX review, and release claims.
+
+| Level | Question the product must answer |
+| --- | --- |
+| 1. Exists | Is there one canonical object or operation instead of a mock panel? |
+| 2. Reachable | Can a new user find and understand it from the workflow they are in? |
+| 3. Operable | Can the real task complete against real devices, media, people, and providers? |
+| 4. Observable | Can the user see readiness, progress, evidence, cost, and what changed? |
+| 5. Recoverable | Do interruption, retry, conflict, undo, supersession, and partial success work? |
+| 6. Collaborative | Are authority, privacy, presence, comments, assignment, and handoff explicit? |
+| 7. Assisted | Can automation propose or perform bounded work with previews and receipts? |
+| 8. Extensible | Can providers, views, formats, policies, and workflows evolve without duplicating truth? |
+
+This ladder avoids two recurring errors: mistaking scaffolding for product, and
+mistaking more approval prompts for safety. Good safety is observable authority,
+consequence, provenance, and rollback at the moment they matter.
+
+## What current professional products teach us
+
+### Recording products sell certainty, not just bitrate
+
+Riverside's producer role can monitor and control a Session without becoming a
+normal recorded participant; producer-shared media is still captured as its
+own track. Its lobby asks for headphones and exact mic, camera, and output
+selection. That makes readiness and role topology part of recording, not a
+settings afterthought.
+
+Quipsly should go further by making one person with several devices explicit:
+browser conversation, iPhone 4K camera, local audio master, Shared Watch source,
+and backup recorder. A participant tile should never collapse those endpoints
+into one misleading `connected` state.
+
+Sources:
+
+- [Riverside producer role](https://support.riverside.fm/hc/en-us/articles/5252621451805-The-producer-role-Details)
+- [Riverside producer lobby and device flow](https://support.riverside.fm/hc/en-us/articles/12999448781469-Join-studio-as-a-producer)
+- [LiveKit participant and track egress](https://docs.livekit.io/transport/media/ingress-egress/egress/participant/)
+
+### Text editing must preserve different meanings
+
+Descript separates transcript correction from media removal and offers several
+filler-word consequences: delete media, preserve a timing gap, retain a visible
+ignored word, or remove text only. Its `Avoid harsh cuts` check is important
+because a correct word boundary can still be a bad audible edit. Premiere also
+keeps transcript timecode synchronized with the sequence and expects final cut
+refinement on the timeline.
+
+Quipsly's transcript editor therefore needs explicit verbs:
+
+- correct what was said;
+- change speaker or word timing;
+- hide text while retaining media;
+- deactivate the source range but preserve its duration;
+- ripple-close the range;
+- accept or reject a proposed pacing edit; and
+- restore or supersede any edit operation.
+
+Sources:
+
+- [Descript edit like a doc](https://help.descript.com/hc/en-us/articles/15726742913933-Edit-like-a-doc)
+- [Descript transcript correction](https://help.descript.com/hc/en-us/articles/10119613609229-Correct-your-transcript)
+- [Descript filler-word review](https://help.descript.com/hc/en-us/articles/10164806394509-Remove-filler-words)
+- [Adobe Premiere Text-Based Editing](https://helpx.adobe.com/premiere/desktop/edit-projects/edit-video-using-text-based-editing/overview-of-text-based-editing.html)
+
+### Professional audio depth is a family of decisions
+
+Auphonic's multitrack system reasons across separate tracks for leveling,
+gating, bleed removal, noise/reverb reduction, ducking, filtering, loudness,
+and true peak. RX exposes separate repair families for clicks, mouth noise,
+clipping, hum, plosives, rustle, wind, reverb, bleed, and spectral damage.
+
+The implication is architectural: Quipsly needs a shared evidence and review
+system for many detectors and treatments, not a growing set of unrelated
+`Enhance` buttons. Each family needs candidate ranges, confidence/evidence,
+listening context, conservative and stronger variants, impact measurement,
+accept/reject reasons, and independent delivery QC.
+
+Sources:
+
+- [Auphonic multitrack algorithms](https://us1.auphonic.com/help/algorithms/multitrack.html)
+- [Auphonic multitrack workflow and controls](https://us1.auphonic.com/help/web/multitrack.html)
+- [iZotope RX feature families](https://www.izotope.com/en/products/rx/features)
+
+### Automated video editing should create editable proposals
+
+Riverside Smart Layouts and Descript Automatic Multicam use speaker/activity
+evidence to create scenes and camera switches, while preserving timeline edits
+and undo. Adobe's newer assistant similarly keeps generated organization and
+assemblies in normal project history.
+
+Quipsly can make this more trustworthy by showing why each camera decision was
+proposed: active speaker, reaction hold, overlap, Shared Watch focus, source
+quality, face availability, or manual intent. The unit of automation should be
+an editable camera/layout operation on the canonical source clock, not an
+opaque rendered video.
+
+Sources:
+
+- [Riverside Smart layouts](https://support.riverside.fm/hc/en-us/articles/5500983027101-Apply-Smart-layouts-to-your-video)
+- [Descript Automatic Multicam](https://help.descript.com/hc/en-us/articles/28736507904525-Automatic-multicam)
+- [Adobe Auto Reframe](https://helpx.adobe.com/premiere/desktop/add-video-effects/commonly-used-effects/auto-reframe-overview.html)
+- [Adobe Premiere AI Assistant](https://helpx.adobe.com/premiere/desktop/premiere-ai-assistant/overview.html)
+
+### Meeting notes win when the meeting remains attached to work
+
+Notion links agenda/context, consent, transcription, summary, action items,
+calendar, permissions, and retention. Teams recap keeps recording, transcript,
+shared content, notes, agenda, and follow-up tasks together. Both expose an
+important limitation: generated summaries can be incomplete or wrong, and
+access to transcript/recording is not identical to access to the summary.
+
+Quipsly should make a Session recap an evidence review surface. A suggested
+task becomes canonical only when accepted, but acceptance should be one quick
+action that carries owner, source span, due-language interpretation, Nest,
+visibility, and a reversible receipt. Coaching adds stronger visibility classes
+for coach-private, client-private, and shared material.
+
+Sources:
+
+- [Notion AI Meeting Notes](https://www.notion.com/help/ai-meeting-notes)
+- [Microsoft Teams recap](https://support.microsoft.com/en-us/teams/meetings/recap-in-microsoft-teams)
+- [Microsoft Teams collaborative meeting notes](https://support.microsoft.com/en-us/teams/meetings/take-meeting-notes-in-microsoft-teams)
+
+### Transcript accuracy is a measured system, not a provider badge
+
+Modern providers expose word timestamps, confidence, diarization, vocabulary
+or formatting controls, and post-processing. Their own documentation also
+describes failure modes: short utterances, overlap, early-session instability,
+noise, and limited speech per speaker.
+
+Quipsly should use separate participant masters as the strongest speaker hint,
+retain provider evidence, preserve unknown/overlap states, and route providers
+using a reviewed High Ground Odyssey and coaching corpus. Named speaker and
+glossary improvements must be measured against reference windows rather than
+accepted because a vendor claims higher accuracy.
+
+Sources:
+
+- [AssemblyAI speaker diarization](https://www.assemblyai.com/docs/pre-recorded-audio/label-speakers)
+- [AssemblyAI streaming diarization limitations](https://www.assemblyai.com/docs/streaming/label-speakers-and-separate-channels)
+- [AssemblyAI meeting-notetaker practices](https://www.assemblyai.com/docs/meeting-notetaker-best-practices)
+- [AssemblyAI timestamp-preserving formatting](https://www.assemblyai.com/docs/speech-understanding/custom-formatting)
+
+### iPhone capture quality is a resource budget
+
+Apple exposes device formats and frame-rate ranges, multicamera hardware and
+system-pressure costs, and runtime pressure states. Multicam inputs can be
+dynamically disabled without interrupting the remaining inputs, but thermal,
+power, and hardware budgets remain real. Apple's current AVCam architecture
+also keeps blocking capture configuration away from the main UI actor.
+
+The Quipsly UX should promise the best sustainable format, not always the
+largest number. A 4K/24 single-camera master can be the preferred default for a
+long episode; camera switching and multicam should emit explicit segments or a
+proven continuous graph, monitor pressure/storage, and degrade through a
+visible policy before the OS forces shutdown.
+
+Sources:
+
+- [Apple AVCam architecture](https://developer.apple.com/documentation/avfoundation/avcam-building-a-camera-app)
+- [Apple AVCaptureMultiCamSession](https://developer.apple.com/documentation/avfoundation/avcapturemulticamsession)
+- [Apple capture format capabilities](https://developer.apple.com/documentation/avfoundation/avcapturedevice/format)
+- [Apple system pressure state](https://developer.apple.com/documentation/avfoundation/avcapturedevice/systempressurestate-swift.property)
+
+### Browser output routing requires an honest fallback
+
+Browser output selection is permission- and browser-dependent. `setSinkId()`
+requires a secure context and may require explicit output-device permission;
+the related Web Audio support is not universal. Quipsly should attempt exact
+headphone routing, read it back when possible, and otherwise instruct the user
+to select the output in system settings. It must not say that MV7i monitoring is
+active merely because the device appeared in enumeration.
+
+Sources:
+
+- [MDN HTMLMediaElement setSinkId](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/setSinkId)
+- [MDN AudioContext setSinkId](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/setSinkId)
+
+## Depth assessment of Quipsly's major systems
+
+These levels are directional architecture assessments, not release claims.
+They identify the next missing rung rather than rewarding route count.
+
+| System | Current strongest level | Next depth gate |
+| --- | --- | --- |
+| Session and Capture | 4 Observable | recovery/readiness across person-device topology and real iPhone/browser operation |
+| Audio and Dialogue Repair | 4 Observable | human-confirmed treatment quality, then multitrack collaboration and reusable profiles |
+| Transcript and text-based edit | 4 Observable | attention inbox, reference corpus, distinct correction/edit verbs, harsh-cut protection |
+| Episode collaboration | 4 Observable | one post-session landing with complete source/upload/edit inventory |
+| Work, goals, tags, calendar | 4 Observable | canonical cross-view editing, dependencies, conflict/recovery, external projection reconciliation |
+| Coaching | 3 Operable | explicit privacy classes, accepted shared commitments, recurring continuity and client portal |
+| Research | 3 Operable | first-class reader/annotation anchors, source versioning, citation navigation and portable export |
+| Writing | 3 Operable | stable binder/outliner/corkboard operations, snapshots, collaboration and compile profiles |
+| Publishing | 3 Operable | versioned multi-destination preview, approval, retry/reconcile, and analytics provenance |
+| Course/learning | 1 Exists | wait for stable source, document, work, and release primitives before broad UI expansion |
+
+## Ranked production epics
+
+### Epic 1: Session readiness and source topology
+
+Build a producer-readable graph of people, endpoints, call tracks, retained
+masters, Shared Watch, backup sources, and uploads. Each endpoint reports exact
+device, tested state, local-recording state, storage/thermal/network warnings,
+last receipt, and recovery action. The lobby sound check is the first shipped
+slice of this epic.
+
+Acceptance work: one High Ground Odyssey episode with Charlie on browser/MV7i,
+Homer on browser for the call and iPhone for 4K local capture, one Shared Watch
+clip, a deliberate network interruption, resumed upload, and complete editor
+inventory.
+
+### Epic 2: Audio and transcript command center
+
+Make the first-class Audio Studio the shared workspace for source identity,
+waveform, spectrogram, signal map, loudness, transcript, uncertainty, repair,
+mix, edit, A/B, and delivery. Complete the human Dialogue Repair acceptance,
+then add multitrack leveling, bleed/overlap evidence, ducking, and delivery
+profiles through the same proposal/review/verification kernel.
+
+Acceptance work: one real retained podcast defect and one complete two-speaker
+episode mix with matched A/B, delivery target, decode/loudness/true-peak checks,
+and proof-listen coverage.
+
+### Epic 3: Transcript attention and edit safety
+
+Create one queue for low-confidence entities, speaker uncertainty, provider
+disagreement, gaps, timing anomalies, filler/pause candidates, and proposed
+cuts. Every item opens protected context and supports the exact intended verb.
+Build the retained evaluation corpus alongside the UI so provider routing and
+automation quality improve from reviewed evidence.
+
+Acceptance work: reviewed windows across Homer, Charlie, Shared Watch, overlap,
+mouth noise, and noisy coaching audio; publish WER, speaker error, timestamp
+error, edit hold rate, human correction effort, latency, and cost by provider.
+
+### Epic 4: Automated episode assembly
+
+Generate a reversible initial edit from active-speaker evidence, reaction
+holds, Shared Watch spans, manuscript structure, and explicit editorial rules.
+Add shorts/chapters/title/show-note candidates as linked outputs, not detached
+AI text. All edits remain normal source-clock operations with reasons, preview,
+undo, and history.
+
+Acceptance work: recreate a substantial Episode 9 rough cut and compare human
+time, cut quality, missed moments, false cuts, and final adjustments against a
+manual baseline.
+
+### Epic 5: Session evidence to action
+
+Give episode and coaching recap different projections over one Session kernel.
+Candidate decisions, notes, tasks, goals, and calendar commitments retain
+source spans and visibility. Acceptance creates or links canonical work; it
+does not copy text into a separate task universe.
+
+Acceptance work: a consented coaching Session where coach-private notes remain
+private, shared recap is edited together, accepted tasks appear in Work/Today,
+a goal receives evidence, and scheduled focus appears in Quipsly plus one
+external calendar without changing the task's due date.
+
+### Epic 6: Research-to-writing workbench
+
+Add browser/share/file intake, a split source reader, exact annotations,
+citation navigation, claim/evidence packets, snapshots, binder/outliner/
+corkboard projections, and compile profiles. Reuse the current document kernel
+and source models; do not create a parallel canonical manuscript.
+
+Acceptance work: research and write one High Ground Odyssey segment entirely
+inside Quipsly, then compile podcast text, cited article, and research packet
+from the same reviewed structure.
+
+## Shared architecture Quipsly should build once
+
+The epics above need common product primitives:
+
+- immutable source and generation identity;
+- one capture/source clock with explicit alignment revisions;
+- person, endpoint, track, and retained-source topology;
+- provider-neutral job intent, attempt, heartbeat, output, and reconciliation;
+- proposal, review, consequence preview, acceptance, supersession, and undo;
+- source-range anchors that survive transcript correction and document views;
+- one attention-item projection over domain-owned facts;
+- one canonical work item projected into list, board, calendar, Session, goal,
+  episode, coaching, and Today;
+- visibility and authority policies that distinguish private, shared, client,
+  team, producer, reviewer, and public; and
+- versioned artifact delivery with destination receipts.
+
+Those primitives are not bureaucracy. They are how Quipsly can take enormous
+development swings without making enormous amounts of contradictory state.
+
+## Research cadence
+
+For each epic:
+
+1. tear down current official workflows and technical limits;
+2. inspect Quipsly's real schema, route, UI, worker, and native boundaries;
+3. define the anxiety chain and novice/power-user journeys;
+4. define one retained acceptance case and its failure/recovery matrix;
+5. implement a vertical slice through real authority and storage;
+6. operate it on real work, including a deliberate failure;
+7. measure quality, latency, cost, and human correction effort;
+8. refactor ownership exposed by the operation; and
+9. checkpoint the architecture, evidence, and next depth gate.
+
+This program preserves Quipsly's speed. It replaces small disconnected feature
+claims with large, testable product systems.
