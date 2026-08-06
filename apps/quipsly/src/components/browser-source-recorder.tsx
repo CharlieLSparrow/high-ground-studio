@@ -56,6 +56,12 @@ import {
   finishBrowserCaptureMeterSummary,
   parseBrowserMeterWorkletAggregate,
 } from "@/lib/studio-audio-meter";
+import type {
+  BrowserRetainedSourceGuardianEvidence,
+  BrowserRetainedSourceIssue,
+  BrowserRetainedSourceStatus,
+} from "@/lib/session-guardian";
+import { browserRetainedStorageIssue } from "@/lib/session-guardian";
 
 type ConsentPolicy = {
   version: string;
@@ -65,9 +71,9 @@ type ConsentPolicy = {
   presentationVersion: number;
 };
 
-type RecorderStatus = "checking" | "ready" | "starting" | "recording" | "stopping" | "uploading" | "held" | "error";
-
 const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
+const RETAINED_SOURCE_STALL_MS = 10_000;
+const RETAINED_SOURCE_MUTE_GRACE_MS = 5_000;
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(Object.entries(settings).filter((entry): entry is [string, string | number | boolean] => (
@@ -154,6 +160,7 @@ export function BrowserSourceRecorder({
   cameraId,
   cameraLabel,
   onSourceLockChange,
+  onGuardianEvidenceChange,
 }: {
   callRoomId: string;
   captureGroupId: string;
@@ -166,8 +173,9 @@ export function BrowserSourceRecorder({
   cameraId: string;
   cameraLabel: string;
   onSourceLockChange?: (locked: boolean) => void;
+  onGuardianEvidenceChange?: (evidence: BrowserRetainedSourceGuardianEvidence) => void;
 }) {
-  const [status, setStatus] = useState<RecorderStatus>("checking");
+  const [status, setStatus] = useState<BrowserRetainedSourceStatus>("checking");
   const [message, setMessage] = useState("Checking durable browser storage and consent…");
   const [sourceType, setSourceType] = useState<BrowserSourceKind>(sessionKind === "episode" ? "video" : "audio");
   const [headphonesAttested, setHeadphonesAttested] = useState(false);
@@ -188,6 +196,7 @@ export function BrowserSourceRecorder({
   const [studioHandoff, setStudioHandoff] = useState<BrowserCaptureStudioHandoff | null>(null);
   const [handoffBusy, setHandoffBusy] = useState(false);
   const [handoffMessage, setHandoffMessage] = useState("Loading the canonical source set for this take…");
+  const [operationalIssue, setOperationalIssue] = useState<BrowserRetainedSourceIssue | null>(null);
   const sourceLocked = status === "starting" || status === "recording" || status === "stopping";
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -205,6 +214,8 @@ export function BrowserSourceRecorder({
   const retainedMeterSequenceRef = useRef<number | null>(null);
   const retainedMeterFlushResolverRef = useRef<(() => void) | null>(null);
   const retainedMeterSummaryRef = useRef<BrowserSourceCaptureMeterSummaryV2 | null>(null);
+  const guardianCleanupRef = useRef<(() => void) | null>(null);
+  const lastDurableChunkAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     onSourceLockChange?.(sourceLocked);
@@ -294,6 +305,32 @@ export function BrowserSourceRecorder({
     allPartyConsentReady: consentReady,
     headphonesAttested,
   }), [cameraId, consentId, consentReady, headphonesAttested, microphoneId, sourceType, vaultAvailable]);
+  const preflightStorageIssue = useMemo(
+    () => browserRetainedStorageIssue(usageBytes, quotaBytes),
+    [quotaBytes, usageBytes],
+  );
+  const retainedReadiness = useMemo(() => preflightStorageIssue?.kind === "storage-critical"
+    ? { ok: false, reason: `${preflightStorageIssue.detail} Free local space before recording.` }
+    : readiness,
+  [preflightStorageIssue, readiness]);
+
+  const guardianEvidence = useMemo<BrowserRetainedSourceGuardianEvidence>(() => ({
+    status,
+    sourceType,
+    message,
+    vaultAvailable,
+    vaultPersistent,
+    readinessOk: retainedReadiness.ok,
+    readinessReason: retainedReadiness.reason,
+    protectedRecoveryCount: recoveryRows.length,
+    activeCaptureId: activeLedger?.captureId ?? null,
+    activeSizeBytes: activeLedger?.sizeBytes ?? 0,
+    issue: operationalIssue ?? preflightStorageIssue,
+  }), [activeLedger?.captureId, activeLedger?.sizeBytes, message, operationalIssue, preflightStorageIssue, recoveryRows.length, retainedReadiness.ok, retainedReadiness.reason, sourceType, status, vaultAvailable, vaultPersistent]);
+
+  useEffect(() => {
+    onGuardianEvidenceChange?.(guardianEvidence);
+  }, [guardianEvidence, onGuardianEvidenceChange]);
 
   const grantConsent = useCallback(async () => {
     if (!policy || !audibleConsentAttested) {
@@ -672,6 +709,85 @@ export function BrowserSourceRecorder({
     recorder.stop();
   }, [callRoomId, captureGroupId]);
 
+  const clearGuardianMonitoring = useCallback(() => {
+    guardianCleanupRef.current?.();
+    guardianCleanupRef.current = null;
+    lastDurableChunkAtRef.current = null;
+  }, []);
+
+  const startGuardianMonitoring = useCallback((stream: MediaStream) => {
+    clearGuardianMonitoring();
+    const cleanups: Array<() => void> = [];
+    const muteTimers = new Map<string, number>();
+
+    for (const track of stream.getTracks()) {
+      const trackIdentity = `${track.kind}:${track.id}`;
+      const onEnded = () => {
+        const detail = `The selected retained ${track.kind} track ended (${track.label || "device unavailable"}).`;
+        setOperationalIssue({ kind: "source-ended", detail });
+        stop(`${detail} Quipsly is stopping safely and preserving every flushed chunk.`);
+      };
+      const onMute = () => {
+        const detail = `The selected retained ${track.kind} track stopped delivering media (${track.label || "device unavailable"}).`;
+        setOperationalIssue({ kind: "source-muted", detail });
+        const timer = window.setTimeout(() => {
+          if (!track.muted || track.readyState === "ended") return;
+          stop(`${detail} The interruption persisted for ${RETAINED_SOURCE_MUTE_GRACE_MS / 1_000} seconds, so Quipsly is stopping safely.`);
+        }, RETAINED_SOURCE_MUTE_GRACE_MS);
+        muteTimers.set(trackIdentity, timer);
+      };
+      const onUnmute = () => {
+        const timer = muteTimers.get(trackIdentity);
+        if (timer) window.clearTimeout(timer);
+        muteTimers.delete(trackIdentity);
+        setOperationalIssue((current) => current?.kind === "source-muted" ? null : current);
+      };
+      track.addEventListener("ended", onEnded);
+      track.addEventListener("mute", onMute);
+      track.addEventListener("unmute", onUnmute);
+      cleanups.push(() => {
+        track.removeEventListener("ended", onEnded);
+        track.removeEventListener("mute", onMute);
+        track.removeEventListener("unmute", onUnmute);
+      });
+    }
+
+    const healthTimer = window.setInterval(() => {
+      const lastChunkAt = lastDurableChunkAtRef.current;
+      if (lastChunkAt && Date.now() - lastChunkAt >= RETAINED_SOURCE_STALL_MS) {
+        const detail = `No durable recorder chunk arrived for ${RETAINED_SOURCE_STALL_MS / 1_000} seconds.`;
+        setOperationalIssue({ kind: "encoder-stalled", detail });
+        stop(`${detail} Quipsly is stopping safely instead of implying that the master is still advancing.`);
+      }
+    }, 2_000);
+    cleanups.push(() => window.clearInterval(healthTimer));
+
+    const storageTimer = window.setInterval(() => {
+      void navigator.storage?.estimate?.().then((estimate) => {
+        const nextUsage = typeof estimate.usage === "number" ? estimate.usage : null;
+        const nextQuota = typeof estimate.quota === "number" ? estimate.quota : null;
+        setUsageBytes(nextUsage);
+        setQuotaBytes(nextQuota);
+        const storageIssue = browserRetainedStorageIssue(nextUsage, nextQuota);
+        if (storageIssue?.kind === "storage-critical") {
+          setOperationalIssue(storageIssue);
+          stop(`${storageIssue.detail} Quipsly is stopping safely before the durable local write can exhaust storage.`);
+        } else if (storageIssue?.kind === "storage-low") {
+          setOperationalIssue((current) => current && current.kind !== "storage-low" ? current : storageIssue);
+        } else {
+          setOperationalIssue((current) => current?.kind === "storage-low" ? null : current);
+        }
+      }).catch(() => undefined);
+    }, 5_000);
+    cleanups.push(() => window.clearInterval(storageTimer));
+
+    guardianCleanupRef.current = () => {
+      for (const cleanup of cleanups) cleanup();
+      for (const timer of muteTimers.values()) window.clearTimeout(timer);
+      muteTimers.clear();
+    };
+  }, [clearGuardianMonitoring, stop]);
+
   useEffect(() => {
     if (status !== "recording") return;
     const captureId = ledgerRef.current?.captureId;
@@ -732,12 +848,13 @@ export function BrowserSourceRecorder({
   }, [callRoomId, sourceType, status, stop]);
 
   const start = useCallback(async () => {
-    if (!readiness.ok || !consentId) {
-      setMessage(readiness.reason);
+    if (!retainedReadiness.ok || !consentId) {
+      setMessage(retainedReadiness.reason);
       return;
     }
     setStatus("starting");
     setMessage("Opening the selected source and durable local file…");
+    setOperationalIssue(null);
     const captureId = crypto.randomUUID();
     const uploadSessionId = crypto.randomUUID();
     const startReceiptId = crypto.randomUUID();
@@ -774,6 +891,9 @@ export function BrowserSourceRecorder({
         audioBitsPerSecond: 256_000,
         ...(sourceType === "video" ? { videoBitsPerSecond: 18_000_000 } : {}),
       });
+      recorderRef.current = recorder;
+      lastDurableChunkAtRef.current = Date.now();
+      startGuardianMonitoring(stream);
       const contentType = recorder.mimeType || supportedMime || (sourceType === "video" ? "video/webm" : "audio/webm");
       const opfsFileName = `${captureId}.${browserSourceFileExtension(contentType)}.part`;
       const { writable } = await createBrowserSourceFile(opfsFileName);
@@ -864,6 +984,7 @@ export function BrowserSourceRecorder({
             chunks: [...current.chunks, chunk],
             updatedAt: chunk.receivedAt,
           });
+          lastDurableChunkAtRef.current = Date.now();
         }).catch((error) => {
           setStatus("error");
           setMessage(error instanceof Error ? error.message : "A local source chunk could not be persisted.");
@@ -874,6 +995,7 @@ export function BrowserSourceRecorder({
         void (async () => {
           if (timerRef.current) window.clearInterval(timerRef.current);
           timerRef.current = null;
+          clearGuardianMonitoring();
           await writeQueueRef.current;
           await writableRef.current?.close();
           writableRef.current = null;
@@ -934,9 +1056,10 @@ export function BrowserSourceRecorder({
         });
       };
       recorder.onerror = () => {
-        setMessage("The browser encoder reported an error. Quipsly is preserving every flushed local chunk.");
+        const detail = "The browser encoder reported an error.";
+        setOperationalIssue({ kind: "encoder-stalled", detail });
+        stop(`${detail} Quipsly is stopping safely and preserving every flushed local chunk.`);
       };
-      recorderRef.current = recorder;
       recorder.start(2_000);
       const startedReceipt = await postRoomReceipt({ callRoomId, action: "START_RECORDING", receiptId: startReceiptId, captureId, sourceType, occurredAt: startedAt });
       if (startedReceipt.stateApplied !== true && startedReceipt.receiptPersisted !== true) throw new Error("Recording START was not accepted into the durable room ledger.");
@@ -949,15 +1072,17 @@ export function BrowserSourceRecorder({
       if (recorderRef.current?.state === "recording") {
         recorderRef.current.stop();
       } else {
+        clearGuardianMonitoring();
         await stopRetainedSourceMeter(new Date().toISOString());
         stream?.getTracks().forEach((track) => track.stop());
       }
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "The browser source could not start.");
     }
-  }, [callRoomId, cameraId, cameraLabel, captureGroupId, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, readiness, refreshRecovery, sessionTitle, sourceType, startRetainedSourceMeter, stopRetainedSourceMeter, updateLedger, uploadLedger]);
+  }, [callRoomId, cameraId, cameraLabel, captureGroupId, clearGuardianMonitoring, consentId, episodeSlug, microphoneId, microphoneLabel, participantId, refreshRecovery, retainedReadiness, sessionTitle, sourceType, startGuardianMonitoring, startRetainedSourceMeter, stop, stopRetainedSourceMeter, updateLedger, uploadLedger]);
 
   useEffect(() => () => {
+    clearGuardianMonitoring();
     if (timerRef.current) window.clearInterval(timerRef.current);
     if (recorderRef.current?.state === "recording") {
       recorderRef.current.stop();
@@ -965,7 +1090,7 @@ export function BrowserSourceRecorder({
       void stopRetainedSourceMeter(new Date().toISOString());
       streamRef.current?.getTracks().forEach((track) => track.stop());
     }
-  }, [stopRetainedSourceMeter]);
+  }, [clearGuardianMonitoring, stopRetainedSourceMeter]);
 
   return (
     <section className={`rounded-2xl border p-4 ${status === "recording" ? "border-rose-400 bg-rose-50 ring-4 ring-rose-100" : "border-[#d8c7a7] bg-white"}`} aria-labelledby={`browser-source-${callRoomId}`}>
@@ -1003,7 +1128,7 @@ export function BrowserSourceRecorder({
         {status === "recording" ? (
           <button type="button" onClick={() => stop()} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white"><Square size={16} fill="currentColor" /> Stop local source</button>
         ) : (
-          <button type="button" onClick={() => void start()} disabled={!readiness.ok || ["starting", "stopping", "uploading"].includes(status)} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40">{status === "starting" ? <LoaderCircle size={16} className="animate-spin" /> : <span className="h-3 w-3 rounded-full bg-white" />} Record local source</button>
+          <button type="button" onClick={() => void start()} disabled={!retainedReadiness.ok || ["starting", "stopping", "uploading"].includes(status)} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-rose-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-40">{status === "starting" ? <LoaderCircle size={16} className="animate-spin" /> : <span className="h-3 w-3 rounded-full bg-white" />} Record local source</button>
         )}
         <span className="text-[10px] font-bold text-[#8a7354]">Vault {vaultAvailable ? "ready" : "unavailable"} · {vaultPersistent ? "persistent storage granted" : "browser-managed retention"} · {formatBytes(usageBytes)} / {formatBytes(quotaBytes)}</span>
       </div>

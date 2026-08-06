@@ -28,6 +28,7 @@ import {
 } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
+import { SessionGuardianCard } from "@/components/session-guardian-card";
 import { StudioSoundCheck } from "@/components/studio-sound-check";
 import {
   decodeEpisodeWatchLiveHint,
@@ -65,6 +66,10 @@ import {
   studioCameraInputEvidence,
   type StudioCameraInputEvidence,
 } from "@/lib/studio-camera-input";
+import {
+  projectSessionGuardian,
+  type BrowserRetainedSourceGuardianEvidence,
+} from "@/lib/session-guardian";
 
 type DeviceOption = { deviceId: string; label: string };
 type PreferredDevices = {
@@ -333,6 +338,8 @@ export function LiveSessionRoom({
   const [supportsOutputSelection, setSupportsOutputSelection] = useState(false);
   const [supportsOutputPrompt, setSupportsOutputPrompt] = useState(false);
   const [sourceLocked, setSourceLocked] = useState(false);
+  const [retainedGuardianEvidence, setRetainedGuardianEvidence] = useState<BrowserRetainedSourceGuardianEvidence | null>(null);
+  const [pageVisible, setPageVisible] = useState(true);
   const [providerRecording, setProviderRecording] = useState<ProviderRecordingState | null>(null);
   const [providerRecordingBusy, setProviderRecordingBusy] = useState(false);
   const [providerRecordingMessage, setProviderRecordingMessage] = useState(
@@ -358,10 +365,30 @@ export function LiveSessionRoom({
   const providerRecordingStateLabel = providerRecordingState === "needs-review"
     ? "Needs review"
     : providerRecordingState.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const guardianProjection = useMemo(() => projectSessionGuardian({
+    conversationStatus: status,
+    callSignalState: meterEvidence?.state ?? "inactive",
+    cameraWanted,
+    cameraEvidenceAvailable: Boolean(cameraEvidence),
+    pageVisible,
+    retainedSourceAvailable: typeof captureGroupId === "string" && Boolean(captureGroupId.trim()),
+    retained: retainedGuardianEvidence,
+  }), [cameraEvidence, cameraWanted, captureGroupId, meterEvidence?.state, pageVisible, retainedGuardianEvidence, status]);
 
   useEffect(() => {
     cameraWantedRef.current = cameraWanted;
   }, [cameraWanted]);
+
+  useEffect(() => {
+    const changed = () => setPageVisible(document.visibilityState === "visible");
+    changed();
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
+
+  useEffect(() => {
+    setRetainedGuardianEvidence(null);
+  }, [callRoomId, captureGroupId]);
 
   useEffect(() => {
     onStatusChange?.(status);
@@ -1127,9 +1154,11 @@ export function LiveSessionRoom({
           </div>
         </aside>
       </div>
-      <div className="mt-5">
+      <div className="mt-5 space-y-4">
+        <SessionGuardianCard projection={guardianProjection} />
         {typeof captureGroupId === "string" && captureGroupId.trim() ? (
           <BrowserSourceRecorder
+            key={`${callRoomId}:${captureGroupId.trim()}`}
             callRoomId={callRoomId}
             captureGroupId={captureGroupId.trim()}
             sessionTitle={sessionTitle}
@@ -1141,6 +1170,7 @@ export function LiveSessionRoom({
             cameraId={cameraId}
             cameraLabel={cameras.find((device) => device.deviceId === cameraId)?.label || ""}
             onSourceLockChange={setSourceLocked}
+            onGuardianEvidenceChange={setRetainedGuardianEvidence}
           />
         ) : (
           <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950" aria-label="Retained source unavailable">

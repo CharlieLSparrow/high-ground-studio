@@ -2115,3 +2115,29 @@ These should be treated as cleanup candidates later, not as authoritative produc
   explainable assembly, conversation memory, adaptive voice chains, permission-
   aware Evidence Lens, and an outcome compiler. These are investigations over
   shared canonical primitives, not eight new parallel products.
+
+### 2026-08-05 browser Session Guardian foundation
+
+- The browser Session now projects conversation state, call-path microphone and
+  camera evidence, tab visibility, and retained-source evidence into one ranked
+  operational intervention. Its expandable explanation keeps the conversation
+  feed and protected local master visibly separate.
+- The retained recorder now watches every selected media track for mute, unmute,
+  and end; stops after a five-second persistent mute; stops immediately on track
+  end or encoder error; stops when no durable chunk advances for ten seconds;
+  and checks browser storage every five seconds with a two-gigabyte warning and
+  a 512-megabyte safe-stop reserve.
+- Losing the call never stops the independent retained master. A hidden tab or
+  browser-managed storage produces a calm warning rather than a false failure.
+  Held sources preserve their recovery/download path and remain authoritative
+  until exact-byte handoff verifies.
+- The pure priority projection has focused coverage for missing take identity,
+  call reconnection, encoder stall, call-path clipping, loading, and healthy
+  durable writing. Quipsly typecheck and the focused Session suites pass.
+  Deliberate unplug, mute, storage-pressure, background-tab, and network-loss
+  operation still require browser and physical-device acceptance.
+- Signed-in local visual operation could not start in this checkpoint because
+  the host data volume had only 1.8 GiB free and Docker reported `no space left
+  on device`. No cache, simulator, media, or Docker data was deleted. This is a
+  machine-capacity blocker for the local stack, not a successful browser
+  acceptance result.

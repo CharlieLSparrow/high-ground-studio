@@ -65,6 +65,8 @@ describe("LiveSessionRoom", () => {
     expect(screen.getByRole("heading", { name: /Record the episode together from browser and iPhone/i })).toBeInTheDocument();
     expect(screen.getByText(/live call, each retained local source, shared Watch, and the production timeline/i)).toBeInTheDocument();
     expect(screen.getByText(/Turning this copy off cannot change take synchronization/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Session Guardian" })).toHaveTextContent(/Checking the retained-source recorder/i);
+    expect(screen.getByText("Why Quipsly says this")).toBeInTheDocument();
     expect(screen.getByTestId("browser-source-capture-group")).toHaveTextContent(
       "55555555-5555-4555-8555-555555555551",
     );

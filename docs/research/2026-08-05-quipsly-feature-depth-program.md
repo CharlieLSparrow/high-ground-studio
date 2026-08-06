@@ -369,6 +369,18 @@ decision, and either a bounded vertical slice or an explicit rejection.
 6. Outcome compiler follows versioned writing, edit, and delivery operations;
    it should not create another detached content generator.
 
+### Session Guardian implementation checkpoint
+
+The first browser vertical slice is now implemented over existing evidence. It
+ranks call-path setup, camera measurement, conversation state, page visibility,
+durable recorder state, local byte growth, storage headroom, track delivery,
+recovery, and verified handoff without creating another canonical readiness
+store. The retained recorder safely stops on persistent mute, ended source,
+encoder error, stalled chunks, or exhausted storage reserve while allowing the
+independent master to continue through call loss. The next gate is deliberate
+failure operation on real browser and iPhone hardware, followed by native
+consolidation and clock/upload continuity alerts.
+
 ### Current official capability signals
 
 - Apple's [Speech framework](https://developer.apple.com/documentation/speech/)
