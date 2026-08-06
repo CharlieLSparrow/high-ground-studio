@@ -35,6 +35,32 @@ The market is converging on isolated portions of this workflow. Quipsly's
 opportunity is to make the transitions disappear while retaining more evidence
 and user control than the individual products.
 
+### Operated checkpoint: the first exact-source Episode mix
+
+The Audio Studio now builds an immutable Episode mix proposal from canonical
+track-role, participant, mix-use, program-clock, alignment, analysis, and human
+review receipts. Only a human-confirmed `mic-bleed` or
+`same-participant-redundancy` event with one unambiguous primary may produce
+automatic gain automation. Correlation, filenames, confidence, and role guesses
+cannot authorize a move.
+
+The first retained dogfood run used a real 4:14.6 iPhone camera recording in the
+explicit QA Episode. Two tiny synthetic handoff artifacts and one unqualified
+reference source remained preserved but were explicitly excluded. The local
+worker rendered a 48 kHz stereo 24-bit WAV, reverified every source before and
+after rendering, completely decoded the output, independently measured
+`-16.07 LUFS` and `-1.48 dBTP`, registered the exact output hash, and left the
+preview unpromoted for deliberate playback.
+
+That operation also exposed a real recoverability defect: PostgreSQL JSONB
+reordered safety-boundary keys, while the shared parser incorrectly treated
+object insertion order as integrity. The worker failed closed, retained the
+failed job receipt, and did not render media. The parser now compares the exact
+key/value set independent of serialization order, the regression is covered,
+and the next queued proposal completed through the live UI. This advances the
+mixing slice to observable and recoverable local operation without claiming a
+human listening approval.
+
 ## Research question
 
 The question was not, "What other navigation item can Quipsly add?" It was:
@@ -178,6 +204,67 @@ canonical follow-through directly.
 
 Primary source:
 [Notion AI Meeting Notes](https://www.notion.com/help/ai-meeting-notes).
+
+### Multi-device participation is still an open market gap
+
+Riverside treats uploaded media as a separately recorded track and supports an
+iPhone as a second camera, while Descript Rooms explicitly does not support
+mobile recording. Riverside also separates a producer's authority from whether
+that person becomes a normal recorded participant. The opportunity is not just
+feature parity: Quipsly should represent one person, several endpoints, and
+several source responsibilities without collapsing them into one misleading
+participant tile.
+
+The production contract should support browser conversation through an external
+mic and headphones, iPhone local 4K video, a separate camera or backup recorder,
+Shared Watch media, and a non-recorded producer/controller. Each endpoint needs
+its own requested/actual route, clock, retention, upload, verification, and
+`Safe to leave` state while the person remains one collaborator.
+
+Primary sources:
+[Riverside Media Board and screen sharing](https://support.riverside.com/hc/en-us/articles/12562433954461-Media-Board-and-screen-sharing-Overview),
+[Riverside mobile and Mac capabilities](https://support.riverside.com/hc/en-us/articles/8937011936029-Riverside-mobile-and-Mac-apps-Functions-capabilities),
+[Riverside producer role](https://support.riverside.fm/hc/en-us/articles/5252621451805-The-producer-role-Details),
+and [Descript Rooms](https://help.descript.com/hc/en-us/articles/28800967976205-Get-Started-with-Descript-Rooms).
+
+### Conversation products are judged by what survives the conversation
+
+Teams keeps agenda, collaborative notes, tasks, transcript, recording, shared
+files, and recap together. Granola begins from calendar context, preserves the
+user's rough notes, applies reusable output templates, and supports questions
+across selected meeting folders. Coaching platforms emphasize action plans,
+measures, worksheets, private/shared notes, recurring appointments, and
+follow-through reporting—not summaries alone.
+
+Quipsly should make the Session the source of continuity: preparation enters the
+conversation; notes and markers remain editable during it; AI creates cited
+candidates afterward; coach and client or collaborators explicitly accept what
+becomes shared truth; and the same task, goal, measure, or open question appears
+in the next Session without being copied.
+
+Primary sources:
+[Teams meeting notes](https://support.microsoft.com/en-us/teams/meetings/take-meeting-notes-in-microsoft-teams),
+[Teams recap](https://support.microsoft.com/en-US/teams/meetings/recap-in-microsoft-teams),
+[Granola 101](https://docs.granola.ai/help-center/getting-started/granola-101),
+and [CoachAccountable](https://www.coachaccountable.com/enterprise).
+
+### Later category depth should reuse reviewed structure
+
+Zotero's annotations retain exact return to source context; Trello projects one
+work object into several views; StudioBinder derives schedules and call sheets
+from script breakdowns; Rise reuses responsive content blocks and separates
+authoring from stakeholder review; and Hootsuite couples a content calendar to
+approval and publishing state. These products reinforce the same architecture:
+courses, storyboards, social campaigns, and research packets should be
+projections of reviewed Quipsly sources, structure, work, rights, and outputs,
+not parallel stores with fresh copy/paste drift.
+
+Primary sources:
+[Zotero PDF annotations](https://www.zotero.org/support/pdf_reader),
+[Trello workspace views](https://support.atlassian.com/trello/docs/workspace-views/),
+[StudioBinder scheduling](https://www.studiobinder.com/film-scheduling-software/),
+[Rise 360 features](https://www.articulate.com/360/rise/all/),
+and [Hootsuite publishing](https://www.hootsuite.com/platform/publishing).
 
 ## Ranked portfolio
 

@@ -46,7 +46,7 @@ does not satisfy a physical-device or production acceptance gate.
 | System | Strongest proven foundation | Current frontier | Highest-value gap |
 | --- | --- | --- | --- |
 | Session Control Plane | Private record/playback sound check, endpoint-aware room, browser local master, capture-group clocks, resumable verified handoff, Guardian receipts | Observable locally; parts recoverable and collaborative | One calm lobby-to-`Safe to leave` journey operated with browser, physical iPhone, external mic/camera, Shared Watch, interruption, and resumed upload |
-| Audio Intelligence | Source-bound waveform, spectrum, loudness, audible-event map, repair experiments, mastery review, delivery evidence, append-only human labels | Observable and partially recoverable | A representative two-person podcast/coaching corpus, qualified detectors, multitrack bleed/overlap/ducking analysis, matched A/B, and destination-ready proof listening |
+| Audio Intelligence | Source-bound waveform, spectrum, loudness, audible-event map, repair experiments, mastery review, delivery evidence, append-only human labels, and immutable evidence-linked Episode mix proposals with exact-source rendering | Observable and partially recoverable; one retained real-source baseline mix is independently verified | Loudness-matched baseline/proposal A/B, append-only approval and promotion, a representative two-person podcast/coaching corpus, qualified bleed/overlap/ducking automation, and destination-ready proof listening |
 | Transcript Truth | Versioned provider attempts, immutable segments, corrections, source-clock return, WER/speaker/timing/correction/cost evaluation board | Observable evaluation infrastructure | Retained reference windows, calibrated provider routing, domain terms and speaker profiles, critical-entity review, and downstream regeneration after accepted corrections |
 | Explainable Editor | Multitrack sync evidence, reversible timeline operations, transcript review, audio treatment, automated-edit evidence, delivery candidates | Broadly operable; evidence is distributed | One finishing cockpit and attention queue that turns a retained take into a reviewed master and rough cut without navigating several specialist desks |
 | Evidence and Research | Canonical sources, exact annotations, tags, citations, evidence-to-draft handoff, portable export/restore, source return | Operable locally and partly collaborative | Selectable research scopes, claims/contradictions, source-set versions, real-account privacy proof, and citation-aware compilation |
@@ -147,6 +147,33 @@ take a large swing without creating another disconnected prototype.
    Lens.
 6. Add course, social, storyboard, and distribution depth as output projections,
    not separate miniature products.
+
+## How the broad feature research will run
+
+Broad research is a continuous product lane, not a pause before implementation.
+Each wave uses current primary documentation, operates Quipsly's corresponding
+workflow, and ends in one of four outcomes: deepen an existing capability,
+admit a new vertical slice, record a dependency, or explicitly reject the idea.
+
+The first waves are:
+
+1. **Session and capture certainty** — Riverside, Descript Rooms, professional
+   field recorders, browser media APIs, iPhone capture, Shared Watch, and local
+   upload recovery.
+2. **Speech finishing** — Auphonic, Resolve/Fairlight, iZotope, Adobe Podcast,
+   transcript editors, source separation, audible-event review, mixing, and
+   automated assembly.
+3. **Conversation to continuity** — Teams recap, Granola, coaching platforms,
+   editable notes, jointly accepted commitments, goals, measures, and next
+   Session preparation.
+4. **Evidence to output** — Zotero, NotebookLM, Scrivener, StudioBinder, Rise,
+   Canva, and social publishing systems, with exact sources and shared objects
+   remaining canonical.
+
+The operating question is always: *what can a person now complete confidently
+inside Quipsly that previously required changing tools or reconstructing
+context?* Feature count and competitor parity are supporting evidence, not the
+score.
 
 The order can change when real use exposes a stronger dependency. The evidence
 and object boundaries should survive that change.
