@@ -156,6 +156,9 @@ type Desk = {
     referenceWordCount?: number;
     speakerReviewedWordCount?: number;
     timingEvidenceWordCount?: number;
+    criticalTermCount?: number;
+    criticalTermOccurrenceCount?: number;
+    terminologyPromptTermCount?: number;
     availableSegments?: Array<{ id: string; startSeconds: number; endSeconds: number; reviewed: boolean }>;
     suggestedRange?: null | {
       startSegmentId: string;
@@ -173,6 +176,9 @@ type Desk = {
       conditions: string[];
       sourceDurationSeconds: number;
       referenceWordCount: number;
+      criticalTermCount?: number;
+      criticalTermOccurrenceCount?: number;
+      terminologyPromptTermCount?: number;
       referenceRevisionId: string;
       approvedAt: string;
       completeSourcePlayback?: boolean;
@@ -202,6 +208,20 @@ type EvaluationCandidate = {
     words?: { wordErrorRate?: number; wordErrorCount?: number; referenceWordCount?: number };
     speakers?: { speakerErrorRate?: number | null; speakerConfusions?: number; speakerMisses?: number };
     timing?: { p95AbsoluteStartDriftMilliseconds?: number | null; timedWordMatches?: number };
+    terminology?: {
+      conceptRecall?: number | null;
+      conceptPrecision?: number | null;
+      preferredSpellingRate?: number | null;
+      referenceOccurrenceCount?: number;
+      falsePositiveMentionCount?: number;
+    } | null;
+  };
+  terminologyExperiment?: null | {
+    comparisonKey: string;
+    arm: "baseline" | "project-terminology";
+    termsSha256: string;
+    baseConfigSha256: string | null;
+    appliedTermCount: number | null;
   };
   errorCode: string | null;
   retryable: boolean | null;
@@ -365,11 +385,12 @@ function TranscriptAccuracyCorpusPanel({
       <span className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide ${evaluation.eligible ? "border-emerald-200 bg-emerald-100 text-emerald-950" : "border-amber-200 bg-amber-100 text-amber-950"}`}>{evaluation.eligible ? "Ready to classify" : `${reviewed}/${total} reviewed`}</span>
     </div>
 
-    <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
       <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reviewed segments</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{reviewed}/{total}</dd></div>
       <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reference words</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.referenceWordCount ?? 0).toLocaleString()}</dd></div>
       <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Reviewed timed words</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.timingEvidenceWordCount ?? 0).toLocaleString()}</dd></div>
       <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Speaker-reviewed</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.speakerReviewedWordCount ?? 0).toLocaleString()}</dd></div>
+      <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-violet-700">Suggested-window terms</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{(evaluation.criticalTermOccurrenceCount ?? 0).toLocaleString()}</dd><p className="mt-1 text-[10px] font-bold text-violet-700">{evaluation.criticalTermCount ?? 0} distinct · {evaluation.terminologyPromptTermCount ?? 0} project terms available</p></div>
       <div className="rounded-xl border border-indigo-100 bg-white p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Source listened</dt><dd className="mt-1 text-xl font-black text-[#3d3122]">{percent(playbackCoverage, 0)}</dd></div>
     </dl>
 
@@ -402,7 +423,7 @@ function TranscriptAccuracyCorpusPanel({
       <p className="text-xs font-bold leading-5 text-indigo-800">This is an explicit approval of the exact playback-reviewed reference. It does not upload new media, rerun transcription, alter provider output, train a public model, message anyone, or publish.</p>
     </div>}
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{error}</p> : null}
-    {evaluation.approvedWindows.length > 0 ? <div className="mt-5"><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Frozen evaluation windows</p><ul className="mt-2 space-y-2">{evaluation.approvedWindows.map((window) => <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs font-bold text-[#5f4d37]"><span>{humanize(window.workload)} · {window.referenceWordCount} words · {window.conditions.map(humanize).join(", ")}</span><span className={window.staleAgainstCurrentReview ? "text-amber-800" : "text-emerald-800"}>{window.staleAgainstCurrentReview ? "Prior reviewed revision" : "Matches current review"}</span></li>)}</ul></div> : null}
+    {evaluation.approvedWindows.length > 0 ? <div className="mt-5"><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Frozen evaluation windows</p><ul className="mt-2 space-y-2">{evaluation.approvedWindows.map((window) => <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs font-bold text-[#5f4d37]"><span>{humanize(window.workload)} · {window.referenceWordCount} words · {window.criticalTermOccurrenceCount ?? 0} critical-term mentions · {window.conditions.map(humanize).join(", ")}</span><span className={window.staleAgainstCurrentReview ? "text-amber-800" : "text-emerald-800"}>{window.staleAgainstCurrentReview ? "Prior reviewed revision" : "Matches current review"}</span></li>)}</ul></div> : null}
     {evaluation.approvedWindows.length > 0 ? <div className="mt-5 rounded-xl border border-indigo-200 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Provider evidence scorecards</p><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Every result is measured against the same frozen human reference. Missing speaker or word-timing evidence stays visibly unavailable; Quipsly never interpolates it.</p></div>
@@ -413,6 +434,7 @@ function TranscriptAccuracyCorpusPanel({
         const wordRate = candidate.metrics?.words?.wordErrorRate;
         const speakerRate = candidate.metrics?.speakers?.speakerErrorRate;
         const timingP95 = candidate.metrics?.timing?.p95AbsoluteStartDriftMilliseconds;
+        const terminology = candidate.metrics?.terminology;
         return <article key={candidate.id} className={`rounded-xl border p-4 ${candidate.outcome === "succeeded" ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/50"}`}>
           <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black text-[#3d3122]">{candidate.providerName}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wide text-[#765f40]">{candidate.model} · {candidate.adapterVersion}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${candidate.outcome === "succeeded" ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"}`}>{candidate.outcome}</span></div>
           {candidate.outcome === "succeeded" ? <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
@@ -421,6 +443,12 @@ function TranscriptAccuracyCorpusPanel({
             <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Timing p95</dt><dd className="mt-1 font-black text-[#3d3122]">{candidate.timingGranularity !== "word" || timingP95 == null ? "Unavailable" : `${Math.round(timingP95)} ms`}</dd></div>
             <div className="rounded-lg bg-white p-2"><dt className="font-black uppercase tracking-wide text-indigo-700">Latency</dt><dd className="mt-1 font-black text-[#3d3122]">{(candidate.elapsedMilliseconds / 1000).toFixed(1)} s</dd></div>
           </dl> : <p className="mt-3 rounded-lg bg-white p-3 text-xs font-bold text-rose-900">{candidate.errorCode ? humanize(candidate.errorCode) : "Provider attempt failed"}{candidate.retryable === true ? " · retryable in a new run" : ""}</p>}
+          {candidate.outcome === "succeeded" && terminology ? <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+            <div className="rounded-lg bg-violet-50 p-2"><dt className="font-black uppercase tracking-wide text-violet-700">Term recall</dt><dd className="mt-1 font-black text-[#3d3122]">{terminology.conceptRecall == null ? "Unavailable" : percent(terminology.conceptRecall, 1)}</dd></div>
+            <div className="rounded-lg bg-violet-50 p-2"><dt className="font-black uppercase tracking-wide text-violet-700">Term precision</dt><dd className="mt-1 font-black text-[#3d3122]">{terminology.conceptPrecision == null ? "Unavailable" : percent(terminology.conceptPrecision, 1)}</dd></div>
+            <div className="rounded-lg bg-violet-50 p-2"><dt className="font-black uppercase tracking-wide text-violet-700">False mentions</dt><dd className="mt-1 font-black text-[#3d3122]">{terminology.falsePositiveMentionCount ?? 0}</dd></div>
+          </dl> : null}
+          {candidate.terminologyExperiment ? <p className="mt-2 rounded-lg border border-violet-100 bg-violet-50 p-2 text-[10px] font-black uppercase tracking-wide text-violet-800">Matched terminology arm · {humanize(candidate.terminologyExperiment.arm)} · {candidate.terminologyExperiment.comparisonKey}</p> : null}
           <p className="mt-3 text-[10px] font-bold leading-4 text-[#765f40]">{candidate.estimatedCostUsd === null ? "Cost not observed" : `$${candidate.estimatedCostUsd.toFixed(4)} observed`} · {candidate.correctionObservationCount} measured correction pass{candidate.correctionObservationCount === 1 ? "" : "es"} · input {candidate.inputMediaSha256 ? `${candidate.inputMediaSha256.slice(0, 10)}…` : "legacy/unavailable"} · policy {candidate.policyReceiptSha256.slice(0, 10)}…</p>
         </article>;
       })}</div> : !evaluation.providerEvidenceError ? <p className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-4 text-xs font-bold leading-5 text-indigo-950">No alternative provider attempt has been recorded yet. The protected export gives an authorized runner exact source and reference hashes without exposing them in ordinary Session views.</p> : null}

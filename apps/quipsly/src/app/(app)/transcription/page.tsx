@@ -8,6 +8,7 @@ import {
   Gauge,
   ScanSearch,
   ShieldCheck,
+  Tags,
   TimerReset,
   Users,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   type TranscriptEvaluationBoard,
   type TranscriptEvidenceProvider,
   type TranscriptEvidenceWorkload,
+  type TranscriptTerminologyComparison,
 } from "@/lib/server/transcript-evaluation-board";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +77,11 @@ function ProviderCard({ provider }: { provider: TranscriptEvidenceProvider }) {
       <div className="rounded-xl bg-indigo-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Speaker error</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">{percent(provider.speakerErrorRate)}</dd><p className="mt-1 text-[10px] font-bold text-indigo-700">bar ≤ 3%</p></div>
       <div className="rounded-xl bg-indigo-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Timing p95</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">{provider.timingP95Milliseconds == null ? "Unavailable" : `${Math.round(provider.timingP95Milliseconds)}ms`}</dd><p className="mt-1 text-[10px] font-bold text-indigo-700">word evidence only</p></div>
     </dl>
+    <dl className="mt-2 grid gap-2 sm:grid-cols-3">
+      <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-violet-700">Critical-term recall</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">{percent(provider.criticalTermRecall)}</dd><p className="mt-1 text-[10px] font-bold text-violet-700">{provider.criticalTermOccurrenceCount ? `${provider.criticalTermOccurrenceCount} frozen mentions` : "No term truth in these windows"}</p></div>
+      <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-violet-700">Critical-term precision</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">{percent(provider.criticalTermPrecision)}</dd><p className="mt-1 text-[10px] font-bold text-violet-700">{provider.criticalTermFalsePositiveCount} prompted false mention{provider.criticalTermFalsePositiveCount === 1 ? "" : "s"}</p></div>
+      <div className="rounded-xl border border-violet-100 bg-violet-50 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-violet-700">Preferred spelling</dt><dd className="mt-1 text-sm font-black text-[#3d3122]">{percent(provider.preferredSpellingRate)}</dd><p className="mt-1 text-[10px] font-bold text-violet-700">project vocabulary, not confidence</p></div>
+    </dl>
     <div className="mt-3 grid gap-2 text-xs font-bold text-[#685438] sm:grid-cols-3">
       <p className="rounded-lg border border-[#eadcc4] bg-[#fffaf2] p-2.5">{provider.succeededWindowCount}/{provider.expectedWindowCount} windows succeeded</p>
       <p className="rounded-lg border border-[#eadcc4] bg-[#fffaf2] p-2.5">{provider.correctionPassCount} correction pass{provider.correctionPassCount === 1 ? "" : "es"} · {duration(provider.correctionElapsedMilliseconds)}</p>
@@ -82,6 +89,34 @@ function ProviderCard({ provider }: { provider: TranscriptEvidenceProvider }) {
     </div>
     {provider.missingConditions.length || provider.failedConditions.length ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">{provider.missingConditions.length ? `Missing: ${provider.missingConditions.map(humanize).join(", ")}. ` : ""}{provider.failedConditions.length ? `Failed: ${provider.failedConditions.map(humanize).join(", ")}.` : ""}</p> : null}
     <p className="mt-3 text-[10px] font-bold text-[#8a7354]">Exact config {provider.requestConfigSha256.slice(0, 12)}… · results from another config remain a separate comparison.</p>
+  </article>;
+}
+
+function signedPercent(value: number | null) {
+  if (value == null) return "Unavailable";
+  const points = value * 100;
+  return `${points > 0 ? "+" : ""}${points.toFixed(1)} pts`;
+}
+
+function comparisonTone(verdict: TranscriptTerminologyComparison["verdict"]) {
+  if (verdict === "improved") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (verdict === "regressed") return "border-rose-200 bg-rose-50 text-rose-950";
+  if (verdict === "mixed") return "border-sky-200 bg-sky-50 text-sky-950";
+  return "border-amber-200 bg-amber-50 text-amber-950";
+}
+
+function TerminologyComparisonCard({ comparison }: { comparison: TranscriptTerminologyComparison }) {
+  return <article className="rounded-2xl border border-violet-100 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-sm font-black text-[#3d3122]">{comparison.providerName}</p><p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#80694c]">{humanize(comparison.workload)} · {comparison.model} · {comparison.pairCount} exact byte-matched pair{comparison.pairCount === 1 ? "" : "s"}</p></div>
+      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${comparisonTone(comparison.verdict)}`}>{humanize(comparison.verdict)}</span>
+    </div>
+    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+      <div className="rounded-xl bg-[#fffaf2] p-4"><p className="text-[10px] font-black uppercase tracking-wide text-[#80694c]">General word error</p><div className="mt-2 flex items-end justify-between gap-3"><p className="text-sm font-black">{percent(comparison.baselineWordErrorRate)} → {percent(comparison.terminologyWordErrorRate)}</p><p className={`text-xs font-black ${(comparison.wordErrorRateDelta ?? 0) > 0 ? "text-rose-700" : "text-emerald-700"}`}>{signedPercent(comparison.wordErrorRateDelta)}</p></div><p className="mt-2 text-[10px] font-bold text-[#80694c]">Lower is better. A name win cannot hide a general regression.</p></div>
+      <div className="rounded-xl bg-violet-50 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700">Critical-term recall</p><div className="mt-2 flex items-end justify-between gap-3"><p className="text-sm font-black">{percent(comparison.baselineCriticalTermRecall)} → {percent(comparison.terminologyCriticalTermRecall)}</p><p className={`text-xs font-black ${(comparison.criticalTermRecallDelta ?? 0) < 0 ? "text-rose-700" : "text-emerald-700"}`}>{signedPercent(comparison.criticalTermRecallDelta)}</p></div><p className="mt-2 text-[10px] font-bold text-violet-700">False prompted mentions: {comparison.baselineFalsePositiveCount} → {comparison.terminologyFalsePositiveCount}</p></div>
+    </div>
+    {comparison.baselineOnlyWindowCount || comparison.terminologyOnlyWindowCount ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">Unpaired evidence remains: {comparison.baselineOnlyWindowCount} baseline-only and {comparison.terminologyOnlyWindowCount} terminology-only window{comparison.baselineOnlyWindowCount + comparison.terminologyOnlyWindowCount === 1 ? "" : "s"}. No unmatched attempt contributes to the verdict.</p> : null}
+    <p className="mt-3 text-[10px] font-bold text-[#8a7354]">Experiment {comparison.comparisonKey} · base config {comparison.baseConfigSha256.slice(0, 12)}… · terminology receipt {comparison.termsSha256.slice(0, 12)}…</p>
   </article>;
 }
 
@@ -122,11 +157,12 @@ function TranscriptEvaluationBoardView({ board }: { board: TranscriptEvaluationB
           <Link href="/editor" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/25 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">Episode editor</Link>
         </div>
       </div>
-      <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-sky-300"><ShieldCheck size={14} />Reviewed windows</p><p className="mt-2 text-3xl font-black">{summary.windowCount}/{summary.minimumWindowCount}</p><p className="mt-1 text-xs font-semibold text-[#d8caba]">minimum, never synthetic</p></div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-sky-300"><ScanSearch size={14} />Conditions</p><p className="mt-2 text-3xl font-black">{summary.coveredConditionCount}/{summary.requiredConditionCount}</p><p className="mt-1 text-xs font-semibold text-[#d8caba]">podcast + coaching</p></div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-sky-300"><Gauge size={14} />Provider attempts</p><p className="mt-2 text-3xl font-black">{summary.candidateAttemptCount}</p><p className="mt-1 text-xs font-semibold text-[#d8caba]">{summary.successfulCandidateCount} succeeded · {summary.failedCandidateCount} failed</p></div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-sky-300"><TimerReset size={14} />Correction passes</p><p className="mt-2 text-3xl font-black">{summary.correctionPassCount}</p><p className="mt-1 text-xs font-semibold text-[#d8caba]">measured human effort</p></div>
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-sky-300"><Tags size={14} />Matched terminology</p><p className="mt-2 text-3xl font-black">{summary.matchedTerminologyPairCount}</p><p className="mt-1 text-xs font-semibold text-[#d8caba]">same source bytes, two arms</p></div>
       </div>
     </header>
 
@@ -140,6 +176,11 @@ function TranscriptEvaluationBoardView({ board }: { board: TranscriptEvaluationB
     <div className="grid gap-6 2xl:grid-cols-2">
       {board.workloads.map((workload) => <WorkloadCard key={workload.id} workload={workload} />)}
     </div>
+
+    <section className="rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-5 shadow-sm lg:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-violet-700"><Tags size={16} aria-hidden="true" />Terminology experiments</p><h2 className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Prove that project vocabulary helps before routing real work</h2><p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-[#765f40]">Baseline and project-terminology arms must use the same protected derivative bytes, human reference, provider build, and non-terminology settings. Quipsly measures ordinary WER, critical-term recall, preferred spelling, and prompted false mentions together.</p></div><span className="rounded-full border border-violet-200 bg-violet-100 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-violet-950">{summary.matchedTerminologyPairCount} matched</span></div>
+      {board.terminologyComparisons.length ? <div className="mt-5 grid gap-4 xl:grid-cols-2">{board.terminologyComparisons.map((comparison) => <TerminologyComparisonCard key={comparison.identity} comparison={comparison} />)}</div> : <p className="mt-5 rounded-2xl border border-dashed border-violet-200 bg-white/75 p-5 text-sm font-bold leading-6 text-violet-950">No matched real-source terminology experiment exists yet. Approve a window containing frozen project terms, export the protected runner input, then retain both arms. Provider confidence and one-off anecdotes do not populate this desk.</p>}
+    </section>
 
     <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
       <div className="rounded-3xl border border-[#e1d2b7] bg-white p-5 shadow-sm lg:p-6">

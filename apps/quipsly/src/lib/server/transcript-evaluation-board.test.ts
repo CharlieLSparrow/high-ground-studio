@@ -42,7 +42,7 @@ function row(overrides: Partial<TranscriptEvaluationBoardRow> = {}): TranscriptE
   };
 }
 
-function successfulCandidate() {
+function successfulCandidate(overrides: Record<string, unknown> = {}) {
   return {
     id: "candidate-001",
     providerKey: "provider-one",
@@ -50,6 +50,11 @@ function successfulCandidate() {
     model: "model-2026-08-01",
     adapterVersion: "adapter-v1",
     requestConfigSha256: D,
+    requestConfigJson: { provider: { model: "model-2026-08-01" } },
+    metricsJson: {
+      words: { referenceWordCount: 7, wordErrorCount: 0 },
+      terminology: null,
+    },
     speakerAttribution: "word",
     timingGranularity: "word",
     outcome: "succeeded",
@@ -82,6 +87,7 @@ function successfulCandidate() {
       operationCount: 3,
       observedAt: "2026-08-03T18:05:00.000Z",
     }],
+    ...overrides,
   };
 }
 
@@ -192,5 +198,63 @@ describe("transcript evaluation board", () => {
     expect(() => transcriptProviderComparisonConfigSha256({
       inputMedia: { sha256: A },
     })).toThrow("non-empty provider object");
+  });
+
+  it("compares terminology only when both arms share a window, base provider config, and frozen term receipt", () => {
+    const termsSha256 = "e".repeat(64);
+    const config = (arm: "baseline" | "project-terminology") => ({
+      provider: {
+        model: "model-2026-08-01",
+        language: "en",
+        terminology: arm === "baseline"
+          ? { mode: "none", snapshotSha256: termsSha256, termCount: 0 }
+          : { mode: "project-snapshot", snapshotSha256: termsSha256, termCount: 3, promptSha256: "f".repeat(64) },
+      },
+      terminologyExperiment: {
+        schema: "quipsly-transcript-terminology-experiment-v1",
+        comparisonKey: "hgo-terms-v1",
+        arm,
+        termsSha256,
+      },
+    });
+    const metrics = (errors: number, matched: number, falsePositive: number) => ({
+      words: { referenceWordCount: 100, wordErrorCount: errors },
+      terminology: {
+        referenceOccurrenceCount: 4,
+        candidateMentionCount: matched + falsePositive,
+        matchedOccurrenceCount: matched,
+        falsePositiveMentionCount: falsePositive,
+        canonicalCandidateMentionCount: matched,
+      },
+    });
+    const board = buildTranscriptEvaluationBoardFromRows([row({ candidates: [
+      successfulCandidate({
+        id: "candidate-baseline",
+        requestConfigSha256: "1".repeat(64),
+        requestConfigJson: config("baseline"),
+        metricsJson: metrics(12, 2, 0),
+      }),
+      successfulCandidate({
+        id: "candidate-terminology",
+        requestConfigSha256: "2".repeat(64),
+        requestConfigJson: config("project-terminology"),
+        metricsJson: metrics(8, 4, 0),
+      }),
+    ] })], "2026-08-04T00:00:00.000Z");
+
+    expect(board.summary.matchedTerminologyPairCount).toBe(1);
+    expect(board.terminologyComparisons).toHaveLength(1);
+    expect(board.terminologyComparisons[0]).toMatchObject({
+      comparisonKey: "hgo-terms-v1",
+      pairCount: 1,
+      baselineWordErrorRate: 0.12,
+      terminologyWordErrorRate: 0.08,
+      baselineCriticalTermRecall: 0.5,
+      terminologyCriticalTermRecall: 1,
+      baselineFalsePositiveCount: 0,
+      terminologyFalsePositiveCount: 0,
+      verdict: "improved",
+    });
+    expect(JSON.stringify(board)).not.toContain(PRIVATE_PHRASE);
   });
 });

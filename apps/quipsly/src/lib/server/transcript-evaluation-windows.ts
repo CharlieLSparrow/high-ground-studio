@@ -3,7 +3,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import {
+  buildTranscriptCriticalTerminologyReference,
   COACHING_TRANSCRIPT_EVALUATION_CONDITIONS,
+  parseTranscriptCriticalTerminologyReference,
   PODCAST_TRANSCRIPT_EVALUATION_CONDITIONS,
   type TranscriptEvaluationCondition,
   type TranscriptEvaluationWorkload,
@@ -327,7 +329,36 @@ function suggestedRange(job: any): TranscriptEvaluationRange | null {
   return null;
 }
 
-function providerSnapshot(job: any, selectedSegmentIds?: ReadonlySet<string>, timeOffsetSeconds = 0) {
+function projectTerminologyReference(room: any, referenceWords: any[]) {
+  const project = room?.project;
+  const terms = Array.isArray(project?.transcriptTerminologyTerms)
+    ? project.transcriptTerminologyTerms
+    : [];
+  if (!project?.id || !terms.length) return null;
+  const revisionToken = sha256Value(terms.map((term: any) => ({
+    id: text(term.id),
+    revision: Number(term.currentRevision),
+    canonicalText: text(term.canonicalText),
+    aliases: Array.isArray(term.aliasesJson) ? term.aliasesJson : [],
+    category: text(term.category) || "general",
+    priority: Number(term.priority),
+  })));
+  return buildTranscriptCriticalTerminologyReference({
+    revisionToken,
+    termsSha256: revisionToken,
+    referenceWords,
+    terms: terms.map((term: any) => ({
+      id: text(term.id),
+      revision: Number(term.currentRevision),
+      canonicalText: text(term.canonicalText),
+      aliases: Array.isArray(term.aliasesJson) ? term.aliasesJson.map(text).filter(Boolean) : [],
+      category: text(term.category) || "general",
+      priority: Number(term.priority),
+    })),
+  });
+}
+
+function providerSnapshot(job: any, selectedSegmentIds?: ReadonlySet<string>, timeOffsetSeconds = 0, criticalTerminology: unknown = null) {
   const result = object(job?.resultJson);
   const selectedSegments = (Array.isArray(job?.segments) ? job.segments : [])
     .filter((segment: any) => !selectedSegmentIds || selectedSegmentIds.has(text(segment.id)));
@@ -357,6 +388,7 @@ function providerSnapshot(job: any, selectedSegmentIds?: ReadonlySet<string>, ti
       providerSpeakerLabel: text(segment.speakerLabel) || null,
     })),
     words,
+    criticalTerminology,
   };
 }
 
@@ -439,6 +471,22 @@ function publicWindow(window: any, currentReferenceSha256: string | null) {
   const conditions = Array.isArray(window.conditionsJson)
     ? window.conditionsJson.filter((value: unknown): value is string => typeof value === "string")
     : [];
+  const terminology = parseTranscriptCriticalTerminologyReference(
+    object(window.providerSnapshotJson).criticalTerminology,
+  );
+  if (terminology) {
+    const receiptSha256 = sha256Value(terminology.terms.map((term) => ({
+      id: term.id,
+      revision: term.revision,
+      canonicalText: term.canonicalText,
+      aliases: term.aliases,
+      category: term.category,
+      priority: term.priority,
+    })));
+    if (receiptSha256 !== terminology.termsSha256 || receiptSha256 !== terminology.revisionToken) {
+      throw new TranscriptEvaluationWindowError("Frozen terminology evidence failed its immutable receipt check.", "TERMINOLOGY_REFERENCE_INVALID", 409);
+    }
+  }
   return {
     id: window.id as string,
     workload: window.workload as TranscriptEvaluationWorkload,
@@ -451,6 +499,9 @@ function publicWindow(window: any, currentReferenceSha256: string | null) {
     referenceRevisionId: window.referenceRevisionId as string,
     referenceContentSha256: window.referenceContentSha256 as string,
     referenceWordCount: Array.isArray(window.referenceWordsJson) ? window.referenceWordsJson.length : 0,
+    criticalTermCount: terminology?.referenceTermCount ?? 0,
+    criticalTermOccurrenceCount: terminology?.referenceOccurrenceCount ?? 0,
+    terminologyPromptTermCount: terminology?.promptTermCount ?? 0,
     completeSourcePlayback: ["quipsly-complete-source-playback-v1", "quipsly-window-playback-v1"].includes(text(object(window.sourcePlaybackEvidenceJson).schema)),
     approvedAt: window.approvedAt instanceof Date ? window.approvedAt.toISOString() : window.approvedAt,
     staleAgainstCurrentReview: currentReferenceSha256 !== null
@@ -470,6 +521,7 @@ export function transcriptEvaluationReadiness(input: {
   const reference = range
     ? referenceForJob(input.job, new Set(range.segmentIds), range.startSeconds)
     : referenceForJob(input.job);
+  const terminology = projectTerminologyReference(input.room, reference.referenceWords);
   const duration = finite(input.job?.asset?.durationSeconds);
   const source = sourceSha256(input.job);
   const canApprove = canApproveRoom(input.room, input.actor);
@@ -505,6 +557,9 @@ export function transcriptEvaluationReadiness(input: {
     referenceWordCount: reference.wordCount,
     speakerReviewedWordCount: reference.speakerReviewedWordCount,
     timingEvidenceWordCount: reference.referenceWords.filter((word) => word.startSeconds !== null && word.endSeconds !== null).length,
+    criticalTermCount: terminology?.referenceTermCount ?? 0,
+    criticalTermOccurrenceCount: terminology?.referenceOccurrenceCount ?? 0,
+    terminologyPromptTermCount: terminology?.promptTermCount ?? 0,
     availableSegments: segments,
     suggestedRange: range,
     blockers,
@@ -577,9 +632,22 @@ async function loadEvaluationEvidence(prisma: any, roomId: string, actor: Actor,
       },
       project: {
         select: {
+          id: true,
           accessGrants: {
             where: email ? { email, status: "ACTIVE" } : { id: "__none__" },
             select: { role: true, status: true },
+          },
+          transcriptTerminologyTerms: {
+            where: { status: "active" },
+            orderBy: [{ priority: "desc" }, { canonicalText: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              currentRevision: true,
+              canonicalText: true,
+              aliasesJson: true,
+              category: true,
+              priority: true,
+            },
           },
         },
       },
@@ -735,7 +803,8 @@ export async function approveTranscriptEvaluationWindow(input: {
     throw new TranscriptEvaluationWindowError("The selected window does not have a complete human-reviewed reference.", "REFERENCE_WORDS_REQUIRED", 409);
   }
   const consentVersionSha256 = readiness.consentVersionSha256!;
-  const provider = providerSnapshot(evidence.job, new Set(range.segmentIds), range.startSeconds);
+  const terminology = projectTerminologyReference(evidence.room, reference.referenceWords);
+  const provider = providerSnapshot(evidence.job, new Set(range.segmentIds), range.startSeconds, terminology);
   const sourcePlaybackEvidence = completeWindowPlaybackEvidence(
     input.sourcePlaybackEvidence,
     range,
@@ -795,7 +864,12 @@ export async function approveTranscriptEvaluationWindow(input: {
         referenceWords: currentReference.referenceWords,
         sourceSegmentIds: currentReference.segmentIds,
         sourceReviewReceipts: currentReference.reviewReceipts,
-        providerSnapshot: providerSnapshot(current.job, new Set(currentRange.segmentIds), currentRange.startSeconds),
+        providerSnapshot: providerSnapshot(
+          current.job,
+          new Set(currentRange.segmentIds),
+          currentRange.startSeconds,
+          projectTerminologyReference(current.room, currentReference.referenceWords),
+        ),
       };
       if (!currentReadiness.eligible || sha256Value(currentSnapshot) !== windowKeySha256) {
         throw new TranscriptEvaluationWindowError("Transcript, consent, source, or review evidence changed during approval. Refresh and review again.", "EVALUATION_EVIDENCE_CHANGED", 409);

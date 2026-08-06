@@ -32,7 +32,7 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
   const prisma = getPrismaClient();
   const nonce = randomUUID().slice(0, 8);
   const sourceSha256 = "e".repeat(64);
-  const providerText = "This controlled database fixture proves an exact reviewed reference.";
+  const providerText = "Quipsly helps Homer preserve an exact playback reviewed reference.";
   let userId = "";
   let outsiderUserId = "";
   let roomId = "";
@@ -40,13 +40,24 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
   let jobId = "";
   let segmentId = "";
   let evaluationWindowId = "";
+  let workspaceId = "";
+  let projectId = "";
 
   beforeAll(async () => {
     const reviewer = await prisma.user.create({ data: { primaryEmail: `evaluation-reviewer-${nonce}@example.test`, name: "Evaluation reviewer" } });
     const outsider = await prisma.user.create({ data: { primaryEmail: `evaluation-outsider-${nonce}@example.test`, name: "Evaluation outsider" } });
     userId = reviewer.id;
     outsiderUserId = outsider.id;
-    const room = await prisma.callRoom.create({ data: { title: "Evaluation approval proof", purpose: "PODCAST", createdByUserId: userId } });
+    const workspace = await prisma.studioWorkspace.create({ data: { slug: `evaluation-${nonce}`, name: "Evaluation fixture workspace" } });
+    workspaceId = workspace.id;
+    const project = await prisma.studioProject.create({ data: { workspaceId, slug: `evaluation-${nonce}`, name: "Evaluation fixture project" } });
+    projectId = project.id;
+    await prisma.studioTranscriptTerminologyTerm.createMany({ data: [
+      { projectId, canonicalText: "Quipsly", normalizedText: "quipsly", aliasesJson: ["Quips Lee"], category: "brand", priority: 100 },
+      { projectId, canonicalText: "Homer", normalizedText: "homer", aliasesJson: [], category: "person", priority: 90 },
+      { projectId, canonicalText: "High Ground Odyssey", normalizedText: "high ground odyssey", aliasesJson: ["HGO"], category: "title", priority: 80 },
+    ] });
+    const room = await prisma.callRoom.create({ data: { title: "Evaluation approval proof", purpose: "PODCAST", createdByUserId: userId, projectId } });
     roomId = room.id;
     const participant = await prisma.callParticipant.create({ data: { roomId, userId, displayName: "Evaluation reviewer", role: "HOST" } });
     await prisma.recordingConsent.create({ data: {
@@ -159,6 +170,8 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
         await prisma.mobileCaptureFinalizationReceipt.deleteMany({ where: { roomId } });
         await prisma.callRoom.deleteMany({ where: { id: roomId } });
       }
+      if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
+      if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       await prisma.user.deleteMany({ where: { id: { in: [userId, outsiderUserId].filter(Boolean) } } });
     } finally {
       await prisma.$disconnect();
@@ -197,7 +210,7 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
     await expect(prisma.transcriptEvaluationWindow.count({ where: { roomId } })).resolves.toBe(0);
     const first = await approveTranscriptEvaluationWindow(input);
     evaluationWindowId = first.window.id;
-    expect(first).toMatchObject({ ok: true, idempotentReplay: false, window: { workload: "podcast", referenceWordCount: 9, staleAgainstCurrentReview: false } });
+    expect(first).toMatchObject({ ok: true, idempotentReplay: false, window: { workload: "podcast", referenceWordCount: 9, criticalTermCount: 2, criticalTermOccurrenceCount: 2, terminologyPromptTermCount: 3, staleAgainstCurrentReview: false } });
     const persisted = await prisma.transcriptEvaluationWindow.findUniqueOrThrow({ where: { id: first.window.id } });
     expect(persisted).toMatchObject({ roomId, transcriptJobId: jobId, recordingAssetId: assetId, sourceSha256, referenceWordsJson: expect.any(Array), sourceReviewReceiptsJson: expect.any(Array), sourcePlaybackEvidenceJson: expect.objectContaining({ schema: "quipsly-window-playback-v1", listenedSecondBins: expect.any(Array) }) });
 
@@ -291,8 +304,75 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
       },
     })).rejects.toMatchObject({ code: "CANDIDATE_DERIVATIVE_MISMATCH", status: 409 });
 
+    const frozenWindow = await prisma.transcriptEvaluationWindow.findUniqueOrThrow({ where: { id: evaluationWindowId } });
+    const criticalTerminology = (frozenWindow.providerSnapshotJson as any).criticalTerminology;
+    const experimentConfig = (arm: "baseline" | "project-terminology") => ({
+      ...candidateInput.requestConfig,
+      provider: {
+        ...candidateInput.requestConfig.provider,
+        terminology: arm === "baseline"
+          ? { mode: "none", snapshotSha256: criticalTerminology.termsSha256, termCount: 0 }
+          : { mode: "project-snapshot", snapshotSha256: criticalTerminology.termsSha256, termCount: criticalTerminology.promptTermCount, promptSha256: "9".repeat(64) },
+      },
+      terminologyExperiment: {
+        schema: "quipsly-transcript-terminology-experiment-v1",
+        comparisonKey: `controlled-terms-${nonce}`,
+        arm,
+        termsSha256: criticalTerminology.termsSha256,
+      },
+    });
+    await expect(appendTranscriptEvaluationCandidate({
+      ...candidateInput,
+      clientRequestId: `candidate-terminology-invalid-${nonce}`,
+      runKey: `controlled-terminology-invalid-${nonce}`,
+      requestConfig: {
+        ...experimentConfig("project-terminology"),
+        provider: {
+          ...experimentConfig("project-terminology").provider,
+          terminology: { ...experimentConfig("project-terminology").provider.terminology, termCount: 1 },
+        },
+      },
+    })).rejects.toMatchObject({ code: "TERMINOLOGY_EXPERIMENT_CONFIG_INVALID", status: 409 });
+
+    const baseline = await appendTranscriptEvaluationCandidate({
+      ...candidateInput,
+      clientRequestId: `candidate-baseline-${nonce}`,
+      runKey: `controlled-baseline-${nonce}`,
+      requestConfig: experimentConfig("baseline"),
+      rawResponse: { privateTranscript: "Quickly helps Home preserve an exact playback reviewed reference." },
+      candidate: {
+        ...candidateInput.candidate,
+        providerRequestId: `request-baseline-${nonce}`,
+        words: "Quickly helps Home preserve an exact playback reviewed reference.".split(" ").map((word, index) => ({ text: word, startSeconds: index, endSeconds: index + 0.5, speakerId: null })),
+      },
+    });
+    const prompted = await appendTranscriptEvaluationCandidate({
+      ...candidateInput,
+      clientRequestId: `candidate-prompted-${nonce}`,
+      runKey: `controlled-prompted-${nonce}`,
+      requestConfig: experimentConfig("project-terminology"),
+      rawResponse: { privateTranscript: providerText },
+      candidate: {
+        ...candidateInput.candidate,
+        providerRequestId: `request-prompted-${nonce}`,
+      },
+    });
+    expect(baseline.candidate).toMatchObject({
+      terminologyExperiment: { arm: "baseline", comparisonKey: `controlled-terms-${nonce}`, appliedTermCount: 0 },
+      metrics: { terminology: { conceptRecall: 0, falsePositiveMentionCount: 0 } },
+    });
+    expect(prompted.candidate).toMatchObject({
+      terminologyExperiment: { arm: "project-terminology", comparisonKey: `controlled-terms-${nonce}`, appliedTermCount: 3 },
+      metrics: { terminology: { conceptRecall: 1, conceptPrecision: 1, falsePositiveMentionCount: 0 } },
+    });
+
     const publicProjection = await readTranscriptEvaluationCandidates({ prisma, actor, roomId });
-    expect(publicProjection).toMatchObject({ windowCount: 1, candidates: [{ id: first.candidate.id, correctionObservationCount: 0 }] });
+    expect(publicProjection.windowCount).toBe(1);
+    expect(publicProjection.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: first.candidate.id, correctionObservationCount: 0 }),
+      expect.objectContaining({ id: baseline.candidate.id, terminologyExperiment: expect.objectContaining({ arm: "baseline" }) }),
+      expect.objectContaining({ id: prompted.candidate.id, terminologyExperiment: expect.objectContaining({ arm: "project-terminology" }) }),
+    ]));
     expect(JSON.stringify(publicProjection)).not.toContain(providerText);
 
     const correction = await appendTranscriptEvaluationCorrectionObservation({
@@ -320,9 +400,19 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
     const privateExport = await exportTranscriptEvaluationRunnerInput({ prisma, actor, roomId });
     expect(privateExport).toMatchObject({
       kind: "quipsly-private-transcript-evaluation-runner-input-v1",
-      windows: [{ windowId: evaluationWindowId, reference: { approvalStatus: "human-approved" } }],
+      windows: [{
+        windowId: evaluationWindowId,
+        reference: { approvalStatus: "human-approved" },
+        terminologyExperiment: {
+          schema: "quipsly-transcript-terminology-experiment-v1",
+          promptTermCount: 3,
+          referenceTermCount: 2,
+          referenceOccurrenceCount: 2,
+          requiredArms: ["baseline", "project-terminology"],
+        },
+      }],
     });
-    expect(JSON.stringify(privateExport)).toContain("This");
+    expect(JSON.stringify(privateExport)).toContain("Quipsly");
     await expect(readTranscriptEvaluationCandidates({
       prisma,
       actor: { id: outsiderUserId, email: `evaluation-outsider-${nonce}@example.test`, isStaff: false },

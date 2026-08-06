@@ -11,6 +11,23 @@ Architecture continuation:
 
 ## 2026-08-06 implementation checkpoint
 
+The Transcript Quality Lab now freezes the active project vocabulary with each
+human-approved reference window and measures concept recall, precision,
+preferred spelling, and prompted false mentions alongside WER. An explicit
+baseline/project-terminology experiment contract requires the same derivative
+bytes and non-terminology provider settings for both arms; the evidence board
+refuses a win when vocabulary gains hide general regression or hallucinated
+terms. Local operation proved the complete disposable-database contract and
+the authenticated empty/blocked states without inventing a real-corpus score.
+See `../coordination/2026-08-06-matched-terminology-accuracy-lab.md`.
+
+This makes terminology observable, but not qualified. The local High Ground
+Odyssey project has three active terms and zero approved human-reference
+windows. Real retained podcast and coaching pairs plus timed correction passes
+remain the production-routing gate.
+
+### Audio event qualification checkpoint
+
 The first reusable Audio Studio qualification loop now exists across Capture
 and Nest: a real Apple classifier produces an immutable source-bound suggestion
 receipt; the Audible Event Map opens bounded protected playback; and Nest

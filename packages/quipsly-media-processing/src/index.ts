@@ -12,6 +12,7 @@ export * from "./audio-pair-correlation.js";
 export * from "./episode-audio-mix.js";
 export * from "./studio-source-transcript.js";
 export * from "./transcript-terminology.js";
+export * from "./transcript-terminology-evaluation.js";
 export * from "./audio-treatment.js";
 export * from "./audio-dialogue-repair.js";
 export * from "./transcription.js";

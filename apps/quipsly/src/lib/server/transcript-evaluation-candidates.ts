@@ -3,7 +3,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import {
+  evaluateTranscriptCriticalTerminology,
   evaluateTranscriptCandidate,
+  parseTranscriptCriticalTerminologyReference,
   parseTranscriptEvaluationCandidate,
   parseTranscriptEvaluationPolicyReceipt,
   type TranscriptEvaluationCandidate,
@@ -23,6 +25,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/;
 const MAX_RAW_RESPONSE_BYTES = 2_000_000;
 const MAX_REQUEST_CONFIG_BYTES = 64_000;
 const MAX_OBSERVATION_BYTES = 64_000;
+export const TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA =
+  "quipsly-transcript-terminology-experiment-v1";
 
 export type TranscriptEvaluationActor = {
   id: string;
@@ -94,6 +98,18 @@ export function transcriptProviderComparisonConfigSha256(value: unknown) {
   return sha256Value(providerConfig);
 }
 
+export function transcriptProviderBaseConfigSha256(value: unknown) {
+  const providerConfig = { ...object(object(value).provider) };
+  if (Object.keys(providerConfig).length === 0) {
+    throw new TranscriptEvaluationCandidateError(
+      "Provider request configuration must include a non-empty provider object.",
+      "CANDIDATE_PROVIDER_CONFIG_INVALID",
+    );
+  }
+  delete providerConfig.terminology;
+  return sha256Value(providerConfig);
+}
+
 function boundedId(value: unknown, field: string) {
   const normalized = text(value);
   if (!SAFE_ID.test(normalized)) {
@@ -145,6 +161,7 @@ const windowSelect = {
   referenceRevisionId: true,
   referenceContentSha256: true,
   referenceWordsJson: true,
+  providerSnapshotJson: true,
   approvedByUserId: true,
   approvedAt: true,
   candidates: {
@@ -245,6 +262,77 @@ function buildCandidate(input: {
   return { parsed, policy, requestConfigSha256, requestEvidenceSha256, rawResponseSha256 };
 }
 
+function criticalTerminologyReference(window: any) {
+  const reference = parseTranscriptCriticalTerminologyReference(
+    object(window.providerSnapshotJson).criticalTerminology,
+  );
+  if (!reference) return null;
+  const receiptSha256 = sha256Value(reference.terms.map((term) => ({
+    id: term.id,
+    revision: term.revision,
+    canonicalText: term.canonicalText,
+    aliases: term.aliases,
+    category: term.category,
+    priority: term.priority,
+  })));
+  if (receiptSha256 !== reference.termsSha256 || receiptSha256 !== reference.revisionToken) {
+    throw new TranscriptEvaluationCandidateError(
+      "Frozen terminology evidence failed its immutable receipt check.",
+      "TERMINOLOGY_REFERENCE_INVALID",
+      409,
+    );
+  }
+  return reference;
+}
+
+function terminologyExperiment(requestConfig: unknown, window: any) {
+  const value = object(object(requestConfig).terminologyExperiment);
+  if (!Object.keys(value).length) return null;
+  const comparisonKey = boundedId(value.comparisonKey, "terminologyExperiment.comparisonKey");
+  const arm = text(value.arm);
+  if (value.schema !== TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA || (arm !== "baseline" && arm !== "project-terminology")) {
+    throw new TranscriptEvaluationCandidateError("Terminology experiment metadata is invalid.", "TERMINOLOGY_EXPERIMENT_INVALID");
+  }
+  const reference = criticalTerminologyReference(window);
+  if (!reference || reference.referenceOccurrenceCount === 0) {
+    throw new TranscriptEvaluationCandidateError(
+      "This evaluation window has no frozen critical terminology to compare.",
+      "TERMINOLOGY_REFERENCE_REQUIRED",
+      409,
+    );
+  }
+  const termsSha256 = text(value.termsSha256);
+  if (termsSha256 !== reference.termsSha256) {
+    throw new TranscriptEvaluationCandidateError("Terminology experiment does not match the frozen window vocabulary.", "TERMINOLOGY_EXPERIMENT_STALE", 409);
+  }
+  const providerTerminology = object(object(object(requestConfig).provider).terminology);
+  const mode = text(providerTerminology.mode);
+  const appliedTermCount = Number(providerTerminology.termCount);
+  const providerSnapshotSha256 = text(providerTerminology.snapshotSha256);
+  const validArm = providerSnapshotSha256 === reference.termsSha256
+    && Number.isSafeInteger(appliedTermCount)
+    && (arm === "baseline"
+      ? mode === "none" && appliedTermCount === 0
+      : mode === "project-snapshot" && appliedTermCount === reference.promptTermCount && SHA256.test(text(providerTerminology.promptSha256)));
+  if (!validArm) {
+    throw new TranscriptEvaluationCandidateError(
+      "Provider terminology configuration does not prove the declared experiment arm.",
+      "TERMINOLOGY_EXPERIMENT_CONFIG_INVALID",
+      409,
+    );
+  }
+  return {
+    schema: TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA,
+    comparisonKey,
+    arm: arm as "baseline" | "project-terminology",
+    termsSha256: reference.termsSha256,
+    promptTermCount: reference.promptTermCount,
+    referenceTermCount: reference.referenceTermCount,
+    referenceOccurrenceCount: reference.referenceOccurrenceCount,
+    baseConfigSha256: transcriptProviderBaseConfigSha256(requestConfig),
+  };
+}
+
 function validatedInputMedia(requestConfig: unknown, window: any) {
   const inputMedia = object(object(requestConfig).inputMedia);
   const valid = inputMedia.schema === "quipsly-transcript-evaluation-derivative-v1"
@@ -273,6 +361,19 @@ function validatedInputMedia(requestConfig: unknown, window: any) {
 function publicCandidate(candidate: any) {
   const metrics = object(candidate.metricsJson);
   const inputMedia = object(object(candidate.requestConfigJson).inputMedia);
+  const experiment = (() => {
+    const row = object(object(candidate.requestConfigJson).terminologyExperiment);
+    const provider = object(object(candidate.requestConfigJson).provider);
+    const terminology = object(provider.terminology);
+    if (row.schema !== TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA) return null;
+    return {
+      comparisonKey: text(row.comparisonKey),
+      arm: text(row.arm),
+      termsSha256: text(row.termsSha256),
+      baseConfigSha256: (() => { try { return transcriptProviderBaseConfigSha256(candidate.requestConfigJson); } catch { return null; } })(),
+      appliedTermCount: Number.isSafeInteger(terminology.termCount) ? Number(terminology.termCount) : null,
+    };
+  })();
   return {
     id: candidate.id as string,
     windowId: candidate.windowId as string,
@@ -289,6 +390,7 @@ function publicCandidate(candidate: any) {
     elapsedMilliseconds: candidate.elapsedMilliseconds as number,
     estimatedCostUsd: candidate.estimatedCostUsd as number | null,
     metrics: Object.keys(metrics).length ? metrics : null,
+    terminologyExperiment: experiment,
     errorCode: candidate.errorCode as string | null,
     retryable: candidate.retryable as boolean | null,
     policyReceiptSha256: candidate.policy?.receiptSha256 as string,
@@ -338,6 +440,7 @@ export async function appendTranscriptEvaluationCandidate(input: {
   };
   const initial = await authorizedWindow({ prisma: input.prisma, actor: input.actor, windowId, requireWrite: true });
   const inputMedia = validatedInputMedia(input.requestConfig, initial);
+  terminologyExperiment(input.requestConfig, initial);
   Object.assign(snapshot, {
     windowKeySha256: initial.windowKeySha256,
     sourceSha256: initial.sourceSha256,
@@ -367,6 +470,7 @@ export async function appendTranscriptEvaluationCandidate(input: {
         throw new TranscriptEvaluationCandidateError("The approved reference changed before candidate persistence.", "CANDIDATE_REFERENCE_CHANGED", 409);
       }
       validatedInputMedia(input.requestConfig, current);
+      terminologyExperiment(input.requestConfig, current);
       const conflictingDerivative = current.candidates.find((candidate: any) => {
         const prior = object(object(candidate.requestConfigJson).inputMedia);
         return SHA256.test(text(prior.sha256)) && text(prior.sha256) !== text(inputMedia.sha256);
@@ -392,10 +496,16 @@ export async function appendTranscriptEvaluationCandidate(input: {
       });
       const words = evidence.parsed.outcome === "succeeded" ? evidence.parsed.words : [];
       const metrics = evidence.parsed.outcome === "succeeded"
-        ? evaluateTranscriptCandidate(
-          current.referenceWordsJson as TranscriptEvaluationWord[],
-          words,
-        )
+        ? {
+          ...evaluateTranscriptCandidate(
+            current.referenceWordsJson as TranscriptEvaluationWord[],
+            words,
+          ),
+          terminology: evaluateTranscriptCriticalTerminology(
+            criticalTerminologyReference(current),
+            words,
+          ),
+        }
         : null;
       return tx.transcriptEvaluationCandidate.create({
         data: {
@@ -612,6 +722,38 @@ export async function exportTranscriptEvaluationRunnerInput(input: {
       approvedBy: window.approvedByUserId,
       words: window.referenceWordsJson,
     },
+    terminologyExperiment: (() => {
+      const terminology = criticalTerminologyReference(window);
+      if (!terminology) return null;
+      return {
+        schema: TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA,
+        recommendedComparisonKey: `terminology-${window.id}`,
+        termsSha256: terminology.termsSha256,
+        revisionToken: terminology.revisionToken,
+        promptTermCount: terminology.promptTermCount,
+        referenceTermCount: terminology.referenceTermCount,
+        referenceOccurrenceCount: terminology.referenceOccurrenceCount,
+        terms: terminology.terms.map((term) => ({
+          id: term.id,
+          revision: term.revision,
+          canonicalText: term.canonicalText,
+          aliases: term.aliases,
+          category: term.category,
+          priority: term.priority,
+        })),
+        requiredArms: ["baseline", "project-terminology"],
+        providerConfigurationContract: {
+          baseline: { mode: "none", snapshotSha256: terminology.termsSha256, termCount: 0 },
+          projectTerminology: {
+            mode: "project-snapshot",
+            snapshotSha256: terminology.termsSha256,
+            termCount: terminology.promptTermCount,
+            promptSha256: null,
+            promptSha256Required: true,
+          },
+        },
+      };
+    })(),
     priorCandidateReceipts: window.candidates.map((candidate: any) => ({
       candidateId: candidate.id,
       runKey: candidate.runKey,

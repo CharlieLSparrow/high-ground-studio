@@ -15,6 +15,10 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { sessionActorAccessWhere, type SessionAccessActor } from "./session-access";
+import {
+  TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA,
+  transcriptProviderBaseConfigSha256,
+} from "./transcript-evaluation-candidates";
 
 export const TRANSCRIPT_EVALUATION_BOARD_SCHEMA =
   "quipsly-transcript-evaluation-board-v1";
@@ -34,6 +38,8 @@ type CandidateRow = {
   model: string;
   adapterVersion: string;
   requestConfigSha256: string;
+  requestConfigJson: unknown;
+  metricsJson: unknown;
   speakerAttribution: string;
   timingGranularity: string;
   outcome: string;
@@ -103,6 +109,11 @@ export type TranscriptEvidenceProvider = {
   difficultWordErrorRate: number | null;
   speakerErrorRate: number | null;
   timingP95Milliseconds: number | null;
+  criticalTermRecall: number | null;
+  criticalTermPrecision: number | null;
+  preferredSpellingRate: number | null;
+  criticalTermOccurrenceCount: number;
+  criticalTermFalsePositiveCount: number;
   realTimeFactor: number | null;
   estimatedCostUsd: number | null;
   correctionPassCount: number;
@@ -111,6 +122,30 @@ export type TranscriptEvidenceProvider = {
   missingConditions: TranscriptEvaluationCondition[];
   failedConditions: TranscriptEvaluationCondition[];
   reasons: string[];
+};
+
+export type TranscriptTerminologyComparison = {
+  identity: string;
+  workload: TranscriptEvaluationWorkload;
+  comparisonKey: string;
+  providerKey: string;
+  providerName: string;
+  model: string;
+  adapterVersion: string;
+  baseConfigSha256: string;
+  termsSha256: string;
+  pairCount: number;
+  baselineOnlyWindowCount: number;
+  terminologyOnlyWindowCount: number;
+  baselineWordErrorRate: number | null;
+  terminologyWordErrorRate: number | null;
+  wordErrorRateDelta: number | null;
+  baselineCriticalTermRecall: number | null;
+  terminologyCriticalTermRecall: number | null;
+  criticalTermRecallDelta: number | null;
+  baselineFalsePositiveCount: number;
+  terminologyFalsePositiveCount: number;
+  verdict: "improved" | "regressed" | "mixed" | "insufficient-evidence";
 };
 
 export type TranscriptEvidenceWorkload = {
@@ -148,12 +183,14 @@ export type TranscriptEvaluationBoard = {
     successfulCandidateCount: number;
     failedCandidateCount: number;
     correctionPassCount: number;
+    matchedTerminologyPairCount: number;
     corpusCoverageComplete: boolean;
   };
   workloads: TranscriptEvidenceWorkload[];
+  terminologyComparisons: TranscriptTerminologyComparison[];
   sessions: TranscriptEvidenceSession[];
   nextEvidence: Array<{
-    kind: "condition" | "provider" | "correction" | "failure";
+    kind: "condition" | "provider" | "correction" | "failure" | "terminology";
     workload: TranscriptEvaluationWorkload | null;
     label: string;
     detail: string;
@@ -203,6 +240,146 @@ function asConditions(value: unknown, workload: TranscriptEvaluationWorkload) {
 
 function asWords(value: unknown): TranscriptEvaluationWord[] {
   return Array.isArray(value) ? value as TranscriptEvaluationWord[] : [];
+}
+
+function terminologyMetrics(candidate: CandidateRow) {
+  const value = record(record(candidate.metricsJson).terminology);
+  const integers = [
+    "referenceOccurrenceCount",
+    "candidateMentionCount",
+    "matchedOccurrenceCount",
+    "falsePositiveMentionCount",
+    "canonicalCandidateMentionCount",
+  ] as const;
+  if (integers.some((key) => !Number.isSafeInteger(value[key]) || Number(value[key]) < 0)) return null;
+  return {
+    referenceOccurrenceCount: Number(value.referenceOccurrenceCount),
+    candidateMentionCount: Number(value.candidateMentionCount),
+    matchedOccurrenceCount: Number(value.matchedOccurrenceCount),
+    falsePositiveMentionCount: Number(value.falsePositiveMentionCount),
+    canonicalCandidateMentionCount: Number(value.canonicalCandidateMentionCount),
+  };
+}
+
+function terminologyTotals(candidates: CandidateRow[]) {
+  const totals = candidates.reduce((sum, candidate) => {
+    const metrics = terminologyMetrics(candidate);
+    if (!metrics || candidate.outcome !== "succeeded") return sum;
+    sum.reference += metrics.referenceOccurrenceCount;
+    sum.candidate += metrics.candidateMentionCount;
+    sum.matched += metrics.matchedOccurrenceCount;
+    sum.falsePositive += metrics.falsePositiveMentionCount;
+    sum.canonical += metrics.canonicalCandidateMentionCount;
+    return sum;
+  }, { reference: 0, candidate: 0, matched: 0, falsePositive: 0, canonical: 0 });
+  return {
+    ...totals,
+    recall: totals.reference ? totals.matched / totals.reference : null,
+    precision: totals.candidate ? totals.matched / totals.candidate : null,
+    preferredSpellingRate: totals.candidate ? Math.min(totals.canonical, totals.matched) / totals.candidate : null,
+  };
+}
+
+function experiment(candidate: CandidateRow) {
+  const config = record(candidate.requestConfigJson);
+  const value = record(config.terminologyExperiment);
+  if (value.schema !== TRANSCRIPT_TERMINOLOGY_EXPERIMENT_SCHEMA) return null;
+  const arm = value.arm === "baseline" || value.arm === "project-terminology" ? value.arm : null;
+  const comparisonKey = typeof value.comparisonKey === "string" ? value.comparisonKey : "";
+  const termsSha256 = typeof value.termsSha256 === "string" ? value.termsSha256 : "";
+  if (!arm || !comparisonKey || !/^[0-9a-f]{64}$/.test(termsSha256)) return null;
+  try {
+    return { arm, comparisonKey, termsSha256, baseConfigSha256: transcriptProviderBaseConfigSha256(config) };
+  } catch {
+    return null;
+  }
+}
+
+function wordCounts(candidate: CandidateRow) {
+  const words = record(record(candidate.metricsJson).words);
+  const reference = Number(words.referenceWordCount);
+  const errors = Number(words.wordErrorCount);
+  return Number.isSafeInteger(reference) && reference > 0 && Number.isSafeInteger(errors) && errors >= 0
+    ? { reference, errors }
+    : null;
+}
+
+function buildTerminologyComparisons(rows: TranscriptEvaluationBoardRow[]): TranscriptTerminologyComparison[] {
+  type Bucket = { workload: TranscriptEvaluationWorkload; comparisonKey: string; providerKey: string; providerName: string; model: string; adapterVersion: string; baseConfigSha256: string; termsSha256: string; windows: Map<string, Partial<Record<"baseline" | "project-terminology", CandidateRow>>> };
+  const buckets = new Map<string, Bucket>();
+  for (const row of rows) {
+    if (row.workload !== "podcast" && row.workload !== "coaching") continue;
+    for (const candidate of row.candidates) {
+      const receipt = experiment(candidate);
+      if (!receipt) continue;
+      const key = [row.workload, candidate.providerKey, candidate.model, candidate.adapterVersion, receipt.baseConfigSha256, receipt.comparisonKey, receipt.termsSha256].join("\u0000");
+      const bucket = buckets.get(key) ?? {
+        workload: row.workload,
+        comparisonKey: receipt.comparisonKey,
+        providerKey: candidate.providerKey,
+        providerName: candidate.providerName,
+        model: candidate.model,
+        adapterVersion: candidate.adapterVersion,
+        baseConfigSha256: receipt.baseConfigSha256,
+        termsSha256: receipt.termsSha256,
+        windows: new Map(),
+      };
+      const window = bucket.windows.get(row.id) ?? {};
+      window[receipt.arm] = candidate;
+      bucket.windows.set(row.id, window);
+      buckets.set(key, bucket);
+    }
+  }
+  return [...buckets.values()].map((bucket) => {
+    const windows = [...bucket.windows.values()];
+    const pairs = windows.flatMap((window) => window.baseline?.outcome === "succeeded" && window["project-terminology"]?.outcome === "succeeded"
+      ? [{ baseline: window.baseline, terminology: window["project-terminology"] }]
+      : []);
+    const summarize = (arm: "baseline" | "terminology") => {
+      const candidates = pairs.map((pair) => pair[arm]);
+      const word = candidates.reduce((sum, candidate) => {
+        const counts = wordCounts(candidate);
+        if (counts) { sum.reference += counts.reference; sum.errors += counts.errors; }
+        return sum;
+      }, { reference: 0, errors: 0 });
+      const terms = terminologyTotals(candidates);
+      return { wordErrorRate: word.reference ? word.errors / word.reference : null, termRecall: terms.recall, falsePositive: terms.falsePositive };
+    };
+    const baseline = summarize("baseline");
+    const terminology = summarize("terminology");
+    const wordDelta = baseline.wordErrorRate == null || terminology.wordErrorRate == null ? null : terminology.wordErrorRate - baseline.wordErrorRate;
+    const recallDelta = baseline.termRecall == null || terminology.termRecall == null ? null : terminology.termRecall - baseline.termRecall;
+    const verdict = !pairs.length || wordDelta == null || recallDelta == null
+      ? "insufficient-evidence" as const
+      : wordDelta > 0.005 || recallDelta < 0 || terminology.falsePositive > baseline.falsePositive
+        ? "regressed" as const
+        : recallDelta > 0 || wordDelta < -0.005
+          ? "improved" as const
+          : "mixed" as const;
+    return {
+      identity: sha256({ ...bucket, windows: [...bucket.windows.keys()] }),
+      workload: bucket.workload,
+      comparisonKey: bucket.comparisonKey,
+      providerKey: bucket.providerKey,
+      providerName: bucket.providerName,
+      model: bucket.model,
+      adapterVersion: bucket.adapterVersion,
+      baseConfigSha256: bucket.baseConfigSha256,
+      termsSha256: bucket.termsSha256,
+      pairCount: pairs.length,
+      baselineOnlyWindowCount: windows.filter((window) => window.baseline && !window["project-terminology"]).length,
+      terminologyOnlyWindowCount: windows.filter((window) => !window.baseline && window["project-terminology"]).length,
+      baselineWordErrorRate: baseline.wordErrorRate,
+      terminologyWordErrorRate: terminology.wordErrorRate,
+      wordErrorRateDelta: wordDelta,
+      baselineCriticalTermRecall: baseline.termRecall,
+      terminologyCriticalTermRecall: terminology.termRecall,
+      criticalTermRecallDelta: recallDelta,
+      baselineFalsePositiveCount: baseline.falsePositive,
+      terminologyFalsePositiveCount: terminology.falsePositive,
+      verdict,
+    };
+  }).sort((left, right) => left.workload.localeCompare(right.workload) || left.providerName.localeCompare(right.providerName) || left.comparisonKey.localeCompare(right.comparisonKey));
 }
 
 function providerIdentity(candidate: Pick<CandidateRow, "providerKey" | "model" | "adapterVersion" | "requestConfigSha256">) {
@@ -291,6 +468,7 @@ export function buildTranscriptEvaluationBoardFromRows(
   const successfulCandidateCount = rows.reduce((sum, row) => sum + row.candidates.filter((candidate) => candidate.outcome === "succeeded").length, 0);
   const failedCandidateCount = candidateAttemptCount - successfulCandidateCount;
   const correctionPassCount = rows.reduce((sum, row) => sum + row.candidates.reduce((candidateSum, candidate) => candidateSum + candidate.corrections.length, 0), 0);
+  const terminologyComparisons = buildTerminologyComparisons(rows);
 
   const parsedReport = rows.length ? buildTranscriptEvaluationReport(parseTranscriptEvaluationCorpus({
     kind: "quipsly-private-transcript-evaluation-corpus-v2",
@@ -342,6 +520,8 @@ export function buildTranscriptEvaluationBoardFromRows(
       providers: (report?.providers ?? []).map((provider): TranscriptEvidenceProvider => {
         const identity = [provider.providerKey, provider.model, provider.adapterVersion, provider.requestConfigSha256].join("\u0000");
         const corrections = correctionByProvider.get(`${workload}\u0000${identity}`) ?? { count: 0, elapsed: 0, operations: 0 };
+        const matchingCandidates = workloadRows.flatMap((row) => row.candidates.filter((candidate) => providerIdentity(candidate) === identity));
+        const criticalTerms = terminologyTotals(matchingCandidates);
         return {
           identity: sha256(identity),
           providerKey: provider.providerKey,
@@ -359,6 +539,11 @@ export function buildTranscriptEvaluationBoardFromRows(
           difficultWordErrorRate: provider.difficultWordMetrics?.wordErrorRate ?? null,
           speakerErrorRate: provider.speakerMetrics?.speakerErrorRate ?? null,
           timingP95Milliseconds: provider.timingMetrics?.p95AbsoluteStartDriftMilliseconds ?? null,
+          criticalTermRecall: criticalTerms.recall,
+          criticalTermPrecision: criticalTerms.precision,
+          preferredSpellingRate: criticalTerms.preferredSpellingRate,
+          criticalTermOccurrenceCount: criticalTerms.reference,
+          criticalTermFalsePositiveCount: criticalTerms.falsePositive,
           realTimeFactor: provider.realTimeFactor,
           estimatedCostUsd: provider.estimatedCostUsd,
           correctionPassCount: corrections.count,
@@ -423,6 +608,14 @@ export function buildTranscriptEvaluationBoardFromRows(
       });
     }
   }
+  for (const comparison of terminologyComparisons) {
+    if (!comparison.pairCount || comparison.baselineOnlyWindowCount || comparison.terminologyOnlyWindowCount) nextEvidence.push({
+      kind: "terminology",
+      workload: comparison.workload,
+      label: `${comparison.providerName} matched terminology pair`,
+      detail: `Complete baseline and project-terminology arms against the same derivative bytes. ${comparison.pairCount} paired; ${comparison.baselineOnlyWindowCount} baseline-only; ${comparison.terminologyOnlyWindowCount} terminology-only.`,
+    });
+  }
 
   const coveredConditionCount = workloads.reduce((sum, workload) => sum + workload.coveredConditionCount, 0);
   return {
@@ -437,9 +630,11 @@ export function buildTranscriptEvaluationBoardFromRows(
       successfulCandidateCount,
       failedCandidateCount,
       correctionPassCount,
+      matchedTerminologyPairCount: terminologyComparisons.reduce((sum, comparison) => sum + comparison.pairCount, 0),
       corpusCoverageComplete: parsedReport?.coverage.complete ?? false,
     },
     workloads,
+    terminologyComparisons,
     sessions,
     nextEvidence,
     boundaries: {
@@ -491,6 +686,8 @@ export async function readTranscriptEvaluationBoard(input: {
           model: true,
           adapterVersion: true,
           requestConfigSha256: true,
+          requestConfigJson: true,
+          metricsJson: true,
           speakerAttribution: true,
           timingGranularity: true,
           outcome: true,
