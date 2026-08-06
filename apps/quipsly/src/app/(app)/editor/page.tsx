@@ -8986,6 +8986,22 @@ function CloudEditorContent() {
                         </div>
                         <div className="mt-3 grid gap-2 lg:grid-cols-2">
                           {captureGroupSourceSet.map((source) => {
+                            const signalProfile = audioSignalProfileStatusByAsset[source.asset.id]
+                              ?? audioSignalProfileStatusByAsset[source.asset.sourceId]
+                              ?? null;
+                            const signalJobWorking = queueingMediaJobKeys.has(`${source.asset.id}:audio-signal-profile`);
+                            const decodeFailed = source.isAudio && signalProfile?.status === "failed";
+                            const decodeComplete = source.isAudio && signalProfile?.status === "completed"
+                              && signalProfile.analyzer?.completeDecode === true;
+                            const decodeLabel = !source.isAudio
+                              ? "Video verification separate"
+                              : decodeComplete
+                                ? "Complete decode verified"
+                                : decodeFailed
+                                  ? "Complete decode failed"
+                                  : signalJobWorking || ["queued", "processing", "output-ready"].includes(signalProfile?.status ?? "")
+                                    ? "Complete decode running"
+                                    : "Complete decode required";
                             const alignmentLabel = source.reviewed
                               ? "Reviewed sync"
                               : source.alignment?.status === "proposal-ready"
@@ -9008,6 +9024,7 @@ function CloudEditorContent() {
                                     {source.isBaseline ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-black uppercase text-emerald-900">Group baseline</span> : null}
                                     {selectedAsSpine ? <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-900">Spine selection</span> : null}
                                     {selectedAsTarget ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-900">Target selection</span> : null}
+                                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${decodeFailed ? "bg-red-100 text-red-900" : decodeComplete ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-700"}`}>{decodeLabel}</span>
                                   </div>
                                 </div>
                                 <div className="mt-2 font-mono text-[10px] font-bold leading-5 text-sky-800">
@@ -9021,10 +9038,16 @@ function CloudEditorContent() {
                                 {source.recordingAssetId ? (
                                   <div className="mt-1 truncate font-mono text-[9px] text-sky-700">Recording {source.recordingAssetId}</div>
                                 ) : null}
+                                {decodeFailed ? (
+                                  <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[10px] font-bold leading-4 text-red-900">
+                                    {signalProfile?.error || "The exact source could not be completely decoded."} Replace the protected master or retry after repairing the source; exact-byte upload verification alone is not playback proof.
+                                  </p>
+                                ) : null}
                                 <div className="mt-3 grid grid-cols-2 gap-2">
                                   <button
                                     type="button"
-                                    disabled={!source.isAudio}
+                                    disabled={!source.isAudio || decodeFailed}
+                                    title={decodeFailed ? "This source cannot become the spine until complete decoding succeeds." : undefined}
                                     onClick={() => setSyncWizardSpineAssetId(source.asset.id)}
                                     className="rounded-md border border-sky-200 bg-sky-50 px-2 py-2 text-[10px] font-black text-sky-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                                   >
@@ -9038,6 +9061,16 @@ function CloudEditorContent() {
                                   >
                                     Review as target
                                   </button>
+                                  {source.isAudio && (decodeFailed || !decodeComplete) ? (
+                                    <button
+                                      type="button"
+                                      disabled={signalJobWorking}
+                                      onClick={() => void operateAudioSignalProfile(source.asset)}
+                                      className="col-span-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-2 text-[10px] font-black text-violet-950 disabled:cursor-wait disabled:opacity-60"
+                                    >
+                                      {signalJobWorking ? "Decoding exact source…" : decodeFailed ? "Retry complete decode" : "Run complete decode"}
+                                    </button>
+                                  ) : null}
                                 </div>
                               </article>
                             );

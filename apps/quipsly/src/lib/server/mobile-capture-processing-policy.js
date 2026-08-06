@@ -19,6 +19,43 @@ function numeric(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function consentParticipantIds(consentVersions) {
+  if (!Array.isArray(consentVersions)) return [];
+  return consentVersions
+    .map((version) => text(asObject(version).participantId))
+    .filter(Boolean);
+}
+
+function normalizedCaptureParticipantIds(receipts) {
+  return [...new Set(receipts.flatMap((receipt) => {
+    const metadata = asObject(receipt?.metadataJson);
+    const originalDecision = asObject(metadata.originalDecision);
+    const initialRoomReadiness = asObject(originalDecision.initialRoomReadiness);
+    return consentParticipantIds(initialRoomReadiness.consentVersions);
+  }))].sort();
+}
+
+function currentConsentScope({ room, participantIds }) {
+  if (participantIds.length === 0) {
+    // Compatibility for normalized receipts created before the immutable
+    // capture-time consent snapshot was embedded. The broader room ledger is
+    // safer than guessing which later participants were or were not recorded.
+    return {
+      participants: room.participants,
+      consents: room.recordingConsents,
+      missingParticipantIds: [],
+    };
+  }
+  const participantIdSet = new Set(participantIds);
+  const participants = room.participants.filter((participant) => participantIdSet.has(participant.id));
+  const presentParticipantIds = new Set(participants.map((participant) => participant.id));
+  return {
+    participants,
+    consents: room.recordingConsents,
+    missingParticipantIds: participantIds.filter((participantId) => !presentParticipantIds.has(participantId)),
+  };
+}
+
 function immutableReceiptMatchesRecordingAsset(receipt, recordingAsset) {
   const metadata = asObject(receipt?.metadataJson);
   const binding = asObject(metadata.immutableUploadBinding);
@@ -64,9 +101,19 @@ function trustedProviderProcessingGateFromEvidence({ recordingAsset, room, trans
       error: "The provider recording room is unavailable, so current all-party consent cannot be verified.",
     };
   }
+  const providerParticipantIds = consentParticipantIds(consentBinding.consentVersions);
+  const scope = currentConsentScope({ room, participantIds: providerParticipantIds });
+  if (scope.missingParticipantIds.length > 0) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: "PROVIDER_CAPTURE_PARTICIPANT_SCOPE_UNAVAILABLE",
+      error: "A participant from the immutable provider capture consent snapshot is missing from the current consent ledger.",
+    };
+  }
   const readiness = buildMobileCaptureProviderCompositeReadiness({
-    participants: room.participants,
-    consents: room.recordingConsents,
+    participants: scope.participants,
+    consents: scope.consents,
   });
   const bindingMatches =
     readiness.consentVersion === consentBinding.consentVersion
@@ -174,9 +221,21 @@ export function mobileCaptureProcessingGateFromEvidence({
         error: "The capture room is unavailable, so current participant consent cannot be verified.",
       };
     }
+    const scope = currentConsentScope({
+      room,
+      participantIds: normalizedCaptureParticipantIds(normalizedReceipts),
+    });
+    if (scope.missingParticipantIds.length > 0) {
+      return {
+        allowed: false,
+        receipt: normalizedReceipts[0],
+        errorCode: "CAPTURE_CONSENT_PARTICIPANT_SCOPE_UNAVAILABLE",
+        error: "A participant from the immutable capture-time consent snapshot is missing from the current consent ledger.",
+      };
+    }
     const consentVersions = buildMobileCaptureConsentVersions({
-      participants: room.participants,
-      consents: room.recordingConsents,
+      participants: scope.participants,
+      consents: scope.consents,
     });
     const sourceType = recordingAsset?.kind === "LOCAL_VIDEO"
       || recordingAsset?.kind === "SCREEN_REFERENCE"

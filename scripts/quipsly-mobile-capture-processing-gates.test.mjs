@@ -23,7 +23,7 @@ const asset = {
   checksum: "a".repeat(64),
   localManifestJson: {},
 };
-const releasedReceipt = (transcriptDisposition = "RELEASED") => ({
+const releasedReceipt = (transcriptDisposition = "RELEASED", consentVersions = null) => ({
   uploadSessionId: "9d8c0c81-847f-4e16-96d0-26b494c890aa",
   recordingAssetId: asset.id,
   processingDisposition: "RELEASED",
@@ -37,6 +37,11 @@ const releasedReceipt = (transcriptDisposition = "RELEASED") => ({
       objectName: asset.storageObjectPath,
       sizeBytes: 4096,
     },
+    ...(consentVersions ? {
+      originalDecision: {
+        initialRoomReadiness: { consentVersions },
+      },
+    } : {}),
   },
 });
 const prismaWith = (...receipts) => ({
@@ -103,6 +108,10 @@ const releasedMobileRoom = {
     }),
   ],
 };
+const releasedMobileVersions = buildMobileCaptureConsentVersions({
+  participants: releasedMobileRoom.participants,
+  consents: releasedMobileRoom.recordingConsents,
+});
 
 const mediaHeld = await mobileCaptureMediaProcessingGate({
   prisma: prismaWith({
@@ -162,7 +171,53 @@ const released = await mobileCaptureTranscriptProcessingGate({
 });
 assert.equal(released.allowed, true);
 
+const roomWithLaterProducer = structuredClone(releasedMobileRoom);
+roomWithLaterProducer.participants.push({
+  id: "post-capture-producer",
+  userId: "post-capture-producer-user",
+  role: "PRODUCER",
+});
+const captureScopedMedia = await mobileCaptureMediaProcessingGate({
+  prisma: prismaWithRoom(
+    roomWithLaterProducer,
+    releasedReceipt("RELEASED", releasedMobileVersions),
+  ),
+  recordingAsset: asset,
+});
+assert.equal(captureScopedMedia.allowed, true,
+  "a collaborator added after capture must not need retroactive recording consent to process captured bytes");
+const captureScopedTranscript = await mobileCaptureTranscriptProcessingGate({
+  prisma: prismaWithRoom(
+    roomWithLaterProducer,
+    releasedReceipt("RELEASED", releasedMobileVersions),
+  ),
+  recordingAsset: asset,
+});
+assert.equal(captureScopedTranscript.allowed, true,
+  "a collaborator added after capture must not need retroactive transcription consent");
+
+const missingCapturedParticipantRoom = structuredClone(releasedMobileRoom);
+missingCapturedParticipantRoom.participants = [];
+const missingCapturedParticipant = await mobileCaptureMediaProcessingGate({
+  prisma: prismaWithRoom(
+    missingCapturedParticipantRoom,
+    releasedReceipt("RELEASED", releasedMobileVersions),
+  ),
+  recordingAsset: asset,
+});
+assert.equal(missingCapturedParticipant.allowed, false,
+  "processing must fail closed when an immutable captured-party identity disappears from the room ledger");
+assert.equal(
+  missingCapturedParticipant.errorCode,
+  "CAPTURE_CONSENT_PARTICIPANT_SCOPE_UNAVAILABLE",
+);
+
 const revokedMobileRoom = structuredClone(releasedMobileRoom);
+revokedMobileRoom.participants.push({
+  id: "post-capture-producer",
+  userId: "post-capture-producer-user",
+  role: "PRODUCER",
+});
 revokedMobileRoom.recordingConsents[0] = currentConsent({
   id: "mobile-consent-a",
   participantId: "mobile-participant-a",
@@ -171,7 +226,10 @@ revokedMobileRoom.recordingConsents[0] = currentConsent({
   revokedAt: "2026-07-18T02:00:00.000Z",
 });
 const revokedMedia = await mobileCaptureMediaProcessingGate({
-  prisma: prismaWithRoom(revokedMobileRoom, releasedReceipt()),
+  prisma: prismaWithRoom(
+    revokedMobileRoom,
+    releasedReceipt("RELEASED", releasedMobileVersions),
+  ),
   recordingAsset: asset,
 });
 assert.equal(revokedMedia.allowed, false,
@@ -181,7 +239,10 @@ assert.equal(
   "CURRENT_ALL_PARTY_SOURCE_CONSENT_REQUIRED",
 );
 const revokedTranscript = await mobileCaptureTranscriptProcessingGate({
-  prisma: prismaWithRoom(revokedMobileRoom, releasedReceipt()),
+  prisma: prismaWithRoom(
+    revokedMobileRoom,
+    releasedReceipt("RELEASED", releasedMobileVersions),
+  ),
   recordingAsset: asset,
 });
 assert.equal(revokedTranscript.allowed, false,
@@ -295,6 +356,32 @@ assert.equal((await mobileCaptureTranscriptProcessingGate({
   recordingAsset: providerAsset,
 })).allowed, true,
 "trusted provider transcript requires its separate released transcription disposition");
+
+const providerRoomWithLaterProducer = structuredClone(providerRoom);
+providerRoomWithLaterProducer.participants.push({
+  id: "provider-post-capture-producer",
+  userId: "provider-post-capture-producer-user",
+  role: "PRODUCER",
+});
+assert.equal((await mobileCaptureMediaProcessingGate({
+  prisma: prismaWithRoom(providerRoomWithLaterProducer),
+  recordingAsset: providerAsset,
+})).allowed, true,
+"a later provider-room collaborator must not alter the immutable egress consent scope");
+
+const providerRoomMissingCapturedParty = structuredClone(providerRoom);
+providerRoomMissingCapturedParty.participants = providerRoomMissingCapturedParty.participants
+  .filter((participant) => participant.id !== "participant-b");
+const providerMissingCapturedParty = await mobileCaptureMediaProcessingGate({
+  prisma: prismaWithRoom(providerRoomMissingCapturedParty),
+  recordingAsset: providerAsset,
+});
+assert.equal(providerMissingCapturedParty.allowed, false,
+"provider processing must fail closed when a participant from the immutable egress snapshot disappears");
+assert.equal(
+  providerMissingCapturedParty.errorCode,
+  "PROVIDER_CAPTURE_PARTICIPANT_SCOPE_UNAVAILABLE",
+);
 
 const noTranscriptRoom = structuredClone(providerRoom);
 noTranscriptRoom.recordingConsents[1].canTranscribe = false;

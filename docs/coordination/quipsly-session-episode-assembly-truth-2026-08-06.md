@@ -83,6 +83,32 @@ recover every source that failed complete decoding.” Upload verification,
 decode verification, editorial spine choice, and timeline materialization now
 remain four distinct facts.
 
+## Capture-time consent scope survives later collaboration
+
+Operating the decode recovery control exposed a third boundary defect. The
+post-capture processing gate was applying recording consent to every current
+non-observer participant in the room. A producer added after the Session ended
+therefore blocked complete decoding even though that producer was never in the
+call and has no retained source.
+
+Normalized finalization receipts already preserve the exact capture-time
+participant IDs inside the immutable initial consent snapshot. Post-capture
+media and transcript processing now read the current consent ledger only for
+that captured-party set. This preserves the important current-state behavior:
+
+- a captured participant's later decline or revocation still quarantines new
+  decoding, transcription, processing, and disclosure;
+- a captured participant missing from the current room ledger fails closed;
+- a producer, editor, or reviewer added after capture receives access through
+  the authorization ledger without needing fictional retroactive recording
+  consent; and
+- older receipts without a capture-time participant snapshot retain the
+  broader all-current-parties compatibility check rather than guessing.
+
+Trusted provider composites use the same rule with their immutable egress
+consent binding. Live-room readiness is unchanged and still requires consent
+from every intended recorded participant before recording begins.
+
 ## Retained operation
 
 The checkpoint was operated in the running local app with the dedicated
@@ -102,8 +128,7 @@ Observed UI and evidence:
 - two server-safe immutable source attachments;
 - no completed source-bound transcript;
 - no complete audio-analysis coverage;
-- the focused Capture take held on the explicit blocker “Choose the canonical
-  high-quality audio spine in Guided sync”;
+- the focused Capture take held on two explicit complete-decode failures;
 - zero Session timeline clips and zero materialized takes for this capture
   group;
 - zero current proposal sets and zero unsaved local-draft actions;
@@ -115,6 +140,11 @@ The source set contains two tiny test WebM audio files whose stream metadata
 cannot support a trustworthy sync/materialization decision. Quipsly correctly
 held them. Existing protected microphone and iPhone camera media in the Episode
 were not silently reassigned to this take.
+
+The running editor showed `Complete decode failed` on both exact source cards,
+disabled spine selection for the failed sources, exposed `Retry complete
+decode`, and reported the decoder's `audio-signal-probe-invalid` evidence. The
+later QA producer no longer produced a false consent blocker.
 
 ## Regression discovered and repaired
 
@@ -138,11 +168,15 @@ After the repair:
 4 focused Jest suites passed
 27 finishing-cockpit and save-integrity tests passed
 22 materialization, route, and cockpit decode-gate tests passed
+2 processing/release policy suites passed, including capture-scoped consent
+32 focused editor, cockpit, materialization, and route tests passed
 Quipsly Next.js route generation passed
 Quipsly TypeScript typecheck passed
 Running-app reload did not append a receipt
 Running-app unchanged manual Save did not append a receipt
 Session cockpit readback showed the exact five-save ledger and held take
+Running editor readback showed both invalid-source decode failures, not a
+post-capture collaborator consent failure
 ```
 
 ## Next production slice
