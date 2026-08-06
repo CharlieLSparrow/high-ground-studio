@@ -50,10 +50,14 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
   useEffect(() => {
     if (!["queued", "processing", "output-ready"].includes(status.status)) return;
     const controller = new AbortController();
-    const timer = window.setTimeout(() => {
+    let timer = 0;
+    const poll = () => {
       const operation = status.status === "output-ready" ? "reconcile" as const : undefined;
-      void request(operation, controller.signal).catch((error) => { if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : "Could not refresh the Episode mix."); });
-    }, 1_400);
+      void request(operation, controller.signal)
+        .catch((error) => { if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : "Could not refresh the Episode mix."); })
+        .finally(() => { if (!controller.signal.aborted) timer = window.setTimeout(poll, 1_400); });
+    };
+    timer = window.setTimeout(poll, 1_400);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [request, status.status, status.updatedAt]);
 
