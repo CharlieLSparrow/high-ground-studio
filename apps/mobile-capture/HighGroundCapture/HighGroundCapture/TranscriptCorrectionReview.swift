@@ -2571,6 +2571,39 @@ struct CaptureTranscriptReviewView: View {
                             }
                             .accessibilityIdentifier("CaptureTranscriptJumpToSpeakerIdentities")
                         }
+                        if let firstNote = packetCandidateQueue.first(where: { $0.kind == .note }) {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = firstNote.id
+                                    scrollProxy.scrollTo(firstNote.id, anchor: .center)
+                                }
+                            } label: {
+                                Label("Notes", systemImage: "note.text")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToNotes")
+                        }
+                        if let firstGoal = packetCandidateQueue.first(where: { $0.kind == .goal }) {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = firstGoal.id
+                                    scrollProxy.scrollTo(firstGoal.id, anchor: .center)
+                                }
+                            } label: {
+                                Label("Goals", systemImage: "target")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToGoals")
+                        }
+                        if let firstTask = packetCandidateQueue.first(where: { $0.kind == .task }) {
+                            Button {
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
+                                    scrollTargetSegmentID = firstTask.id
+                                    scrollProxy.scrollTo(firstTask.id, anchor: .center)
+                                }
+                            } label: {
+                                Label("Tasks", systemImage: "checklist")
+                            }
+                            .accessibilityIdentifier("CaptureTranscriptJumpToTasks")
+                        }
                         if previewOnly || packetCandidateCount > 0 {
                             Button {
                                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.3)) {
@@ -2580,7 +2613,7 @@ struct CaptureTranscriptReviewView: View {
                             } label: {
                                 Label("Review queue", systemImage: "checklist.checked")
                             }
-                            .accessibilityIdentifier("CaptureTranscriptJumpToNotes")
+                            .accessibilityIdentifier("CaptureTranscriptJumpToReviewQueue")
                         }
                         if let firstSegmentID = client.desk?.segments.first?.id {
                             Button {

@@ -7867,3 +7867,25 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   principal, and central action-console gates remain open.
 - Architecture and evidence:
   `docs/coordination/2026-08-06-governed-action-runtime-foundation.md`.
+
+## 2026-08-06 governed conversation-to-work checkpoint
+
+- Registered typed Goal- and Task-materialization capabilities over the
+  existing canonical transcript review system. Direct creation and packet
+  ACCEPT now commit the canonical work object together with the actor,
+  authority/read set, exact evidence, target, attempt, and immutable execution
+  receipt.
+- The operation cannot rewrite transcript or recording truth, create a
+  calendar/reminder, send a message, call a provider, or publish. Exact replay
+  returns the original target and receipt; changed evidence fails closed; old
+  objects are not assigned invented governance history.
+- Session Review exposes the short receipt identity after successful Goal or
+  Task creation. MERGE, reviewed Notes, and client-visible follow-up remain the
+  next governed adapters.
+- Compiled Capture operation exposed a vanished temporary retained-audio
+  dependency. The acceptance fixture now creates a versioned durable source,
+  binds each new clone to its exact bytes/checksum, and preserves the old
+  canonical fixture unchanged. Simulator qualification is being completed;
+  physical-iPhone and production proof remain open.
+- Architecture and evidence:
+  `docs/coordination/2026-08-06-governed-conversation-to-work.md`.

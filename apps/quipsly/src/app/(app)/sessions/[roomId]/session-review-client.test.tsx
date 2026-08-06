@@ -733,7 +733,7 @@ describe("Session review goal candidates", () => {
     const accepted: SessionReviewGoalCandidate = { ...candidate, reviewStatus: "ACCEPTED_AS_GOAL", humanApprovalRequired: false, committedGoalId: "goal-1" };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packet()))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, goal: { id: "goal-1" } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, goal: { id: "goal-1" }, governance: { actionId: "governed-goal-12345678", receiptId: "receipt-goal", capabilityId: "quipsly.session.transcript-goal.materialize" } }))
       .mockResolvedValueOnce(jsonResponse(packet(accepted)));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -765,6 +765,7 @@ describe("Session review goal candidates", () => {
       tagIds: [],
     });
     expect(await screen.findByRole("status")).toHaveTextContent("One actor-owned canonical goal was created. No task, focus block, calendar event, message, or delivery was added.");
+    expect(screen.getByRole("status")).toHaveTextContent("Governed action receipt 12345678");
     expect(screen.getByRole("link", { name: "Open goal and source evidence" })).toHaveAttribute("href", "/work?goal=goal-1");
   });
 
@@ -858,7 +859,7 @@ describe("Session review goal candidates", () => {
     };
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetWithAction()))
-      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, actionItem: { id: "task-1", assignedUserId: null, dueAt: null, tagIds: ["tag-follow"] } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, idempotentReplay: false, actionItem: { id: "task-1", assignedUserId: null, dueAt: null, tagIds: ["tag-follow"] }, governance: { actionId: "governed-task-87654321", receiptId: "receipt-task", capabilityId: "quipsly.session.transcript-task.materialize" } }))
       .mockResolvedValueOnce(jsonResponse(packetWithAction(acceptedAction)));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
@@ -891,6 +892,7 @@ describe("Session review goal candidates", () => {
       tagIds: ["tag-follow"],
     });
     expect(await screen.findByRole("status")).toHaveTextContent("One unassigned Quipsly task was created and 1 project tag");
+    expect(screen.getByRole("status")).toHaveTextContent("Governed action receipt 87654321");
     expect(screen.getByRole("link", { name: "Open task" })).toHaveAttribute("href", "/work?task=task-1");
   });
 

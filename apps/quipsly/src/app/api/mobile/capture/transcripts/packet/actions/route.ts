@@ -12,6 +12,7 @@ import {
   TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
   readTranscriptMergedTaskSource,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -32,6 +33,10 @@ import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-captu
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
+import {
+  readGovernedActionSourceReference,
+  recordSucceededTranscriptWorkAction,
+} from "@/lib/server/governed-action-runtime";
 import { resolveTranscriptEvidenceInTransaction } from "../../goals/route-implementation";
 
 const REVIEW_RECEIPT_KIND = "quipsly-action-candidate-review-receipt-v1";
@@ -703,6 +708,7 @@ export async function POST(request: Request) {
           receipt: terminalReceipt,
           actionItem: completedActionItem,
           idempotentReplay: true,
+          governance: readGovernedActionSourceReference(terminalReceipt.governance),
         };
       }
 
@@ -739,6 +745,7 @@ export async function POST(request: Request) {
       let taskEvidenceReceiptId: string | null = null;
       let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
       let candidateSource: Record<string, unknown> | null = null;
+      let governance: ReturnType<typeof readGovernedActionSourceReference> = null;
 
       if (decision === "ACCEPT") {
         if (!sourceAnchor || !sourcePlaybackId) {
@@ -855,6 +862,55 @@ export async function POST(request: Request) {
             })),
           });
         }
+        const workBoundaries = responseBoundaries({
+          assignedToActor: Boolean(actionItem.assignedUserId),
+          dueDateCreated: Boolean(actionItem.dueAt),
+          tagsApplied: tagIds.length > 0,
+        });
+        governance = await recordSucceededTranscriptWorkAction(tx, {
+          capabilityId: TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
+          clientRequestId: receiptId,
+          projectId,
+          roomId,
+          actorUserId: userId,
+          actorEmail: session.user.primaryEmail || session.user.email || "unknown@quipsly.invalid",
+          sourceSurface: "nest-session-packet-task-review",
+          targetObjectType: "ActionItem",
+          targetObjectId: actionItem.id,
+          payload: {
+            contractKind: "quipsly-transcript-task-materialization-payload-v1",
+            roomId,
+            segmentId: candidate.segmentId,
+            segmentIds: candidate.segmentIds,
+            expectedProviderTextSha256: sourceAnchor.providerTextSha256,
+            expectedSourceTextSha256: candidate.sourceTextSha256 ?? null,
+            title: draftAfter.title,
+            detail: draftAfter.detail || null,
+            assignedUserId: actionItem.assignedUserId ?? null,
+            dueAt: actionItem.dueAt?.toISOString() ?? null,
+            tagIds,
+          },
+          sourceEvidence: {
+            objectType: "TranscriptSegmentSpan",
+            roomId,
+            transcriptJobId,
+            recordingAssetId,
+            playbackSourceId: sourcePlaybackId,
+            transcriptSnapshotSha256,
+            ...sourceAnchor,
+          },
+          result: { targetObjectType: "ActionItem", targetObjectId: actionItem.id, status: actionItem.status },
+          boundaries: workBoundaries,
+        });
+        actionItem = await tx.actionItem.update({
+          where: { id: actionItem.id },
+          data: {
+            sourceJson: {
+              ...sourceJson(actionItem.sourceJson),
+              governance,
+            },
+          },
+        });
       } else if (decision === "MERGE") {
         await tx.$queryRaw`SELECT "id" FROM "ActionItem" WHERE "id" = ${mergeTargetTaskId} FOR UPDATE`;
         const projectId = text(lockedSummary.room?.projectId) || null;
@@ -969,6 +1025,7 @@ export async function POST(request: Request) {
         assignmentClaimed: assignToMe,
         deliveryClaimed: false,
         publicationClaimed: false,
+        governance,
       };
       const updatedCandidate: TranscriptActionCandidate & Record<string, unknown> = {
         ...candidate,
@@ -1000,7 +1057,7 @@ export async function POST(request: Request) {
         },
       });
 
-      return { candidate: updatedCandidate, receipt, actionItem, idempotentReplay: false };
+      return { candidate: updatedCandidate, receipt, actionItem, idempotentReplay: false, governance };
     }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({
@@ -1014,6 +1071,7 @@ export async function POST(request: Request) {
       actionCandidateId,
       candidate: result.candidate,
       receipt: result.receipt,
+      governance: result.governance,
       actionItem: result.actionItem
         ? {
             id: result.actionItem.id,

@@ -1988,6 +1988,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         decision?: string;
         actionItem?: { id: string; assignedUserId?: string | null; dueAt?: string | null; tagIds?: string[] } | null;
         receipt?: { decision?: string; actionCandidateId?: string; actionItemId?: string | null; taskEvidenceReceiptId?: string | null };
+        governance?: { actionId: string; receiptId: string; capabilityId: string } | null;
         boundaries?: { mergeAppendsOneActorOwnedTaskEvidenceReceipt?: boolean; mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject?: boolean; dueDateCreated?: boolean; projectTagsApplied?: boolean };
         idempotentReplay?: boolean;
       };
@@ -2004,10 +2005,13 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         || body.boundaries?.dueDateCreated === true
         || body.boundaries?.projectTagsApplied === true
       )) throw new Error("Nest returned incomplete or unsafe task evidence-merge proof.");
+      const governedReceipt = body.governance?.actionId
+        ? ` Governed action receipt ${body.governance.actionId.slice(-8)}.`
+        : "";
       const successMessage = decision === "ACCEPT"
         ? body.idempotentReplay
-          ? "This exact candidate, owner, due-date, and tag choice was already accepted; nothing was duplicated."
-          : `One ${body.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task was created${body.actionItem?.dueAt ? " with a due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} project tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.`
+          ? `This exact candidate, owner, due-date, and tag choice was already accepted; nothing was duplicated.${governedReceipt}`
+          : `One ${body.actionItem?.assignedUserId ? "actor-owned" : "unassigned"} Quipsly task was created${body.actionItem?.dueAt ? " with a due date" : ""}${body.actionItem?.tagIds?.length ? ` and ${body.actionItem.tagIds.length} project tag${body.actionItem.tagIds.length === 1 ? "" : "s"}` : ""}.${governedReceipt}`
         : decision === "MERGE"
           ? body.idempotentReplay
             ? "This exact transcript evidence was already attached to that task; no receipt was duplicated."
@@ -2085,6 +2089,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         idempotentReplay?: boolean;
         goal?: { id: string; targetAt?: string | null; tags?: Array<{ id: string }> };
         receipt?: { decision?: string; goalCandidateId?: string; goalId?: string | null; goalProgressReceiptId?: string | null };
+        governance?: { actionId: string; receiptId: string; capabilityId: string } | null;
         boundaries?: {
           mergeAppendsOneActorOwnedGoalEvidenceReceipt?: boolean;
           mergeChangesNoGoalDefinitionStatusTargetOrTags?: boolean;
@@ -2115,10 +2120,13 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         || body.boundaries?.externalDelivery === true
         || body.boundaries?.publication === true
       )) throw new Error("Nest returned incomplete or unsafe evidence-merge proof.");
+      const governedReceipt = body.governance?.actionId
+        ? ` Governed action receipt ${body.governance.actionId.slice(-8)}.`
+        : "";
       const successMessage = decision === "ACCEPT"
         ? body.idempotentReplay
-          ? "This exact goal choice was already accepted; nothing was duplicated."
-          : `One actor-owned canonical goal was created${body.goal?.targetAt ? " with its reviewed target date" : ""}${body.goal?.tags?.length ? " and project tags" : ""}. No task, focus block, calendar event, message, or delivery was added.`
+          ? `This exact goal choice was already accepted; nothing was duplicated.${governedReceipt}`
+          : `One actor-owned canonical goal was created${body.goal?.targetAt ? " with its reviewed target date" : ""}${body.goal?.tags?.length ? " and project tags" : ""}. No task, focus block, calendar event, message, or delivery was added.${governedReceipt}`
         : decision === "MERGE"
           ? body.idempotentReplay
             ? "This exact transcript evidence was already attached to that goal; no evidence receipt was duplicated."

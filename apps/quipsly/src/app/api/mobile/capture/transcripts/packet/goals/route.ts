@@ -28,6 +28,7 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import { unreviewedTranscriptSpanSegmentIds } from "@/lib/server/transcript-source-span";
+import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import {
   createTranscriptDerivedGoalInTransaction,
   normalizeTranscriptGoalTagIds,
@@ -443,7 +444,13 @@ export async function POST(request: Request) {
             "The completed candidate receipt no longer matches one canonical Goal and its exact evidence ledger.",
           );
         }
-        return { candidate, receipt: terminalReceipt, goal: completedGoal, idempotentReplay: true };
+        return {
+          candidate,
+          receipt: terminalReceipt,
+          goal: completedGoal,
+          idempotentReplay: true,
+          governance: readGovernedActionSourceReference(terminalReceipt.governance),
+        };
       }
       if (candidate.committedGoalId && reviewDecision !== "ACCEPT") {
         throw new GoalReviewBoundaryError(409, "GOAL_CANDIDATE_ALREADY_ACCEPTED", "This candidate is already bound to a canonical Goal.");
@@ -466,6 +473,7 @@ export async function POST(request: Request) {
       let goalProgressReceiptId: string | null = null;
       let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
       let candidateSource: Record<string, unknown> | null = null;
+      let governance: ReturnType<typeof readGovernedActionSourceReference> = null;
       if (reviewDecision === "ACCEPT") {
         const creation = await createTranscriptDerivedGoalInTransaction({
           tx,
@@ -486,6 +494,7 @@ export async function POST(request: Request) {
         });
         goal = creation.goal;
         goalReplay = creation.idempotentReplay;
+        governance = creation.governance;
       } else if (reviewDecision === "MERGE") {
         await tx.$queryRaw`SELECT "id" FROM "Goal" WHERE "id" = ${mergeTargetGoalId} FOR UPDATE`;
         const mergeTarget = await tx.goal.findFirst({
@@ -633,12 +642,13 @@ export async function POST(request: Request) {
         calendarMutated: false,
         deliveryClaimed: false,
         publicationClaimed: false,
+        governance,
       };
       await tx.coachingNote.update({
         where: { id: summaryNoteId },
         data: { sourceJson: { ...lockedSource, goalCandidateReviewReceipts: [...receipts, receipt], lastGoalCandidateReview: receipt } },
       });
-      return { candidate, receipt, goal, idempotentReplay: goalReplay };
+      return { candidate, receipt, goal, idempotentReplay: goalReplay, governance };
     }, { isolationLevel: "Serializable" });
 
     return NextResponse.json({
@@ -647,6 +657,7 @@ export async function POST(request: Request) {
       goalCandidateId,
       candidate: result.candidate,
       receipt: result.receipt,
+      governance: result.governance,
       goal: result.goal ? {
         id: result.goal.id,
         title: result.goal.title,

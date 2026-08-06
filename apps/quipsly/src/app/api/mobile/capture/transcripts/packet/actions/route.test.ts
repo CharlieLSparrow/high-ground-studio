@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { recordSucceededTranscriptWorkAction } from "@/lib/server/governed-action-runtime";
 import { resolveTranscriptEvidenceInTransaction } from "../../goals/route-implementation";
 
 import { POST } from "./route";
@@ -15,6 +16,10 @@ jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({
   mobileCaptureTranscriptProcessingGate: jest.fn(),
 }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  readGovernedActionSourceReference: jest.fn((value) => value ?? null),
+  recordSucceededTranscriptWorkAction: jest.fn(),
+}));
 jest.mock("../../goals/route-implementation", () => ({
   resolveTranscriptEvidenceInTransaction: jest.fn(),
 }));
@@ -179,6 +184,12 @@ function createPrismaHarness() {
         actionItems.push(item);
         return item;
       }),
+      update: jest.fn(async ({ where, data }: any) => {
+        const item = actionItems.find((candidate) => candidate.id === where.id);
+        if (!item) throw new Error("missing action item");
+        Object.assign(item, data, { updatedAt: new Date() });
+        return item;
+      }),
     },
     studioTag: {
       findMany: jest.fn(async ({ where }: any) => (where.id.in as string[]).map((id) => ({ id, label: `Tag ${id}`, slug: id }))),
@@ -230,6 +241,15 @@ describe("action candidate review route", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+      schema: "quipsly-governed-action-reference-v1",
+      runId: "run-packet-task",
+      actionId: "action-packet-task",
+      attemptId: "attempt-packet-task",
+      receiptId: "receipt-packet-task",
+      capabilityId: "quipsly.session.transcript-task.materialize",
+      capabilityVersion: 1,
+    });
     harness = createPrismaHarness();
     mockedGetPrisma.mockReturnValue(harness.prisma);
     mockedSession.mockResolvedValue({
@@ -381,6 +401,15 @@ describe("action candidate review route", () => {
       assignmentClaimed: false,
       deliveryClaimed: false,
       publicationClaimed: false,
+      governance: {
+        schema: "quipsly-governed-action-reference-v1",
+        runId: "run-packet-task",
+        actionId: "action-packet-task",
+        attemptId: "attempt-packet-task",
+        receiptId: "receipt-packet-task",
+        capabilityId: "quipsly.session.transcript-task.materialize",
+        capabilityVersion: 1,
+      },
     }));
 
     const source = harness.summary.sourceJson as any;

@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
+import { TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
 import { TRANSCRIPT_DERIVED_TASK_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  readGovernedActionSourceReference,
+  recordSucceededTranscriptWorkAction,
+} from "@/lib/server/governed-action-runtime";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 
 export const dynamic = "force-dynamic";
@@ -91,9 +96,49 @@ export async function POST(request: Request) {
             || replay.roomId !== roomId) {
           throw new TranscriptCorrectionError("That task request identity is already bound to different evidence.", 409, "IDEMPOTENCY_CONFLICT");
         }
-        return { task: replay, idempotentReplay: true };
+        return {
+          task: replay,
+          idempotentReplay: true,
+          governance: readGovernedActionSourceReference(source.governance),
+        };
       }
 
+      const sourceSurface = text(input.surface, 80) || "quipsly-transcript-review";
+      const workBoundaries = boundaries();
+      const governance = await recordSucceededTranscriptWorkAction(tx, {
+        capabilityId: TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
+        clientRequestId,
+        projectId: desk.projectId ?? null,
+        roomId,
+        actorUserId: actor.id,
+        actorEmail: actor.email || "unknown@quipsly.invalid",
+        sourceSurface,
+        targetObjectType: "ActionItem",
+        targetObjectId: id,
+        payload: {
+          contractKind: "quipsly-transcript-task-materialization-payload-v1",
+          roomId,
+          segmentId,
+          expectedProviderTextSha256,
+          title,
+          detail,
+          assignedUserId: actor.id,
+        },
+        sourceEvidence: {
+          objectType: "TranscriptSegment",
+          roomId,
+          transcriptJobId: desk.transcriptJobId,
+          segmentId,
+          startSeconds: segment.startSeconds,
+          endSeconds: segment.endSeconds,
+          providerTextSha256: segment.providerTextSha256,
+          acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+          recordingAssetId: desk.playback.recordingAssetId,
+          playbackSourceId: desk.playback.sourceId,
+        },
+        result: { targetObjectType: "ActionItem", targetObjectId: id, status: "OPEN" },
+        boundaries: workBoundaries,
+      });
       const task = await tx.actionItem.create({
         data: {
           id,
@@ -105,7 +150,7 @@ export async function POST(request: Request) {
           status: "OPEN",
           sourceJson: {
             schema: TRANSCRIPT_DERIVED_TASK_SCHEMA,
-            surface: text(input.surface, 80) || "quipsly-transcript-review",
+            surface: sourceSurface,
             clientRequestId,
             explicitHumanAction: true,
             createdByUserId: actor.id,
@@ -123,15 +168,17 @@ export async function POST(request: Request) {
             acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
             recordingAssetId: desk.playback.recordingAssetId,
             playbackSourceId: desk.playback.sourceId,
-            boundaries: boundaries(),
+            governance,
+            boundaries: workBoundaries,
           },
         },
       });
-      return { task, idempotentReplay: false };
+      return { task, idempotentReplay: false, governance };
     });
     return NextResponse.json({
       ok: true,
       idempotentReplay: result.idempotentReplay,
+      governance: result.governance,
       task: {
         id: result.task.id,
         title: result.task.title,

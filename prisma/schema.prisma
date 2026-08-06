@@ -6354,6 +6354,8 @@ model GovernedAction {
   capabilityId      String
   capabilityVersion Int
   actionKind        String
+  targetObjectType  String?
+  targetObjectId    String?
   label             String
   explanation       String?
   payloadJson       Json
@@ -6382,6 +6384,7 @@ model GovernedAction {
 
   @@unique([runId, idempotencyKey])
   @@index([capabilityId, status, createdAt])
+  @@index([targetObjectType, targetObjectId, createdAt])
   @@index([runId, createdAt])
   @@index([payloadSha256])
 }

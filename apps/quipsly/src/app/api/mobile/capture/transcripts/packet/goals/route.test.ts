@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { transcriptPacketSnapshot } from "@/lib/server/coaching-packets";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { recordSucceededTranscriptWorkAction } from "@/lib/server/governed-action-runtime";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
 import { POST } from "./route";
@@ -13,6 +14,10 @@ import { POST } from "./route";
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  readGovernedActionSourceReference: jest.fn((value) => value ?? null),
+  recordSucceededTranscriptWorkAction: jest.fn(),
+}));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -144,7 +149,18 @@ function harness() {
 }
 
 describe("packet goal review route", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+      schema: "quipsly-governed-action-reference-v1",
+      runId: "run-packet-goal",
+      actionId: "action-packet-goal",
+      attemptId: "attempt-packet-goal",
+      receiptId: "receipt-packet-goal",
+      capabilityId: "quipsly.session.transcript-goal.materialize",
+      capabilityVersion: 1,
+    });
+  });
 
   it("rejects before private reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);

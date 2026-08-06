@@ -493,6 +493,15 @@ Build selectable, permission-safe research scope and accepted source-backed
 work. These unlock the user's researcher, trainer, coach, and creator vision
 without multiplying truth.
 
+Implementation checkpoint, 2026-08-06: the first conversation-to-work adapter
+now exists. Direct and reviewed-packet ACCEPT paths for transcript-derived Goals
+and Tasks commit the canonical object and one typed governed action receipt
+atomically. Exact source evidence, current authority, target ID, consequence
+boundaries, and replay identity stay connected; historical work receives no
+fabricated runtime history. MERGE, Notes, and client-visible follow-up remain
+the next adapters. Evidence and current limitations are in
+`docs/coordination/2026-08-06-governed-conversation-to-work.md`.
+
 ### Then: explainable assembly and Outcome Compiler
 
 Once source clocks, transcripts, proposals, and reviewed work are dependable,

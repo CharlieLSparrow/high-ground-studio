@@ -7,6 +7,8 @@ import {
   getGovernedActionCapability,
   governedCapabilityForAssistantToolKind,
   SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+  TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+  TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
   type GovernedActionCapabilityManifest,
   type GovernedActionRiskLevel,
 } from "@high-ground/quipsly-domain/governed-actions";
@@ -49,6 +51,36 @@ export type RecordSessionPreflightActionInput = {
   issueCodes: readonly string[];
   testedAt: Date;
   expiresAt: Date;
+};
+
+export type TranscriptWorkCapabilityId =
+  | typeof TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID
+  | typeof TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID;
+
+export type RecordTranscriptWorkActionInput = {
+  capabilityId: TranscriptWorkCapabilityId;
+  clientRequestId: string;
+  projectId: string | null;
+  roomId: string;
+  actorUserId: string;
+  actorEmail: string;
+  sourceSurface: string;
+  targetObjectType: "Goal" | "ActionItem";
+  targetObjectId: string;
+  payload: JsonObject;
+  sourceEvidence: JsonObject;
+  result: JsonObject;
+  boundaries: JsonObject;
+};
+
+export type GovernedActionSourceReference = {
+  schema: "quipsly-governed-action-reference-v1";
+  runId: string;
+  actionId: string;
+  attemptId: string;
+  receiptId: string;
+  capabilityId: TranscriptWorkCapabilityId;
+  capabilityVersion: number;
 };
 
 function canonical(value: unknown): unknown {
@@ -368,6 +400,168 @@ export async function recordSucceededSessionPreflightAction(
     data: { status: "SUCCEEDED", completedAt: now },
   });
   return { runId: run.id, actionId: action.id, attemptId: attempt.id, receiptId: receipt.id };
+}
+
+export function readGovernedActionSourceReference(value: unknown): GovernedActionSourceReference | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const reference = value as Record<string, unknown>;
+  if (
+    reference.schema !== "quipsly-governed-action-reference-v1"
+    || typeof reference.runId !== "string"
+    || !reference.runId
+    || typeof reference.actionId !== "string"
+    || !reference.actionId
+    || typeof reference.attemptId !== "string"
+    || !reference.attemptId
+    || typeof reference.receiptId !== "string"
+    || !reference.receiptId
+    || (
+      reference.capabilityId !== TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID
+      && reference.capabilityId !== TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID
+    )
+    || reference.capabilityVersion !== 1
+  ) return null;
+  return reference as GovernedActionSourceReference;
+}
+
+export async function recordSucceededTranscriptWorkAction(
+  tx: Tx,
+  input: RecordTranscriptWorkActionInput,
+): Promise<GovernedActionSourceReference> {
+  const capability = getGovernedActionCapability(input.capabilityId);
+  if (!capability) throw new Error(`TRANSCRIPT_WORK_CAPABILITY_NOT_REGISTERED:${input.capabilityId}`);
+  const expectedTarget = input.capabilityId === TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID ? "Goal" : "ActionItem";
+  if (input.targetObjectType !== expectedTarget) {
+    throw new Error(`TRANSCRIPT_WORK_TARGET_MISMATCH:${input.capabilityId}`);
+  }
+  assertGovernedActionPayload(capability.id, input.payload);
+  const envelope = actionEnvelope({
+    capability,
+    principalKind: "USER",
+    principalId: input.actorUserId,
+    projectId: input.projectId,
+    roomId: input.roomId,
+    payload: input.payload,
+    idempotencyKey: input.clientRequestId,
+  });
+  const now = new Date();
+  const run = await tx.governedActionRun.create({
+    data: {
+      projectId: input.projectId,
+      roomId: input.roomId,
+      requestedByUserId: input.actorUserId,
+      requestedByEmail: input.actorEmail,
+      principalKind: "USER",
+      principalId: input.actorUserId,
+      sourceSurface: input.sourceSurface,
+      intent: input.targetObjectType === "Goal"
+        ? "Create one canonical goal from the reviewed transcript evidence I selected."
+        : "Create one canonical task from the reviewed transcript evidence I selected.",
+      decisionPolicy: capability.decisionPolicy,
+      riskLevel: capability.riskLevel,
+      status: "EXECUTING",
+      authorityJson: json({
+        contractKind: "quipsly-governed-authority-snapshot-v1",
+        basis: "current-session-mutation-access-and-deliberate-transcript-review",
+        roomId: input.roomId,
+        projectId: input.projectId,
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+      }),
+      budgetJson: json({ providerCalls: 0, externalWrites: 0, estimatedCostUsd: 0 }),
+      readSetJson: json([input.sourceEvidence]),
+      consequenceJson: json(input.boundaries),
+      progressJson: json({ completed: 1, total: 1 }),
+      summaryJson: json({ targetObjectType: input.targetObjectType, targetObjectId: input.targetObjectId }),
+      startedAt: now,
+    },
+    select: { id: true },
+  });
+  const action = await tx.governedAction.create({
+    data: {
+      runId: run.id,
+      requestId: randomUUID(),
+      capabilityId: capability.id,
+      capabilityVersion: capability.version,
+      actionKind: input.targetObjectType === "Goal" ? "MATERIALIZE_TRANSCRIPT_GOAL" : "MATERIALIZE_TRANSCRIPT_TASK",
+      targetObjectType: input.targetObjectType,
+      targetObjectId: input.targetObjectId,
+      label: capability.title,
+      explanation: capability.promise,
+      payloadJson: json(input.payload),
+      payloadSha256: envelope.payloadSha256,
+      requestSha256: envelope.requestSha256,
+      idempotencyKey: input.clientRequestId,
+      decisionPolicy: capability.decisionPolicy,
+      decisionStatus: "NOT_REQUIRED",
+      riskLevel: capability.riskLevel,
+      status: "READY",
+      consequenceJson: json({ consequences: capability.consequences, boundaries: input.boundaries }),
+      recoveryJson: json({ supported: capability.recovery, method: "edit-or-close-the-canonical-work-object" }),
+      resultJson: json(input.result),
+      approvedByUserId: input.actorUserId,
+      approvedByEmail: input.actorEmail,
+      approvedAt: now,
+    },
+    select: { id: true },
+  });
+  const attempt = await tx.governedActionAttempt.create({
+    data: {
+      actionId: action.id,
+      attemptNumber: 1,
+      executorKind: "quipsly-transcript-work-domain-service",
+      status: "SUCCEEDED",
+      evidenceJson: json({
+        sourceEvidence: input.sourceEvidence,
+        targetObjectType: input.targetObjectType,
+        targetObjectId: input.targetObjectId,
+        payloadSha256: envelope.payloadSha256,
+        requestSha256: envelope.requestSha256,
+      }),
+      startedAt: now,
+      completedAt: now,
+    },
+    select: { id: true },
+  });
+  await tx.governedAction.update({
+    where: { id: action.id },
+    data: { status: "SUCCEEDED", completedAt: now },
+  });
+  const receipt = await tx.governedActionReceipt.create({
+    data: {
+      actionId: action.id,
+      attemptId: attempt.id,
+      kind: "EXECUTION_SUCCEEDED",
+      previousStatus: "READY",
+      newStatus: "SUCCEEDED",
+      actorUserId: input.actorUserId,
+      actorEmail: input.actorEmail,
+      evidenceJson: json({
+        contractKind: "quipsly-transcript-work-governed-action-receipt-v1",
+        capabilityId: capability.id,
+        capabilityVersion: capability.version,
+        clientRequestId: input.clientRequestId,
+        targetObjectType: input.targetObjectType,
+        targetObjectId: input.targetObjectId,
+        sourceEvidence: input.sourceEvidence,
+        boundaries: input.boundaries,
+      }),
+    },
+    select: { id: true },
+  });
+  await tx.governedActionRun.update({
+    where: { id: run.id },
+    data: { status: "SUCCEEDED", completedAt: now },
+  });
+  return {
+    schema: "quipsly-governed-action-reference-v1",
+    runId: run.id,
+    actionId: action.id,
+    attemptId: attempt.id,
+    receiptId: receipt.id,
+    capabilityId: input.capabilityId,
+    capabilityVersion: capability.version,
+  };
 }
 
 function governedStatusForAssistantStatus(status: string): GovernedActionStatus {

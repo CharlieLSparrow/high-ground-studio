@@ -3,11 +3,16 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { recordSucceededTranscriptWorkAction } from "@/lib/server/governed-action-runtime";
 
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  readGovernedActionSourceReference: jest.fn((value) => value ?? null),
+  recordSucceededTranscriptWorkAction: jest.fn(),
+}));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -26,7 +31,18 @@ const desk = {
 };
 
 describe("explicit transcript-derived task", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+      schema: "quipsly-governed-action-reference-v1",
+      runId: "run-task",
+      actionId: "action-task",
+      attemptId: "attempt-task",
+      receiptId: "receipt-task",
+      capabilityId: "quipsly.session.transcript-task.materialize",
+      capabilityVersion: 1,
+    });
+  });
 
   it("rejects before private reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
@@ -48,8 +64,9 @@ describe("explicit transcript-derived task", () => {
     }));
     const payload = await response.json();
     expect(response.status).toBe(200);
-    expect(payload).toMatchObject({ ok: true, idempotentReplay: false, task: { assignedUserId: "user-1", status: "OPEN" }, boundaries: { deadlineCreated: false, calendarMutated: false, externalDelivery: false, publication: false } });
+    expect(payload).toMatchObject({ ok: true, idempotentReplay: false, governance: { actionId: "action-task" }, task: { assignedUserId: "user-1", status: "OPEN" }, boundaries: { deadlineCreated: false, calendarMutated: false, externalDelivery: false, publication: false } });
     expect(tx.actionItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ assignedUserId: "user-1", roomId: "room-1", projectId: "project-1", sourceJson: expect.objectContaining({ segmentId: "segment-1", providerTextSha256: "a".repeat(64), acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", explicitHumanAction: true }) }) });
+    expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(tx, expect.objectContaining({ targetObjectType: "ActionItem", targetObjectId: expect.stringMatching(/^transcript-task-/), roomId: "room-1" }));
   });
 
   it("fails stale provider evidence without creating work", async () => {

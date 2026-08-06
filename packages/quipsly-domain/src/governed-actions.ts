@@ -51,6 +51,8 @@ export type GovernedActionCapabilityManifest = {
 };
 
 export const SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID = "quipsly.session.preflight.publish";
+export const TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-goal.materialize";
+export const TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-task.materialize";
 
 const writingManifest = (
   id: string,
@@ -216,8 +218,56 @@ const SESSION_PREFLIGHT_MANIFEST: GovernedActionCapabilityManifest = {
   qualification: "OPERATED_LOCAL",
 };
 
+const transcriptWorkManifest = (
+  id: string,
+  title: string,
+  objectType: "Goal" | "ActionItem",
+): GovernedActionCapabilityManifest => ({
+  id,
+  version: 1,
+  title,
+  promise: `Turn one reviewed, playback-linked transcript span into one canonical ${objectType === "Goal" ? "goal" : "task"} without changing transcript or recording truth.`,
+  objectTypes: ["CallRoom", "TranscriptJob", "TranscriptSegment", objectType],
+  scope: "SESSION",
+  decisionPolicy: "USER_INITIATED",
+  riskLevel: "MEDIUM",
+  consequences: [
+    `creates one canonical actor-owned ${objectType === "Goal" ? "goal" : "task"}`,
+    "preserves the exact released transcript and playback source anchor",
+    "does not mutate provider transcript, correction overlay, recording, calendar, delivery, or publication",
+  ],
+  evidence: [
+    "current Session mutation authority",
+    "released recording-backed transcript gate",
+    "provider and effective-text hashes",
+    "exact segment or thought-span identities and source clock",
+    "human-reviewed materialization wording",
+    "canonical target identity and immutable action receipt",
+  ],
+  recovery: ["SUPERSEDE"],
+  entryPoints: ["Nest Session transcript review", "Quipsly Capture transcript review"],
+  apiExposure: "AUTHORIZED_API",
+  mcpExposure: "PLANNED",
+  accessibility: ["source playback return", "text consequence preview", "status not conveyed by color alone"],
+  qualification: "OPERATED_LOCAL",
+});
+
+const TRANSCRIPT_GOAL_MATERIALIZE_MANIFEST = transcriptWorkManifest(
+  TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+  "Create a canonical goal from reviewed transcript evidence",
+  "Goal",
+);
+
+const TRANSCRIPT_TASK_MATERIALIZE_MANIFEST = transcriptWorkManifest(
+  TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
+  "Create a canonical task from reviewed transcript evidence",
+  "ActionItem",
+);
+
 export const GOVERNED_ACTION_CAPABILITIES: readonly GovernedActionCapabilityManifest[] = [
   SESSION_PREFLIGHT_MANIFEST,
+  TRANSCRIPT_GOAL_MATERIALIZE_MANIFEST,
+  TRANSCRIPT_TASK_MATERIALIZE_MANIFEST,
   ...Object.values(WRITING_CAPABILITIES),
 ];
 
@@ -255,6 +305,21 @@ export function assertGovernedActionPayload(
     ) {
       throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);
     }
+  }
+  if (
+    [TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID, TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID].includes(capabilityId)
+    && (
+      typeof record.roomId !== "string"
+      || !record.roomId.trim()
+      || typeof record.segmentId !== "string"
+      || !record.segmentId.trim()
+      || typeof record.expectedProviderTextSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
+      || typeof record.title !== "string"
+      || !record.title.trim()
+    )
+  ) {
+    throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);
   }
   if (capabilityId === "quipsly.writing.draft.propose" && typeof record.draftText !== "string") {
     throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);

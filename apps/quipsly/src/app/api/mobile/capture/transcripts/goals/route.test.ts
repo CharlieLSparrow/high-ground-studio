@@ -3,11 +3,16 @@
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { recordSucceededTranscriptWorkAction } from "@/lib/server/governed-action-runtime";
 
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  readGovernedActionSourceReference: jest.fn((value) => value ?? null),
+  recordSucceededTranscriptWorkAction: jest.fn(),
+}));
 jest.mock("@/lib/server/transcript-corrections", () => {
   class MockTranscriptCorrectionError extends Error {
     constructor(message: string, public status: number, public code: string) { super(message); }
@@ -25,7 +30,18 @@ function request(payload: Record<string, unknown>) {
 }
 
 describe("explicit transcript-derived goal", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+      schema: "quipsly-governed-action-reference-v1",
+      runId: "run-goal",
+      actionId: "action-goal",
+      attemptId: "attempt-goal",
+      receiptId: "receipt-goal",
+      capabilityId: "quipsly.session.transcript-goal.materialize",
+      capabilityVersion: 1,
+    });
+  });
 
   it("rejects before private reads when signed out", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
@@ -47,9 +63,10 @@ describe("explicit transcript-derived goal", () => {
     jest.mocked(getPrismaClient).mockReturnValue({ $transaction: jest.fn((callback: any) => callback(tx)) } as any);
     const response = await POST(request({ roomId: "room-1", segmentId: "segment-1", clientRequestId: "goal-request-1", expectedProviderTextSha256: "a".repeat(64), title: "Publish the pilot", description: "A clear first episode.", targetAt, tagIds: ["tag-episode"], surface: "ios-capture" }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, goal: { ownerUserId: "user-1", status: "ACTIVE", targetAt, tags: [{ id: "tag-episode" }] }, boundaries: { taskCreated: false, targetDateCreated: true, projectTagsApplied: true, calendarMutated: false, externalDelivery: false, publication: false } });
+    expect(await response.json()).toMatchObject({ ok: true, governance: { actionId: "action-goal" }, goal: { ownerUserId: "user-1", status: "ACTIVE", targetAt, tags: [{ id: "tag-episode" }] }, boundaries: { taskCreated: false, targetDateCreated: true, projectTagsApplied: true, calendarMutated: false, externalDelivery: false, publication: false } });
     expect(tx.goal.create).toHaveBeenCalledWith({ data: expect.objectContaining({ ownerUserId: "user-1", roomId: "room-1", projectId: "project-1", targetAt: new Date(targetAt), sourceJson: expect.objectContaining({ schema: "quipsly-transcript-derived-goal-v1", segmentId: "segment-1", providerTextSha256: "a".repeat(64), recordingAssetId: "asset-1", explicitHumanAction: true, materializationIntent: { title: "Publish the pilot", description: "A clear first episode.", targetAt, tagIds: ["tag-episode"] } }) }) });
     expect(tx.goalTagLink.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ goalId: "goal-created", tagId: "tag-episode", createdByUserId: "user-1" })] });
+    expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(tx, expect.objectContaining({ targetObjectType: "Goal", targetObjectId: expect.stringMatching(/^transcript-goal-/), roomId: "room-1" }));
   });
 
   it("fails stale provider evidence without creating a goal", async () => {

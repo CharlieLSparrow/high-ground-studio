@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -21,6 +21,9 @@ export const COACH_UID = "quipsly-coach-retained-20260731";
 const SOURCE_ROOM_ID = "qa-retained-coaching-next-session-20260807";
 const SOURCE_ASSET_ID = "cmsc8ee1j0001qyxlxdja8ho8";
 const EXPECTED_SOURCE_TEXT = "The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.";
+const DURABLE_FIXTURE_VERSION = "quipsly-synthetic-coaching-v2";
+const DURABLE_FIXTURE_TEXT = "This is a synthetic Quipsly coaching workflow recording. It is test evidence, not a genuine coaching session. The test goal is to preserve the original recording, verify the exact checksum, and hold all transcript work until every participant has consented and a human explicitly releases it.";
+const DURABLE_FIXTURE_PATH = path.join(REPO_ROOT, "artifacts", "retained-media", `${DURABLE_FIXTURE_VERSION}.wav`);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -46,6 +49,46 @@ function requireLocalDatabase(value) {
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+async function durableSyntheticSource() {
+  try {
+    const bytes = await readFile(DURABLE_FIXTURE_PATH);
+    return { path: DURABLE_FIXTURE_PATH, bytes, generated: false };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  await mkdir(path.dirname(DURABLE_FIXTURE_PATH), { recursive: true });
+  const aiffPath = `${DURABLE_FIXTURE_PATH}.aiff`;
+  const speech = spawnSync("say", ["-v", "Samantha", "-r", "205", "-o", aiffPath, DURABLE_FIXTURE_TEXT], {
+    stdio: "inherit",
+  });
+  assert(speech.status === 0, `Could not generate ${DURABLE_FIXTURE_VERSION} speech source.`);
+  const encode = spawnSync("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-i", aiffPath,
+    "-af", "apad=pad_dur=2",
+    "-t", "18",
+    "-ar", "44100",
+    "-ac", "1",
+    "-c:a", "pcm_s16le",
+    DURABLE_FIXTURE_PATH,
+  ], { stdio: "inherit" });
+  await rm(aiffPath, { force: true });
+  assert(encode.status === 0, `Could not encode ${DURABLE_FIXTURE_VERSION} WAV source.`);
+  const bytes = await readFile(DURABLE_FIXTURE_PATH);
+  assert(bytes.length > 44, `Generated ${DURABLE_FIXTURE_VERSION} WAV is empty.`);
+  return { path: DURABLE_FIXTURE_PATH, bytes, generated: true };
+}
+
+async function retainedSourceOrDurableFallback(sourcePath) {
+  try {
+    return { path: sourcePath, bytes: await readFile(sourcePath), generated: false, recoveredFromMissingTemporarySource: false };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    const durable = await durableSyntheticSource();
+    return { ...durable, recoveredFromMissingTemporarySource: true };
+  }
 }
 
 async function authenticate(password) {
@@ -120,6 +163,16 @@ function exactNoteCandidate(packetBody) {
   return note;
 }
 
+function exactTaskCandidate(packetBody) {
+  const candidates = packetBody?.packet?.actionCandidates;
+  const task = Array.isArray(candidates)
+    ? candidates.find((candidate) => candidate?.sourceText === EXPECTED_SOURCE_TEXT)
+    : null;
+  assert(task && task.segmentIds?.length === 3 && task.sourceSpan?.segments?.length === 3,
+    "The fresh deterministic packet lost the complete three-segment task evidence span.");
+  return task;
+}
+
 export async function cloneRetainedFixture(prisma) {
   const stamp = `${Date.now()}-${randomBytes(4).toString("hex")}`;
   const roomID = `qa-reviewed-packet-${stamp}`;
@@ -152,9 +205,12 @@ export async function cloneRetainedFixture(prisma) {
   const promoted = asObject(sourceManifest.promotion);
   const sourcePath = String(promoted.providerSourceId || "");
   assert(sourcePath, "The retained asset has no exact local provider source path.");
-  const sourceBytes = await readFile(sourcePath);
+  const retainedSource = await retainedSourceOrDurableFallback(sourcePath);
+  const sourceBytes = retainedSource.bytes;
   const sourceSHA256 = createHash("sha256").update(sourceBytes).digest("hex");
-  assert(sourceSHA256 === sourceAsset.checksum, "The retained source bytes no longer match their canonical checksum.");
+  if (!retainedSource.recoveredFromMissingTemporarySource) {
+    assert(sourceSHA256 === sourceAsset.checksum, "The retained source bytes no longer match their canonical checksum.");
+  }
 
   const sourceSegments = sourceAsset.transcriptJobs[0].segments;
   let spanIndexes = null;
@@ -222,23 +278,36 @@ export async function cloneRetainedFixture(prisma) {
       participantId: participantID,
       kind: sourceAsset.kind,
       status: sourceAsset.status,
-      fileName: sourceAsset.fileName,
-      contentType: sourceAsset.contentType,
-      byteSize: sourceAsset.byteSize,
-      durationSeconds: sourceAsset.durationSeconds,
-      storageBucket: sourceAsset.storageBucket,
-      storageObjectPath: sourceAsset.storageObjectPath,
+      fileName: path.basename(retainedSource.path),
+      contentType: "audio/wav",
+      byteSize: BigInt(sourceBytes.length),
+      durationSeconds: 18,
+      storageBucket: "quipsly-retained-local-fixtures",
+      storageObjectPath: `${DURABLE_FIXTURE_VERSION}/${path.basename(retainedSource.path)}`,
       localManifestJson: {
         ...sourceManifest,
+        fileName: path.basename(retainedSource.path),
         callRoomId: roomID,
         participantId: participantID,
         consentId: consentID,
         recordingConsentId: consentID,
-        promotion: { ...promoted, sessionContext: { ...asObject(promoted.sessionContext), roomId: roomID } },
+        checksumSha256: sourceSHA256,
+        exactBytesVerified: true,
+        retainedFixture: {
+          version: DURABLE_FIXTURE_VERSION,
+          generated: retainedSource.generated,
+          recoveredFromMissingTemporarySource: retainedSource.recoveredFromMissingTemporarySource,
+          sourcePath: retainedSource.path,
+        },
+        promotion: {
+          ...promoted,
+          providerSourceId: retainedSource.path,
+          sessionContext: { ...asObject(promoted.sessionContext), roomId: roomID },
+        },
       },
       segmentsJson: sourceAsset.segmentsJson,
       checksum: sourceSHA256,
-      recordedStartedAt: new Date(now.getTime() - Number(sourceAsset.durationSeconds || 20) * 1000),
+      recordedStartedAt: new Date(now.getTime() - 18_000),
       recordedStoppedAt: now,
       uploadedAt: now,
       verifiedAt: now,
@@ -292,9 +361,9 @@ export async function cloneRetainedFixture(prisma) {
           actorUserId: coach.id,
           roomId: roomID,
           sha256: sourceSHA256,
-          sizeBytes: Number(sourceAsset.byteSize),
-          bucketName: sourceAsset.storageBucket,
-          objectName: sourceAsset.storageObjectPath,
+          sizeBytes: sourceBytes.length,
+          bucketName: "quipsly-retained-local-fixtures",
+          objectName: `${DURABLE_FIXTURE_VERSION}/${path.basename(retainedSource.path)}`,
         },
       },
     } });
@@ -302,7 +371,12 @@ export async function cloneRetainedFixture(prisma) {
 
   return {
     roomID, roomTitle, participantID, consentID, assetID, transcriptJobID,
-    goalSegmentIDs, sourcePath, sourceSHA256, coachUserID: coach.id,
+    goalSegmentIDs,
+    sourcePath: retainedSource.path,
+    sourceSHA256,
+    sourceGenerated: retainedSource.generated,
+    recoveredFromMissingTemporarySource: retainedSource.recoveredFromMissingTemporarySource,
+    coachUserID: coach.id,
   };
 }
 
@@ -325,12 +399,15 @@ async function main() {
     const before = await readPacket(baseURL, idToken, fixture.roomID);
     const beforeGoal = exactGoalCandidate(before);
     const beforeNote = exactNoteCandidate(before);
+    const beforeTask = exactTaskCandidate(before);
     const editedNoteTitle = `Reviewed decision · ${fixture.roomID.slice(-13)}`;
     const editedNoteBody = "Preserve the original recording, verify its exact checksum, and wait for complete participant consent plus explicit human release.";
     assert(beforeGoal.committedGoalId == null && beforeGoal.transcriptReviewStatus === "provider",
       "The fresh packet must begin provider-only with no canonical goal.");
     assert(beforeNote.committedNoteId == null && beforeNote.transcriptReviewStatus === "provider",
       "The fresh packet must begin provider-only with no canonical Session note.");
+    assert(beforeTask.committedActionItemId == null && beforeTask.transcriptReviewStatus === "provider",
+      "The fresh packet must begin provider-only with no canonical task.");
     assert(before.packet.transcriptReview.providerOnlySegmentCount === 5,
       "The fresh packet must begin with all five immutable transcript segments provider-only.");
 
@@ -347,6 +424,7 @@ async function main() {
         QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE: fixture.roomTitle,
         QUIPSLY_CAPTURE_UI_TEST_TRANSCRIPT_SEGMENT_IDS: fixture.goalSegmentIDs.join(","),
         QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_GOAL_TITLE: beforeGoal.suggestedTitle,
+        QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_TASK_TITLE: beforeTask.title,
         QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_SOURCE_TEXT: EXPECTED_SOURCE_TEXT,
         QUIPSLY_CAPTURE_UI_TEST_EXPECTED_PACKET_NOTE_LANE_ID: beforeNote.laneId,
         QUIPSLY_CAPTURE_UI_TEST_PACKET_NOTE_EDITED_TITLE: editedNoteTitle,
@@ -369,19 +447,26 @@ async function main() {
     const after = await readPacket(baseURL, idToken, fixture.roomID);
     const afterGoal = exactGoalCandidate(after);
     const afterNote = exactNoteCandidate(after);
+    const afterTask = exactTaskCandidate(after);
     assert(afterGoal.transcriptReviewStatus === "human-reviewed" && afterGoal.committedGoalId,
       "The rebuilt packet must correlate its fully reviewed source span to one canonical goal.");
     assert(afterNote.transcriptReviewStatus === "human-reviewed" && afterNote.committedNoteId
       && afterNote.suggestedTitle === editedNoteTitle && afterNote.suggestedBody === editedNoteBody
       && afterNote.reviewStatus === "ACCEPTED_AS_NOTE" && afterNote.lastHumanReview?.decision === "ACCEPT",
     "The rebuilt packet must read back the edited exact-source draft as one accepted canonical Session note.");
-    const [verifications, transcriptSegments, goals, actions, notes, calendarLinks] = await Promise.all([
+    assert(afterTask.transcriptReviewStatus === "human-reviewed" && afterTask.committedActionItemId,
+      "The rebuilt packet must correlate its fully reviewed source span to one canonical task.");
+    const [verifications, transcriptSegments, goals, actions, notes, calendarLinks, governedActions] = await Promise.all([
       prisma.transcriptSegmentVerification.findMany({ where: { roomId: fixture.roomID } }),
       prisma.transcriptSegment.findMany({ where: { transcriptJobId: fixture.transcriptJobID } }),
       prisma.goal.findMany({ where: { roomId: fixture.roomID } }),
       prisma.actionItem.findMany({ where: { roomId: fixture.roomID } }),
       prisma.coachingNote.findMany({ where: { roomId: fixture.roomID } }),
       prisma.calendarEventLink.findMany({ where: { roomId: fixture.roomID } }),
+      prisma.governedAction.findMany({
+        where: { targetObjectType: { in: ["Goal", "ActionItem"] } },
+        include: { run: true, attempts: true, receipts: true },
+      }),
     ]);
     assert(verifications.length === 3, "The operated review must append exactly three playback-verification receipts.");
     for (const segmentID of fixture.goalSegmentIDs) {
@@ -393,7 +478,39 @@ async function main() {
     }
     assert(goals.length === 1 && goals[0].id === afterGoal.committedGoalId && goals[0].title === beforeGoal.suggestedTitle,
       "The operated decision must create exactly one matching canonical goal.");
-    assert(actions.length === 0, "Goal creation must not create a task.");
+    const governedGoal = governedActions.find((action) => action.targetObjectId === goals[0].id);
+    const goalGovernance = asObject(asObject(goals[0].sourceJson).governance);
+    assert(governedGoal
+      && governedGoal.capabilityId === "quipsly.session.transcript-goal.materialize"
+      && governedGoal.status === "SUCCEEDED"
+      && governedGoal.decisionPolicy === "USER_INITIATED"
+      && governedGoal.decisionStatus === "NOT_REQUIRED"
+      && governedGoal.run.status === "SUCCEEDED"
+      && governedGoal.attempts.length === 1
+      && governedGoal.attempts[0].status === "SUCCEEDED"
+      && governedGoal.receipts.length === 1
+      && governedGoal.receipts[0].kind === "EXECUTION_SUCCEEDED"
+      && goalGovernance.actionId === governedGoal.id
+      && goalGovernance.receiptId === governedGoal.receipts[0].id,
+    "The canonical goal did not retain one exact governed action, attempt, and execution receipt.");
+    assert(actions.length === 1 && actions[0].id === afterTask.committedActionItemId
+      && actions[0].title === beforeTask.title && actions[0].assignedUserId === fixture.coachUserID,
+    "The operated decision must create exactly one actor-owned matching canonical task.");
+    const governedTask = governedActions.find((action) => action.targetObjectId === actions[0].id);
+    const taskGovernance = asObject(asObject(actions[0].sourceJson).governance);
+    assert(governedTask
+      && governedTask.capabilityId === "quipsly.session.transcript-task.materialize"
+      && governedTask.status === "SUCCEEDED"
+      && governedTask.decisionPolicy === "USER_INITIATED"
+      && governedTask.decisionStatus === "NOT_REQUIRED"
+      && governedTask.run.status === "SUCCEEDED"
+      && governedTask.attempts.length === 1
+      && governedTask.attempts[0].status === "SUCCEEDED"
+      && governedTask.receipts.length === 1
+      && governedTask.receipts[0].kind === "EXECUTION_SUCCEEDED"
+      && taskGovernance.actionId === governedTask.id
+      && taskGovernance.receiptId === governedTask.receipts[0].id,
+    "The canonical task did not retain one exact governed action, attempt, and execution receipt.");
     assert(calendarLinks.length === 0, "Goal creation must not create calendar placement.");
     const canonicalNotes = notes.filter((note) => asObject(note.sourceJson).schema === "quipsly-transcript-derived-note-v1");
     assert(canonicalNotes.length === 1 && canonicalNotes[0].id === afterNote.committedNoteId
@@ -415,13 +532,21 @@ async function main() {
       humanReviewedSegments: 3,
       appendOnlyPacketRebuild: true,
       nonCanonicalNoteDraftReviewed: true,
-      canonicalMaterialization: { notes: 1, tasks: 0, goals: 1, calendarLinks: 0 },
+      canonicalMaterialization: { notes: 1, tasks: 1, goals: 1, calendarLinks: 0 },
       roomID: fixture.roomID,
       recordingAssetID: fixture.assetID,
       transcriptJobID: fixture.transcriptJobID,
       canonicalGoalID: goals[0].id,
+      governedGoalActionID: governedGoal.id,
+      governedGoalReceiptID: governedGoal.receipts[0].id,
+      canonicalTaskID: actions[0].id,
+      governedTaskActionID: governedTask.id,
+      governedTaskReceiptID: governedTask.receipts[0].id,
       canonicalNoteID: canonicalNotes[0].id,
       sourceSHA256: fixture.sourceSHA256,
+      durableFixtureVersion: DURABLE_FIXTURE_VERSION,
+      durableFixtureGenerated: fixture.sourceGenerated,
+      recoveredFromMissingTemporarySource: fixture.recoveredFromMissingTemporarySource,
       resultBundle,
       credentialsPrinted: false,
       externalSideEffects: false,

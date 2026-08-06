@@ -2,6 +2,33 @@
 
 Date: 2026-08-06
 
+## Governed conversation-to-work checkpoint
+
+- Explicit transcript-to-Goal and transcript-to-Task creation now commits the
+  canonical work object atomically with a typed governed action run, exact
+  authority/read set, target identity, one succeeded attempt, and one immutable
+  execution receipt. The same contract covers direct creation and ACCEPT of a
+  reviewed packet candidate.
+- Goal and Task provenance points back to the action receipt; exact retries
+  return the same target, changed evidence fails closed, and legacy work is not
+  assigned fabricated history. The operation cannot alter transcript/recording
+  truth, schedule a reminder or calendar event, deliver a message, call a
+  provider, or publish.
+- Session Review exposes the short receipt identity after successful creation.
+  Capture adds direct Notes, Goals, Tasks, Transcript, and review-queue jumps so
+  deep packets do not bury the next decision. MERGE, Notes, and client-visible
+  follow-up remain the next governed adapters.
+- Compiled Capture acceptance uncovered a vanished temporary retained-audio
+  dependency. The local operation now uses a versioned durable exact-byte
+  source for new clones without rewriting the old canonical fixture. Current
+  iPhone 17 Pro simulator qualification passed after actual playback and human
+  confirmation of the complete three-segment thought. It created and read back
+  exactly one Note, Goal, and actor-owned Task, plus the Goal and Task governed
+  receipts, with zero calendar links or external effects. Today also exercised
+  the collapsed-task expansion needed to reveal reviewed work behind the top
+  three due commitments. Full evidence is documented in
+  `docs/coordination/2026-08-06-governed-conversation-to-work.md`.
+
 ## Governed action runtime foundation
 
 - Quipsly now has one typed, provider-neutral action ledger spanning the mature

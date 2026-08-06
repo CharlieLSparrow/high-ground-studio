@@ -136,7 +136,7 @@ case "$TEST_MODE" in
     fi
     ;;
   transcript-packet-materialization)
-    TEST_CASE="testReviewedTranscriptPacketMaterializesCanonicalNoteAndGoal"
+    TEST_CASE="testReviewedTranscriptPacketMaterializesCanonicalNoteGoalAndTask"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_TRANSCRIPT_SEGMENT_IDS" || -z "$TEST_EXPECTED_PACKET_GOAL_TITLE" || -z "$TEST_EXPECTED_PACKET_NOTE_SOURCE_TEXT" || -z "$TEST_EXPECTED_PACKET_NOTE_LANE_ID" || -z "$TEST_PACKET_NOTE_EDITED_TITLE" || -z "$TEST_PACKET_NOTE_EDITED_BODY" || -z "$TEST_RECORDING_FIXTURE_PATH" || -z "$TEST_RECORDING_FIXTURE_LOCAL_ID" || -z "$TEST_RECORDING_FIXTURE_ASSET_ID" || -z "$TEST_RECORDING_FIXTURE_ROOM_ID" || -z "$TEST_RECORDING_FIXTURE_PARTICIPANT_ID" || -z "$TEST_RECORDING_FIXTURE_CONSENT_ID" || -z "$TEST_RECORDING_FIXTURE_OWNER_ACCOUNT_ID" || -z "$TEST_RECORDING_FIXTURE_SHA256" ]]; then
       echo "Transcript packet materialization mode requires exact Session, segment, goal, reviewed note draft, account, consent, asset, checksum, and retained-source fixture identities." >&2
       exit 2

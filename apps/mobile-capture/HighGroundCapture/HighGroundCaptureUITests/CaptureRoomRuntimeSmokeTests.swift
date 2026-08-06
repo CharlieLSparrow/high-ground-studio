@@ -1944,13 +1944,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // compares authoritative packet readback before and after this test.
     }
 
-    func testReviewedTranscriptPacketMaterializesCanonicalNoteAndGoal() throws {
+    func testReviewedTranscriptPacketMaterializesCanonicalNoteGoalAndTask() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
               credentials.sessionTitle?.isEmpty == false,
               credentials.transcriptSegmentIDs.count == 3,
               let expectedGoalTitle = credentials.expectedPacketGoalTitle,
               !expectedGoalTitle.isEmpty,
+              let expectedTaskTitle = credentials.expectedPacketTaskTitle,
+              !expectedTaskTitle.isEmpty,
               let expectedNoteSourceText = credentials.expectedPacketNoteSourceText,
               !expectedNoteSourceText.isEmpty,
               let expectedNoteLaneID = credentials.expectedPacketNoteLaneID,
@@ -1986,6 +1988,18 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch.waitForExistence(timeout: 30)
         )
+
+        // The review packet can contain a substantial candidate queue. Use the
+        // same explicit Transcript jump that a person would use instead of
+        // depending on a fixed number of swipes through unrelated candidates.
+        // This also proves that retained-source playback remains directly
+        // reachable as the packet grows.
+        let transcriptJumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(transcriptJumpMenu.waitForExistence(timeout: 10))
+        transcriptJumpMenu.tap()
+        let jumpToTranscript = app.buttons["CaptureTranscriptJumpToTranscript"].firstMatch
+        XCTAssertTrue(jumpToTranscript.waitForExistence(timeout: 10))
+        jumpToTranscript.tap()
 
         for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
             let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
@@ -2124,6 +2138,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The explicit create decision must read back as one accepted canonical goal."
         )
 
+        jumpMenu.tap()
+        let jumpToTasks = app.buttons["CaptureTranscriptJumpToTasks"].firstMatch
+        XCTAssertTrue(jumpToTasks.waitForExistence(timeout: 10))
+        jumpToTasks.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", expectedTaskTitle)).firstMatch,
+                in: app,
+                timeout: 20,
+                swipeAttempts: 8
+            ),
+            "The reviewed packet must expose its exact source-backed task candidate directly."
+        )
+        let acceptTask = app.buttons["CapturePacketTaskAcceptButton"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(acceptTask, in: app, timeout: 12, swipeAttempts: 6))
+        XCTAssertTrue(acceptTask.isEnabled)
+        acceptTask.tap()
+        let createTask = app.buttons["CapturePacketTaskCreateButton"].firstMatch
+        XCTAssertTrue(createTask.waitForExistence(timeout: 8))
+        XCTAssertTrue(createTask.isEnabled)
+        createTask.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskAccepted_")
+            ).firstMatch.waitForExistence(timeout: 30),
+            "The explicit create decision must read back as one accepted canonical task."
+        )
+
         tapRootTab("Today", in: app)
         XCTAssertTrue(
             waitForRuntimeElement(
@@ -2133,6 +2175,19 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 swipeAttempts: 12
             ),
             "Today must read back the exact canonical goal created from the fully reviewed packet."
+        )
+        let showMoreTasks = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
+        if waitForRuntimeElement(showMoreTasks, in: app, timeout: 5, swipeAttempts: 8) {
+            showMoreTasks.tap()
+        }
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", expectedTaskTitle)).firstMatch,
+                in: app,
+                timeout: 30,
+                swipeAttempts: 12
+            ),
+            "Today must read back the exact actor-owned task created from the fully reviewed packet."
         )
         attachRuntimeScreenshot(app, name: "Reviewed packet canonical goal readback")
     }

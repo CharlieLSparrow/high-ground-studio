@@ -3,14 +3,17 @@
 import {
   GOVERNED_ACTION_CAPABILITIES,
   SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+  TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
   governedCapabilityForAssistantToolKind,
 } from "@high-ground/quipsly-domain/governed-actions";
 import {
   createGovernedAssistantProposalRun,
   governedActionSha256,
   governedActionStableJson,
+  readGovernedActionSourceReference,
   recordGovernedAssistantTransition,
   recordSucceededSessionPreflightAction,
+  recordSucceededTranscriptWorkAction,
 } from "./governed-action-runtime";
 
 jest.mock("server-only", () => ({}));
@@ -190,6 +193,89 @@ describe("governed action capability and ledger runtime", () => {
       }),
       select: { id: true },
     });
+  });
+
+  it("records reviewed transcript evidence as one targeted canonical-work action", async () => {
+    const tx = transaction();
+    const result = await recordSucceededTranscriptWorkAction(tx as never, {
+      capabilityId: TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+      clientRequestId: "goal-request-1",
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      actorEmail: "coach@example.test",
+      sourceSurface: "nest-session-packet-goal-review",
+      targetObjectType: "Goal",
+      targetObjectId: "goal-1",
+      payload: {
+        roomId: "room-1",
+        segmentId: "segment-1",
+        expectedProviderTextSha256: "a".repeat(64),
+        title: "Build the coaching review habit",
+      },
+      sourceEvidence: {
+        objectType: "TranscriptSegmentSpan",
+        transcriptJobId: "job-1",
+        recordingAssetId: "asset-1",
+        segmentIds: ["segment-1"],
+      },
+      result: { targetObjectType: "Goal", targetObjectId: "goal-1", status: "ACTIVE" },
+      boundaries: { transcriptMutated: false, recordingMutated: false, calendarMutated: false },
+    });
+
+    expect(result).toEqual({
+      schema: "quipsly-governed-action-reference-v1",
+      runId: "run-1",
+      actionId: "governed-action-1",
+      attemptId: "attempt-1",
+      receiptId: "receipt-1",
+      capabilityId: TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+      capabilityVersion: 1,
+    });
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        capabilityId: TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+        targetObjectType: "Goal",
+        targetObjectId: "goal-1",
+        decisionPolicy: "USER_INITIATED",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: "EXECUTION_SUCCEEDED",
+        evidenceJson: expect.objectContaining({
+          targetObjectType: "Goal",
+          targetObjectId: "goal-1",
+          boundaries: expect.objectContaining({ transcriptMutated: false, calendarMutated: false }),
+        }),
+      }),
+      select: { id: true },
+    });
+    expect(readGovernedActionSourceReference(result)).toEqual(result);
+    expect(readGovernedActionSourceReference({ ...result, actionId: "" })).toBeNull();
+  });
+
+  it("fails closed when a transcript capability targets the wrong canonical object type", async () => {
+    const tx = transaction();
+    await expect(recordSucceededTranscriptWorkAction(tx as never, {
+      capabilityId: TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+      clientRequestId: "bad-target",
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      actorEmail: "coach@example.test",
+      sourceSurface: "test",
+      targetObjectType: "ActionItem",
+      targetObjectId: "task-1",
+      payload: { roomId: "room-1", segmentId: "segment-1", expectedProviderTextSha256: "a".repeat(64), title: "No" },
+      sourceEvidence: {},
+      result: {},
+      boundaries: {},
+    })).rejects.toThrow("TRANSCRIPT_WORK_TARGET_MISMATCH");
+    expect(tx.governedActionRun.create).not.toHaveBeenCalled();
   });
 
   it("projects an approved writing decision into the governed action and parent run", async () => {

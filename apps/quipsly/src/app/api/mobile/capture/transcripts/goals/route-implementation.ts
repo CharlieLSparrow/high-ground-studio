@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto";
 import { TRANSCRIPT_DERIVED_GOAL_SCHEMA } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  readGovernedActionSourceReference,
+  recordSucceededTranscriptWorkAction,
+} from "@/lib/server/governed-action-runtime";
 import { readTranscriptCorrectionDesk, TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
   buildTranscriptSourceAnchorFields,
@@ -230,7 +235,12 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         "IDEMPOTENCY_CONFLICT",
       );
     }
-    return { goal: replay, idempotentReplay: true, appliedTags: Array.isArray(source.appliedTags) ? source.appliedTags : [] };
+    return {
+      goal: replay,
+      idempotentReplay: true,
+      appliedTags: Array.isArray(source.appliedTags) ? source.appliedTags : [],
+      governance: readGovernedActionSourceReference(source.governance),
+    };
   }
 
   let acceptedTags: Array<{ id: string; label: string; slug: string }> = [];
@@ -253,6 +263,43 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
   }
 
   const createdAt = new Date().toISOString();
+  const workBoundaries = transcriptDerivedGoalBoundaries({
+    targetDateCreated: request.targetAt !== null,
+    tagsApplied: request.tagIds.length > 0,
+  });
+  const governance = await recordSucceededTranscriptWorkAction(tx, {
+    capabilityId: TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+    clientRequestId: request.clientRequestId,
+    projectId: desk.projectId ?? null,
+    roomId: request.roomId,
+    actorUserId: actor.id,
+    actorEmail: actor.email || "unknown@quipsly.invalid",
+    sourceSurface: request.surface,
+    targetObjectType: "Goal",
+    targetObjectId: id,
+    payload: {
+      contractKind: "quipsly-transcript-goal-materialization-payload-v1",
+      roomId: request.roomId,
+      segmentId: request.segmentId,
+      segmentIds: sourceAnchor.segmentIds,
+      expectedProviderTextSha256: request.expectedProviderTextSha256,
+      expectedSourceTextSha256: request.expectedSourceTextSha256 ?? null,
+      title: request.title,
+      description: request.description,
+      targetAt: request.targetAt?.toISOString() ?? null,
+      tagIds: request.tagIds,
+    },
+    sourceEvidence: {
+      objectType: "TranscriptSegmentSpan",
+      roomId: request.roomId,
+      transcriptJobId: desk.transcriptJobId,
+      recordingAssetId: playback.recordingAssetId,
+      playbackSourceId: playback.sourceId,
+      ...sourceAnchor,
+    },
+    result: { targetObjectType: "Goal", targetObjectId: id, status: "ACTIVE" },
+    boundaries: workBoundaries,
+  });
   const goal = await tx.goal.create({
     data: {
       id,
@@ -277,10 +324,8 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
         playbackSourceId: playback.sourceId,
         materializationIntent: requestedIntent,
         appliedTags: acceptedTags,
-        boundaries: transcriptDerivedGoalBoundaries({
-          targetDateCreated: request.targetAt !== null,
-          tagsApplied: request.tagIds.length > 0,
-        }),
+        governance,
+        boundaries: workBoundaries,
       },
     },
   });
@@ -299,7 +344,7 @@ export async function createTranscriptDerivedGoalInTransaction(input: {
       })),
     });
   }
-  return { goal, idempotentReplay: false, appliedTags: acceptedTags };
+  return { goal, idempotentReplay: false, appliedTags: acceptedTags, governance };
 }
 
 export async function POST(request: Request) {
@@ -347,6 +392,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       idempotentReplay: result.idempotentReplay,
+      governance: result.governance,
       goal: {
         id: result.goal.id,
         title: result.goal.title,
