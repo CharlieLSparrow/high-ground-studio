@@ -2176,3 +2176,26 @@ These should be treated as cleanup candidates later, not as authoritative produc
   the iOS static App Store smoke passes 1,064 assertions. Deliberate physical
   clipping, mute/route loss, network loss, background, capacity pressure,
   retained playback, and handoff remain the release-quality acceptance gate.
+
+### 2026-08-05 audible-event map operation
+
+- Audio Studio and the episode editor now share an audible-event map over the
+  existing complete-decode signal and Dialogue Repair evidence. The projection
+  creates no new canonical event store and keeps measured conditions, human
+  marks, unqualified detector suggestions, qualified-detector evidence, review
+  state, and repair authorization separate.
+- Whole-source, sixty-second, and fifteen-second zoom, family/review filters,
+  previous/next event navigation, waveform fallback, detector score, origin,
+  false-positive retention, and accessible textual review state are available.
+- Signed-in local dogfood on the immutable
+  `quipsly-audio-treatment-ui-acceptance.wav` source created a deliberate
+  1.500–1.550 second noise-event mark. Operation caught unbounded event playback;
+  the fix now auditions bounded pre-roll/event/post-roll context. Playback
+  stopped around 3.07 seconds, enabled review only after the full context, saved
+  an append-only false-positive test receipt, and reconciled the map to
+  `1 mapped / 0 needs listening / 1 false positive` including the filter.
+- Current Apple Sound Analysis research and the detector qualification plan are
+  retained in `docs/research/2026-08-05-audible-event-map-architecture.md`.
+  Native file/stream attempts remain suggestions until exact model/window/input
+  identity, corpus metrics, false positives per hour, temporal error, and
+  physical-device cost are retained and reviewed.

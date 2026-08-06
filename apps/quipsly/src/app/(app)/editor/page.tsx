@@ -10292,6 +10292,7 @@ function CloudEditorContent() {
                             sourceId={asset.sourceId}
                             sourceUrl={asset.playbackUrl}
                             sourceMeasurement={audioMasteryStatus.sourceMeasurement}
+                            audioSignal={importedAssetAudioSignal(asset, audioSignalProfileStatus, 1_200)}
                           />
                           {audioMasteryStatus.derivative?.playbackUrl && audioMasteryStatus.proposal && (
                             <AudioMasteryAudition

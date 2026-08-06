@@ -74,4 +74,21 @@ describe("DialogueRepairDesk", () => {
     expect(screen.getByLabelText("Dialogue event start")).toHaveValue(6.235);
     expect(screen.getByLabelText("Dialogue event end")).toHaveValue(6.265);
   });
+
+  it("auditions a mapped event inside bounded protected context instead of playing the rest of the source", async () => {
+    render(<DialogueRepairDesk projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} />);
+    const mapped = await screen.findByRole("button", { name: /00:04 dialogue mouth click unreviewed/i });
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    const play = jest.fn().mockResolvedValue(undefined);
+    const pause = jest.fn();
+    Object.defineProperty(audio, "play", { configurable: true, value: play });
+    Object.defineProperty(audio, "pause", { configurable: true, value: pause });
+
+    fireEvent.click(mapped);
+    expect(audio.currentTime).toBe(2.5);
+    expect(play).toHaveBeenCalledTimes(1);
+    audio.currentTime = 5.6;
+    fireEvent.timeUpdate(audio);
+    expect(pause).toHaveBeenCalledTimes(1);
+  });
 });

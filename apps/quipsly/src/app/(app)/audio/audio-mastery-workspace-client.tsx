@@ -892,7 +892,7 @@ export function AudioMasteryWorkspaceClient({
             </section>
 
             {selectedAsset.canProcess && status?.sourceMeasurement ? (
-              <DialogueRepairDesk projectSlug={projectSlug} assetId={selectedAsset.id} sourceId={selectedAsset.sourceId} sourceUrl={selectedAsset.playbackUrl} sourceMeasurement={status.sourceMeasurement} />
+              <DialogueRepairDesk projectSlug={projectSlug} assetId={selectedAsset.id} sourceId={selectedAsset.sourceId} sourceUrl={selectedAsset.playbackUrl} sourceMeasurement={status.sourceMeasurement} audioSignal={audioSignal} />
             ) : null}
 
             {selectedAsset.canProcess && status?.derivative?.playbackUrl && status.proposal ? (

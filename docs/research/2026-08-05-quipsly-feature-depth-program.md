@@ -391,6 +391,26 @@ build-for-testing also pass. The next gate is deliberate clipping, route loss,
 network loss, background, and low-storage operation on real browser and iPhone
 hardware, followed by shared clock/upload-continuity evidence.
 
+### Audible-event map implementation checkpoint
+
+The shared source-clock review foundation is now implemented in Audio Studio
+and the episode editor. It projects complete-decode signal observations and
+append-only Dialogue Repair candidates without adding a competing event store.
+Whole/minute/detail zoom, family and review filters, prior/next navigation,
+origin, detector score, human decision, waveform availability, and false
+positives remain visible. Event navigation auditions bounded protected context;
+it does not play the rest of the source or authorize treatment.
+
+A signed-in local operation created a deliberate noise-event mark on an
+immutable audio test source, navigated to it, caught and repaired an unbounded-
+playback defect, recorded a false-positive receipt, and verified that the map
+and review filter reconciled to the append-only decision. See
+`2026-08-05-audible-event-map-architecture.md` for the official Sound Analysis
+research, evidence taxonomy, detector receipt requirements, and qualification
+program. The next gate is a versioned native file-analysis attempt measured on
+retained podcast/coaching audio, followed by physical-device cost and accuracy
+evaluation before any detector can be described as qualified.
+
 ### Current official capability signals
 
 - Apple's [Speech framework](https://developer.apple.com/documentation/speech/)

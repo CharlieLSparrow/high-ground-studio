@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { AudibleEventMap, audibleEventMapMoments } from "@/components/audio/AudibleEventMap";
+import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+
 import type { AudioMasteryMeasurement, AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 
 type DialogueRepairLabel = "mouth-click" | "plosive" | "sibilance" | "breath" | "clipping" | "noise-event";
@@ -54,6 +57,7 @@ type Props = {
   sourceId: string;
   sourceUrl: string;
   sourceMeasurement: AudioMasteryMeasurement;
+  audioSignal?: AudioTranscriptEvidence["audio"]["signal"];
 };
 
 const LABELS: Array<{ value: DialogueRepairLabel; label: string }> = [
@@ -65,7 +69,7 @@ const LABELS: Array<{ value: DialogueRepairLabel; label: string }> = [
   { value: "noise-event", label: "Noise event" },
 ];
 
-export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement }: Props) {
+export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, sourceMeasurement, audioSignal = null }: Props) {
   const sourceRef = useRef<HTMLAudioElement | null>(null);
   const repairedRef = useRef<HTMLAudioElement | null>(null);
   const stopAtRef = useRef<number | null>(null);
@@ -104,6 +108,10 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const activeWindow = activeCandidate ? contextWindow(activeCandidate) : null;
   const requiredBins = activeWindow ? secondBins(activeWindow.startSeconds, activeWindow.endSeconds) : [];
   const contextListened = requiredBins.length > 0 && requiredBins.every((bin) => listenedBins.has(bin));
+  const audibleMoments = useMemo(
+    () => audibleEventMapMoments(audioSignal, status?.candidates ?? []),
+    [audioSignal, status?.candidates],
+  );
 
   const request = useCallback(async (body: Record<string, unknown>) => {
     const response = await fetch("/api/media-vault/dialogue-repair", {
@@ -160,6 +168,27 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
       element.pause();
       stopAtRef.current = null;
     }
+  };
+
+  const inspectAudibleMoment = (moment: (typeof audibleMoments)[number] | null, seconds: number, play: boolean) => {
+    const entry = moment?.dialogueCandidateId
+      ? status?.candidates.find((candidate) => candidate.candidate.candidateId === moment.dialogueCandidateId) ?? null
+      : null;
+    if (moment?.dialogueCandidateId) {
+      setActiveCandidateId(moment.dialogueCandidateId);
+      setListenedBins(new Set());
+    }
+    const source = sourceRef.current;
+    if (!source) return;
+    const candidateWindow = entry ? contextWindow(entry.candidate) : null;
+    const contextStart = candidateWindow?.startSeconds
+      ?? Math.max(0, (moment?.startSeconds ?? seconds) - 1);
+    const contextEnd = candidateWindow?.endSeconds
+      ?? Math.min(sourceMeasurement.durationSeconds, Math.max(moment?.endSeconds ?? seconds, seconds) + 1);
+    source.currentTime = clamp(play ? contextStart : seconds, 0, sourceMeasurement.durationSeconds);
+    stopAtRef.current = play ? contextEnd : null;
+    setPlayhead(clamp(seconds, 0, sourceMeasurement.durationSeconds));
+    if (play) void source.play().catch(() => setError("Playback did not start. Use the protected source controls and try again."));
   };
 
   const review = async (decision: DialogueRepairDecision) => {
@@ -228,6 +257,13 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
         onTimeUpdate={() => handleTimeUpdate("source")}
         onSeeked={() => setPlayhead(sourceRef.current?.currentTime ?? 0)}
       />
+      <AudibleEventMap
+        durationSeconds={sourceMeasurement.durationSeconds}
+        signal={audioSignal}
+        moments={audibleMoments}
+        selectedSeconds={playhead}
+        onSelect={inspectAudibleMoment}
+      />
       <div className="mt-2 flex flex-wrap items-end gap-2">
         <label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Event
           <select value={label} onChange={(event) => setLabel(event.target.value as DialogueRepairLabel)} className="mt-1 block rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white">
@@ -251,7 +287,7 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
               const selected = entry.candidate.candidateId === activeCandidate?.candidateId;
               return <li key={entry.candidate.candidateId}><button type="button" aria-pressed={selected} onClick={() => { setActiveCandidateId(entry.candidate.candidateId); setListenedBins(new Set()); }} className={`w-full rounded-lg border px-3 py-2 text-left ${selected ? "border-amber-300 bg-amber-300/15" : "border-slate-700 bg-slate-900 hover:bg-slate-800"}`}>
                 <span className="flex items-center justify-between gap-2"><span className="font-black">{labelName(entry.candidate.label)}</span><span className="font-mono text-[10px] text-slate-300">{formatClock(entry.candidate.range.startSeconds)}</span></span>
-                <span className="mt-1 block text-[10px] font-bold text-slate-400">{entry.latestReview ? entry.latestReview.decision.replace("-", " ") : "awaiting source review"}{entry.experiment ? ` · ${entry.experiment.status}` : ""}</span>
+                <span className="mt-1 block text-[10px] font-bold text-slate-400">{entry.latestReview ? entry.latestReview.decision.replace("-", " ") : "awaiting source review"}{entry.candidate.origin.kind === "human-marked" ? " · human mark" : entry.candidate.origin.kind === "qualified-detector" ? " · qualified detector" : " · detector suggestion"}{entry.experiment ? ` · ${entry.experiment.status}` : ""}</span>
               </button></li>;
             })}
           </ul>
