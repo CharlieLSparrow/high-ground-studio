@@ -400,6 +400,15 @@ final class CaptureExperienceUITests: XCTestCase {
         ]
         XCTAssertTrue(soundCheck.exists)
         XCTAssertTrue(soundCheck.label.contains("Listen-back sound check"))
+        XCTAssertTrue(soundCheck.label.contains("Record and replay normal speech"))
+        let sharedPreflight = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_shared-preflight"
+        ]
+        XCTAssertTrue(sharedPreflight.exists)
+        XCTAssertTrue(
+            sharedPreflight.label.contains("Complete the private listen-back"),
+            "The collaboration receipt must stay visibly separate from local meter evidence."
+        )
         let soundCheckControls = app.descendants(matching: .any)[
             "CaptureSoundCheckControls"
         ]
@@ -410,6 +419,8 @@ final class CaptureExperienceUITests: XCTestCase {
             soundCheckStart.isEnabled,
             "Deterministic preview must expose the sound-check workflow without opening a microphone or inventing level evidence."
         )
+        XCTAssertFalse(app.buttons["CaptureSoundCheckHeardClear"].exists)
+        XCTAssertFalse(app.buttons["CaptureSoundCheckNeedsAdjustment"].exists)
         let soundCheckBoundary = app.descendants(matching: .any)[
             "CaptureSoundCheckBoundary"
         ]
@@ -1864,6 +1875,76 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureTranscriptReviewOutboxBoundary"]
                 .waitForExistence(timeout: 8)
+        )
+    }
+
+    func testSessionPreflightOutboxSurvivesRelaunchAndStaysAccountPartitioned() {
+        let owner = "session-preflight-outbox-\(UUID().uuidString.lowercased())"
+        let otherOwner = "session-preflight-outbox-other-\(UUID().uuidString.lowercased())"
+        let ownerArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-share-owner-ui-preview=\(owner)",
+            "--capture-session-preflight-outbox-ui-test",
+        ]
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        let disclosure = app.buttons["CaptureRehearsalReadinessDisclosure"]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
+        disclosure.tap()
+
+        let sharedReceipt = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_shared-preflight"
+        ]
+        XCTAssertTrue(sharedReceipt.waitForExistence(timeout: 8))
+        XCTAssertTrue(sharedReceipt.label.contains("waiting for Nest"))
+        let firstIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
+        XCTAssertTrue(firstIdentity.waitForExistence(timeout: 8))
+        let receiptID = firstIdentity.label
+        XCTAssertFalse(receiptID.isEmpty)
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
+        let recoveredIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
+        XCTAssertTrue(recoveredIdentity.waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            recoveredIdentity.label,
+            receiptID,
+            "Process restart must recover the exact random receipt identity, not fabricate a replacement."
+        )
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-share-owner-ui-preview=\(otherOwner)",
+            "--capture-session-preflight-outbox-ui-test",
+        ]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
+        let otherIdentity = app.staticTexts["CaptureSessionPreflightOutboxReceiptID"]
+        XCTAssertTrue(otherIdentity.waitForExistence(timeout: 8))
+        XCTAssertNotEqual(
+            otherIdentity.label,
+            receiptID,
+            "Another account must receive its own partition and never see a collaborator's protected setup receipt."
+        )
+
+        app.terminate()
+        app.launchArguments = ownerArguments
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        app.buttons["CaptureRehearsalReadinessDisclosure"].tap()
+        XCTAssertEqual(
+            app.staticTexts["CaptureSessionPreflightOutboxReceiptID"].label,
+            receiptID
         )
     }
 

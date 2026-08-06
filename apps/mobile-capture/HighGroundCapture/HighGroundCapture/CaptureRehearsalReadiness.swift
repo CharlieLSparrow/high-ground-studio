@@ -40,6 +40,7 @@ struct CaptureRehearsalReadinessCard: View {
     @ObservedObject var videoCapture: VideoCaptureController
     @ObservedObject var manuscript: MobileEpisodeManuscriptClient
     @ObservedObject var watch: MobileEpisodeWatchClient
+    @ObservedObject var preflight: CaptureSessionPreflightClient
 
     let session: MobileCaptureSession
     let mode: CaptureRecordingMode
@@ -126,6 +127,16 @@ struct CaptureRehearsalReadinessCard: View {
                         )
                     }
 
+                    #if DEBUG && targetEnvironment(simulator)
+                    if CaptureLaunchConfiguration.usesSessionPreflightOutboxUITest,
+                       let receipt = preflight.receipt(roomID: session.callRoomId) {
+                        Text(receipt.id.uuidString.lowercased())
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureSessionPreflightOutboxReceiptID")
+                    }
+                    #endif
+
                     if mode.requiresAudioConsent {
                         CaptureAudioSoundCheckControls(
                             controller: soundCheck,
@@ -135,7 +146,18 @@ struct CaptureRehearsalReadinessCard: View {
                                 ?? session.canRecordNow,
                             previewOnly: previewOnly,
                             providerConnected: providerConnected,
-                            captureIsActive: isCaptureActive
+                            captureIsActive: isCaptureActive,
+                            onDecision: { decision in
+                                soundCheck.recordPlaybackDecision(decision)
+                                Task {
+                                    await preflight.save(
+                                        soundCheck: soundCheck,
+                                        session: session,
+                                        mode: mode,
+                                        videoProfile: videoCapture.resolvedProfile
+                                    )
+                                }
+                            }
                         )
                     }
 
@@ -194,6 +216,7 @@ struct CaptureRehearsalReadinessCard: View {
         ]
         if mode.requiresAudioConsent {
             result.append(soundCheckItem)
+            result.append(sharedPreflightItem)
         }
         if mode.recordsVideo {
             result.append(cameraItem)
@@ -357,13 +380,86 @@ struct CaptureRehearsalReadinessCard: View {
                 .action
             )
         }
+        guard soundCheck.playbackCompleted else {
+            return item(
+                "sound-check",
+                "Listen-back sound check",
+                "The level reading is available, but the complete private sample has not been heard yet.",
+                .action
+            )
+        }
+        guard let decision = soundCheck.playbackDecision else {
+            return item(
+                "sound-check",
+                "Listen-back sound check",
+                "Full playback completed on \(soundCheck.playbackOutputRouteName ?? "the current output"). Record whether it sounded clear or needs adjustment.",
+                .action
+            )
+        }
         let detail = "\(summary.routeName) · average \(formattedDBFS(summary.averagePowerDBFS)) · peak \(formattedDBFS(summary.peakPowerDBFS)). \(summary.health.guidance)"
         return item(
             "sound-check",
             "Listen-back sound check",
             detail,
-            summary.health == .healthy ? .ready : .blocked
+            summary.health == .healthy && decision == .heardClear ? .ready : .blocked
         )
+    }
+
+    private var sharedPreflightItem: CaptureRehearsalCheckItem {
+        guard let checkID = soundCheck.checkID,
+              soundCheck.playbackDecision != nil else {
+            return item(
+                "shared-preflight",
+                "Shared setup receipt",
+                "Complete the private listen-back before this iPhone can share exact setup evidence with collaborators.",
+                .action
+            )
+        }
+        guard let receipt = preflight.receipt(
+            roomID: session.callRoomId,
+            checkID: checkID
+        ) else {
+            return item(
+                "shared-preflight",
+                "Shared setup receipt",
+                "The listening decision has not yet been committed to the protected iPhone outbox.",
+                .action
+            )
+        }
+        switch receipt.deliveryState {
+        case .pending:
+            return item(
+                "shared-preflight",
+                "Shared setup receipt",
+                "Saved on this iPhone and waiting for Nest. Local capture remains available; collaborators do not see a current receipt yet.",
+                .action
+            )
+        case .rejected:
+            return item(
+                "shared-preflight",
+                "Shared setup receipt",
+                receipt.serverError ?? "Nest held this receipt. Run a fresh check.",
+                .blocked
+            )
+        case .acknowledged:
+            if receipt.isCurrentReady {
+                return item(
+                    "shared-preflight",
+                    "Shared setup receipt",
+                    "Nest verified this exact iPhone, microphone, output, full playback, and listener decision for the current Session.",
+                    .ready
+                )
+            }
+            let issues = receipt.serverIssueCodes.isEmpty
+                ? "This receipt is no longer a current ready claim."
+                : receipt.serverIssueCodes.joined(separator: ", ")
+            return item(
+                "shared-preflight",
+                "Shared setup receipt",
+                "Nest saved the evidence without painting it ready: \(issues)",
+                .blocked
+            )
+        }
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {
@@ -523,7 +619,7 @@ struct CaptureRehearsalReadinessCard: View {
         if previewOnly {
             return "Preview shows the checklist shape only. It never claims physical-device, consent, route, storage, protected-download, or room proof."
         }
-        return "This checklist does not grant consent, join the room, or start recording. Existing capture guards remain authoritative; rerun it after changing the microphone, camera, headphones, account, or Session."
+        return "This checklist does not grant consent, join the room, or start recording. A protected iPhone outbox can delay the collaboration receipt without blocking local capture. Existing capture guards remain authoritative; rerun after changing the microphone, camera, headphones, account, or Session."
     }
 
     private var hasEpisodeContext: Bool {
@@ -582,6 +678,7 @@ private struct CaptureAudioSoundCheckControls: View {
     let previewOnly: Bool
     let providerConnected: Bool
     let captureIsActive: Bool
+    let onDecision: (CaptureAudioSoundCheckPlaybackDecision) -> Void
 
     private var canStart: Bool {
         !previewOnly
@@ -681,6 +778,46 @@ private struct CaptureAudioSoundCheckControls: View {
                     .buttonStyle(.bordered)
                     .accessibilityLabel("Delete local sound check")
                     .accessibilityIdentifier("CaptureSoundCheckDelete")
+                }
+
+                if controller.playbackCompleted {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What did the full playback sound like?")
+                            .font(.caption.weight(.bold))
+                        HStack(spacing: 8) {
+                            Button {
+                                onDecision(.heardClear)
+                            } label: {
+                                Label("Sounds clear", systemImage: "checkmark.circle")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                            .disabled(controller.playbackDecision == .heardClear)
+                            .accessibilityIdentifier("CaptureSoundCheckHeardClear")
+
+                            Button {
+                                onDecision(.needsAdjustment)
+                            } label: {
+                                Label("Needs adjustment", systemImage: "slider.horizontal.3")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(controller.playbackDecision == .needsAdjustment)
+                            .accessibilityIdentifier("CaptureSoundCheckNeedsAdjustment")
+                        }
+                        if let decision = controller.playbackDecision {
+                            Text(decision.title)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(
+                                    decision == .heardClear ? Color.green : Color.orange
+                                )
+                                .accessibilityIdentifier("CaptureSoundCheckPlaybackDecision")
+                        }
+                    }
+                } else {
+                    Text("A meter reading cannot approve mouth noise, echo, rubbing, or playback bleed. Listen to the complete sample before Quipsly can share a ready receipt.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 Button {

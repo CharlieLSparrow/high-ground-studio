@@ -84,6 +84,16 @@ function healthyBody() {
   };
 }
 
+function healthyIOSBody() {
+  return {
+    ...healthyBody(),
+    clientKind: "ios",
+    clientInstanceId: "ios-install-1",
+    deviceLabel: "Quipsly Capture · iPhone",
+    outputLabel: "AirPods",
+  };
+}
+
 const context = { params: Promise.resolve({ roomId: "room-1" }) };
 
 function request(method: "GET" | "POST", body?: unknown) {
@@ -202,6 +212,33 @@ describe("Session preflight receipt API", () => {
         evidenceJson: expect.objectContaining({
           privateSampleBytesRetained: false,
           privateSampleUploaded: false,
+        }),
+      }),
+    });
+  });
+
+  it("persists the same private-playback contract for an iPhone endpoint", async () => {
+    const response = await POST(request("POST", healthyIOSBody()), context);
+    const packet = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(packet).toMatchObject({
+      ok: true,
+      preflight: {
+        clientKind: "ios",
+        clientInstanceId: "ios-install-1",
+        deviceLabel: "Quipsly Capture · iPhone",
+        outputLabel: "AirPods",
+        status: "READY",
+      },
+    });
+    expect(prisma.callParticipantPreflightReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        clientKind: "ios",
+        clientInstanceId: "ios-install-1",
+        evidenceJson: expect.objectContaining({
+          audioEvidenceCoverage: "local-native-recorder-meter-and-complete-private-playback",
+          outputRoutingAuthority: "native-current-audio-route",
         }),
       }),
     });

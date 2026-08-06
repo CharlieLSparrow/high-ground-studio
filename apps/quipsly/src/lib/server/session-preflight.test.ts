@@ -48,6 +48,47 @@ describe("session preflight evidence", () => {
     });
   });
 
+  it("preserves iPhone endpoint identity and the original offline observation time", () => {
+    const clientReportedAt = new Date(testedAt.getTime() - 30 * 60 * 1_000);
+    const evidence = buildSessionPreflightEvidence({
+      ...healthyInput(),
+      clientKind: "ios",
+      clientInstanceId: "ios-install-1",
+      deviceLabel: "Quipsly Capture · iPhone",
+      clientReportedAt: clientReportedAt.toISOString(),
+    }, testedAt);
+
+    expect(evidence.clientKind).toBe("ios");
+    expect(evidence.testedAt).toEqual(clientReportedAt);
+    expect(evidence.expiresAt.getTime()).toBe(clientReportedAt.getTime() + SESSION_PREFLIGHT_TTL_MS);
+    expect(evidence.evidenceJson).toMatchObject({
+      audioEvidenceCoverage: "local-native-recorder-meter-and-complete-private-playback",
+      outputRoutingAuthority: "native-current-audio-route",
+      clientReportedAt: clientReportedAt.toISOString(),
+    });
+  });
+
+  it("does not let a future client clock extend readiness", () => {
+    const evidence = buildSessionPreflightEvidence({
+      ...healthyInput(),
+      clientKind: "ios",
+      clientReportedAt: new Date(testedAt.getTime() + 60 * 60 * 1_000).toISOString(),
+    }, testedAt);
+
+    expect(evidence.testedAt).toEqual(testedAt);
+    expect(evidence.expiresAt.getTime()).toBe(testedAt.getTime() + SESSION_PREFLIGHT_TTL_MS);
+  });
+
+  it("does not silently reinterpret an explicit unknown client kind as trusted web evidence", () => {
+    const evidence = buildSessionPreflightEvidence({
+      ...healthyInput(),
+      clientKind: "watchos",
+    }, testedAt);
+
+    expect(evidence.status).toBe("NEEDS_ATTENTION");
+    expect(evidence.issueCodes).toContain("CLIENT_KIND_UNSUPPORTED");
+  });
+
   it("keeps a human listen concern authoritative even when the meter looks healthy", () => {
     const evidence = buildSessionPreflightEvidence({
       ...healthyInput(),

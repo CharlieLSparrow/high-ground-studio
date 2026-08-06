@@ -1,6 +1,6 @@
 import Foundation
 
-enum CaptureAudioSoundCheckHealth: String, Sendable {
+enum CaptureAudioSoundCheckHealth: String, Codable, Sendable {
     case noSignal
     case tooQuiet
     case healthy
@@ -33,7 +33,19 @@ enum CaptureAudioSoundCheckHealth: String, Sendable {
     }
 }
 
-struct CaptureAudioSoundCheckSummary: Equatable, Sendable {
+enum CaptureAudioSoundCheckPlaybackDecision: String, Codable, Equatable, Sendable {
+    case heardClear = "HEARD_CLEAR"
+    case needsAdjustment = "NEEDS_ADJUSTMENT"
+
+    var title: String {
+        switch self {
+        case .heardClear: "I heard a clear setup"
+        case .needsAdjustment: "I heard something to adjust"
+        }
+    }
+}
+
+struct CaptureAudioSoundCheckSummary: Codable, Equatable, Sendable {
     static let clippingRiskPeakDBFS: Float = -1
     static let hotPeakDBFS: Float = -3
     static let hotAverageDBFS: Float = -12
@@ -45,6 +57,8 @@ struct CaptureAudioSoundCheckSummary: Equatable, Sendable {
     let peakPowerDBFS: Float
     let nearFullScaleObservationCount: Int
     let observationCount: Int
+    let sampleRateHz: Int
+    let channelCount: Int
     let routeName: String
     let createdAt: Date
     let health: CaptureAudioSoundCheckHealth
@@ -55,6 +69,8 @@ struct CaptureAudioSoundCheckSummary: Equatable, Sendable {
         peakPowerDBFS: Float,
         nearFullScaleObservationCount: Int,
         observationCount: Int,
+        sampleRateHz: Int = 48_000,
+        channelCount: Int = 1,
         routeName: String,
         createdAt: Date = Date()
     ) -> CaptureAudioSoundCheckSummary {
@@ -84,6 +100,8 @@ struct CaptureAudioSoundCheckSummary: Equatable, Sendable {
             peakPowerDBFS: safePeak,
             nearFullScaleObservationCount: safeNearFullScaleObservationCount,
             observationCount: safeObservationCount,
+            sampleRateHz: max(1, sampleRateHz),
+            channelCount: max(1, channelCount),
             routeName: routeName.trimmingCharacters(in: .whitespacesAndNewlines),
             createdAt: createdAt,
             health: health

@@ -6,7 +6,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { readRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+import {
+  readRetainedQAPassword,
+  resolveRetainedQAPassword,
+} from "./lib/retained-qa-keychain.mjs";
 
 const requireFromQuipsly = createRequire(
   new URL("../apps/quipsly/package.json", import.meta.url),
@@ -79,8 +82,23 @@ async function upsertUser(auth, identity, password) {
     emailVerified: true,
     disabled: false,
   };
-  if (current) await auth.updateUser(identity.uid, fields);
-  else await auth.createUser({ uid: identity.uid, ...fields });
+  if (current) {
+    await auth.updateUser(identity.uid, fields);
+    return;
+  }
+
+  // Retained local operations may have created the same reserved email under
+  // an older ephemeral UID. This seed is explicitly emulator-only and the
+  // database contract binds the reserved fixture to identity.uid, so converge
+  // that duplicate instead of failing halfway through the QA identity set.
+  const conflictingEmailUser = await auth.getUserByEmail(identity.email).catch((error) => {
+    if (error?.code === "auth/user-not-found") return null;
+    throw error;
+  });
+  if (conflictingEmailUser && conflictingEmailUser.uid !== identity.uid) {
+    await auth.deleteUser(conflictingEmailUser.uid);
+  }
+  await auth.createUser({ uid: identity.uid, ...fields });
 }
 
 function credentialStore() {
@@ -137,17 +155,30 @@ export async function main() {
   const store = credentialStore();
   const credentialDirectory =
     store === "temporary" ? temporaryCredentialDirectory() : null;
+  const createMissingKeychain =
+    process.env.QUIPSLY_RETAINED_COACHING_CREATE_MISSING_KEYCHAIN === "1";
+  let createdKeychainCredentials = 0;
   if (credentialDirectory)
     await assertPrivateCredentialDirectory(credentialDirectory);
   try {
     for (const identity of RETAINED_COACHING_AUTH_IDENTITIES) {
-      const password =
-        store === "keychain"
-          ? readRetainedQAPassword({
-              service: KEYCHAIN_SERVICE,
-              account: identity.email,
-            })
-          : generatedPassword();
+      let password;
+      if (store === "keychain" && createMissingKeychain) {
+        const resolved = resolveRetainedQAPassword({
+          service: KEYCHAIN_SERVICE,
+          account: identity.email,
+          generate: generatedPassword,
+        });
+        password = resolved.password;
+        if (resolved.created) createdKeychainCredentials += 1;
+      } else if (store === "keychain") {
+        password = readRetainedQAPassword({
+          service: KEYCHAIN_SERVICE,
+          account: identity.email,
+        });
+      } else {
+        password = generatedPassword();
+      }
       assert(
         password,
         `The retained ${identity.email} Keychain password is unavailable.`,
@@ -171,6 +202,7 @@ export async function main() {
     identitiesRestored: RETAINED_COACHING_AUTH_IDENTITIES.length,
     credentialStore: store,
     credentialDirectory,
+    createdKeychainCredentials,
     databaseMutated: false,
     secretsPrinted: false,
   };

@@ -141,7 +141,7 @@ export async function POST(
   }
   const evidence = buildSessionPreflightEvidence(body);
   if (!evidence.clientInstanceId || !evidence.microphoneLabel) {
-    return NextResponse.json({ ok: false, code: "INVALID_PREFLIGHT", error: "The exact browser endpoint and microphone must be identified before saving a setup check." }, { status: 400, headers: PRIVATE_HEADERS });
+    return NextResponse.json({ ok: false, code: "INVALID_PREFLIGHT", error: "The exact endpoint and microphone must be identified before saving a setup check." }, { status: 400, headers: PRIVATE_HEADERS });
   }
 
   const knownParticipant = access.room.participants.find((candidate) => candidate.userId === access.actor.id);
@@ -177,7 +177,7 @@ export async function POST(
               displayName: access.actor.name || access.actor.primaryEmail || "Quipsly participant",
               email: access.actor.primaryEmail,
               role: participantRole,
-              deviceLabel: evidence.deviceLabel || "Quipsly Web",
+              deviceLabel: evidence.deviceLabel || (evidence.clientKind === "ios" ? "Quipsly Capture" : evidence.clientKind === "macos" ? "Quipsly for Mac" : "Quipsly Web"),
             },
             select: { id: true, userId: true },
           });
@@ -253,6 +253,6 @@ export async function POST(
     }, { status: result.replay ? 200 : 201, headers: PRIVATE_HEADERS });
   } catch (error) {
     console.error("[session-preflight] failed", error);
-    return NextResponse.json({ ok: false, code: "PREFLIGHT_UNAVAILABLE", error: "Quipsly could not save the setup-check receipt. The private sample remains only in this tab; retry with the same sample." }, { status: 503, headers: PRIVATE_HEADERS });
+    return NextResponse.json({ ok: false, code: "PREFLIGHT_UNAVAILABLE", error: "Quipsly could not save the setup-check receipt. The private sample remains only on this endpoint; retry with the same sample." }, { status: 503, headers: PRIVATE_HEADERS });
   }
 }

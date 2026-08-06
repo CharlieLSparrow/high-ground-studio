@@ -5777,6 +5777,7 @@ private struct CaptureRecorderView: View {
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
     @State private var isRunningRehearsalCheck = false
     @StateObject private var soundCheck = CaptureAudioSoundCheckController()
+    @StateObject private var sessionPreflight = CaptureSessionPreflightClient()
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
     @StateObject private var episodeChat = MobileEpisodeChatClient()
@@ -5994,6 +5995,7 @@ private struct CaptureRecorderView: View {
                         videoCapture: videoCapture,
                         manuscript: episodeManuscript,
                         watch: episodeWatch,
+                        preflight: sessionPreflight,
                         session: session,
                         mode: recordingMode,
                         providerConnected: model.providerRoom.isConnected,
@@ -6410,6 +6412,25 @@ private struct CaptureRecorderView: View {
         }
         .onChange(of: videoCapture.cameraPosition) { _, position in
             cameraPosition = position
+        }
+        .task(id: model.selectedSession?.callRoomId) {
+            #if DEBUG && targetEnvironment(simulator)
+            if CaptureLaunchConfiguration.usesSessionPreflightOutboxUITest,
+               let session = model.selectedSession,
+               let owner = CaptureLaunchConfiguration.shareExtensionUITestOwner,
+               let staged = try? sessionPreflight.stageSessionPreflightOutboxUITestReceipt(
+                    roomID: session.callRoomId,
+                    ownerAccountID: owner
+               ) {
+                soundCheck.installSessionPreflightOutboxUITestFixture(
+                    id: staged.id,
+                    createdAt: staged.createdAt,
+                    routeName: staged.payload.microphoneLabel,
+                    outputRouteName: staged.payload.outputLabel
+                )
+            }
+            #endif
+            await sessionPreflight.flushPending()
         }
         .onDisappear {
             soundCheck.discard()

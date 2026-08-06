@@ -29,6 +29,24 @@ false positives per hour, boundary error, runtime, battery, thermal behavior,
 and reviewer effort. Physical-iPhone long-take operation remains the release
 gate.
 
+### Native multi-endpoint Session certainty checkpoint
+
+The Session Control Plane now receives the same private-playback readiness
+contract from Quipsly Capture as it does from the browser. Healthy electrical
+levels cannot certify listening quality: iPhone readiness requires full local
+playback, the actual output route, and an explicit clear-or-adjust decision.
+Only bounded evidence enters the protected outbox and Nest; the sample remains
+private and local capture stays usable during an outage.
+
+The retained local operation wrote separate current iPhone receipts for both
+collaborators in one Session, proved distinct actor and endpoint identities,
+rejected an outsider, and kept a delayed offline receipt historical rather than
+fresh. An operated simulator test then killed and relaunched Capture, recovered
+the exact random outbox identity, switched account partitions, and returned to
+the original identity. This advances Session certainty through the observable,
+recoverable, and collaborative levels of the depth ladder without claiming
+physical-iPhone or retained-recording acceptance.
+
 ### Independent detector truth checkpoint
 
 Audio Studio now goes beyond confirmation of surfaced suggestions. A reviewer

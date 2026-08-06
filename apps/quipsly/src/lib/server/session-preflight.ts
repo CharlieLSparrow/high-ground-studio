@@ -4,10 +4,11 @@ export const SESSION_PREFLIGHT_TTL_MS = 2 * 60 * 60 * 1_000;
 
 export type SessionPreflightStatus = "READY" | "NEEDS_ATTENTION";
 export type SessionPreflightDecision = "HEARD_CLEAR" | "NEEDS_ADJUSTMENT";
+export type SessionPreflightClientKind = "web" | "ios" | "macos";
 
 export type SessionPreflightEvidence = {
   clientInstanceId: string;
-  clientKind: "web";
+  clientKind: SessionPreflightClientKind;
   deviceLabel: string | null;
   microphoneLabel: string;
   cameraLabel: string | null;
@@ -70,6 +71,24 @@ const AUDIO_STATES = new Set<SessionPreflightEvidence["audioSignalState"]>([
   "clipping-risk",
 ]);
 
+const CLIENT_KINDS = new Set<SessionPreflightClientKind>([
+  "web",
+  "ios",
+  "macos",
+]);
+
+function clientReportedDate(value: unknown, receivedAt: Date) {
+  const raw = text(value, 64);
+  if (!raw) return receivedAt;
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return receivedAt;
+  // A client clock may be a little ahead of the server, but a future receipt
+  // must never extend readiness indefinitely. Old offline receipts keep their
+  // original age so a delayed outbox delivery cannot paint a fresh green state.
+  if (parsed.getTime() > receivedAt.getTime() + 5 * 60 * 1_000) return receivedAt;
+  return parsed;
+}
+
 export function buildSessionPreflightEvidence(
   value: unknown,
   testedAt = new Date(),
@@ -77,6 +96,12 @@ export function buildSessionPreflightEvidence(
   const body = object(value);
   const audio = object(body.audioEvidence);
   const camera = object(body.cameraEvidence);
+  const requestedClientKind = text(body.clientKind, 16).toLowerCase();
+  const clientKindIsSupported = requestedClientKind === ""
+    || CLIENT_KINDS.has(requestedClientKind as SessionPreflightClientKind);
+  const clientKind: SessionPreflightClientKind = requestedClientKind !== "" && clientKindIsSupported
+    ? requestedClientKind as SessionPreflightClientKind
+    : "web";
   const clientInstanceId = text(body.clientInstanceId, 80).replace(/[^a-zA-Z0-9_-]+/g, "-");
   const microphoneLabel = text(body.microphoneLabel, 160);
   const cameraWanted = body.cameraWanted === true;
@@ -95,6 +120,7 @@ export function buildSessionPreflightEvidence(
   const cameraFrameRate = finite(camera.frameRate, 0.1, 240);
   const issueCodes: string[] = [];
 
+  if (!clientKindIsSupported) issueCodes.push("CLIENT_KIND_UNSUPPORTED");
   if (!clientInstanceId) issueCodes.push("CLIENT_INSTANCE_MISSING");
   if (!microphoneLabel) issueCodes.push("MICROPHONE_UNIDENTIFIED");
   if (!privateSamplePlaybackComplete) issueCodes.push("PLAYBACK_NOT_COMPLETED");
@@ -105,10 +131,11 @@ export function buildSessionPreflightEvidence(
     issueCodes.push("CAMERA_NOT_VERIFIED");
   }
 
-  const expiresAt = new Date(testedAt.getTime() + SESSION_PREFLIGHT_TTL_MS);
+  const observedAt = clientReportedDate(body.clientReportedAt, testedAt);
+  const expiresAt = new Date(observedAt.getTime() + SESSION_PREFLIGHT_TTL_MS);
   return {
     clientInstanceId,
-    clientKind: "web",
+    clientKind,
     deviceLabel,
     microphoneLabel,
     cameraLabel,
@@ -132,14 +159,18 @@ export function buildSessionPreflightEvidence(
     privateSamplePlaybackComplete,
     playbackDecision,
     issueCodes,
-    testedAt,
+    testedAt: observedAt,
     expiresAt,
     evidenceJson: {
       contractKind: "quipsly-session-preflight-v1",
       privateSampleBytesRetained: false,
       privateSampleUploaded: false,
-      audioEvidenceCoverage: "realtime-call-path-observation-not-complete-decode",
-      outputRoutingAuthority: outputLabel ? "browser-selected-or-reported" : "system-default-or-unavailable",
+      audioEvidenceCoverage: clientKind === "web"
+        ? "realtime-call-path-observation-not-complete-decode"
+        : "local-native-recorder-meter-and-complete-private-playback",
+      outputRoutingAuthority: clientKind === "web"
+        ? (outputLabel ? "browser-selected-or-reported" : "system-default-or-unavailable")
+        : (outputLabel ? "native-current-audio-route" : "native-output-route-unavailable"),
       clientReportedAt: text(body.clientReportedAt, 64) || null,
     },
   };
@@ -195,6 +226,7 @@ export function sessionPreflightRequestSha256(evidence: SessionPreflightEvidence
       privateSampleUploaded: evidence.evidenceJson.privateSampleUploaded,
       audioEvidenceCoverage: evidence.evidenceJson.audioEvidenceCoverage,
       outputRoutingAuthority: evidence.evidenceJson.outputRoutingAuthority,
+      clientReportedAt: evidence.evidenceJson.clientReportedAt,
     },
   };
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");

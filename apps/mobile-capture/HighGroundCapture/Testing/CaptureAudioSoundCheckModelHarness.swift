@@ -75,6 +75,8 @@ struct CaptureAudioSoundCheckModelHarness {
         require(normalized.peakPowerDBFS == 0, "power above full scale must clamp to zero")
         require(normalized.nearFullScaleObservationCount == 0, "observation counts must never be negative")
         require(normalized.observationCount == 0, "observation counts must never be negative")
+        require(normalized.sampleRateHz == 48_000, "the encoded source rate must stay explicit")
+        require(normalized.channelCount == 1, "the encoded source channel count must stay explicit")
         require(normalized.health == .noSignal, "invalid observation evidence must fail closed")
         require(normalized.routeName == "iPhone microphone", "route identity must be normalized")
         require(
@@ -82,6 +84,27 @@ struct CaptureAudioSoundCheckModelHarness {
             "healthy electrical level must still require human listen-back"
         )
 
-        print("PASS Capture audio sound-check classifications preserve headroom, route, and listen-back truth.")
+        do {
+            let original = summary(average: -24, peak: -9)
+            let encoded = try JSONEncoder().encode(original)
+            let decoded = try JSONDecoder().decode(
+                CaptureAudioSoundCheckSummary.self,
+                from: encoded
+            )
+            require(decoded == original, "sound-check evidence must survive the protected outbox boundary")
+            require(
+                CaptureAudioSoundCheckPlaybackDecision.heardClear.rawValue == "HEARD_CLEAR",
+                "a positive listen-back must match the server contract exactly"
+            )
+            require(
+                CaptureAudioSoundCheckPlaybackDecision.needsAdjustment.rawValue == "NEEDS_ADJUSTMENT",
+                "a listening concern must match the server contract exactly"
+            )
+        } catch {
+            fputs("FAIL sound-check evidence could not be encoded: \(error)\n", stderr)
+            exit(1)
+        }
+
+        print("PASS Capture audio sound-check classifications preserve headroom, route, explicit listener decisions, and outbox evidence.")
     }
 }

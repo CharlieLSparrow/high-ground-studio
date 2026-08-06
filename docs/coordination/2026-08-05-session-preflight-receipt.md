@@ -136,10 +136,55 @@ provider room, or that a retained recording was created.
 - Repeat the check while speaking naturally and adjust MV7i gain/distance until
   the meter and the human listener both pass.
 - Reconnect the Canon R8 and prove the requested camera evidence path.
-- Prove the same Session receipt projection with a second signed-in
-  collaborator.
-- Prove physical-iPhone endpoint/capture state beside the browser endpoint.
+- Repeat the receipt projection with a second collaborator on physical
+  hardware beside the browser endpoint.
 - Deploy the additive migration and exact committed source through the guarded
   production preview lane before promoting traffic.
 - Do not treat a preflight pass as source capture, upload, sync, transcript, or
   editor readiness; those remain separate acceptance gates.
+
+## 2026-08-06 native and two-collaborator continuation
+
+Quipsly Capture now uses the same Session preflight authority without uploading
+the private sound-check recording. The iPhone sound check no longer becomes
+ready from meter health alone: the person must play the complete sample and
+choose **Sounds clear** or **Needs adjustment**. The app records the actual
+playback output route and invalidates the evidence if that route changes.
+
+The resulting bounded receipt is saved first to an account-partitioned,
+file-protected iPhone outbox. Local capture remains available when Nest is
+temporarily unreachable, while the UI states honestly that shared setup
+evidence is waiting. A server acknowledgement is the only state that can make
+the shared receipt current and ready. Restart, retry, authentication expiry,
+request conflict, and terminal rejection remain distinguishable instead of
+being reduced to one success boolean.
+
+The server now accepts explicit `web`, `ios`, and `macos` endpoint kinds and
+uses the bounded client observation time for receipt expiry. A delayed offline
+receipt therefore cannot arrive three hours later and paint an endpoint fresh.
+Future-skewed clocks fall back to server time rather than extending authority.
+
+The retained local operation proved the complete contract with two real
+reserved collaborator identities over the same Session:
+
+- both collaborators wrote current iPhone receipts and read back their own
+  exact receipt;
+- PostgreSQL retained two distinct actor identities and two distinct endpoint
+  identities;
+- exact replay converged idempotently while changed evidence under the same
+  request ID returned conflict;
+- a three-hour-old offline receipt persisted as historical evidence but was
+  not current;
+- an unrelated ephemeral Firebase identity received `404` and was deleted
+  after the operation;
+- both private-sample upload and byte-retention fields remained false; and
+- no recording was started by preflight.
+
+Focused server tests, native model tests, Swift compilation for both simulator
+architectures, and the operated readiness UI test pass. A second operated UI
+test killed Capture, recovered the exact random receipt identity after relaunch,
+created a different receipt under a second account partition, and recovered the
+original identity after switching back. This closes the former local
+second-collaborator and process-restart outbox gates. It does not replace
+physical-iPhone microphone/camera operation, retained recording/upload/editor
+readback, production preview deployment, or TestFlight acceptance.

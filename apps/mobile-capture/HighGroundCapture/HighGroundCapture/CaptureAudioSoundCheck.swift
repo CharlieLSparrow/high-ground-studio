@@ -25,6 +25,10 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
     @Published private(set) var liveAveragePowerDBFS: Float = -160
     @Published private(set) var livePeakPowerDBFS: Float = -160
     @Published private(set) var summary: CaptureAudioSoundCheckSummary?
+    @Published private(set) var checkID: UUID?
+    @Published private(set) var playbackCompleted = false
+    @Published private(set) var playbackOutputRouteName: String?
+    @Published private(set) var playbackDecision: CaptureAudioSoundCheckPlaybackDecision?
     @Published private(set) var message: String?
 
     let maximumDuration: TimeInterval = 10
@@ -68,10 +72,16 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
                 object: observedAudioSession
             ) {
                 guard let self else { return }
-                guard self.state == .recording else { continue }
-                self.finishRecording(
-                    note: "The sound check stopped because the audio route changed. Run a new check on the current microphone."
-                )
+                if self.state == .recording {
+                    self.finishRecording(
+                        note: "The sound check stopped because the audio route changed. Run a new check on the current microphone."
+                    )
+                } else if self.state == .playing {
+                    self.stopPlayback()
+                    self.invalidatePlaybackEvidence(
+                        "The listening route changed before playback completed. Listen to the full check again on the current output."
+                    )
+                }
             }
         }
         backgroundTask = Task { @MainActor [weak self] in
@@ -102,6 +112,10 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         state = .requestingPermission
         message = nil
         summary = nil
+        checkID = nil
+        playbackCompleted = false
+        playbackOutputRouteName = nil
+        playbackDecision = nil
 
         let permissionGranted = await resolveMicrophonePermission()
         guard permissionGranted else {
@@ -164,6 +178,14 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         automaticStopTask?.cancel()
         automaticStopTask = nil
         collectMeterObservation()
+        let recorderSettings = recorder?.settings ?? [:]
+        let sampleRateHz = Int(
+            (recorderSettings[AVSampleRateKey] as? NSNumber)?.doubleValue
+                ?? 48_000
+        )
+        let channelCount =
+            (recorderSettings[AVNumberOfChannelsKey] as? NSNumber)?.intValue
+                ?? 1
         recorder?.stop()
         recorder = nil
         meterTask?.cancel()
@@ -179,8 +201,14 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
             peakPowerDBFS: maximumPeakDBFS,
             nearFullScaleObservationCount: nearFullScaleObservationCount,
             observationCount: observationCount,
+            sampleRateHz: sampleRateHz,
+            channelCount: channelCount,
             routeName: routeName
         )
+        checkID = UUID()
+        playbackCompleted = false
+        playbackOutputRouteName = nil
+        playbackDecision = nil
         liveAveragePowerDBFS = average
         livePeakPowerDBFS = maximumPeakDBFS
         state = .ready
@@ -192,7 +220,10 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
     func play() {
         guard state == .ready, let soundCheckURL else { return }
         do {
+            playbackCompleted = false
+            playbackDecision = nil
             try coordinator.beginLocalPlayback()
+            playbackOutputRouteName = currentOutputRouteName()
             let nextPlayer = try AVAudioPlayer(contentsOf: soundCheckURL)
             nextPlayer.delegate = self
             guard nextPlayer.play() else {
@@ -221,6 +252,47 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         if summary != nil { state = .ready }
     }
 
+    func recordPlaybackDecision(_ decision: CaptureAudioSoundCheckPlaybackDecision) {
+        guard playbackCompleted, summary != nil else {
+            message = "Listen to the complete private sample before saving what you heard."
+            return
+        }
+        playbackDecision = decision
+        message = decision == .heardClear
+            ? "Your full listen-back decision is ready to share as a receipt. The private audio stays on this iPhone."
+            : "Your concern is ready to share as a needs-adjustment receipt. The private audio stays on this iPhone."
+    }
+
+    #if DEBUG && targetEnvironment(simulator)
+    /// Reprojects an already-persisted synthetic receipt into the ephemeral
+    /// sound-check UI. It exists only so an operated UI test can prove that
+    /// the protected receipt survives process death without retaining audio.
+    func installSessionPreflightOutboxUITestFixture(
+        id: UUID,
+        createdAt: Date,
+        routeName: String,
+        outputRouteName: String
+    ) {
+        stopPlayback()
+        discardFile(resetState: false)
+        summary = CaptureAudioSoundCheckSummary.evaluate(
+            duration: 6.25,
+            averagePowerDBFS: -24,
+            peakPowerDBFS: -8,
+            nearFullScaleObservationCount: 0,
+            observationCount: 78,
+            routeName: routeName,
+            createdAt: createdAt
+        )
+        checkID = id
+        playbackCompleted = true
+        playbackOutputRouteName = outputRouteName
+        playbackDecision = .heardClear
+        state = .ready
+        message = "Protected setup receipt recovered without retaining its private sample."
+    }
+    #endif
+
     func discard() {
         if state == .recording {
             finishRecording()
@@ -236,7 +308,14 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         self.player = nil
         coordinator.endLocalPlayback()
         state = summary == nil ? .idle : .ready
-        if !flag {
+        if flag {
+            playbackCompleted = true
+            playbackOutputRouteName = currentOutputRouteName()
+            playbackDecision = nil
+            message = "Full listen-back completed. Record whether this setup sounded clear or needs adjustment."
+        } else {
+            playbackCompleted = false
+            playbackDecision = nil
             message = "Playback ended before iOS reported a complete listen-back. The local check remains available."
         }
     }
@@ -350,6 +429,10 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
         }
         soundCheckURL = nil
         summary = nil
+        checkID = nil
+        playbackCompleted = false
+        playbackOutputRouteName = nil
+        playbackDecision = nil
         startedAt = nil
         elapsed = 0
         liveAveragePowerDBFS = -160
@@ -380,5 +463,22 @@ final class CaptureAudioSoundCheckController: NSObject, ObservableObject,
     private func normalizedDecibels(_ value: Float) -> Float {
         guard value.isFinite else { return -160 }
         return min(0, max(-160, value))
+    }
+
+    private func invalidatePlaybackEvidence(_ detail: String) {
+        playbackCompleted = false
+        playbackOutputRouteName = nil
+        playbackDecision = nil
+        message = detail
+    }
+
+    private func currentOutputRouteName() -> String {
+        let outputs = audioSession.currentRoute.outputs
+            .map { output -> String in
+                let name = output.portName.trimmingCharacters(in: .whitespacesAndNewlines)
+                return name.isEmpty ? output.portType.rawValue : name
+            }
+            .filter { !$0.isEmpty }
+        return outputs.isEmpty ? "iPhone system output" : outputs.joined(separator: " + ")
     }
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -32,4 +33,16 @@ test("retained coaching auth seed has a distinct ungranted privacy identity", ()
     name: "Quipsly Retained Privacy Outsider",
   });
   assert.notEqual(privacyOutsider?.email, collaborator?.email);
+});
+
+test("retained coaching auth seed converges an emulator email created under an ephemeral UID", async () => {
+  const source = await readFile(
+    new URL("./quipsly-retained-coaching-auth-seed.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /getUserByEmail\(identity\.email\)/);
+  assert.match(source, /deleteUser\(conflictingEmailUser\.uid\)/);
+  assert.match(source, /conflictingEmailUser\.uid !== identity\.uid/);
+  assert.match(source, /QUIPSLY_RETAINED_COACHING_CREATE_MISSING_KEYCHAIN/);
+  assert.match(source, /resolveRetainedQAPassword/);
 });

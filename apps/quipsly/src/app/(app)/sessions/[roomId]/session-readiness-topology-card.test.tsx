@@ -123,7 +123,7 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText("Scott master.m4a")).toBeInTheDocument();
     expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent?.includes("Output: Shure MV7i Headphones") === true)).toBeInTheDocument();
     expect(screen.getByText("Ready now")).toBeInTheDocument();
-    expect(screen.getByText(/sample bytes stayed in that browser tab/i)).toBeInTheDocument();
+    expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
     expect(await screen.findByText(/provider-observed now/i)).toBeInTheDocument();
     expect(screen.getByText("Audio live")).toBeInTheDocument();
     expect(screen.getByText("Video muted")).toBeInTheDocument();
