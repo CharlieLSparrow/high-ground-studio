@@ -94,6 +94,15 @@ and disables spine selection. Upload verification, decode verification, signal
 viability, editorial spine choice, and timeline materialization now remain five
 distinct facts.
 
+The browser recorder also watches its own retained-source meter after start.
+Once at least five seconds and two seconds of measured samples are available,
+no useful signal raises a Session Guardian intervention even while durable
+chunks continue advancing. This does not infer from the call meter, discard the
+diagnostic file, or auto-stop an intentional room-tone capture. It prevents the
+more dangerous false green: “bytes are advancing, therefore the master is
+usable.” Signal recovery clears only that signal warning; higher-priority
+storage, track, or encoder interventions remain intact.
+
 ## Capture-time consent scope survives later collaboration
 
 Operating the decode recovery control exposed a third boundary defect. The
@@ -199,6 +208,7 @@ Session cockpit readback showed the exact five-save ledger and held take
 Open-ended streamed-WebM analyzer fixture passed with complete frequency proof
 Running editor retried both real sources to complete-decode receipts
 Running editor showed two near-digital-silence holds and disabled spine controls
+Session Guardian regression proved advancing silent chunks remain an intervention
 Local lifecycle contract passed 12/12 and the full lane read back healthy
 ```
 

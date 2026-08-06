@@ -65,6 +65,24 @@ describe("projectSessionGuardian", () => {
     expect(result.detail).toMatch(/10 seconds/i);
   });
 
+  it("does not call a silent retained master healthy merely because chunks are advancing", () => {
+    const result = projectSessionGuardian(input({
+      retained: {
+        ...retained,
+        status: "recording",
+        activeCaptureId: "capture-silent",
+        activeSizeBytes: 1_024,
+        issue: {
+          kind: "source-no-signal",
+          detail: "The retained microphone delivered five seconds of samples but no useful program signal.",
+        },
+      },
+    }));
+    expect(result.level).toBe("intervene");
+    expect(result.title).toMatch(/no observed program signal/i);
+    expect(result.action).toMatch(/retained meter follows speech/i);
+  });
+
   it("keeps low storage visible after a take returns to ready", () => {
     const result = projectSessionGuardian(input({
       retained: {

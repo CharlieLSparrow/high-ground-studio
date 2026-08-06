@@ -56,6 +56,7 @@ import {
   createBrowserCaptureMeterSummary,
   finishBrowserCaptureMeterSummary,
   parseBrowserMeterWorkletAggregate,
+  studioAudioSignalState,
 } from "@/lib/studio-audio-meter";
 import type {
   BrowserRetainedSourceGuardianEvidence,
@@ -75,6 +76,7 @@ type ConsentPolicy = {
 const IN_TAKE_CLOCK_SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
 const RETAINED_SOURCE_STALL_MS = 10_000;
 const RETAINED_SOURCE_MUTE_GRACE_MS = 5_000;
+const RETAINED_SOURCE_SIGNAL_GRACE_MS = 5_000;
 
 function safeTrackSettings(settings: MediaTrackSettings) {
   return Object.fromEntries(Object.entries(settings).filter((entry): entry is [string, string | number | boolean] => (
@@ -779,6 +781,30 @@ export function BrowserSourceRecorder({
       }
     }, 2_000);
     cleanups.push(() => window.clearInterval(healthTimer));
+
+    const signalTimer = window.setInterval(() => {
+      const meter = retainedMeterSummaryRef.current;
+      if (
+        !meter
+        || Date.now() - Date.parse(meter.startedAt) < RETAINED_SOURCE_SIGNAL_GRACE_MS
+        || meter.observedSampleCount < meter.sampleRateHz * 2
+      ) return;
+      const state = studioAudioSignalState(
+        meter.highestObservedRmsDbfs,
+        meter.samplePeakDbfs,
+        meter.nearFullScaleSampleCount,
+      );
+      if (state === "no-signal") {
+        const label = stream.getAudioTracks()[0]?.label || "selected microphone";
+        const detail = `${label} delivered at least five seconds of retained-source samples, but Quipsly observed no useful program signal.`;
+        setOperationalIssue((current) => current && current.kind !== "source-no-signal"
+          ? current
+          : { kind: "source-no-signal", detail });
+      } else {
+        setOperationalIssue((current) => current?.kind === "source-no-signal" ? null : current);
+      }
+    }, 1_000);
+    cleanups.push(() => window.clearInterval(signalTimer));
 
     const storageTimer = window.setInterval(() => {
       void navigator.storage?.estimate?.().then((estimate) => {
