@@ -141,14 +141,33 @@ export function normalizeWhisperTranscript(value) {
   };
 }
 
-export function currentConsentAllowsLocalTranscription(room, sourceType) {
+export function captureParticipantIds(receipt) {
+  const originalDecision = object(object(receipt?.metadataJson).originalDecision);
+  const readiness = object(originalDecision.initialRoomReadiness);
+  const versions = Array.isArray(readiness.consentVersions) ? readiness.consentVersions : [];
+  return [...new Set(versions.map((version) => text(object(version).participantId)).filter(Boolean))].sort();
+}
+
+export function currentConsentAllowsLocalTranscription(room, sourceType, recordedParticipantIds = []) {
+  const requestedScope = new Set(recordedParticipantIds.map(text).filter(Boolean));
+  const roomParticipants = Array.isArray(room?.participants) ? room.participants : [];
+  const roomConsents = Array.isArray(room?.recordingConsents) ? room.recordingConsents : [];
+  const participants = requestedScope.size
+    ? roomParticipants.filter((participant) => requestedScope.has(text(participant?.id)))
+    : roomParticipants;
+  const presentIds = new Set(participants.map((participant) => text(participant?.id)).filter(Boolean));
+  const missingRecordedParticipant = [...requestedScope].some((participantId) => !presentIds.has(participantId));
+  const consents = requestedScope.size
+    ? roomConsents.filter((consent) => requestedScope.has(text(consent?.participantId)))
+    : roomConsents;
   const versions = buildMobileCaptureConsentVersions({
-    participants: room?.participants ?? [],
-    consents: room?.recordingConsents ?? [],
+    participants,
+    consents,
   });
   return {
     allowed:
-      mobileCaptureAllPartiesReady(versions, sourceType)
+      !missingRecordedParticipant
+      && mobileCaptureAllPartiesReady(versions, sourceType)
       && mobileCaptureAllPartiesAllowTranscription(versions),
     participantCount: versions.length,
     consentIds: versions.map((version) => version.consentId).filter(Boolean),
@@ -176,14 +195,22 @@ function sourceTypeForAsset(asset) {
     : "audio";
 }
 
-function durableReleasePresent(receipt) {
+export function durableReleasePresent(receipt, asset) {
+  const binding = object(object(receipt?.metadataJson).immutableUploadBinding);
   return Boolean(
-    receipt?.processingDisposition === "RELEASED"
+    receipt?.recordingAssetId === asset?.id
+    && receipt?.processingDisposition === "RELEASED"
     && receipt?.transcriptDisposition === "RELEASED"
     && receipt?.releasedAt
     && text(receipt?.releaseReason).length >= 20
     && receipt?.transcriptReleasedAt
-    && text(receipt?.transcriptReleaseReason).length >= 20,
+    && text(receipt?.transcriptReleaseReason).length >= 20
+    && text(binding.uploadSessionId) === text(receipt?.uploadSessionId)
+    && text(binding.roomId) === text(asset?.roomId)
+    && text(binding.sha256).toLowerCase() === text(asset?.checksum).toLowerCase()
+    && text(binding.bucketName) === text(asset?.storageBucket)
+    && text(binding.objectName) === text(asset?.storageObjectPath)
+    && Number(binding.sizeBytes) === Number(asset?.byteSize)
   );
 }
 
@@ -215,15 +242,20 @@ async function claimLocalJob(prisma, candidate, workerBuildId) {
     });
     return null;
   }
-  const receipt = await prisma.mobileCaptureFinalizationReceipt.findFirst({
-    where: { transcriptJobId: candidate.id },
+  const receipts = await prisma.mobileCaptureFinalizationReceipt.findMany({
+    where: { recordingAssetId: candidate.asset.id },
     orderBy: { updatedAt: "desc" },
   });
+  // A release authorizes processing of one immutable RecordingAsset, not only
+  // its first transcript version. Versioned retries remain safe when the
+  // receipt still matches the exact bucket, object, size, and SHA-256 binding.
+  const receipt = receipts.find((candidateReceipt) => durableReleasePresent(candidateReceipt, candidate.asset));
   const consent = currentConsentAllowsLocalTranscription(
     candidate.room,
     sourceTypeForAsset(candidate.asset),
+    captureParticipantIds(receipt),
   );
-  if (!durableReleasePresent(receipt) || !consent.allowed) {
+  if (!receipt || !consent.allowed) {
     await prisma.transcriptJob.updateMany({
       where: { id: candidate.id, status: "QUEUED" },
       data: {

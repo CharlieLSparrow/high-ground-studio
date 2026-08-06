@@ -96,6 +96,7 @@ type EpisodeProductionState = {
   accessRole?: string | null;
   accessSource?: string | null;
   accessCode?: string | null;
+  canDelegateAuthorizedAgentAlignment?: boolean;
   recordingRoomJson?: unknown;
   timelineJson?: unknown;
   transcriptJson?: unknown;
@@ -3154,6 +3155,8 @@ function CloudEditorContent() {
   const [syncReviewWaveformConfirmed, setSyncReviewWaveformConfirmed] = useState(false);
   const [syncReviewDriftConfirmed, setSyncReviewDriftConfirmed] = useState(false);
   const [syncReviewHumanApproved, setSyncReviewHumanApproved] = useState(false);
+  const [syncReviewApprovalMode, setSyncReviewApprovalMode] = useState<"person" | "authorized-agent">("person");
+  const [syncReviewAgentDelegationConfirmed, setSyncReviewAgentDelegationConfirmed] = useState(false);
   const [syncReviewIntervalSeconds, setSyncReviewIntervalSeconds] = useState("");
   const [syncReviewResidualMilliseconds, setSyncReviewResidualMilliseconds] = useState("");
   const [syncReviewNotes, setSyncReviewNotes] = useState("");
@@ -4584,10 +4587,20 @@ function CloudEditorContent() {
     ?? (syncReviewResidualMilliseconds.trim() && Number.isFinite(parsedSyncReviewResidualMilliseconds)
       ? parsedSyncReviewResidualMilliseconds
       : null);
+  const authorizedAgentEvidence =
+    syncReviewApprovalMode === "authorized-agent"
+    && productionState?.canDelegateAuthorizedAgentAlignment === true
+    && audioSourceAlignmentStatus?.status === "completed"
+    && audioSourceAlignmentStatus.evidence?.qualification.qualifiedForAuthorizedAgentReview === true
+      ? audioSourceAlignmentStatus.evidence
+      : null;
+  const syncReviewAuthorityComplete = syncReviewApprovalMode === "authorized-agent"
+    ? Boolean(authorizedAgentEvidence && syncReviewAgentDelegationConfirmed)
+    : syncReviewWaveformConfirmed
+      && syncReviewDriftConfirmed
+      && syncReviewHumanApproved;
   const syncReviewEvidenceComplete =
-    syncReviewWaveformConfirmed
-    && syncReviewDriftConfirmed
-    && syncReviewHumanApproved
+    syncReviewAuthorityComplete
     && Boolean(syncReviewIntervalSeconds.trim())
     && Boolean(syncReviewResidualMilliseconds.trim())
     && Number.isFinite(parsedSyncReviewIntervalSeconds)
@@ -4785,6 +4798,8 @@ function CloudEditorContent() {
     setSyncReviewWaveformConfirmed(false);
     setSyncReviewDriftConfirmed(false);
     setSyncReviewHumanApproved(false);
+    setSyncReviewApprovalMode("person");
+    setSyncReviewAgentDelegationConfirmed(false);
     setSyncReviewIntervalSeconds("");
     setSyncReviewResidualMilliseconds("");
     setSyncReviewNotes("");
@@ -5487,9 +5502,19 @@ function CloudEditorContent() {
           anchorTimelineSeconds: targetTimelineSeconds,
           targetClipId: selectedClip?.id,
           alignmentReview: {
-            waveformCorrelationConfirmed: syncReviewWaveformConfirmed,
-            driftReviewConfirmed: syncReviewDriftConfirmed,
-            humanApprovalConfirmed: syncReviewHumanApproved,
+            waveformCorrelationConfirmed: syncReviewApprovalMode === "authorized-agent" ? true : syncReviewWaveformConfirmed,
+            driftReviewConfirmed: syncReviewApprovalMode === "authorized-agent" ? true : syncReviewDriftConfirmed,
+            humanApprovalConfirmed: syncReviewApprovalMode === "authorized-agent" ? false : syncReviewHumanApproved,
+            ...(syncReviewApprovalMode === "authorized-agent" && authorizedAgentEvidence ? {
+              authorizedAgentQualificationConfirmed: true,
+              approvalAuthority: {
+                kind: "authorized-agent",
+                agentId: "quipsly-editor-exact-source-agent-v1",
+                delegationScope: `One reversible source alignment for ${resolvedProjectSlug}/${episodeSlug}/${syncWizardTargetAsset.id}`,
+                qualificationMethod: authorizedAgentEvidence.analyzer.algorithm,
+                evidence: authorizedAgentEvidence,
+              },
+            } : {}),
             driftObservationIntervalSeconds:
               parsedSyncReviewIntervalSeconds,
             residualDriftMilliseconds:
@@ -5529,6 +5554,8 @@ function CloudEditorContent() {
     selectedClip,
     syncReviewDriftConfirmed,
     syncReviewEvidenceComplete,
+    syncReviewApprovalMode,
+    authorizedAgentEvidence,
     syncReviewHumanApproved,
     syncReviewNotes,
     syncReviewWaveformConfirmed,
@@ -6021,6 +6048,15 @@ function CloudEditorContent() {
       `Loaded the measured ${formatSignedSyncOffset(evidence.opening.measuredOffsetSeconds)} source relationship and ${evidence.drift.residualDriftMilliseconds.toFixed(3)} ms late residual. Preview and review remain required; no timeline placement changed.`,
     );
   }, [syncWizardAnchorSeconds]);
+
+  const prepareAuthorizedAgentAlignment = useCallback((evidence: AudioAlignmentEvidence) => {
+    loadExactAlignmentEvidence(evidence);
+    setSyncReviewApprovalMode("authorized-agent");
+    setSyncReviewAgentDelegationConfirmed(false);
+    setMediaImportStatus(
+      "Loaded qualified exact-source evidence for explicit one-placement delegation. No listening claim, source mutation, timeline move, or publication has occurred.",
+    );
+  }, [loadExactAlignmentEvidence]);
 
   const operateAudioSourceAlignment = useCallback(async () => {
     if (!syncWizardSpineAsset || !syncWizardTargetAsset) {
@@ -9139,17 +9175,29 @@ function CloudEditorContent() {
                             setMediaImportStatus("The take was saved, but the editor could not read the returned canonical artifact. Refresh before editing.");
                             return;
                           }
+                          const canonicalTimelineFingerprint = payload.timelineFingerprint
+                            || timelineContentFingerprint(nextTimeline);
                           replaceTimeline(nextTimeline);
-                          timelineServerFingerprintRef.current = timelineContentFingerprint(nextTimeline);
-                          timelineSavedFingerprintRef.current = timelineContentFingerprint(nextTimeline);
+                          timelineServerFingerprintRef.current = canonicalTimelineFingerprint;
+                          timelineSavedFingerprintRef.current = canonicalTimelineFingerprint;
+                          hasHydratedProductionTimeline.current = true;
+                          setIsTimelineHydrated(true);
+                          setProductionState((previous) => previous
+                            ? {
+                                ...previous,
+                                timelineJson: payload.timelineJson ?? previous.timelineJson,
+                                transcriptJson: payload.timelineJson ?? previous.transcriptJson,
+                                updatedAt: payload.updatedAt ?? previous.updatedAt,
+                              }
+                            : previous);
                           setTimelineLastSavedAt(payload.updatedAt ?? new Date().toISOString());
                           setTimelineSaveStateSafe("saved");
                           setTimelineHydrationSource("saved timeline");
+                          setRemoteTimelineNotice(null);
                           setSessionSummary(payload.plan.status === "assembly-ready"
                             ? "Capture take, corrected transcript, and explicit speaker cameras are ready for edit review."
                             : "Capture source lanes are ready; transcript or speaker-camera review can continue without blocking media work.");
                           setMediaImportStatus(payload.plan.nextAction);
-                          setTimelineReloadToken((token) => token + 1);
                         }}
                       />
                     </>
@@ -9602,13 +9650,25 @@ function CloudEditorContent() {
                             {queueingMediaJobKeys.has(`${syncWizardTargetAsset.id}:audio-alignment`) ? "Analyzing exact sources..." : "Analyze exact sources"}
                           </button>
                           {audioSourceAlignmentStatus?.evidence ? (
-                            <button
-                              type="button"
-                              onClick={() => loadExactAlignmentEvidence(audioSourceAlignmentStatus.evidence!)}
-                              className="min-h-10 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[10px] font-black uppercase tracking-wide text-emerald-950 hover:bg-emerald-100"
-                            >
-                              Load measured proposal
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => loadExactAlignmentEvidence(audioSourceAlignmentStatus.evidence!)}
+                                className="min-h-10 rounded-lg border border-emerald-300 bg-emerald-50 px-3 text-[10px] font-black uppercase tracking-wide text-emerald-950 hover:bg-emerald-100"
+                              >
+                                Load for listening review
+                              </button>
+                              {productionState?.canDelegateAuthorizedAgentAlignment === true
+                                && audioSourceAlignmentStatus.evidence.qualification.qualifiedForAuthorizedAgentReview ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => prepareAuthorizedAgentAlignment(audioSourceAlignmentStatus.evidence!)}
+                                    className="min-h-10 rounded-lg border border-violet-300 bg-violet-50 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950 hover:bg-violet-100"
+                                  >
+                                    Prepare qualified delegation
+                                  </button>
+                                ) : null}
+                            </>
                           ) : null}
                         </div>
                       </div>
@@ -9707,6 +9767,22 @@ function CloudEditorContent() {
                     </div>
                   )}
 
+                  {syncReviewApprovalMode === "authorized-agent" && authorizedAgentEvidence ? (
+                    <div className="mt-3 rounded-lg border border-violet-300 bg-white p-3 text-violet-950" data-testid="authorized-agent-alignment-delegation">
+                      <div className="font-black">Qualified exact-source delegation</div>
+                      <p className="mt-1 text-[11px] font-bold leading-5">
+                        Quipsly may qualify this one reversible placement from immutable SHA-256-bound opening and later-window evidence. This records no claim that a person listened.
+                      </p>
+                      <div className="mt-2 grid gap-2 text-[10px] font-bold sm:grid-cols-3">
+                        <div className="rounded-md bg-violet-50 p-2"><span className="block uppercase text-violet-700">Algorithm</span>{authorizedAgentEvidence.analyzer.algorithm}</div>
+                        <div className="rounded-md bg-violet-50 p-2"><span className="block uppercase text-violet-700">Opening / later</span>{authorizedAgentEvidence.opening.normalizedCorrelation.toFixed(4)} / {authorizedAgentEvidence.later.normalizedCorrelation.toFixed(4)}</div>
+                        <div className="rounded-md bg-violet-50 p-2"><span className="block uppercase text-violet-700">Residual</span>{authorizedAgentEvidence.drift.residualDriftMilliseconds.toFixed(3)} ms</div>
+                      </div>
+                      <button type="button" onClick={() => { setSyncReviewApprovalMode("person"); setSyncReviewAgentDelegationConfirmed(false); }} className="mt-3 min-h-10 rounded-lg border border-violet-200 bg-white px-3 text-[10px] font-black uppercase text-violet-900">
+                        Return to listening review
+                      </button>
+                    </div>
+                  ) : (
                   <div className="mt-3 grid gap-2">
                     <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-white p-3">
                       <input
@@ -9738,6 +9814,7 @@ function CloudEditorContent() {
                       </span>
                     </label>
                   </div>
+                  )}
 
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="block">
@@ -9791,6 +9868,22 @@ function CloudEditorContent() {
                     />
                   </label>
 
+                  {syncReviewApprovalMode === "authorized-agent" ? (
+                    <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-violet-300 bg-white p-3">
+                      <input
+                        type="checkbox"
+                        checked={syncReviewAgentDelegationConfirmed}
+                        onChange={(event) => setSyncReviewAgentDelegationConfirmed(event.target.checked)}
+                        className="mt-1 size-4 shrink-0 accent-violet-700"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-black text-violet-950">Delegate this exact placement</span>
+                        <span className="mt-1 block text-[11px] font-bold leading-5 text-violet-900">
+                          I authorize Quipsly to qualify this one reversible placement from the displayed exact-source evidence. This is not a listening or sample-accuracy claim.
+                        </span>
+                      </span>
+                    </label>
+                  ) : (
                   <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-violet-300 bg-white p-3">
                     <input
                       type="checkbox"
@@ -9805,6 +9898,7 @@ function CloudEditorContent() {
                       </span>
                     </span>
                   </label>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 shadow-sm">

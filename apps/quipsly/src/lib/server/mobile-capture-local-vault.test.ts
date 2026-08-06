@@ -1,7 +1,7 @@
 /** @jest-environment node */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -17,6 +17,7 @@ import {
   readLocalMobileCaptureObject,
   saveLocalMobileCaptureManifest,
   writeLocalMobileCaptureObject,
+  writeLocalMobileCaptureObjectFromFile,
 } from "./mobile-capture-local-vault";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -120,6 +121,43 @@ describe("development-only local Capture vault", () => {
       bytes,
       contentType: "audio/m4a",
       customMetadata,
+    });
+    expect(replay?.generation).toBe(written?.generation);
+  });
+
+  it("streams a verified imported file into an idempotent Capture-owned object", async () => {
+    const bytes = Buffer.from("Recovered Quipsly source without request buffering\n");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const sourcePath = path.join(temporaryDirectory, "verified-import.wav");
+    await writeFile(sourcePath, bytes, { mode: 0o600 });
+    const objectName = `media-vault/recordings/recovery/room/participant/${UPLOAD_SESSION_ID}/media.wav`;
+
+    const written = await writeLocalMobileCaptureObjectFromFile({
+      objectName,
+      sourcePath,
+      sizeBytes: bytes.byteLength,
+      sha256,
+      contentType: "audio/wav",
+      customMetadata: { quipslyContract: "quipsly-capture-source-recovery-v1" },
+    });
+    expect(written).toMatchObject({
+      sizeBytes: bytes.byteLength,
+      contentType: "audio/wav",
+      customMetadata: {
+        quipslyContract: "quipsly-capture-source-recovery-v1",
+        quipslyExpectedSizeBytes: String(bytes.byteLength),
+        quipslyExpectedSha256: sha256,
+      },
+    });
+    expect(await readLocalMobileCaptureObject(objectName)).toEqual(bytes);
+
+    const replay = await writeLocalMobileCaptureObjectFromFile({
+      objectName,
+      sourcePath,
+      sizeBytes: bytes.byteLength,
+      sha256,
+      contentType: "audio/wav",
+      customMetadata: { quipslyContract: "quipsly-capture-source-recovery-v1" },
     });
     expect(replay?.generation).toBe(written?.generation);
   });

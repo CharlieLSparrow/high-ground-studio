@@ -2,7 +2,8 @@ import "server-only";
 
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -221,6 +222,93 @@ export async function writeLocalMobileCaptureObject(args: {
       sizeBytes: args.bytes.byteLength,
       contentType: args.contentType,
       customMetadata: args.customMetadata,
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await writeFile(
+        /* turbopackIgnore: true */ metadataPath(objectPath),
+        JSON.stringify(metadata),
+        { mode: 0o600, flag: "wx" },
+      );
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+    return loadLocalMobileCaptureObject(args.objectName);
+  });
+}
+
+export async function writeLocalMobileCaptureObjectFromFile(args: {
+  objectName: string;
+  sourcePath: string;
+  sizeBytes: number;
+  sha256: string;
+  contentType: string;
+  customMetadata: Record<string, string>;
+}) {
+  const objectPath = localMobileCaptureObjectPath(args.objectName);
+  if (!objectPath) throw new Error("Local Capture vault is not configured.");
+  if (!Number.isSafeInteger(args.sizeBytes) || args.sizeBytes <= 0 || !/^[a-f0-9]{64}$/.test(args.sha256)) {
+    throw new Error("Local Capture file registration requires exact size and SHA-256 evidence.");
+  }
+  return withLock(`${objectPath}.lock`, async () => {
+    const existing = await loadLocalMobileCaptureObject(args.objectName);
+    if (existing) {
+      const existingHash = await hashLocalMobileCaptureObject(args.objectName);
+      if (
+        existing.sizeBytes !== args.sizeBytes
+        || existing.contentType !== args.contentType
+        || existingHash.sha256 !== args.sha256
+        || existing.customMetadata.quipslyExpectedSha256 !== args.sha256
+        || existing.customMetadata.quipslyExpectedSizeBytes !== String(args.sizeBytes)
+      ) {
+        throw new Error("Existing local Capture object does not match the immutable file registration.");
+      }
+      return existing;
+    }
+
+    const sourceStat = await stat(/* turbopackIgnore: true */ args.sourcePath);
+    if (!sourceStat.isFile() || sourceStat.size !== args.sizeBytes) {
+      throw new Error("Local Capture registration source no longer matches its verified size.");
+    }
+    await mkdir(/* turbopackIgnore: true */ path.dirname(objectPath), { recursive: true });
+    try {
+      await copyFile(
+        /* turbopackIgnore: true */ args.sourcePath,
+        /* turbopackIgnore: true */ objectPath,
+        fsConstants.COPYFILE_EXCL,
+      );
+      await chmod(/* turbopackIgnore: true */ objectPath, 0o600);
+      const handle = await open(/* turbopackIgnore: true */ objectPath, "r");
+      try {
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+
+    const copiedHash = createHash("sha256");
+    let copiedBytes = 0;
+    for await (const chunk of createReadStream(/* turbopackIgnore: true */ objectPath)) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      copiedBytes += bytes.byteLength;
+      copiedHash.update(bytes);
+    }
+    if (copiedBytes !== args.sizeBytes || copiedHash.digest("hex") !== args.sha256) {
+      await unlink(/* turbopackIgnore: true */ objectPath).catch(() => undefined);
+      throw new Error("Local Capture copy failed immutable size or SHA-256 verification.");
+    }
+
+    const metadata: LocalObjectMetadata = {
+      generation: Date.now().toString(),
+      sizeBytes: args.sizeBytes,
+      contentType: args.contentType,
+      customMetadata: {
+        ...args.customMetadata,
+        quipslyExpectedSha256: args.sha256,
+        quipslyExpectedSizeBytes: String(args.sizeBytes),
+      },
       createdAt: new Date().toISOString(),
     };
     try {

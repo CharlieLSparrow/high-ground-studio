@@ -14,7 +14,10 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
-import { parseGcsUri } from "@/lib/server/gcs";
+import {
+  captureRecoveryObjectName,
+  materializeCaptureRecoveryStorage,
+} from "@/lib/server/mobile-capture-recovery-storage";
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { expectedSourceRequestSha256, expectedSourceSnapshot } from "@/lib/server/session-source-expectations";
 import { queueAudioSignalProfile } from "@/lib/server/audio-signal-profile";
@@ -41,12 +44,6 @@ function json(value: unknown): Prisma.InputJsonValue {
 
 function response(payload: unknown, status = 200) {
   return NextResponse.json(payload, { status, headers: PRIVATE_HEADERS });
-}
-
-function storageBinding(evidence: Awaited<ReturnType<typeof inspectImmutableStudioMediaSource>>) {
-  const gcs = parseGcsUri(evidence.locator);
-  if (gcs) return { bucketName: gcs.bucketName, objectName: gcs.objectName };
-  return { bucketName: "local", objectName: evidence.locator };
 }
 
 function sourceKind(kind: string) {
@@ -174,22 +171,182 @@ export async function POST(request: Request) {
   } catch (error) {
     return response({ ok: false, code: "RECOVERY_SOURCE_VERIFICATION_FAILED", error: error instanceof Error ? error.message : "The imported backup could not be verified." }, 409);
   }
-  const storage = storageBinding(evidence);
   const decidedAt = new Date().toISOString();
   const uploadSessionId = captureSourceRecoveryDecisionId(requestId, "upload");
   const replacementCaptureId = captureSourceRecoveryDecisionId(requestId, "capture");
+  let storage: Awaited<ReturnType<typeof materializeCaptureRecoveryStorage>>;
+  try {
+    const objectName = captureRecoveryObjectName({
+      roomId: original.roomId,
+      participantId: original.participantId,
+      requestId,
+      mediaAssetId: mediaAsset.id,
+      filename: mediaAsset.filename,
+    });
+    storage = await materializeCaptureRecoveryStorage({
+      evidence,
+      objectName,
+      uploadSessionId,
+      roomId: original.roomId,
+      actorUserId: access.actor.id,
+      projectId: production.projectId,
+      projectSlug,
+      captureId: replacementCaptureId,
+      startReceiptId: releaseReceipt.startReceiptId,
+      consentVersion: releaseReceipt.consentVersion,
+    });
+  } catch (error) {
+    return response({
+      ok: false,
+      code: "RECOVERY_DURABLE_STORAGE_FAILED",
+      error: error instanceof Error ? error.message : "The verified backup could not be promoted into Capture-owned durable storage.",
+    }, 409);
+  }
 
   try {
     const saved = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${original.roomId}, 0))`;
       const currentProduction = await tx.studioEpisodeProduction.findUnique({ where: { id: production.id }, select: { productionJson: true, timelineJson: true, updatedAt: true } });
       if (!currentProduction || currentProduction.updatedAt.getTime() !== production.updatedAt.getTime()) return { kind: "stale" as const };
-      const roomAssets = await tx.recordingAsset.findMany({ where: { roomId: original.roomId }, select: { id: true, localManifestJson: true } });
+      const roomAssets = await tx.recordingAsset.findMany({
+        where: { roomId: original.roomId },
+        select: {
+          id: true,
+          localManifestJson: true,
+          storageBucket: true,
+          storageObjectPath: true,
+          checksum: true,
+          byteSize: true,
+        },
+      });
       const replay = roomAssets.find((asset) => text(recoveryManifest(asset.localManifestJson).requestId, 64) === requestId);
       if (replay) {
-        return text(recoveryManifest(replay.localManifestJson).requestSha256, 64) === requestSha256
-          ? { kind: "replay" as const, recordingAssetId: replay.id, expectationId: text(recoveryManifest(replay.localManifestJson).expectationId, 160), productionJson: currentProduction.productionJson }
-          : { kind: "conflict" as const };
+        if (text(recoveryManifest(replay.localManifestJson).requestSha256, 64) !== requestSha256) {
+          return { kind: "conflict" as const };
+        }
+        const replayRecovery = recoveryManifest(replay.localManifestJson);
+        const expectationId = text(replayRecovery.expectationId, 160);
+        const needsStoragePromotion = replay.storageBucket !== storage.bucketName
+          || replay.storageObjectPath !== storage.objectName;
+        const replayManifest = record(replay.localManifestJson);
+        const replayPromotion = record(replayManifest.promotion);
+        const needsVerificationProjection = replayManifest.exactBytesVerified !== true
+          || text(replayManifest.storageGeneration, 160) !== storage.generation;
+        const needsPlaybackProjection = text(replayPromotion.sourceId, 160) !== source.id
+          || text(replayPromotion.playbackUrl, 500) !== `/api/ingest/media/${source.id}`;
+        if (needsStoragePromotion || needsVerificationProjection || needsPlaybackProjection) {
+          if (
+            replay.checksum?.toLowerCase() !== evidence.sha256
+            || Number(replay.byteSize) !== evidence.sizeBytes
+          ) {
+            return { kind: "storage-conflict" as const };
+          }
+          const receipt = await tx.mobileCaptureFinalizationReceipt.findUnique({ where: { uploadSessionId } });
+          if (!receipt || receipt.recordingAssetId !== replay.id) return { kind: "storage-conflict" as const };
+          const receiptMetadata = record(receipt.metadataJson);
+          const priorBinding = record(receiptMetadata.immutableUploadBinding);
+          const recoveryAuthority = record(receiptMetadata.recoveryAuthority);
+          await tx.recordingAsset.update({
+            where: { id: replay.id },
+            data: {
+              storageBucket: storage.bucketName,
+              storageObjectPath: storage.objectName,
+              localManifestJson: json({
+                ...replayManifest,
+                exactBytesVerified: true,
+                storageGeneration: storage.generation,
+                storageVerification: {
+                  schema: "quipsly-capture-recovery-storage-verification-v1",
+                  verifiedAt: decidedAt,
+                  sizeBytes: evidence.sizeBytes,
+                  sha256: evidence.sha256,
+                  generation: storage.generation,
+                },
+                promotion: {
+                  status: "promoted-to-studio-media",
+                  mediaAssetId: mediaAsset.id,
+                  sourceId: source.id,
+                  playbackUrl: `/api/ingest/media/${source.id}`,
+                  providerSourceId: source.providerSourceId,
+                  projectId: production.projectId,
+                  nestSlug: projectSlug,
+                  episodeSlug,
+                  importRole: "recovered-master",
+                  mediaKind: original.kind === "LOCAL_VIDEO" ? "video" : "audio",
+                  captureGroupId,
+                  promotedAt: decidedAt,
+                  promotedByUserId: access.actor.id,
+                  source: "capture-source-recovery",
+                },
+                captureSourceRecovery: {
+                  ...replayRecovery,
+                  durableStorage: {
+                    bucketName: storage.bucketName,
+                    objectName: storage.objectName,
+                    generation: storage.generation,
+                    storageBackend: storage.storageBackend,
+                  },
+                },
+              }),
+            },
+          });
+          await tx.mobileCaptureFinalizationReceipt.update({
+            where: { uploadSessionId },
+            data: {
+              metadataJson: json({
+                ...receiptMetadata,
+                immutableUploadBinding: {
+                  uploadSessionId,
+                  roomId: original.roomId,
+                  sha256: evidence.sha256,
+                  bucketName: storage.bucketName,
+                  objectName: storage.objectName,
+                  sizeBytes: evidence.sizeBytes,
+                },
+                recoveryAuthority: {
+                  ...recoveryAuthority,
+                  importedSource: { locator: evidence.locator, generation: evidence.generation, sha256: evidence.sha256 },
+                  durableCaptureReplica: { bucketName: storage.bucketName, objectName: storage.objectName, generation: storage.generation },
+                  storagePromotion: needsStoragePromotion
+                    ? {
+                        schema: "quipsly-capture-recovery-storage-promotion-v1",
+                        promotedAt: decidedAt,
+                        priorImmutableUploadBinding: priorBinding,
+                        sourceMediaUnchanged: true,
+                      }
+                    : recoveryAuthority.storagePromotion,
+                },
+              }),
+            },
+          });
+          const nextProductionJson = projectCaptureSourceRecovery({
+            productionJson: currentProduction.productionJson,
+            timelineJson: currentProduction.timelineJson,
+            projectSlug,
+            episodeSlug,
+            captureGroupId,
+            originalRecordingAssetId: original.id,
+            replacementRecordingAssetId: replay.id,
+            replacementMediaAssetId: mediaAsset.id,
+            replacementSourceId: source.id,
+            expectationId,
+            requestId,
+            requestSha256,
+            sourceSha256: evidence.sha256,
+            storageGeneration: storage.generation,
+            sourceLocator: evidence.locator,
+            reason,
+            actorUserId: access.actor.id,
+            actorEmail: access.actor.email,
+            decidedAt,
+          });
+          await tx.studioEpisodeProduction.update({
+            where: { id: production.id },
+            data: { productionJson: json(nextProductionJson) },
+          });
+          return { kind: "replay" as const, recordingAssetId: replay.id, expectationId, productionJson: nextProductionJson };
+        }
+        return { kind: "replay" as const, recordingAssetId: replay.id, expectationId, productionJson: currentProduction.productionJson };
       }
 
       let expectation = original.sourceExpectation
@@ -250,6 +407,31 @@ export async function POST(request: Request) {
           captureGroupId,
           processingDisposition: "RELEASED",
           transcriptionDisposition: releaseReceipt.transcriptDisposition,
+          exactBytesVerified: true,
+          storageGeneration: storage.generation,
+          storageVerification: {
+            schema: "quipsly-capture-recovery-storage-verification-v1",
+            verifiedAt: decidedAt,
+            sizeBytes: evidence.sizeBytes,
+            sha256: evidence.sha256,
+            generation: storage.generation,
+          },
+          promotion: {
+            status: "promoted-to-studio-media",
+            mediaAssetId: mediaAsset.id,
+            sourceId: source.id,
+            playbackUrl: `/api/ingest/media/${source.id}`,
+            providerSourceId: source.providerSourceId,
+            projectId: production.projectId,
+            nestSlug: projectSlug,
+            episodeSlug,
+            importRole: "recovered-master",
+            mediaKind: original.kind === "LOCAL_VIDEO" ? "video" : "audio",
+            captureGroupId,
+            promotedAt: decidedAt,
+            promotedByUserId: access.actor.id,
+            source: "capture-source-recovery",
+          },
           captureSourceRecovery: {
             requestId,
             requestSha256,
@@ -265,6 +447,12 @@ export async function POST(request: Request) {
             sourceLocator: evidence.locator,
             sourceGeneration: evidence.generation,
             sourceSha256: evidence.sha256,
+            durableStorage: {
+              bucketName: storage.bucketName,
+              objectName: storage.objectName,
+              generation: storage.generation,
+              storageBackend: storage.storageBackend,
+            },
             originalSourceMediaUnchanged: true,
           },
         }),
@@ -293,7 +481,19 @@ export async function POST(request: Request) {
           schema: "quipsly-capture-source-recovery-finalization-v1",
           originalDecision,
           immutableUploadBinding: { uploadSessionId, roomId: original.roomId, sha256: evidence.sha256, bucketName: storage.bucketName, objectName: storage.objectName, sizeBytes: evidence.sizeBytes },
-          recoveryAuthority: { requestId, requestSha256, originalRecordingAssetId: original.id, expectationId: expectation.id, reason, actorUserId: access.actor.id, actorEmail: access.actor.email, authorityConfirmed: true, decidedAt },
+          recoveryAuthority: {
+            requestId,
+            requestSha256,
+            originalRecordingAssetId: original.id,
+            expectationId: expectation.id,
+            reason,
+            actorUserId: access.actor.id,
+            actorEmail: access.actor.email,
+            authorityConfirmed: true,
+            decidedAt,
+            importedSource: { locator: evidence.locator, generation: evidence.generation, sha256: evidence.sha256 },
+            durableCaptureReplica: { bucketName: storage.bucketName, objectName: storage.objectName, generation: storage.generation },
+          },
         }),
       } });
 
@@ -342,7 +542,7 @@ export async function POST(request: Request) {
         requestId,
         requestSha256,
         sourceSha256: evidence.sha256,
-        storageGeneration: evidence.generation,
+        storageGeneration: storage.generation,
         sourceLocator: evidence.locator,
         reason,
         actorUserId: access.actor.id,
@@ -355,6 +555,7 @@ export async function POST(request: Request) {
 
     if (saved.kind === "stale") return response({ ok: false, code: "RECOVERY_EPISODE_CHANGED", error: "The episode changed after backup verification. Refresh and retry; no recovery decision was written." }, 409);
     if (saved.kind === "conflict") return response({ ok: false, code: "RECOVERY_REQUEST_CONFLICT", error: "That request ID already belongs to a different recovery decision." }, 409);
+    if (saved.kind === "storage-conflict") return response({ ok: false, code: "RECOVERY_STORAGE_CONFLICT", error: "The earlier recovery decision no longer matches its immutable size, SHA-256, or finalization receipt." }, 409);
     if (saved.kind === "slot-changed") return response({ ok: false, code: "RECOVERY_SLOT_CHANGED", error: "The retained source slot changed while recovery was being prepared. Refresh before selecting a replacement." }, 409);
 
     let signalProfile: unknown = null;
@@ -366,7 +567,16 @@ export async function POST(request: Request) {
     return response({
       ok: true,
       idempotentReplay: saved.kind === "replay",
-      replacement: { recordingAssetId: saved.recordingAssetId, mediaAssetId: mediaAsset.id, sourceId: source.id, expectationId: saved.expectationId, sourceSha256: evidence.sha256, storageGeneration: evidence.generation },
+      replacement: {
+        recordingAssetId: saved.recordingAssetId,
+        mediaAssetId: mediaAsset.id,
+        sourceId: source.id,
+        expectationId: saved.expectationId,
+        sourceSha256: evidence.sha256,
+        storageBucket: storage.bucketName,
+        storageObjectPath: storage.objectName,
+        storageGeneration: storage.generation,
+      },
       productionJson: saved.productionJson,
       signalProfile,
       nextAction: "The backup is now the active retained master. Complete decode must prove signal before materialization.",

@@ -183,6 +183,24 @@ results, opens project and global Work over the same IDs, and finishes on a
 phone-width Today surface. It performs no product mutation or external action,
 captures no screenshot or trace, and explicitly clears its Nest session.
 
+Promote the fixed retained Capture recovery backups into the Capture-owned
+durable recording namespace, replay the exact recovery route, and queue the
+canonical transcript from the released source with:
+
+```bash
+QUIPSLY_RETAINED_CAPTURE_RECOVERY_STORAGE_OPERATION=1 \
+node scripts/quipsly-retained-capture-recovery-storage-operation.mjs
+```
+
+The operator refuses non-loopback Nest, requires the fixed retained project,
+episode, room, capture group, original RecordingAsset IDs, and imported media
+IDs, obtains the dedicated QA credential from Keychain, and performs its write
+through the rendered signed-in product route. It then reads back the durable
+bucket/object/generation/size/SHA binding and queues transcription through the
+ordinary server contract. It never prints the password or rewrites either
+original Capture source. Full evidence and remaining gates are in
+`docs/coordination/2026-08-06-retained-capture-recovery-materialization.md`.
+
 Operate one retained recorder-to-editor episode through the rendered product
 with:
 

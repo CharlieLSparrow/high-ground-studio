@@ -2430,3 +2430,28 @@ These should be treated as cleanup candidates later, not as authoritative produc
   preflight passes both simulator architectures. Physical-iPhone operation and
   production release remain distinct gates. See
   `docs/coordination/2026-08-06-session-recording-plan-confidence.md`.
+
+### 2026-08-06 retained Capture recovery and Episode materialization
+
+- Failed Capture sources can now promote a verified backup into the
+  Capture-owned durable recording namespace before replacement binding. Local
+  promotion uses exclusive, flushed, mode-`0600` writes; GCS promotion uses a
+  generation-pinned server-side copy. Both recheck exact size and SHA-256, and
+  idempotent replay retains legacy binding provenance.
+- Actual signed-in operation recovered two previously silent retained masters,
+  preserved both originals, completed full-source decode, measured a
+  `-1.249917s` two-point alignment with `0ms` residual, and ran local Whisper
+  `large-v3-turbo` against the exact released generation.
+- The resulting immutable provider evidence contains 47 timed words in three
+  turns. `Quipsley` remains visibly uncorrected pending protected-source
+  playback review; no person-listened claim was fabricated.
+- The rendered editor materialized four clips and three source-bound transcript
+  turns into the canonical Episode without guessed speaker-camera identity or
+  publication. Operation uncovered and repaired a client hydration race that
+  could label the editor's own successful materialization as a collaborator
+  conflict.
+- Three focused Quipsly suites pass 20 tests, the transcript worker passes six
+  tests, Quipsly typecheck passes, and `git diff --check` passes. Clean-editor
+  playback, transcript proof-listen, rough-cut render/probe, physical-iPhone
+  recovery, and deployed Nest remain explicit next gates. See
+  `docs/coordination/2026-08-06-retained-capture-recovery-materialization.md`.

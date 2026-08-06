@@ -79,6 +79,7 @@ function fallback(
     accessRole?: string | null;
     accessSource?: string | null;
     accessCode?: string | null;
+    canDelegateAuthorizedAgentAlignment?: boolean;
   } = {},
 ) {
   return {
@@ -95,6 +96,8 @@ function fallback(
     accessRole: details.accessRole ?? null,
     accessSource: details.accessSource ?? null,
     accessCode: details.accessCode ?? null,
+    canDelegateAuthorizedAgentAlignment:
+      details.canDelegateAuthorizedAgentAlignment === true,
     recordingRoomJson: null,
     timelineJson: null,
     transcriptJson: null,
@@ -249,6 +252,7 @@ async function ensureProduction(body: any, request: Request) {
       accessRole: access.access.role,
       accessSource: access.access.source,
       accessCode: null,
+      canDelegateAuthorizedAgentAlignment: access.actor.isStaff === true,
       recordingRoomJson: production.recordingRoomJson ?? null,
       timelineJson: production.timelineJson ?? null,
       transcriptJson: production.transcriptJson ?? null,

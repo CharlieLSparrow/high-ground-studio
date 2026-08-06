@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   currentConsentAllowsLocalTranscription,
+  captureParticipantIds,
+  durableReleasePresent,
   normalizeWhisperTranscript,
   requireLocalDatabase,
   safeLocalSourcePath,
@@ -60,6 +62,47 @@ test("local source receipt binds generation, exact bytes, hash, and type", () =>
     contentType: "audio/wav",
     customMetadata: { quipslyExpectedSha256: "a".repeat(64) },
   }, expected), /generation/);
+});
+
+test("recording-level release authorizes a later transcript version only for the exact source binding", () => {
+  const asset = {
+    id: "asset-1",
+    roomId: "room-1",
+    storageBucket: "quipsly-local-development-vault",
+    storageObjectPath: "media-vault/recordings/recovery/room/source.wav",
+    checksum: "a".repeat(64),
+    byteSize: 1200n,
+  };
+  const receipt = {
+    uploadSessionId: "9d8c0c81-847f-4e16-96d0-26b494c890aa",
+    recordingAssetId: asset.id,
+    processingDisposition: "RELEASED",
+    transcriptDisposition: "RELEASED",
+    releasedAt: new Date("2026-08-06T12:00:00Z"),
+    releaseReason: "Reviewed recovery source is authorized for processing.",
+    transcriptReleasedAt: new Date("2026-08-06T12:00:00Z"),
+    transcriptReleaseReason: "Reviewed recovery source is authorized for transcription.",
+    metadataJson: {
+      immutableUploadBinding: {
+        uploadSessionId: "9d8c0c81-847f-4e16-96d0-26b494c890aa",
+        roomId: asset.roomId,
+        sha256: asset.checksum,
+        bucketName: asset.storageBucket,
+        objectName: asset.storageObjectPath,
+        sizeBytes: 1200,
+      },
+    },
+  };
+  assert.equal(durableReleasePresent(receipt, asset), true);
+  assert.equal(durableReleasePresent({
+    ...receipt,
+    metadataJson: {
+      immutableUploadBinding: {
+        ...receipt.metadataJson.immutableUploadBinding,
+        objectName: "media-vault/recordings/other.wav",
+      },
+    },
+  }, asset), false);
 });
 
 test("Whisper normalization preserves timed provider evidence without inventing speakers", () => {
@@ -129,4 +172,22 @@ test("local transcription requires current explicit consent from every audible p
   assert.equal(ready.participantCount, 2);
   room.recordingConsents[1].canTranscribe = false;
   assert.equal(currentConsentAllowsLocalTranscription(room, "audio").allowed, false);
+  assert.equal(currentConsentAllowsLocalTranscription(room, "audio", ["participant-1"]).allowed, true);
+  assert.equal(currentConsentAllowsLocalTranscription(room, "audio", ["missing-recorded-participant"]).allowed, false);
+});
+
+test("captured participant scope comes from the immutable finalization snapshot", () => {
+  assert.deepEqual(captureParticipantIds({
+    metadataJson: {
+      originalDecision: {
+        initialRoomReadiness: {
+          consentVersions: [
+            { participantId: "participant-2" },
+            { participantId: "participant-1" },
+            { participantId: "participant-2" },
+          ],
+        },
+      },
+    },
+  }), ["participant-1", "participant-2"]);
 });
