@@ -6,6 +6,20 @@ import {
 } from "@high-ground/quipsly-domain/coaching-packet";
 import type { EditableSessionNoteKind, SessionNoteVisibility } from "@/lib/session-note-contract";
 
+export type SessionReviewGovernedActionReference = {
+  actionId: string;
+  receiptId: string;
+  capabilityId: string;
+};
+
+export type SessionReviewHumanDecision = {
+  receiptId: string;
+  decision: string;
+  reviewedAt: string;
+  reviewedByUserId: string;
+  governance?: SessionReviewGovernedActionReference | null;
+};
+
 export type SessionReviewCandidate = {
   id: string;
   title: string;
@@ -25,6 +39,7 @@ export type SessionReviewCandidate = {
   reviewStatus: string;
   humanApprovalRequired: boolean;
   committedActionItemId: string | null;
+  lastHumanReview?: SessionReviewHumanDecision | null;
 };
 
 export type SessionReviewGoalCandidate = {
@@ -48,6 +63,7 @@ export type SessionReviewGoalCandidate = {
   reviewStatus: "READY_FOR_HUMAN_REVIEW" | "EDITED_FOR_REVIEW" | "DEFERRED_BY_HUMAN" | "REJECTED_BY_HUMAN" | "ACCEPTED_AS_GOAL" | "MERGED_INTO_GOAL";
   humanApprovalRequired: boolean;
   committedGoalId: string | null;
+  lastHumanReview?: SessionReviewHumanDecision | null;
 };
 
 export type SessionReviewGoalMergeTarget = {

@@ -260,6 +260,31 @@ async function main() {
       && source.recordingAssetId === fixture.assetID
       && source.effectiveTextSnapshot === EXPECTED_SOURCE_TEXT,
     "The append-only receipt lost exact transcript or playback provenance.");
+    const evidenceGovernance = asObject(evidence.governance);
+    assert(afterCandidate.lastHumanReview?.governance?.actionId === evidenceGovernance.actionId
+      && afterCandidate.lastHumanReview?.governance?.receiptId === evidenceGovernance.receiptId,
+    "The reloaded Capture candidate lost the durable governed merge reference.");
+    const governedAction = await prisma.governedAction.findUnique({
+      where: { id: evidenceGovernance.actionId },
+      include: { run: true, attempts: true, receipts: true },
+    });
+    const governedResult = asObject(governedAction?.resultJson);
+    assert(governedAction?.capabilityId === "quipsly.session.transcript-goal-evidence.merge"
+      && governedAction?.actionKind === "MERGE_TRANSCRIPT_EVIDENCE_INTO_GOAL"
+      && governedAction?.targetObjectType === "Goal"
+      && governedAction?.targetObjectId === canonicalBefore.id
+      && governedAction?.status === "SUCCEEDED"
+      && governedAction.run?.status === "SUCCEEDED"
+      && governedAction.attempts?.length === 1
+      && governedAction.attempts[0]?.attemptNumber === 1
+      && governedAction.attempts[0]?.status === "SUCCEEDED"
+      && governedAction.attempts[0]?.executorKind === "quipsly-transcript-evidence-merge-domain-service"
+      && governedAction.receipts?.length === 1
+      && governedAction.receipts[0]?.id === evidenceGovernance.receiptId
+      && governedAction.receipts[0]?.newStatus === "SUCCEEDED"
+      && governedResult.evidenceReceiptId === evidenceReceipt.id
+      && JSON.stringify(governedResult.targetBefore) === JSON.stringify(governedResult.targetAfter),
+    "The goal merge did not persist one successful governed action with an exact unchanged before/after target snapshot.");
     const sideEffectsAfter = await roomSideEffects(prisma, fixture.roomID);
     assert(JSON.stringify(sideEffectsAfter) === JSON.stringify(sideEffectsBefore),
       "Adding goal evidence created a goal, task, note, calendar link, output, or delivery.");
@@ -270,6 +295,12 @@ async function main() {
     });
     const reviewReceipt = asObject(asObject(packetSummary?.sourceJson).lastGoalCandidateReview);
     const mergeTargetBefore = asObject(reviewReceipt.mergeTargetBefore);
+    const mergeTargetAfter = asObject(reviewReceipt.mergeTargetAfter);
+    const reviewGovernance = asObject(reviewReceipt.governance);
+    assert(reviewGovernance.actionId === governedAction.id
+      && reviewGovernance.receiptId === evidenceGovernance.receiptId
+      && JSON.stringify(mergeTargetBefore) === JSON.stringify(mergeTargetAfter),
+    "The packet review receipt lost governed identity or the unchanged merge target snapshot.");
     const replay = await requestJson(new URL("/api/mobile/capture/transcripts/packet/goals", baseURL), {
       idToken,
       method: "POST",
@@ -307,6 +338,8 @@ async function main() {
       goalTitle,
       packetGoalCandidateID: afterCandidate.id,
       goalProgressReceiptID: evidenceReceipt.id,
+      governedActionID: governedAction.id,
+      governedReceiptID: evidenceGovernance.receiptId,
       resultBundle,
       canonicalSideEffects: sideEffectsAfter,
       receipts: { numericProgress: 1, reviewedTranscriptEvidence: 1, exactReplayDuplicated: false },
@@ -315,6 +348,8 @@ async function main() {
         completeSourcePlaybackReviewed: true,
         goalIdentityAndDefinitionUnchanged: true,
         numericProgressPreserved: true,
+        governedActionSucceededExactlyOnce: true,
+        exactBeforeAfterSnapshotUnchanged: true,
         exactTranscriptReturnOperatedAfterRelaunch: true,
         taskCreated: false,
         noteCreated: false,

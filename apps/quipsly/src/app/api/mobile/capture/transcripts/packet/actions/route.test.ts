@@ -204,6 +204,12 @@ function createPrismaHarness() {
         return receipt;
       }),
       findUnique: jest.fn(async ({ where }: any) => evidenceReceipts.find((receipt) => receipt.id === where.id) || null),
+      update: jest.fn(async ({ where, data }: any) => {
+        const receipt = evidenceReceipts.find((item) => item.id === where.id);
+        if (!receipt) throw new Error("missing action item evidence receipt");
+        Object.assign(receipt, data);
+        return receipt;
+      }),
     },
     $queryRaw: jest.fn(async () => [{ id: SUMMARY_NOTE_ID }]),
   };
@@ -241,14 +247,19 @@ describe("action candidate review route", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+    jest.mocked(recordSucceededTranscriptWorkAction).mockImplementation(async (_tx, input) => {
+      const suffix = input.capabilityId === "quipsly.session.transcript-task.materialize"
+        ? "packet-task"
+        : "packet-task-merge";
+      return ({
       schema: "quipsly-governed-action-reference-v1",
-      runId: "run-packet-task",
-      actionId: "action-packet-task",
-      attemptId: "attempt-packet-task",
-      receiptId: "receipt-packet-task",
-      capabilityId: "quipsly.session.transcript-task.materialize",
+      runId: `run-${suffix}`,
+      actionId: `action-${suffix}`,
+      attemptId: `attempt-${suffix}`,
+      receiptId: `receipt-${suffix}`,
+      capabilityId: input.capabilityId,
       capabilityVersion: 1,
+      });
     });
     harness = createPrismaHarness();
     mockedGetPrisma.mockReturnValue(harness.prisma);
@@ -591,6 +602,12 @@ describe("action candidate review route", () => {
       decision: "MERGE",
       idempotentReplay: false,
       actionItem: { id: target.id, assignedUserId: "coach-1", status: "OPEN" },
+      receipt: {
+        mergeTargetBefore: expect.objectContaining({ id: target.id, updatedAt: target.updatedAt.toISOString() }),
+        mergeTargetAfter: expect.objectContaining({ id: target.id, updatedAt: target.updatedAt.toISOString() }),
+        governance: { capabilityId: "quipsly.session.transcript-task-evidence.merge" },
+      },
+      governance: { capabilityId: "quipsly.session.transcript-task-evidence.merge" },
       boundaries: {
         mergeAppendsOneActorOwnedTaskEvidenceReceipt: true,
         mergeChangesNoTaskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsOrProject: true,
@@ -619,8 +636,25 @@ describe("action candidate review route", () => {
           playbackSourceId: "protected-source-1",
         },
         externalSideEffects: false,
+        governance: {
+          capabilityId: "quipsly.session.transcript-task-evidence.merge",
+        },
       },
     });
+    expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(harness.prisma, expect.objectContaining({
+      capabilityId: "quipsly.session.transcript-task-evidence.merge",
+      targetObjectType: "ActionItem",
+      targetObjectId: target.id,
+      payload: expect.objectContaining({
+        targetObjectId: target.id,
+        expectedTargetUpdatedAt: target.updatedAt.toISOString(),
+        evidenceReceiptId: first.receipt.taskEvidenceReceiptId,
+      }),
+      result: expect.objectContaining({
+        targetBefore: first.receipt.mergeTargetBefore,
+        targetAfter: first.receipt.mergeTargetAfter,
+      }),
+    }));
     expect({
       id: target.id,
       title: target.title,

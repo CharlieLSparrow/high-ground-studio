@@ -22,6 +22,10 @@ test("retained native goal-evidence merge proves stable goal, replay, and source
   assert.match(operation, /numericReceipt\?\.progressPercent === 35 && evidenceReceipt\?\.progressPercent == null/);
   assert.match(operation, /replay\.idempotentReplay === true/);
   assert.match(operation, /replayReceiptCount === 2/);
+  assert.match(operation, /capabilityId === "quipsly\.session\.transcript-goal-evidence\.merge"/);
+  assert.match(operation, /executorKind === "quipsly-transcript-evidence-merge-domain-service"/);
+  assert.match(operation, /JSON\.stringify\(governedResult\.targetBefore\) === JSON\.stringify\(governedResult\.targetAfter\)/);
+  assert.match(operation, /governedActionSucceededExactlyOnce: true/);
   assert.match(operation, /exactTranscriptReturnOperatedAfterRelaunch: true/);
 
   assert.match(runner, /transcript-packet-goal-evidence-merge\)/);
@@ -29,9 +33,13 @@ test("retained native goal-evidence merge proves stable goal, replay, and source
   assert.match(runtimeTests, /func testReviewedTranscriptPacketAddsEvidenceToExactExistingGoalAndReturnsToSource/);
   assert.match(runtimeTests, /CapturePacketGoalMergeTargetPicker/);
   assert.match(runtimeTests, /CaptureTodayGoalMergedSourceLink_/);
+  assert.match(runtimeTests, /CapturePacketGoalGovernance_/);
+  assert.match(runtimeTests, /CaptureTodayGoalMergedSourceLinkGovernance_/);
   assert.match(runtimeTests, /CaptureTranscriptSourceBoundary_/);
   assert.match(nativeReview, /The goal keeps its identity, title, definition, status, target date, tags, linked tasks, progress percentage, and project/);
+  assert.match(nativeReview, /CapturePacketGoalGovernance_/);
   assert.match(phoneShell, /CaptureGoalMergedEvidenceCard/);
+  assert.match(phoneShell, /Governed action receipt/);
   assert.match(phoneShell, /navigationDestination\(for: CaptureTranscriptSourceDestination\.self\)/);
   assert.match(packetRoute, /progressReceipts: \{ where: \{ kind: GOAL_EVIDENCE_MERGE_KIND \} \}/);
 });

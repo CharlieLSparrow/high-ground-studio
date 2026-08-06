@@ -9,14 +9,21 @@ Date: 2026-08-06
   authority/read set, target identity, one succeeded attempt, and one immutable
   execution receipt. The same contract covers direct creation and ACCEPT of a
   reviewed packet candidate.
+- Reviewed packet MERGE now uses sibling governed capabilities for appending
+  source-bound evidence to one explicitly selected existing Goal or Task. The
+  operation records an immutable evidence receipt and exact target before/after
+  snapshots; it cannot quietly edit status, ownership, dates, planning,
+  reminders, recurrence, tags, goal links, progress, or project identity.
 - Goal and Task provenance points back to the action receipt; exact retries
   return the same target, changed evidence fails closed, and legacy work is not
   assigned fabricated history. The operation cannot alter transcript/recording
   truth, schedule a reminder or calendar event, deliver a message, call a
   provider, or publish.
-- Session Review exposes the short receipt identity after successful creation.
+- Session Review exposes the short receipt identity after successful creation
+  or evidence merge. Capture Today and Work also expose the latest governed
+  merge receipt and return to the exact transcript source after relaunch.
   Capture adds direct Notes, Goals, Tasks, Transcript, and review-queue jumps so
-  deep packets do not bury the next decision. MERGE, Notes, and client-visible
+  deep packets do not bury the next decision. Notes and client-visible
   follow-up remain the next governed adapters.
 - Compiled Capture acceptance uncovered a vanished temporary retained-audio
   dependency. The local operation now uses a versioned durable exact-byte
@@ -28,6 +35,13 @@ Date: 2026-08-06
   the collapsed-task expansion needed to reveal reviewed work behind the top
   three due commitments. Full evidence is documented in
   `docs/coordination/2026-08-06-governed-conversation-to-work.md`.
+- Two additional compiled simulator operations played and confirmed all three
+  exact source segments before merging evidence into an existing Goal and an
+  existing Task. Both rendered governed receipt identity after relaunch,
+  returned from Today to the exact source, preserved the complete canonical
+  target state, and proved idempotent replay. The Task fixture now includes and
+  protects a real planned focus block so a mature retained account does not
+  depend on an accidentally sparse Today queue.
 
 ## Governed action runtime foundation
 

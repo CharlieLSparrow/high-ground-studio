@@ -139,6 +139,12 @@ function harness() {
         return data;
       }),
       findUnique: jest.fn(async ({ where }: any) => goalProgressReceipts.find((receipt) => receipt.id === where.id) ?? null),
+      update: jest.fn(async ({ where, data }: any) => {
+        const receipt = goalProgressReceipts.find((item) => item.id === where.id);
+        if (!receipt) throw new Error("missing goal progress receipt");
+        Object.assign(receipt, data);
+        return receipt;
+      }),
     },
     studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-coaching", label: "Coaching", slug: "coaching" }]) },
     goalTagLink: { createMany: goalTagLinkCreateMany },
@@ -151,14 +157,19 @@ function harness() {
 describe("packet goal review route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.mocked(recordSucceededTranscriptWorkAction).mockResolvedValue({
+    jest.mocked(recordSucceededTranscriptWorkAction).mockImplementation(async (_tx, input) => {
+      const suffix = input.capabilityId === "quipsly.session.transcript-goal.materialize"
+        ? "packet-goal"
+        : "packet-goal-merge";
+      return ({
       schema: "quipsly-governed-action-reference-v1",
-      runId: "run-packet-goal",
-      actionId: "action-packet-goal",
-      attemptId: "attempt-packet-goal",
-      receiptId: "receipt-packet-goal",
-      capabilityId: "quipsly.session.transcript-goal.materialize",
+      runId: `run-${suffix}`,
+      actionId: `action-${suffix}`,
+      attemptId: `attempt-${suffix}`,
+      receiptId: `receipt-${suffix}`,
+      capabilityId: input.capabilityId,
       capabilityVersion: 1,
+      });
     });
   });
 
@@ -468,7 +479,12 @@ describe("packet goal review route", () => {
         goalDefinitionMutated: false,
         goalStatusMutated: false,
         mergeTargetBefore: { id: target.id, updatedAt: targetUpdatedAt.toISOString() },
+        mergeTargetAfter: { id: target.id, updatedAt: targetUpdatedAt.toISOString() },
+        governance: {
+          capabilityId: "quipsly.session.transcript-goal-evidence.merge",
+        },
       },
+      governance: { capabilityId: "quipsly.session.transcript-goal-evidence.merge" },
       boundaries: {
         mergeAppendsOneActorOwnedGoalEvidenceReceipt: true,
         mergeChangesNoGoalDefinitionStatusTargetOrTags: true,
@@ -496,8 +512,25 @@ describe("packet goal review route", () => {
           recordingAssetId,
           playbackSourceId: "source-1",
         },
+        governance: {
+          capabilityId: "quipsly.session.transcript-goal-evidence.merge",
+        },
       },
     });
+    expect(recordSucceededTranscriptWorkAction).toHaveBeenCalledWith(state.prisma, expect.objectContaining({
+      capabilityId: "quipsly.session.transcript-goal-evidence.merge",
+      targetObjectType: "Goal",
+      targetObjectId: target.id,
+      payload: expect.objectContaining({
+        targetObjectId: target.id,
+        expectedTargetUpdatedAt: targetUpdatedAt.toISOString(),
+        evidenceReceiptId: payload.receipt.goalProgressReceiptId,
+      }),
+      result: expect.objectContaining({
+        targetBefore: payload.receipt.mergeTargetBefore,
+        targetAfter: payload.receipt.mergeTargetAfter,
+      }),
+    }));
     expect({
       title: target.title,
       description: target.description,

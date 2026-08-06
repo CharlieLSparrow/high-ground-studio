@@ -11,6 +11,7 @@ import {
   TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA,
   readTranscriptMergedGoalSource,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
+import { TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
@@ -28,7 +29,10 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionMutationAccessWhere } from "@/lib/server/session-access";
 import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import { unreviewedTranscriptSpanSegmentIds } from "@/lib/server/transcript-source-span";
-import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
+import {
+  readGovernedActionSourceReference,
+  recordSucceededTranscriptWorkAction,
+} from "@/lib/server/governed-action-runtime";
 import {
   createTranscriptDerivedGoalInTransaction,
   normalizeTranscriptGoalTagIds,
@@ -109,6 +113,14 @@ function mergeTargetSnapshot(goal: any) {
     updatedAt: iso(goal?.updatedAt),
     projectId: text(goal?.projectId) || null,
     roomId: text(goal?.roomId) || null,
+    tagIds: Array.isArray(goal?.tagLinks)
+      ? goal.tagLinks.map((link: any) => text(link?.tagId)).filter(Boolean).sort()
+      : [],
+    taskLinks: Array.isArray(goal?.taskLinks)
+      ? goal.taskLinks.map((link: any) => ({ actionItemId: text(link?.actionItemId), relationship: text(link?.relationship) }))
+          .filter((link: { actionItemId: string }) => link.actionItemId)
+          .sort((left: { actionItemId: string }, right: { actionItemId: string }) => left.actionItemId.localeCompare(right.actionItemId))
+      : [],
   };
 }
 
@@ -472,6 +484,7 @@ export async function POST(request: Request) {
       let goalReplay = false;
       let goalProgressReceiptId: string | null = null;
       let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
+      let mergeTargetAfter: ReturnType<typeof mergeTargetSnapshot> | null = null;
       let candidateSource: Record<string, unknown> | null = null;
       let governance: ReturnType<typeof readGovernedActionSourceReference> = null;
       if (reviewDecision === "ACCEPT") {
@@ -513,6 +526,7 @@ export async function POST(request: Request) {
                 tag: { select: { id: true, label: true, slug: true } },
               },
             },
+            taskLinks: { select: { actionItemId: true, relationship: true } },
           },
         });
         if (!mergeTarget) {
@@ -559,6 +573,31 @@ export async function POST(request: Request) {
           playbackSourceId: resolvedEvidence.playback.sourceId,
         };
         goalProgressReceiptId = randomUUID();
+        const mergedEvidence = {
+          schema: TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA,
+          receiptId,
+          goalCandidateId,
+          mergedAt: reviewedAt,
+          mergedByUserId: actor.id,
+          candidateSource,
+          packet: {
+            roomId,
+            transcriptJobId,
+            recordingAssetId,
+            summaryNoteId,
+            packetBuildId,
+            transcriptSnapshotSha256,
+          },
+          boundaries: {
+            explicitHumanDecision: true,
+            goalDefinitionMutated: false,
+            goalStatusMutated: false,
+            goalTargetMutated: false,
+            goalTagsMutated: false,
+            goalTaskLinksMutated: false,
+            externalSideEffects: false,
+          },
+        };
         await tx.goalProgressReceipt.create({
           data: {
             id: goalProgressReceiptId,
@@ -568,33 +607,53 @@ export async function POST(request: Request) {
             progressPercent: null,
             note: reviewNote || candidate.sourceText.slice(0, MAX_REVIEW_NOTE_LENGTH),
             occurredAt: new Date(reviewedAt),
-            evidenceJson: {
-              schema: TRANSCRIPT_GOAL_EVIDENCE_MERGE_SCHEMA,
-              receiptId,
-              goalCandidateId,
-              mergedAt: reviewedAt,
-              mergedByUserId: actor.id,
-              candidateSource,
-              packet: {
-                roomId,
-                transcriptJobId,
-                recordingAssetId,
-                summaryNoteId,
-                packetBuildId,
-                transcriptSnapshotSha256,
-              },
-              boundaries: {
-                explicitHumanDecision: true,
-                goalDefinitionMutated: false,
-                goalStatusMutated: false,
-                goalTargetMutated: false,
-                goalTagsMutated: false,
-                externalSideEffects: false,
-              },
-            },
+            evidenceJson: mergedEvidence,
           },
         });
         goal = mergeTarget;
+        mergeTargetAfter = mergeTargetSnapshot(mergeTarget);
+        const mergeBoundaries = boundaries({ goalEvidenceAppended: true });
+        governance = await recordSucceededTranscriptWorkAction(tx, {
+          capabilityId: TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID,
+          clientRequestId: receiptId,
+          projectId: authorizedRoom.projectId ?? mergeTarget.projectId ?? null,
+          roomId,
+          actorUserId: actor.id,
+          actorEmail: actor.email || "unknown@quipsly.invalid",
+          sourceSurface: "nest-session-packet-goal-review",
+          targetObjectType: "Goal",
+          targetObjectId: mergeTarget.id,
+          payload: {
+            contractKind: "quipsly-transcript-goal-evidence-merge-payload-v1",
+            roomId,
+            segmentId: candidate.segmentId,
+            segmentIds: candidate.segmentIds,
+            expectedProviderTextSha256: candidate.providerTextSha256,
+            expectedSourceTextSha256: candidate.sourceTextSha256 ?? null,
+            targetObjectId: mergeTarget.id,
+            expectedTargetUpdatedAt: mergeExpectedUpdatedAt,
+            evidenceReceiptId: goalProgressReceiptId,
+            packetReviewReceiptId: receiptId,
+          },
+          sourceEvidence: {
+            objectType: "TranscriptSegmentSpan",
+            transcriptSnapshotSha256,
+            ...candidateSource,
+          },
+          result: {
+            targetObjectType: "Goal",
+            targetObjectId: mergeTarget.id,
+            evidenceReceiptId: goalProgressReceiptId,
+            targetBefore: mergeTargetBefore,
+            targetAfter: mergeTargetAfter,
+            status: mergeTarget.status,
+          },
+          boundaries: mergeBoundaries,
+        });
+        await tx.goalProgressReceipt.update({
+          where: { id: goalProgressReceiptId },
+          data: { evidenceJson: { ...mergedEvidence, governance } },
+        });
       }
 
       const receipt = {
@@ -629,6 +688,7 @@ export async function POST(request: Request) {
         goalId: goal?.id ?? null,
         goalProgressReceiptId,
         mergeTargetBefore,
+        mergeTargetAfter,
         candidateSource,
         externalSideEffects: false,
         taskCreated: false,

@@ -142,6 +142,24 @@ function taskDefinition(task) {
   };
 }
 
+function planBlockDefinition(block) {
+  return block ? {
+    id: block.id,
+    ownerUserId: block.ownerUserId,
+    actionItemId: block.actionItemId,
+    goalId: block.goalId,
+    startsAt: block.startsAt.toISOString(),
+    endsAt: block.endsAt.toISOString(),
+    timezone: block.timezone,
+    status: block.status,
+    completedAt: block.completedAt?.toISOString?.() || null,
+    actualMinutes: block.actualMinutes ?? null,
+    sourceJson: block.sourceJson,
+    createdAt: block.createdAt.toISOString(),
+    updatedAt: block.updatedAt.toISOString(),
+  } : null;
+}
+
 async function readTask(prisma, id) {
   return prisma.actionItem.findUnique({
     where: { id },
@@ -173,6 +191,7 @@ async function main() {
     const reminderID = `qa-task-evidence-reminder-${stamp}`;
     const recurrenceID = `qa-task-evidence-series-${stamp}`;
     const occurrenceID = `qa-task-evidence-occurrence-${stamp}`;
+    const planBlockID = `qa-task-evidence-plan-${stamp}`;
     const taskTitle = `Retained evidence task · ${stamp}`;
     const taskDetail = "Keep every canonical task control stable while reviewed evidence accumulates.";
     const now = new Date();
@@ -181,6 +200,8 @@ async function main() {
     // the bounded 20-task Today projection.
     const dueAt = new Date(now.getTime() + 18 * 3_600_000);
     const remindAt = new Date(now.getTime() + 12 * 3_600_000);
+    const planStartsAt = new Date(now.getTime() + 60 * 60_000);
+    const planEndsAt = new Date(planStartsAt.getTime() + 30 * 60_000);
     const scheduledLocalDate = dueAt.toISOString().slice(0, 10);
     const project = await prisma.callRoom.findUnique({ where: { id: fixture.roomID }, select: { projectId: true } });
     const tag = project?.projectId ? await prisma.studioTag.findFirst({
@@ -258,6 +279,16 @@ async function main() {
         createdByUserId: fixture.coachUserID,
         sourceJson: { source: "retained-task-evidence-baseline", externalSideEffects: false },
       } });
+      await tx.workPlanBlock.create({ data: {
+        id: planBlockID,
+        ownerUserId: fixture.coachUserID,
+        actionItemId: taskID,
+        startsAt: planStartsAt,
+        endsAt: planEndsAt,
+        timezone: "America/Denver",
+        status: "PLANNED",
+        sourceJson: { source: "retained-task-evidence-baseline", externalSideEffects: false },
+      } });
     });
 
     await requestJson(new URL("/api/mobile/capture/transcripts/packet", baseURL), {
@@ -274,6 +305,9 @@ async function main() {
     assert(canonicalBefore && canonicalBefore.evidenceReceipts.length === 0,
       "The baseline task must begin without transcript evidence receipts.");
     const definitionBefore = taskDefinition(canonicalBefore);
+    const planBlockBefore = planBlockDefinition(await prisma.workPlanBlock.findUnique({ where: { id: planBlockID } }));
+    assert(planBlockBefore?.actionItemId === taskID && planBlockBefore.status === "PLANNED",
+      "The retained task must begin as an explicitly planned Today focus block.");
 
     const resultBundle = `/private/tmp/quipsly-packet-task-evidence-merge-${Date.now()}-${process.pid}.xcresult`;
     const operation = spawnSync("bash", [RUNNER], {
@@ -314,6 +348,9 @@ async function main() {
     const canonicalAfter = await readTask(prisma, taskID);
     assert(JSON.stringify(taskDefinition(canonicalAfter)) === JSON.stringify(definitionBefore),
       "Appending evidence changed task identity, content, status, owner, dates, reminder, recurrence, tags, goals, project, or updatedAt.");
+    const planBlockAfter = planBlockDefinition(await prisma.workPlanBlock.findUnique({ where: { id: planBlockID } }));
+    assert(JSON.stringify(planBlockAfter) === JSON.stringify(planBlockBefore),
+      "Appending evidence changed the task's explicit planning block or calendar state.");
     assert(canonicalAfter.evidenceReceipts.length === 1,
       "The merge must append exactly one task evidence receipt.");
     const evidenceReceipt = canonicalAfter.evidenceReceipts[0];
@@ -327,6 +364,31 @@ async function main() {
       && source.recordingAssetId === fixture.assetID
       && source.segmentId === segmentIDs[0],
     "The append-only receipt lost exact transcript or playback provenance.");
+    const evidenceGovernance = asObject(evidence.governance);
+    assert(afterCandidate.lastHumanReview?.governance?.actionId === evidenceGovernance.actionId
+      && afterCandidate.lastHumanReview?.governance?.receiptId === evidenceGovernance.receiptId,
+    "The reloaded Capture candidate lost the durable governed merge reference.");
+    const governedAction = await prisma.governedAction.findUnique({
+      where: { id: evidenceGovernance.actionId },
+      include: { run: true, attempts: true, receipts: true },
+    });
+    const governedResult = asObject(governedAction?.resultJson);
+    assert(governedAction?.capabilityId === "quipsly.session.transcript-task-evidence.merge"
+      && governedAction?.actionKind === "MERGE_TRANSCRIPT_EVIDENCE_INTO_TASK"
+      && governedAction?.targetObjectType === "ActionItem"
+      && governedAction?.targetObjectId === taskID
+      && governedAction?.status === "SUCCEEDED"
+      && governedAction.run?.status === "SUCCEEDED"
+      && governedAction.attempts?.length === 1
+      && governedAction.attempts[0]?.attemptNumber === 1
+      && governedAction.attempts[0]?.status === "SUCCEEDED"
+      && governedAction.attempts[0]?.executorKind === "quipsly-transcript-evidence-merge-domain-service"
+      && governedAction.receipts?.length === 1
+      && governedAction.receipts[0]?.id === evidenceGovernance.receiptId
+      && governedAction.receipts[0]?.newStatus === "SUCCEEDED"
+      && governedResult.evidenceReceiptId === evidenceReceipt.id
+      && JSON.stringify(governedResult.targetBefore) === JSON.stringify(governedResult.targetAfter),
+    "The task merge did not persist one successful governed action with an exact unchanged before/after target snapshot.");
 
     const packetSummary = await prisma.coachingNote.findFirst({
       where: { id: after.packet.summary.id },
@@ -334,6 +396,12 @@ async function main() {
     });
     const reviewReceipt = asObject(asObject(packetSummary?.sourceJson).lastActionCandidateReview);
     const mergeTargetBefore = asObject(reviewReceipt.mergeTargetBefore);
+    const mergeTargetAfter = asObject(reviewReceipt.mergeTargetAfter);
+    const reviewGovernance = asObject(reviewReceipt.governance);
+    assert(reviewGovernance.actionId === governedAction.id
+      && reviewGovernance.receiptId === evidenceGovernance.receiptId
+      && JSON.stringify(mergeTargetBefore) === JSON.stringify(mergeTargetAfter),
+    "The packet review receipt lost governed identity or the unchanged merge target snapshot.");
     const replay = await requestJson(new URL("/api/mobile/capture/transcripts/packet/actions", baseURL), {
       idToken,
       method: "POST",
@@ -369,15 +437,21 @@ async function main() {
       sourceSegmentIDs: segmentIDs,
       taskID,
       taskTitle,
+      planBlockID,
       packetActionCandidateID: afterCandidate.id,
       taskEvidenceReceiptID: evidenceReceipt.id,
+      governedActionID: governedAction.id,
+      governedReceiptID: evidenceGovernance.receiptId,
       resultBundle,
       boundaries: {
         existingTaskSelectedExplicitly: true,
         sourcePlaybackReviewed: true,
         taskIdentityStatusOwnerDatesReminderRecurrenceTagsGoalsAndProjectUnchanged: true,
+        explicitPlanningBlockUnchanged: true,
         exactTranscriptReturnOperatedAfterRelaunch: true,
         exactReplayDuplicated: false,
+        governedActionSucceededExactlyOnce: true,
+        exactBeforeAfterSnapshotUnchanged: true,
         calendarMutated: false,
         deliveryClaimed: false,
         publicationClaimed: false,

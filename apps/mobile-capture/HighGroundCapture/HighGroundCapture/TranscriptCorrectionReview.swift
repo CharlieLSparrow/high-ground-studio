@@ -371,6 +371,14 @@ struct CapturePacketTaskTag: Codable, Identifiable, Equatable {
     let selectedForSession: Bool
 }
 
+struct CapturePacketHumanReview: Codable, Equatable {
+    let receiptId: String
+    let decision: String
+    let reviewedAt: String
+    let reviewedByUserId: String
+    var governance: MobileCaptureGovernedActionReference? = nil
+}
+
 struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
     let id: String
     let title: String
@@ -391,6 +399,7 @@ struct CapturePacketActionCandidate: Codable, Identifiable, Equatable {
     let reviewStatus: String
     let humanApprovalRequired: Bool
     let committedActionItemId: String?
+    var lastHumanReview: CapturePacketHumanReview? = nil
 
     static func preview(roomID: String) -> Self {
         .init(
@@ -436,6 +445,7 @@ struct CapturePacketGoalCandidate: Codable, Identifiable, Equatable {
     let reviewStatus: String
     let humanApprovalRequired: Bool
     let committedGoalId: String?
+    var lastHumanReview: CapturePacketHumanReview? = nil
 
     static func preview(roomID: String) -> Self {
         .init(
@@ -3637,15 +3647,24 @@ private struct CapturePacketTaskCandidateCard: View {
             }
 
             if accepted {
-                Label(
-                    candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
-                        ? "Added as reviewed evidence to one existing task"
-                        : "Accepted as canonical Quipsly work",
-                    systemImage: "checkmark.shield.fill"
-                )
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.green)
-                    .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(
+                        candidate.reviewStatus == "MERGED_INTO_ACTION_ITEM"
+                            ? "Added as reviewed evidence to one existing task"
+                            : "Accepted as canonical Quipsly work",
+                        systemImage: "checkmark.shield.fill"
+                    )
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("CapturePacketTaskAccepted_\(candidate.id)")
+                    if let governance = candidate.lastHumanReview?.governance {
+                        Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
+                            .font(.caption.monospaced().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CapturePacketTaskGovernance_\(candidate.id)")
+                            .accessibilityHint("Identifies the durable governed action and receipt for this reviewed task decision.")
+                    }
+                }
             } else if isMerging {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Add evidence to one existing task", systemImage: "link.badge.plus")
@@ -3958,15 +3977,24 @@ private struct CapturePacketGoalCandidateCard: View {
             }
 
             if accepted {
-                Label(
-                    candidate.reviewStatus == "MERGED_INTO_GOAL"
-                        ? "Added as reviewed evidence to one existing goal"
-                        : "Accepted as one canonical goal",
-                    systemImage: "checkmark.shield.fill"
-                )
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.green)
-                    .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
+                VStack(alignment: .leading, spacing: 5) {
+                    Label(
+                        candidate.reviewStatus == "MERGED_INTO_GOAL"
+                            ? "Added as reviewed evidence to one existing goal"
+                            : "Accepted as one canonical goal",
+                        systemImage: "checkmark.shield.fill"
+                    )
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("CapturePacketGoalAccepted_\(candidate.id)")
+                    if let governance = candidate.lastHumanReview?.governance {
+                        Label("Governed receipt \(governance.shortActionID)", systemImage: "checkmark.seal")
+                            .font(.caption.monospaced().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CapturePacketGoalGovernance_\(candidate.id)")
+                            .accessibilityHint("Identifies the durable governed action and receipt for this reviewed goal decision.")
+                    }
+                }
             } else if isCreating {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Create one canonical goal", systemImage: "target")

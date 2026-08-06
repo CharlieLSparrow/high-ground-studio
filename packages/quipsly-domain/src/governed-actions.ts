@@ -53,6 +53,8 @@ export type GovernedActionCapabilityManifest = {
 export const SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID = "quipsly.session.preflight.publish";
 export const TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-goal.materialize";
 export const TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID = "quipsly.session.transcript-task.materialize";
+export const TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID = "quipsly.session.transcript-goal-evidence.merge";
+export const TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID = "quipsly.session.transcript-task-evidence.merge";
 
 const writingManifest = (
   id: string,
@@ -264,10 +266,59 @@ const TRANSCRIPT_TASK_MATERIALIZE_MANIFEST = transcriptWorkManifest(
   "ActionItem",
 );
 
+const transcriptEvidenceMergeManifest = (
+  id: string,
+  title: string,
+  objectType: "Goal" | "ActionItem",
+): GovernedActionCapabilityManifest => ({
+  id,
+  version: 1,
+  title,
+  promise: `Append one reviewed, playback-linked transcript span to an existing ${objectType === "Goal" ? "goal" : "task"} without changing its canonical work fields.`,
+  objectTypes: ["CallRoom", "TranscriptJob", "TranscriptSegment", objectType, objectType === "Goal" ? "GoalProgressReceipt" : "ActionItemEvidenceReceipt"],
+  scope: "SESSION",
+  decisionPolicy: "USER_INITIATED",
+  riskLevel: "MEDIUM",
+  consequences: [
+    `appends one immutable transcript-evidence receipt to one explicitly selected actor-owned ${objectType === "Goal" ? "goal" : "task"}`,
+    "preserves exact target snapshots before and after the append",
+    "does not change the target identity, wording, lifecycle, ownership, dates, relationships, tags, reminder, recurrence, project, or source truth",
+    "does not mutate recording, transcript, calendar, delivery, provider, or publication state",
+  ],
+  evidence: [
+    "current Session mutation authority",
+    "released recording-backed transcript gate",
+    "provider and effective-text hashes",
+    "exact segment or thought-span identities and source clock",
+    "explicitly selected target identity and expected current version",
+    "immutable evidence-receipt identity and unchanged target readback",
+  ],
+  recovery: ["SUPERSEDE"],
+  entryPoints: ["Nest Session transcript review", "Quipsly Capture transcript review"],
+  apiExposure: "AUTHORIZED_API",
+  mcpExposure: "PLANNED",
+  accessibility: ["source playback return", "target state preview", "text consequence preview", "status not conveyed by color alone"],
+  qualification: "OPERATED_LOCAL",
+});
+
+const TRANSCRIPT_GOAL_EVIDENCE_MERGE_MANIFEST = transcriptEvidenceMergeManifest(
+  TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID,
+  "Add reviewed transcript evidence to an existing goal",
+  "Goal",
+);
+
+const TRANSCRIPT_TASK_EVIDENCE_MERGE_MANIFEST = transcriptEvidenceMergeManifest(
+  TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
+  "Add reviewed transcript evidence to an existing task",
+  "ActionItem",
+);
+
 export const GOVERNED_ACTION_CAPABILITIES: readonly GovernedActionCapabilityManifest[] = [
   SESSION_PREFLIGHT_MANIFEST,
   TRANSCRIPT_GOAL_MATERIALIZE_MANIFEST,
   TRANSCRIPT_TASK_MATERIALIZE_MANIFEST,
+  TRANSCRIPT_GOAL_EVIDENCE_MERGE_MANIFEST,
+  TRANSCRIPT_TASK_EVIDENCE_MERGE_MANIFEST,
   ...Object.values(WRITING_CAPABILITIES),
 ];
 
@@ -317,6 +368,25 @@ export function assertGovernedActionPayload(
       || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
       || typeof record.title !== "string"
       || !record.title.trim()
+    )
+  ) {
+    throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);
+  }
+  if (
+    [TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID, TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID].includes(capabilityId)
+    && (
+      typeof record.roomId !== "string"
+      || !record.roomId.trim()
+      || typeof record.segmentId !== "string"
+      || !record.segmentId.trim()
+      || typeof record.expectedProviderTextSha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(record.expectedProviderTextSha256)
+      || typeof record.targetObjectId !== "string"
+      || !record.targetObjectId.trim()
+      || typeof record.expectedTargetUpdatedAt !== "string"
+      || !record.expectedTargetUpdatedAt.trim()
+      || typeof record.evidenceReceiptId !== "string"
+      || !record.evidenceReceiptId.trim()
     )
   ) {
     throw new Error(`INVALID_ACTION_PAYLOAD:${capabilityId}`);

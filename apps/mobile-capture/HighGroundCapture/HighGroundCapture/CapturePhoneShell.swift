@@ -458,6 +458,13 @@ private struct CaptureGoalMergedEvidenceCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)
+            if let governance = evidence.governance {
+                Text("Governed action receipt · \(governance.shortActionID)")
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(.blue)
+                    .accessibilityIdentifier("\(accessibilityIdentifierPrefix)Governance_\(goalID)")
+                    .accessibilityHint("Identifies the governed operation that appended this evidence without changing the goal.")
+            }
             NavigationLink(value: CaptureTranscriptSourceDestination(
                 roomID: evidence.sourceAnchor.roomId,
                 sessionTitle: sessionTitle,
@@ -1308,6 +1315,39 @@ private struct CaptureWorkView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(task.isOverdue == true ? Color.orange : Color.secondary)
                         .accessibilityIdentifier("CaptureWorkTaskDue_\(task.id)")
+                }
+                if let evidence = task.lastMergedTranscriptEvidence {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Latest reviewed evidence")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.blue)
+                        Text(evidence.sourceAnchor.effectiveTextSnapshot)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                        if let governance = evidence.governance {
+                            Text("Governed action receipt · \(governance.shortActionID)")
+                                .font(.caption2.monospaced().weight(.semibold))
+                                .foregroundStyle(.blue)
+                                .accessibilityIdentifier("CaptureWorkTaskMergedEvidenceGovernance_\(task.id)")
+                        }
+                        NavigationLink(value: CaptureTranscriptSourceDestination(
+                            roomID: evidence.sourceAnchor.roomId,
+                            sessionTitle: task.sessionTitle ?? "Capture session",
+                            source: evidence.sourceAnchor
+                        )) {
+                            Label(
+                                "Return to \(evidence.sourceAnchor.startSeconds.captureDurationLabel)–\(evidence.sourceAnchor.endSeconds.captureDurationLabel)",
+                                systemImage: "waveform.and.magnifyingglass"
+                            )
+                            .font(.caption.weight(.bold))
+                            .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureWorkTaskMergedEvidenceSource_\(task.id)")
+                    }
+                    .padding(10)
+                    .background(Color.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
                 }
                 workTagLabels(effectiveTagLabels(kind: .task, entityID: task.id, tagIDs: visibleTagIDs))
                 workTagDecisionStatus(kind: .task, entityID: task.id)
@@ -2520,6 +2560,13 @@ struct TodayFollowThroughCard: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(3)
+                                    if let governance = evidence.governance {
+                                        Text("Governed action receipt · \(governance.shortActionID)")
+                                            .font(.caption2.monospaced().weight(.semibold))
+                                            .foregroundStyle(.blue)
+                                            .accessibilityIdentifier("CaptureTodayTaskMergedEvidenceGovernance_\(task.id)")
+                                            .accessibilityHint("Identifies the governed operation that appended this evidence without changing the task.")
+                                    }
                                     NavigationLink(value: CaptureTranscriptSourceDestination(
                                         roomID: evidence.sourceAnchor.roomId,
                                         sessionTitle: task.sessionTitle ?? "Capture session",

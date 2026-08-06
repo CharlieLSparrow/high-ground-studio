@@ -5,6 +5,7 @@ import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource, readT
 import { buildWeeklyReview } from "@high-ground/quipsly-domain/weekly-review";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import { loadLatestGoalReceiptProjection } from "@/lib/server/goal-receipt-projection";
 import { loadClientFollowUpAttention } from "@/lib/server/client-follow-up-attention";
 import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
@@ -291,7 +292,12 @@ export async function GET(request: Request) {
     const tasks = taskRows.filter((task: any) => !isUnreviewedTranscriptActionItem(task)).map((task: any) => {
       const parsedSourceAnchor = readTranscriptDerivedTaskSource(task.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === task.room?.id ? parsedSourceAnchor : null;
-      const lastMergedTranscriptEvidence = readTranscriptMergedTaskSource(task.evidenceReceipts?.[0]?.evidenceJson);
+      const latestMergedEvidenceJson = task.evidenceReceipts?.[0]?.evidenceJson;
+      const parsedMergedTranscriptEvidence = readTranscriptMergedTaskSource(latestMergedEvidenceJson);
+      const lastMergedTranscriptEvidence = parsedMergedTranscriptEvidence ? {
+        ...parsedMergedTranscriptEvidence,
+        governance: readGovernedActionSourceReference(record(latestMergedEvidenceJson).governance),
+      } : null;
       const dueAtMs = task.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
       const updatedAtMs = task.updatedAt.getTime();
       const isPlanned = plannedTaskIds.has(task.id);
@@ -356,7 +362,12 @@ export async function GET(request: Request) {
       const sourceAnchor = parsedSourceAnchor?.roomId === goal.room?.id ? parsedSourceAnchor : null;
       const receiptProjection = goalReceiptProjection.get(goal.id);
       const progress = receiptProjection?.progress ?? null;
-      const lastMergedTranscriptEvidence = readTranscriptMergedGoalSource(receiptProjection?.transcriptEvidence?.evidenceJson);
+      const latestMergedEvidenceJson = receiptProjection?.transcriptEvidence?.evidenceJson;
+      const parsedMergedTranscriptEvidence = readTranscriptMergedGoalSource(latestMergedEvidenceJson);
+      const lastMergedTranscriptEvidence = parsedMergedTranscriptEvidence ? {
+        ...parsedMergedTranscriptEvidence,
+        governance: readGovernedActionSourceReference(record(latestMergedEvidenceJson).governance),
+      } : null;
       const projectVisible = goal.project && visibleProjectIds.includes(goal.project.id);
       return {
         id: goal.id,

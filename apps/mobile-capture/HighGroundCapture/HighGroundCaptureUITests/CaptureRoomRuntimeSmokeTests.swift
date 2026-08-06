@@ -483,6 +483,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists
     }
 
+    private func jumpToTranscript(in app: XCUIApplication) {
+        let jumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
+        XCTAssertTrue(jumpMenu.waitForExistence(timeout: 10))
+        jumpMenu.tap()
+        let transcript = app.buttons["CaptureTranscriptJumpToTranscript"].firstMatch
+        XCTAssertTrue(transcript.waitForExistence(timeout: 10))
+        transcript.tap()
+    }
+
     private func scrollRuntimeElementIntoHittableView(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -1994,14 +2003,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         // depending on a fixed number of swipes through unrelated candidates.
         // This also proves that retained-source playback remains directly
         // reachable as the packet grows.
-        let transcriptJumpMenu = app.buttons["CaptureTranscriptJumpMenu"].firstMatch
-        XCTAssertTrue(transcriptJumpMenu.waitForExistence(timeout: 10))
-        transcriptJumpMenu.tap()
-        let jumpToTranscript = app.buttons["CaptureTranscriptJumpToTranscript"].firstMatch
-        XCTAssertTrue(jumpToTranscript.waitForExistence(timeout: 10))
-        jumpToTranscript.tap()
-
         for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            jumpToTranscript(in: app)
             let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
             XCTAssertTrue(
                 waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12),
@@ -2236,7 +2239,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 .waitForExistence(timeout: 30)
         )
 
+        // Candidate queues can grow independently of the immutable transcript.
+        // Use the person-facing jump control so this operation proves the exact
+        // source stays directly reachable without relying on a swipe budget.
         for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            jumpToTranscript(in: app)
             let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
             XCTAssertTrue(
                 waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12),
@@ -2423,6 +2430,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
 
         for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            jumpToTranscript(in: app)
             let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
             XCTAssertTrue(waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12))
             XCTAssertTrue(play.isEnabled)
@@ -2493,6 +2501,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             ).firstMatch.waitForExistence(timeout: 30)
         )
         XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing goal"].firstMatch.exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketGoalGovernance_")
+            ).firstMatch.waitForExistence(timeout: 10),
+            "The accepted goal candidate must expose its durable governed action receipt after server readback."
+        )
         attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing goal")
 
         app.terminate()
@@ -2509,6 +2523,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             waitForRuntimeElement(mergedSource, in: app, timeout: 15, swipeAttempts: 12),
             "Today must expose the latest appended evidence separately from the goal's numeric progress."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayGoalMergedSourceLinkGovernance_\(goalID)"]
+                .firstMatch.waitForExistence(timeout: 10),
+            "The reloaded Today goal must preserve its governed merge receipt."
         )
         mergedSource.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
@@ -2549,6 +2568,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPacketLoadedBoundary"].firstMatch.waitForExistence(timeout: 30))
 
         for (reviewIndex, segmentID) in credentials.transcriptSegmentIDs.enumerated() {
+            jumpToTranscript(in: app)
             let play = app.buttons["CaptureTranscriptPlayButton_\(segmentID)"].firstMatch
             XCTAssertTrue(waitForRuntimeElement(play, in: app, timeout: 20, swipeAttempts: 12))
             XCTAssertTrue(play.isEnabled)
@@ -2609,6 +2629,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskAccepted_")
         ).firstMatch.waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["Added as reviewed evidence to one existing task"].firstMatch.exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any).matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "CapturePacketTaskGovernance_")
+            ).firstMatch.waitForExistence(timeout: 10),
+            "The accepted task candidate must expose its durable governed action receipt after server readback."
+        )
         attachRuntimeScreenshot(app, name: "Reviewed transcript evidence added to exact existing task")
 
         app.terminate()
@@ -2621,6 +2647,11 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         ))
         let mergedSource = app.descendants(matching: .any)["CaptureTodayTaskMergedEvidenceSource_\(taskID)"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(mergedSource, in: app, timeout: 15, swipeAttempts: 12))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayTaskMergedEvidenceGovernance_\(taskID)"]
+                .firstMatch.waitForExistence(timeout: 10),
+            "The reloaded Today task must preserve its governed merge receipt."
+        )
         mergedSource.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_\(credentials.transcriptSegmentIDs[0])"].firstMatch.waitForExistence(timeout: 20))

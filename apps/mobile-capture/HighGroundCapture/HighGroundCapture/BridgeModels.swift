@@ -430,11 +430,24 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCaptureGovernedActionReference: Codable, Hashable {
+    let schema: String
+    let runId: String
+    let actionId: String
+    let attemptId: String
+    let receiptId: String
+    let capabilityId: String
+    let capabilityVersion: Int
+
+    var shortActionID: String { String(actionId.suffix(8)) }
+}
+
 struct MobileCaptureTodayTaskTranscriptEvidence: Codable, Hashable {
     let receiptId: String
     let actionCandidateId: String
     let mergedAt: String
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor
+    var governance: MobileCaptureGovernedActionReference? = nil
 }
 
 private struct MobileSessionNoteEditRequest: Encodable {
@@ -1561,6 +1574,7 @@ struct MobileCaptureTodayGoalTranscriptEvidence: Codable, Hashable {
     let goalCandidateId: String
     let mergedAt: String
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor
+    var governance: MobileCaptureGovernedActionReference? = nil
 }
 
 struct MobileCaptureTodayFocusBlock: Codable, Identifiable, Hashable {

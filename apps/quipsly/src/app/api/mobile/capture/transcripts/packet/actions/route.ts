@@ -12,7 +12,10 @@ import {
   TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
   readTranscriptMergedTaskSource,
 } from "@high-ground/quipsly-domain/transcript-derived-task";
-import { TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID } from "@high-ground/quipsly-domain/governed-actions";
+import {
+  TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
+  TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
+} from "@high-ground/quipsly-domain/governed-actions";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -744,6 +747,7 @@ export async function POST(request: Request) {
       let acceptedTags: Array<{ id: string; label: string; slug: string }> = [];
       let taskEvidenceReceiptId: string | null = null;
       let mergeTargetBefore: ReturnType<typeof mergeTargetSnapshot> | null = null;
+      let mergeTargetAfter: ReturnType<typeof mergeTargetSnapshot> | null = null;
       let candidateSource: Record<string, unknown> | null = null;
       let governance: ReturnType<typeof readGovernedActionSourceReference> = null;
 
@@ -973,6 +977,36 @@ export async function POST(request: Request) {
           playbackSourceId: resolvedEvidence.playback.sourceId,
         };
         taskEvidenceReceiptId = randomUUID();
+        const mergedEvidence = {
+          schema: TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
+          receiptId,
+          actionCandidateId,
+          mergedAt: reviewedAt,
+          mergedByUserId: userId,
+          candidateSource,
+          packet: {
+            roomId,
+            transcriptJobId,
+            recordingAssetId,
+            summaryNoteId,
+            packetBuildId,
+            transcriptSnapshotSha256,
+          },
+          externalSideEffects: false,
+          boundaries: {
+            explicitHumanDecision: true,
+            taskIdentityMutated: false,
+            taskStatusMutated: false,
+            taskOwnerMutated: false,
+            taskDatesMutated: false,
+            taskReminderMutated: false,
+            taskRecurrenceMutated: false,
+            taskTagsMutated: false,
+            taskGoalsMutated: false,
+            taskProjectMutated: false,
+            externalSideEffects: false,
+          },
+        };
         await tx.actionItemEvidenceReceipt.create({
           data: {
             id: taskEvidenceReceiptId,
@@ -981,18 +1015,53 @@ export async function POST(request: Request) {
             kind: TASK_EVIDENCE_MERGE_KIND,
             note: reviewNote || (candidate.sourceText ?? candidate.detail).slice(0, MAX_REVIEW_NOTE_LENGTH),
             occurredAt: new Date(reviewedAt),
-            evidenceJson: {
-              schema: TRANSCRIPT_TASK_EVIDENCE_MERGE_SCHEMA,
-              receiptId,
-              actionCandidateId,
-              mergedAt: reviewedAt,
-              mergedByUserId: userId,
-              candidateSource,
-              externalSideEffects: false,
-            },
+            evidenceJson: mergedEvidence,
           },
         });
         actionItem = mergeTarget;
+        mergeTargetAfter = mergeTargetSnapshot(mergeTarget);
+        const mergeBoundaries = responseBoundaries({ taskEvidenceAppended: true });
+        governance = await recordSucceededTranscriptWorkAction(tx, {
+          capabilityId: TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
+          clientRequestId: receiptId,
+          projectId,
+          roomId,
+          actorUserId: userId,
+          actorEmail: session.user.primaryEmail || session.user.email || "unknown@quipsly.invalid",
+          sourceSurface: "nest-session-packet-task-review",
+          targetObjectType: "ActionItem",
+          targetObjectId: mergeTarget.id,
+          payload: {
+            contractKind: "quipsly-transcript-task-evidence-merge-payload-v1",
+            roomId,
+            segmentId: candidate.segmentId,
+            segmentIds: candidate.segmentIds,
+            expectedProviderTextSha256: resolvedEvidence.sourceAnchor.providerTextSha256,
+            expectedSourceTextSha256: candidate.sourceTextSha256 ?? null,
+            targetObjectId: mergeTarget.id,
+            expectedTargetUpdatedAt: mergeExpectedUpdatedAt,
+            evidenceReceiptId: taskEvidenceReceiptId,
+            packetReviewReceiptId: receiptId,
+          },
+          sourceEvidence: {
+            objectType: "TranscriptSegmentSpan",
+            transcriptSnapshotSha256,
+            ...candidateSource,
+          },
+          result: {
+            targetObjectType: "ActionItem",
+            targetObjectId: mergeTarget.id,
+            evidenceReceiptId: taskEvidenceReceiptId,
+            targetBefore: mergeTargetBefore,
+            targetAfter: mergeTargetAfter,
+            status: mergeTarget.status,
+          },
+          boundaries: mergeBoundaries,
+        });
+        await tx.actionItemEvidenceReceipt.update({
+          where: { id: taskEvidenceReceiptId },
+          data: { evidenceJson: { ...mergedEvidence, governance } },
+        });
       }
 
       const receipt = {
@@ -1020,6 +1089,7 @@ export async function POST(request: Request) {
         actionItemId: actionItem?.id ?? null,
         taskEvidenceReceiptId,
         mergeTargetBefore,
+        mergeTargetAfter,
         candidateSource,
         externalSideEffects: false,
         assignmentClaimed: assignToMe,
@@ -1039,6 +1109,7 @@ export async function POST(request: Request) {
           decision,
           reviewedAt,
           reviewedByUserId: userId,
+          governance,
         },
       };
       const updatedCandidates = lockedCandidates.map((item) => (

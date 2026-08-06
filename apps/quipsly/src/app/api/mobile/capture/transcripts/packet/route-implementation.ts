@@ -26,6 +26,7 @@ import {
 import { buildTranscriptSourceAnchorFields } from "@/lib/server/transcript-source-span";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readGovernedActionSourceReference } from "@/lib/server/governed-action-runtime";
 import {
   sessionAccessWhere,
   sessionActorAccessWhere,
@@ -172,6 +173,7 @@ export function buildPacketGoalCandidates(input: {
         decision: text(latestReceipt.decision),
         reviewedAt: text(latestReceipt.reviewedAt),
         reviewedByUserId: text(latestReceipt.reviewedByUserId),
+        governance: readGovernedActionSourceReference(latestReceipt.governance),
       } : null,
     }];
   });

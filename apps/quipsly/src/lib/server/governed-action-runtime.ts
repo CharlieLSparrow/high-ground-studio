@@ -7,7 +7,9 @@ import {
   getGovernedActionCapability,
   governedCapabilityForAssistantToolKind,
   SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+  TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID,
   TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID,
+  TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID,
   TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID,
   type GovernedActionCapabilityManifest,
   type GovernedActionRiskLevel,
@@ -55,7 +57,9 @@ export type RecordSessionPreflightActionInput = {
 
 export type TranscriptWorkCapabilityId =
   | typeof TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID
-  | typeof TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID;
+  | typeof TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID
+  | typeof TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID
+  | typeof TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID;
 
 export type RecordTranscriptWorkActionInput = {
   capabilityId: TranscriptWorkCapabilityId;
@@ -418,6 +422,8 @@ export function readGovernedActionSourceReference(value: unknown): GovernedActio
     || (
       reference.capabilityId !== TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID
       && reference.capabilityId !== TRANSCRIPT_TASK_MATERIALIZE_CAPABILITY_ID
+      && reference.capabilityId !== TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID
+      && reference.capabilityId !== TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID
     )
     || reference.capabilityVersion !== 1
   ) return null;
@@ -430,7 +436,11 @@ export async function recordSucceededTranscriptWorkAction(
 ): Promise<GovernedActionSourceReference> {
   const capability = getGovernedActionCapability(input.capabilityId);
   if (!capability) throw new Error(`TRANSCRIPT_WORK_CAPABILITY_NOT_REGISTERED:${input.capabilityId}`);
-  const expectedTarget = input.capabilityId === TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID ? "Goal" : "ActionItem";
+  const isGoalCapability = input.capabilityId === TRANSCRIPT_GOAL_MATERIALIZE_CAPABILITY_ID
+    || input.capabilityId === TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID;
+  const isEvidenceMerge = input.capabilityId === TRANSCRIPT_GOAL_EVIDENCE_MERGE_CAPABILITY_ID
+    || input.capabilityId === TRANSCRIPT_TASK_EVIDENCE_MERGE_CAPABILITY_ID;
+  const expectedTarget = isGoalCapability ? "Goal" : "ActionItem";
   if (input.targetObjectType !== expectedTarget) {
     throw new Error(`TRANSCRIPT_WORK_TARGET_MISMATCH:${input.capabilityId}`);
   }
@@ -454,9 +464,11 @@ export async function recordSucceededTranscriptWorkAction(
       principalKind: "USER",
       principalId: input.actorUserId,
       sourceSurface: input.sourceSurface,
-      intent: input.targetObjectType === "Goal"
-        ? "Create one canonical goal from the reviewed transcript evidence I selected."
-        : "Create one canonical task from the reviewed transcript evidence I selected.",
+      intent: isEvidenceMerge
+        ? `Add the reviewed transcript evidence I selected to one existing ${input.targetObjectType === "Goal" ? "goal" : "task"} without changing its work fields.`
+        : input.targetObjectType === "Goal"
+          ? "Create one canonical goal from the reviewed transcript evidence I selected."
+          : "Create one canonical task from the reviewed transcript evidence I selected.",
       decisionPolicy: capability.decisionPolicy,
       riskLevel: capability.riskLevel,
       status: "EXECUTING",
@@ -483,7 +495,13 @@ export async function recordSucceededTranscriptWorkAction(
       requestId: randomUUID(),
       capabilityId: capability.id,
       capabilityVersion: capability.version,
-      actionKind: input.targetObjectType === "Goal" ? "MATERIALIZE_TRANSCRIPT_GOAL" : "MATERIALIZE_TRANSCRIPT_TASK",
+      actionKind: isEvidenceMerge
+        ? input.targetObjectType === "Goal"
+          ? "MERGE_TRANSCRIPT_EVIDENCE_INTO_GOAL"
+          : "MERGE_TRANSCRIPT_EVIDENCE_INTO_TASK"
+        : input.targetObjectType === "Goal"
+          ? "MATERIALIZE_TRANSCRIPT_GOAL"
+          : "MATERIALIZE_TRANSCRIPT_TASK",
       targetObjectType: input.targetObjectType,
       targetObjectId: input.targetObjectId,
       label: capability.title,
@@ -497,7 +515,12 @@ export async function recordSucceededTranscriptWorkAction(
       riskLevel: capability.riskLevel,
       status: "READY",
       consequenceJson: json({ consequences: capability.consequences, boundaries: input.boundaries }),
-      recoveryJson: json({ supported: capability.recovery, method: "edit-or-close-the-canonical-work-object" }),
+      recoveryJson: json({
+        supported: capability.recovery,
+        method: isEvidenceMerge
+          ? "append-an-explicit-superseding-evidence-review"
+          : "edit-or-close-the-canonical-work-object",
+      }),
       resultJson: json(input.result),
       approvedByUserId: input.actorUserId,
       approvedByEmail: input.actorEmail,
@@ -509,7 +532,9 @@ export async function recordSucceededTranscriptWorkAction(
     data: {
       actionId: action.id,
       attemptNumber: 1,
-      executorKind: "quipsly-transcript-work-domain-service",
+      executorKind: isEvidenceMerge
+        ? "quipsly-transcript-evidence-merge-domain-service"
+        : "quipsly-transcript-work-domain-service",
       status: "SUCCEEDED",
       evidenceJson: json({
         sourceEvidence: input.sourceEvidence,
