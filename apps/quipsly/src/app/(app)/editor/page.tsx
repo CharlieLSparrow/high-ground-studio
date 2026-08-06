@@ -968,6 +968,20 @@ function normalizeEpisodeSpineAudio(value: unknown): EpisodeSpineAudio | null {
   };
 }
 
+function timelineClipMatchesSpine(clip: TimelineClip, spine: EpisodeSpineAudio | null) {
+  if (!spine) return false;
+  if (spine.clipId && clip.id === spine.clipId) return true;
+  if (!spine.assetId) return false;
+  const captureSource = clip.captureTakeSource;
+  return [
+    clip.assetId,
+    clip.sourceId,
+    captureSource?.mediaAssetId,
+    captureSource?.sourceId,
+    captureSource?.recordingAssetId,
+  ].some((candidate) => candidate === spine.assetId);
+}
+
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "unknown size";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -7460,7 +7474,7 @@ function CloudEditorContent() {
 
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
-        const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+        const isSpine = timelineClipMatchesSpine(selectedClip, persistedSpineAudio);
         const msg = isSpine
           ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
           : `Delete "${selectedClip.name}" from this timeline?`;
@@ -11135,7 +11149,7 @@ function CloudEditorContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+                    const isSpine = timelineClipMatchesSpine(selectedClip, persistedSpineAudio);
                     const msg = isSpine
                       ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure?`
                       : `Delete "${selectedClip.name}" from this timeline?`;
@@ -11149,7 +11163,7 @@ function CloudEditorContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    const isSpine = selectedClip.id === persistedSpineAudio?.clipId || selectedClip.assetId === persistedSpineAudio?.assetId;
+                    const isSpine = timelineClipMatchesSpine(selectedClip, persistedSpineAudio);
                     const msg = isSpine
                       ? `"${selectedClip.name}" is the episode spine audio! Deleting it will break sync. Are you absolutely sure you want to delete it and close the gap?`
                       : `Delete "${selectedClip.name}" and close the gap on ${selectedClip.trackId}?`;
@@ -11719,6 +11733,7 @@ function CloudEditorContent() {
                 </div>
                 {/* REMOTION PLAYER INTEGRATION */}
                 <Player
+                  key={timelineFingerprint}
                   component={RemotionComposition}
                   inputProps={{ timeline: timelineState }}
                   durationInFrames={durationInFrames}
@@ -11726,7 +11741,10 @@ function CloudEditorContent() {
                   compositionHeight={1080}
                   fps={30}
                   style={{ width: "100%", aspectRatio: "16/9" }}
+                  className="quipsly-remotion-player"
                   controls
+                  acknowledgeRemotionLicense
+                  numberOfSharedAudioTags={0}
                 />
 
                 {isAiDisclosureOpen && (

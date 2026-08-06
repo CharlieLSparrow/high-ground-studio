@@ -259,3 +259,45 @@ explicitly choose the clean high-quality spine, materialize the take, generate
 proposals bound to the resulting timeline fingerprint, proof-listen or
 proof-watch them, apply accepted operations to a reversible draft, and save
 those reviewed draft receipts into the canonical Episode timeline.
+
+## Recovered-source assembled playback
+
+The retained take now crosses the clean-editor playback boundary. Quipsly uses
+the protected `/api/ingest/media/...` URL as the timeline playback binding while
+retaining the RecordingAsset, MediaAsset, imported source, exact SHA-256, and
+storage generation in `captureTakeSource`. A bare MediaAsset database ID is not
+a playable source and must never be treated as one.
+
+Operating the real editor exposed and repaired four additional integration
+defects:
+
+1. removing the obsolete A1 clip also removed the effective spine, so the UI
+   explicitly selected `mv7i-backup.mp3` instead of guessing between two audio
+   sources;
+2. fingerprinting spread arbitrary client/server object shapes, making missing
+   `aiSuggested` and `aiSuggested: false` look like concurrent edits; canonical
+   key ordering and normalized editorial defaults now preserve real conflict
+   detection while ignoring representation-only differences;
+3. a successful materialization returned the pre-write `plan.changed`, leaving
+   the button visually ready even after the write; the response now preserves
+   the operation receipt at top level while returning post-write plan truth;
+4. Remotion advanced its clock while its shared-audio pool kept playing silent
+   216 ms bootstrap files. The editor now uses direct, inspectable HTML audio
+   elements for user-initiated playback and remounts the composition when the
+   canonical timeline fingerprint changes.
+
+The repeatable local operation proves both protected sources return authenticated
+range bytes, mount inside the actual Remotion player, advance from `0.257853s`
+and `1.524532s` respectively on the reviewed clocks, and pause together. The
+canonical take contains two source lanes and three provider transcript turns;
+source bytes remain immutable and publication remains unstarted.
+
+Verification:
+
+```text
+20 materialization, artifact, and route tests passed
+3 retained assembled-playback operation tests passed
+Quipsly TypeScript typecheck passed
+Rendered retained operation passed protected range read, two-source Remotion playback, and pause
+No browser exception, secret output, source mutation, or publication side effect
+```

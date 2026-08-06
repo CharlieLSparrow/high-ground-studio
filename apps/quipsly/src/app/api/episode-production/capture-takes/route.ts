@@ -240,10 +240,15 @@ export async function POST(request: Request) {
       }, 409);
     }
 
+    const inspection = publicInspection(inspected);
     return noStore({
-      ...publicInspection(inspected),
+      ...inspection,
       ok: true,
       changed: inspected.plan.changed,
+      plan: {
+        ...inspection.plan,
+        changed: false,
+      },
       timelineJson: artifact,
       transcriptJson: artifact,
       timelineFingerprint: afterFingerprint,

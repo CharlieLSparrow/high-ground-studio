@@ -154,6 +154,7 @@ describe("Capture take materialization route", () => {
 
     expect(response.status).toBe(200);
     expect(payload.changed).toBe(true);
+    expect(payload.plan.changed).toBe(false);
     expect(payload.timelineJson.timelineClips[0]).toMatchObject({
       id: "capture-take:group-1:recording-1",
       captureTakeSource: {

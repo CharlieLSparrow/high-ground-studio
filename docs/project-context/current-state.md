@@ -2455,3 +2455,26 @@ These should be treated as cleanup candidates later, not as authoritative produc
   playback, transcript proof-listen, rough-cut render/probe, physical-iPhone
   recovery, and deployed Nest remain explicit next gates. See
   `docs/coordination/2026-08-06-retained-capture-recovery-materialization.md`.
+
+### 2026-08-06 retained assembled Capture playback
+
+- Materialized Capture clips now carry protected playback URLs while preserving
+  RecordingAsset, MediaAsset, imported-source, SHA-256, and generation identity
+  in their provenance binding. Spine deletion checks recognize every identity
+  form rather than relying on a URL/database-ID coincidence.
+- Canonical timeline fingerprints are key-order independent, normalize optional
+  client defaults, and now include volume and transform decisions. This removed
+  a false Capture materialization conflict without weakening genuine editorial
+  concurrency protection.
+- Successful materialization responses expose post-write `plan.changed=false`
+  while retaining top-level operation truth. The editor no longer leaves a
+  successful take looking actionable again.
+- Real operation found Remotion advancing only silent shared-audio bootstrap
+  tags. The editor now uses direct, source-inspectable audio elements and remounts
+  on canonical timeline changes. Both recovered protected sources advanced at
+  their reviewed offsets and paused together in the assembled player.
+- Focused suites pass 23 tests, Quipsly typecheck passes, and the retained
+  operation passes authenticated range read, canonical provenance readback,
+  two-source playback, pause, and session cleanup. Provider word correction,
+  physical-iPhone recovery, and deployed-Nest playback remain separate gates.
+  See `docs/coordination/quipsly-session-episode-assembly-truth-2026-08-06.md`.

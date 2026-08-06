@@ -209,6 +209,21 @@ function roundSeconds(value: number) {
   return Number(value.toFixed(3));
 }
 
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, canonicalJsonValue(entry)]),
+  );
+}
+
+function canonicalJsonStringify(value: unknown) {
+  return JSON.stringify(canonicalJsonValue(value));
+}
+
 function stableCaptureTakeMaterializations(timeline: TimelineState) {
   return [...(timeline.captureTakeMaterializations ?? [])]
     .map((receipt) => ({
@@ -241,6 +256,21 @@ export function episodeTimelineContentFingerprint(timeline: TimelineState): stri
       name: clip.name,
       color: clip.color,
       kind: clip.kind,
+      volume: typeof clip.volume === "number" && Number.isFinite(clip.volume) ? Number(clip.volume.toFixed(6)) : 1,
+      deactivated: Boolean(clip.deactivated),
+      aiSuggested: Boolean(clip.aiSuggested),
+      transforms: [...(clip.transforms ?? [])]
+        .map((transform) => ({
+          id: transform.id,
+          timeOffset: roundSeconds(transform.timeOffset),
+          scale: transform.scale,
+          x: transform.x,
+          y: transform.y,
+          rotation: transform.rotation,
+          easing: transform.easing,
+          aiSuggested: Boolean(transform.aiSuggested),
+        }))
+        .sort((left, right) => left.timeOffset - right.timeOffset || left.id.localeCompare(right.id)),
       generatedFrom: clip.generatedFrom,
       recordingSync: clip.recordingSync,
       captureTakeSource: clip.captureTakeSource,
@@ -248,16 +278,24 @@ export function episodeTimelineContentFingerprint(timeline: TimelineState): stri
     .sort((left, right) => left.id.localeCompare(right.id));
   const transcript = [...timeline.transcript]
     .map((block) => ({
-      ...block,
+      id: block.id,
       time: roundSeconds(Math.max(block.time, 0)),
       duration: roundSeconds(Math.max(block.duration, 0.05)),
+      text: block.text,
+      alert: block.alert ?? null,
       speaker: block.speaker ?? null,
       speakerParticipantId: block.speakerParticipantId ?? null,
       speakerUserId: block.speakerUserId ?? null,
+      sourceTranscriptJobId: block.sourceTranscriptJobId,
+      sourceSegmentId: block.sourceSegmentId,
+      sourceRecordingAssetId: block.sourceRecordingAssetId,
       sourceStartSeconds: block.sourceStartSeconds === undefined ? undefined : roundSeconds(block.sourceStartSeconds),
       sourceEndSeconds: block.sourceEndSeconds === undefined ? undefined : roundSeconds(block.sourceEndSeconds),
+      reviewStatus: block.reviewStatus,
+      acceptedReviewId: block.acceptedReviewId ?? null,
       deleted: Boolean(block.deleted),
       deactivated: Boolean(block.deactivated),
+      aiSuggested: Boolean(block.aiSuggested),
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const deactivatedRanges = [...(timeline.deactivatedRanges ?? [])]
@@ -312,7 +350,7 @@ export function episodeTimelineContentFingerprint(timeline: TimelineState): stri
     }))
     .sort((left, right) => left.blockId.localeCompare(right.blockId));
 
-  return JSON.stringify({
+  return canonicalJsonStringify({
     clips,
     transcript,
     deactivatedRanges,

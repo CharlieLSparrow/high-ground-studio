@@ -1,6 +1,7 @@
 import {
   EPISODE_ARTIFACT_CURRENT_VERSION,
   EPISODE_ARTIFACT_LEGACY_VERSION,
+  episodeTimelineContentFingerprint,
   getEpisodePayloadVersion,
   normalizeEpisodeArtifact,
 } from "./episodeArtifact";
@@ -85,5 +86,66 @@ describe("episode artifact v5", () => {
       cameraAssemblyPolicy: expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-camera" }),
       cameraSwitchDecisions: [expect.objectContaining({ targetClipId: "charlie-camera", status: "draft" })],
     }));
+  });
+
+  it("fingerprints semantically identical browser and server transcript defaults equally", () => {
+    const serverTimeline = {
+      clips: [],
+      transcript: [{
+        id: "words-1",
+        text: "Same canonical words.",
+        time: 0,
+        duration: 2,
+        alert: null,
+        deleted: false,
+      }],
+    };
+    const browserTimeline = {
+      clips: [],
+      transcript: [{
+        id: "words-1",
+        time: 0,
+        duration: 2,
+        text: "Same canonical words.",
+        deleted: false,
+        alert: null,
+        speaker: null,
+        speakerParticipantId: null,
+        speakerUserId: null,
+        acceptedReviewId: null,
+        deactivated: false,
+        aiSuggested: false,
+      }],
+    };
+
+    expect(episodeTimelineContentFingerprint(serverTimeline)).toBe(
+      episodeTimelineContentFingerprint(browserTimeline),
+    );
+  });
+
+  it("fingerprints audible and visual edit decisions", () => {
+    const base = {
+      clips: [{
+        id: "clip-1",
+        assetId: "/api/ingest/media/source-1",
+        kind: "audio" as const,
+        startIn: 0,
+        duration: 2,
+        sourceStart: 0,
+        sourceEnd: 2,
+        name: "Audio",
+        color: "#fff",
+        trackId: "A1",
+      }],
+      transcript: [],
+    };
+    const changedVolume = { ...base, clips: [{ ...base.clips[0], volume: 0.5 }] };
+    const changedTransform = { ...base, clips: [{
+      ...base.clips[0],
+      transforms: [{ id: "zoom-1", timeOffset: 0, scale: 1.2 }],
+    }] };
+
+    expect(episodeTimelineContentFingerprint(changedVolume)).not.toBe(episodeTimelineContentFingerprint(base));
+    expect(episodeTimelineContentFingerprint(changedTransform)).not.toBe(episodeTimelineContentFingerprint(base));
   });
 });

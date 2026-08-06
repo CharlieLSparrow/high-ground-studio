@@ -255,7 +255,11 @@ function clipForSource(
   const duration = Math.max(0.05, source.durationSeconds - sourceStart);
   const canonical: TimelineClip = {
     id: captureTakeClipId(source.captureGroupId, source.recordingAssetId),
-    assetId: source.mediaAssetId,
+    // Timeline playback consumes a protected URL. The durable media/source IDs
+    // remain in captureTakeSource for provenance and identity comparisons.
+    // A bare media ID would make Remotion substitute its silent unavailable-
+    // source placeholder even though the protected source is healthy.
+    assetId: source.playbackUrl,
     sourceId: source.sourceId,
     trackId,
     startIn: rounded(startIn),
@@ -341,6 +345,7 @@ function translatedTranscriptBlocks(
       sourceEndSeconds: rounded(visibleEnd),
       reviewStatus: segment.reviewStatus,
       acceptedReviewId: segment.acceptedReviewId,
+      deactivated: false,
     }];
   });
 }
@@ -400,8 +405,34 @@ function mapSpeakersToReviewedParticipantCameras(input: {
   return { generated, issues };
 }
 
+function canonicalTimelineComparisonState(timeline: TimelineState): TimelineState {
+  return {
+    ...timeline,
+    clips: timeline.clips.map((clip) => ({
+      ...clip,
+      volume: clip.volume ?? 1,
+      deactivated: Boolean(clip.deactivated),
+      aiSuggested: Boolean(clip.aiSuggested),
+      transforms: (clip.transforms ?? []).map((transform) => ({
+        ...transform,
+        aiSuggested: Boolean(transform.aiSuggested),
+      })),
+    })),
+    transcript: timeline.transcript.map((block) => ({
+      ...block,
+      deactivated: Boolean(block.deactivated),
+      aiSuggested: Boolean(block.aiSuggested),
+    })),
+    deactivatedRanges: (timeline.deactivatedRanges ?? []).map((range) => ({
+      ...range,
+      aiSuggested: Boolean(range.aiSuggested),
+    })),
+  };
+}
+
 function unchangedTimeline(left: TimelineState, right: TimelineState) {
-  return canonicalSha256(left) === canonicalSha256(right);
+  return canonicalSha256(canonicalTimelineComparisonState(left))
+    === canonicalSha256(canonicalTimelineComparisonState(right));
 }
 
 export function planCaptureTakeMaterialization(input: {

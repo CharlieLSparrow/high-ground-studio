@@ -353,6 +353,60 @@ describe("Capture take materialization", () => {
     expect(replay.changed).toBe(false);
   });
 
+  it("stays idempotent after transcript-bearing materialization is saved and hydrated", () => {
+    const sources = [source("audio-1", "audio"), source("video-1", "video")];
+    const first = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources,
+      transcript: transcript(),
+      actor,
+      materializedAt,
+    });
+    const artifact = buildEpisodeArtifactPayload({
+      timeline: first.timeline,
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-9",
+      generatedFrom: "capture-take-materialization",
+      savedAt: materializedAt,
+    });
+    const hydrated = timelineStateFromEpisodeArtifact(artifact);
+    const replay = planCaptureTakeMaterialization({
+      timeline: hydrated,
+      sources,
+      transcript: transcript(),
+      actor,
+      materializedAt: "2026-08-07T00:00:00.000Z",
+    });
+
+    expect(hydrated.transcript[0]).toMatchObject({ deactivated: false });
+    expect(replay.timeline).toEqual(hydrated);
+    expect(replay.changed).toBe(false);
+  });
+
+  it("materializes protected playback URLs while retaining durable source identity", () => {
+    const input = source("audio-playback", "audio");
+    const result = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [input],
+      actor,
+      materializedAt,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.timeline.clips[0]).toMatchObject({
+      assetId: input.playbackUrl,
+      sourceId: input.sourceId,
+      captureTakeSource: {
+        recordingAssetId: input.recordingAssetId,
+        mediaAssetId: input.mediaAssetId,
+        sourceId: input.sourceId,
+        sourceSha256: input.sourceSha256,
+        storageGeneration: input.storageGeneration,
+      },
+    });
+    expect(result.timeline.clips[0]?.assetId).not.toBe(input.mediaAssetId);
+  });
+
   it("preserves human lane edits and a manual replacement for a generated camera mapping", () => {
     const first = planCaptureTakeMaterialization({
       timeline: { clips: [], transcript: [] },
