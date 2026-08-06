@@ -119,7 +119,7 @@ successful append-only draft receipt.
 
 ## Persisted range decisions
 
-Episode artifact v4 persists exact range decisions separately from transcript
+Episode artifact v5 persists exact range decisions separately from transcript
 blocks. Each range carries its reason, source class, confidence, proposal
 identity, creation time, and—when signal-backed—the immutable recording SHA,
 storage generation, signal-profile SHA, coverage, RMS observation, and
@@ -162,13 +162,16 @@ will actually reload.
 
 ## Speaker-camera assembly
 
-Episode artifact v4 also persists two independent pieces of multicamera truth:
+Episode artifact v5 persists three independent pieces of multicamera truth:
 
 - `speakerCameraMappings` explicitly connect one normalized canonical speaker
   identity to one synchronized timeline clip; and
 - `cameraSwitchDecisions` select that clip over an exact source-time interval,
   retaining the mapping identity, transcript block IDs, proposal-set identity,
   timeline fingerprint, status, origin, and creation time.
+- `cameraAssemblyPolicy` records the selected shot grammar, minimum shot,
+  switch delay, explicit wide source, silence/overlap behavior, cutaway cadence,
+  and intro/outro behavior. It participates in stale-evidence detection.
 
 The deterministic assembler accepts only active speaker-labeled transcript
 blocks and explicit mappings. A mapped camera must cover the complete proposed
@@ -186,6 +189,13 @@ draft decisions, all mapping/decision actions participate in timeline
 Undo/Redo, and canonical save/reload retains the assembled cut. Apply and
 restore actions append `LOCAL_DRAFT` receipts; only timeline autosave or manual
 save appends the `CANONICAL_TIMELINE` receipt.
+
+Natural-conversation and dynamic policy styles can use an explicitly mapped
+wide source for overlap, silence, intro/outro, and periodic cutaways. Missing
+or uncovered wide ranges remain visible warnings and keep the existing shot;
+they never become blank or guessed camera decisions. A separate readiness
+projection reports video, transcript, speaker, map, and coverage gaps before
+assembly without relabeling timeline placement as source-sync proof.
 
 ## Non-negotiable boundaries
 

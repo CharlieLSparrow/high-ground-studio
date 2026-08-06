@@ -137,14 +137,41 @@ export type CameraSwitchDecision = {
   targetClipId: string;
   targetAssetId: string;
   mappingId: string;
-  source: "deterministic-speaker" | "manual" | "imported-edit";
+  source: "deterministic-speaker" | "deterministic-assembly" | "manual" | "imported-edit";
   status: "draft" | "approved";
   createdAt: string;
   evidence: {
     transcriptBlockIds: string[];
     proposalSetId?: string;
     proposalTimelineFingerprintSha256?: string;
+    policyId?: string;
+    assemblyReason?: CameraAssemblyReason;
   };
+};
+
+export type CameraAssemblyStyle = "active-speaker" | "natural-conversation" | "dynamic";
+export type CameraWideAngleMode = "off" | "overlap-and-silence" | "periodic";
+export type CameraAssemblyReason =
+  | "active-speaker"
+  | "wide-overlap"
+  | "wide-silence"
+  | "wide-intro"
+  | "wide-outro"
+  | "wide-cutaway";
+
+export type CameraAssemblyPolicy = {
+  id: string;
+  style: CameraAssemblyStyle;
+  minimumShotSeconds: number;
+  speakerSwitchDelaySeconds: number;
+  wideAngleMode: CameraWideAngleMode;
+  wideClipId: string | null;
+  silenceWideThresholdSeconds: number;
+  cutawayIntervalSeconds: number | null;
+  cutawayDurationSeconds: number;
+  useWideForIntroOutro: boolean;
+  source: "manual" | "imported";
+  createdAt: string;
 };
 
 export type CameraCutAssemblyHold = {
@@ -155,9 +182,54 @@ export type CameraCutAssemblyHold = {
   transcriptBlockIds: string[];
 };
 
+export type CameraCutAssemblyWarning = {
+  reason: "wide-camera-not-mapped" | "wide-camera-not-covering-range";
+  startSeconds: number | null;
+  endSeconds: number | null;
+  detail: string;
+};
+
 export type CameraCutAssemblyResult = {
   decisions: CameraSwitchDecision[];
   holds: CameraCutAssemblyHold[];
+  warnings: CameraCutAssemblyWarning[];
+  policy: CameraAssemblyPolicy;
+};
+
+export type CameraAssemblyReadinessIssue = {
+  code:
+    | "no-video-source"
+    | "single-video-source"
+    | "no-transcript"
+    | "unlabeled-transcript"
+    | "unmapped-speaker"
+    | "mapped-camera-missing"
+    | "mapped-camera-not-covering-speaker"
+    | "wide-camera-not-mapped"
+    | "wide-camera-not-covering-program";
+  severity: "block" | "warning";
+  detail: string;
+  speakerKey?: string;
+  clipId?: string;
+};
+
+export type CameraAssemblyReadiness = {
+  status: "ready" | "speaker-only" | "blocked";
+  videoSourceCount: number;
+  activeTranscriptBlockCount: number;
+  labeledTranscriptBlockCount: number;
+  speakerCount: number;
+  mappedSpeakerCount: number;
+  programStartSeconds: number | null;
+  programEndSeconds: number | null;
+  policy: CameraAssemblyPolicy;
+  issues: CameraAssemblyReadinessIssue[];
+  nextAction: string;
+  boundaries: {
+    timelinePlacementIsNotSourceSyncProof: true;
+    readinessCreatesNoDecision: true;
+    explicitCameraIdentityRequired: true;
+  };
 };
 
 export type TimelineState = {
@@ -167,11 +239,90 @@ export type TimelineState = {
   paperEditSnapshots?: Record<string, PaperEditSnapshot>;
   loopClips?: LoopClip[];
   speakerCameraMappings?: SpeakerCameraMapping[];
+  cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
   editorMode?: "play-all" | "play-edit";
 };
 
 const CAMERA_CUT_MINIMUM_SECONDS = 1.5;
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
+}
+
+export function cameraAssemblyPolicyPreset(
+  style: CameraAssemblyStyle,
+  input: { id?: string; wideClipId?: string | null; createdAt?: string } = {},
+): CameraAssemblyPolicy {
+  const shared = {
+    id: input.id?.trim() || "camera-assembly-policy",
+    wideClipId: input.wideClipId?.trim() || null,
+    source: "manual" as const,
+    createdAt: input.createdAt?.trim() || new Date(0).toISOString(),
+  };
+  if (style === "natural-conversation") return {
+    ...shared,
+    style,
+    minimumShotSeconds: 2,
+    speakerSwitchDelaySeconds: 0.2,
+    wideAngleMode: "overlap-and-silence",
+    silenceWideThresholdSeconds: 1.25,
+    cutawayIntervalSeconds: null,
+    cutawayDurationSeconds: 2.5,
+    useWideForIntroOutro: true,
+  };
+  if (style === "dynamic") return {
+    ...shared,
+    style,
+    minimumShotSeconds: 1.75,
+    speakerSwitchDelaySeconds: 0.15,
+    wideAngleMode: "periodic",
+    silenceWideThresholdSeconds: 1,
+    cutawayIntervalSeconds: 30,
+    cutawayDurationSeconds: 2.5,
+    useWideForIntroOutro: true,
+  };
+  return {
+    ...shared,
+    style: "active-speaker",
+    minimumShotSeconds: CAMERA_CUT_MINIMUM_SECONDS,
+    speakerSwitchDelaySeconds: 0,
+    wideAngleMode: "off",
+    silenceWideThresholdSeconds: 1.25,
+    cutawayIntervalSeconds: null,
+    cutawayDurationSeconds: 2.5,
+    useWideForIntroOutro: false,
+  };
+}
+
+export function normalizeCameraAssemblyPolicy(value: CameraAssemblyPolicy | null | undefined): CameraAssemblyPolicy {
+  const style: CameraAssemblyStyle = value?.style === "natural-conversation" || value?.style === "dynamic"
+    ? value.style
+    : "active-speaker";
+  const preset = cameraAssemblyPolicyPreset(style, {
+    id: value?.id,
+    wideClipId: value?.wideClipId,
+    createdAt: value?.createdAt,
+  });
+  const wideAngleMode: CameraWideAngleMode = value?.wideAngleMode === "overlap-and-silence" || value?.wideAngleMode === "periodic"
+    ? value.wideAngleMode
+    : style === "active-speaker" ? "off" : preset.wideAngleMode;
+  const interval = value?.cutawayIntervalSeconds;
+  return {
+    ...preset,
+    minimumShotSeconds: boundedNumber(value?.minimumShotSeconds, preset.minimumShotSeconds, 0.5, 30),
+    speakerSwitchDelaySeconds: boundedNumber(value?.speakerSwitchDelaySeconds, preset.speakerSwitchDelaySeconds, 0, 2),
+    wideAngleMode,
+    silenceWideThresholdSeconds: boundedNumber(value?.silenceWideThresholdSeconds, preset.silenceWideThresholdSeconds, 0.5, 10),
+    cutawayIntervalSeconds: interval === null || interval === undefined
+      ? preset.cutawayIntervalSeconds
+      : boundedNumber(interval, preset.cutawayIntervalSeconds ?? 30, 5, 120),
+    cutawayDurationSeconds: boundedNumber(value?.cutawayDurationSeconds, preset.cutawayDurationSeconds, 1, 10),
+    useWideForIntroOutro: value?.useWideForIntroOutro ?? preset.useWideForIntroOutro,
+    source: value?.source === "imported" ? "imported" : "manual",
+  };
+}
 
 export function canonicalSpeakerKey(value: unknown) {
   return typeof value === "string"
@@ -184,6 +335,83 @@ function clipCoversSourceRange(clip: TimelineClip, startSeconds: number, endSeco
     && (clip.kind === "video" || clip.trackId.toUpperCase().startsWith("V"))
     && clip.startIn <= startSeconds + 0.001
     && clip.startIn + Math.max(clip.duration, 0.05) >= endSeconds - 0.001;
+}
+
+export function cameraAssemblyReadiness(timeline: TimelineState): CameraAssemblyReadiness {
+  const policy = normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy);
+  const videoClips = timeline.clips.filter((clip) => (clip.kind === "video" || clip.trackId.toUpperCase().startsWith("V")) && !clip.deactivated);
+  const activeBlocks = timeline.transcript.filter((block) => !block.deleted && !block.deactivated);
+  const labeledBlocks = activeBlocks.filter((block) => canonicalSpeakerKey(block.speaker));
+  const speakers = new Map<string, { label: string; startSeconds: number; endSeconds: number }>();
+  for (const block of labeledBlocks) {
+    const speakerKey = canonicalSpeakerKey(block.speaker);
+    const current = speakers.get(speakerKey);
+    const startSeconds = Math.max(0, block.time);
+    const endSeconds = Math.max(startSeconds + 0.05, block.time + Math.max(block.duration, 0.05));
+    speakers.set(speakerKey, {
+      label: block.speaker?.trim() || speakerKey,
+      startSeconds: current ? Math.min(current.startSeconds, startSeconds) : startSeconds,
+      endSeconds: current ? Math.max(current.endSeconds, endSeconds) : endSeconds,
+    });
+  }
+  const mappings = new Map((timeline.speakerCameraMappings ?? []).map((mapping) => [canonicalSpeakerKey(mapping.speakerKey), mapping]));
+  const issues: CameraAssemblyReadinessIssue[] = [];
+  if (!videoClips.length) issues.push({ code: "no-video-source", severity: "block", detail: "Attach at least one synchronized video source before assembling camera decisions." });
+  else if (videoClips.length === 1) issues.push({ code: "single-video-source", severity: "warning", detail: "Only one active video source is present. Speaker cuts can be reviewed, but there is no second angle to switch to." });
+  if (!activeBlocks.length) issues.push({ code: "no-transcript", severity: "block", detail: "Attach or generate the canonical timed transcript before using speaker evidence." });
+  else if (labeledBlocks.length < activeBlocks.length) issues.push({ code: "unlabeled-transcript", severity: "block", detail: `${activeBlocks.length - labeledBlocks.length} active transcript block${activeBlocks.length - labeledBlocks.length === 1 ? " has" : "s have"} no canonical speaker identity.` });
+
+  let mappedSpeakerCount = 0;
+  for (const [speakerKey, speaker] of speakers) {
+    const mapping = mappings.get(speakerKey);
+    if (!mapping) {
+      issues.push({ code: "unmapped-speaker", severity: "block", speakerKey, detail: `${speaker.label} has no explicit camera mapping.` });
+      continue;
+    }
+    const clip = videoClips.find((candidate) => candidate.id === mapping.targetClipId);
+    if (!clip) {
+      issues.push({ code: "mapped-camera-missing", severity: "block", speakerKey, clipId: mapping.targetClipId, detail: `${speaker.label}'s mapped camera is not an active video source on this timeline.` });
+      continue;
+    }
+    if (!clipCoversSourceRange(clip, speaker.startSeconds, speaker.endSeconds)) {
+      issues.push({ code: "mapped-camera-not-covering-speaker", severity: "block", speakerKey, clipId: clip.id, detail: `${speaker.label}'s mapped camera does not cover the complete labeled source range.` });
+      continue;
+    }
+    mappedSpeakerCount += 1;
+  }
+  const programStartSeconds = activeBlocks.length ? Math.min(...activeBlocks.map((block) => Math.max(0, block.time))) : null;
+  const programEndSeconds = activeBlocks.length ? Math.max(...activeBlocks.map((block) => Math.max(0, block.time + Math.max(block.duration, 0.05)))) : null;
+  if (policy.wideAngleMode !== "off") {
+    const wideClip = policy.wideClipId ? videoClips.find((clip) => clip.id === policy.wideClipId) : null;
+    if (!wideClip) issues.push({ code: "wide-camera-not-mapped", severity: "warning", detail: "The selected style requests wide coverage, but no active wide camera is mapped. Quipsly will keep speaker-only decisions and report every unavailable wide range." });
+    else if (programStartSeconds !== null && programEndSeconds !== null && !clipCoversSourceRange(wideClip, programStartSeconds, programEndSeconds)) {
+      issues.push({ code: "wide-camera-not-covering-program", severity: "warning", clipId: wideClip.id, detail: "The mapped wide camera does not cover the complete transcript program range. Uncovered wide decisions will be refused individually." });
+    }
+  }
+
+  const blocking = issues.filter((issue) => issue.severity === "block");
+  const status = blocking.length ? "blocked" : issues.some((issue) => issue.severity === "warning") ? "speaker-only" : "ready";
+  const nextAction = blocking[0]?.detail
+    ?? issues[0]?.detail
+    ?? "Bind the current timeline and transcript evidence, then assemble and proof-watch the reversible draft.";
+  return {
+    status,
+    videoSourceCount: videoClips.length,
+    activeTranscriptBlockCount: activeBlocks.length,
+    labeledTranscriptBlockCount: labeledBlocks.length,
+    speakerCount: speakers.size,
+    mappedSpeakerCount,
+    programStartSeconds,
+    programEndSeconds,
+    policy,
+    issues,
+    nextAction,
+    boundaries: {
+      timelinePlacementIsNotSourceSyncProof: true,
+      readinessCreatesNoDecision: true,
+      explicitCameraIdentityRequired: true,
+    },
+  };
 }
 
 /**
@@ -199,9 +427,13 @@ export function assembleSpeakerCameraCut(input: {
   proposalSetId?: string;
   proposalTimelineFingerprintSha256?: string;
 }): CameraCutAssemblyResult {
-  const minimumShotSeconds = Math.max(0.25, input.minimumShotSeconds ?? CAMERA_CUT_MINIMUM_SECONDS);
+  const normalizedPolicy = normalizeCameraAssemblyPolicy(input.timeline.cameraAssemblyPolicy);
+  const policy = input.minimumShotSeconds === undefined
+    ? normalizedPolicy
+    : { ...normalizedPolicy, minimumShotSeconds: boundedNumber(input.minimumShotSeconds, normalizedPolicy.minimumShotSeconds, 0.5, 30) };
+  const minimumShotSeconds = policy.minimumShotSeconds;
   const mappings = new Map(
-    (input.timeline.speakerCameraMappings ?? []).map((mapping) => [mapping.speakerKey, mapping]),
+    (input.timeline.speakerCameraMappings ?? []).map((mapping) => [canonicalSpeakerKey(mapping.speakerKey), mapping]),
   );
   const blocks = input.timeline.transcript
     .filter((block) => !block.deleted && !block.deactivated && canonicalSpeakerKey(block.speaker))
@@ -251,7 +483,8 @@ export function assembleSpeakerCameraCut(input: {
       holds.push({ reason: "overlapping-speech", speakerLabel: run.speakerLabel, startSeconds: run.startSeconds, endSeconds: run.endSeconds, transcriptBlockIds: run.transcriptBlockIds });
       continue;
     }
-    if (run.endSeconds - run.startSeconds < minimumShotSeconds) {
+    const requiredRunSeconds = minimumShotSeconds + (accepted.length ? policy.speakerSwitchDelaySeconds : 0);
+    if (run.endSeconds - run.startSeconds < requiredRunSeconds) {
       holds.push({ reason: "rapid-speaker-turn", speakerLabel: run.speakerLabel, startSeconds: run.startSeconds, endSeconds: run.endSeconds, transcriptBlockIds: run.transcriptBlockIds });
       continue;
     }
@@ -274,13 +507,17 @@ export function assembleSpeakerCameraCut(input: {
     }
   }
 
-  const decisions = collapsed.map((run, index): CameraSwitchDecision => {
+  const switchStarts = collapsed.map((run, index) => index === 0
+    ? run.startSeconds
+    : Math.min(run.endSeconds - 0.05, run.startSeconds + policy.speakerSwitchDelaySeconds));
+  let decisions = collapsed.map((run, index): CameraSwitchDecision => {
     const next = collapsed[index + 1];
-    const endSeconds = Math.max(run.endSeconds, next?.startSeconds ?? run.endSeconds);
+    const startSeconds = switchStarts[index] ?? run.startSeconds;
+    const endSeconds = Math.max(run.endSeconds, next ? switchStarts[index + 1] ?? next.startSeconds : run.endSeconds);
     return {
-      id: `camera-switch:${run.mapping.id}:${Math.round(run.startSeconds * 1_000)}`,
-      startSeconds: run.startSeconds,
-      durationSeconds: Math.max(0.05, endSeconds - run.startSeconds),
+      id: `camera-switch:${run.mapping.id}:${Math.round(startSeconds * 1_000)}`,
+      startSeconds,
+      durationSeconds: Math.max(0.05, endSeconds - startSeconds),
       speakerKey: run.speakerKey,
       speakerLabel: run.speakerLabel,
       targetClipId: run.mapping.targetClipId,
@@ -293,11 +530,128 @@ export function assembleSpeakerCameraCut(input: {
         transcriptBlockIds: Array.from(new Set(run.transcriptBlockIds)),
         proposalSetId: input.proposalSetId,
         proposalTimelineFingerprintSha256: input.proposalTimelineFingerprintSha256,
+        policyId: policy.id,
+        assemblyReason: "active-speaker",
       },
     };
   });
 
-  return { decisions, holds };
+  const warnings: CameraCutAssemblyWarning[] = [];
+  const wideClip = policy.wideClipId
+    ? input.timeline.clips.find((clip) => clip.id === policy.wideClipId && (clip.kind === "video" || clip.trackId.toUpperCase().startsWith("V")) && !clip.deactivated)
+    : null;
+  if (policy.wideAngleMode !== "off" && !wideClip) {
+    warnings.push({
+      reason: "wide-camera-not-mapped",
+      startSeconds: null,
+      endSeconds: null,
+      detail: "This assembly style requests wide coverage, but no active wide camera is mapped. Speaker decisions remain available; Quipsly will not substitute an arbitrary track.",
+    });
+  }
+
+  type WideOverlay = {
+    startSeconds: number;
+    endSeconds: number;
+    reason: Exclude<CameraAssemblyReason, "active-speaker">;
+    transcriptBlockIds: string[];
+  };
+  const overlays: WideOverlay[] = [];
+  const firstDecision = decisions[0];
+  const lastDecision = decisions[decisions.length - 1];
+  if (wideClip && policy.useWideForIntroOutro && firstDecision && lastDecision) {
+    const introEnd = Math.min(firstDecision.startSeconds + 3, firstDecision.startSeconds + firstDecision.durationSeconds);
+    if (introEnd - firstDecision.startSeconds >= 1) overlays.push({ startSeconds: firstDecision.startSeconds, endSeconds: introEnd, reason: "wide-intro", transcriptBlockIds: firstDecision.evidence.transcriptBlockIds });
+    const lastEnd = lastDecision.startSeconds + lastDecision.durationSeconds;
+    const outroStart = Math.max(lastDecision.startSeconds, lastEnd - 3);
+    if (lastEnd - outroStart >= 1) overlays.push({ startSeconds: outroStart, endSeconds: lastEnd, reason: "wide-outro", transcriptBlockIds: lastDecision.evidence.transcriptBlockIds });
+  }
+  if (wideClip && policy.wideAngleMode === "periodic" && policy.cutawayIntervalSeconds) {
+    for (const decision of decisions) {
+      const decisionEnd = decision.startSeconds + decision.durationSeconds;
+      for (let startSeconds = decision.startSeconds + policy.cutawayIntervalSeconds; startSeconds + policy.cutawayDurationSeconds < decisionEnd - 0.05; startSeconds += policy.cutawayIntervalSeconds) {
+        overlays.push({ startSeconds, endSeconds: startSeconds + policy.cutawayDurationSeconds, reason: "wide-cutaway", transcriptBlockIds: decision.evidence.transcriptBlockIds });
+      }
+    }
+  }
+  if (wideClip && policy.wideAngleMode !== "off") {
+    for (let index = 0; index < collapsed.length - 1; index += 1) {
+      const current = collapsed[index]!;
+      const next = collapsed[index + 1]!;
+      const silenceStart = current.endSeconds;
+      const silenceEnd = next.startSeconds;
+      if (silenceEnd - silenceStart >= policy.silenceWideThresholdSeconds) {
+        overlays.push({ startSeconds: silenceStart, endSeconds: silenceEnd, reason: "wide-silence", transcriptBlockIds: [] });
+      }
+    }
+    for (const hold of holds.filter((candidate) => candidate.reason === "overlapping-speech")) {
+      if (hold.endSeconds - hold.startSeconds >= 0.25) overlays.push({ startSeconds: hold.startSeconds, endSeconds: hold.endSeconds, reason: "wide-overlap", transcriptBlockIds: hold.transcriptBlockIds });
+    }
+  }
+
+  function withWideOverlay(current: CameraSwitchDecision[], overlay: WideOverlay) {
+    if (!wideClip || !clipCoversSourceRange(wideClip, overlay.startSeconds, overlay.endSeconds)) {
+      warnings.push({
+        reason: "wide-camera-not-covering-range",
+        startSeconds: overlay.startSeconds,
+        endSeconds: overlay.endSeconds,
+        detail: `The mapped wide camera does not cover ${overlay.startSeconds.toFixed(3)}–${overlay.endSeconds.toFixed(3)} seconds. The existing shot remains; no blank angle was created.`,
+      });
+      return current;
+    }
+    const next: CameraSwitchDecision[] = [];
+    for (const decision of current) {
+      const decisionEnd = decision.startSeconds + decision.durationSeconds;
+      if (overlay.endSeconds <= decision.startSeconds + 0.001 || overlay.startSeconds >= decisionEnd - 0.001) {
+        next.push(decision);
+        continue;
+      }
+      if (overlay.startSeconds > decision.startSeconds + 0.001) next.push({
+        ...decision,
+        id: `${decision.id}:before:${Math.round(overlay.startSeconds * 1_000)}`,
+        durationSeconds: overlay.startSeconds - decision.startSeconds,
+      });
+      if (overlay.endSeconds < decisionEnd - 0.001) next.push({
+        ...decision,
+        id: `${decision.id}:after:${Math.round(overlay.endSeconds * 1_000)}`,
+        startSeconds: overlay.endSeconds,
+        durationSeconds: decisionEnd - overlay.endSeconds,
+      });
+    }
+    next.push({
+      id: `camera-switch:${policy.id}:${overlay.reason}:${Math.round(overlay.startSeconds * 1_000)}`,
+      startSeconds: overlay.startSeconds,
+      durationSeconds: overlay.endSeconds - overlay.startSeconds,
+      speakerKey: "__wide__",
+      speakerLabel: "Wide coverage",
+      targetClipId: wideClip.id,
+      targetAssetId: wideClip.assetId,
+      mappingId: policy.id,
+      source: "deterministic-assembly",
+      status: "draft",
+      createdAt: input.createdAt,
+      evidence: {
+        transcriptBlockIds: Array.from(new Set(overlay.transcriptBlockIds)),
+        proposalSetId: input.proposalSetId,
+        proposalTimelineFingerprintSha256: input.proposalTimelineFingerprintSha256,
+        policyId: policy.id,
+        assemblyReason: overlay.reason,
+      },
+    });
+    return next.sort((left, right) => left.startSeconds - right.startSeconds || left.id.localeCompare(right.id));
+  }
+
+  const overlayPriority: Record<WideOverlay["reason"], number> = {
+    "wide-intro": 0,
+    "wide-outro": 0,
+    "wide-cutaway": 1,
+    "wide-silence": 2,
+    "wide-overlap": 3,
+  };
+  for (const overlay of overlays.sort((left, right) => overlayPriority[left.reason] - overlayPriority[right.reason] || left.startSeconds - right.startSeconds)) {
+    decisions = withWideOverlay(decisions, overlay);
+  }
+
+  return { decisions, holds, warnings, policy };
 }
 
 export function cameraSwitchDecisionAtTime(timeline: TimelineState, time: number) {

@@ -6,9 +6,9 @@ export const TRACK_PREFIX_AUDIO = "A" as const;
 
 export const DEFAULT_VIDEO_TRACK = `${TRACK_PREFIX_VIDEO}1`;
 export const DEFAULT_AUDIO_TRACK = `${TRACK_PREFIX_AUDIO}1`;
-import { canonicalSpeakerKey } from "@high-ground/quipsly-domain";
-import type { CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
-export type { CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
+import { canonicalSpeakerKey, normalizeCameraAssemblyPolicy } from "@high-ground/quipsly-domain";
+import type { CameraAssemblyPolicy, CameraAssemblyReason, CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState } from "@high-ground/quipsly-domain";
+export type { CameraAssemblyPolicy, CameraSwitchDecision, SpeakerCameraMapping, TimelineTrackKind, TransformKeyframe, TimelineClip, TranscriptBlock, TimelineRangeEdit, PaperEditSnapshot, LoopClip, TimelineState };
 
 type TrackPrefix = typeof TRACK_PREFIX_VIDEO | typeof TRACK_PREFIX_AUDIO;
 
@@ -304,7 +304,7 @@ function sanitizeCameraSwitchDecision(value: CameraSwitchDecision): CameraSwitch
     targetClipId,
     targetAssetId: typeof value.targetAssetId === "string" ? value.targetAssetId.trim() : "",
     mappingId,
-    source: value.source === "manual" || value.source === "imported-edit" ? value.source : "deterministic-speaker",
+    source: value.source === "manual" || value.source === "imported-edit" || value.source === "deterministic-assembly" ? value.source : "deterministic-speaker",
     status: value.status === "approved" ? "approved" : "draft",
     createdAt: typeof value.createdAt === "string" && value.createdAt ? value.createdAt : new Date(0).toISOString(),
     evidence: {
@@ -313,6 +313,10 @@ function sanitizeCameraSwitchDecision(value: CameraSwitchDecision): CameraSwitch
         : [],
       proposalSetId: typeof evidence.proposalSetId === "string" ? evidence.proposalSetId.trim() || undefined : undefined,
       proposalTimelineFingerprintSha256: typeof evidence.proposalTimelineFingerprintSha256 === "string" ? evidence.proposalTimelineFingerprintSha256.trim() || undefined : undefined,
+      policyId: typeof evidence.policyId === "string" ? evidence.policyId.trim() || undefined : undefined,
+      assemblyReason: (["active-speaker", "wide-overlap", "wide-silence", "wide-intro", "wide-outro", "wide-cutaway"] as CameraAssemblyReason[]).includes(evidence.assemblyReason as CameraAssemblyReason)
+        ? evidence.assemblyReason as CameraAssemblyReason
+        : undefined,
     },
   };
 }
@@ -327,6 +331,9 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
   const rawLoopClips = Array.isArray(nextState.loopClips) ? nextState.loopClips : [];
   const rawDeactivatedRanges = Array.isArray(nextState.deactivatedRanges) ? nextState.deactivatedRanges : [];
   const rawSpeakerCameraMappings = Array.isArray(nextState.speakerCameraMappings) ? nextState.speakerCameraMappings : [];
+  const cameraAssemblyPolicy = nextState.cameraAssemblyPolicy && typeof nextState.cameraAssemblyPolicy === "object"
+    ? normalizeCameraAssemblyPolicy(nextState.cameraAssemblyPolicy)
+    : undefined;
   const rawCameraSwitchDecisions = Array.isArray(nextState.cameraSwitchDecisions) ? nextState.cameraSwitchDecisions : [];
   const editorMode: "play-all" | "play-edit" = nextState.editorMode === "play-all" ? "play-all" : "play-edit";
 
@@ -340,6 +347,7 @@ function sanitizeTimelineState(nextState: TimelineState | null | undefined): Tim
     speakerCameraMappings: rawSpeakerCameraMappings
       .map(sanitizeSpeakerCameraMapping)
       .filter((mapping): mapping is SpeakerCameraMapping => Boolean(mapping)),
+    cameraAssemblyPolicy,
     cameraSwitchDecisions: rawCameraSwitchDecisions
       .map(sanitizeCameraSwitchDecision)
       .filter((decision): decision is CameraSwitchDecision => Boolean(decision))
@@ -379,6 +387,8 @@ type Action =
   | { type: "DELETE_LOOP_CLIP"; payload: { loopId: string } }
   | { type: "SET_SPEAKER_CAMERA_MAPPING"; payload: { mapping: SpeakerCameraMapping } }
   | { type: "REMOVE_SPEAKER_CAMERA_MAPPING"; payload: { mappingId: string } }
+  | { type: "SET_CAMERA_ASSEMBLY_POLICY"; payload: { policy: CameraAssemblyPolicy } }
+  | { type: "SET_CAMERA_ASSEMBLY_RESULT"; payload: { policy: CameraAssemblyPolicy; decisions: CameraSwitchDecision[] } }
   | { type: "SET_CAMERA_SWITCH_DECISIONS"; payload: { decisions: CameraSwitchDecision[] } }
   | { type: "REMOVE_CAMERA_SWITCH_DECISION"; payload: { decisionId: string } }
   | { type: "TOGGLE_EDITOR_MODE"; payload?: never }
@@ -843,6 +853,10 @@ function timelineReducer(state: TimelineState, action: Action): TimelineState {
         cameraSwitchDecisions: (state.cameraSwitchDecisions ?? []).filter((decision) => decision.mappingId !== action.payload.mappingId),
       };
     }
+    case "SET_CAMERA_ASSEMBLY_POLICY":
+      return sanitizeTimelineState({ ...state, cameraAssemblyPolicy: action.payload.policy, cameraSwitchDecisions: [] });
+    case "SET_CAMERA_ASSEMBLY_RESULT":
+      return sanitizeTimelineState({ ...state, cameraAssemblyPolicy: action.payload.policy, cameraSwitchDecisions: action.payload.decisions });
     case "SET_CAMERA_SWITCH_DECISIONS":
       return sanitizeTimelineState({ ...state, cameraSwitchDecisions: action.payload.decisions });
     case "REMOVE_CAMERA_SWITCH_DECISION":
@@ -965,6 +979,10 @@ export function useTimelineState(initialState: TimelineState) {
       dispatch({ type: "SET_SPEAKER_CAMERA_MAPPING", payload: { mapping } }),
     removeSpeakerCameraMapping: (mappingId: string) =>
       dispatch({ type: "REMOVE_SPEAKER_CAMERA_MAPPING", payload: { mappingId } }),
+    setCameraAssemblyPolicy: (policy: CameraAssemblyPolicy) =>
+      dispatch({ type: "SET_CAMERA_ASSEMBLY_POLICY", payload: { policy } }),
+    setCameraAssemblyResult: (policy: CameraAssemblyPolicy, decisions: CameraSwitchDecision[]) =>
+      dispatch({ type: "SET_CAMERA_ASSEMBLY_RESULT", payload: { policy, decisions } }),
     setCameraSwitchDecisions: (decisions: CameraSwitchDecision[]) =>
       dispatch({ type: "SET_CAMERA_SWITCH_DECISIONS", payload: { decisions } }),
     removeCameraSwitchDecision: (decisionId: string) =>

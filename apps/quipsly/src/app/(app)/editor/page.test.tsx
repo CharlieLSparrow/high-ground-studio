@@ -255,6 +255,67 @@ describe("CloudEditor production truth UX", () => {
     expect(screen.getByRole("button", { name: "Program Monitor" })).toBeInTheDocument();
   });
 
+  it("configures, assembles, receipts, and persists a wide-aware camera policy", async () => {
+    mockEpisodeProduction({
+      timelineJson: {
+        payloadVersion: 5,
+        projectSlug: "high-ground-odyssey-manuscript",
+        episodeSlug: "current-episode",
+        source: "quipsly-editor",
+        timelineClips: [
+          { id: "charlie-cam", assetId: "charlie.mp4", kind: "video", trackId: "V1", startIn: 0, duration: 20, sourceStart: 0, sourceEnd: 20, name: "Charlie camera", color: "#111" },
+          { id: "homer-cam", assetId: "homer.mp4", kind: "video", trackId: "V2", startIn: 0, duration: 20, sourceStart: 0, sourceEnd: 20, name: "Homer camera", color: "#222" },
+          { id: "wide-cam", assetId: "wide.mp4", kind: "video", trackId: "V3", startIn: 0, duration: 20, sourceStart: 0, sourceEnd: 20, name: "Wide camera", color: "#333" },
+        ],
+        transcript: [
+          { id: "speaker-charlie", time: 0, duration: 5, text: "Opening", speaker: "Charlie", deleted: false, deactivated: false, alert: null },
+          { id: "speaker-homer", time: 7, duration: 6, text: "Response", speaker: "Homer", deleted: false, deactivated: false, alert: null },
+        ],
+        speakerCameraMappings: [
+          { id: "map-charlie", speakerKey: "charlie", speakerLabel: "Charlie", targetClipId: "charlie-cam", targetAssetId: "charlie.mp4", source: "manual", createdAt: "2026-08-07T00:00:00.000Z" },
+          { id: "map-homer", speakerKey: "homer", speakerLabel: "Homer", targetClipId: "homer-cam", targetAssetId: "homer.mp4", source: "manual", createdAt: "2026-08-07T00:00:00.000Z" },
+        ],
+        cameraSwitchDecisions: [],
+        generatedFrom: "test",
+        savedAt: "2026-08-07T00:00:00.000Z",
+      },
+    });
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    expect(await screen.findByText(/Loaded Current Episode from saved timeline/i)).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Assembly style" }), "natural-conversation");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Wide camera" }), "wide-cam");
+    expect(screen.getByText(/shot grammar is now part of the editable timeline/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Bind current evidence" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Assemble speaker cut" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Assemble speaker cut" }));
+
+    expect(await screen.findByText(/receipt-backed camera ranges/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Wide coverage/i).length).toBeGreaterThan(0);
+    const appliedReceiptRequest = jest.mocked(globalThis.fetch).mock.calls.find(([url, init]) => String(url).includes("/api/editor/edit-review") && JSON.parse(String(init?.body || "{}")).evidence?.editKind === "deterministic-speaker-camera-cut");
+    expect(JSON.parse(String(appliedReceiptRequest?.[1]?.body || "{}"))).toEqual(expect.objectContaining({
+      evidence: expect.objectContaining({
+        assemblyPolicy: expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-cam" }),
+        sourceMediaUnchanged: true,
+      }),
+    }));
+
+    await user.click(screen.getByRole("button", { name: "Save Episode Timeline" }));
+    await waitFor(() => {
+      const saveCall = jest.mocked(globalThis.fetch).mock.calls.find(([, init]) => {
+        const body = JSON.parse(String(init?.body ?? "{}"));
+        return body.action === "save-timeline" && body.timelineJson?.cameraAssemblyPolicy?.wideClipId === "wide-cam" && body.timelineJson?.cameraSwitchDecisions?.length > 0;
+      });
+      expect(saveCall).toBeDefined();
+      const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
+      expect(saved.payloadVersion).toBe(5);
+      expect(saved.cameraAssemblyPolicy).toEqual(expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-cam" }));
+      expect(saved.cameraSwitchDecisions).toEqual(expect.arrayContaining([expect.objectContaining({ source: "deterministic-assembly", evidence: expect.objectContaining({ policyId: "camera-assembly-policy" }) })]));
+    });
+  });
+
   it("opens an exact Capture take as a transparent source set without approving placement", async () => {
     const user = userEvent.setup();
     const captureGroupId = "55555555-5555-4555-8555-555555555555";
@@ -515,7 +576,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
-      expect(saved.payloadVersion).toBe(4);
+      expect(saved.payloadVersion).toBe(5);
       expect(saved.deactivatedRanges[0]).toEqual(expect.objectContaining({
         startSeconds: 2,
         durationSeconds: 3,

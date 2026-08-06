@@ -1,4 +1,4 @@
-import type { CameraSwitchDecision, SpeakerCameraMapping, TimelineRangeEdit } from "@high-ground/quipsly-domain";
+import type { CameraAssemblyPolicy, CameraSwitchDecision, SpeakerCameraMapping, TimelineRangeEdit } from "@high-ground/quipsly-domain";
 
 export type EpisodeArtifactTimelineClip = {
   id: string;
@@ -104,8 +104,8 @@ export type EpisodeImportedMediaAsset = {
 
 import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
-export const EPISODE_ARTIFACT_CURRENT_VERSION = 4;
-export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 3;
+export const EPISODE_ARTIFACT_CURRENT_VERSION = 5;
+export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 4;
 export const EPISODE_ARTIFACT_LEGACY_VERSION = 1;
 export const EPISODE_PRODUCTION_CURRENT_VERSION = 1;
 export const EPISODE_AUDIO_TAKE_STACK_SOURCE = "quipsly-audio-take-stack-v1";
@@ -123,6 +123,7 @@ export type EpisodeArtifactPayload = {
   deactivatedRanges?: TimelineRangeEdit[];
   paperEditSnapshots?: Record<string, EpisodeArtifactPaperEditSnapshot>;
   speakerCameraMappings?: SpeakerCameraMapping[];
+  cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
   importedMedia?: EpisodeImportedMediaAsset[];
   contentFingerprint?: string;
@@ -152,7 +153,7 @@ export type EpisodeArtifactLegacyInput = {
   // old key variants from early recorder/editor saves
   project?: string;
   episode?: string;
-  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[]; deactivatedRanges?: TimelineRangeEdit[]; speakerCameraMappings?: SpeakerCameraMapping[]; cameraSwitchDecisions?: CameraSwitchDecision[] };
+  timeline?: { timelineClips?: EpisodeArtifactTimelineClip[]; transcript?: EpisodeArtifactTranscript[]; deactivatedRanges?: TimelineRangeEdit[]; speakerCameraMappings?: SpeakerCameraMapping[]; cameraAssemblyPolicy?: CameraAssemblyPolicy; cameraSwitchDecisions?: CameraSwitchDecision[] };
   room?: {
     project?: string;
     episode?: string;
@@ -164,6 +165,7 @@ export type EpisodeArtifactLegacyInput = {
     transcript?: EpisodeArtifactTranscript[];
     deactivatedRanges?: TimelineRangeEdit[];
     speakerCameraMappings?: SpeakerCameraMapping[];
+    cameraAssemblyPolicy?: CameraAssemblyPolicy;
     cameraSwitchDecisions?: CameraSwitchDecision[];
   };
   savedAt?: string;
@@ -208,6 +210,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
   const transcript = Array.isArray(record.transcript) ? record.transcript : Array.isArray(nestedTimeline?.transcript) ? nestedTimeline?.transcript : Array.isArray(nestedData?.transcript) ? nestedData?.transcript : [];
   const deactivatedRanges = Array.isArray(record.deactivatedRanges) ? record.deactivatedRanges : Array.isArray(nestedTimeline?.deactivatedRanges) ? nestedTimeline?.deactivatedRanges : Array.isArray(nestedData?.deactivatedRanges) ? nestedData?.deactivatedRanges : [];
   const speakerCameraMappings = Array.isArray(record.speakerCameraMappings) ? record.speakerCameraMappings : Array.isArray(nestedTimeline?.speakerCameraMappings) ? nestedTimeline?.speakerCameraMappings : Array.isArray(nestedData?.speakerCameraMappings) ? nestedData?.speakerCameraMappings : [];
+  const cameraAssemblyPolicy = normalizeStringRecord(record.cameraAssemblyPolicy) ?? normalizeStringRecord(nestedTimeline?.cameraAssemblyPolicy) ?? normalizeStringRecord(nestedData?.cameraAssemblyPolicy);
   const cameraSwitchDecisions = Array.isArray(record.cameraSwitchDecisions) ? record.cameraSwitchDecisions : Array.isArray(nestedTimeline?.cameraSwitchDecisions) ? nestedTimeline?.cameraSwitchDecisions : Array.isArray(nestedData?.cameraSwitchDecisions) ? nestedData?.cameraSwitchDecisions : [];
 
   if (!Array.isArray(timelineClips) || !Array.isArray(transcript)) return null;
@@ -221,6 +224,7 @@ export function normalizeEpisodeArtifact(value: unknown): EpisodeArtifactPayload
     transcript,
     deactivatedRanges: deactivatedRanges as TimelineRangeEdit[],
     speakerCameraMappings: speakerCameraMappings as SpeakerCameraMapping[],
+    cameraAssemblyPolicy: cameraAssemblyPolicy as CameraAssemblyPolicy | undefined,
     cameraSwitchDecisions: cameraSwitchDecisions as CameraSwitchDecision[],
     paperEditSnapshots: normalizeStringRecord(record.paperEditSnapshots) as Record<string, EpisodeArtifactPaperEditSnapshot> | undefined,
     importedMedia: Array.isArray(record.importedMedia) ? record.importedMedia as EpisodeImportedMediaAsset[] : undefined,
@@ -248,6 +252,7 @@ export type EpisodeArtifactLegacyShape = {
   transcript?: EpisodeArtifactTranscript[];
   deactivatedRanges?: TimelineRangeEdit[];
   speakerCameraMappings?: SpeakerCameraMapping[];
+  cameraAssemblyPolicy?: CameraAssemblyPolicy;
   cameraSwitchDecisions?: CameraSwitchDecision[];
   blocks?: EpisodeArtifactTranscript[];
   source?: string;

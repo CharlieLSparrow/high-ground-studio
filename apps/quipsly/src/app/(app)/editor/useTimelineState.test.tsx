@@ -154,5 +154,26 @@ describe("timeline range edits", () => {
     act(() => result.current.undo());
     expect(result.current.state.cameraSwitchDecisions).toHaveLength(1);
     expect(result.current.state.speakerCameraMappings?.[0]?.targetClipId).toBe("cam-1");
+
+    act(() => result.current.setCameraAssemblyPolicy({
+      id: "camera-assembly-policy",
+      style: "natural-conversation",
+      minimumShotSeconds: 2,
+      speakerSwitchDelaySeconds: 0.2,
+      wideAngleMode: "overlap-and-silence",
+      wideClipId: "cam-2",
+      silenceWideThresholdSeconds: 1.25,
+      cutawayIntervalSeconds: null,
+      cutawayDurationSeconds: 2.5,
+      useWideForIntroOutro: true,
+      source: "manual",
+      createdAt: "2026-08-07T00:00:00.000Z",
+    }));
+    expect(result.current.state.cameraAssemblyPolicy).toEqual(expect.objectContaining({ style: "natural-conversation", wideClipId: "cam-2" }));
+    expect(result.current.state.cameraSwitchDecisions).toEqual([]);
+
+    act(() => result.current.undo());
+    expect(result.current.state.cameraAssemblyPolicy).toBeUndefined();
+    expect(result.current.state.cameraSwitchDecisions).toHaveLength(1);
   });
 });

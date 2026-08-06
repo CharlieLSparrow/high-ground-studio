@@ -7989,3 +7989,32 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   while preserving both authority records.
 - Architecture and evidence:
   `docs/coordination/2026-08-07-shared-source-clock-listening-moments.md`.
+
+## 2026-08-07 evidence-bound multicamera shot-grammar checkpoint
+
+- Audited Quipsly's existing automatic-editor and capture-clock architecture
+  before adding another automation surface. The current system already had
+  source-bound transcript evidence, explicit speaker-camera maps, reversible
+  decisions, durable draft receipts, proof-watch, Undo/Redo, artifact save,
+  program-monitor playback, and Remotion render support.
+- Episode artifact v5 now persists shot grammar. Active-speaker, natural
+  conversation, and dynamic styles expose minimum shot, switch delay, explicit
+  wide coverage, silence/overlap behavior, intro/outro coverage, and periodic
+  cutaway cadence. The policy is fingerprint-bound and a change clears stale
+  camera decisions.
+- The deterministic assembler keeps program audio independent, uses wide shots
+  only from an explicitly selected covering clip, retains exact reason and
+  policy evidence on every draft range, and reports missing coverage instead
+  of selecting an arbitrary or blank track.
+- A first-class readiness projection distinguishes ready, speaker-only, and
+  blocked timelines using video, transcript, speaker-label, mapping, and range
+  coverage evidence. It creates no decision and explicitly says timeline
+  placement is not source-sync proof.
+- Read-only PostgreSQL operation inspected ten retained High Ground Odyssey
+  episode rows. The canonical data is currently fragmented: the strongest
+  capture-sync row has one video and no transcript, while the deterministic
+  edit-evidence row has four labeled blocks and two speakers but no video or
+  mappings. Quipsly correctly blocks assembly instead of joining unrelated
+  episodes or claiming a real proof-watch.
+- Architecture and evidence:
+  `docs/coordination/2026-08-07-evidence-bound-multicamera-shot-grammar.md`.

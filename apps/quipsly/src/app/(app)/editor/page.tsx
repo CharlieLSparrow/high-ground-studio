@@ -39,8 +39,8 @@ import { SourceSyncEvidenceMap } from "./SourceSyncEvidenceMap";
 import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineRangeEdit, TimelineState, TranscriptBlock } from "./useTimelineState";
-import type { CameraCutAssemblyHold, CameraSwitchDecision, SpeakerCameraMapping } from "@high-ground/quipsly-domain";
-import { assembleSpeakerCameraCut, cameraClipAtTime, canonicalSpeakerKey } from "@high-ground/quipsly-domain";
+import type { CameraAssemblyPolicy, CameraAssemblyStyle, CameraCutAssemblyHold, CameraCutAssemblyWarning, CameraSwitchDecision, SpeakerCameraMapping } from "@high-ground/quipsly-domain";
+import { assembleSpeakerCameraCut, cameraAssemblyPolicyPreset, cameraAssemblyReadiness, cameraClipAtTime, canonicalSpeakerKey, normalizeCameraAssemblyPolicy } from "@high-ground/quipsly-domain";
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
@@ -1827,6 +1827,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
     const nestedPaperEditSnapshots = asObject((record as Record<string, unknown>).timeline)?.paperEditSnapshots;
     const nestedDeactivatedRanges = asObject((record as Record<string, unknown>).timeline)?.deactivatedRanges;
     const nestedSpeakerCameraMappings = asObject((record as Record<string, unknown>).timeline)?.speakerCameraMappings;
+    const nestedCameraAssemblyPolicy = asObject((record as Record<string, unknown>).timeline)?.cameraAssemblyPolicy;
     const nestedCameraSwitchDecisions = asObject((record as Record<string, unknown>).timeline)?.cameraSwitchDecisions;
     const nestedData = asObject((record as Record<string, unknown>).data);
     const transcriptSource = Array.isArray(record.transcript)
@@ -1847,6 +1848,7 @@ function extractTimelineFromPayload(payload: unknown): TimelineState | null {
       deactivatedRanges,
       paperEditSnapshots: normalizePaperEditSnapshots(record.paperEditSnapshots ?? nestedPaperEditSnapshots ?? nestedData?.paperEditSnapshots),
       speakerCameraMappings: coerceArray(record.speakerCameraMappings ?? nestedSpeakerCameraMappings ?? nestedData?.speakerCameraMappings) as SpeakerCameraMapping[],
+      cameraAssemblyPolicy: (asObject(record.cameraAssemblyPolicy ?? nestedCameraAssemblyPolicy ?? nestedData?.cameraAssemblyPolicy) ?? undefined) as CameraAssemblyPolicy | undefined,
       cameraSwitchDecisions: coerceArray(record.cameraSwitchDecisions ?? nestedCameraSwitchDecisions ?? nestedData?.cameraSwitchDecisions) as CameraSwitchDecision[],
     };
   }
@@ -2007,10 +2009,12 @@ function programClipAtTime(timeline: TimelineState, time: number) {
 function SpeakerCameraCutDesk({
   timeline,
   holds,
+  warnings,
   message,
   evidenceReady,
   busy,
   onMapSpeaker,
+  onSetPolicy,
   onAnalyzeEvidence,
   onAssemble,
   onProofWatchDecision,
@@ -2019,10 +2023,12 @@ function SpeakerCameraCutDesk({
 }: {
   timeline: TimelineState;
   holds: CameraCutAssemblyHold[];
+  warnings: CameraCutAssemblyWarning[];
   message: string;
   evidenceReady: boolean;
   busy: boolean;
   onMapSpeaker: (speakerKey: string, speakerLabel: string, clipId: string) => void;
+  onSetPolicy: (policy: CameraAssemblyPolicy) => void;
   onAnalyzeEvidence: () => void;
   onAssemble: () => void;
   onProofWatchDecision: (decision: CameraSwitchDecision) => void;
@@ -2046,6 +2052,8 @@ function SpeakerCameraCutDesk({
     .filter((clip) => isVisualTimelineClip(clip) && !clip.deactivated)
     .sort((left, right) => trackSortValue(left.trackId) - trackSortValue(right.trackId));
   const mappings = timeline.speakerCameraMappings ?? [];
+  const policy = normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy);
+  const readiness = cameraAssemblyReadiness(timeline);
   const decisions = [...(timeline.cameraSwitchDecisions ?? [])]
     .sort((left, right) => left.startSeconds - right.startSeconds);
 
@@ -2064,6 +2072,13 @@ function SpeakerCameraCutDesk({
           <div className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-600">draft camera ranges</div>
         </div>
       </div>
+
+      <section className={`mx-5 mt-5 rounded-2xl border p-4 ${readiness.status === "ready" ? "border-emerald-200 bg-emerald-50" : readiness.status === "speaker-only" ? "border-amber-200 bg-amber-50" : "border-rose-200 bg-rose-50"}`} aria-label="Automatic camera assembly readiness">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Canonical assembly readiness</p><p className="mt-1 text-sm font-black text-slate-950">{readiness.nextAction}</p></div><span className="rounded-full border border-current px-3 py-1 text-[10px] font-black uppercase tracking-wide">{readiness.status.replace("-", " ")}</span></div>
+        <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide text-slate-700"><span>{readiness.videoSourceCount} video source{readiness.videoSourceCount === 1 ? "" : "s"}</span><span>·</span><span>{readiness.labeledTranscriptBlockCount}/{readiness.activeTranscriptBlockCount} labeled blocks</span><span>·</span><span>{readiness.mappedSpeakerCount}/{readiness.speakerCount} mapped speakers</span></div>
+        {readiness.issues.length ? <ul className="mt-3 space-y-1 text-xs font-semibold leading-5 text-slate-800">{readiness.issues.map((issue, index) => <li key={`${issue.code}-${issue.speakerKey ?? "program"}-${index}`}>• {issue.detail}</li>)}</ul> : null}
+        <p className="mt-3 text-[9px] font-bold uppercase tracking-wide text-slate-500">Timeline placement is not source-sync proof. This readiness projection creates no camera decision.</p>
+      </section>
 
       <div className="grid gap-5 p-5 xl:grid-cols-[1fr_1.2fr]">
         <div>
@@ -2094,6 +2109,38 @@ function SpeakerCameraCutDesk({
               </div>
             )}
           </div>
+          <fieldset className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+            <legend className="px-1 text-xs font-black uppercase tracking-[0.16em] text-violet-800">Shot grammar</legend>
+            <p className="mt-1 text-xs font-semibold leading-5 text-violet-950">The policy is saved with the timeline and included in stale-evidence detection. Changing it clears the prior camera draft, never source media.</p>
+            <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-slate-600">Assembly style
+              <select aria-label="Assembly style" value={policy.style} onChange={(event) => onSetPolicy(cameraAssemblyPolicyPreset(event.target.value as CameraAssemblyStyle, { id: policy.id, wideClipId: policy.wideClipId, createdAt: policy.createdAt }))} className="mt-1 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-900">
+                <option value="active-speaker">Active speaker · safest</option>
+                <option value="natural-conversation">Natural conversation · wide coverage</option>
+                <option value="dynamic">Dynamic · periodic cutaways</option>
+              </select>
+            </label>
+            {policy.style !== "active-speaker" ? <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-slate-600">Wide camera
+              <select aria-label="Wide camera" value={policy.wideClipId ?? ""} onChange={(event) => onSetPolicy({ ...policy, wideClipId: event.target.value || null })} className="mt-1 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-900">
+                <option value="">No wide camera mapped</option>
+                {videoClips.map((clip) => <option key={clip.id} value={clip.id}>{clip.trackId} · {clip.name}</option>)}
+              </select>
+            </label> : null}
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">Minimum shot
+                <span className="mt-1 flex items-center gap-2"><input aria-label="Minimum shot seconds" type="number" min="0.5" max="30" step="0.25" value={policy.minimumShotSeconds} onChange={(event) => onSetPolicy({ ...policy, minimumShotSeconds: Number(event.target.value) })} className="min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-900" /><span className="text-xs">sec</span></span>
+              </label>
+              <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">Switch delay
+                <span className="mt-1 flex items-center gap-2"><input aria-label="Speaker switch delay seconds" type="number" min="0" max="2" step="0.05" value={policy.speakerSwitchDelaySeconds} onChange={(event) => onSetPolicy({ ...policy, speakerSwitchDelaySeconds: Number(event.target.value) })} className="min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-900" /><span className="text-xs">sec</span></span>
+              </label>
+            </div>
+            {policy.style === "dynamic" ? <label className="mt-3 block text-[10px] font-black uppercase tracking-wide text-slate-600">Wide cutaway cadence
+              <select aria-label="Wide cutaway cadence" value={policy.cutawayIntervalSeconds ?? 30} onChange={(event) => onSetPolicy({ ...policy, cutawayIntervalSeconds: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-bold normal-case tracking-normal text-slate-900">
+                <option value="10">Frequent · about every 10 seconds</option>
+                <option value="30">Occasional · about every 30 seconds</option>
+                <option value="60">Sparse · about every 60 seconds</option>
+              </select>
+            </label> : null}
+          </fieldset>
         </div>
 
         <div>
@@ -2105,7 +2152,7 @@ function SpeakerCameraCutDesk({
                   {busy ? "Analyzing…" : "Bind current evidence"}
                 </button>
               )}
-              <button type="button" onClick={onAssemble} disabled={busy || !evidenceReady || !mappings.length || !videoClips.length} className="rounded-xl bg-violet-700 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-violet-600 disabled:cursor-not-allowed disabled:bg-slate-300">
+              <button type="button" onClick={onAssemble} disabled={busy || readiness.status === "blocked" || !evidenceReady || !mappings.length || !videoClips.length} className="rounded-xl bg-violet-700 px-4 py-2 text-xs font-black text-white shadow-sm hover:bg-violet-600 disabled:cursor-not-allowed disabled:bg-slate-300">
                 Assemble speaker cut
               </button>
             </div>
@@ -2125,6 +2172,7 @@ function SpeakerCameraCutDesk({
               </div>
             </div>
           )}
+          {warnings.length > 0 && <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3" role="status"><div className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-800">{warnings.length} coverage warning{warnings.length === 1 ? "" : "s"}</div><div className="mt-2 space-y-1 text-xs font-semibold leading-5 text-rose-950">{warnings.map((warning, index) => <p key={`${warning.reason}-${warning.startSeconds}-${index}`}>{warning.detail}</p>)}</div></div>}
           <div className="mt-3 max-h-60 space-y-2 overflow-y-auto pr-1">
             {decisions.length ? decisions.map((decision) => {
               const clip = videoClips.find((candidate) => candidate.id === decision.targetClipId);
@@ -2856,6 +2904,7 @@ function buildEpisodeArtifactPayload(
       durationSeconds: roundSeconds(Math.max(range.durationSeconds, 0.05)),
     })),
     speakerCameraMappings: timeline.speakerCameraMappings,
+    cameraAssemblyPolicy: normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy),
     cameraSwitchDecisions: timeline.cameraSwitchDecisions,
     paperEditSnapshots: timeline.paperEditSnapshots,
     contentFingerprint,
@@ -2934,6 +2983,7 @@ function timelineContentFingerprint(timeline: TimelineState): string {
   const sortedSpeakerCameraMappings = [...(timeline.speakerCameraMappings ?? [])]
     .map((mapping) => ({ ...mapping }))
     .sort((left, right) => left.id.localeCompare(right.id));
+  const cameraAssemblyPolicy = normalizeCameraAssemblyPolicy(timeline.cameraAssemblyPolicy);
   const sortedCameraSwitchDecisions = [...(timeline.cameraSwitchDecisions ?? [])]
     .map((decision) => ({
       ...decision,
@@ -2951,6 +3001,7 @@ function timelineContentFingerprint(timeline: TimelineState): string {
     transcript: sortedTranscript,
     deactivatedRanges: sortedDeactivatedRanges,
     speakerCameraMappings: sortedSpeakerCameraMappings,
+    cameraAssemblyPolicy,
     cameraSwitchDecisions: sortedCameraSwitchDecisions,
     paperEditSnapshots: sortedSnapshots,
   });
@@ -3272,7 +3323,8 @@ function CloudEditorContent() {
     removeDeactivatedRange,
     setSpeakerCameraMapping,
     removeSpeakerCameraMapping,
-    setCameraSwitchDecisions,
+    setCameraAssemblyPolicy,
+    setCameraAssemblyResult,
     removeCameraSwitchDecision,
   } = useTimelineState(EMPTY_TIMELINE_STATE);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
@@ -3299,6 +3351,7 @@ function CloudEditorContent() {
   const [editReviewLedgerNotice, setEditReviewLedgerNotice] = useState("");
   const [cameraCutMessage, setCameraCutMessage] = useState("");
   const [cameraCutHolds, setCameraCutHolds] = useState<CameraCutAssemblyHold[]>([]);
+  const [cameraCutWarnings, setCameraCutWarnings] = useState<CameraCutAssemblyWarning[]>([]);
   const [cameraEvidenceReady, setCameraEvidenceReady] = useState(false);
   const [isAssemblingCameraCut, setIsAssemblingCameraCut] = useState(false);
   const pendingEditReviewReceiptIdsRef = useRef<string[]>([]);
@@ -3539,6 +3592,7 @@ function CloudEditorContent() {
     if (!clipId) {
       if (existing) removeSpeakerCameraMapping(existing.id);
       setCameraCutHolds([]);
+      setCameraCutWarnings([]);
       setCameraCutMessage(`${speakerLabel} no longer has a camera mapping. The prior assembled cut was cleared; source media was unchanged.`);
       return;
     }
@@ -3557,8 +3611,20 @@ function CloudEditorContent() {
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     });
     setCameraCutHolds([]);
+    setCameraCutWarnings([]);
     setCameraCutMessage(`${speakerLabel} is mapped to ${clip.trackId} · ${clip.name}. Bind fresh evidence before assembling because camera identity is part of the edit decision.`);
   }, [removeSpeakerCameraMapping, setSpeakerCameraMapping, timelineState.clips, timelineState.speakerCameraMappings]);
+
+  const updateCameraAssemblyPolicy = useCallback((policy: CameraAssemblyPolicy) => {
+    const normalized = normalizeCameraAssemblyPolicy({
+      ...policy,
+      createdAt: Date.parse(policy.createdAt) > 0 ? policy.createdAt : new Date().toISOString(),
+    });
+    setCameraAssemblyPolicy(normalized);
+    setCameraCutHolds([]);
+    setCameraCutWarnings([]);
+    setCameraCutMessage(`${normalized.style.replaceAll("-", " ")} shot grammar is now part of the editable timeline. Bind fresh evidence before assembling; the prior draft was cleared and source media was unchanged.`);
+  }, [setCameraAssemblyPolicy]);
 
   const assembleMappedSpeakerCut = useCallback(async () => {
     setIsAssemblingCameraCut(true);
@@ -3576,6 +3642,7 @@ function CloudEditorContent() {
         proposalTimelineFingerprintSha256: aiEditProposalBinding.timelineFingerprintSha256,
       });
       setCameraCutHolds(result.holds);
+      setCameraCutWarnings(result.warnings);
       if (!result.decisions.length) {
         setCameraCutMessage(`No safe camera switch ranges were assembled. Quipsly held ${result.holds.length} range${result.holds.length === 1 ? "" : "s"} rather than guessing.`);
         return;
@@ -3590,6 +3657,8 @@ function CloudEditorContent() {
           decisionIds: result.decisions.map((decision) => decision.id),
           mappingIds: Array.from(new Set(result.decisions.map((decision) => decision.mappingId))),
           heldRanges: result.holds.map((hold) => ({ reason: hold.reason, startSeconds: hold.startSeconds, endSeconds: hold.endSeconds })),
+          assemblyPolicy: result.policy,
+          coverageWarnings: result.warnings,
           sourceMediaUnchanged: true,
         },
       });
@@ -3597,14 +3666,14 @@ function CloudEditorContent() {
         setCameraCutMessage("The camera draft was not applied because its durable review receipt could not be saved.");
         return;
       }
-      setCameraSwitchDecisions(result.decisions);
+      setCameraAssemblyResult(result.policy, result.decisions);
       setEditorMode("play-edit");
       setIsPreviewPlaying(false);
-      setCameraCutMessage(`Assembled ${result.decisions.length} receipt-backed camera range${result.decisions.length === 1 ? "" : "s"} and deliberately held ${result.holds.length}. Review the edit monitor, then save the timeline. Source files remain untouched.`);
+      setCameraCutMessage(`Assembled ${result.decisions.length} receipt-backed camera range${result.decisions.length === 1 ? "" : "s"}, deliberately held ${result.holds.length}, and reported ${result.warnings.length} coverage warning${result.warnings.length === 1 ? "" : "s"}. Review the edit monitor, then save the timeline. Source files remain untouched.`);
     } finally {
       setIsAssemblingCameraCut(false);
     }
-  }, [aiEditBindingIsCurrent, aiEditProposalBinding, aiEditProposalSetId, recordEditReviewAction, setCameraSwitchDecisions, setEditorMode, timelineState]);
+  }, [aiEditBindingIsCurrent, aiEditProposalBinding, aiEditProposalSetId, recordEditReviewAction, setCameraAssemblyResult, setEditorMode, timelineState]);
 
   const restoreCameraSwitchDecision = useCallback(async (decision: CameraSwitchDecision) => {
     const proposalSetId = decision.evidence.proposalSetId;
@@ -11307,10 +11376,12 @@ function CloudEditorContent() {
           <SpeakerCameraCutDesk
             timeline={timelineState}
             holds={cameraCutHolds}
+            warnings={cameraCutWarnings}
             message={cameraCutMessage}
             evidenceReady={cameraEvidenceReady}
             busy={isAiAutoEditing || isAssemblingCameraCut}
             onMapSpeaker={mapSpeakerToCamera}
+            onSetPolicy={updateCameraAssemblyPolicy}
             onAnalyzeEvidence={handleDeterministicEditAnalysis}
             onAssemble={() => void assembleMappedSpeakerCut()}
             onProofWatchDecision={(decision) => void proofWatchCameraSwitchDecision(decision)}

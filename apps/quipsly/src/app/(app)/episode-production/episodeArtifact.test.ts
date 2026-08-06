@@ -5,16 +5,16 @@ import {
   normalizeEpisodeArtifact,
 } from "./episodeArtifact";
 
-describe("episode artifact v4", () => {
+describe("episode artifact v5", () => {
   it("keeps unversioned recorder payloads on the legacy version", () => {
     expect(getEpisodePayloadVersion({ version: "quipsly-recording-room.v1" })).toBe(EPISODE_ARTIFACT_LEGACY_VERSION);
     expect(getEpisodePayloadVersion({ timelineClips: [], transcript: [] })).toBe(EPISODE_ARTIFACT_LEGACY_VERSION);
-    expect(EPISODE_ARTIFACT_CURRENT_VERSION).toBe(4);
+    expect(EPISODE_ARTIFACT_CURRENT_VERSION).toBe(5);
   });
 
   it("round-trips optional exact range decisions and speaker metadata", () => {
     const artifact = normalizeEpisodeArtifact({
-      payloadVersion: 4,
+      payloadVersion: 5,
       projectSlug: "high-ground-odyssey",
       episodeSlug: "audio-evidence",
       source: "quipsly-editor",
@@ -45,6 +45,20 @@ describe("episode artifact v4", () => {
         source: "manual",
         createdAt: "2026-08-03T00:00:00.000Z",
       }],
+      cameraAssemblyPolicy: {
+        id: "camera-assembly-policy",
+        style: "natural-conversation",
+        minimumShotSeconds: 2,
+        speakerSwitchDelaySeconds: 0.2,
+        wideAngleMode: "overlap-and-silence",
+        wideClipId: "wide-camera",
+        silenceWideThresholdSeconds: 1.25,
+        cutawayIntervalSeconds: null,
+        cutawayDurationSeconds: 2.5,
+        useWideForIntroOutro: true,
+        source: "manual",
+        createdAt: "2026-08-07T00:00:00.000Z",
+      },
       cameraSwitchDecisions: [{
         id: "camera-switch:map-charlie:0",
         startSeconds: 0,
@@ -64,10 +78,11 @@ describe("episode artifact v4", () => {
     });
 
     expect(artifact).toEqual(expect.objectContaining({
-      payloadVersion: 4,
+      payloadVersion: 5,
       transcript: [expect.objectContaining({ speaker: "Charlie", deactivated: false })],
       deactivatedRanges: [expect.objectContaining({ id: "range-1", startSeconds: 2, durationSeconds: 3 })],
       speakerCameraMappings: [expect.objectContaining({ speakerKey: "charlie", targetClipId: "charlie-camera" })],
+      cameraAssemblyPolicy: expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-camera" }),
       cameraSwitchDecisions: [expect.objectContaining({ targetClipId: "charlie-camera", status: "draft" })],
     }));
   });
