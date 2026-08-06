@@ -1,7 +1,8 @@
-import type { AudioMasteryProfileId, AudioMasterySourceBinding } from "./audio-mastery.js";
+import { assessAudioMastery, parseAudioMasteryMeasurement, type AudioMasteryMeasurement, type AudioMasteryProfileId, type AudioMasterySourceBinding } from "./audio-mastery.js";
 
 export const EPISODE_AUDIO_MIX_CONTRACT_VERSION = 1 as const;
 export const EPISODE_AUDIO_MIX_PROPOSAL_KIND = "quipsly-episode-audio-mix-proposal-v1" as const;
+export const EPISODE_AUDIO_MIX_RESULT_KIND = "quipsly-episode-audio-mix-result-v1" as const;
 
 export type EpisodeAudioMixTrack = {
   assetId: string;
@@ -75,6 +76,7 @@ export type EpisodeAudioMixProposal = {
   actions: EpisodeAudioMixGainAction[];
   unresolvedEvents: EpisodeAudioMixUnresolvedEvent[];
   output: {
+    assetId: string;
     provider: "local" | "gcs";
     locator: string;
     contentType: "audio/wav";
@@ -91,6 +93,42 @@ export type EpisodeAudioMixProposal = {
     correlationNeverAuthorizesAutomation: true;
     previewMustBeIndependentlyMeasured: true;
     promotionRequiresPlaybackBoundApproval: true;
+  };
+};
+
+export type EpisodeAudioMixResult = {
+  kind: typeof EPISODE_AUDIO_MIX_RESULT_KIND;
+  version: typeof EPISODE_AUDIO_MIX_CONTRACT_VERSION;
+  jobId: string;
+  completedAt: string;
+  proposal: EpisodeAudioMixProposal;
+  derivative: AudioMasterySourceBinding & {
+    variantKind: "episode-mix-preview";
+    codec: "pcm_s24le";
+    sampleRateHz: 48_000;
+    channelCount: 2;
+    durationSeconds: number;
+    measurement: AudioMasteryMeasurement;
+  };
+  verification: {
+    exactSourcesVerifiedBeforeAndAfter: true;
+    outputCompletelyDecoded: true;
+    durationDeltaSeconds: number;
+    integratedLoudnessPasses: true;
+    truePeakPasses: true;
+    originalTracksRemainSourceTruth: true;
+  };
+  renderer: {
+    ffmpegVersion: string;
+    executionId: string;
+    buildId: string;
+    imageDigest: string | null;
+    attempt: number;
+  };
+  boundaries: {
+    outputIsUnpromotedPreview: true;
+    proposalAndSourcesRemainImmutable: true;
+    playbackReviewRequiredBeforePromotion: true;
   };
 };
 
@@ -256,6 +294,47 @@ export function parseEpisodeAudioMixProposal(value: unknown): EpisodeAudioMixPro
   };
 }
 
+export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: EpisodeAudioMixProposal | unknown): EpisodeAudioMixResult {
+  const row = record(value);
+  const proposal = parseEpisodeAudioMixProposal(row.proposal);
+  const expected = expectedProposal ? parseEpisodeAudioMixProposal(expectedProposal) : null;
+  if (expected && JSON.stringify(proposal) !== JSON.stringify(expected)) throw new Error("Episode mix result proposal does not match the queued immutable proposal.");
+  const derivativeRow = record(row.derivative);
+  const derivative = parseSource(derivativeRow);
+  const measurement = parseAudioMasteryMeasurement(derivativeRow.measurement);
+  const expectedDuration = Math.max(...proposal.tracks.map((track) => Math.max(0, track.programOffsetSeconds) + Math.max(0, track.sourceDurationSeconds + Math.min(0, track.programOffsetSeconds))));
+  const durationSeconds = finite(derivativeRow.durationSeconds, "derivative.durationSeconds", 0.001, 172_800);
+  const durationDeltaSeconds = Math.round(Math.abs(expectedDuration - durationSeconds) * 1_000_000) / 1_000_000;
+  const assessment = assessAudioMastery(measurement, proposal.output.masteryProfileId);
+  const verification = record(row.verification);
+  const renderer = record(row.renderer);
+  const resultBoundaries = record(row.boundaries);
+  if (
+    row.kind !== EPISODE_AUDIO_MIX_RESULT_KIND || row.version !== EPISODE_AUDIO_MIX_CONTRACT_VERSION
+    || derivative.assetId !== proposal.output.assetId || derivative.provider !== proposal.output.provider || derivative.locator !== proposal.output.locator
+    || derivative.contentType !== "audio/wav" || derivativeRow.variantKind !== "episode-mix-preview" || derivativeRow.codec !== "pcm_s24le"
+    || derivativeRow.sampleRateHz !== 48_000 || derivativeRow.channelCount !== 2
+    || measurement.source.assetId !== derivative.assetId || measurement.source.sha256 !== derivative.sha256 || measurement.source.generation !== derivative.generation
+    || measurement.source.locator !== derivative.locator || measurement.profileId !== proposal.output.masteryProfileId || measurement.analyzer.completeDecode !== true
+    || durationDeltaSeconds > 0.05 || !assessment.passes
+    || verification.exactSourcesVerifiedBeforeAndAfter !== true || verification.outputCompletelyDecoded !== true
+    || Number(verification.durationDeltaSeconds) !== durationDeltaSeconds || verification.integratedLoudnessPasses !== true
+    || verification.truePeakPasses !== true || verification.originalTracksRemainSourceTruth !== true
+    || resultBoundaries.outputIsUnpromotedPreview !== true || resultBoundaries.proposalAndSourcesRemainImmutable !== true || resultBoundaries.playbackReviewRequiredBeforePromotion !== true
+  ) throw new Error("Episode mix result or independent verification is invalid.");
+  return {
+    kind: EPISODE_AUDIO_MIX_RESULT_KIND,
+    version: EPISODE_AUDIO_MIX_CONTRACT_VERSION,
+    jobId: id(row.jobId, "jobId"),
+    completedAt: isoDate(row.completedAt, "completedAt"),
+    proposal,
+    derivative: { ...derivative, variantKind: "episode-mix-preview", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, durationSeconds, measurement },
+    verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true },
+    renderer: { ffmpegVersion: text(renderer.ffmpegVersion, "renderer.ffmpegVersion", 500), executionId: id(renderer.executionId, "renderer.executionId"), buildId: text(renderer.buildId, "renderer.buildId", 500), imageDigest: renderer.imageDigest === null ? null : text(renderer.imageDigest, "renderer.imageDigest", 500), attempt: positiveInteger(renderer.attempt, "renderer.attempt") },
+    boundaries: { outputIsUnpromotedPreview: true, proposalAndSourcesRemainImmutable: true, playbackReviewRequiredBeforePromotion: true },
+  };
+}
+
 function parseTrack(value: unknown): EpisodeAudioMixTrack {
   const row = record(value);
   const role = ROLES.has(row.role as EpisodeAudioMixTrack["role"]) ? row.role as EpisodeAudioMixTrack["role"] : invalid("track.role");
@@ -302,7 +381,7 @@ function parseOutput(value: unknown): EpisodeAudioMixProposal["output"] {
   const provider = row.provider === "local" || row.provider === "gcs" ? row.provider : invalid("output.provider");
   const masteryProfileId = row.masteryProfileId === "apple-podcasts-dialogue-v1" || row.masteryProfileId === "ebu-r128-broadcast-v1" ? row.masteryProfileId : invalid("output.masteryProfileId");
   if (row.contentType !== "audio/wav" || row.codec !== "pcm_s24le" || row.sampleRateHz !== 48_000 || row.channelCount !== 2 || row.variantKind !== "episode-mix-preview") throw new Error("Episode mix preview output contract is invalid.");
-  return { provider, locator: text(row.locator, "output.locator", 1_500), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId };
+  return { assetId: id(row.assetId, "output.assetId"), provider, locator: text(row.locator, "output.locator", 1_500), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId };
 }
 
 function parseSource(value: unknown): AudioMasterySourceBinding {

@@ -61,6 +61,10 @@ import {
   newLocalAudioPairCorrelationRuntime,
   runOneLocalAudioPairCorrelationJob,
 } from "./local-audio-pair-correlation-worker.js";
+import {
+  newLocalEpisodeAudioMixRuntime,
+  runOneLocalEpisodeAudioMixJob,
+} from "./local-episode-audio-mix-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -547,6 +551,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const episodeAudioMix = newLocalEpisodeAudioMixRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -577,9 +587,12 @@ async function main() {
       const alignmentResult = transcriptResult.disposition === "idle"
         ? await runOneLocalAudioAlignmentJob(audioAlignment.store, audioAlignment.analyzer, audioAlignment.options)
         : transcriptResult;
-      const result = alignmentResult.disposition === "idle"
+      const pairResult = alignmentResult.disposition === "idle"
         ? await runOneLocalAudioPairCorrelationJob(audioPairCorrelation.store, audioPairCorrelation.analyzer, audioPairCorrelation.options)
         : alignmentResult;
+      const result = pairResult.disposition === "idle"
+        ? await runOneLocalEpisodeAudioMixJob(episodeAudioMix.store, episodeAudioMix.renderer, episodeAudioMix.mastery, episodeAudioMix.options)
+        : pairResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

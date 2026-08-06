@@ -34,7 +34,7 @@ test("automatic mix suggestions attenuate only a uniquely lower-authority review
       track({ assetId: "asset_scratch", sourceId: "source_scratch", title: "Camera scratch", role: "camera-scratch" }),
     ],
     evidenceReviews: [{ receiptId: "review_0001", analysisReceiptId: "analysis_0001", eventId: "event_0001", decision: "mic-bleed", startSeconds: 12, endSeconds: 15, involvedAssetIds: ["asset_scratch", "asset_primary"], playbackEvidenceSha256: "c".repeat(64) }],
-    output: { provider: "local", locator: "/tmp/quipsly/mix.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
+    output: { assetId: "mix_asset_0001", provider: "local", locator: "/tmp/quipsly/mix.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
   });
   assert.equal(proposal.actions.length, 1);
   assert.deepEqual(proposal.actions[0], { id: "mix_action_review_0001_asset_scratch", operation: "gain-envelope", origin: "review-derived", targetAssetId: "asset_scratch", programStartSeconds: 12, programEndSeconds: 15, gainDb: -18, attackMilliseconds: 75, releaseMilliseconds: 150, reason: "mic-bleed", evidenceReviewReceiptIds: ["review_0001"], replacesActionId: null });
@@ -48,7 +48,7 @@ test("ambiguous primary tracks stay unresolved instead of receiving guessed gain
     proposalId: "mix_proposal_0002", createdAt: "2026-08-06T12:00:00.000Z", projectId: "project_0001", episodeProductionId: "episode_0001", programFingerprintSha256: "f".repeat(64), activeDecisionReceiptIds: ["decision_0001"],
     tracks: [track({ assetId: "asset_primary", sourceId: "source_primary", title: "Charlie", role: "dialogue-primary", alignment: "program-clock", programOffsetSeconds: 0, alignmentEvidenceJobId: null }), track({ assetId: "asset_scratch", sourceId: "source_scratch", title: "Homer", role: "dialogue-primary" })],
     evidenceReviews: [{ receiptId: "review_0002", analysisReceiptId: "analysis_0001", eventId: "event_0002", decision: "confirmed-overlap", startSeconds: 20, endSeconds: 24, involvedAssetIds: ["asset_primary", "asset_scratch"], playbackEvidenceSha256: "d".repeat(64) }],
-    output: { provider: "local", locator: "/tmp/quipsly/mix-2.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
+    output: { assetId: "mix_asset_0002", provider: "local", locator: "/tmp/quipsly/mix-2.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
   });
   assert.equal(proposal.actions.length, 0);
   assert.equal(proposal.unresolvedEvents[0]?.reason, "review-does-not-authorize-gain");
@@ -59,7 +59,7 @@ test("human adjustments create an immutable revision and reject unsafe gain", ()
     proposalId: "mix_proposal_0003", createdAt: "2026-08-06T12:00:00.000Z", projectId: "project_0001", episodeProductionId: "episode_0001", programFingerprintSha256: "f".repeat(64), activeDecisionReceiptIds: ["decision_0001"],
     tracks: [track({ assetId: "asset_primary", sourceId: "source_primary", title: "Charlie", role: "dialogue-primary", alignment: "program-clock", programOffsetSeconds: 0, alignmentEvidenceJobId: null }), track({ assetId: "asset_scratch", sourceId: "source_scratch", title: "Scratch", role: "camera-scratch" })],
     evidenceReviews: [{ receiptId: "review_0003", analysisReceiptId: "analysis_0001", eventId: "event_0003", decision: "same-participant-redundancy", startSeconds: 30, endSeconds: 33, involvedAssetIds: ["asset_primary", "asset_scratch"], playbackEvidenceSha256: "e".repeat(64) }],
-    output: { provider: "local", locator: "/tmp/quipsly/mix-3.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
+    output: { assetId: "mix_asset_0003", provider: "local", locator: "/tmp/quipsly/mix-3.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
   });
   const revision = reviseEpisodeAudioMixProposal({ proposalId: "mix_proposal_0004", createdAt: "2026-08-06T12:05:00.000Z", parent, edits: [{ actionId: parent.actions[0]!.id, gainDb: -12, attackMilliseconds: 100, releaseMilliseconds: 250 }] });
   assert.equal(revision.parentProposalId, parent.proposalId);
