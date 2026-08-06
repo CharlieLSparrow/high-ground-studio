@@ -3659,48 +3659,49 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace             StudioWorkspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents             StudioDocument[]
-  tags                  StudioTag[]
-  tagAliases            StudioTagAlias[]
-  tagCandidates         StudioTagCandidate[]
-  tagMergeReceipts      StudioTagMergeReceipt[]
-  viewDefinitions       StudioViewDefinition[]
-  knowledgeNodes        StudioKnowledgeNode[]
-  manuscript            StudioManuscript?                   @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets           StudioMediaAsset[]
-  mediaBins             MediaBin[]
-  episodeProductions    StudioEpisodeProduction[]
-  scenes                Scene[]
-  shootDays             ShootDay[]
-  storyEntities         StoryEntity[]
-  storyBibleActions     StoryBibleAction[]
-  storyboards           StudioStoryboard[]
-  chatThreads           StudioNestChatThread[]
-  chatMessages          StudioNestChatMessage[]
-  accessGrants          StudioProjectAccessGrant[]
-  nestInvites           StudioNestInvite[]
-  assetAttachments      StudioAssetAttachment[]
-  assetProcessingJobs   StudioAssetProcessingJob[]
-  audioMasterReviews    StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews  StudioAudioDeliveryReviewReceipt[]
-  sourceUnits           StudioSourceUnit[]
-  personalSourceFilings StudioPersonalSourceFiling[]
-  sourceAnnotations     StudioSourceAnnotation[]
-  sourceAnnotationUses  StudioSourceAnnotationUse[]
-  documentOperations    StudioDocumentOperation[]
-  productionRooms       StudioProductionRoom[]
-  outputPackets         StudioOutputPacket[]
-  publishedArtifacts    StudioPublishedArtifact[]
-  workflowJobs          StudioWorkflowJob[]
-  goals                 Goal[]
-  actionItems           ActionItem[]
-  taskRecurrenceSeries  TaskRecurrenceSeries[]
-  callRooms             CallRoom[]
-  coachingEngagements   CoachingEngagement[]
-  calendarConnections   CalendarConnection[]
-  calendarCollections   CalendarCollection[]
+  workspace               StudioWorkspace                       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents               StudioDocument[]
+  tags                    StudioTag[]
+  tagAliases              StudioTagAlias[]
+  tagCandidates           StudioTagCandidate[]
+  tagMergeReceipts        StudioTagMergeReceipt[]
+  viewDefinitions         StudioViewDefinition[]
+  knowledgeNodes          StudioKnowledgeNode[]
+  manuscript              StudioManuscript?                     @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets             StudioMediaAsset[]
+  mediaBins               MediaBin[]
+  episodeProductions      StudioEpisodeProduction[]
+  scenes                  Scene[]
+  shootDays               ShootDay[]
+  storyEntities           StoryEntity[]
+  storyBibleActions       StoryBibleAction[]
+  storyboards             StudioStoryboard[]
+  chatThreads             StudioNestChatThread[]
+  chatMessages            StudioNestChatMessage[]
+  accessGrants            StudioProjectAccessGrant[]
+  nestInvites             StudioNestInvite[]
+  assetAttachments        StudioAssetAttachment[]
+  assetProcessingJobs     StudioAssetProcessingJob[]
+  audioMasterReviews      StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
+  episodeOutputSelections StudioEpisodeOutputSelectionReceipt[]
+  sourceUnits             StudioSourceUnit[]
+  personalSourceFilings   StudioPersonalSourceFiling[]
+  sourceAnnotations       StudioSourceAnnotation[]
+  sourceAnnotationUses    StudioSourceAnnotationUse[]
+  documentOperations      StudioDocumentOperation[]
+  productionRooms         StudioProductionRoom[]
+  outputPackets           StudioOutputPacket[]
+  publishedArtifacts      StudioPublishedArtifact[]
+  workflowJobs            StudioWorkflowJob[]
+  goals                   Goal[]
+  actionItems             ActionItem[]
+  taskRecurrenceSeries    TaskRecurrenceSeries[]
+  callRooms               CallRoom[]
+  coachingEngagements     CoachingEngagement[]
+  calendarConnections     CalendarConnection[]
+  calendarCollections     CalendarCollection[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -3800,13 +3801,15 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project            StudioProject                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document           StudioDocument                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project            StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document           StudioDocument                        @relation(fields: [documentId], references: [id], onDelete: Cascade)
   milestones         StudioEpisodeMilestone[]
   editProposalSets   StudioEpisodeEditProposalSet[]
   editReviewReceipts StudioEpisodeEditReviewReceipt[]
   transcriptJobs     TranscriptJob[]
   recordingRooms     CallRoom[]
+  outputPackets      StudioOutputPacket[]
+  outputSelections   StudioEpisodeOutputSelectionReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4606,34 +4609,72 @@ model StudioTimelineVersion {
 }
 
 model StudioOutputPacket {
-  id               String    @id @default(cuid())
-  projectId        String
-  documentId       String?
-  productionRoomId String?
-  slug             String
-  kind             String
-  title            String
-  status           String    @default("draft")
-  packetJson       Json      @default("{}")
-  lineageJson      Json      @default("{}")
-  createdByEmail   String?
-  approvedByEmail  String?
-  approvedAt       DateTime?
-  publishAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  projectId           String
+  documentId          String?
+  productionRoomId    String?
+  episodeProductionId String?
+  slug                String
+  kind                String
+  title               String
+  status              String    @default("draft")
+  packetJson          Json      @default("{}")
+  lineageJson         Json      @default("{}")
+  createdByEmail      String?
+  approvedByEmail     String?
+  approvedAt          DateTime?
+  publishAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  project            StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document           StudioDocument?           @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  productionRoom     StudioProductionRoom?     @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  project            StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document           StudioDocument?                       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  productionRoom     StudioProductionRoom?                 @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  episodeProduction  StudioEpisodeProduction?              @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
   publishAttempts    StudioPublishAttempt[]
   publishedArtifacts StudioPublishedArtifact[]
   workflowJobs       StudioWorkflowJob[]
+  episodeSelections  StudioEpisodeOutputSelectionReceipt[]
 
   @@unique([projectId, slug])
   @@index([projectId, kind, status])
   @@index([documentId])
   @@index([productionRoomId])
+  @@index([episodeProductionId, kind, status])
+}
+
+enum StudioEpisodeOutputSelectionOperation {
+  SELECT
+  WITHDRAW
+}
+
+// Episode output selection is append-only. Selecting a packet makes it the
+// current reviewed package candidate; withdrawing it never deletes the packet,
+// encoded artifact, listening receipt, or publication history.
+model StudioEpisodeOutputSelectionReceipt {
+  id                  String                                @id @default(cuid())
+  projectId           String
+  episodeProductionId String
+  outputPacketId      String
+  actorUserId         String?
+  actorEmail          String
+  clientRequestId     String
+  operation           StudioEpisodeOutputSelectionOperation
+  outputKind          String
+  packetDigestSha256  String
+  artifactSha256      String
+  requestSha256       String
+  reason              String?
+  occurredAt          DateTime
+  createdAt           DateTime                              @default(now())
+
+  project           StudioProject           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  outputPacket      StudioOutputPacket      @relation(fields: [outputPacketId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeOutputSelection_project_actor_request_key")
+  @@index([episodeProductionId, outputKind, occurredAt], map: "StudioEpisodeOutputSelection_episode_kind_time_idx")
+  @@index([outputPacketId, occurredAt], map: "StudioEpisodeOutputSelection_packet_time_idx")
 }
 
 model StudioPublishAttempt {

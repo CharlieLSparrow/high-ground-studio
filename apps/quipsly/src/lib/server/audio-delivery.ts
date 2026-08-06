@@ -206,6 +206,91 @@ export async function readAudioDeliveryReviewSummary(input: { prisma: any; jobId
   return { latest: latest ? publicReview(latest) : null, approvalCount: approvals, rejectionCount: rejections };
 }
 
+export async function loadApprovedAudioDeliveryPacketEvidence(input: {
+  prisma: any;
+  projectSlug: string;
+  assetId: string;
+  deliveryJobId: string;
+}) {
+  const context = await loadDeliveryReviewContext(input);
+  const [latestPromotion, latestReview] = await Promise.all([
+    input.prisma.studioAudioMasterPromotionReceipt.findFirst({
+      where: { projectId: context.projectId, assetId: input.assetId },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    }),
+    input.prisma.studioAudioDeliveryReviewReceipt.findFirst({
+      where: { deliveryJobId: context.job.jobId },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    }),
+  ]);
+  if (!latestPromotion
+      || latestPromotion.operation !== "PROMOTE"
+      || latestPromotion.id !== context.job.source.promotionReceiptId) {
+    throw new AudioDeliveryError(
+      "The mastered audio selected for this encoded artifact is no longer active.",
+      409,
+      "PODCAST_PACKET_AUDIO_PROMOTION_STALE",
+    );
+  }
+  if (!latestReview
+      || latestReview.decision !== "APPROVED"
+      || latestReview.promotionReceiptId !== latestPromotion.id
+      || latestReview.deliverySha256 !== context.result.output.sha256
+      || latestReview.candidateSha256 !== context.job.source.sha256) {
+    throw new AudioDeliveryError(
+      "The exact encoded audio bytes do not have a current proof-listen approval.",
+      409,
+      "PODCAST_PACKET_PROOF_LISTEN_REQUIRED",
+    );
+  }
+  const playbackEvidence = parseAudioDeliveryPlaybackReviewEvidence(
+    latestReview.evidenceJson,
+    context.result.output.durationSeconds,
+  );
+  const coverage = audioDeliveryReviewCoverage(
+    playbackEvidence,
+    context.result.output.durationSeconds,
+  );
+  if (!coverage.approvalReady) {
+    throw new AudioDeliveryError(
+      "The encoded audio approval no longer carries complete beginning, midpoint, and ending playback evidence.",
+      409,
+      "PODCAST_PACKET_PROOF_LISTEN_EVIDENCE_INCOMPLETE",
+    );
+  }
+  return {
+    projectId: context.projectId,
+    assetId: input.assetId,
+    deliveryJobId: context.job.jobId,
+    masteryJobId: context.job.source.masteryJobId,
+    promotionReceiptId: latestPromotion.id,
+    masterReviewReceiptId: context.job.source.masterReviewReceiptId,
+    deliveryReviewReceiptId: latestReview.id,
+    profileId: context.job.profileId,
+    candidateSha256: context.job.source.sha256,
+    deliverySha256: context.result.output.sha256,
+    playbackUrl: text(context.registration.playbackUrl),
+    sizeBytes: context.result.output.sizeBytes,
+    durationSeconds: context.result.output.durationSeconds,
+    contentType: context.result.output.contentType,
+    codec: context.result.output.codec,
+    codecProfile: context.result.output.codecProfile,
+    sampleRateHz: context.result.output.sampleRateHz,
+    channels: context.result.output.channels,
+    bitrateBps: context.result.output.bitrateBps,
+    fastStart: context.result.output.fastStart,
+    completeDecode: context.result.output.completeDecode,
+    integratedLufs: context.result.output.verificationMeasurement.integratedLufs,
+    truePeakDbtp: context.result.output.verificationMeasurement.truePeakDbtp,
+    proofListen: {
+      receiptId: latestReview.id,
+      actorEmail: latestReview.actorEmail,
+      occurredAt: latestReview.occurredAt.toISOString(),
+      coverage,
+    },
+  } as const;
+}
+
 async function loadPromotedCandidate(input: Coordinates) {
   let context: Awaited<ReturnType<typeof loadAudioMasteryReviewContext>>;
   try { context = await loadAudioMasteryReviewContext({ ...input, jobId: input.masteryJobId }); }

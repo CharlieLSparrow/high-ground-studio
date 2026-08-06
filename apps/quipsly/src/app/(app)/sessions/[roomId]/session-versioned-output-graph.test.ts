@@ -1,0 +1,65 @@
+import { buildSessionVersionedOutputGraph, type SessionOutputGraphAssetInput } from "./session-versioned-output-graph";
+
+const episode = { id: "episode-9", projectSlug: "high-ground-odyssey", slug: "episode-9", title: "Episode 9" };
+
+function asset(overrides: Partial<SessionOutputGraphAssetInput> = {}): SessionOutputGraphAssetInput {
+  return {
+    recordingAssetId: "recording-1",
+    mediaAssetId: "asset-1",
+    sourceId: "source-1",
+    label: "Homer iPhone audio",
+    attachmentRole: "primary-audio",
+    masterCandidate: null,
+    deliveryArtifact: null,
+    ...overrides,
+  };
+}
+
+describe("versioned Episode output graph", () => {
+  it("keeps source, mastering, delivery, proof-listen, and packet states separate", () => {
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      assets: [asset({
+        masterCandidate: { active: true, eventId: "promotion-1", jobId: "master-1", reviewReceiptId: "master-review-1", playbackUrl: "/master", occurredAt: "2026-08-06T20:00:00.000Z", historicalEventCount: 1 },
+        deliveryArtifact: { jobId: "delivery-1", status: "completed", promotionReceiptId: "promotion-1", deliverySha256: "b".repeat(64), playbackUrl: "/delivery", promotionStillActive: true, review: null, readiness: { encodedAndVerified: true, proofListenApproved: false, outputPacketEligible: false } },
+      })],
+      selections: [],
+    });
+
+    expect(graph.assets[0]).toMatchObject({ masterState: "ACTIVE", deliveryState: "PROOF_LISTEN_REQUIRED", packetState: "NOT_SELECTED", packetEligible: false });
+    expect(graph.assets[0].nextAction).toContain("beginning, midpoint, and ending");
+    expect(graph.counts).toMatchObject({ sources: 1, activeMasters: 1, verifiedArtifacts: 1, approvedArtifacts: 0, selectedPackets: 0 });
+    expect(graph.boundaries).toEqual(expect.objectContaining({ proofListenIsNotPacketSelection: true, packetSelectionIsNotUpload: true, uploadIsNotPublication: true }));
+  });
+
+  it("projects the latest append-only selection without calling it publication", () => {
+    const packetJson = { audio: { assetId: "asset-1" }, readiness: { metadataComplete: false, enclosurePublic: false, publicationEligible: false } };
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      assets: [asset({
+        masterCandidate: { active: true, eventId: "promotion-1", jobId: "master-1", reviewReceiptId: "master-review-1", playbackUrl: "/master", occurredAt: "2026-08-06T20:00:00.000Z", historicalEventCount: 1 },
+        deliveryArtifact: { jobId: "delivery-1", status: "completed", promotionReceiptId: "promotion-1", deliverySha256: "b".repeat(64), playbackUrl: "/delivery", promotionStillActive: true, review: { id: "delivery-review-1", decision: "approved", reviewedAt: "2026-08-06T21:00:00.000Z" }, readiness: { encodedAndVerified: true, proofListenApproved: true, outputPacketEligible: true } },
+      })],
+      selections: [{ id: "selection-1", operation: "SELECT", outputPacketId: "packet-1", packetDigestSha256: "c".repeat(64), artifactSha256: "b".repeat(64), occurredAt: "2026-08-06T22:00:00.000Z", reason: null, packet: { id: "packet-1", slug: "episode-9-package", title: "Episode 9 package", status: "needs-review", packetJson } }],
+    });
+
+    expect(graph.assets[0]).toMatchObject({ deliveryState: "APPROVED", packetState: "SELECTED" });
+    expect(graph.currentPacket).toMatchObject({ id: "packet-1", metadataComplete: false, enclosurePublic: false, publicationEligible: false });
+    expect(graph.counts.selectedPackets).toBe(1);
+  });
+
+  it("makes a withdrawal current while preserving the selected packet in history", () => {
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      assets: [asset({ deliveryArtifact: { jobId: "delivery-1", status: "completed", promotionReceiptId: "promotion-1", deliverySha256: "b".repeat(64), playbackUrl: "/delivery", promotionStillActive: true, review: { id: "review-1", decision: "approved", reviewedAt: null }, readiness: { encodedAndVerified: true, proofListenApproved: true, outputPacketEligible: true } } })],
+      selections: [
+        { id: "withdraw-1", operation: "WITHDRAW", outputPacketId: "packet-1", packetDigestSha256: "c".repeat(64), artifactSha256: "b".repeat(64), occurredAt: "2026-08-06T23:00:00.000Z", reason: "Replace mix", packet: { id: "packet-1", slug: "episode-9-package", title: "Episode 9 package", status: "needs-review", packetJson: { audio: { assetId: "asset-1" } } } },
+        { id: "selection-1", operation: "SELECT", outputPacketId: "packet-1", packetDigestSha256: "c".repeat(64), artifactSha256: "b".repeat(64), occurredAt: "2026-08-06T22:00:00.000Z", reason: null, packet: { id: "packet-1", slug: "episode-9-package", title: "Episode 9 package", status: "needs-review", packetJson: { audio: { assetId: "asset-1" } } } },
+      ],
+    });
+
+    expect(graph.currentPacket).toBeNull();
+    expect(graph.assets[0].packetState).toBe("WITHDRAWN");
+    expect(graph.selectionHistoryCount).toBe(2);
+  });
+});

@@ -18,6 +18,17 @@ export type SessionFinishingEvidence = {
   }>;
   analyzedSourceCount: number;
   sourceClockAttention?: { total: number; high: number; review: number };
+  versionedOutput?: {
+    sources: number;
+    activeMasters: number;
+    verifiedArtifacts: number;
+    approvedArtifacts: number;
+    packetEligible: number;
+    selectedPackets: number;
+    metadataComplete: boolean;
+    enclosurePublic: boolean;
+    publicationEligible: boolean;
+  };
 };
 
 type ContentReadiness = {
@@ -155,8 +166,46 @@ export function buildSessionFinishingCockpit(input: {
     consequence: "Unresolved exact-clock evidence can mislead transcript, repair, assembly, or delivery decisions if it is flattened into a generic confidence score.",
   });
 
+  const versionedOutput = finishingEvidence.versionedOutput;
+  if (versionedOutput?.activeMasters && !versionedOutput.verifiedArtifacts) attention.push({
+    id: "episode-artifact-missing",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: "The active Episode master has no verified delivery artifact",
+    detail: "The mastered candidate remains intact; create and verify a separate encoded AAC version for distribution review.",
+    consequence: "Proof-listen and Episode package selection cannot identify immutable delivery bytes.",
+  });
+  if (versionedOutput?.verifiedArtifacts && !versionedOutput.approvedArtifacts) attention.push({
+    id: "episode-proof-listen",
+    severity: "HIGH",
+    lane: "outputs",
+    title: `${versionedOutput.verifiedArtifacts} encoded Episode artifact${versionedOutput.verifiedArtifacts === 1 ? " needs" : "s need"} proof-listen review`,
+    detail: "Encoding verification proves technical properties, not the actual beginning, midpoint, ending, or creative acceptability.",
+    consequence: "Quipsly will not offer unreviewed encoded bytes as the Episode package candidate.",
+  });
+  if (versionedOutput?.packetEligible && !versionedOutput.selectedPackets) attention.push({
+    id: "episode-packet-selection",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: "Approved Episode audio is ready for reversible packet selection",
+    detail: "Choose which exact proof-listened artifact should become the current Episode package candidate.",
+    consequence: "Metadata and publishing preparation have no canonical audio lineage until a version is selected.",
+  });
+  if (versionedOutput?.selectedPackets && (!versionedOutput.metadataComplete || !versionedOutput.enclosurePublic)) attention.push({
+    id: "episode-package-open-facts",
+    severity: "REVIEW",
+    lane: "outputs",
+    title: "The selected Episode package still has open publication facts",
+    detail: `${versionedOutput.metadataComplete ? "Metadata reviewed" : "Metadata needs review"} · ${versionedOutput.enclosurePublic ? "public enclosure ready" : "public enclosure not hosted"}.`,
+    consequence: "Selection remains a reversible internal decision; it is not an upload, RSS change, or publication authorization.",
+  });
+
   const releasedOutputs = finishingEvidence.outputs.filter((output) => output.status === "RELEASED");
   const deliveryCount = finishingEvidence.outputs.reduce((total, output) => total + output.deliveryCount, 0);
+  const podcastFinishEvidence = versionedOutput
+    ? `${versionedOutput.approvedArtifacts} proof-listened artifact${versionedOutput.approvedArtifacts === 1 ? "" : "s"} · ${versionedOutput.selectedPackets} selected package`
+    : null;
+  const sessionDeliveryEvidence = `${releasedOutputs.length} released ${versionedOutput ? "Session " : ""}output${releasedOutputs.length === 1 ? "" : "s"} · ${deliveryCount} delivery event${deliveryCount === 1 ? "" : "s"}`;
   const stages: SessionFinishingStage[] = [
     {
       id: "recover",
@@ -193,9 +242,11 @@ export function buildSessionFinishingCockpit(input: {
     {
       id: "finish",
       label: "Finish",
-      state: releasedOutputs.length && deliveryCount ? "IN_PROGRESS" : "NOT_OBSERVED",
-      summary: deliveryCount ? "A governed Session delivery history exists." : "No governed Session delivery is observed.",
-      evidence: `${releasedOutputs.length} released output${releasedOutputs.length === 1 ? "" : "s"} · ${deliveryCount} delivery event${deliveryCount === 1 ? "" : "s"}`,
+      state: releasedOutputs.length && deliveryCount || versionedOutput?.selectedPackets ? "IN_PROGRESS" : "NOT_OBSERVED",
+      summary: versionedOutput?.selectedPackets
+        ? "A versioned Episode package candidate exists; hosting, metadata, upload, and publication remain separate."
+        : deliveryCount ? "A governed Session delivery history exists." : versionedOutput?.approvedArtifacts ? "Approved Episode audio awaits package selection." : "No governed Session delivery is observed.",
+      evidence: [podcastFinishEvidence, sessionDeliveryEvidence].filter(Boolean).join(" · "),
       lane: "outputs",
     },
   ];

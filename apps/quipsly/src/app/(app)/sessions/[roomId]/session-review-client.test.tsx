@@ -1318,9 +1318,25 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
-      sessionTitle="Coaching review"
+      sessionTitle="Episode review"
       mode="outputs"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      preparation={{
+        captureGroupId: "capture-episode-1",
+        purpose: "PODCAST",
+        status: "ENDED",
+        provider: "local",
+        providerRoomId: null,
+        providerCanJoin: false,
+        providerReadiness: "local-fallback",
+        providerNextAction: "No live call is active.",
+        scheduledStart: null,
+        scheduledEnd: null,
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        participants: [],
+        allAudioReady: false,
+        allTranscriptionReady: false,
+      }}
       studioHandoff={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
         recordings: [{
@@ -1343,7 +1359,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Open Episode 4 in Studio" })).toHaveAttribute("href", "/editor?project=high-ground&episode=episode-4");
     expect(screen.getByText(/provenance receipt—not proof that the take is substantial/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /promote|attach|send/i })).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Client follow-up unavailable" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Client follow-up unavailable" })).not.toBeInTheDocument();
   });
 
   it("keeps deliberate iPhone notes in Notes without mixing in tasks or goals", async () => {

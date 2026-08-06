@@ -53,6 +53,8 @@ import { SessionReadinessTopologyCard } from "./session-readiness-topology-card"
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
 import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
 import type { SessionSourceClockAttention } from "./session-source-clock-attention";
+import { SessionVersionedOutputGraphCard } from "./session-versioned-output-graph-card";
+import type { SessionVersionedOutputGraph } from "./session-versioned-output-graph";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
   EditableSessionNoteKind,
@@ -1855,7 +1857,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canManageSourcePlan = false, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, sourceClockAttention = null, focusedAttentionId = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canManageSourcePlan = false, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, versionedOutputGraph = null, sourceClockAttention = null, focusedAttentionId = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1872,6 +1874,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
   finishingEvidence?: SessionFinishingEvidence;
+  versionedOutputGraph?: SessionVersionedOutputGraph | null;
   sourceClockAttention?: SessionSourceClockAttention | null;
   focusedAttentionId?: string | null;
   sessionNotes?: SessionWorkspaceNote[];
@@ -2292,7 +2295,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       {mode === "outputs" ? (
         <div className="space-y-5">
           <SessionFinishingCockpitCard roomId={roomId} topology={readinessTopology} sourceEvidence={sourceEvidence} contentReadiness={contentReadiness} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} />
-          <SessionClientFollowUpCard roomId={roomId} />
+          {versionedOutputGraph ? <SessionVersionedOutputGraphCard graph={versionedOutputGraph} /> : null}
+          {purpose === "COACHING" ? <SessionClientFollowUpCard roomId={roomId} /> : null}
           {studioHandoff
             ? <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />
             : <WorkspaceEmptyState title="No Studio output context" detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt." />}

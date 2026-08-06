@@ -97,4 +97,22 @@ describe("Session finishing cockpit", () => {
       evidence: "1 released output · 1 delivery event",
     });
   });
+
+  it("projects podcast package depth separately from coaching or Session delivery", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        versionedOutput: { sources: 2, activeMasters: 1, verifiedArtifacts: 1, approvedArtifacts: 1, packetEligible: 1, selectedPackets: 1, metadataComplete: false, enclosurePublic: false, publicationEligible: false },
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([expect.objectContaining({ id: "episode-package-open-facts", lane: "outputs" })]));
+    expect(cockpit.stages.find((stage) => stage.id === "finish")).toMatchObject({ state: "IN_PROGRESS", summary: expect.stringContaining("hosting, metadata, upload, and publication remain separate") });
+    expect(cockpit.stages.find((stage) => stage.id === "finish")?.evidence).toContain("1 proof-listened artifact · 1 selected package");
+  });
 });
