@@ -99,6 +99,7 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
           retentionRole: input.retentionRole,
           expectedClientKind: input.expectedClientKind,
           expectedDeviceLabel: input.expectedDeviceLabel,
+          captureId: input.captureId,
           latestReason: input.reason,
         },
       });

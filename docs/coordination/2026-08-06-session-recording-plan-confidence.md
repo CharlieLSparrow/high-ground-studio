@@ -97,3 +97,22 @@ state rather than deleted after the test.
 - The next real multi-device rehearsal should declare every intended phone,
   browser, camera, isolated audio, screen/clip, provider witness, and backup
   before record; end-of-session recovery should use this plan as its checklist.
+
+## Capture finalization follow-on
+
+The server contract now accepts the phone's immutable `captureId` when the
+expected source is declared. Released mobile resumable finalization reconciles
+that identity inside the same serializable transaction that preserves the
+verified `RecordingAsset` and finalization receipt.
+
+Automatic binding occurs only when exactly one active expectation matches the
+room and capture ID and its person and audio/video kind agree. No declaration
+is a harmless no-op. Duplicate declarations remain ambiguous, and conflicting
+kind, participant, or prior bindings fail closed. The successful binding
+advances the plan revision and appends a deterministic BIND receipt attributed
+to the uploading actor. Held uploads never bind.
+
+This completes the server half of Capture-native plan reconciliation. The next
+native slice is a protected iPhone outbox that durably declares the generated
+capture ID alongside its local START receipt, retries without blocking healthy
+local recording, and projects the acknowledged plan item in Capture recovery.

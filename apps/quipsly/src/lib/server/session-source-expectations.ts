@@ -47,6 +47,7 @@ export type CreateExpectedSourceInput = {
   retentionRole: ExpectedSourceRole;
   expectedClientKind: string | null;
   expectedDeviceLabel: string | null;
+  captureId: string | null;
   reason: string | null;
 };
 
@@ -69,14 +70,16 @@ export function parseCreateExpectedSource(value: unknown): CreateExpectedSourceI
   const retentionRole = enumValue(body.retentionRole, EXPECTED_SOURCE_ROLES);
   const expectedClientKind = text(body.expectedClientKind, 40).toLowerCase() || null;
   const expectedDeviceLabel = text(body.expectedDeviceLabel, 160) || null;
+  const captureId = text(body.captureId, 64).toLowerCase() || null;
   const reason = text(body.reason, 500) || null;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId)
       || !label
       || !sourceKind
       || !retentionRole
       || (sourceKind === "PROVIDER" && retentionRole === "REQUIRED_MASTER")
+      || (captureId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(captureId))
       || (expectedClientKind && !["ios", "web", "macos", "external"].includes(expectedClientKind))) return null;
-  return { requestId, participantId, label, sourceKind, retentionRole, expectedClientKind, expectedDeviceLabel, reason };
+  return { requestId, participantId, label, sourceKind, retentionRole, expectedClientKind, expectedDeviceLabel, captureId, reason };
 }
 
 export function parseMutateExpectedSource(value: unknown): MutateExpectedSourceInput | null {

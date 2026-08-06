@@ -33,6 +33,7 @@ function createBody(overrides: Record<string, unknown> = {}) {
     retentionRole: "REQUIRED_MASTER",
     expectedClientKind: "ios",
     expectedDeviceLabel: "iPhone 16",
+    captureId: "2a32f19d-8770-4c35-a157-96884d566e82",
     reason: "Declared before recording.",
     ...overrides,
   };
@@ -51,7 +52,7 @@ function storedExpectation(overrides: Record<string, unknown> = {}) {
     expectedClientKind: "ios",
     expectedDeviceLabel: "iPhone 16",
     recordingAssetId: null,
-    captureId: null,
+    captureId: "2a32f19d-8770-4c35-a157-96884d566e82",
     revision: 1,
     latestReason: "Declared before recording.",
     createdAt: now,
@@ -149,6 +150,7 @@ describe("Session retained-source plan API", () => {
         participantLabel: "Scott Sparrow",
         sourceKind: "VIDEO",
         retentionRole: "REQUIRED_MASTER",
+        captureId: "2a32f19d-8770-4c35-a157-96884d566e82",
         revision: 1,
       },
     });

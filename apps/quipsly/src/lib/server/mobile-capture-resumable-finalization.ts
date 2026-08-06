@@ -13,6 +13,7 @@ import {
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
 import { toGcsUri } from "@/lib/server/gcs";
 import { recordMobileCaptureIngestion } from "@/lib/server/mobile-capture-records";
+import { bindVerifiedMobileCaptureExpectation } from "@/lib/server/mobile-capture-source-expectation";
 import type {
   MobileCaptureObjectEvidence,
   MobileCaptureResumableFinalizationEvidence,
@@ -978,6 +979,16 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
             : null),
         metadataJson: receiptMetadata,
       },
+    });
+    await bindVerifiedMobileCaptureExpectation({
+      transaction,
+      roomId: manifest.callRoomId,
+      participantId: captureRecords.participantId,
+      actorUserId: manifest.actorUserId,
+      captureId: manifest.captureId,
+      uploadSessionId: manifest.uploadSessionId,
+      sourceType: manifest.sourceType,
+      recordingAssetId: evidence.recordingAssetId,
     });
     return evidence;
     },
