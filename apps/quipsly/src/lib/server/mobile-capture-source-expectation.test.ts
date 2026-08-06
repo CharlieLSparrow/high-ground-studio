@@ -2,7 +2,10 @@
 
 jest.mock("server-only", () => ({}));
 
-import { bindVerifiedMobileCaptureExpectation } from "./mobile-capture-source-expectation";
+import {
+  bindAlreadyReleasedMobileCaptureExpectation,
+  bindVerifiedMobileCaptureExpectation,
+} from "./mobile-capture-source-expectation";
 
 function expectation(overrides: Record<string, unknown> = {}) {
   return {
@@ -30,6 +33,46 @@ function transaction(rows: unknown[]) {
       update: jest.fn().mockImplementation(async ({ data }) => expectation({ ...data })),
     },
     callExpectedSourceRevision: { create: jest.fn().mockResolvedValue({ id: "revision-2" }) },
+    mobileCaptureFinalizationReceipt: { findMany: jest.fn().mockResolvedValue([]) },
+    recordingAsset: { findFirst: jest.fn().mockResolvedValue(null) },
+  };
+}
+
+function releasedReceipt(overrides: Record<string, unknown> = {}) {
+  return {
+    uploadSessionId: input.uploadSessionId,
+    recordingAssetId: input.recordingAssetId,
+    metadataJson: {
+      immutableUploadBinding: {
+        uploadSessionId: input.uploadSessionId,
+        captureId: input.captureId,
+        roomId: input.roomId,
+        actorUserId: input.actorUserId,
+        sha256: "a".repeat(64),
+        sizeBytes: 42_000,
+        bucketName: "quipsly-test-media",
+        objectName: "media-vault/test/source.mov",
+        generation: "1785990000000",
+      },
+    },
+    ...overrides,
+  };
+}
+
+function verifiedAsset(overrides: Record<string, unknown> = {}) {
+  return {
+    id: input.recordingAssetId,
+    participantId: input.participantId,
+    kind: "LOCAL_VIDEO",
+    byteSize: 42_000n,
+    checksum: "a".repeat(64),
+    storageBucket: "quipsly-test-media",
+    storageObjectPath: "media-vault/test/source.mov",
+    localManifestJson: {
+      exactBytesVerified: true,
+      storageGeneration: "1785990000000",
+    },
+    ...overrides,
   };
 }
 
@@ -83,5 +126,71 @@ describe("verified mobile Capture source-plan binding", () => {
     const revision = tx.callExpectedSourceRevision.create.mock.calls[0][0].data;
     expect(revision.requestId).toMatch(/^[0-9a-f-]{36}$/);
     expect(revision.reason).toMatch(/captureId matched/i);
+  });
+
+  it("binds a late declaration to one already released and VERIFIED source", async () => {
+    const tx = transaction([expectation()]);
+    tx.mobileCaptureFinalizationReceipt.findMany.mockResolvedValue([releasedReceipt()]);
+    tx.recordingAsset.findFirst.mockResolvedValue(verifiedAsset());
+
+    await expect(bindAlreadyReleasedMobileCaptureExpectation({
+      transaction: tx,
+      roomId: input.roomId,
+      actorUserId: input.actorUserId,
+      captureId: input.captureId,
+    })).resolves.toEqual({
+      state: "bound",
+      expectationId: "expectation-1",
+      revision: 2,
+    });
+    expect(tx.recordingAsset.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: input.recordingAssetId,
+        roomId: input.roomId,
+        status: "VERIFIED",
+      },
+      select: {
+        id: true,
+        participantId: true,
+        kind: true,
+        byteSize: true,
+        checksum: true,
+        storageBucket: true,
+        storageObjectPath: true,
+        localManifestJson: true,
+      },
+    });
+  });
+
+  it("keeps a late declaration unbound when a legacy VERIFIED row lacks exact evidence", async () => {
+    const tx = transaction([expectation()]);
+    tx.mobileCaptureFinalizationReceipt.findMany.mockResolvedValue([releasedReceipt()]);
+    tx.recordingAsset.findFirst.mockResolvedValue(verifiedAsset({
+      localManifestJson: {},
+    }));
+
+    await expect(bindAlreadyReleasedMobileCaptureExpectation({
+      transaction: tx,
+      roomId: input.roomId,
+      actorUserId: input.actorUserId,
+      captureId: input.captureId,
+    })).resolves.toEqual({ state: "exact-byte-evidence-incomplete" });
+    expect(tx.callExpectedSource.update).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when two released uploads claim one capture identity", async () => {
+    const tx = transaction([expectation()]);
+    tx.mobileCaptureFinalizationReceipt.findMany.mockResolvedValue([
+      { uploadSessionId: input.uploadSessionId, recordingAssetId: input.recordingAssetId },
+      { uploadSessionId: "c14191cd-432f-42d7-9584-f8102cf0f617", recordingAssetId: "asset-video-2" },
+    ]);
+
+    await expect(bindAlreadyReleasedMobileCaptureExpectation({
+      transaction: tx,
+      roomId: input.roomId,
+      actorUserId: input.actorUserId,
+      captureId: input.captureId,
+    })).resolves.toEqual({ state: "ambiguous-upload" });
+    expect(tx.callExpectedSource.update).not.toHaveBeenCalled();
   });
 });

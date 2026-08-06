@@ -177,7 +177,7 @@ for (const needle of [
 }
 
 for (const needle of [
-  "MEDIA_VAULT_BUCKET_ENV_NAMES",
+  "chooseConfiguredMediaVaultBucket",
   "MEDIA_VAULT_PREFIXES.livekitRecording",
   "LIVEKIT_EGRESS_ENABLED",
 ]) {

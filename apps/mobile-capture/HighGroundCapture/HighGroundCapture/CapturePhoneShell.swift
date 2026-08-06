@@ -6137,6 +6137,16 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
+                    if let sourcePlanStatus = model.sourcePlanOutbox.statusLine {
+                        if model.sourcePlanOutbox.pendingCount == 0 {
+                            CaptureInlineMessage(text: sourcePlanStatus)
+                                .accessibilityIdentifier("CaptureSourcePlanStatus")
+                        } else {
+                            CaptureInlineWarning(text: sourcePlanStatus)
+                                .accessibilityIdentifier("CaptureSourcePlanStatus")
+                        }
+                    }
+
                     UploadSummaryCard(model: model)
 
                     StudioHandoffCard(

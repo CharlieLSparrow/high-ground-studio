@@ -28,6 +28,9 @@ export type SessionTopologyRecordingInput = {
   status: string;
   fileName?: string | null;
   byteSize?: bigint | number | string | null;
+  checksum?: string | null;
+  storageBucket?: string | null;
+  storageObjectPath?: string | null;
   durationSeconds?: number | null;
   verifiedAt?: Date | string | null;
   recordedStartedAt?: Date | string | null;
@@ -47,9 +50,12 @@ export type SessionTopologyCaptureInput = {
 export type SessionTopologyFinalizationInput = {
   uploadSessionId: string;
   captureId: string;
+  roomId?: string | null;
+  actorUserId?: string | null;
   recordingAssetId?: string | null;
   processingDisposition: string;
   transcriptDisposition: string;
+  metadataJson?: unknown;
   updatedAt: Date | string;
 };
 
@@ -344,6 +350,12 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function scalar(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  return "";
+}
+
 function iso(value: Date | string | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -419,13 +431,44 @@ function recordingSource(
   const profile = sourceProfile(manifest);
   const kind = sourceKind(recording.kind);
   const byteSize = recording.byteSize == null ? null : String(recording.byteSize);
-  const exactBytesVerified = recording.status === "VERIFIED" && Boolean(recording.verifiedAt);
+  const checksum = text(recording.checksum).toLowerCase();
+  const storageGeneration = text(manifest.storageGeneration);
+  const numericByteSize = Number(recording.byteSize);
+  const assetExactBytesVerified = recording.status === "VERIFIED"
+    && Boolean(recording.verifiedAt)
+    && manifest.exactBytesVerified === true
+    && /^[a-f0-9]{64}$/.test(checksum)
+    && Number.isFinite(numericByteSize)
+    && numericByteSize > 0
+    && Boolean(text(recording.storageBucket))
+    && Boolean(text(recording.storageObjectPath))
+    && Boolean(storageGeneration);
+  const immutableBinding = object(object(finalization?.metadataJson).immutableUploadBinding);
+  const bindingSha256 = text(immutableBinding.sha256).toLowerCase();
+  const bindingByteSize = scalar(immutableBinding.sizeBytes);
+  const manifestCaptureId = text(manifest.captureId).toLowerCase();
+  const receiptCaptureId = text(finalization?.captureId).toLowerCase();
+  const exactReceiptMatchesAsset = Boolean(finalization)
+    && text(immutableBinding.uploadSessionId) === text(finalization?.uploadSessionId)
+    && Boolean(receiptCaptureId)
+    && text(immutableBinding.captureId).toLowerCase() === receiptCaptureId
+    && (!manifestCaptureId || manifestCaptureId === receiptCaptureId)
+    && Boolean(text(immutableBinding.roomId))
+    && Boolean(text(immutableBinding.actorUserId))
+    && bindingSha256 === checksum
+    && bindingByteSize === byteSize
+    && text(immutableBinding.bucketName) === text(recording.storageBucket)
+    && text(immutableBinding.objectName) === text(recording.storageObjectPath)
+    && text(immutableBinding.generation) === storageGeneration;
+  const exactBytesVerified = assetExactBytesVerified && exactReceiptMatchesAsset;
   const processingDisposition = finalization ? text(finalization.processingDisposition).toUpperCase() : null;
   const transcriptDisposition = finalization ? text(finalization.transcriptDisposition).toUpperCase() : null;
-  const retentionState = !exactBytesVerified
+  const retentionState = !assetExactBytesVerified
     ? "SERVER_COPY_PENDING" as const
     : !finalization
       ? "FINALIZATION_RECEIPT_MISSING" as const
+      : !exactReceiptMatchesAsset
+        ? "SERVER_COPY_PENDING" as const
       : processingDisposition === "RELEASED"
         ? "SERVER_COPY_VERIFIED_RELEASED" as const
         : "SERVER_COPY_VERIFIED_HELD" as const;

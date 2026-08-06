@@ -7190,6 +7190,58 @@ final class CaptureSessionClient: ObservableObject {
         }
     }
 
+    func sendSourcePlanDeclaration(
+        _ payload: CaptureSourcePlanPayload,
+        roomID: String,
+        expectedOwnerAccountID: String
+    ) async -> CaptureSourcePlanDelivery {
+        var roomPathCharacters = CharacterSet.urlPathAllowed
+        roomPathCharacters.remove(charactersIn: "/%?#")
+        guard let encodedRoomID = roomID.addingPercentEncoding(
+            withAllowedCharacters: roomPathCharacters
+        ) else {
+            return .held("The Session identity cannot be encoded safely.")
+        }
+        guard let url = URL(
+            string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/source-expectations"
+        ) else {
+            return .retry("The configured Nest URL is not valid.")
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(payload)
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request,
+                expectedOwnerAccountID: expectedOwnerAccountID
+            )
+            let object = (try? JSONSerialization.jsonObject(with: data))
+                as? [String: Any]
+            let expectation = object?["expectation"] as? [String: Any]
+            let expectationID = expectation?["id"] as? String
+            let revision = (expectation?["revision"] as? NSNumber)?.intValue
+            if response.statusCode < 300,
+               object?["ok"] as? Bool == true,
+               let expectationID,
+               let revision,
+               revision >= 1 {
+                return .acknowledged(
+                    expectationID: expectationID,
+                    revision: revision
+                )
+            }
+            let message = object?["error"] as? String
+                ?? "Nest did not acknowledge this iPhone source plan."
+            if [400, 403, 404, 409, 422].contains(response.statusCode) {
+                return .held(message)
+            }
+            return .retry(message)
+        } catch {
+            return .retry(error.localizedDescription)
+        }
+    }
+
     func prepareRoomJoin(for session: MobileCaptureSession) async -> MobileCaptureRoomJoinResponse? {
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/rooms/join") else {
             status = "Bad Nest URL"

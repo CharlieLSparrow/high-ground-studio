@@ -7914,3 +7914,25 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   by a ranked recovery/attention queue and versioned master/output graph. This
   remains local retained-QA proof, not physical-iPhone, TestFlight, production,
   provider, deployment, or publication proof.
+
+## 2026-08-06 Capture-native recording-plan checkpoint
+
+- Quipsly Capture now writes a protected, owner-partitioned source-plan outbox
+  row after its authoritative local ledger commit and before audio/video capture
+  begins. Network acknowledgement is independent of recording, deterministic
+  across relaunch, retryable, and visible in the recorder recovery surface.
+- Nest reconciles the exact capture UUID under the Session room lock whether
+  declaration or verified upload arrives first. Person/kind mismatch,
+  duplicates, occupied sources, and incomplete exact-byte evidence fail closed.
+- Rendered dogfood caught a legacy `VERIFIED` label that lacked Quipsly's deeper
+  immutable generation and byte-binding evidence. The false binding was
+  unbound and canceled through the normal API, Session readiness now requires
+  exact manifest evidence, and the UI truthfully changed from `4/4` to `3/4`
+  server-safe masters.
+- A second retained operation exact-bound Capture
+  `4bc764d6-3572-464e-a306-b86fd4464b38` to RecordingAsset
+  `cmsfetkc600096qxlta094mpn`, proved idempotent API replay, independent
+  PostgreSQL `CREATE` then `BIND` evidence, and a rendered **Fulfilled** plan
+  item. Physical-iPhone operation and production deployment remain open.
+- Architecture and evidence:
+  `docs/coordination/2026-08-06-session-recording-plan-confidence.md`.

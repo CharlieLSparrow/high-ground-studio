@@ -85,15 +85,51 @@ state rather than deleted after the test.
 - Retained coach/client/outsider auth smoke: coach and client reads passed;
   unrelated outsider received concealed 404.
 
+## Capture-native declaration and exact binding
+
+Quipsly Capture now stages one protected source-plan declaration immediately
+after its local recording ledger commits the source identity and before the AV
+recorder is asked for bytes. Recording never waits on the network. The
+owner-partitioned Application Support outbox reconstructs from durable local
+recordings after relaunch, uses one deterministic request identity per capture,
+retries transient failure, and holds authorization or conflict failures for
+review without deleting the take.
+
+Nest acknowledges the exact capture UUID as a required iPhone audio or video
+master. Either arrival order converges under the same room advisory lock:
+declaration before verified finalization binds during finalization; upload
+before declaration binds during the late declaration. Duplicate declarations,
+multiple released uploads, person/kind disagreement, occupied assets, and
+incomplete exact-byte evidence remain unbound.
+
+The retained local operation found an important legacy false-green boundary.
+An old QA asset carried a mutable `VERIFIED` label and released receipt but its
+source-evidence ledger lacked an immutable generation, exact manifest claim,
+and complete byte binding. The first operation item was therefore unbound and
+canceled through the normal API with append-only evidence. Automatic late
+binding now additionally requires matching SHA-256, byte size, bucket, object
+path, generation, room, capture, upload, and actor evidence. Session readiness
+uses that same manifest-level standard instead of trusting the status label
+alone, and independently joins the finalization receipt's immutable upload
+binding back to the RecordingAsset. A released receipt describing different
+bytes cannot make the source server-safe.
+
+The corrected operation then declared Capture ID
+`4bc764d6-3572-464e-a306-b86fd4464b38`, exact-bound RecordingAsset
+`cmsfetkc600096qxlta094mpn`, replayed the same request idempotently, and read
+back `CREATE` then `BIND` from PostgreSQL. The rendered Recordings workspace
+shows the exact item as **Fulfilled**, the legacy item as **Canceled**, and the
+truthful aggregate `3/4 server-safe masters` rather than the earlier false
+`4/4`.
+
 ## Honest remaining boundaries
 
 - This proves the browser-operated local Session and durable recovery model. It
   does not prove a new physical-iPhone recording, a TestFlight build, or a
   production database migration.
-- Capture still needs to publish its own intended source-plan items before a
-  take, then bind its uploaded assets automatically after exact verification.
-  Until that native integration exists, a producer declares and binds the plan
-  in the Session Recordings workspace.
+- The native declaration and exact server binding now exist and compile in the
+  complete iOS app. Physical-iPhone operation, production migration/deployment,
+  and a new real take remain separate release evidence.
 - The next real multi-device rehearsal should declare every intended phone,
   browser, camera, isolated audio, screen/clip, provider witness, and backup
   before record; end-of-session recovery should use this plan as its checklist.
@@ -112,7 +148,12 @@ kind, participant, or prior bindings fail closed. The successful binding
 advances the plan revision and appends a deterministic BIND receipt attributed
 to the uploading actor. Held uploads never bind.
 
-This completes the server half of Capture-native plan reconciliation. The next
-native slice is a protected iPhone outbox that durably declares the generated
-capture ID alongside its local START receipt, retries without blocking healthy
-local recording, and projects the acknowledged plan item in Capture recovery.
+The protected iPhone outbox, automatic two-order reconciliation, Capture
+recovery projection, exact-evidence hardening, authenticated retained
+operation, and rendered Session readback now complete this slice.
+
+Follow-on verification passes three focused suites with 28 tests, Quipsly
+typecheck, the optimized 181-page production build, three pure Swift projection
+tests, and the complete dual-architecture mobile preflight. Replaying the
+retained operation returns the same expectation at revision 2 with idempotent
+CREATE/BIND readback and no secret output.

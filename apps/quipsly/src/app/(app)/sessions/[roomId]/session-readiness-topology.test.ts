@@ -14,6 +14,29 @@ describe("Session readiness topology", () => {
       transcriptionReady: true,
     },
   };
+  const exactStorage = {
+    byteSize: BigInt(1024),
+    checksum: "a".repeat(64),
+    storageBucket: "quipsly-test-media",
+    storageObjectPath: "media-vault/test/source.m4a",
+  };
+  const exactFinalizationEvidence = {
+    roomId: "room-1",
+    actorUserId: "user-scott",
+    metadataJson: {
+      immutableUploadBinding: {
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        roomId: "room-1",
+        actorUserId: "user-scott",
+        sha256: "a".repeat(64),
+        sizeBytes: 1024,
+        bucketName: "quipsly-test-media",
+        objectName: "media-vault/test/source.m4a",
+        generation: "1785990000000",
+      },
+    },
+  };
 
   it("keeps a person, their call endpoints, and retained sources as separate facts", () => {
     const topology = buildSessionReadinessTopology({
@@ -42,14 +65,16 @@ describe("Session readiness topology", () => {
       recordings: [
         {
           id: "asset-audio",
+          ...exactStorage,
           participantId: participant.id,
           kind: "LOCAL_AUDIO",
           status: "VERIFIED",
           fileName: "Scott-audio.m4a",
-          byteSize: BigInt(1024),
           verifiedAt: "2026-08-05T17:59:00.000Z",
           localManifestJson: {
             captureId: "capture-1",
+            exactBytesVerified: true,
+            storageGeneration: "1785990000000",
             reportedSourceProfile: {
               deviceModelIdentifier: "iPhone17,3",
               audioRouteName: "DJI Mic 2",
@@ -58,6 +83,7 @@ describe("Session readiness topology", () => {
         },
       ],
       finalizations: [{
+        ...exactFinalizationEvidence,
         uploadSessionId: "upload-1",
         captureId: "capture-1",
         recordingAssetId: "asset-audio",
@@ -124,13 +150,15 @@ describe("Session readiness topology", () => {
       captures: [],
       recordings: [{
         id: "asset-audio",
+        ...exactStorage,
         participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         verifiedAt: "2026-08-05T17:59:00.000Z",
-        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+        localManifestJson: { captureId: "capture-1", exactBytesVerified: true, storageGeneration: "1785990000000", reportedSourceProfile: { clientKind: "web" } },
       }],
       finalizations: [{
+        ...exactFinalizationEvidence,
         uploadSessionId: "upload-1",
         captureId: "capture-1",
         recordingAssetId: "asset-audio",
@@ -205,13 +233,15 @@ describe("Session readiness topology", () => {
       captures: [],
       recordings: [{
         id: "asset-audio",
+        ...exactStorage,
         participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         verifiedAt: "2026-08-05T17:59:00.000Z",
-        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+        localManifestJson: { captureId: "capture-1", exactBytesVerified: true, storageGeneration: "1785990000000", reportedSourceProfile: { clientKind: "web" } },
       }],
       finalizations: [{
+        ...exactFinalizationEvidence,
         uploadSessionId: "upload-1",
         captureId: "capture-1",
         recordingAssetId: "asset-audio",
@@ -255,13 +285,15 @@ describe("Session readiness topology", () => {
       captures: [],
       recordings: [{
         id: "asset-audio",
+        ...exactStorage,
         participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         verifiedAt: "2026-08-05T17:59:00.000Z",
-        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+        localManifestJson: { captureId: "capture-1", exactBytesVerified: true, storageGeneration: "1785990000000", reportedSourceProfile: { clientKind: "web" } },
       }],
       finalizations: [{
+        ...exactFinalizationEvidence,
         uploadSessionId: "upload-1",
         captureId: "capture-1",
         recordingAssetId: "asset-audio",
@@ -324,14 +356,16 @@ describe("Session readiness topology", () => {
       }],
       recordings: [{
         id: "asset-audio",
+        ...exactStorage,
         participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         verifiedAt: "2026-08-05T17:59:00.000Z",
-        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+        localManifestJson: { captureId: "capture-1", exactBytesVerified: true, storageGeneration: "1785990000000", reportedSourceProfile: { clientKind: "web" } },
       }],
       captures: [],
       finalizations: [{
+        ...exactFinalizationEvidence,
         uploadSessionId: "upload-1",
         captureId: "capture-1",
         recordingAssetId: "asset-audio",
@@ -424,11 +458,13 @@ describe("Session readiness topology", () => {
       captures: [],
       recordings: [{
         id: "asset-unreleased",
+        ...exactStorage,
         participantId: participant.id,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         fileName: "unreleased.m4a",
         verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { exactBytesVerified: true, storageGeneration: "1785990000000" },
       }],
     });
 
@@ -438,6 +474,110 @@ describe("Session readiness topology", () => {
       safeForServerObservedSources: false,
       safeToLeaveAllEndpoints: false,
     });
+  });
+
+  it("does not call a legacy VERIFIED label exact-byte safe without its manifest evidence", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "legacy-verified",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        byteSize: BigInt(1024),
+        checksum: "a".repeat(64),
+        storageBucket: "quipsly-test-media",
+        storageObjectPath: "media-vault/test/legacy.m4a",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "legacy-capture", storageGeneration: "1785990000000" },
+      }],
+      finalizations: [{
+        uploadSessionId: "legacy-upload",
+        captureId: "legacy-capture",
+        recordingAssetId: "legacy-verified",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      expectedSources: [{
+        id: "legacy-expected",
+        participantId: participant.id,
+        label: "Legacy iPhone master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        recordingAssetId: "legacy-verified",
+        captureId: "legacy-capture",
+        revision: 2,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources[0]).toMatchObject({
+      verified: false,
+      serverRetention: { state: "SERVER_COPY_PENDING", exactBytesVerified: false },
+    });
+    expect(topology.expectedSources[0]).toMatchObject({
+      fulfillment: "bound-source-pending",
+      blocking: true,
+    });
+    expect(topology.exitReadiness).toMatchObject({
+      state: "PLANNED_SOURCE_INCOMPLETE",
+      safeForServerObservedSources: false,
+      safeForPlannedSources: false,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
+  it("does not join a released receipt to different immutable bytes", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-audio",
+        ...exactStorage,
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: {
+          captureId: "capture-1",
+          exactBytesVerified: true,
+          storageGeneration: "1785990000000",
+        },
+      }],
+      finalizations: [{
+        ...exactFinalizationEvidence,
+        metadataJson: {
+          immutableUploadBinding: {
+            ...exactFinalizationEvidence.metadataJson.immutableUploadBinding,
+            sha256: "b".repeat(64),
+          },
+        },
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources[0]).toMatchObject({
+      verified: false,
+      serverRetention: {
+        state: "SERVER_COPY_PENDING",
+        exactBytesVerified: false,
+        processingDisposition: "RELEASED",
+      },
+    });
+    expect(topology.exitReadiness.safeForServerObservedSources).toBe(false);
   });
 
   it("keeps an optional provider witness out of the required-master exit count", () => {

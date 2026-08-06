@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere, sessionMutationAccessWhere } from "@/lib/server/session-access";
+import { bindAlreadyReleasedMobileCaptureExpectation } from "@/lib/server/mobile-capture-source-expectation";
 import {
   expectedSourceRequestSha256,
   expectedSourceSnapshot,
@@ -105,6 +106,14 @@ export async function POST(request: Request, context: { params: Promise<{ roomId
       });
       const afterJson = expectedSourceSnapshot(expectation);
       await tx.callExpectedSourceRevision.create({ data: { requestId: input.requestId, requestSha256, expectationId: expectation.id, roomId: room.id, actorUserId: session.user.id, action: "CREATE", revision: 1, beforeJson: {}, afterJson, reason: input.reason } });
+      if (input.captureId && ["AUDIO", "VIDEO"].includes(input.sourceKind)) {
+        await bindAlreadyReleasedMobileCaptureExpectation({
+          transaction: tx,
+          roomId: room.id,
+          actorUserId: session.user.id,
+          captureId: input.captureId,
+        });
+      }
       const hydrated = await tx.callExpectedSource.findUniqueOrThrow({ where: { id: expectation.id }, include: expectationInclude });
       return { kind: "ok" as const, expectation: hydrated, replay: false };
     });

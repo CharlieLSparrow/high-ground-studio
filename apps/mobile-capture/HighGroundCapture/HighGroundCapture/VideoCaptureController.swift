@@ -424,7 +424,7 @@ final class VideoCaptureController: ObservableObject {
                 recordingAssetId: context.recordingAssetID,
                 capturePurpose: context.capturePurpose
             )
-            _ = try library.beginRecording(
+            let ledgerEntry = try library.beginRecording(
                 id: recordingID,
                 at: sourceURL,
                 startedAt: startedAt,
@@ -437,6 +437,9 @@ final class VideoCaptureController: ObservableObject {
                 sourceProfile: sourceProfile
             )
             ledgerWasCreated = true
+            _ = CaptureSourcePlanOutbox.shared.stageDurably(
+                recording: ledgerEntry
+            )
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 throw VideoCaptureControllerError.ownerChanged
             }

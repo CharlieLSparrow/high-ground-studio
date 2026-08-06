@@ -91,6 +91,7 @@ describe("Session retained-source plan API", () => {
       findUnique: jest.fn(),
       create: jest.fn(),
     },
+    mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
     recordingAsset: { findFirst: jest.fn() },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
@@ -106,6 +107,8 @@ describe("Session retained-source plan API", () => {
     });
     prisma.callExpectedSource.findMany.mockResolvedValue([]);
     prisma.callExpectedSourceRevision.findUnique.mockResolvedValue(null);
+    prisma.mobileCaptureFinalizationReceipt.findMany.mockResolvedValue([]);
+    prisma.recordingAsset.findFirst.mockResolvedValue(null);
     prisma.callExpectedSource.create.mockImplementation(async ({ data }) => storedExpectation({ ...data, participant: undefined }));
     prisma.callExpectedSource.findUniqueOrThrow.mockResolvedValue(storedExpectation());
     prisma.callExpectedSourceRevision.create.mockResolvedValue({ id: "revision-1" });
@@ -186,6 +189,72 @@ describe("Session retained-source plan API", () => {
     expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: true });
     expect(prisma.callExpectedSource.create).not.toHaveBeenCalled();
     expect(prisma.callExpectedSourceRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("fulfills a late phone declaration from one already released verified upload", async () => {
+    const boundExpectation = storedExpectation({
+      recordingAssetId: "asset-video-1",
+      revision: 2,
+      latestReason: "Automatically bound after exact mobile-capture byte verification and release.",
+      recordingAsset: {
+        id: "asset-video-1",
+        fileName: "capture.mov",
+        kind: "LOCAL_VIDEO",
+        status: "VERIFIED",
+        verifiedAt: now,
+      },
+    });
+    prisma.mobileCaptureFinalizationReceipt.findMany.mockResolvedValue([{
+      uploadSessionId: "8fb5f3ca-2898-41fc-b84d-0b6fcb2f9c6c",
+      recordingAssetId: "asset-video-1",
+      metadataJson: {
+        immutableUploadBinding: {
+          uploadSessionId: "8fb5f3ca-2898-41fc-b84d-0b6fcb2f9c6c",
+          captureId: "2a32f19d-8770-4c35-a157-96884d566e82",
+          roomId: "room-1",
+          actorUserId: actor.id,
+          sha256: "a".repeat(64),
+          sizeBytes: 42_000,
+          bucketName: "quipsly-test-media",
+          objectName: "media-vault/test/capture.mov",
+          generation: "1785990000000",
+        },
+      },
+    }]);
+    prisma.recordingAsset.findFirst.mockResolvedValue({
+      id: "asset-video-1",
+      participantId: "participant-1",
+      kind: "LOCAL_VIDEO",
+      byteSize: 42_000n,
+      checksum: "a".repeat(64),
+      storageBucket: "quipsly-test-media",
+      storageObjectPath: "media-vault/test/capture.mov",
+      localManifestJson: {
+        exactBytesVerified: true,
+        storageGeneration: "1785990000000",
+      },
+    });
+    prisma.callExpectedSource.findMany.mockResolvedValue([storedExpectation()]);
+    prisma.callExpectedSource.update.mockResolvedValue(boundExpectation);
+    prisma.callExpectedSource.findUniqueOrThrow.mockResolvedValue(boundExpectation);
+
+    const response = await POST(request("POST", createBody()), context);
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      expectation: {
+        id: "expectation-1",
+        captureId: "2a32f19d-8770-4c35-a157-96884d566e82",
+        recordingAssetId: "asset-video-1",
+        revision: 2,
+        recordingAsset: { status: "VERIFIED" },
+      },
+    });
+    expect(prisma.callExpectedSourceRevision.create).toHaveBeenCalledTimes(2);
+    expect(prisma.callExpectedSourceRevision.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ action: "BIND", revision: 2 }),
+    });
   });
 
   it("rejects a stale recovery decision without changing the current plan", async () => {

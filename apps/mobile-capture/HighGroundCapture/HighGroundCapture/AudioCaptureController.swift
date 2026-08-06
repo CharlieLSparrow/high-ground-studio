@@ -919,6 +919,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
                     : captureIntent.clockSamples
             )
         )
+        _ = CaptureSourcePlanOutbox.shared.stageDurably(
+            recording: ledgerEntry
+        )
 
         currentRecordingURL = audioFilename
         activeLocalRecordingID = ledgerEntry.id

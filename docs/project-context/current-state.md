@@ -2406,3 +2406,27 @@ These should be treated as cleanup candidates later, not as authoritative produc
   was operated after correcting partial audio evidence from `NOT_OBSERVED` to
   `IN_PROGRESS`. See
   `docs/coordination/2026-08-06-session-finishing-cockpit.md`.
+
+### 2026-08-06 Capture-native recording-plan declaration
+
+- Every consented, room-bound iPhone audio or video take now stages a protected,
+  owner-partitioned source-plan declaration after the local recording ledger is
+  durable and before AV capture begins. Recording never waits for the network;
+  the independent outbox retries and makes held declarations visible.
+- The declaration carries the immutable capture UUID. Either arrival order now
+  converges under the Session room lock: verified upload finalization can bind
+  an existing declaration, and a late declaration can bind one already released
+  upload only when checksum, byte size, storage identity, generation, capture,
+  room, upload, and actor evidence all match.
+- Operating the retained coaching Session exposed a legacy `VERIFIED` row that
+  lacked exact manifest evidence. It is preserved as canceled audit history,
+  not deleted; the Cockpit now reports 3/4 server-safe masters instead of a
+  false 4/4. Cockpit safety also requires the immutable finalization binding to
+  match the RecordingAsset, not merely separate verified and released labels.
+- The exact retained Capture declaration is idempotently fulfilled with its
+  append-only CREATE/BIND revisions. Three focused suites pass 28 tests,
+  Quipsly typecheck and the 181-page production build pass, the native
+  source-plan projection passes three pure Swift tests, and the complete mobile
+  preflight passes both simulator architectures. Physical-iPhone operation and
+  production release remain distinct gates. See
+  `docs/coordination/2026-08-06-session-recording-plan-confidence.md`.

@@ -151,9 +151,9 @@ const checks = [
       "startQuipslyLiveKitRoomCompositeEgress",
       "stopQuipslyLiveKitRoomCompositeEgress",
       "reconcileQuipslyLiveKitEgressRecording",
-      "every signed-in, non-observer participant to grant current audio and video recording consent",
-      "LiveKit provider recording is not configured",
-      "status: \"UPLOADING\"",
+      "Current all-party audio and video recording consent is incomplete. Media processing remains held.",
+      "durableCommandLedgerImplemented: true",
+      "provider START remains deliberately disabled",
       "Provider recording verified with unchanged all-party source and transcription consent; transcript evidence is queued or preserved.",
     ]) &&
       includesAll(texts.providerRecordingRoute || "", [
@@ -171,22 +171,24 @@ const checks = [
   check(
     includesAll(texts.coachingPage || "", [
       "runProviderRecordingAction",
-      "PREPARE_RECEIPT_SLOT",
       "START_EGRESS",
       "STOP_EGRESS",
       "RECONCILE_PROVIDER_FILE",
-      "Provider/server recording is separate from joining the room",
-      "Prepare slot",
-      "Start egress",
-      "Stop egress",
-      "Reconcile",
+      "optional provider safety copy",
+      "This provider copy is separate from the call and local iPhone/browser capture.",
+      "A durable reservation is created automatically when you start it",
+      "Start safety copy",
+      "Stop safety copy",
+      "Resolve command",
+      "Verify provider file",
     ]) &&
       includesAll(texts.coachingPage || "", [
         "providerRecordingReceiptSlotId",
         "providerRecordingActiveAssetId",
         "providerRecordingNextAction",
         "room.participantCount < 1",
-        "This must only happen after every participant knows recording is active and has consented.",
+        "room.consentGrantedCount < room.participantCount",
+        "Everyone must know recording is active and consent first.",
       ]) &&
       includesAll(texts.providerRecordingRoute || "", [
         "Provider egress start, stop, and reconciliation are staff-only until the in-app recording UX is mature.",

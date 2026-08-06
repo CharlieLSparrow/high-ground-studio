@@ -285,6 +285,7 @@ final class CaptureExperienceModel: ObservableObject {
     let uploadManager = UploadManager.shared
     let receiptStore = CaptureRoomReceiptStore.shared
     let endpointQueueOutbox = CaptureEndpointQueueOutbox.shared
+    let sourcePlanOutbox = CaptureSourcePlanOutbox.shared
     let quickEntryOutbox = MobileQuickEntryOutbox.shared
     let sessionNoteEditOutbox = SessionNoteEditOutbox.shared
     let taskReminderScheduler = TaskReminderScheduler.shared
@@ -348,11 +349,16 @@ final class CaptureExperienceModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        sourcePlanOutbox.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         LocalRecordingLibrary.shared.$recordings
             .debounce(for: .milliseconds(350), scheduler: RunLoop.main)
             .sink { [weak self] recordings in
                 guard let self else { return }
                 self.endpointQueueOutbox.reconcile(recordings: recordings, client: self.sessionClient)
+                self.sourcePlanOutbox.reconcile(recordings: recordings, client: self.sessionClient)
             }
             .store(in: &cancellables)
         quickEntryOutbox.objectWillChange
@@ -542,6 +548,7 @@ final class CaptureExperienceModel: ObservableObject {
         async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
         _ = await (sessionLoad, todayLoad, workLoad, calendarLoad, sourceInboxLoad, readinessLoad)
+        sourcePlanOutbox.resume(client: sessionClient)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )
@@ -2319,6 +2326,9 @@ final class CaptureExperienceModel: ObservableObject {
         Task { @MainActor [weak self] in
             await Task.yield()
             self?.scheduleReceiptFlush()
+            if let self {
+                self.sourcePlanOutbox.resume(client: self.sessionClient)
+            }
         }
     }
 

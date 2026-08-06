@@ -780,7 +780,7 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
   const evidence = await serializableFinalizationTransaction(
     prisma,
     async (transaction) => {
-    await lockUploadFinalization(transaction, manifest.uploadSessionId);
+      await lockUploadFinalization(transaction, manifest.uploadSessionId);
 
     const priorReceipt = await transaction.mobileCaptureFinalizationReceipt.findUnique({
       where: { uploadSessionId: manifest.uploadSessionId },
@@ -915,6 +915,13 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       processingDecision,
       evidence,
     });
+    // Source declarations and released-byte finalization are independent
+    // outboxes. Serialize only their final room-level convergence so either
+    // arrival order observes the other side and binds exactly once.
+    await transaction.$queryRaw`
+      SELECT 1 AS "locked"
+      FROM pg_advisory_xact_lock(hashtextextended(${manifest.callRoomId}, 0))
+    `;
     await transaction.mobileCaptureFinalizationReceipt.upsert({
       where: { uploadSessionId: manifest.uploadSessionId },
       create: {
@@ -990,7 +997,7 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       sourceType: manifest.sourceType,
       recordingAssetId: evidence.recordingAssetId,
     });
-    return evidence;
+      return evidence;
     },
   );
   if (
