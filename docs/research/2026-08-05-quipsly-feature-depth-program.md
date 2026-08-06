@@ -371,15 +371,25 @@ decision, and either a bounded vertical slice or an explicit rejection.
 
 ### Session Guardian implementation checkpoint
 
-The first browser vertical slice is now implemented over existing evidence. It
-ranks call-path setup, camera measurement, conversation state, page visibility,
-durable recorder state, local byte growth, storage headroom, track delivery,
-recovery, and verified handoff without creating another canonical readiness
-store. The retained recorder safely stops on persistent mute, ended source,
-encoder error, stalled chunks, or exhausted storage reserve while allowing the
-independent master to continue through call loss. The next gate is deliberate
-failure operation on real browser and iPhone hardware, followed by native
-consolidation and clock/upload continuity alerts.
+The first browser and native vertical slices are now implemented over existing
+evidence. They rank call-path setup, camera measurement, conversation state,
+page/app visibility, recorder state, local byte or duration growth, storage
+headroom, track delivery, recovery, and verified handoff without creating
+another canonical readiness store. The browser recorder safely stops on
+persistent mute, ended source, encoder error, stalled chunks, or exhausted
+storage reserve while allowing the independent master to continue through call
+loss. The iPhone Guardian distinguishes conversation presence from retained
+audio/video, ranks consent and Session holds, protects preparing/finalizing and
+failed-source states, measures microphone silence/hot/clipping conditions, and
+surfaces camera profile, thermal/capacity, background, and provider evidence.
+
+A signed-in disposable local user selected the exact canonical Episode 8
+Session in the iPhone 17 Pro simulator and operated Record, consent, Session
+Truth, Guardian, local start, and subordinate Live Room surfaces. The retained
+UI test passed with no runtime warnings. Static contract coverage and native
+build-for-testing also pass. The next gate is deliberate clipping, route loss,
+network loss, background, and low-storage operation on real browser and iPhone
+hardware, followed by shared clock/upload-continuity evidence.
 
 ### Current official capability signals
 

@@ -2136,8 +2136,43 @@ These should be treated as cleanup candidates later, not as authoritative produc
   durable writing. Quipsly typecheck and the focused Session suites pass.
   Deliberate unplug, mute, storage-pressure, background-tab, and network-loss
   operation still require browser and physical-device acceptance.
-- Signed-in local visual operation could not start in this checkpoint because
-  the host data volume had only 1.8 GiB free and Docker reported `no space left
-  on device`. No cache, simulator, media, or Docker data was deleted. This is a
-  machine-capacity blocker for the local stack, not a successful browser
-  acceptance result.
+- Signed-in local visual operation was initially blocked because the host data
+  volume had only 1.8 GiB free and Docker reported `no space left on device`.
+  Four large Xcode DerivedData directories were moved intact, not deleted, to
+  `/Volumes/My Passport/Quipsly Build Artifacts/high-ground-studio-product-2026-08-05`;
+  the internal data volume recovered to about 5.8 GiB available. Docker's
+  unresponsive backend was restarted and the full local doctor now passes for
+  Nest, signed-out shell, transcript worker, media worker, Firebase emulator,
+  Docker, and PostgreSQL.
+- That recovery exposed PostgreSQL `42P08` in the media-worker lease release
+  query. All six worker implementations now type the released status and
+  timestamp parameters explicitly. Ten lifecycle regressions pass, and two
+  deliberately requeued local jobs reached their expected terminal failed
+  state through the corrected release path.
+
+### 2026-08-05 native Session Guardian operation
+
+- Quipsly Capture now projects Session readiness, local audio/video state,
+  provider state, app visibility, capacity, input route, signal level, camera
+  profile, and recovery evidence into one ranked native intervention above the
+  recorder. The projection creates no competing readiness store and states
+  explicitly that the live conversation is not a retained master.
+- The native Guardian protects failed and auto-stopped sources, preparing and
+  finalizing transitions, background capture, low storage, initial signal
+  settling, sustained silence, hot input, clipping risk, video safety messages,
+  provider errors, and independent local capture during call loss. Its evidence
+  disclosure shows the contributing Session, conversation, audio master,
+  camera master, and measured audio-capacity lanes.
+- A disposable local Firebase user selected canonical Session
+  `cmrrvwyol0003foxlxju1kqt6` (`High Ground Odyssey Episode 8 production
+  rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
+  Record, selected that exact Session from the virtualized list, verified
+  consent, recorder, Guardian, and local-start surfaces, opened Session Truth,
+  scrolled to and opened Live Room, and verified the provider/local-source
+  boundary. The one-test run passed in 42.498 seconds with zero failures and no
+  unexpected runtime warnings; its result bundle is
+  `/tmp/quipsly-capture-runtime-ui-surface-20260806T030345Z-16644.xcresult`.
+- Native build-for-testing passes for the application and UI-test target, and
+  the iOS static App Store smoke passes 1,064 assertions. Deliberate physical
+  clipping, mute/route loss, network loss, background, capacity pressure,
+  retained playback, and handoff remain the release-quality acceptance gate.

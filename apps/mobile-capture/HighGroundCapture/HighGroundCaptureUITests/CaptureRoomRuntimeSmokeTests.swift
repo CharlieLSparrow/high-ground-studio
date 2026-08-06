@@ -483,6 +483,30 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         return element.exists
     }
 
+    private func scrollRuntimeElementIntoHittableView(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 18,
+        swipeAttempts: Int = 8
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var attempts = 0
+        while Date() < deadline {
+            if element.exists && element.isHittable { return true }
+            if attempts < swipeAttempts {
+                let recorderSurface = app.scrollViews["CaptureRecorderView"].firstMatch
+                if recorderSurface.exists && recorderSurface.isHittable {
+                    recorderSurface.swipeUp()
+                } else {
+                    app.swipeUp()
+                }
+                attempts += 1
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        return element.exists && element.isHittable
+    }
+
     private func waitForRuntimeLabel(_ expectedLabel: String, element: XCUIElement, timeout: TimeInterval = 20) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -592,7 +616,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             sessionChooser.tap()
             let exactSession = app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].firstMatch
             XCTAssertTrue(
-                exactSession.waitForExistence(timeout: 60),
+                waitForRuntimeElement(
+                    exactSession,
+                    in: app,
+                    timeout: 60,
+                    swipeAttempts: 12
+                ),
                 "The exact canonical Session ID should be selectable in the native runtime."
             )
             exactSession.tap()
@@ -3781,6 +3810,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The local recorder should be the dominant Record-tab action."
         )
         XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch.waitForExistence(timeout: 8),
+            "Record should rank the most important Session, call, source, signal, and recovery intervention before a take."
+        )
+        XCTAssertTrue(
             app.buttons["CaptureStartButton"].firstMatch.exists,
             "The local recorder start control should have a stable accessibility identity."
         )
@@ -3814,7 +3847,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         sessionTruth.tap()
 
         let liveRoom = app.descendants(matching: .any)["CaptureLiveRoomDisclosure"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(liveRoom, in: app), "Provider-room controls should be subordinate to the local recorder.")
+        XCTAssertTrue(
+            scrollRuntimeElementIntoHittableView(liveRoom, in: app),
+            "Provider-room controls should be subordinate to and reachable below the local recorder."
+        )
         liveRoom.tap()
         XCTAssertTrue(waitForRuntimeElement(app.descendants(matching: .any)["CaptureProviderRoomBoundaryCopy"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "The live-room boundary copy and controls should be available on demand.")
         XCTAssertTrue(waitForRuntimeElement(app.buttons["ProviderJoinRoomButton"].firstMatch, in: app, timeout: 8, swipeAttempts: 2), "Joining a room must remain a distinct action from starting local recording.")
@@ -3950,6 +3986,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 timeout: 8,
                 swipeAttempts: 4
             )
+        )
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.descendants(matching: .any)["CaptureSessionGuardian"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 4
+            ),
+            "The retained Session should expose one calm operational Guardian before recording."
         )
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
 

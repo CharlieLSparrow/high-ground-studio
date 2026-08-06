@@ -38,6 +38,7 @@ const files = {
   audioSoundCheck: path.join(sourceRoot, "CaptureAudioSoundCheck.swift"),
   audioSoundCheckModel: path.join(sourceRoot, "CaptureAudioSoundCheckModel.swift"),
   captureRehearsalReadiness: path.join(sourceRoot, "CaptureRehearsalReadiness.swift"),
+  captureSessionGuardian: path.join(sourceRoot, "CaptureSessionGuardian.swift"),
   videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
@@ -192,6 +193,7 @@ const capturePhoneShellText = read(files.capturePhoneShell);
 const audioSoundCheckText = read(files.audioSoundCheck);
 const audioSoundCheckModelText = read(files.audioSoundCheckModel);
 const captureRehearsalReadinessText = read(files.captureRehearsalReadiness);
+const captureSessionGuardianText = read(files.captureSessionGuardian);
 const captureCalendarEventEditorText = read(files.captureCalendarEventEditor);
 const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
@@ -200,7 +202,7 @@ const onDeviceTranscriptManagerText = read(files.onDeviceTranscriptManager);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
-const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${mobileText}`;
+const shippingCaptureUIText = `${capturePhoneShellText}\n${captureRehearsalReadinessText}\n${captureSessionGuardianText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const onDeviceTranscriptRouteText = read(files.onDeviceTranscriptRoute);
@@ -1523,6 +1525,11 @@ requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping 
 requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
 requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
 requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
+requireIncludes(capturePhoneShellText, "CaptureSessionGuardianCard(", "shipping recorder reaches one ranked operational Guardian");
+requireIncludes(captureSessionGuardianText, 'accessibilityIdentifier("CaptureSessionGuardian")', "shipping Guardian has a stable automation identity");
+requireIncludes(captureSessionGuardianText, "The live conversation is not a retained master", "shipping Guardian keeps call and retained-source evidence separate");
+requireIncludes(captureSessionGuardianText, "Retained master continues while the conversation is unavailable", "shipping Guardian preserves independent local capture through call loss");
+requireIncludes(captureSessionGuardianText, "No useful microphone signal is reaching the master", "shipping Guardian exposes retained-source signal loss");
 requireIncludes(capturePhoneShellText, "CaptureAudioSoundCheckController()", "shipping recorder owns the local sound-check lifecycle");
 requireIncludes(captureRehearsalReadinessText, 'accessibilityIdentifier("CaptureSoundCheckStart")', "shipping rehearsal exposes an addressable sound-check action");
 requireIncludes(captureRehearsalReadinessText, "Consent is still required because another person could be audible.", "shipping sound check retains participant-consent truth");

@@ -5866,6 +5866,16 @@ private struct CaptureRecorderView: View {
                     }
                     .captureCard()
 
+                    CaptureSessionGuardianCard(
+                        audioCapture: audioCapture,
+                        videoCapture: videoCapture,
+                        session: session,
+                        mode: recordingMode,
+                        providerConnected: model.providerRoom.isConnected,
+                        providerConnecting: model.providerRoom.isConnecting,
+                        providerError: model.providerRoom.lastError
+                    )
+
                     if recordingMode == .audio {
                         RecorderHero(
                             session: session,
