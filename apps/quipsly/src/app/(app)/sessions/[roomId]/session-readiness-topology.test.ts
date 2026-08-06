@@ -66,6 +66,21 @@ describe("Session readiness topology", () => {
         updatedAt: "2026-08-05T17:59:30.000Z",
       }],
       captures: [],
+      expectedSources: [{
+        id: "expected-audio",
+        participantId: participant.id,
+        label: "Scott audio master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "ios",
+        expectedDeviceLabel: "iPhone 16",
+        recordingAssetId: "asset-audio",
+        captureId: "capture-1",
+        revision: 1,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
     });
 
     expect(topology.people[0]).toMatchObject({
@@ -123,6 +138,20 @@ describe("Session readiness topology", () => {
         transcriptDisposition: "RELEASED",
         updatedAt: "2026-08-05T17:59:30.000Z",
       }],
+      expectedSources: [{
+        id: "expected-audio",
+        participantId: participant.id,
+        label: "Scott browser audio master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "web",
+        recordingAssetId: "asset-audio",
+        captureId: "capture-1",
+        revision: 1,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
       endpointQueues: [{
         id: "queue-1",
         participantId: participant.id,
@@ -168,6 +197,118 @@ describe("Session readiness topology", () => {
     });
   });
 
+  it("never treats observed retained bytes as proof of an undeclared recording plan", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-audio",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+      }],
+      finalizations: [{
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      endpointQueues: [{
+        id: "queue-1",
+        participantId: participant.id,
+        clientInstanceId: "web-installation",
+        clientKind: "web",
+        queueRevision: "1",
+        queueState: "DRAINED",
+        localSourceCount: 1,
+        pendingSourceCount: 0,
+        failedSourceCount: 0,
+        observedCaptureIds: ["capture-1"],
+        recordingAssetIds: ["asset-audio"],
+        latestLocalMutationAt: "2026-08-05T17:59:31.000Z",
+        reconciledAt: "2026-08-05T17:59:32.000Z",
+        createdAt: "2026-08-05T17:59:32.000Z",
+      }],
+    });
+
+    expect(topology.exitReadiness).toMatchObject({
+      state: "RECORDING_PLAN_REQUIRED",
+      safeForServerObservedSources: true,
+      allEndpointQueuesConfirmedEmpty: true,
+      safeForPlannedSources: false,
+      safeToLeaveAllEndpoints: false,
+    });
+    expect(topology.boundaries.observedSourceDoesNotProvePlannedSourceComplete).toBe(true);
+  });
+
+  it("keeps a missing planned iPhone video master visible when browser audio succeeded", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-audio",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+        localManifestJson: { captureId: "capture-1", reportedSourceProfile: { clientKind: "web" } },
+      }],
+      finalizations: [{
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      expectedSources: [{
+        id: "expected-audio",
+        participantId: participant.id,
+        label: "Scott browser audio",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "web",
+        recordingAssetId: "asset-audio",
+        captureId: "capture-1",
+        revision: 1,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }, {
+        id: "expected-video",
+        participantId: participant.id,
+        label: "Scott iPhone 4K video",
+        sourceKind: "VIDEO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "ios",
+        expectedDeviceLabel: "iPhone 16",
+        revision: 1,
+        createdAt: "2026-08-05T16:50:00.000Z",
+        updatedAt: "2026-08-05T16:50:00.000Z",
+      }],
+    });
+
+    expect(topology.expectedSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "expected-audio", fulfillment: "fulfilled", blocking: false }),
+      expect.objectContaining({ id: "expected-video", fulfillment: "missing", blocking: true }),
+    ]));
+    expect(topology.exitReadiness).toMatchObject({
+      state: "PLANNED_SOURCE_INCOMPLETE",
+      requiredPlannedSourceCount: 2,
+      fulfilledRequiredPlannedSourceCount: 1,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
   it("refuses global safety when a currently prepared installation has no queue receipt", () => {
     const topology = buildSessionReadinessTopology({
       generatedAt,
@@ -196,6 +337,20 @@ describe("Session readiness topology", () => {
         recordingAssetId: "asset-audio",
         processingDisposition: "RELEASED",
         transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
+      expectedSources: [{
+        id: "expected-audio",
+        participantId: participant.id,
+        label: "Scott browser audio master",
+        sourceKind: "AUDIO",
+        retentionRole: "REQUIRED_MASTER",
+        status: "ACTIVE",
+        expectedClientKind: "web",
+        recordingAssetId: "asset-audio",
+        captureId: "capture-1",
+        revision: 1,
+        createdAt: "2026-08-05T16:50:00.000Z",
         updatedAt: "2026-08-05T17:59:30.000Z",
       }],
       endpointQueues: [{
@@ -303,7 +458,7 @@ describe("Session readiness topology", () => {
 
     expect(topology.people[0].sources[0].sourceKind).toBe("provider");
     expect(topology.exitReadiness).toMatchObject({
-      state: "NO_CAPTURE_EVIDENCE",
+      state: "RECORDING_PLAN_REQUIRED",
       requiredSourceCount: 0,
       safeToLeaveAllEndpoints: false,
     });

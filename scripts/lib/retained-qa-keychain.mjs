@@ -47,14 +47,13 @@ export function readRetainedQAPassword({
   const safeService = assertSafeService(service);
   const safeAccount = assertSafeIdentity(account, "Keychain account");
   const result = runner(
-    "/usr/bin/security",
+    "xcrun",
     [
-      "find-generic-password",
-      "-s",
+      "swift",
+      KEYCHAIN_HELPER,
+      "read",
       safeService,
-      "-a",
       safeAccount,
-      "-w",
     ],
     {
       encoding: "utf8",
@@ -68,10 +67,7 @@ export function readRetainedQAPassword({
       `Could not read retained QA password from macOS Keychain (exit ${String(result.status)}).`,
     );
   }
-  // `security ... -w` appends one presentation newline. Stored retained QA
-  // secrets cannot contain CR/LF, so remove only that CLI delimiter before
-  // validating the exact bytes.
-  return assertPassword(String(result.stdout || "").replace(/\r?\n$/, ""));
+  return assertPassword(String(result.stdout || ""));
 }
 
 export function writeRetainedQAPassword({

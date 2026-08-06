@@ -3,6 +3,11 @@
 import "@testing-library/jest-dom";
 import { render, screen } from "@testing-library/react";
 
+const refresh = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh }),
+}));
+
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 
@@ -73,6 +78,26 @@ const topology: SessionReadinessTopology = {
       },
     }],
   }],
+  expectedSources: [{
+    id: "expectation-1",
+    participantId: "participant-scott",
+    participantLabel: "Scott Sparrow",
+    label: "Scott iPhone audio master",
+    sourceKind: "audio",
+    retentionRole: "required-master",
+    status: "active",
+    expectedClientKind: "ios",
+    expectedDeviceLabel: "iPhone 16",
+    recordingAssetId: "asset-1",
+    captureId: "capture-1",
+    revision: 1,
+    latestReason: null,
+    fulfillment: "fulfilled",
+    blocking: false,
+    candidateSources: [],
+    createdAt: "2026-08-05T16:50:00.000Z",
+    updatedAt: "2026-08-05T17:59:30.000Z",
+  }],
   unassignedSources: [],
   summary: {
     peopleCount: 1,
@@ -84,6 +109,10 @@ const topology: SessionReadinessTopology = {
     pendingCaptureCount: 0,
     endpointQueueCount: 0,
     drainedEndpointCount: 0,
+    plannedSourceCount: 1,
+    requiredPlannedSourceCount: 1,
+    fulfilledRequiredPlannedSourceCount: 1,
+    missingRequiredPlannedSourceCount: 0,
     attentionCount: 0,
   },
   exitReadiness: {
@@ -97,6 +126,9 @@ const topology: SessionReadinessTopology = {
     drainedEndpointCount: 0,
     safeForServerObservedSources: true,
     allEndpointQueuesConfirmedEmpty: false,
+    requiredPlannedSourceCount: 1,
+    fulfilledRequiredPlannedSourceCount: 1,
+    safeForPlannedSources: true,
     safeToLeaveAllEndpoints: false,
   },
   boundaries: {
@@ -106,6 +138,7 @@ const topology: SessionReadinessTopology = {
     captureReceiptIsNotUploadedMedia: true,
     recordingAssetOwnsRetainedSourceTruth: true,
     serverCopyDoesNotProveEndpointQueueEmpty: true,
+    observedSourceDoesNotProvePlannedSourceComplete: true,
   },
 };
 
@@ -148,6 +181,7 @@ describe("Session readiness topology card", () => {
 
     expect(screen.getByRole("heading", { name: "Scott Sparrow" })).toBeInTheDocument();
     expect(screen.getByText("Scott master.m4a")).toBeInTheDocument();
+    expect(screen.getByText("Scott iPhone audio master")).toBeInTheDocument();
     expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent?.includes("Output: Shure MV7i Headphones") === true)).toBeInTheDocument();
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();

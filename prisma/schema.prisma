@@ -369,6 +369,36 @@ enum RecordingAssetStatus {
   HELD
 }
 
+enum CallExpectedSourceKind {
+  AUDIO
+  VIDEO
+  SCREEN
+  PROVIDER
+  OTHER
+}
+
+enum CallExpectedSourceRole {
+  REQUIRED_MASTER
+  OPTIONAL_MASTER
+  SYNC_WITNESS
+  BACKUP
+}
+
+enum CallExpectedSourceStatus {
+  ACTIVE
+  WAIVED
+  CANCELED
+}
+
+enum CallExpectedSourceAction {
+  CREATE
+  BIND
+  UNBIND
+  WAIVE
+  RESTORE
+  CANCEL
+}
+
 enum ProviderRecordingCommandAction {
   START
   STOP
@@ -779,6 +809,8 @@ model User {
   callParticipantAccessReceipts     CallParticipantAccessReceipt[]              @relation("CallParticipantAccessReceiptActor")
   callRoomInvitationsCreated        CallRoomInvitation[]                        @relation("CallRoomInvitationCreatedBy")
   callRoomInvitationsAccepted       CallRoomInvitation[]                        @relation("CallRoomInvitationAcceptedBy")
+  callExpectedSourcesCreated        CallExpectedSource[]                        @relation("CallExpectedSourceCreatedBy")
+  callExpectedSourceRevisions       CallExpectedSourceRevision[]                @relation("CallExpectedSourceRevisionActor")
   recordingConsents                 RecordingConsent[]                          @relation("RecordingConsentUser")
   coachingNotesAuthored             CoachingNote[]                              @relation("CoachingNoteAuthor")
   coachingNoteRevisionsAuthored     CoachingNoteRevision[]                      @relation("CoachingNoteRevisionActor")
@@ -1908,6 +1940,8 @@ model CallRoom {
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
   participantPreflightReceipts  CallParticipantPreflightReceipt[]
   endpointQueueReceipts         CallEndpointQueueReceipt[]
+  expectedSources               CallExpectedSource[]
+  expectedSourceRevisions       CallExpectedSourceRevision[]
   invitations                   CallRoomInvitation[]
   episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
@@ -2110,6 +2144,7 @@ model CallParticipant {
   providerGrantReceipts         CallParticipantProviderGrantReceipt[]
   preflightReceipts             CallParticipantPreflightReceipt[]
   endpointQueueReceipts         CallEndpointQueueReceipt[]
+  expectedSources               CallExpectedSource[]
   recordingConsents             RecordingConsent[]
   recordingAssets               RecordingAsset[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
@@ -2346,10 +2381,72 @@ model RecordingAsset {
   transcriptEvaluationWindows   TranscriptEvaluationWindow[]
   providerRecordingCommands     ProviderRecordingCommand[]
   providerRecordingEvents       ProviderRecordingEventReceipt[]
+  sourceExpectation             CallExpectedSource?
 
   @@index([roomId, status])
   @@index([participantId, createdAt])
   @@index([kind, status, createdAt])
+}
+
+/// The explicit recording plan for one Session. This is separate from
+/// RecordingAsset because an expected source must remain visible even when the
+/// intended device never started or never reached the server.
+model CallExpectedSource {
+  id                  String                   @id @default(cuid())
+  roomId              String
+  participantId       String?
+  createdByUserId     String?
+  label               String
+  sourceKind          CallExpectedSourceKind
+  retentionRole       CallExpectedSourceRole   @default(REQUIRED_MASTER)
+  status              CallExpectedSourceStatus @default(ACTIVE)
+  expectedClientKind  String?
+  expectedDeviceLabel String?
+  recordingAssetId    String?                  @unique
+  captureId           String?                  @db.Uuid
+  revision            Int                      @default(1)
+  latestReason        String?
+  metadataJson        Json                     @default("{}")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  room           CallRoom                     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant    CallParticipant?             @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  createdByUser  User?                        @relation("CallExpectedSourceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  recordingAsset RecordingAsset?              @relation(fields: [recordingAssetId], references: [id], onDelete: SetNull)
+  revisions      CallExpectedSourceRevision[]
+
+  @@index([roomId, status, retentionRole])
+  @@index([participantId, status])
+  @@index([roomId, sourceKind, expectedClientKind])
+  @@index([captureId])
+}
+
+/// Append-only evidence for every recording-plan decision. The mutable row is
+/// a current projection; these revisions preserve idempotency, authority,
+/// before/after state, and the reason for waiving or canceling a planned source.
+model CallExpectedSourceRevision {
+  id            String                   @id @default(cuid())
+  requestId     String                   @unique @db.Uuid
+  requestSha256 String
+  expectationId String
+  roomId        String
+  actorUserId   String
+  action        CallExpectedSourceAction
+  revision      Int
+  beforeJson    Json                     @default("{}")
+  afterJson     Json
+  reason        String?
+  createdAt     DateTime                 @default(now())
+
+  expectation CallExpectedSource @relation(fields: [expectationId], references: [id], onDelete: Cascade)
+  room        CallRoom           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor       User               @relation("CallExpectedSourceRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([expectationId, revision])
+  @@index([roomId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([expectationId, createdAt])
 }
 
 // Durable intent and provider acknowledgement for one explicit provider

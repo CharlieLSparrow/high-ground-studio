@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CircleAlert,
   Headphones,
   Laptop,
   Mic2,
+  Plus,
   Radio,
   RefreshCw,
   ShieldCheck,
@@ -14,7 +16,7 @@ import {
   Video,
 } from "lucide-react";
 
-import type { SessionReadinessSource, SessionReadinessTopology } from "./session-readiness-topology";
+import type { SessionReadinessExpectedSource, SessionReadinessSource, SessionReadinessTopology } from "./session-readiness-topology";
 
 type LiveDevice = {
   id: string;
@@ -89,6 +91,17 @@ function preflightIssueLabel(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
 }
 
+function expectationLabel(value: string) {
+  return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function expectationTone(expectation: SessionReadinessExpectedSource) {
+  if (expectation.fulfillment === "fulfilled" || expectation.fulfillment === "waived") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (expectation.fulfillment === "canceled") return "border-slate-200 bg-slate-50 text-slate-700";
+  if (expectation.fulfillment === "candidate-review") return "border-sky-200 bg-sky-50 text-sky-900";
+  return "border-amber-200 bg-amber-50 text-amber-950";
+}
+
 function LiveTrackBadge({ label, track }: {
   label: string;
   track: LiveDevice["audio"] | LiveDevice["video"];
@@ -99,13 +112,28 @@ function LiveTrackBadge({ label, track }: {
   </span>;
 }
 
-export function SessionReadinessTopologyCard({ roomId, topology }: {
+export function SessionReadinessTopologyCard({ roomId, topology, canManageSourcePlan = false }: {
   roomId: string;
   topology: SessionReadinessTopology;
+  canManageSourcePlan?: boolean;
 }) {
+  const router = useRouter();
   const [presence, setPresence] = useState<ProviderPresence | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [presenceError, setPresenceError] = useState<string | null>(null);
+  const [planBusy, setPlanBusy] = useState<string | null>(null);
+  const [planMessage, setPlanMessage] = useState<string | null>(null);
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({});
+  const [selectedBindings, setSelectedBindings] = useState<Record<string, string>>({});
+  const [planDraft, setPlanDraft] = useState({
+    participantId: "",
+    label: "",
+    sourceKind: "AUDIO",
+    retentionRole: "REQUIRED_MASTER",
+    expectedClientKind: "",
+    expectedDeviceLabel: "",
+  });
   const liveReadbackEnabled = topology.generatedAt !== "1970-01-01T00:00:00.000Z";
 
   const refreshPresence = useCallback(async (foreground = true) => {
@@ -148,6 +176,87 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
   const unmatchedLive = (presence?.devices ?? []).filter((device) => !device.matchedToCanonicalParticipant);
   const exitReady = topology.exitReadiness.safeToLeaveAllEndpoints;
 
+  const createExpectation = useCallback(async () => {
+    if (!planDraft.label.trim() || planBusy) return;
+    setPlanBusy("create");
+    setPlanMessage(null);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/source-expectations`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          requestId: crypto.randomUUID(),
+          participantId: planDraft.participantId || null,
+          label: planDraft.label,
+          sourceKind: planDraft.sourceKind,
+          retentionRole: planDraft.retentionRole,
+          expectedClientKind: planDraft.expectedClientKind || null,
+          expectedDeviceLabel: planDraft.expectedDeviceLabel || null,
+          reason: "Declared in the Session recording plan.",
+        }),
+      });
+      const packet = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !packet?.ok) throw new Error(packet?.error || "The planned source could not be saved.");
+      setPlanDraft((current) => ({ ...current, label: "", expectedDeviceLabel: "" }));
+      setShowPlanForm(false);
+      setPlanMessage("Recording plan saved. Source recovery now includes the declared master in its denominator.");
+      router.refresh();
+    } catch (error) {
+      setPlanMessage(error instanceof Error ? error.message : "The planned source could not be saved.");
+    } finally {
+      setPlanBusy(null);
+    }
+  }, [planBusy, planDraft, roomId, router]);
+
+  const mutateExpectation = useCallback(async (
+    expectation: SessionReadinessExpectedSource,
+    action: "BIND" | "UNBIND" | "WAIVE" | "RESTORE" | "CANCEL",
+  ) => {
+    if (planBusy) return;
+    const reason = reasonDrafts[expectation.id]?.trim() || null;
+    if ((action === "WAIVE" || action === "CANCEL") && !reason) {
+      setPlanMessage("Explain why the plan changed before waiving or canceling an expected source.");
+      return;
+    }
+    const recordingAssetId = action === "BIND"
+      ? selectedBindings[expectation.id] || expectation.candidateSources[0]?.id || null
+      : null;
+    if (action === "BIND" && !recordingAssetId) {
+      setPlanMessage("Choose the exact retained source that fulfills this plan item.");
+      return;
+    }
+    setPlanBusy(expectation.id);
+    setPlanMessage(null);
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(roomId)}/source-expectations`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          requestId: crypto.randomUUID(),
+          expectationId: expectation.id,
+          expectedRevision: expectation.revision,
+          action,
+          recordingAssetId,
+          reason,
+        }),
+      });
+      const packet = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !packet?.ok) throw new Error(packet?.error || "The recording-plan decision could not be saved.");
+      setPlanMessage(action === "BIND"
+        ? "The plan item is now bound to one exact retained source."
+        : action === "WAIVE"
+          ? "The changed plan is waived with an append-only reason."
+          : "The recording-plan decision was saved with an append-only revision.");
+      router.refresh();
+    } catch (error) {
+      setPlanMessage(error instanceof Error ? error.message : "The recording-plan decision could not be saved.");
+    } finally {
+      setPlanBusy(null);
+    }
+  }, [planBusy, reasonDrafts, roomId, router, selectedBindings]);
+
   return <section className="rounded-3xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm sm:p-7" aria-labelledby="session-readiness-topology-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="max-w-3xl">
@@ -173,6 +282,63 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
         </span>
       </div>
       <p className={`mt-3 text-[10px] font-black uppercase tracking-wide ${exitReady ? "text-emerald-800" : "text-[#765f40]"}`}>Safe to leave every endpoint: {exitReady ? "yes" : "no"} · {topology.exitReadiness.drainedEndpointCount}/{topology.exitReadiness.endpointQueueCount} latest installation queue receipts drained</p>
+    </section>
+
+    <section className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/55 p-5" aria-labelledby="session-recording-plan-heading">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Recording confidence denominator</p>
+          <h3 id="session-recording-plan-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Planned retained sources</h3>
+          <p className="mt-2 text-xs font-bold leading-5 text-violet-950">Quipsly distinguishes “every file we saw is safe” from “every master we intended to capture exists.” A missing phone or camera cannot disappear merely because it never uploaded.</p>
+        </div>
+        {canManageSourcePlan ? <button type="button" onClick={() => setShowPlanForm((current) => !current)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 text-xs font-black uppercase tracking-wide text-white"><Plus size={15} aria-hidden="true" />{showPlanForm ? "Close" : "Add planned source"}</button> : null}
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-white bg-white p-3"><p className="text-[9px] font-black uppercase tracking-wide text-violet-700">Required masters</p><p className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.fulfilledRequiredPlannedSourceCount}/{topology.summary.requiredPlannedSourceCount}</p><p className="text-[10px] font-bold text-[#765f40]">bound to released bytes</p></div>
+        <div className="rounded-xl border border-white bg-white p-3"><p className="text-[9px] font-black uppercase tracking-wide text-violet-700">Other plan items</p><p className="mt-1 text-2xl font-black text-[#3d3122]">{Math.max(0, topology.summary.plannedSourceCount - topology.summary.requiredPlannedSourceCount)}</p><p className="text-[10px] font-bold text-[#765f40]">optional, witness, or backup</p></div>
+        <div className={`rounded-xl border p-3 ${topology.exitReadiness.safeForPlannedSources ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><p className="text-[9px] font-black uppercase tracking-wide text-violet-700">Plan confidence</p><p className="mt-1 text-sm font-black text-[#3d3122]">{topology.exitReadiness.safeForPlannedSources ? "Complete" : topology.summary.requiredPlannedSourceCount ? "Needs attention" : "Not declared"}</p><p className="text-[10px] font-bold text-[#765f40]">waivers require a reason</p></div>
+      </div>
+
+      {showPlanForm && canManageSourcePlan ? <form className="mt-4 grid gap-3 rounded-xl border border-violet-200 bg-white p-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={(event) => { event.preventDefault(); void createExpectation(); }}>
+        <label className="text-xs font-black text-[#3d3122]">Plan item
+          <input required maxLength={160} value={planDraft.label} onChange={(event) => setPlanDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Homer iPhone 4K camera master" className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 px-3 font-semibold outline-none focus:ring-2 focus:ring-violet-400" />
+        </label>
+        <label className="text-xs font-black text-[#3d3122]">Person
+          <select value={planDraft.participantId} onChange={(event) => setPlanDraft((current) => ({ ...current, participantId: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-semibold"><option value="">Shared or external source</option>{topology.people.map((person) => <option key={person.id} value={person.id}>{person.label}</option>)}</select>
+        </label>
+        <label className="text-xs font-black text-[#3d3122]">Source
+          <select value={planDraft.sourceKind} onChange={(event) => setPlanDraft((current) => ({
+            ...current,
+            sourceKind: event.target.value,
+            retentionRole: event.target.value === "PROVIDER" && current.retentionRole === "REQUIRED_MASTER"
+              ? "SYNC_WITNESS"
+              : current.retentionRole,
+          }))} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-semibold"><option value="AUDIO">Audio</option><option value="VIDEO">Video</option><option value="SCREEN">Shared Watch / screen source</option><option value="PROVIDER">Provider witness</option><option value="OTHER">Other retained source</option></select>
+        </label>
+        <label className="text-xs font-black text-[#3d3122]">Importance
+          <select value={planDraft.retentionRole} onChange={(event) => setPlanDraft((current) => ({ ...current, retentionRole: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-semibold"><option value="REQUIRED_MASTER" disabled={planDraft.sourceKind === "PROVIDER"}>Required master</option><option value="OPTIONAL_MASTER">Optional master</option><option value="SYNC_WITNESS">Synchronization witness</option><option value="BACKUP">Backup</option></select>
+        </label>
+        <label className="text-xs font-black text-[#3d3122]">Expected endpoint
+          <select value={planDraft.expectedClientKind} onChange={(event) => setPlanDraft((current) => ({ ...current, expectedClientKind: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-semibold"><option value="">Any endpoint</option><option value="ios">iPhone Capture</option><option value="web">Browser</option><option value="macos">Quipsly Mac</option><option value="external">External recorder/camera</option></select>
+        </label>
+        <label className="text-xs font-black text-[#3d3122]">Device note
+          <input maxLength={160} value={planDraft.expectedDeviceLabel} onChange={(event) => setPlanDraft((current) => ({ ...current, expectedDeviceLabel: event.target.value }))} placeholder="iPhone 16 front camera · 4K/24" className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 px-3 font-semibold outline-none focus:ring-2 focus:ring-violet-400" />
+        </label>
+        <div className="flex items-end md:col-span-2 xl:col-span-3"><button type="submit" disabled={planBusy === "create" || !planDraft.label.trim()} className="min-h-11 rounded-full bg-violet-800 px-5 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45">{planBusy === "create" ? "Saving plan…" : "Add to recording plan"}</button></div>
+      </form> : null}
+
+      {topology.expectedSources.length ? <ul className="mt-4 space-y-3" aria-label="Planned retained source status">{topology.expectedSources.map((expectation) => <li key={expectation.id} className="rounded-xl border border-violet-100 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black text-[#3d3122]">{expectation.label}</p><p className="mt-1 text-[10px] font-bold text-[#765f40]">{expectation.participantLabel || "Shared or external"} · {expectationLabel(expectation.sourceKind)} · {expectationLabel(expectation.retentionRole)}{expectation.expectedClientKind ? ` · ${expectationLabel(expectation.expectedClientKind)}` : ""}{expectation.expectedDeviceLabel ? ` · ${expectation.expectedDeviceLabel}` : ""}</p></div><span className={`rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wide ${expectationTone(expectation)}`}>{expectationLabel(expectation.fulfillment)}</span></div>
+        {expectation.recordingAssetId ? <p className="mt-2 font-mono text-[10px] font-bold text-violet-800">Bound retained source · {expectation.recordingAssetId}</p> : expectation.fulfillment === "candidate-review" ? <p className="mt-2 text-xs font-bold text-sky-900">Quipsly found {expectation.candidateSources.length} compatible retained source{expectation.candidateSources.length === 1 ? "" : "s"}. A person must confirm the exact binding.</p> : expectation.status === "active" ? <p className="mt-2 text-xs font-bold text-amber-900">No exact retained source is bound. This remains visible and blocks global exit safety when it is required.</p> : null}
+        {expectation.latestReason ? <p className="mt-2 text-[10px] font-semibold italic text-[#765f40]">Latest reason: {expectation.latestReason}</p> : null}
+        {canManageSourcePlan ? <div className="mt-3 space-y-2 border-t border-violet-100 pt-3">
+          {expectation.status === "active" && !expectation.recordingAssetId && expectation.candidateSources.length ? <div className="flex flex-wrap gap-2"><label className="min-w-64 flex-1 text-[10px] font-black uppercase tracking-wide text-violet-800">Exact retained source<select value={selectedBindings[expectation.id] || expectation.candidateSources[0]?.id || ""} onChange={(event) => setSelectedBindings((current) => ({ ...current, [expectation.id]: event.target.value }))} className="mt-1 min-h-10 w-full rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold normal-case tracking-normal">{expectation.candidateSources.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label} · {candidate.deviceLabel} · {candidate.serverSafe ? "server safe" : "pending"}</option>)}</select></label><button type="button" onClick={() => void mutateExpectation(expectation, "BIND")} disabled={planBusy === expectation.id} className="mt-5 min-h-10 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase text-white disabled:opacity-45">Bind exact source</button></div> : null}
+          {expectation.status === "active" ? <div className="flex flex-wrap gap-2"><input value={reasonDrafts[expectation.id] || ""} onChange={(event) => setReasonDrafts((current) => ({ ...current, [expectation.id]: event.target.value }))} placeholder="Reason the plan changed" className="min-h-10 min-w-64 flex-1 rounded-lg border border-violet-200 px-3 text-xs font-semibold" />{expectation.recordingAssetId ? <button type="button" onClick={() => void mutateExpectation(expectation, "UNBIND")} disabled={planBusy === expectation.id} className="min-h-10 rounded-full border border-violet-300 px-4 text-[10px] font-black uppercase text-violet-950 disabled:opacity-45">Unbind</button> : null}<button type="button" onClick={() => void mutateExpectation(expectation, expectation.retentionRole === "required-master" ? "WAIVE" : "CANCEL")} disabled={planBusy === expectation.id || !(reasonDrafts[expectation.id] || "").trim()} className="min-h-10 rounded-full border border-amber-300 bg-amber-50 px-4 text-[10px] font-black uppercase text-amber-950 disabled:opacity-45">{expectation.retentionRole === "required-master" ? "Waive with reason" : "Cancel with reason"}</button></div> : expectation.status === "waived" ? <button type="button" onClick={() => void mutateExpectation(expectation, "RESTORE")} disabled={planBusy === expectation.id} className="min-h-10 rounded-full border border-emerald-300 bg-emerald-50 px-4 text-[10px] font-black uppercase text-emerald-950 disabled:opacity-45">Restore requirement</button> : null}
+          <p className="text-[9px] font-bold uppercase tracking-wide text-violet-700">Revision {expectation.revision} · every decision is append-only and stale writes fail closed</p>
+        </div> : null}
+      </li>)}</ul> : <p className="mt-4 rounded-xl border border-dashed border-violet-300 bg-white p-4 text-xs font-bold leading-5 text-violet-950">No required master is declared yet. Observed source bytes remain visible, but Quipsly will not claim the whole recording plan completed.</p>}
+      {planMessage ? <p className="mt-3 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-950" role="status" aria-live="polite">{planMessage}</p> : null}
     </section>
 
     <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">

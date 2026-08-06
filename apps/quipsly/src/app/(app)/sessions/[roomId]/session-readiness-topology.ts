@@ -91,6 +91,23 @@ export type SessionTopologyEndpointQueueInput = {
   createdAt: Date | string;
 };
 
+export type SessionTopologyExpectedSourceInput = {
+  id: string;
+  participantId?: string | null;
+  label: string;
+  sourceKind: string;
+  retentionRole: string;
+  status: string;
+  expectedClientKind?: string | null;
+  expectedDeviceLabel?: string | null;
+  recordingAssetId?: string | null;
+  captureId?: string | null;
+  revision: number;
+  latestReason?: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+};
+
 export type SessionReadinessEndpoint = {
   id: string;
   clientInstanceId: string | null;
@@ -167,6 +184,39 @@ export type SessionReadinessEndpointQueue = {
   reconciledAt: string;
 };
 
+export type SessionReadinessExpectedSource = {
+  id: string;
+  participantId: string | null;
+  participantLabel: string | null;
+  label: string;
+  sourceKind: "audio" | "video" | "screen" | "provider" | "other";
+  retentionRole: "required-master" | "optional-master" | "sync-witness" | "backup";
+  status: "active" | "waived" | "canceled";
+  expectedClientKind: string | null;
+  expectedDeviceLabel: string | null;
+  recordingAssetId: string | null;
+  captureId: string | null;
+  revision: number;
+  latestReason: string | null;
+  fulfillment:
+    | "fulfilled"
+    | "bound-source-pending"
+    | "bound-source-invalid"
+    | "candidate-review"
+    | "missing"
+    | "waived"
+    | "canceled";
+  blocking: boolean;
+  candidateSources: Array<{
+    id: string;
+    label: string;
+    deviceLabel: string;
+    serverSafe: boolean;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SessionReadinessPerson = {
   id: string;
   label: string;
@@ -185,6 +235,7 @@ export type SessionReadinessPerson = {
 export type SessionReadinessTopology = {
   generatedAt: string;
   people: SessionReadinessPerson[];
+  expectedSources: SessionReadinessExpectedSource[];
   unassignedSources: SessionReadinessSource[];
   summary: {
     peopleCount: number;
@@ -196,11 +247,17 @@ export type SessionReadinessTopology = {
     pendingCaptureCount: number;
     endpointQueueCount: number;
     drainedEndpointCount: number;
+    plannedSourceCount: number;
+    requiredPlannedSourceCount: number;
+    fulfilledRequiredPlannedSourceCount: number;
+    missingRequiredPlannedSourceCount: number;
     attentionCount: number;
   };
   exitReadiness: {
     state:
       | "NO_CAPTURE_EVIDENCE"
+      | "RECORDING_PLAN_REQUIRED"
+      | "PLANNED_SOURCE_INCOMPLETE"
       | "SERVER_COPY_INCOMPLETE"
       | "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED"
       | "SAFE_TO_LEAVE";
@@ -213,6 +270,9 @@ export type SessionReadinessTopology = {
     endpointQueueCount: number;
     drainedEndpointCount: number;
     allEndpointQueuesConfirmedEmpty: boolean;
+    requiredPlannedSourceCount: number;
+    fulfilledRequiredPlannedSourceCount: number;
+    safeForPlannedSources: boolean;
     safeToLeaveAllEndpoints: boolean;
   };
   boundaries: {
@@ -222,12 +282,14 @@ export type SessionReadinessTopology = {
     captureReceiptIsNotUploadedMedia: true;
     recordingAssetOwnsRetainedSourceTruth: true;
     serverCopyDoesNotProveEndpointQueueEmpty: true;
+    observedSourceDoesNotProvePlannedSourceComplete: true;
   };
 };
 
 export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
   generatedAt: "1970-01-01T00:00:00.000Z",
   people: [],
+  expectedSources: [],
   unassignedSources: [],
   summary: {
     peopleCount: 0,
@@ -239,6 +301,10 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     pendingCaptureCount: 0,
     endpointQueueCount: 0,
     drainedEndpointCount: 0,
+    plannedSourceCount: 0,
+    requiredPlannedSourceCount: 0,
+    fulfilledRequiredPlannedSourceCount: 0,
+    missingRequiredPlannedSourceCount: 0,
     attentionCount: 0,
   },
   exitReadiness: {
@@ -252,6 +318,9 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     drainedEndpointCount: 0,
     safeForServerObservedSources: false,
     allEndpointQueuesConfirmedEmpty: false,
+    requiredPlannedSourceCount: 0,
+    fulfilledRequiredPlannedSourceCount: 0,
+    safeForPlannedSources: false,
     safeToLeaveAllEndpoints: false,
   },
   boundaries: {
@@ -261,6 +330,7 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     captureReceiptIsNotUploadedMedia: true,
     recordingAssetOwnsRetainedSourceTruth: true,
     serverCopyDoesNotProveEndpointQueueEmpty: true,
+    observedSourceDoesNotProvePlannedSourceComplete: true,
   },
 };
 
@@ -309,6 +379,36 @@ function sourceDeviceLabel(profile: Record<string, unknown>, kind: SessionReadin
   if (model) return `${model}${route ? ` · ${route}` : ""}`;
   if (sourceClientKind(profile) === "web") return "Quipsly Web retained source";
   return "Source device not reported";
+}
+
+function expectedSourceKind(value: string): SessionReadinessExpectedSource["sourceKind"] {
+  const normalized = value.toLowerCase();
+  if (["audio", "video", "screen", "provider"].includes(normalized)) {
+    return normalized as SessionReadinessExpectedSource["sourceKind"];
+  }
+  return "other";
+}
+
+function expectedSourceRole(value: string): SessionReadinessExpectedSource["retentionRole"] {
+  const normalized = value.toLowerCase().replaceAll("_", "-");
+  if (["required-master", "optional-master", "sync-witness", "backup"].includes(normalized)) {
+    return normalized as SessionReadinessExpectedSource["retentionRole"];
+  }
+  return "required-master";
+}
+
+function expectedSourceStatus(value: string): SessionReadinessExpectedSource["status"] {
+  const normalized = value.toLowerCase();
+  if (normalized === "waived" || normalized === "canceled") return normalized;
+  return "active";
+}
+
+function sourceMatchesExpectedKind(
+  expected: SessionReadinessExpectedSource["sourceKind"],
+  source: SessionReadinessSource,
+) {
+  if (expected === "other") return source.sourceKind === "unknown";
+  return source.sourceKind === expected;
 }
 
 function recordingSource(
@@ -378,6 +478,7 @@ export function buildSessionReadinessTopology(input: {
   finalizations?: SessionTopologyFinalizationInput[];
   preflights?: SessionTopologyPreflightInput[];
   endpointQueues?: SessionTopologyEndpointQueueInput[];
+  expectedSources?: SessionTopologyExpectedSourceInput[];
   generatedAt?: Date;
 }): SessionReadinessTopology {
   const generatedAt = input.generatedAt ?? new Date();
@@ -386,6 +487,7 @@ export function buildSessionReadinessTopology(input: {
       ? [[participant.userId, participant] as const]
       : []),
   );
+  const participantById = new Map(input.participants.map((participant) => [participant.id, participant]));
   const latestFinalizationByRecordingAssetId = new Map<string, SessionTopologyFinalizationInput>();
   for (const finalization of input.finalizations ?? []) {
     const recordingAssetId = text(finalization.recordingAssetId);
@@ -434,6 +536,71 @@ export function buildSessionReadinessTopology(input: {
       },
     }));
   const allSources = [...recordingSources, ...pendingCaptureSources];
+  const boundSourceIds = new Set(
+    (input.expectedSources ?? [])
+      .map((expectation) => text(expectation.recordingAssetId))
+      .filter(Boolean),
+  );
+  const expectedSources = (input.expectedSources ?? []).map((expectation): SessionReadinessExpectedSource => {
+    const sourceKindValue = expectedSourceKind(expectation.sourceKind);
+    const retentionRole = expectedSourceRole(expectation.retentionRole);
+    const status = expectedSourceStatus(expectation.status);
+    const expectedClientKind = text(expectation.expectedClientKind).toLowerCase() || null;
+    const recordingAssetId = text(expectation.recordingAssetId) || null;
+    const boundEntry = recordingAssetId
+      ? recordingSources.find((entry) => entry.source.id === recordingAssetId) ?? null
+      : null;
+    const boundSource = boundEntry?.source ?? null;
+    const candidates = recordingSources
+      .filter((entry) => !boundSourceIds.has(entry.source.id))
+      .filter((entry) => !expectation.participantId || entry.participantId === expectation.participantId)
+      .filter((entry) => sourceMatchesExpectedKind(sourceKindValue, entry.source))
+      .filter((entry) => !expectedClientKind
+        || (expectedClientKind === "external" ? entry.source.clientKind === "unknown" : entry.source.clientKind === expectedClientKind))
+      .map((entry) => ({
+        id: entry.source.id,
+        label: entry.source.label,
+        deviceLabel: entry.source.deviceLabel,
+        serverSafe: entry.source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED",
+      }));
+    const fulfillment = status === "waived"
+      ? "waived" as const
+      : status === "canceled"
+        ? "canceled" as const
+        : boundSource && !sourceMatchesExpectedKind(sourceKindValue, boundSource)
+          ? "bound-source-invalid" as const
+          : boundSource?.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED"
+            ? "fulfilled" as const
+            : boundSource
+              ? "bound-source-pending" as const
+              : candidates.length > 0
+                ? "candidate-review" as const
+                : "missing" as const;
+    return {
+      id: expectation.id,
+      participantId: expectation.participantId ?? null,
+      participantLabel: expectation.participantId ? participantById.get(expectation.participantId)?.label ?? null : null,
+      label: text(expectation.label) || "Planned retained source",
+      sourceKind: sourceKindValue,
+      retentionRole,
+      status,
+      expectedClientKind,
+      expectedDeviceLabel: text(expectation.expectedDeviceLabel) || null,
+      recordingAssetId,
+      captureId: text(expectation.captureId) || null,
+      revision: Number.isSafeInteger(expectation.revision) && expectation.revision > 0 ? expectation.revision : 1,
+      latestReason: text(expectation.latestReason) || null,
+      fulfillment,
+      blocking: status === "active" && retentionRole === "required-master" && fulfillment !== "fulfilled",
+      candidateSources: candidates,
+      createdAt: iso(expectation.createdAt) ?? generatedAt.toISOString(),
+      updatedAt: iso(expectation.updatedAt) ?? generatedAt.toISOString(),
+    };
+  }).sort((left, right) => {
+    if (left.blocking !== right.blocking) return left.blocking ? -1 : 1;
+    if (left.retentionRole !== right.retentionRole) return left.retentionRole.localeCompare(right.retentionRole);
+    return left.createdAt.localeCompare(right.createdAt);
+  });
 
   const latestGrantByEndpoint = new Map<string, SessionTopologyGrantInput>();
   for (const grant of input.grants) {
@@ -561,6 +728,14 @@ export function buildSessionReadinessTopology(input: {
   const safeForServerObservedSources = requiredSources.length > 0
     && pendingCaptureSources.length === 0
     && serverSafeRequiredSources.length === requiredSources.length;
+  const requiredPlannedSources = expectedSources.filter((expectation) => (
+    expectation.status === "active" && expectation.retentionRole === "required-master"
+  ));
+  const fulfilledRequiredPlannedSources = requiredPlannedSources.filter((expectation) => (
+    expectation.fulfillment === "fulfilled"
+  ));
+  const safeForPlannedSources = requiredPlannedSources.length > 0
+    && fulfilledRequiredPlannedSources.length === requiredPlannedSources.length;
   const requiredEndpointQueueKeys = new Set<string>(latestQueueByEndpoint.keys());
   for (const grant of latestGrantByEndpoint.values()) {
     if ((iso(grant.expiresAt) ?? "") <= generatedAt.toISOString()) continue;
@@ -588,8 +763,58 @@ export function buildSessionReadinessTopology(input: {
   const allEndpointQueuesConfirmedEmpty = requiredEndpointQueueKeys.size > 0
     && drainedEndpointQueues.length === requiredEndpointQueueKeys.size
     && endpointSourcesCovered;
-  const safeToLeaveAllEndpoints = safeForServerObservedSources && allEndpointQueuesConfirmedEmpty;
-  const exitReadiness = safeToLeaveAllEndpoints
+  const safeToLeaveAllEndpoints = safeForPlannedSources && safeForServerObservedSources && allEndpointQueuesConfirmedEmpty;
+  const plannedSourceFields = {
+    requiredPlannedSourceCount: requiredPlannedSources.length,
+    fulfilledRequiredPlannedSourceCount: fulfilledRequiredPlannedSources.length,
+    safeForPlannedSources,
+  };
+  const exitReadiness = requiredPlannedSources.length > 0 && !safeForPlannedSources
+    ? {
+          state: "PLANNED_SOURCE_INCOMPLETE" as const,
+          label: "A planned master is missing or incomplete",
+          detail: `${fulfilledRequiredPlannedSources.length} of ${requiredPlannedSources.length} required planned master${requiredPlannedSources.length === 1 ? " is" : "s are"} bound to exact verified, released bytes. Review missing sources or explicitly waive a changed plan with a reason.`,
+          requiredSourceCount: requiredSources.length,
+          serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+          pendingCaptureCount: pendingCaptureSources.length,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
+          safeForServerObservedSources,
+          allEndpointQueuesConfirmedEmpty,
+          safeToLeaveAllEndpoints: false,
+          ...plannedSourceFields,
+        }
+    : !safeForServerObservedSources && (requiredSources.length > 0 || pendingCaptureSources.length > 0)
+      ? {
+          state: "SERVER_COPY_INCOMPLETE" as const,
+          label: "Do not close recording devices yet",
+          detail: `${serverSafeRequiredSources.length} of ${requiredSources.length} server-observed required masters are verified and released${pendingCaptureSources.length ? `; ${pendingCaptureSources.length} stopped capture${pendingCaptureSources.length === 1 ? " is" : "s are"} still awaiting retained media` : ""}. Keep browser and Capture upload recovery available.`,
+          requiredSourceCount: requiredSources.length,
+          serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+          pendingCaptureCount: pendingCaptureSources.length,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
+          safeForServerObservedSources: false,
+          allEndpointQueuesConfirmedEmpty: false,
+          safeToLeaveAllEndpoints: false,
+          ...plannedSourceFields,
+        }
+    : requiredPlannedSources.length === 0
+      ? {
+          state: "RECORDING_PLAN_REQUIRED" as const,
+          label: "Confirm the retained-source plan",
+          detail: "Quipsly can report observed files and queues, but no active required master is declared. Add the intended audio/video masters before relying on a global Safe to leave decision.",
+          requiredSourceCount: requiredSources.length,
+          serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+          pendingCaptureCount: pendingCaptureSources.length,
+          endpointQueueCount: requiredEndpointQueueKeys.size,
+          drainedEndpointCount: drainedEndpointQueues.length,
+          safeForServerObservedSources,
+          allEndpointQueuesConfirmedEmpty,
+          safeToLeaveAllEndpoints: false,
+          ...plannedSourceFields,
+        }
+    : safeToLeaveAllEndpoints
     ? {
         state: "SAFE_TO_LEAVE" as const,
         label: "Safe to leave every reconciled recording endpoint",
@@ -602,6 +827,7 @@ export function buildSessionReadinessTopology(input: {
         safeForServerObservedSources: true,
         allEndpointQueuesConfirmedEmpty: true,
         safeToLeaveAllEndpoints: true,
+        ...plannedSourceFields,
       }
     : safeForServerObservedSources
     ? {
@@ -616,22 +842,9 @@ export function buildSessionReadinessTopology(input: {
         safeForServerObservedSources: true,
         allEndpointQueuesConfirmedEmpty: false,
         safeToLeaveAllEndpoints: false,
+        ...plannedSourceFields,
       }
-    : requiredSources.length > 0 || pendingCaptureSources.length > 0
-      ? {
-          state: "SERVER_COPY_INCOMPLETE" as const,
-          label: "Do not close recording devices yet",
-          detail: `${serverSafeRequiredSources.length} of ${requiredSources.length} server-observed required masters are verified and released${pendingCaptureSources.length ? `; ${pendingCaptureSources.length} stopped capture${pendingCaptureSources.length === 1 ? " is" : "s are"} still awaiting retained media` : ""}. Keep browser and Capture upload recovery available.`,
-          requiredSourceCount: requiredSources.length,
-          serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
-          pendingCaptureCount: pendingCaptureSources.length,
-          endpointQueueCount: requiredEndpointQueueKeys.size,
-          drainedEndpointCount: drainedEndpointQueues.length,
-          safeForServerObservedSources: false,
-          allEndpointQueuesConfirmedEmpty: false,
-          safeToLeaveAllEndpoints: false,
-        }
-      : {
+    : {
           state: "NO_CAPTURE_EVIDENCE" as const,
           label: "No retained capture evidence",
           detail: "No retained master or stopped local capture is visible to Nest. Quipsly cannot tell any recording endpoint that it is safe to leave.",
@@ -643,12 +856,15 @@ export function buildSessionReadinessTopology(input: {
           safeForServerObservedSources: false,
           allEndpointQueuesConfirmedEmpty: false,
           safeToLeaveAllEndpoints: false,
+          ...plannedSourceFields,
         };
   const attentionCount = people.reduce((total, person) => total + person.attentionCount, 0)
-    + unassignedSources.length;
+    + unassignedSources.length
+    + expectedSources.filter((expectation) => expectation.blocking).length;
   return {
     generatedAt: generatedAt.toISOString(),
     people,
+    expectedSources,
     unassignedSources,
     summary: {
       peopleCount: people.length,
@@ -660,6 +876,10 @@ export function buildSessionReadinessTopology(input: {
       pendingCaptureCount: pendingCaptureSources.length,
       endpointQueueCount: requiredEndpointQueueKeys.size,
       drainedEndpointCount: drainedEndpointQueues.length,
+      plannedSourceCount: expectedSources.filter((expectation) => expectation.status !== "canceled").length,
+      requiredPlannedSourceCount: requiredPlannedSources.length,
+      fulfilledRequiredPlannedSourceCount: fulfilledRequiredPlannedSources.length,
+      missingRequiredPlannedSourceCount: requiredPlannedSources.length - fulfilledRequiredPlannedSources.length,
       attentionCount,
     },
     exitReadiness,
@@ -670,6 +890,7 @@ export function buildSessionReadinessTopology(input: {
       captureReceiptIsNotUploadedMedia: true,
       recordingAssetOwnsRetainedSourceTruth: true,
       serverCopyDoesNotProveEndpointQueueEmpty: true,
+      observedSourceDoesNotProvePlannedSourceComplete: true,
     },
   };
 }

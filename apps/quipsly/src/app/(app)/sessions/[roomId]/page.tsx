@@ -172,6 +172,26 @@ export default async function SessionReviewPage({
             createdAt: true,
           },
         },
+        expectedSources: {
+          orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+          take: 200,
+          select: {
+            id: true,
+            participantId: true,
+            label: true,
+            sourceKind: true,
+            retentionRole: true,
+            status: true,
+            expectedClientKind: true,
+            expectedDeviceLabel: true,
+            recordingAssetId: true,
+            captureId: true,
+            revision: true,
+            latestReason: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
         transcriptJobs: {
           orderBy: { updatedAt: "desc" },
           take: 100,
@@ -376,6 +396,7 @@ export default async function SessionReviewPage({
       grants: room.participantProviderGrants,
       preflights: room.participantPreflightReceipts,
       endpointQueues: room.endpointQueueReceipts,
+      expectedSources: room.expectedSources,
       recordings: room.recordingAssets,
       finalizations: finalizationReceipts,
       captures: Array.from(captureReceiptGroups.values()).map((capture) => ({
@@ -391,6 +412,10 @@ export default async function SessionReviewPage({
         lastReceivedAt: capture.lastReceivedAt,
       })),
     });
+    const canManageSourcePlan = Boolean(await prisma.callRoom.findFirst({
+      where: sessionMutationAccessWhere(room.id, session.user),
+      select: { id: true },
+    }));
     const sessionContinuity = await loadSessionContinuityState({
       prisma,
       actor: session.user,
@@ -640,7 +665,7 @@ export default async function SessionReviewPage({
         review: sourceClockAttention.counts.review,
       } : { total: 0, high: 0, review: 0 },
     };
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canManageSourcePlan={canManageSourcePlan} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
