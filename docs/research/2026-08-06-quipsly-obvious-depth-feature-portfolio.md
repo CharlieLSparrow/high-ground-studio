@@ -101,6 +101,87 @@ whether closing a laptop or phone is safe.
 Primary source:
 [Riverside recording status guide](https://support.riverside.com/hc/en-us/articles/5457425335965-Recordings-status-guide).
 
+### Local quality, realtime conversation, and cloud witness are different products
+
+Riverside's current recording contract is unusually explicit: each participant
+records locally, audio and video remain separate, high-quality audio can be a
+48 kHz WAV, video can reach 4K with a constant frame rate, and local bytes
+progressively upload while the conversation continues. Riverside also retains a
+lower-quality cloud recording as a faster reference or backup. Its Media Board
+records shared media as another source rather than baking it irreversibly into
+participant pixels.
+
+That validates Quipsly's existing separation of concerns and sharpens the UX
+requirement. The product must never use one green `connected` or `recording`
+badge to imply all of these are healthy:
+
+- the realtime conversation path;
+- each endpoint's local production master;
+- the progressive upload and verified retained object;
+- provider or cloud witness media;
+- Shared Watch media and observed playback state; and
+- post-session transcript/editor readiness.
+
+The premium feature is a source flight recorder: an inspectable Session event
+and checkpoint history that can reconstruct which device owned which role,
+when a route or clock changed, which bytes were finalized, what remains local,
+and why the assembled timeline chose each source. It should make browser crash,
+app relaunch, route loss, and delayed upload normal recoverable states rather
+than support mysteries.
+
+Primary sources:
+[Riverside recording architecture](https://riverside.fm/recording),
+[Riverside recording formats](https://support.riverside.fm/hc/en-us/articles/5260131045917-Video-and-audio-file-formats-Overview),
+and [Riverside mobile 4K overview](https://support.riverside.fm/hc/en-us/articles/5588601739165-Recording-4K-Overview).
+
+### iPhone camera ambition must be budgeted, not merely capability-checked
+
+Apple exposes supported simultaneous camera combinations through
+`supportedMultiCamDeviceSets`, but `AVCaptureMultiCamSession` also exposes a
+system-pressure cost. Apple states that sustained cost above the supported
+budget is unsustainable and recommends reducing frame rate or GPU work; critical
+pressure can interrupt capture. This means "the hardware lists both cameras"
+is not production proof for simultaneous 4K, preview, encode, local audio,
+network upload, and a live call.
+
+Quipsly should keep one high-quality 4K camera master as the calm default and
+implement front/back changes as explicit, clock-continuous source segments.
+True simultaneous multicamera becomes a device-qualified profile only after
+long-take thermal, storage, battery, frame-drop, audio-continuity, and upload
+operation on that exact class of phone. The user should see the quality trade:
+`4K primary`, `dual-camera`, or `extended endurance`, rather than a camera
+toggle that silently downgrades or destabilizes the take.
+
+Primary sources:
+[Apple capture-device discovery](https://developer.apple.com/documentation/AVFoundation/AVCaptureDevice/DiscoverySession),
+[Apple multicamera pressure cost](https://developer.apple.com/documentation/avfoundation/avcapturemulticamsession/systempressurecost),
+and [Apple AVCam capture architecture](https://developer.apple.com/documentation/avfoundation/avcam-building-a-camera-app).
+
+### Audio quality needs two truths: standards compliance and listening judgment
+
+ITU-R BS.1770-5 defines the current programme-loudness and true-peak measurement
+algorithms. EBU R 128 adds programme loudness, loudness range, and maximum
+true-peak guidance. These standards make delivery measurable, but they do not
+prove that de-click, de-plosive, denoise, dereverb, bleed reduction, or dynamics
+processing preserved a person's voice.
+
+Quipsly should therefore present two independent gates:
+
+1. **Technical delivery:** complete decode, duration/channel/codec/sample-rate
+   checks, integrated and range loudness, maximum true peak, and destination
+   profile compliance.
+2. **Audible judgment:** source-versus-treatment playback at matched level,
+   strongest-change navigation, damage-risk flags, reviewer decision, and
+   proof-listen coverage.
+
+This is a meaningful market distinction. A one-click `Enhance` result can pass
+a loudness target and still sound worse; Quipsly should be the product that can
+show both facts without confusing either one for the other.
+
+Primary sources:
+[ITU-R BS.1770-5](https://www.itu.int/rec/R-REC-BS.1770-5-202311-I) and
+[EBU loudness standards](https://tech.ebu.ch/loudness/).
+
 ### Audio automation becomes professional when it reasons across tracks
 
 Auphonic's multitrack system coordinates per-track and whole-program analysis:
@@ -136,6 +217,27 @@ Primary sources:
 [Deepgram word confidence](https://developers.deepgram.com/docs/confidence) and
 [Deepgram multichannel versus diarization](https://developers.deepgram.com/docs/multichannel-vs-diarization).
 
+Descript's current glossary reinforces a second requirement: corrections should
+improve future attempts. It can learn frequently corrected terms and share up
+to 1,000 terms across a Drive, but the glossary is English-only and Drive-wide.
+Quipsly should make terminology memory more precise and more inspectable:
+organization, show, project, client, participant, episode, and Session scopes;
+preferred spelling and pronunciation hints; source citations; supersession;
+and the exact frozen vocabulary snapshot attached to every provider attempt.
+
+Vocabulary assistance must be evaluated against the same derivative bytes and
+provider configuration as the unassisted arm. A terminology win is held if it
+increases general word error or produces false mentions of prompted names. This
+is why the current Transcript Quality Lab's matched baseline, critical-entity
+recall, false-mention, timing, correction-effort, latency, and cost evidence is
+a stronger product foundation than an unqualified `98% accurate` label.
+
+Primary sources:
+[Descript transcription glossary](https://help.descript.com/hc/en-us/articles/10249407290637-Transcription-glossary),
+[Descript transcript correction](https://help.descript.com/hc/en-us/articles/10119613609229-Correct-your-transcript),
+[Whisper research paper](https://arxiv.org/abs/2212.04356), and
+[pyannote.audio diarization paper](https://arxiv.org/abs/1911.01255).
+
 ### The strongest editing automation leaves normal editable project state
 
 Premiere's text-based editing keeps transcript timecode synchronized with the
@@ -156,6 +258,28 @@ Primary sources:
 [Premiere AI Assistant](https://helpx.adobe.com/premiere/desktop/premiere-ai-assistant/overview.html),
 [Premiere generative media FAQ](https://helpx.adobe.com/premiere/desktop/edit-projects/edit-with-generative-ai/generative-media-tool-faq.html),
 and [Premiere media intelligence](https://helpx.adobe.com/premiere/desktop/organize-media/file-organization/media-intelligence-and-search-panel.html).
+
+Descript's Automatic Multicam documentation exposes useful failure semantics
+for Quipsly to beat. The action can overwrite existing scenes; stopping it does
+not undo already applied changes; and non-overlapping camera tracks can produce
+blank scenes when the chosen angle has no video. Descript's Studio Sound is
+file-level, so enabling it affects every use of that file across the project;
+the user adjusts an original/enhanced blend rather than reviewing a
+source-range-specific repair graph.
+
+The Quipsly Assembly Director should instead emit an atomic, versioned operation
+batch. Before apply, it preflights every proposed camera range for available
+video, clock coverage, transition handles, Shared Watch priority, and reaction
+holds. Apply, cancel, supersede, and restore operate on the batch; a partial
+provider run cannot leave an unexplained half-edit. Audio treatments remain
+immutable derivatives or range-bound candidates with level-matched A/B, so a
+useful repair for one moment never silently changes every composition that uses
+the source.
+
+Primary sources:
+[Descript Automatic Multicam](https://help.descript.com/hc/en-us/articles/28736507904525-Automatic-multicam),
+[Descript Studio Sound](https://help.descript.com/hc/en-us/articles/10327603613837-Studio-Sound),
+and [Descript non-destructive project structure](https://help.descript.com/hc/en-us/articles/13535123897485-Projects-and-compositions-overview).
 
 ### Research products win by exposing scope, citations, and reusable artifacts
 
