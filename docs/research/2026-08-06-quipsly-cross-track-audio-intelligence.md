@@ -223,7 +223,11 @@ The two sub-layers stay separate in storage and UI:
 
 ### Version 3: correlated bleed and echo evidence
 
-Analyze aligned PCM windows for lagged correlation and spectral similarity across tracks. Distinguish:
+Analyze aligned PCM windows for lagged correlation and spectral similarity across tracks. The first production contract follows WebRTC's useful separation of concerns: it compares 10 ms power envelopes across a bounded delay search, reports peak correlation, delay, prominence, level difference, waveform correlation at the best delay, and evidence reliability, but does not name the cause.
+
+Each analysis is deliberately bounded to a reviewed 0.5–30 second program-clock range. Both sources retain their exact hash, generation, size, role, participant assignment, source range, and alignment evidence; the active canonical decision receipt IDs and episode program fingerprint are part of the job and result. Positive delay means the observation follows the reference. Thresholds and algorithms are fixed in the v1 contract, and the result proves complete decode of the requested ranges plus before/after source identity checks.
+
+The review surface can then help a human distinguish:
 
 - same participant, multiple devices;
 - different participant mics in one room;
@@ -232,6 +236,8 @@ Analyze aligned PCM windows for lagged correlation and spectral similarity acros
 - actual conversational overlap.
 
 Never attenuate based on correlation alone; create a bounded comparison and proposal.
+
+Correlation is especially vulnerable to false interpretation: two tracks can share timing or power modulation without one causing the other, and room reflections can reduce waveform similarity even when one source bleeds into another. Quipsly therefore preserves both power-envelope and waveform correlation, exposes the lag and level difference, and requires matched protected playback before a human classification receipt. The classification—not the measurement—may use production role context such as reference playback versus microphone capture.
 
 ### Version 4: reversible automatic mix
 
