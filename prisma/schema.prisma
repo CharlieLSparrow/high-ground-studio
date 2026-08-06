@@ -3459,6 +3459,7 @@ model StudioProject {
   transcriptJobs                     TranscriptJob[]
   studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
   studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
+  audibleEventAnalysisReceipts       StudioAudibleEventAnalysisReceipt[]
   audibleEventReviewReceipts         StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts          StudioAudibleEventTruthReceipt[]
 
@@ -3997,6 +3998,36 @@ model StudioAudibleEventReviewReceipt {
   @@index([sourceId, occurredAt], map: "StudioAudibleEventReview_source_idx")
 }
 
+// Canonical immutable detector output for one exact Nest media source. Episode
+// JSON and Session manifests may project this receipt for UX, but neither owns
+// it. A row is listening triage only and never authorizes treatment or edits.
+model StudioAudibleEventAnalysisReceipt {
+  id                          String   @id
+  projectId                   String
+  assetId                     String
+  sourceId                    String
+  supersedesAnalysisId        String?
+  algorithm                   String
+  classifierIdentifier        String
+  detectorConfigurationSha256 String
+  sourceSha256                String
+  sourceGeneration            String
+  sourceByteCount             BigInt
+  sourceDurationSeconds       Float
+  requestSha256               String
+  analysisJson                Json
+  analyzedAt                  DateTime
+  createdAt                   DateTime @default(now())
+
+  project StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   StudioMediaAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  source  StudioVideoSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, assetId, analyzedAt], map: "StudioAudibleEventAnalysis_project_asset_idx")
+  @@index([sourceId, analyzedAt], map: "StudioAudibleEventAnalysis_source_idx")
+  @@index([detectorConfigurationSha256, analyzedAt], map: "StudioAudibleEventAnalysis_config_idx")
+}
+
 enum StudioAudibleEventTruthVerdict {
   POSITIVE
   ABSENT
@@ -4428,6 +4459,7 @@ model StudioVideoSource {
   updatedAt        DateTime @updatedAt
 
   dialogueRepairCandidates  StudioDialogueRepairCandidate[]
+  audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]
   audibleEventReviews       StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
 
@@ -5263,6 +5295,7 @@ model StudioMediaAsset {
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
   dialogueRepairCandidates  StudioDialogueRepairCandidate[]
   dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]
+  audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]
   audibleEventReviews       StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
   sourceUnits               StudioSourceUnit[]

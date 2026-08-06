@@ -8,6 +8,7 @@ import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, F
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision, TranscriptNoteReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
+import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
 import { CaptureAppHandoff } from "@/components/capture-app-handoff";
 import { LiveSessionDockLauncher, type LiveSessionDockConfig } from "@/components/live-session-dock";
 import { SessionInvitations } from "@/components/session-invitations";
@@ -1849,7 +1850,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1859,6 +1860,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sourceEvidence?: SessionSourceEvidence;
+  audibleEventSources?: Array<{ projectSlug: string; assetId: string; sourceId: string; sourceUrl: string; durationSeconds: number; label: string }>;
   readinessTopology?: SessionReadinessTopology;
   canReleaseHeldMedia?: boolean;
   sessionTaxonomy?: SessionTaxonomy | null;
@@ -2330,6 +2332,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
           <div className="mb-4 flex items-center gap-3"><span className="rounded-xl bg-emerald-50 p-2 text-emerald-700"><CheckCircle2 aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Committed work only</p><h2 id="tasks-heading" className="font-serif text-3xl font-black text-[#3d3122]">Tasks accepted from this packet</h2></div></div>
           {tasks.length ? <div className="grid gap-3 lg:grid-cols-2">{tasks.map((task) => <article key={task.id} className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><p className="font-black text-[#3d3122]"><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="rounded-sm hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700">{task.title}</Link></p>{task.detail && <p className="mt-2 text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}<p className="mt-3 text-xs font-black uppercase tracking-wide text-[#8a7354]">{humanize(task.status)} · {task.dueAt ? `Due ${new Date(task.dueAt).toLocaleDateString()}` : "No due date"} · assignment not implied</p></article>)}</div> : <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold text-[#7a6548]">No committed tasks from this packet. Suggestions remain separate until someone accepts one.</div>}
         </section>
+
+        {audibleEventSources.length ? <section aria-labelledby="session-detector-qualification-heading" className="space-y-4">
+          <div className="flex items-center gap-3"><span className="rounded-xl bg-cyan-50 p-2 text-cyan-700"><FileAudio aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Audio detector evidence</p><h2 id="session-detector-qualification-heading" className="font-serif text-3xl font-black text-[#3d3122]">Qualify what the detector surfaced</h2></div></div>
+          <p className="max-w-4xl text-sm font-semibold leading-relaxed text-[#765f40]">These exact Session sources already have immutable detector output. Listen and label here even when a newer transcript attempt is held; the source ledger—not transcript recency or Episode JSON—owns the analysis.</p>
+          {audibleEventSources.map((source) => <div key={`${source.assetId}:${source.sourceId}`}><p className="mb-2 text-xs font-black uppercase tracking-wide text-[#765f40]">{source.label}</p><AudibleEventQualificationLab {...source} defaultWorkload={purpose === "PODCAST" ? "podcast" : "coaching"} /></div>)}
+        </section> : null}
 
         <TranscriptCorrectionDesk
           roomId={roomId}

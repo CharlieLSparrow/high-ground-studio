@@ -2,7 +2,7 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -35,19 +35,40 @@ try {
   const selected = importedMedia[selectedIndex];
   const assetId = text(selected.id);
   const sourceId = text(selected.sourceId);
-  const locator = localLocator(selected);
-  if (!assetId || !sourceId || !locator) throw new Error("The selected imported source lacks exact asset, source, or local immutable-byte identity.");
+  const storedLocator = localLocator(selected);
+  if (!assetId || !sourceId || !storedLocator) throw new Error("The selected imported source lacks exact asset, source, or local immutable-byte identity.");
+  const locator = await realpath(storedLocator);
   const sourceBytes = await readFile(locator);
   const sourceSha256 = createHash("sha256").update(sourceBytes).digest("hex");
+  const [asset, source, latestLedger] = await Promise.all([
+    prisma.studioMediaAsset.findUnique({ where: { id: assetId }, select: { id: true, url: true, mimeType: true, isProxy: true, assetAttachments: { where: { projectId: project.id }, select: { id: true } } } }),
+    prisma.studioVideoSource.findUnique({ where: { id: sourceId }, select: { id: true, url: true, providerSourceId: true } }),
+    prisma.studioAudibleEventAnalysisReceipt.findFirst({ where: { projectId: project.id, assetId, sourceId }, orderBy: [{ analyzedAt: "desc" }, { id: "desc" }] }),
+  ]);
+  const registeredLocator = source?.providerSourceId
+    ? await realpath(source.providerSourceId).catch(() => null)
+    : null;
+  if (!asset || asset.isProxy || asset.assetAttachments.length === 0 || asset.url !== `/api/ingest/media/${sourceId}` || registeredLocator !== locator || source?.url !== asset.url) throw new Error("The selected Episode media no longer has its exact original Nest source binding.");
   const analyzer = path.join(root, "apps/mobile-capture/HighGroundCapture/scripts/run-local-audible-event-analysis.sh");
   const { stdout, stderr } = await execFileAsync(analyzer, [locator], { cwd: root, maxBuffer: 4 * 1024 * 1024 });
-  const receipt = parseAnalyzerReceipt(stdout);
+  const receipt = canonicalizeAnalyzerReceipt(parseAnalyzerReceipt(stdout));
   validateReceipt(receipt, sourceSha256, sourceBytes.byteLength);
   const metadata = object(selected.metadata);
   const sync = object(selected.sync);
   const recordingSync = object(metadata.recordingSync);
   const reportedSourceProfile = object(recordingSync.reportedSourceProfile);
   const prior = object(reportedSourceProfile.audibleEventAnalysis);
+  const supersedesAnalysisId = text(latestLedger?.id) || text(prior.analysisId) || null;
+  const canonicalReceipt = { ...receipt, supersedesAnalysisId };
+  const sourceBinding = {
+    assetId,
+    provider: "local",
+    locator,
+    generation: `sha256:${sourceSha256}`,
+    sizeBytes: sourceBytes.byteLength,
+    sha256: sourceSha256,
+    contentType: asset.mimeType || "video/mp4",
+  };
   const nextImportedMedia = [...importedMedia];
   nextImportedMedia[selectedIndex] = {
     ...selected,
@@ -57,10 +78,7 @@ try {
         ...recordingSync,
         reportedSourceProfile: {
           ...reportedSourceProfile,
-          audibleEventAnalysis: {
-            ...receipt,
-            supersedesAnalysisId: text(prior.analysisId) || null,
-          },
+          audibleEventAnalysis: canonicalReceipt,
         },
       },
     },
@@ -70,20 +88,36 @@ try {
         ...object(sync.recordingSync),
         reportedSourceProfile: {
           ...object(object(sync.recordingSync).reportedSourceProfile),
-          audibleEventAnalysis: {
-            ...receipt,
-            supersedesAnalysisId: text(prior.analysisId) || null,
-          },
+          audibleEventAnalysis: canonicalReceipt,
         },
       },
     },
   };
   if (mutationEnabled) {
-    const changed = await prisma.studioEpisodeProduction.updateMany({
-      where: { id: production.id, updatedAt: production.updatedAt },
-      data: { productionJson: { ...productionJson, importedMedia: nextImportedMedia } },
+    await prisma.$transaction(async (tx) => {
+      const changed = await tx.studioEpisodeProduction.updateMany({
+        where: { id: production.id, updatedAt: production.updatedAt },
+        data: { productionJson: { ...productionJson, importedMedia: nextImportedMedia } },
+      });
+      if (changed.count !== 1) throw new Error("Episode media changed during analysis; no receipt was attached. Re-run against the new canonical state.");
+      await tx.studioAudibleEventAnalysisReceipt.create({ data: {
+        id: canonicalReceipt.analysisId,
+        projectId: project.id,
+        assetId,
+        sourceId,
+        supersedesAnalysisId,
+        algorithm: canonicalReceipt.algorithm,
+        classifierIdentifier: canonicalReceipt.classifierIdentifier,
+        detectorConfigurationSha256: detectorConfigurationHash(canonicalReceipt),
+        sourceSha256,
+        sourceGeneration: sourceBinding.generation,
+        sourceByteCount: BigInt(sourceBytes.byteLength),
+        sourceDurationSeconds: canonicalReceipt.durationSeconds,
+        requestSha256: hashJson({ schema: "quipsly-audible-event-analysis-registration-v1", projectId: project.id, assetId, sourceId, source: sourceBinding, analysis: canonicalReceipt }),
+        analysisJson: canonicalReceipt,
+        analyzedAt: new Date(canonicalReceipt.analyzedAt),
+      } });
     });
-    if (changed.count !== 1) throw new Error("Episode media changed during analysis; no receipt was attached. Re-run against the new canonical state.");
   }
   process.stdout.write(`${JSON.stringify({
     ok: true,
@@ -95,7 +129,7 @@ try {
     sourceSha256,
     sourceByteCount: sourceBytes.byteLength,
     analysisId: receipt.analysisId,
-    supersedesAnalysisId: text(prior.analysisId) || null,
+    supersedesAnalysisId,
     analyzedSeconds: receipt.durationSeconds,
     suggestionCount: receipt.suggestions.length,
     suggestions: receipt.suggestions.map((suggestion) => ({ eventId: suggestion.eventId, label: suggestion.displayLabel, family: suggestion.family, startSeconds: suggestion.startSeconds, endSeconds: suggestion.endSeconds, confidence: suggestion.confidence })),
@@ -110,6 +144,13 @@ function parseAnalyzerReceipt(stdout) {
   const start = stdout.indexOf("{");
   if (start < 0) throw new Error("The native analyzer did not emit a JSON receipt.");
   return JSON.parse(stdout.slice(start));
+}
+function canonicalizeAnalyzerReceipt(receipt) {
+  return {
+    ...receipt,
+    failureCode: receipt?.failureCode ?? null,
+    failureDetail: receipt?.failureDetail ?? null,
+  };
 }
 function validateReceipt(receipt, sha256, byteCount) {
   if (
@@ -137,3 +178,6 @@ function localLocator(entry) {
 }
 function object(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }
 function text(value) { return typeof value === "string" ? value.trim() : ""; }
+function detectorConfigurationHash(value) { return hashJson({ algorithm: value.algorithm, classifierIdentifier: value.classifierIdentifier, requestedWindowDurationSeconds: value.requestedWindowDurationSeconds, effectiveWindowDurationSeconds: value.effectiveWindowDurationSeconds, overlapFactor: value.overlapFactor, minimumCandidateConfidence: value.minimumCandidateConfidence, knownClassificationCount: value.knownClassificationCount, knownClassificationsSHA256: value.knownClassificationsSHA256 }); }
+function hashJson(value) { return createHash("sha256").update(JSON.stringify(stable(value))).digest("hex"); }
+function stable(value) { if (Array.isArray(value)) return value.map(stable); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)])); }

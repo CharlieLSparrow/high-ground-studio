@@ -11,7 +11,24 @@ test("retained audible-event operation is guarded and source-bound", () => {
   assert.match(source, /updatedAt: production\.updatedAt/);
   assert.match(source, /sourceSHA256 !== sha256/);
   assert.match(source, /sourceByteCount !== byteCount/);
+  assert.match(source, /const locator = await realpath\(storedLocator\)/);
+  assert.match(source, /failureCode: receipt\?\.failureCode \?\? null/);
+  assert.match(source, /failureDetail: receipt\?\.failureDetail \?\? null/);
   assert.match(source, /noReviewWasFabricated: true/);
   assert.match(source, /noRepairOrEditAuthorized: true/);
   assert.doesNotMatch(source, /studioAudibleEventReviewReceipt\.create/);
+});
+
+test("retained coaching operation shares the canonical source and receipt envelope", async () => {
+  const coachingSource = await readFile(
+    new URL("./quipsly-retained-coaching-audible-event-operation.mjs", import.meta.url),
+    "utf8",
+  );
+  assert.match(coachingSource, /QUIPSLY_RETAINED_COACHING_AUDIBLE_EVENT_OPERATION === "1"/);
+  assert.match(coachingSource, /realpath\(path\.resolve\(source\.providerSourceId\)\)/);
+  assert.match(coachingSource, /realpath\(mediaRoot\)/);
+  assert.match(coachingSource, /failureCode: receipt\?\.failureCode \?\? null/);
+  assert.match(coachingSource, /failureDetail: receipt\?\.failureDetail \?\? null/);
+  assert.match(coachingSource, /noHumanLabelCreated: true/);
+  assert.doesNotMatch(coachingSource, /studioAudibleEventReviewReceipt\.create/);
 });

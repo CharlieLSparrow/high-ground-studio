@@ -17,8 +17,7 @@ import type {
   PublicAudibleEventReview,
 } from "@/lib/audio/audible-event-review";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
-
-import { loadDialogueRepairContext } from "./dialogue-repair";
+import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 
 type Actor = { id: string; email: string };
 type Coordinates = { prisma: any; projectSlug: string; assetId: string; sourceId: string };
@@ -162,7 +161,21 @@ export async function appendAudibleEventReview(input: Coordinates & {
 }
 
 export async function loadAudibleEventContext(input: Coordinates) {
-  const context = await loadDialogueRepairContext(input);
+  const context = await loadAudibleEventSourceContext(input);
+  const ledger = input.prisma.studioAudibleEventAnalysisReceipt?.findMany
+    ? await input.prisma.studioAudibleEventAnalysisReceipt.findMany({
+        where: { projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id },
+        orderBy: [{ analyzedAt: "desc" }, { id: "desc" }],
+        take: 500,
+      })
+    : [];
+  if (ledger.length > 0) {
+    const analyses = ledger.map((row: any) => analysisFromLedgerRow(row, context));
+    if (analyses.some((analysis: AudibleEventDetectorReceipt | null) => analysis === null)) {
+      throw new AudibleEventReviewError("Stored detector analysis failed its immutable source or receipt contract.", 500, "AUDIBLE_EVENT_ANALYSIS_LEDGER_INVALID");
+    }
+    return { ...context, analysis: analyses[0] as AudibleEventDetectorReceipt };
+  }
   const productions = await input.prisma.studioEpisodeProduction.findMany({
     where: { projectId: context.project.id },
     select: { productionJson: true, updatedAt: true },
@@ -177,6 +190,128 @@ export async function loadAudibleEventContext(input: Coordinates) {
     sourceByteCount: context.sourceBinding.sizeBytes,
   });
   return { ...context, analysis };
+}
+
+export async function registerAudibleEventAnalysis(input: Coordinates & { analysis: unknown }) {
+  const context = await loadAudibleEventSourceContext(input);
+  const parsed = parseAudibleEventDetectorReceipt(input.analysis);
+  if (!parsed || parsed.status !== "completed" || !audibleEventDetectorReceiptMatchesSource(parsed, context.sourceBinding.sha256, context.sourceBinding.sizeBytes)) {
+    throw new AudibleEventReviewError("Detector output is not a completed receipt for these exact immutable bytes.", 409, "AUDIBLE_EVENT_ANALYSIS_SOURCE_MISMATCH");
+  }
+  const currentRows = await input.prisma.studioAudibleEventAnalysisReceipt.findMany({
+    where: { projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id },
+    orderBy: [{ analyzedAt: "desc" }, { id: "desc" }],
+    take: 500,
+  });
+  const currentAnalyses = currentRows.map((row: any) => analysisFromLedgerRow(row, context));
+  if (currentAnalyses.some((analysis: AudibleEventDetectorReceipt | null) => analysis === null)) {
+    throw new AudibleEventReviewError("Existing detector analysis failed its immutable source or receipt contract.", 500, "AUDIBLE_EVENT_ANALYSIS_LEDGER_INVALID");
+  }
+  const existingIndex = currentRows.findIndex((row: any) => String(row.id) === parsed.analysisId);
+  if (existingIndex >= 0) {
+    const storedAnalysis = currentAnalyses[existingIndex] as AudibleEventDetectorReceipt;
+    const normalizedReplay = { ...parsed, supersedesAnalysisId: storedAnalysis.supersedesAnalysisId };
+    if (currentRows[existingIndex].requestSha256 !== analysisLedgerHash(context, normalizedReplay)) {
+      throw new AudibleEventReviewError("That analysis id is already bound to different source evidence.", 409, "AUDIBLE_EVENT_ANALYSIS_ID_CONFLICT");
+    }
+    return { ok: true, idempotentReplay: true, analysis: storedAnalysis };
+  }
+  const latest = currentAnalyses[0] ?? null;
+  if (parsed.supersedesAnalysisId && parsed.supersedesAnalysisId !== latest?.analysisId) {
+    throw new AudibleEventReviewError("Detector output supersedes a stale analysis. Refresh the exact source before registering it.", 409, "AUDIBLE_EVENT_ANALYSIS_SUPERSESSION_STALE");
+  }
+  const analysis: AudibleEventDetectorReceipt = { ...parsed, supersedesAnalysisId: latest?.analysisId ?? null };
+  const requestSha256 = analysisLedgerHash(context, analysis);
+  const stored = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `audible-event-analysis:${context.project.id}:${context.source.id}`);
+    const replay = await tx.studioAudibleEventAnalysisReceipt.findUnique({ where: { id: analysis.analysisId } });
+    if (replay) {
+      if (replay.requestSha256 !== requestSha256) throw new AudibleEventReviewError("That analysis id won a race with different source evidence.", 409, "AUDIBLE_EVENT_ANALYSIS_ID_CONFLICT");
+      return { replay: true };
+    }
+    const fresh = await loadAudibleEventSourceContext({ ...input, prisma: tx });
+    if (fresh.sourceBinding.sha256 !== context.sourceBinding.sha256 || fresh.sourceBinding.generation !== context.sourceBinding.generation || fresh.sourceBinding.sizeBytes !== context.sourceBinding.sizeBytes) {
+      throw new AudibleEventReviewError("The immutable source changed while detector output was being registered.", 409, "AUDIBLE_EVENT_ANALYSIS_SOURCE_DRIFT");
+    }
+    const newest = await tx.studioAudibleEventAnalysisReceipt.findFirst({
+      where: { projectId: context.project.id, assetId: context.asset.id, sourceId: context.source.id },
+      orderBy: [{ analyzedAt: "desc" }, { id: "desc" }],
+    });
+    if ((newest?.id ?? null) !== analysis.supersedesAnalysisId) {
+      throw new AudibleEventReviewError("A newer detector analysis was registered first. Re-run against current truth.", 409, "AUDIBLE_EVENT_ANALYSIS_SUPERSESSION_STALE");
+    }
+    await tx.studioAudibleEventAnalysisReceipt.create({ data: {
+      id: analysis.analysisId,
+      projectId: context.project.id,
+      assetId: context.asset.id,
+      sourceId: context.source.id,
+      supersedesAnalysisId: analysis.supersedesAnalysisId,
+      algorithm: analysis.algorithm,
+      classifierIdentifier: analysis.classifierIdentifier,
+      detectorConfigurationSha256: audibleEventDetectorConfigurationHash(analysis),
+      sourceSha256: context.sourceBinding.sha256,
+      sourceGeneration: context.sourceBinding.generation,
+      sourceByteCount: BigInt(context.sourceBinding.sizeBytes),
+      sourceDurationSeconds: analysis.durationSeconds,
+      requestSha256,
+      analysisJson: json(analysis),
+      analyzedAt: new Date(analysis.analyzedAt),
+    } });
+    return { replay: false };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return { ok: true, idempotentReplay: stored.replay, analysis };
+}
+
+async function loadAudibleEventSourceContext(input: Coordinates) {
+  const project = await input.prisma.studioProject.findFirst({ where: { slug: input.projectSlug }, select: { id: true, slug: true } });
+  if (!project) throw new AudibleEventReviewError("Nest not found for audible-event analysis.", 404, "AUDIBLE_EVENT_PROJECT_NOT_FOUND");
+  const [asset, source] = await Promise.all([
+    input.prisma.studioMediaAsset.findUnique({ where: { id: input.assetId }, include: { assetAttachments: { where: { projectId: project.id }, select: { metadataJson: true } } } }),
+    input.prisma.studioVideoSource.findUnique({ where: { id: input.sourceId }, select: { id: true, url: true, providerSourceId: true } }),
+  ]);
+  const attachmentNamesSource = asset?.assetAttachments.some((attachment: any) => object(attachment.metadataJson).sourceId === input.sourceId);
+  if (!asset || asset.isProxy || asset.assetAttachments.length === 0 || !source?.providerSourceId || source.url !== `/api/ingest/media/${source.id}` || (asset.url !== source.url && !attachmentNamesSource) || (!String(asset.mimeType || "").startsWith("audio/") && !String(asset.mimeType || "").startsWith("video/"))) {
+    throw new AudibleEventReviewError("Audible-event analysis requires the exact original media source attached to this Nest.", 409, "AUDIBLE_EVENT_SOURCE_MISMATCH");
+  }
+  const immutable = await inspectImmutableStudioMediaSource(source.providerSourceId, asset.mimeType);
+  return {
+    project,
+    asset,
+    source: source as { id: string; url: string; providerSourceId: string },
+    sourceBinding: { assetId: asset.id, ...immutable },
+  };
+}
+
+function analysisFromLedgerRow(row: any, context: Awaited<ReturnType<typeof loadAudibleEventSourceContext>>) {
+  const analysis = parseAudibleEventDetectorReceipt(row.analysisJson);
+  if (
+    !analysis
+    || analysis.status !== "completed"
+    || analysis.analysisId !== String(row.id)
+    || analysis.supersedesAnalysisId !== (row.supersedesAnalysisId == null ? null : String(row.supersedesAnalysisId))
+    || analysis.algorithm !== String(row.algorithm)
+    || analysis.classifierIdentifier !== String(row.classifierIdentifier)
+    || audibleEventDetectorConfigurationHash(analysis) !== String(row.detectorConfigurationSha256)
+    || analysis.sourceSHA256 !== String(row.sourceSha256)
+    || analysis.sourceByteCount !== Number(row.sourceByteCount)
+    || Math.abs(analysis.durationSeconds - Number(row.sourceDurationSeconds)) > 0.001
+    || String(row.sourceSha256) !== context.sourceBinding.sha256
+    || String(row.sourceGeneration) !== context.sourceBinding.generation
+    || Number(row.sourceByteCount) !== context.sourceBinding.sizeBytes
+    || String(row.requestSha256) !== analysisLedgerHash(context, analysis)
+  ) return null;
+  return analysis;
+}
+
+function analysisLedgerHash(context: Awaited<ReturnType<typeof loadAudibleEventSourceContext>>, analysis: AudibleEventDetectorReceipt) {
+  return hashJson({
+    schema: "quipsly-audible-event-analysis-registration-v1",
+    projectId: context.project.id,
+    assetId: context.asset.id,
+    sourceId: context.source.id,
+    source: context.sourceBinding,
+    analysis,
+  });
 }
 
 export function selectSourceBoundAnalysis(input: {

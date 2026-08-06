@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, Check, CircleAlert, FilePenLine, Gauge, History, ListTodo, LoaderCircle, NotebookPen, Play, RefreshCw, ShieldCheck, Sparkles, Target, TriangleAlert, X } from "lucide-react";
 
 import { AudioEvidenceMap, type AudioEvidenceTranscriptWord } from "@/components/audio/AudioEvidenceMap";
+import { AudibleEventQualificationLab } from "@/components/audio/AudibleEventQualificationLab";
 import { SpectralEvidenceViewer } from "@/components/audio/SpectralEvidenceViewer";
 import type { SpectralEvidenceMarker } from "@/components/audio/spectral-evidence-overlay";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
@@ -1216,6 +1217,7 @@ export function TranscriptCorrectionDesk({
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const lastPlaybackTimeRef = useRef<number | null>(null);
   const playbackReady = Boolean(desk?.playback) && playbackState === "ready";
+  const detectorDurationSeconds = desk?.playback?.durationSeconds ?? desk?.evaluation?.sourceDurationSeconds ?? desk?.evidence?.audio.signal?.durationSeconds ?? 0;
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -1464,6 +1466,15 @@ export function TranscriptCorrectionDesk({
         transcriptEndSeconds={desk.evidence?.transcript.transcriptEndSeconds ?? null}
         transcriptScopeLabel="Session timed transcript"
         evidenceMarkers={spectralEvidenceMarkers}
+      /> : null}
+
+      {desk.playback && desk.spectralContext && detectorDurationSeconds > 0 ? <AudibleEventQualificationLab
+        projectSlug={desk.spectralContext.projectSlug}
+        assetId={desk.spectralContext.assetId}
+        sourceId={desk.spectralContext.sourceId}
+        sourceUrl={desk.playback.url}
+        durationSeconds={detectorDurationSeconds}
+        defaultWorkload={desk.evaluation?.suggestedWorkload ?? "coaching"}
       /> : null}
 
       {desk.evaluation ? <TranscriptAccuracyCorpusPanel

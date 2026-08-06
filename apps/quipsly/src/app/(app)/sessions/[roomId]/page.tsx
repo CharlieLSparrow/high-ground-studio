@@ -211,6 +211,25 @@ export default async function SessionReviewPage({
       finalizationReceipts,
       stateReceipts: room.stateReceipts,
     });
+    const promotedDetectorSources = room.project ? room.recordingAssets.flatMap((recording: any) => {
+      const promotion = jsonObject(jsonObject(recording.localManifestJson).promotion);
+      const mediaAssetId = cleanText(promotion.mediaAssetId);
+      const sourceId = cleanText(promotion.sourceId);
+      const playbackUrl = cleanText(promotion.playbackUrl);
+      const nestSlug = cleanText(promotion.nestSlug);
+      const durationSeconds = Number(recording.durationSeconds);
+      if (!mediaAssetId || !sourceId || playbackUrl !== `/api/ingest/media/${sourceId}` || nestSlug !== room.project.slug || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
+      return [{ mediaAssetId, sourceId, sourceUrl: playbackUrl, durationSeconds, label: recording.fileName || "Session recording" }];
+    }) : [];
+    const detectorAnalysisRows = room.project && promotedDetectorSources.length && typeof prisma.studioAudibleEventAnalysisReceipt?.findMany === "function" ? await prisma.studioAudibleEventAnalysisReceipt.findMany({
+      where: { projectId: room.project.id, sourceId: { in: promotedDetectorSources.map((source: any) => source.sourceId) } },
+      select: { assetId: true, sourceId: true },
+      distinct: ["sourceId"],
+    }) : [];
+    const detectorAnalysisKeys = new Set(detectorAnalysisRows.map((row: any) => `${row.assetId}:${row.sourceId}`));
+    const audibleEventSources = room.project ? promotedDetectorSources
+      .filter((source: any) => detectorAnalysisKeys.has(`${source.mediaAssetId}:${source.sourceId}`))
+      .map((source: any) => ({ projectSlug: room.project.slug, assetId: source.mediaAssetId, sourceId: source.sourceId, sourceUrl: source.sourceUrl, durationSeconds: source.durationSeconds, label: source.label })) : [];
     const {
       preparation: builtSessionPreparation,
       consentSnapshot,
@@ -511,7 +530,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

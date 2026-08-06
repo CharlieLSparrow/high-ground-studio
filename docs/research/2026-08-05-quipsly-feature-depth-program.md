@@ -45,6 +45,23 @@ the playback gate. No listening verdict was saved by the agent. The next human
 operation can create the first genuine positive or absent receipt without a
 schema or UI retrofit.
 
+### Cross-workflow analysis ownership checkpoint
+
+Detector analysis now has a canonical source ledger instead of living inside
+Episode JSON. One reusable qualification lab appears in Audio Studio, Dialogue
+Repair, and coaching Session review. The retained 80-second coaching source and
+eight-second podcast source were analyzed by the native Apple framework and
+registered through the same immutable contract. The coaching Session projected
+its valid older source even while a newer transcript attempt remained held,
+then completed protected bounded playback without fabricating a human label.
+
+Dogfooding also rejected two superficially valid registrations because their
+operation scripts disagreed with the server about canonical macOS path spelling
+and optional-null receipt fields. That failure is evidence that the depth ladder
+is doing its job: the feature moved from existing/reachable into operable and
+observable, exposed a recoverability/integrity defect, and was repaired at the
+shared ownership boundary rather than hidden in UI state.
+
 ## Executive decision
 
 Quipsly should not measure progress by how many categories appear in the

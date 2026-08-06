@@ -155,12 +155,14 @@ describe("DialogueRepairDesk", () => {
 
   it("labels independent corpus truth only after complete protected-window playback", async () => {
     render(<DialogueRepairDesk projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} audibleEventAnalysis={audibleEventAnalysis} />);
-    const audio = document.querySelector("audio") as HTMLAudioElement;
-    Object.defineProperty(audio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
-    Object.defineProperty(audio, "paused", { configurable: true, get: () => false });
+    const dialogueAudio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(dialogueAudio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
     fireEvent.click(await screen.findByRole("button", { name: /00:08 dialogue cough unreviewed/i }));
     fireEvent.click(screen.getByText(/Private detector qualification lab/));
     expect(screen.getByLabelText("Corpus classification identifier")).toHaveValue("cough");
+    const audio = screen.getByLabelText("Protected detector qualification source") as HTMLAudioElement;
+    Object.defineProperty(audio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
+    Object.defineProperty(audio, "paused", { configurable: true, get: () => false });
     const save = screen.getByRole("button", { name: "Add playback-reviewed corpus evidence" });
     expect(save).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Play complete label window" }));

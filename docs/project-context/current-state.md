@@ -2,6 +2,22 @@
 
 Date: 2026-08-05
 
+## Unified audible-event analysis checkpoint
+
+- Detector output now belongs to an append-only source ledger rather than an
+  Episode JSON document. Podcast Episodes, coaching Sessions, Audio Studio, and
+  Dialogue Repair project one exact-source analysis and one reusable protected
+  qualification lab.
+- Native Apple analysis was registered for a retained 80-second coaching source
+  and an eight-second High Ground Odyssey source. The retained coach opened the
+  actual Session, saw the classifier suggestions, and completed bounded
+  protected playback; no listening verdict was fabricated.
+- Real operation rejected two invalid local registration envelopes because the
+  scripts had not canonicalized macOS `/var` to `/private/var` and omitted two
+  successful-null fields that the parser includes. The scripts now share the
+  server's exact path and receipt normalization contract. See
+  `docs/coordination/2026-08-06-unified-audible-event-analysis-ledger.md`.
+
 ## Agent-qualified audio alignment checkpoint
 
 - Guided Sync can now create and resume a durable two-source

@@ -1,13 +1,13 @@
 /** @jest-environment node */
 
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
-import { loadDialogueRepairContext } from "./dialogue-repair";
+import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
 
-import { appendAudibleEventReview, AudibleEventReviewError, readAudibleEventReviewStatus, selectSourceBoundAnalysis } from "./audible-event-review";
+import { appendAudibleEventReview, AudibleEventReviewError, loadAudibleEventContext, readAudibleEventReviewStatus, registerAudibleEventAnalysis, selectSourceBoundAnalysis } from "./audible-event-review";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/server/prisma-advisory-lock", () => ({ acquirePrismaAdvisoryTransactionLock: jest.fn() }));
-jest.mock("./dialogue-repair", () => ({ loadDialogueRepairContext: jest.fn() }));
+jest.mock("@/lib/server/episode-collaboration-proxy", () => ({ inspectImmutableStudioMediaSource: jest.fn() }));
 
 const sha256 = "b".repeat(64);
 const coordinates = { projectSlug: "high-ground-odyssey", assetId: "asset_audible_server_001", sourceId: "source_audible_server_001" };
@@ -46,7 +46,11 @@ const context = {
 function createPrisma() {
   const reviews = new Map<string, any>();
   const models = {
+    studioProject: { findFirst: jest.fn().mockResolvedValue(context.project) },
+    studioMediaAsset: { findUnique: jest.fn().mockResolvedValue({ ...context.asset, isProxy: false, mimeType: "audio/wav", url: `/api/ingest/media/${coordinates.sourceId}`, assetAttachments: [{ metadataJson: { sourceId: coordinates.sourceId } }] }) },
+    studioVideoSource: { findUnique: jest.fn().mockResolvedValue({ ...context.source, url: `/api/ingest/media/${coordinates.sourceId}`, providerSourceId: "/tmp/source.wav" }) },
     studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([{ productionJson, updatedAt: new Date() }]) },
+    studioAudibleEventAnalysisReceipt: { findMany: jest.fn().mockResolvedValue([]) },
     studioAudibleEventReviewReceipt: {
       findMany: jest.fn().mockImplementation(async ({ where }) => [...reviews.values()].filter((row) => row.analysisId === where.analysisId).reverse()),
       findUnique: jest.fn().mockImplementation(async ({ where }) => {
@@ -59,8 +63,29 @@ function createPrisma() {
   return { ...models, $transaction: jest.fn().mockImplementation(async (callback) => callback(models)), reviews };
 }
 
+function createAnalysisPrisma() {
+  const analyses = new Map<string, any>();
+  const analysisModel = {
+    findMany: jest.fn().mockImplementation(async () => [...analyses.values()].sort((left, right) => right.analyzedAt.getTime() - left.analyzedAt.getTime() || right.id.localeCompare(left.id))),
+    findUnique: jest.fn().mockImplementation(async ({ where }) => analyses.get(where.id) ?? null),
+    findFirst: jest.fn().mockImplementation(async () => [...analyses.values()].sort((left, right) => right.analyzedAt.getTime() - left.analyzedAt.getTime() || right.id.localeCompare(left.id))[0] ?? null),
+    create: jest.fn().mockImplementation(async ({ data }) => { const row = { ...data, createdAt: new Date() }; analyses.set(row.id, row); return row; }),
+  };
+  const models = {
+    studioProject: { findFirst: jest.fn().mockResolvedValue(context.project) },
+    studioMediaAsset: { findUnique: jest.fn().mockResolvedValue({ ...context.asset, isProxy: false, mimeType: "audio/wav", url: `/api/ingest/media/${coordinates.sourceId}`, assetAttachments: [{ metadataJson: { sourceId: coordinates.sourceId } }] }) },
+    studioVideoSource: { findUnique: jest.fn().mockResolvedValue({ ...context.source, url: `/api/ingest/media/${coordinates.sourceId}`, providerSourceId: "/tmp/source.wav" }) },
+    studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
+    studioAudibleEventAnalysisReceipt: analysisModel,
+  };
+  return { ...models, $transaction: jest.fn().mockImplementation(async (callback) => callback(models)), analyses };
+}
+
 describe("audible-event append-only review evidence", () => {
-  beforeEach(() => { jest.clearAllMocks(); jest.mocked(loadDialogueRepairContext).mockResolvedValue(context as never); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(inspectImmutableStudioMediaSource).mockResolvedValue({ provider: "local", locator: "/tmp/source.wav", generation: `sha256:${sha256}`, sizeBytes: 42_000, sha256, contentType: "audio/wav" });
+  });
 
   it("selects only the newest exact asset, source, SHA, and byte-bound completed receipt", () => {
     const older = { ...analysis, analysisId: "audible_analysis_server_test_000", analyzedAt: "2026-08-04T18:00:00.000Z" };
@@ -76,6 +101,18 @@ describe("audible-event append-only review evidence", () => {
       sourceSha256: sha256,
       sourceByteCount: 42_000,
     })?.analysisId).toBe(analysis.analysisId);
+  });
+
+  it("registers detector output once in the canonical source ledger and reads it without Episode JSON", async () => {
+    const prisma = createAnalysisPrisma();
+    const first = await registerAudibleEventAnalysis({ prisma, ...coordinates, analysis });
+    const replay = await registerAudibleEventAnalysis({ prisma, ...coordinates, analysis });
+    const loaded = await loadAudibleEventContext({ prisma, ...coordinates });
+    expect(first).toMatchObject({ ok: true, idempotentReplay: false, analysis: { analysisId: analysis.analysisId, supersedesAnalysisId: null } });
+    expect(replay).toMatchObject({ ok: true, idempotentReplay: true });
+    expect(prisma.analyses.size).toBe(1);
+    expect(loaded.analysis?.analysisId).toBe(analysis.analysisId);
+    expect(prisma.studioEpisodeProduction.findMany).not.toHaveBeenCalled();
   });
 
   it("appends a source-context-bound review, replays idempotently, and projects current state", async () => {

@@ -133,13 +133,24 @@ overlap configuration, known-classification-set hash, source-clock suggestions,
 and explicit no-edit boundaries. The classifier output is listening triage; its
 score is neither audibility nor accuracy.
 
-Nest exposes those suggestions on the shared Audible Event Map. A reviewer must
+`StudioAudibleEventAnalysisReceipt` is the canonical detector-analysis ledger.
+It binds one completed parsed receipt to the exact Nest, original asset,
+original source, immutable source hash/generation/byte count, detector
+configuration, and append-only supersession chain. Episode JSON is now a
+compatibility projection and migration fallback; coaching Sessions and Episode
+workflows consume the same source-owned evidence without manufacturing an
+Episode container.
+
+Nest exposes those suggestions on the shared Audible Event Map and Session
+review surface. A reviewer must
 play the complete bounded protected-source context before appending one of three
 decisions: confirmed, false positive, or needs comparison. The server derives
-the suggestion from the canonical episode source profile, re-inspects the
-immutable media source through the Audio Mastery boundary, and rejects stale
+the suggestion from the canonical analysis ledger, independently re-inspects
+the immutable media source, and rejects invalid registration hashes, stale
 analysis IDs, event IDs, source identities, incomplete playback coverage, and
-idempotency conflicts.
+idempotency conflicts. Canonical local paths are realpath-normalized before
+hashing so `/var` and `/private/var` aliases cannot split identity or weaken the
+authorized-root symlink boundary.
 
 `StudioAudibleEventReviewReceipt` is intentionally separate from Dialogue
 Repair. It snapshots the source, detector configuration, suggestion, actor,
@@ -178,7 +189,11 @@ The guarded retained operation
 `scripts/quipsly-retained-audible-event-review-operation.mjs` runs the real
 Apple framework against exact local episode bytes, verifies the returned source
 binding, and attaches the receipt using an optimistic episode update. Dry-run is
-the default. It never manufactures a listening review.
+the default. The parallel retained coaching operation registers the same
+canonical contract without an Episode. Both realpath the source and canonicalize
+optional successful-receipt fields before hashing. Neither manufactures a
+listening review. See
+`docs/coordination/2026-08-06-unified-audible-event-analysis-ledger.md`.
 
 ## Correction and provenance
 
