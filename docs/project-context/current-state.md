@@ -2,6 +2,27 @@
 
 Date: 2026-08-06
 
+## Obvious-depth feature portfolio decision
+
+- Current primary-source market research and the repository's operated depth
+  point to one next large product swing: an Episode and Session Finishing
+  Cockpit, not another disconnected feature page. It should project the existing
+  capture-group/source inventory, alignment, transcript truth, audible-event,
+  mastery, automated edit, outcome, delivery, and governed-action ledgers onto
+  one source clock and one readable recovery history.
+- The first five modes are Recover, Understand, Repair, Assemble, and Finish.
+  The first operated proof should take one retained Episode from safe-to-leave
+  source recovery through a prioritized attention queue, reviewed audio master,
+  reversible rough-cut operation set, canonical outcomes, and versioned output
+  candidate.
+- The two highest-leverage companion bets are permission-aware Semantic Media
+  Memory returning exact ranges and an Evidence Lens/Research Studio with
+  selected source sets, portable annotations, claims, contradictions, and
+  citation-backed outputs. Generic automation, duplicate boards, and shallow
+  LMS/social navigation remain deliberately later than the shared finishing,
+  source, output, and delivery contracts. See
+  `docs/research/2026-08-06-quipsly-obvious-depth-feature-portfolio.md`.
+
 ## Governed conversation-to-work checkpoint
 
 - Explicit transcript-to-Note, transcript-to-Goal, and transcript-to-Task
