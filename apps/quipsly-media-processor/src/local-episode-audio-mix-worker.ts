@@ -70,6 +70,8 @@ export async function runOneLocalEpisodeAudioMixJob(store: LocalEpisodeAudioMixS
       : null;
     const levelMatchedDeltaLufs = baseline ? Math.round(Math.abs(proposed.derivative.measurement.integratedLufs - baseline.derivative.measurement.integratedLufs) * 1_000_000) / 1_000_000 : null;
     if (levelMatchedDeltaLufs !== null && levelMatchedDeltaLufs > 0.2) throw new TerminalEpisodeAudioMixError("episode-mix-comparison-not-level-matched", "The baseline and proposed mix are not close enough in integrated loudness for an honest A/B comparison.");
+    const outputByteRelationship = baseline ? baseline.derivative.sha256 === proposed.derivative.sha256 && baseline.derivative.sizeBytes === proposed.derivative.sizeBytes ? "bit-identical" as const : "different" as const : null;
+    if (baseline && (proposal.actions.length === 0 ? outputByteRelationship !== "bit-identical" : outputByteRelationship !== "different")) throw new TerminalEpisodeAudioMixError("episode-mix-output-relationship-invalid", proposal.actions.length === 0 ? "The no-op proposal did not remain bit-identical to its baseline." : "The declared gain automation did not change the proposed output bytes.");
     const receipt = parseEpisodeAudioMixResult({
       kind: EPISODE_AUDIO_MIX_RESULT_KIND,
       version: EPISODE_AUDIO_MIX_CONTRACT_VERSION,
@@ -78,7 +80,7 @@ export async function runOneLocalEpisodeAudioMixJob(store: LocalEpisodeAudioMixS
       proposal,
       derivative: proposed.derivative,
       baselineDerivative: baseline?.derivative ?? null,
-      verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds: proposed.durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs, levelMatchedWithinPointTwoLu: baseline ? true : null },
+      verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds: proposed.durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs, levelMatchedWithinPointTwoLu: baseline ? true : null, outputByteRelationship, outputRelationshipMatchesProposal: baseline ? true : null },
       renderer: { ffmpegVersion: proposed.ffmpegVersion, executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt },
       boundaries: { outputIsUnpromotedPreview: true, proposalAndSourcesRemainImmutable: true, playbackReviewRequiredBeforePromotion: true },
     }, proposal);

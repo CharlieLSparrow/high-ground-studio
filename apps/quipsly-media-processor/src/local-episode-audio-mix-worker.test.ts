@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import {
   AUDIO_MASTERY_CONTRACT_VERSION,
   AUDIO_MASTERY_MEASUREMENT_KIND,
   newAutomaticEpisodeAudioMixProposal,
+  parseEpisodeAudioMixResult,
   type AudioMasteryMeasurement,
   type AudioMasterySourceBinding,
   type EpisodeAudioMixTrack,
@@ -39,12 +40,12 @@ test("local mix worker renders, masters, independently measures, and stages an u
   };
   const renderActionCounts: number[] = [];
   const renderer = {
-    renderUnmasteredPreview: async (input: any) => { renderActionCounts.push(input.proposal.actions.length); await writeFile(input.outputPath, Buffer.alloc(2_048, 3)); return { outputPath: input.outputPath, sizeBytes: 2_048, sha256: "0".repeat(64), durationSeconds: 2.1, sampleRateHz: 48_000 as const, channels: 2 as const, codec: "pcm_f32le" as const, ffmpegVersion: "ffmpeg version test", exactSourcesVerifiedBeforeAndAfter: true as const, originalTracksRemainSourceTruth: true as const }; },
+    renderUnmasteredPreview: async (input: any) => { renderActionCounts.push(input.proposal.actions.length); await writeFile(input.outputPath, Buffer.alloc(2_048, input.proposal.actions.length ? 3 : 6)); return { outputPath: input.outputPath, sizeBytes: 2_048, sha256: "0".repeat(64), durationSeconds: 2.1, sampleRateHz: 48_000 as const, channels: 2 as const, codec: "pcm_f32le" as const, ffmpegVersion: "ffmpeg version test", exactSourcesVerifiedBeforeAndAfter: true as const, originalTracksRemainSourceTruth: true as const }; },
     encodePcm24: async (inputPath: string, targetPath: string) => { await writeFile(targetPath, Buffer.alloc(2_048, 4)); return { sizeBytes: 2_048, sha256: "0".repeat(64) }; },
   };
   const mastery = {
     measure: async (inputPath: string, input: { source: AudioMasterySourceBinding; profileId: "apple-podcasts-dialogue-v1"; measurementId?: string; measuredAt?: string }) => measurement(input.source, input.measurementId!, input.measuredAt!, inputPath.includes("unmastered") ? -30 : input.source.assetId.includes("baseline") ? -15.9 : -16),
-    renderLoudnessMaster: async (_inputPath: string, targetPath: string) => { await writeFile(targetPath, Buffer.alloc(4_096, 5)); },
+    renderLoudnessMaster: async (inputPath: string, targetPath: string) => { await writeFile(targetPath, await readFile(inputPath)); },
   };
   const result = await runOneLocalEpisodeAudioMixJob(store, renderer, mastery, { executionId: "execution_0001", buildId: "build_0001", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-06T12:05:00.000Z") });
   assert.equal(result.disposition, "completed", JSON.stringify(result));
@@ -55,8 +56,21 @@ test("local mix worker renders, masters, independently measures, and stages an u
   assert.deepEqual(renderActionCounts, [1, 0], "proposal and untouched baseline must be rendered independently");
   assert.equal(receipt.verification.levelMatchedDeltaLufs, 0.1);
   assert.equal(receipt.verification.levelMatchedWithinPointTwoLu, true);
+  assert.equal(receipt.verification.outputByteRelationship, "different");
+  assert.equal(receipt.verification.outputRelationshipMatchesProposal, true);
   assert.equal(receipt.verification.integratedLoudnessPasses, true);
   assert.equal(receipt.boundaries.outputIsUnpromotedPreview, true);
+  const automatedNoOp = structuredClone(receipt);
+  automatedNoOp.baselineDerivative.sha256 = automatedNoOp.derivative.sha256;
+  automatedNoOp.baselineDerivative.generation = automatedNoOp.derivative.generation;
+  automatedNoOp.baselineDerivative.sizeBytes = automatedNoOp.derivative.sizeBytes;
+  automatedNoOp.baselineDerivative.measurement.source.sha256 = automatedNoOp.derivative.sha256;
+  automatedNoOp.baselineDerivative.measurement.source.generation = automatedNoOp.derivative.generation;
+  automatedNoOp.baselineDerivative.measurement.source.sizeBytes = automatedNoOp.derivative.sizeBytes;
+  assert.throws(() => parseEpisodeAudioMixResult(automatedNoOp), /automation did not change/);
+  const changedNoOp = structuredClone(receipt);
+  changedNoOp.proposal.actions = [];
+  assert.throws(() => parseEpisodeAudioMixResult(changedNoOp), /no-op Episode mix proposal did not remain bit-identical/);
 });
 
 async function binding(assetId: string, locator: string): Promise<AudioMasterySourceBinding> { const file = await stat(locator); const sha256 = await sha256File(locator); return { assetId, provider: "local", locator, generation: `sha256:${sha256}`, sha256, sizeBytes: file.size, contentType: "audio/wav" }; }

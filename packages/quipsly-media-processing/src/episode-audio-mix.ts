@@ -128,6 +128,8 @@ export type EpisodeAudioMixResult = {
     baselineDurationDeltaSeconds: number | null;
     levelMatchedDeltaLufs: number | null;
     levelMatchedWithinPointTwoLu: true | null;
+    outputByteRelationship: "bit-identical" | "different" | null;
+    outputRelationshipMatchesProposal: true | null;
   };
   renderer: {
     ffmpegVersion: string;
@@ -364,6 +366,9 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
     || resultBoundaries.outputIsUnpromotedPreview !== true || resultBoundaries.proposalAndSourcesRemainImmutable !== true || resultBoundaries.playbackReviewRequiredBeforePromotion !== true
   ) throw new Error("Episode mix result or independent verification is invalid.");
   const baseline = parseBaselineDerivative(row.baselineDerivative, proposal, expectedDuration, measurement);
+  const outputByteRelationship = baseline ? baseline.derivative.sha256 === derivative.sha256 && baseline.derivative.sizeBytes === derivative.sizeBytes ? "bit-identical" as const : "different" as const : null;
+  const outputRelationshipMatchesProposal = baseline ? (proposal.actions.length === 0 ? outputByteRelationship === "bit-identical" : outputByteRelationship === "different") : null;
+  if (outputRelationshipMatchesProposal === false) throw new Error(proposal.actions.length === 0 ? "A no-op Episode mix proposal did not remain bit-identical to its baseline." : "Episode mix automation did not change the rendered proposal bytes.");
   return {
     kind: EPISODE_AUDIO_MIX_RESULT_KIND,
     version: EPISODE_AUDIO_MIX_CONTRACT_VERSION,
@@ -372,7 +377,7 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
     proposal,
     derivative: { ...derivative, variantKind: "episode-mix-preview", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, durationSeconds, measurement },
     baselineDerivative: baseline?.derivative ?? null,
-    verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs: baseline?.levelMatchedDeltaLufs ?? null, levelMatchedWithinPointTwoLu: baseline ? true : null },
+    verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs: baseline?.levelMatchedDeltaLufs ?? null, levelMatchedWithinPointTwoLu: baseline ? true : null, outputByteRelationship, outputRelationshipMatchesProposal: baseline ? true : null },
     renderer: { ffmpegVersion: text(renderer.ffmpegVersion, "renderer.ffmpegVersion", 500), executionId: id(renderer.executionId, "renderer.executionId"), buildId: text(renderer.buildId, "renderer.buildId", 500), imageDigest: renderer.imageDigest === null ? null : text(renderer.imageDigest, "renderer.imageDigest", 500), attempt: positiveInteger(renderer.attempt, "renderer.attempt") },
     boundaries: { outputIsUnpromotedPreview: true, proposalAndSourcesRemainImmutable: true, playbackReviewRequiredBeforePromotion: true },
   };
