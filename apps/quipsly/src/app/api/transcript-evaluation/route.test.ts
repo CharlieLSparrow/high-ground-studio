@@ -8,6 +8,12 @@ import {
   exportTranscriptEvaluationRunnerInput,
   readTranscriptEvaluationCandidates,
 } from "@/lib/server/transcript-evaluation-candidates";
+import {
+  claimTranscriptEvaluationRun,
+  completeTranscriptEvaluationRun,
+  queueTranscriptTerminologyEvaluationRun,
+  readTranscriptEvaluationRuns,
+} from "@/lib/server/transcript-evaluation-runs";
 
 import { GET, POST } from "./route";
 
@@ -23,6 +29,21 @@ jest.mock("@/lib/server/transcript-evaluation-candidates", () => {
     exportTranscriptEvaluationRunnerInput: jest.fn(),
     readTranscriptEvaluationCandidates: jest.fn(),
     TranscriptEvaluationCandidateError: MockTranscriptEvaluationCandidateError,
+  };
+});
+jest.mock("@/lib/server/transcript-evaluation-runs", () => {
+  class MockTranscriptEvaluationRunError extends Error {
+    constructor(message: string, public code = "INVALID_RUN", public status = 400) { super(message); }
+  }
+  return {
+    claimTranscriptEvaluationRun: jest.fn(),
+    completeTranscriptEvaluationRun: jest.fn(),
+    failTranscriptEvaluationRun: jest.fn(),
+    heartbeatTranscriptEvaluationRun: jest.fn(),
+    queueTranscriptTerminologyEvaluationRun: jest.fn(),
+    readTranscriptEvaluationRuns: jest.fn(),
+    retryTranscriptEvaluationRun: jest.fn(),
+    TranscriptEvaluationRunError: MockTranscriptEvaluationRunError,
   };
 });
 const session = { user: { id: "user-1", primaryEmail: "producer@example.test", isStaff: false } };
@@ -57,6 +78,39 @@ describe("private transcript evaluation API", () => {
     expect(result.headers.get("cache-control")).toBe("private, no-store");
     expect(result.headers.get("content-disposition")).toContain("quipsly-transcript-runner-room-1.json");
     expect(exportTranscriptEvaluationRunnerInput).toHaveBeenCalled();
+  });
+
+  it("reads safe run state and routes queue, claim, and completion explicitly", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(readTranscriptEvaluationRuns).mockResolvedValue({ schema: "run-v1", runs: [{ id: "run-1", status: "QUEUED" }] } as any);
+    const runs = await GET(new Request("http://localhost/api/transcript-evaluation?roomId=room-1&view=runs"));
+    expect(runs.status).toBe(200);
+    expect(await runs.json()).toMatchObject({ ok: true, runs: [{ id: "run-1", status: "QUEUED" }] });
+
+    jest.mocked(queueTranscriptTerminologyEvaluationRun).mockResolvedValue({ ok: true, run: { id: "run-1" } } as any);
+    const queued = await POST(new Request("http://localhost/api/transcript-evaluation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "queue-terminology-run", roomId: "room-1", requestId: "019f0000-0000-7000-8000-000000000001", windowIds: ["window-1"] }),
+    }));
+    expect(queued.status).toBe(201);
+    expect(queueTranscriptTerminologyEvaluationRun).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room-1", windowIds: ["window-1"] }));
+
+    jest.mocked(claimTranscriptEvaluationRun).mockResolvedValue({ ok: true, lease: { token: "private-lease" } } as any);
+    await POST(new Request("http://localhost/api/transcript-evaluation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "claim-run", workerId: "worker-1", leaseSeconds: 600 }),
+    }));
+    expect(claimTranscriptEvaluationRun).toHaveBeenCalledWith(expect.objectContaining({ workerId: "worker-1", leaseSeconds: 600 }));
+
+    jest.mocked(completeTranscriptEvaluationRun).mockResolvedValue({ ok: true, run: { id: "run-1", status: "COMPLETED" } } as any);
+    await POST(new Request("http://localhost/api/transcript-evaluation", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ operation: "complete-run", runId: "run-1", leaseToken: "019f0000-0000-7000-8000-000000000002" }),
+    }));
+    expect(completeTranscriptEvaluationRun).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-1", leaseToken: "019f0000-0000-7000-8000-000000000002" }));
   });
 
   it("routes immutable candidate and correction receipts explicitly", async () => {

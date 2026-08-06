@@ -290,6 +290,82 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/input 7777777777/i)).toBeInTheDocument();
   });
 
+  it("queues a visible matched run without claiming that the worker is running", async () => {
+    const approvedEvaluation = {
+      schema: "quipsly-transcript-evaluation-window-v1",
+      eligible: true,
+      canApprove: true,
+      suggestedWorkload: "podcast",
+      sourceDurationSeconds: 60,
+      sourceSha256: "a".repeat(64),
+      reviewedSegmentCount: 1,
+      totalSegmentCount: 1,
+      referenceWordCount: 2,
+      timingEvidenceWordCount: 2,
+      speakerReviewedWordCount: 2,
+      availableSegments: [{ id: "segment-1", startSeconds: 0, endSeconds: 60, reviewed: true }],
+      suggestedRange: { startSegmentId: "segment-1", endSegmentId: "segment-1", startSeconds: 0, endSeconds: 60, durationSeconds: 60, segmentIds: ["segment-1"] },
+      blockers: [],
+      conditions: { podcast: ["normal-exchange"], coaching: ["coach-client-turn-taking"] },
+      approvedWindows: [{
+        id: "window-1",
+        workload: "podcast",
+        conditions: ["normal-exchange"],
+        sourceDurationSeconds: 60,
+        referenceWordCount: 2,
+        criticalTermOccurrenceCount: 1,
+        referenceRevisionId: "reviewed-reference-1",
+        approvedAt: "2026-08-06T18:30:00.000Z",
+        staleAgainstCurrentReview: false,
+      }],
+      candidates: [],
+    };
+    const queuedRun = {
+      id: "run-1",
+      runKey: "terminology-run-1",
+      providerName: "OpenAI Whisper local",
+      model: "large-v3-turbo",
+      status: "QUEUED",
+      attemptCount: 0,
+      maxAttempts: 3,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: "2026-08-06T19:00:00.000Z",
+      completedAt: null,
+      windows: [{ id: "run-window-1", windowId: "window-1", status: "QUEUED", baselineCandidateId: null, terminologyCandidateId: null, derivativeSha256: null }],
+    };
+    let queued = false;
+    const fetchMock = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes("view=runs")) return { ok: true, json: async () => ({ ok: true, runs: queued ? [queuedRun] : [] }) } as Response;
+      if (target === "/api/transcript-evaluation" && init?.method === "POST") {
+        queued = true;
+        return { ok: true, json: async () => ({ ok: true, run: queuedRun }) } as Response;
+      }
+      return { ok: true, json: async () => ({ ...desk(true), evaluation: approvedEvaluation }) } as Response;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    expect(await screen.findByText("Matched experiment queue")).toBeInTheDocument();
+    expect(screen.getByText(/queued is not running/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /queue matched local run/i }));
+
+    await screen.findByText("OpenAI Whisper local · large-v3-turbo");
+    const post = fetchMock.mock.calls.find((call) => String(call[0]) === "/api/transcript-evaluation" && call[1]?.method === "POST");
+    expect(post).toBeDefined();
+    expect(JSON.parse(post![1]!.body as string)).toMatchObject({
+      operation: "queue-terminology-run",
+      roomId: "room-1",
+      windowIds: ["window-1"],
+      model: "large-v3-turbo",
+      language: "en",
+    });
+    expect(screen.getByText(/queued/i, { selector: "span" })).toBeInTheDocument();
+  });
+
   it("records a playback-backed reviewed-as-is decision without fabricating a correction", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => desk(true) })

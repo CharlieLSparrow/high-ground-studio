@@ -21,6 +21,15 @@ import {
   exportTranscriptEvaluationRunnerInput,
   readTranscriptEvaluationCandidates,
 } from "./transcript-evaluation-candidates";
+import {
+  claimTranscriptEvaluationRun,
+  completeTranscriptEvaluationRun,
+  failTranscriptEvaluationRun,
+  heartbeatTranscriptEvaluationRun,
+  queueTranscriptTerminologyEvaluationRun,
+  readTranscriptEvaluationRuns,
+  retryTranscriptEvaluationRun,
+} from "./transcript-evaluation-runs";
 
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
@@ -164,9 +173,10 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
     try {
       if (roomId) {
         await prisma.transcriptEvaluationCorrectionObservation.deleteMany({ where: { candidate: { window: { roomId } } } });
+        await prisma.transcriptEvaluationRun.deleteMany({ where: { roomId } });
         await prisma.transcriptEvaluationCandidate.deleteMany({ where: { window: { roomId } } });
         await prisma.transcriptEvaluationWindow.deleteMany({ where: { roomId } });
-        await prisma.transcriptProviderPolicyReceipt.deleteMany({ where: { providerKey: "controlled-evaluation" } });
+        await prisma.transcriptProviderPolicyReceipt.deleteMany({ where: { capturedByUserId: userId } });
         await prisma.mobileCaptureFinalizationReceipt.deleteMany({ where: { roomId } });
         await prisma.callRoom.deleteMany({ where: { id: roomId } });
       }
@@ -418,5 +428,165 @@ runLocalDatabaseSmoke("transcript evaluation window local database proof", () =>
       actor: { id: outsiderUserId, email: `evaluation-outsider-${nonce}@example.test`, isStaff: false },
       roomId,
     })).rejects.toMatchObject({ code: "SESSION_NOT_FOUND", status: 404 });
+  });
+
+  it("leases, retries, reconciles, and completes one durable matched terminology run", async () => {
+    const actor = { id: userId, email: `evaluation-reviewer-${nonce}@example.test`, isStaff: false };
+    const queued = await queueTranscriptTerminologyEvaluationRun({
+      prisma,
+      actor,
+      roomId,
+      requestId: randomUUID(),
+      windowIds: [evaluationWindowId],
+    });
+    expect(queued).toMatchObject({ ok: true, idempotentReplay: false, run: { status: "QUEUED", attemptCount: 0, windows: [{ windowId: evaluationWindowId, status: "QUEUED" }] } });
+    expect(JSON.stringify(queued)).not.toContain(providerText);
+    expect(JSON.stringify(queued)).not.toContain("leaseToken");
+
+    const claimed = await claimTranscriptEvaluationRun({ prisma, actor, workerId: `worker-${nonce}`, leaseSeconds: 300 });
+    expect(claimed.lease).toMatchObject({
+      schema: "quipsly-transcript-evaluation-runner-lease-v1",
+      run: { id: queued.run.id, status: "PROCESSING", attemptCount: 1 },
+      runnerInput: { windows: [{ windowId: evaluationWindowId, runControl: { comparisonKey: queued.run.comparisonKey } }] },
+    });
+    const lease = claimed.lease!;
+    await expect(heartbeatTranscriptEvaluationRun({ prisma, actor, runId: queued.run.id, leaseToken: lease.token, leaseSeconds: 300 })).resolves.toMatchObject({ ok: true, run: { status: "PROCESSING" } });
+    await expect(heartbeatTranscriptEvaluationRun({
+      prisma,
+      actor: { id: outsiderUserId, email: `evaluation-outsider-${nonce}@example.test`, isStaff: false },
+      runId: queued.run.id,
+      leaseToken: lease.token,
+    })).rejects.toMatchObject({ code: "TRANSCRIPT_EVALUATION_RUN_NOT_FOUND", status: 404 });
+
+    const controlledWindow = lease.runnerInput.windows[0] as any;
+    const runControl = controlledWindow.runControl;
+    const terms = controlledWindow.terminologyExperiment;
+    const derivative = {
+      schema: "quipsly-transcript-evaluation-derivative-v1",
+      originalSourceSha256: sourceSha256,
+      startSeconds: 0,
+      endSeconds: 60,
+      durationSeconds: 60,
+      sha256: "7".repeat(64),
+      byteSize: 1_920_044,
+      codec: "pcm_s16le",
+      sampleRateHz: 16_000,
+      channelCount: 1,
+      ffmpegArgumentsVersion: "mono-16khz-pcm-v1",
+    };
+    const appendArm = async (arm: "baseline" | "project-terminology") => {
+      const prompt = "Quipsly, Homer, High Ground Odyssey";
+      const requestConfig = {
+        provider: {
+          executable: "openai-whisper-cli",
+          model: "large-v3-turbo",
+          language: "en",
+          device: "cpu",
+          word_timestamps: true,
+          condition_on_previous_text: false,
+          terminology: arm === "baseline"
+            ? { mode: "none", snapshotSha256: terms.termsSha256, termCount: 0, nativeKeyterms: [], prompt: null }
+            : { mode: "project-snapshot", snapshotSha256: terms.termsSha256, termCount: terms.promptTermCount, nativeKeyterms: terms.terms.map((term: any) => term.canonicalText), prompt, promptSha256: createHash("sha256").update(prompt).digest("hex") },
+        },
+        inputMedia: derivative,
+        terminologyExperiment: {
+          schema: "quipsly-transcript-terminology-experiment-v1",
+          comparisonKey: queued.run.comparisonKey,
+          arm,
+          termsSha256: terms.termsSha256,
+        },
+      };
+      return appendTranscriptEvaluationCandidate({
+        prisma,
+        actor,
+        windowId: evaluationWindowId,
+        clientRequestId: `run-${arm}-${nonce}`,
+        runKey: arm === "baseline" ? runControl.baselineRunKey : runControl.terminologyRunKey,
+        requestConfig,
+        rawResponse: { controlled: true, arm },
+        policy: {
+          capturedAt: new Date().toISOString(),
+          sourceUrl: "https://github.com/openai/whisper",
+          trainingUsage: "not-applicable",
+          retentionMode: "on-device",
+        },
+        candidate: {
+          providerKey: "openai-whisper-local",
+          providerName: "OpenAI Whisper local",
+          model: "large-v3-turbo",
+          adapterVersion: "quipsly-local-whisper-evaluation-adapter-v1",
+          speakerAttribution: "unavailable",
+          timingGranularity: "word",
+          completedAt: new Date().toISOString(),
+          elapsedMilliseconds: 900,
+          estimatedCostUsd: 0,
+          outcome: "succeeded",
+          providerRequestId: null,
+          words: providerText.split(" ").map((word, index) => ({ text: word, startSeconds: index, endSeconds: index + 0.5, speakerId: null })),
+          correction: null,
+        },
+      });
+    };
+    const baseline = await appendArm("baseline");
+    await expect(completeTranscriptEvaluationRun({ prisma, actor, runId: queued.run.id, leaseToken: lease.token })).rejects.toMatchObject({ code: "TRANSCRIPT_EVALUATION_RUN_INCOMPLETE", status: 409 });
+    const terminology = await appendArm("project-terminology");
+    const completed = await completeTranscriptEvaluationRun({ prisma, actor, runId: queued.run.id, leaseToken: lease.token });
+    expect(completed).toMatchObject({
+      ok: true,
+      run: {
+        status: "COMPLETED",
+        windows: [{
+          status: "COMPLETED",
+          baselineCandidateId: baseline.candidate.id,
+          terminologyCandidateId: terminology.candidate.id,
+          derivativeSha256: derivative.sha256,
+        }],
+      },
+    });
+    await expect(heartbeatTranscriptEvaluationRun({ prisma, actor, runId: queued.run.id, leaseToken: lease.token })).rejects.toMatchObject({ code: "TRANSCRIPT_EVALUATION_RUN_LEASE_LOST", status: 409 });
+    await expect(readTranscriptEvaluationRuns({ prisma, actor, roomId })).resolves.toMatchObject({ runs: [expect.objectContaining({ id: queued.run.id, status: "COMPLETED" })] });
+
+    const retryQueued = await queueTranscriptTerminologyEvaluationRun({ prisma, actor, roomId, requestId: randomUUID(), windowIds: [evaluationWindowId] });
+    const retryClaim = await claimTranscriptEvaluationRun({ prisma, actor, workerId: `worker-retry-${nonce}`, leaseSeconds: 300 });
+    expect(retryClaim.lease?.run.id).toBe(retryQueued.run.id);
+    const released = await failTranscriptEvaluationRun({
+      prisma,
+      actor,
+      runId: retryQueued.run.id,
+      leaseToken: retryClaim.lease!.token,
+      errorCode: "controlled-retry",
+      errorMessage: "Controlled retry proof.",
+      retryable: true,
+    });
+    expect(released).toMatchObject({ retryQueued: true, run: { status: "QUEUED", attemptCount: 1 } });
+    const secondClaim = await claimTranscriptEvaluationRun({ prisma, actor, workerId: `worker-retry-${nonce}`, leaseSeconds: 300 });
+    const failed = await failTranscriptEvaluationRun({
+      prisma,
+      actor,
+      runId: retryQueued.run.id,
+      leaseToken: secondClaim.lease!.token,
+      errorCode: "controlled-terminal",
+      errorMessage: "Controlled terminal proof.",
+      retryable: false,
+    });
+    expect(failed).toMatchObject({ retryQueued: false, run: { status: "FAILED", attemptCount: 2 } });
+    await expect(retryTranscriptEvaluationRun({ prisma, actor, runId: retryQueued.run.id })).resolves.toMatchObject({ run: { status: "QUEUED", attemptCount: 2 } });
+    const exhaustedClaim = await claimTranscriptEvaluationRun({ prisma, actor, workerId: `worker-exhausted-${nonce}`, leaseSeconds: 300 });
+    expect(exhaustedClaim.lease).toMatchObject({ run: { id: retryQueued.run.id, status: "PROCESSING", attemptCount: 3 } });
+    await prisma.transcriptEvaluationRun.update({
+      where: { id: retryQueued.run.id },
+      data: { leaseExpiresAt: new Date(Date.now() - 1_000) },
+    });
+    await expect(claimTranscriptEvaluationRun({ prisma, actor, workerId: `worker-after-exhaustion-${nonce}`, leaseSeconds: 300 }))
+      .resolves.toMatchObject({ ok: true, lease: null });
+    await expect(readTranscriptEvaluationRuns({ prisma, actor, roomId })).resolves.toMatchObject({
+      runs: expect.arrayContaining([expect.objectContaining({
+        id: retryQueued.run.id,
+        status: "FAILED",
+        attemptCount: 3,
+        errorCode: "evaluation-lease-retry-exhausted",
+        windows: [expect.objectContaining({ status: "FAILED", errorCode: "evaluation-lease-retry-exhausted" })],
+      })]),
+    });
   });
 });

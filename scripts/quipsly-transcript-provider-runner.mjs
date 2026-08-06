@@ -90,7 +90,7 @@ for (const window of selectedWindows) {
       });
       await writeFile(stored.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
     }
-    const armRunKey = runKeyForArm(options.runKey, arm.name);
+    const armRunKey = arm.runKey;
     const appendResult = await fetchJson(`${baseUrl}/api/transcript-evaluation`, {
       method: "POST",
       headers: {
@@ -187,6 +187,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source, 
           outcome: "succeeded",
           words,
         },
+        arm,
       });
     }
 
@@ -216,6 +217,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source, 
           outcome: "succeeded",
           words,
         },
+        arm,
       });
     }
 
@@ -252,6 +254,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source, 
         outcome: "succeeded",
         words,
       },
+      arm,
     });
   } catch (error) {
     const failure = sanitizeFailure(error, options.provider, providerRequestId);
@@ -271,6 +274,7 @@ async function invokeProvider({ options, requestConfig, policy, window, source, 
         errorCode: failure.errorCode,
         retryable: failure.retryable,
       },
+      arm,
     });
   }
 }
@@ -333,7 +337,7 @@ function providerIdentity(options, requestConfig) {
 }
 
 function experimentArms(options, window) {
-  if (!options.terminologyExperiment) return [{ name: "single" }];
+  if (!options.terminologyExperiment) return [{ name: "single", runKey: options.runKey, comparisonKey: null }];
   const experiment = window?.terminologyExperiment;
   if (
     experiment?.schema !== "quipsly-transcript-terminology-experiment-v1"
@@ -347,7 +351,20 @@ function experimentArms(options, window) {
   if (experiment.terms.length > 100) {
     throw new Error(`Window ${window.windowId} exceeds the provider-safe 100-term experiment limit.`);
   }
-  return [{ name: "baseline" }, { name: "project-terminology" }];
+  const control = window.runControl;
+  const comparisonKey = control?.schema === "quipsly-transcript-evaluation-runner-lease-v1"
+    ? safeFile(control.comparisonKey)
+    : options.runKey;
+  const baselineRunKey = control?.schema === "quipsly-transcript-evaluation-runner-lease-v1"
+    ? safeFile(control.baselineRunKey)
+    : runKeyForArm(options.runKey, "baseline");
+  const terminologyRunKey = control?.schema === "quipsly-transcript-evaluation-runner-lease-v1"
+    ? safeFile(control.terminologyRunKey)
+    : runKeyForArm(options.runKey, "project-terminology");
+  return [
+    { name: "baseline", runKey: baselineRunKey, comparisonKey },
+    { name: "project-terminology", runKey: terminologyRunKey, comparisonKey },
+  ];
 }
 
 function requestConfigForArm(baseConfig, window, arm) {
@@ -392,19 +409,14 @@ function receiptFileName(runKey, windowId, armName) {
   return `${safeFile(runKey)}-${safeFile(windowId)}${suffix}.provider.json`;
 }
 
-function receipt({ options, requestConfig, policy, window, rawResponse, providerRequestId, elapsedMilliseconds, candidate }) {
+function receipt({ options, requestConfig, policy, window, rawResponse, providerRequestId, elapsedMilliseconds, candidate, arm }) {
   const sourceDerivative = candidate.sourceDerivative;
   const candidateWithoutDerivative = { ...candidate };
   delete candidateWithoutDerivative.sourceDerivative;
   return {
     kind: "quipsly-private-transcript-provider-receipt-v1",
     version: 1,
-    runKey: runKeyForArm(
-      options.runKey,
-      options.terminologyExperiment
-        ? requestConfig.terminology.mode === "none" ? "baseline" : "project-terminology"
-        : "single",
-    ),
+    runKey: arm.runKey,
     windowId: window.windowId,
     windowKeySha256: window.windowKeySha256,
     sourceSha256: window.source.sha256,
@@ -416,8 +428,8 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
       ...(options.terminologyExperiment ? {
         terminologyExperiment: {
           schema: "quipsly-transcript-terminology-experiment-v1",
-          comparisonKey: options.runKey,
-          arm: requestConfig.terminology.mode === "none" ? "baseline" : "project-terminology",
+          comparisonKey: arm.comparisonKey,
+          arm: arm.name,
           termsSha256: requestConfig.terminology.snapshotSha256,
         },
       } : {}),
@@ -441,7 +453,7 @@ function receipt({ options, requestConfig, policy, window, rawResponse, provider
 async function readExistingReceipt(path, window, options, arm) {
   try {
     const existing = JSON.parse(await readFile(path, "utf8"));
-    const expectedRunKey = runKeyForArm(options.runKey, arm.name);
+    const expectedRunKey = arm.runKey;
     const expectedProviderKey = options.provider === "deepgram"
       ? "deepgram-batch"
       : options.provider === "openai"
@@ -463,7 +475,7 @@ async function readExistingReceipt(path, window, options, arm) {
       || existing.candidate?.providerKey !== expectedProviderKey
       || (options.terminologyExperiment && (
         experiment?.schema !== "quipsly-transcript-terminology-experiment-v1"
-        || experiment?.comparisonKey !== options.runKey
+        || experiment?.comparisonKey !== arm.comparisonKey
         || experiment?.arm !== arm.name
         || experiment?.termsSha256 !== window.terminologyExperiment?.termsSha256
       ))

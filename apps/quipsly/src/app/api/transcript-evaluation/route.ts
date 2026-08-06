@@ -9,6 +9,16 @@ import {
   readTranscriptEvaluationCandidates,
   TranscriptEvaluationCandidateError,
 } from "@/lib/server/transcript-evaluation-candidates";
+import {
+  claimTranscriptEvaluationRun,
+  completeTranscriptEvaluationRun,
+  failTranscriptEvaluationRun,
+  heartbeatTranscriptEvaluationRun,
+  queueTranscriptTerminologyEvaluationRun,
+  readTranscriptEvaluationRuns,
+  retryTranscriptEvaluationRun,
+  TranscriptEvaluationRunError,
+} from "@/lib/server/transcript-evaluation-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +53,9 @@ function actor(session: NonNullable<Awaited<ReturnType<typeof getQuipslySessionF
 }
 
 function failure(error: unknown) {
+  if (error instanceof TranscriptEvaluationRunError) {
+    return response({ ok: false, errorCode: error.code, error: error.message }, error.status);
+  }
   if (error instanceof TranscriptEvaluationCandidateError) {
     return response({ ok: false, errorCode: error.code, error: error.message }, error.status);
   }
@@ -58,6 +71,9 @@ export async function GET(request: Request) {
   if (!roomId) return response({ ok: false, errorCode: "ROOM_REQUIRED", error: "roomId is required." }, 400);
   try {
     const prisma = getPrismaClient() as any;
+    if (url.searchParams.get("view") === "runs") {
+      return response({ ok: true, ...(await readTranscriptEvaluationRuns({ prisma, actor: actor(session), roomId })) });
+    }
     if (url.searchParams.get("view") === "runner-input") {
       const exported = await exportTranscriptEvaluationRunnerInput({ prisma, actor: actor(session), roomId });
       return response(exported, 200, {
@@ -111,7 +127,61 @@ export async function POST(request: Request) {
         observation: body.observation,
       }), 201);
     }
-    return response({ ok: false, errorCode: "TRANSCRIPT_EVALUATION_OPERATION_INVALID", error: "Choose append-candidate or append-correction-observation." }, 400);
+    if (operation === "queue-terminology-run") {
+      return response(await queueTranscriptTerminologyEvaluationRun({
+        prisma,
+        actor: actor(session),
+        roomId: text(body.roomId),
+        requestId: text(body.requestId),
+        windowIds: Array.isArray(body.windowIds) ? body.windowIds.map(text).filter(Boolean) : undefined,
+        model: text(body.model) || undefined,
+        language: text(body.language) || undefined,
+      }), 201);
+    }
+    if (operation === "claim-run") {
+      return response(await claimTranscriptEvaluationRun({
+        prisma,
+        actor: actor(session),
+        workerId: text(body.workerId),
+        leaseSeconds: body.leaseSeconds == null ? undefined : Number(body.leaseSeconds),
+      }));
+    }
+    if (operation === "heartbeat-run") {
+      return response(await heartbeatTranscriptEvaluationRun({
+        prisma,
+        actor: actor(session),
+        runId: text(body.runId),
+        leaseToken: text(body.leaseToken),
+        leaseSeconds: body.leaseSeconds == null ? undefined : Number(body.leaseSeconds),
+      }));
+    }
+    if (operation === "complete-run") {
+      return response(await completeTranscriptEvaluationRun({
+        prisma,
+        actor: actor(session),
+        runId: text(body.runId),
+        leaseToken: text(body.leaseToken),
+      }));
+    }
+    if (operation === "fail-run") {
+      return response(await failTranscriptEvaluationRun({
+        prisma,
+        actor: actor(session),
+        runId: text(body.runId),
+        leaseToken: text(body.leaseToken),
+        errorCode: text(body.errorCode),
+        errorMessage: text(body.errorMessage),
+        retryable: body.retryable === true,
+      }));
+    }
+    if (operation === "retry-run") {
+      return response(await retryTranscriptEvaluationRun({
+        prisma,
+        actor: actor(session),
+        runId: text(body.runId),
+      }));
+    }
+    return response({ ok: false, errorCode: "TRANSCRIPT_EVALUATION_OPERATION_INVALID", error: "Choose a supported candidate, run-control, or correction operation." }, 400);
   } catch (error) {
     return failure(error);
   }

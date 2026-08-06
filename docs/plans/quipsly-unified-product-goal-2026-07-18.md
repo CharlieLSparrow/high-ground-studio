@@ -7936,3 +7936,30 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   item. Physical-iPhone operation and production deployment remain open.
 - Architecture and evidence:
   `docs/coordination/2026-08-06-session-recording-plan-confidence.md`.
+
+## 2026-08-07 recoverable transcript-experiment checkpoint
+
+- Added a narrow, durable matched-transcript run and per-window ledger with
+  immutable request identity, bounded attempts, expiring leases, heartbeats,
+  fixed arm keys, and candidate/checksum reconciliation. This is intentionally
+  not a second generic job platform.
+- Added a private authenticated worker that keeps provider secrets out of Nest,
+  writes temporary runner input mode `0600`, preserves create-once raw evidence,
+  reports sanitized failure, and can recover an abandoned lease. A final
+  expired lease now becomes explicitly failed instead of remaining processing.
+- Added a Session-side Matched experiment queue that distinguishes queued from
+  running, automatically refreshes active work, exposes honest progress and
+  retry state, and cannot change the production provider or transcript.
+- Local PostgreSQL operation proves actor scoping, outsider denial, lease and
+  retry behavior, incomplete-evidence refusal, exact immutable reconciliation,
+  exhausted-worker recovery, and fixture cleanup. Controlled worker/runner,
+  focused Session/API suites, both TypeScript packages, schema validation, and
+  the production web build pass. The in-app browser declined the retained
+  localhost Session under its URL policy, so a signed-in click-through remains
+  an explicit operated gate rather than being inferred from component tests.
+- The honest product gate remains a playback-reviewed High Ground Odyssey or
+  coaching reference window followed by a real matched provider run and timed
+  human correction comparison. No accuracy or production-routing claim has
+  been made.
+- Architecture and evidence:
+  `docs/coordination/2026-08-06-matched-terminology-accuracy-lab.md`.

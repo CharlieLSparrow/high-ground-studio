@@ -429,6 +429,21 @@ enum TranscriptJobStatus {
   HELD
 }
 
+enum TranscriptEvaluationRunStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TranscriptEvaluationRunWindowStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 enum CoachingNoteKind {
   SESSION_NOTE
   ACTION_ITEM
@@ -853,6 +868,7 @@ model User {
   transcriptSpeakerAttributions     TranscriptSpeakerAttribution[]              @relation("TranscriptSpeakerAttributionReviewer")
   transcriptEvaluationWindows       TranscriptEvaluationWindow[]                @relation("TranscriptEvaluationWindowApprover")
   transcriptEvaluationCandidates    TranscriptEvaluationCandidate[]             @relation("TranscriptEvaluationCandidateSubmitter")
+  transcriptEvaluationRunsRequested TranscriptEvaluationRun[]                   @relation("TranscriptEvaluationRunRequester")
   transcriptProviderPolicies        TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
   transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
   transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
@@ -1958,6 +1974,7 @@ model CallRoom {
   transcriptVerifications       TranscriptSegmentVerification[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
   transcriptEvaluationWindows   TranscriptEvaluationWindow[]
+  transcriptEvaluationRuns      TranscriptEvaluationRun[]
   notes                         CoachingNote[]
   outputs                       SessionOutput[]
   deliveryEvents                DeliveryEvent[]
@@ -2913,6 +2930,7 @@ model TranscriptEvaluationWindow {
   recordingAsset RecordingAsset                  @relation(fields: [recordingAssetId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_asset_fkey")
   approvedBy     User                            @relation("TranscriptEvaluationWindowApprover", fields: [approvedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalWindow_approver_fkey")
   candidates     TranscriptEvaluationCandidate[]
+  runWindows     TranscriptEvaluationRunWindow[]
 
   @@unique([approvedByUserId, clientRequestId], map: "TranscriptEvalWindow_approver_request_key")
   @@index([roomId, approvedAt], map: "TranscriptEvalWindow_room_approved_idx")
@@ -2982,11 +3000,91 @@ model TranscriptEvaluationCandidate {
   policy      TranscriptProviderPolicyReceipt             @relation(fields: [policyReceiptId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_policy_fkey")
   submittedBy User                                        @relation("TranscriptEvaluationCandidateSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_actor_fkey")
   corrections TranscriptEvaluationCorrectionObservation[]
+  baselineRunWindows    TranscriptEvaluationRunWindow[] @relation("TranscriptEvaluationRunBaselineCandidate")
+  terminologyRunWindows TranscriptEvaluationRunWindow[] @relation("TranscriptEvaluationRunTerminologyCandidate")
 
   @@unique([submittedByUserId, clientRequestId], map: "TranscriptEvalCandidate_actor_request_key")
   @@unique([windowId, runKey], map: "TranscriptEvalCandidate_window_run_key")
   @@index([windowId, createdAt], map: "TranscriptEvalCandidate_window_created_idx")
   @@index([providerKey, model, createdAt], map: "TranscriptEvalCandidate_provider_model_idx")
+}
+
+// Durable operator intent for one byte-matched terminology experiment. Nest
+// owns the observable control plane; provider credentials remain in the worker
+// environment and are never persisted here or accepted by the web route.
+model TranscriptEvaluationRun {
+  id                       String                        @id @default(cuid())
+  requestId                String                        @db.Uuid
+  requestSha256            String
+  roomId                   String
+  requestedByUserId        String
+  runKey                   String                        @unique(map: "TranscriptEvalRun_run_key")
+  comparisonKey            String                        @unique(map: "TranscriptEvalRun_comparison_key")
+  experimentKind           String                        @default("terminology")
+  providerKey              String
+  providerName             String
+  model                    String
+  adapterVersion           String
+  language                 String?
+  corpusRevisionSha256     String
+  status                   TranscriptEvaluationRunStatus @default(QUEUED)
+  requestConfigJson        Json                          @default("{}")
+  resultJson               Json                          @default("{}")
+  attemptCount             Int                           @default(0)
+  maxAttempts              Int                           @default(3)
+  leaseToken               String?                       @db.Uuid
+  leaseOwner               String?
+  leaseExpiresAt           DateTime?
+  lastHeartbeatAt          DateTime?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  failedAt                 DateTime?
+  errorCode                String?
+  errorMessage             String?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+
+  room        CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_room_fkey")
+  requestedBy User                           @relation("TranscriptEvaluationRunRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_requester_fkey")
+  windows     TranscriptEvaluationRunWindow[]
+
+  @@unique([requestedByUserId, requestId], map: "TranscriptEvalRun_requester_request_key")
+  @@index([roomId, createdAt], map: "TranscriptEvalRun_room_created_idx")
+  @@index([status, leaseExpiresAt, createdAt], map: "TranscriptEvalRun_claim_idx")
+  @@index([requestedByUserId, createdAt], map: "TranscriptEvalRun_requester_created_idx")
+}
+
+// One selected immutable reference window inside a run. The two candidate keys
+// are fixed before execution, making partial completion and crash replay
+// explicit rather than inferred from an operator's local files.
+model TranscriptEvaluationRunWindow {
+  id                             String                              @id @default(cuid())
+  runId                          String
+  windowId                       String
+  ordinal                        Int
+  status                         TranscriptEvaluationRunWindowStatus @default(QUEUED)
+  baselineRunKey                 String                              @unique(map: "TranscriptEvalRunWindow_baseline_key")
+  terminologyRunKey              String                              @unique(map: "TranscriptEvalRunWindow_term_key")
+  baselineCandidateId            String?
+  terminologyCandidateId         String?
+  derivativeSha256               String?
+  startedAt                      DateTime?
+  completedAt                    DateTime?
+  failedAt                       DateTime?
+  errorCode                      String?
+  errorMessage                   String?
+  createdAt                      DateTime                            @default(now())
+  updatedAt                      DateTime                            @updatedAt
+
+  run                  TranscriptEvaluationRun       @relation(fields: [runId], references: [id], onDelete: Cascade, map: "TranscriptEvalRunWindow_run_fkey")
+  window               TranscriptEvaluationWindow    @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_window_fkey")
+  baselineCandidate    TranscriptEvaluationCandidate? @relation("TranscriptEvaluationRunBaselineCandidate", fields: [baselineCandidateId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_baseline_candidate_fkey")
+  terminologyCandidate TranscriptEvaluationCandidate? @relation("TranscriptEvaluationRunTerminologyCandidate", fields: [terminologyCandidateId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_term_candidate_fkey")
+
+  @@unique([runId, windowId], map: "TranscriptEvalRunWindow_run_window_key")
+  @@unique([runId, ordinal], map: "TranscriptEvalRunWindow_run_ordinal_key")
+  @@index([windowId, createdAt], map: "TranscriptEvalRunWindow_window_created_idx")
+  @@index([runId, status, ordinal], map: "TranscriptEvalRunWindow_status_idx")
 }
 
 // Human correction effort is measured after candidate creation and therefore

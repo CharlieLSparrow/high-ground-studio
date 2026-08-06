@@ -154,7 +154,58 @@ Odyssey, Homer, or another reviewed project term. Run the paired command, time
 one human correction pass per arm, and inspect the matched verdict. Repeat with
 coaching names, commitments, and dates before proposing a production default.
 
-The next productization step is a leased run-control record and operator queue,
-so Nest can request, observe, retry, and reconcile this exact operation without
-placing provider secrets in the web process. The create-once receipt directory
-and idempotent candidate keys are already the crash boundary for that worker.
+## Durable run control and worker boundary
+
+The productization step is now implemented as a narrow evaluation control
+plane rather than a generic background-job abstraction:
+
+- `TranscriptEvaluationRun` owns authenticated intent, immutable request hash,
+  provider/model/config identity, bounded attempts, lease state, and the final
+  reconciliation result;
+- `TranscriptEvaluationRunWindow` owns the exact approved window plus fixed
+  baseline and terminology run keys, immutable candidate bindings, and the
+  verified derivative checksum;
+- Nest can queue, inspect, and explicitly retry a run, but cannot receive or
+  persist a provider credential;
+- an authenticated private worker claims one expiring lease, materializes its
+  runner input in a mode-0600 temporary file, sends heartbeats, invokes the
+  existing create-once evidence runner, and asks Nest to reconcile completion;
+- completion re-reads both immutable candidates and rejects missing arms,
+  comparison drift, term drift, provider/model/adapter drift, configuration
+  drift, or different media bytes; and
+- a dead worker is reclaimable until its bounded attempt budget is exhausted.
+  An expired final lease becomes an explicit failed run instead of remaining
+  falsely in progress forever.
+
+The Session Transcription Evidence desk now includes a **Matched experiment
+queue**. It clearly separates `Queued` from `Processing`, reports attempt and
+window progress, exposes sanitized failures, and offers an explicit retry only
+when the run still has budget. It also says that the worker must be running and
+that no production routing or transcript mutation occurs.
+
+Example private worker operation after a genuine approved reference exists:
+
+```bash
+QUIPSLY_BEARER_TOKEN=... pnpm quipsly:transcript:evaluation-worker -- \
+  --base-url http://127.0.0.1:3012 \
+  --worker-id charlie-audio-lab \
+  --policy PRIVATE_LOCAL_POLICY.json \
+  --evidence-dir PRIVATE_EVIDENCE_DIRECTORY \
+  --once
+```
+
+Focused Session/API suites pass 20 tests, the worker passes three tests, the
+controlled provider runner passes two, and the retained PostgreSQL lifecycle
+passes three integration tests. The database proof covers queue, claim, heartbeat, outsider
+denial, incomplete completion rejection, byte-matched candidate binding,
+completion, retryable and terminal failure, explicit retry, final-lease expiry,
+and cleanup of the disposable fixture.
+
+The worker additionally refuses to transmit its bearer token over remote plain
+HTTP; only HTTPS and explicit loopback development addresses are accepted. The
+run schema retains the canonical requester relation without duplicating an
+email snapshot.
+
+This makes genuine provider experiments recoverable and observable. It does
+not manufacture the missing real reference window, call a provider, change the
+production transcription route, or authorize transcript replacement.

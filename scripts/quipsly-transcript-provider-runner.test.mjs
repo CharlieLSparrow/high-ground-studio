@@ -224,6 +224,13 @@ await writeFile(join(outputDirectory, "window.json"), JSON.stringify({
           promptTermCount: 1,
           terms: [{ canonicalText: "Quipsly" }],
         },
+        runControl: {
+          schema: "quipsly-transcript-evaluation-runner-lease-v1",
+          runId: "controlled-run-id",
+          comparisonKey: "controlled-comparison",
+          baselineRunKey: "controlled-baseline",
+          terminologyRunKey: "controlled-project-terminology",
+        },
       }],
     })}\n`, { flag: "wx", mode: 0o600 });
 
@@ -243,7 +250,8 @@ await writeFile(join(outputDirectory, "window.json"), JSON.stringify({
     const summary = JSON.parse(run.stdout);
     assert.equal(summary.results.length, 2);
     assert.deepEqual(appends.map((body) => body.requestConfig.terminologyExperiment.arm), ["baseline", "project-terminology"]);
-    assert.deepEqual(appends.map((body) => body.runKey), ["matched-local-run-baseline", "matched-local-run-project-terminology"]);
+    assert.deepEqual(appends.map((body) => body.runKey), ["controlled-baseline", "controlled-project-terminology"]);
+    assert.deepEqual(appends.map((body) => body.requestConfig.terminologyExperiment.comparisonKey), ["controlled-comparison", "controlled-comparison"]);
     assert.equal(appends[0].requestConfig.inputMedia.sha256, appends[1].requestConfig.inputMedia.sha256);
     assert.equal(appends[0].requestConfig.provider.terminology.termCount, 0);
     assert.equal(appends[1].requestConfig.provider.terminology.termCount, 1);

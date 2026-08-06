@@ -230,6 +230,30 @@ type EvaluationCandidate = {
   completedAt: string;
 };
 
+type EvaluationRun = {
+  id: string;
+  runKey: string;
+  providerName: string;
+  model: string;
+  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  attemptCount: number;
+  maxAttempts: number;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  windows: Array<{
+    id: string;
+    windowId: string;
+    status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+    baselineCandidateId: string | null;
+    terminologyCandidateId: string | null;
+    derivativeSha256: string | null;
+  }>;
+};
+
 function requestId(segmentId: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `transcript-${segmentId}-${crypto.randomUUID()}`;
   return `transcript-${segmentId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -290,6 +314,9 @@ function TranscriptAccuracyCorpusPanel({
   const [endSegmentId, setEndSegmentId] = useState(evaluation.suggestedRange?.endSegmentId ?? "");
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<EvaluationRun[]>([]);
+  const [runBusy, setRunBusy] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const conditions = evaluation.conditions?.[workload] ?? [];
   const segments = evaluation.availableSegments ?? [];
   const startIndex = segments.findIndex((segment) => segment.id === startSegmentId);
@@ -334,6 +361,79 @@ function TranscriptAccuracyCorpusPanel({
     setStartSegmentId(evaluation.suggestedRange?.startSegmentId ?? "");
     setEndSegmentId(evaluation.suggestedRange?.endSegmentId ?? "");
   }, [evaluation.sourceSha256, evaluation.suggestedWorkload, evaluation.suggestedRange?.startSegmentId, evaluation.suggestedRange?.endSegmentId]);
+
+  const loadRuns = useCallback(async () => {
+    if (!evaluation.approvedWindows.length) {
+      setRuns([]);
+      return;
+    }
+    setRunError(null);
+    try {
+      const response = await fetch(`/api/transcript-evaluation?roomId=${encodeURIComponent(roomId)}&view=runs`, { cache: "no-store" });
+      const payload = await response.json() as { ok?: boolean; error?: string; runs?: EvaluationRun[] };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Evaluation runs could not be loaded.");
+      setRuns(payload.runs ?? []);
+    } catch (caught) {
+      setRunError(caught instanceof Error ? caught.message : "Evaluation runs could not be loaded.");
+    }
+  }, [evaluation.approvedWindows.length, roomId]);
+
+  useEffect(() => { void loadRuns(); }, [loadRuns]);
+
+  const hasActiveRun = runs.some((run) => run.status === "QUEUED" || run.status === "PROCESSING");
+  useEffect(() => {
+    if (!hasActiveRun) return;
+    const timer = window.setInterval(() => { void loadRuns(); }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveRun, loadRuns]);
+
+  async function queueRun() {
+    const windowIds = evaluation.approvedWindows
+      .filter((window) => !window.staleAgainstCurrentReview && (window.criticalTermOccurrenceCount ?? 0) > 0)
+      .map((window) => window.id);
+    setRunBusy(true);
+    setRunError(null);
+    try {
+      const response = await fetch("/api/transcript-evaluation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "queue-terminology-run",
+          roomId,
+          requestId: crypto.randomUUID(),
+          windowIds,
+          model: "large-v3-turbo",
+          language: "en",
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "The matched experiment could not be queued.");
+      await loadRuns();
+    } catch (caught) {
+      setRunError(caught instanceof Error ? caught.message : "The matched experiment could not be queued.");
+    } finally {
+      setRunBusy(false);
+    }
+  }
+
+  async function retryRun(runId: string) {
+    setRunBusy(true);
+    setRunError(null);
+    try {
+      const response = await fetch("/api/transcript-evaluation", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ operation: "retry-run", runId }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "The failed run could not be requeued.");
+      await loadRuns();
+    } catch (caught) {
+      setRunError(caught instanceof Error ? caught.message : "The failed run could not be requeued.");
+    } finally {
+      setRunBusy(false);
+    }
+  }
 
   async function approve() {
     setApproving(true);
@@ -424,6 +524,20 @@ function TranscriptAccuracyCorpusPanel({
     </div>}
     {error ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-900">{error}</p> : null}
     {evaluation.approvedWindows.length > 0 ? <div className="mt-5"><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Frozen evaluation windows</p><ul className="mt-2 space-y-2">{evaluation.approvedWindows.map((window) => <li key={window.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-white p-3 text-xs font-bold text-[#5f4d37]"><span>{humanize(window.workload)} · {window.referenceWordCount} words · {window.criticalTermOccurrenceCount ?? 0} critical-term mentions · {window.conditions.map(humanize).join(", ")}</span><span className={window.staleAgainstCurrentReview ? "text-amber-800" : "text-emerald-800"}>{window.staleAgainstCurrentReview ? "Prior reviewed revision" : "Matches current review"}</span></li>)}</ul></div> : null}
+    {evaluation.approvedWindows.length > 0 ? <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4" aria-label="Matched terminology experiment queue">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl"><p className="text-xs font-black uppercase tracking-wide text-violet-900">Matched experiment queue</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-950">Queue baseline and project-terminology attempts against the same exact derivative. Nest retains intent, progress, attempts, and results; the local worker retains the Whisper runtime and private raw receipts.</p></div>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void loadRuns()} disabled={runBusy} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-violet-950 disabled:opacity-50"><RefreshCw size={14} aria-hidden="true" />Refresh</button><button type="button" onClick={() => void queueRun()} disabled={runBusy || !evaluation.approvedWindows.some((window) => !window.staleAgainstCurrentReview && (window.criticalTermOccurrenceCount ?? 0) > 0)} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{runBusy ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <Gauge size={14} aria-hidden="true" />}Queue matched local run</button></div>
+      </div>
+      <p className="mt-3 rounded-lg border border-violet-100 bg-white p-3 text-xs font-bold leading-5 text-violet-900"><strong>Queued is not running.</strong> Start the authenticated evaluation worker on an approved machine. Provider credentials never enter Nest, this action does not change production routing, and completion never rewrites the transcript.</p>
+      {runError ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-900">{runError}</p> : null}
+      {runs.length ? <ul className="mt-3 space-y-2" aria-live="polite">{runs.map((run) => <li key={run.id} className="rounded-xl border border-violet-100 bg-white p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-xs font-black text-[#3d3122]">{run.providerName} · {run.model}</p><p className="mt-1 text-[10px] font-bold text-[#765f40]">{run.windows.length} window{run.windows.length === 1 ? "" : "s"} · attempt {run.attemptCount}/{run.maxAttempts} · {run.runKey}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${run.status === "COMPLETED" ? "bg-emerald-100 text-emerald-900" : run.status === "FAILED" ? "bg-rose-100 text-rose-900" : run.status === "PROCESSING" ? "bg-sky-100 text-sky-900" : "bg-amber-100 text-amber-900"}`}>{humanize(run.status)}</span></div>
+        <p className="mt-2 text-[10px] font-bold text-[#765f40]">{run.windows.filter((window) => window.status === "COMPLETED").length}/{run.windows.length} windows reconciled{run.status === "PROCESSING" && run.leaseOwner ? ` · ${run.leaseOwner}` : ""}{run.completedAt ? ` · completed ${new Date(run.completedAt).toLocaleString()}` : ""}</p>
+        {run.errorMessage ? <p className="mt-2 rounded-lg bg-rose-50 p-2 text-xs font-bold text-rose-900">{run.errorMessage}</p> : null}
+        {run.status === "FAILED" && run.attemptCount < run.maxAttempts ? <button type="button" onClick={() => void retryRun(run.id)} disabled={runBusy} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-900 disabled:opacity-50"><RefreshCw size={14} aria-hidden="true" />Requeue retained intent</button> : null}
+      </li>)}</ul> : <p className="mt-3 rounded-lg border border-dashed border-violet-200 bg-white p-3 text-xs font-bold text-violet-900">No matched run has been queued for this Session.</p>}
+    </div> : null}
     {evaluation.approvedWindows.length > 0 ? <div className="mt-5 rounded-xl border border-indigo-200 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><p className="text-xs font-black uppercase tracking-wide text-indigo-900">Provider evidence scorecards</p><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">Every result is measured against the same frozen human reference. Missing speaker or word-timing evidence stays visibly unavailable; Quipsly never interpolates it.</p></div>
