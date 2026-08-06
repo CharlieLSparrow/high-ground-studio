@@ -38,6 +38,10 @@ import {
   runOneLocalAudioTreatmentJob,
 } from "./local-audio-treatment-worker.js";
 import {
+  newLocalDialogueRepairRuntime,
+  runOneLocalDialogueRepairJob,
+} from "./local-dialogue-repair-worker.js";
+import {
   newLocalAudioSignalProfileRuntime,
   runOneLocalAudioSignalProfileJob,
 } from "./local-audio-signal-profile-worker.js";
@@ -501,6 +505,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const dialogueRepair = newLocalDialogueRepairRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const audioSignalProfile = newLocalAudioSignalProfileRuntime({
     pool,
     localMediaRoot,
@@ -542,9 +552,12 @@ async function main() {
       const treatmentResult = deliveryResult.disposition === "idle"
         ? await runOneLocalAudioTreatmentJob(audioTreatment.store, audioTreatment.engine, audioTreatment.options)
         : deliveryResult;
-      const signalResult = treatmentResult.disposition === "idle"
-        ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
+      const dialogueRepairResult = treatmentResult.disposition === "idle"
+        ? await runOneLocalDialogueRepairJob(dialogueRepair.store, dialogueRepair.engine, dialogueRepair.options)
         : treatmentResult;
+      const signalResult = dialogueRepairResult.disposition === "idle"
+        ? await runOneLocalAudioSignalProfileJob(audioSignalProfile.store, audioSignalProfile.profiler, audioSignalProfile.options)
+        : dialogueRepairResult;
       const spectralResult = signalResult.disposition === "idle"
         ? await runOneLocalAudioSpectralEvidenceJob(audioSpectral.store, audioSpectral.analyzer, audioSpectral.options)
         : signalResult;

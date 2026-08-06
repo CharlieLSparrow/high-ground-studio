@@ -21,8 +21,10 @@ import {
   newAudioTreatmentProposal,
   newAudioTreatmentJob,
   newDialogueRepairCandidate,
+  newDialogueRepairJob,
   newDialogueRepairProposal,
   newDialogueRepairReviewReceipt,
+  parseDialogueRepairResult,
   parseDialogueRepairReviewReceipt,
   parseAudioSignalDiagnosis,
   parseAudioTreatmentResult,
@@ -40,6 +42,7 @@ import { sha256File } from "../apps/quipsly-media-processor/src/transcoder.ts";
 import { runOneLocalAudioMasteryJob } from "../apps/quipsly-media-processor/src/local-audio-mastery-worker.ts";
 import { runOneLocalAudioDeliveryJob } from "../apps/quipsly-media-processor/src/local-audio-delivery-worker.ts";
 import { runOneLocalAudioTreatmentJob } from "../apps/quipsly-media-processor/src/local-audio-treatment-worker.ts";
+import { runOneLocalDialogueRepairJob } from "../apps/quipsly-media-processor/src/local-dialogue-repair-worker.ts";
 
 test("mastery proposal is a reversible source-bound graph", () => {
   const measurement = fixtureMeasurement();
@@ -309,6 +312,65 @@ test("local treatment worker leases, verifies, and recovers a versioned experime
   parseAudioTreatmentResult(recoveryStore.completed[0].receipt, job);
 });
 
+test("local Dialogue Repair worker renders only an exact confirmed range and recovers its versioned output", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-dialogue-repair-worker-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sourcePath = path.join(root, "media-vault", "raw", "dialogue-source.wav");
+  await mkdir(path.dirname(sourcePath), { recursive: true });
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "aevalsrc=0.04*sin(2*PI*220*t)+if(lt(abs(t-1.5)\\,0.00002)\\,0.95\\,0):s=48000:d=3",
+    "-c:a", "pcm_s24le", sourcePath,
+  ]);
+  const sourceSha256 = await sha256File(sourcePath);
+  const sourceStat = await stat(sourcePath);
+  const source = { assetId: "asset_dialogue_worker_001", provider: "local", locator: sourcePath, generation: `sha256:${sourceSha256}`, sha256: sourceSha256, sizeBytes: sourceStat.size, contentType: "audio/wav" };
+  const candidate = newDialogueRepairCandidate({
+    candidateId: "candidate_dialogue_worker_001",
+    createdAt: "2026-08-05T23:00:00.000Z",
+    createdByEmail: "editor@example.test",
+    label: "mouth-click",
+    source,
+    range: { startSeconds: 1.49, endSeconds: 1.51, auditionPreRollSeconds: 0.45, auditionPostRollSeconds: 0.45, sourceDurationSeconds: 3 },
+    origin: { kind: "human-marked" },
+    context: { speakerId: null, speakerLabel: null, transcriptWordAnchors: [] },
+  });
+  const reviewReceipt = newDialogueRepairReviewReceipt({
+    receiptId: "review_dialogue_worker_001",
+    occurredAt: "2026-08-05T23:01:00.000Z",
+    actorEmail: "editor@example.test",
+    decision: "confirmed",
+    candidate,
+    evidence: { protectedPlaybackSourceId: "source_dialogue_worker_001", contextStartSeconds: 1.04, contextEndSeconds: 1.96, listenedSecondBins: [1], clientTrackedPlaybackIsNotProofOfAudibility: true },
+  });
+  const proposal = newDialogueRepairProposal({ proposalId: "proposal_dialogue_worker_001", createdAt: "2026-08-05T23:02:00.000Z", candidate, reviewReceipt });
+  const job = newDialogueRepairJob({
+    jobId: "dialogue_repair_worker_001",
+    projectId: "project_dialogue_worker_001",
+    requestedByEmail: "editor@example.test",
+    queuedAt: "2026-08-05T23:03:00.000Z",
+    source,
+    proposal,
+    target: { provider: "local", locator: buildDialogueRepairTargetLocator({ assetId: source.assetId, sourceSha256, candidateId: candidate.candidateId, range: candidate.range }), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "dialogue-repair-preview" },
+  });
+  const options = { executionId: "execution_dialogue_worker_001", buildId: "test-build", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-05T23:04:00.000Z") };
+  const store = new FakeDialogueRepairStore(job);
+  const first = await runOneLocalDialogueRepairJob(store, new FfmpegAudioMasteringEngine(), options);
+  assert.equal(first.disposition, "completed");
+  assert.equal(first.recoveredExistingOutput, false);
+  const receipt = parseDialogueRepairResult(store.completed[0].receipt, job);
+  assert.equal(receipt.proposal.authorizingReviewReceiptId, reviewReceipt.receiptId);
+  assert.equal(receipt.boundaries.outputIsUnpromotedExperiment, true);
+  assert.equal(receipt.verification.completeOutputDecode, true);
+  assert.equal(await sha256File(sourcePath), sourceSha256);
+
+  const recoveryStore = new FakeDialogueRepairStore(job);
+  const recovered = await runOneLocalDialogueRepairJob(recoveryStore, new FfmpegAudioMasteringEngine(), options);
+  assert.equal(recovered.disposition, "completed");
+  assert.equal(recovered.recoveredExistingOutput, true);
+  parseDialogueRepairResult(recoveryStore.completed[0].receipt, job);
+});
+
 test("real FFmpeg measurement, double-pass PCM render, and independent verification preserve source bytes", async (context) => {
   const fixtureRoot = await mkdtemp(path.join(tmpdir(), "quipsly-audio-mastery-"));
   context.after(() => rm(fixtureRoot, { recursive: true, force: true }));
@@ -533,7 +595,8 @@ test("dialogue repair requires source-bound listening evidence before it can aut
     origin: { kind: "human-marked" },
     context: {
       speakerId: "speaker_homer_001",
-      transcriptWordAnchors: [{ wordId: "word_dialogue_001", startSeconds: 2.1, endSeconds: 2.8, text: "testing", speakerId: "speaker_homer_001" }],
+      speakerLabel: "Homer",
+      transcriptWordAnchors: [{ wordId: "word_dialogue_001", startSeconds: 2.1, endSeconds: 2.8, text: "testing", speakerId: "speaker_homer_001", speakerLabel: "Homer" }],
     },
   });
   assert.equal(candidate.boundaries.candidateDoesNotAuthorizeTreatment, true);
@@ -596,7 +659,7 @@ test("real range-scoped de-click changes the reviewed event while preserving sou
   const candidate = newDialogueRepairCandidate({
     candidateId: "candidate_dialogue_real_001", createdAt: "2026-08-05T22:10:00.000Z", createdByEmail: "editor@example.test", label: "mouth-click", source,
     range: { startSeconds: 1.49, endSeconds: 1.51, auditionPreRollSeconds: 0.45, auditionPostRollSeconds: 0.45, sourceDurationSeconds: 5 },
-    origin: { kind: "human-marked" }, context: { speakerId: null, transcriptWordAnchors: [] },
+    origin: { kind: "human-marked" }, context: { speakerId: null, speakerLabel: null, transcriptWordAnchors: [] },
   });
   const reviewReceipt = newDialogueRepairReviewReceipt({
     receiptId: "review_dialogue_real_001", occurredAt: "2026-08-05T22:11:00.000Z", actorEmail: "editor@example.test", decision: "confirmed", candidate,
@@ -768,6 +831,7 @@ class FakeMasteryStore {
 }
 
 class FakeTreatmentStore extends FakeMasteryStore {}
+class FakeDialogueRepairStore extends FakeMasteryStore {}
 
 class FakeMasteringEngine {
   constructor() { this.renderCount = 0; }

@@ -65,7 +65,7 @@ for (const window of rankedWindows) {
       qualificationStatus: "unqualified",
       evidence: { impactRms: round(window.rms, 9), impactPeak: round(window.peak, 9), windowMilliseconds: 10 },
     },
-    context: { speakerId: null, transcriptWordAnchors: [] },
+    context: { speakerId: null, speakerLabel: null, transcriptWordAnchors: [] },
   });
   const stem = `${String(window.impactRank).padStart(2, "0")}-${window.startSeconds.toFixed(3)}s`;
   const contextStart = Math.max(0, candidate.range.startSeconds - candidate.range.auditionPreRollSeconds);

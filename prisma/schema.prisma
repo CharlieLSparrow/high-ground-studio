@@ -3455,8 +3455,10 @@ model StudioProject {
   quipLoreTags        QuipLoreTag[]
   quipLoreCollections QuipLoreCollection[]
 
-  scrollExperiences StudioScrollExperience[]
-  transcriptJobs    TranscriptJob[]
+  scrollExperiences                  StudioScrollExperience[]
+  transcriptJobs                     TranscriptJob[]
+  studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
+  studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3887,6 +3889,71 @@ model StudioAudioDeliveryReviewReceipt {
   @@index([promotionReceiptId], map: "StudioAudioDeliveryReview_promotion_idx")
 }
 
+enum StudioDialogueRepairReviewDecision {
+  CONFIRMED
+  FALSE_POSITIVE
+  NEEDS_COMPARISON
+}
+
+// Candidates are immutable source-clock evidence. Current review state is
+// projected from append-only receipts; detector or UI state never rewrites the
+// candidate that a person actually heard.
+model StudioDialogueRepairCandidate {
+  id               String   @id
+  projectId        String
+  assetId          String
+  sourceId         String
+  createdByUserId  String?
+  createdByEmail   String
+  clientRequestId  String
+  label            String
+  sourceSha256     String
+  sourceGeneration String
+  startSeconds     Float
+  endSeconds       Float
+  requestSha256    String
+  candidateJson    Json
+  occurredAt       DateTime
+  createdAt        DateTime @default(now())
+
+  project StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   StudioMediaAsset                    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  source  StudioVideoSource                   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  reviews StudioDialogueRepairReviewReceipt[]
+
+  @@unique([projectId, createdByEmail, clientRequestId], map: "StudioDialogueRepairCandidate_project_actor_request_key")
+  @@index([projectId, assetId, occurredAt], map: "StudioDialogueRepairCandidate_project_asset_occurred_idx")
+  @@index([sourceId, occurredAt], map: "StudioDialogueRepairCandidate_source_occurred_idx")
+}
+
+// A receipt records what one actor decided after source-context playback. It
+// never mutates media, the candidate, the episode clock, or promotion state.
+model StudioDialogueRepairReviewReceipt {
+  id               String                             @id @default(cuid())
+  projectId        String
+  assetId          String
+  candidateId      String
+  actorUserId      String?
+  actorEmail       String
+  clientRequestId  String
+  decision         StudioDialogueRepairReviewDecision
+  sourceSha256     String
+  sourceGeneration String
+  requestSha256    String
+  evidenceJson     Json
+  note             String?
+  occurredAt       DateTime
+  createdAt        DateTime                           @default(now())
+
+  project   StudioProject                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset     StudioMediaAsset              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  candidate StudioDialogueRepairCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioDialogueRepairReview_project_actor_request_key")
+  @@index([candidateId, occurredAt], map: "StudioDialogueRepairReview_candidate_occurred_idx")
+  @@index([projectId, assetId, occurredAt], map: "StudioDialogueRepairReview_project_asset_occurred_idx")
+}
+
 model StudioSourceUnit {
   id             String    @id @default(cuid())
   projectId      String
@@ -4253,6 +4320,8 @@ model StudioVideoSource {
   title            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  dialogueRepairCandidates StudioDialogueRepairCandidate[]
 
   @@index([provider])
   @@index([providerSourceId])
@@ -5074,20 +5143,22 @@ model StudioMediaAsset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects                StudioProject[]
-  mediaBin                MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips                   MediaClip[]
-  mediaTags               StudioMediaTag[]
-  assetAttachments        StudioAssetAttachment[]
-  variants                StudioAssetVariant[]
-  processingJobs          StudioAssetProcessingJob[]
-  audioMasterReviews      StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions   StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
-  sourceUnits             StudioSourceUnit[]
-  workflowJobs            StudioWorkflowJob[]
-  transcriptJobs          TranscriptJob[]
-  transcriptVerifications TranscriptSegmentVerification[]
+  projects                 StudioProject[]
+  mediaBin                 MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips                    MediaClip[]
+  mediaTags                StudioMediaTag[]
+  assetAttachments         StudioAssetAttachment[]
+  variants                 StudioAssetVariant[]
+  processingJobs           StudioAssetProcessingJob[]
+  audioMasterReviews       StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions    StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews     StudioAudioDeliveryReviewReceipt[]
+  dialogueRepairCandidates StudioDialogueRepairCandidate[]
+  dialogueRepairReviews    StudioDialogueRepairReviewReceipt[]
+  sourceUnits              StudioSourceUnit[]
+  workflowJobs             StudioWorkflowJob[]
+  transcriptJobs           TranscriptJob[]
+  transcriptVerifications  TranscriptSegmentVerification[]
 
   @@index([createdAt])
   @@index([mediaBinId])

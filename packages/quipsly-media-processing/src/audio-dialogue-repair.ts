@@ -1,9 +1,12 @@
-import type { AudioMasterySourceBinding } from "./audio-mastery.js";
+import { parseAudioMasteryMeasurement, type AudioMasteryMeasurement, type AudioMasterySourceBinding } from "./audio-mastery.js";
+import { parseAudioSignalDiagnosis, type AudioSignalDiagnosis } from "./audio-signal-diagnosis.js";
 
 export const DIALOGUE_REPAIR_CONTRACT_VERSION = 1 as const;
 export const DIALOGUE_REPAIR_CANDIDATE_KIND = "quipsly-dialogue-repair-candidate-v1" as const;
 export const DIALOGUE_REPAIR_REVIEW_KIND = "quipsly-dialogue-repair-review-v1" as const;
 export const DIALOGUE_REPAIR_PROPOSAL_KIND = "quipsly-dialogue-repair-proposal-v1" as const;
+export const DIALOGUE_REPAIR_JOB_KIND = "quipsly-dialogue-repair-job-v1" as const;
+export const DIALOGUE_REPAIR_RESULT_KIND = "quipsly-dialogue-repair-result-v1" as const;
 export const DIALOGUE_REPAIR_PROFILE_ID = "dialogue-declick-conservative-v1" as const;
 
 export type DialogueRepairLabel = "mouth-click" | "plosive" | "sibilance" | "breath" | "clipping" | "noise-event";
@@ -45,12 +48,14 @@ export type DialogueRepairCandidate = {
       };
   context: {
     speakerId: string | null;
+    speakerLabel: string | null;
     transcriptWordAnchors: Array<{
       wordId: string;
       startSeconds: number;
       endSeconds: number;
       text: string;
       speakerId: string | null;
+      speakerLabel: string | null;
     }>;
   };
   boundaries: {
@@ -127,6 +132,68 @@ export type DialogueRepairProposal = {
   };
 };
 
+export type DialogueRepairJob = {
+  kind: typeof DIALOGUE_REPAIR_JOB_KIND;
+  version: typeof DIALOGUE_REPAIR_CONTRACT_VERSION;
+  jobId: string;
+  projectId: string;
+  requestedByEmail: string;
+  queuedAt: string;
+  source: AudioMasterySourceBinding;
+  proposal: DialogueRepairProposal;
+  target: {
+    provider: "local" | "gcs";
+    locator: string;
+    contentType: "audio/wav";
+    codec: "pcm_s24le";
+    sampleRateHz: 48_000;
+    variantKind: "dialogue-repair-preview";
+  };
+};
+
+export type DialogueRepairResult = {
+  kind: typeof DIALOGUE_REPAIR_RESULT_KIND;
+  version: typeof DIALOGUE_REPAIR_CONTRACT_VERSION;
+  jobId: string;
+  completedAt: string;
+  source: AudioMasterySourceBinding;
+  proposal: DialogueRepairProposal;
+  sourceMeasurement: AudioMasteryMeasurement;
+  sourceDiagnosis: AudioSignalDiagnosis;
+  derivative: {
+    provider: "local" | "gcs";
+    locator: string;
+    generation: string;
+    sha256: string;
+    sizeBytes: number;
+    contentType: "audio/wav";
+    codec: "pcm_s24le";
+    sampleRateHz: 48_000;
+    variantKind: "dialogue-repair-preview";
+    measurement: AudioMasteryMeasurement;
+    diagnosis: AudioSignalDiagnosis;
+  };
+  verification: {
+    sourceDurationSeconds: number;
+    outputDurationSeconds: number;
+    durationDeltaSeconds: number;
+    maximumDurationDeltaSeconds: 0.05;
+    sourceChannelCount: number;
+    outputChannelCount: number;
+    sourceBytesPreserved: true;
+    completeOutputDecode: true;
+    passes: true;
+  };
+  worker: { executionId: string; buildId: string; imageDigest: string | null; attempt: number };
+  boundaries: {
+    originalRemainsSourceTruth: true;
+    outputIsUnpromotedExperiment: true;
+    outputIsNotAMasteredDeliveryFile: true;
+    matchedAuditionRequired: true;
+    promotionRequiresSeparateApproval: true;
+  };
+};
+
 const SAFE_ID = /^[A-Za-z0-9_-]{8,160}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const LABELS = new Set<DialogueRepairLabel>(["mouth-click", "plosive", "sibilance", "breath", "clipping", "noise-event"]);
@@ -169,6 +236,7 @@ export function parseDialogueRepairCandidate(value: unknown): DialogueRepairCand
       endSeconds,
       text: boundedText(word.text, `word[${index}].text`, 240),
       speakerId: nullableId(word.speakerId, `word[${index}].speakerId`),
+      speakerLabel: nullableText(word.speakerLabel, `word[${index}].speakerLabel`, 160),
     };
   });
   if (words.length > 64 || words.some((word, index) => index > 0 && word.startSeconds < words[index - 1]!.startSeconds)) {
@@ -188,7 +256,7 @@ export function parseDialogueRepairCandidate(value: unknown): DialogueRepairCand
     source,
     range,
     origin,
-    context: { speakerId: nullableId(contextRow.speakerId, "context.speakerId"), transcriptWordAnchors: words },
+    context: { speakerId: nullableId(contextRow.speakerId, "context.speakerId"), speakerLabel: nullableText(contextRow.speakerLabel, "context.speakerLabel", 160), transcriptWordAnchors: words },
     boundaries: { candidateIsListeningTriageOnly: true, candidateDoesNotAuthorizeTreatment: true, originalRemainsSourceTruth: true },
   };
 }
@@ -373,6 +441,103 @@ export function buildDialogueRepairTargetLocator(input: { assetId: string; sourc
 export function buildDialogueRepairFilterGraph(proposal: DialogueRepairProposal | unknown) {
   const parsed = parseDialogueRepairProposal(proposal);
   return `adeclick=window=55:overlap=75:arorder=2:threshold=2:burst=2:method=add:enable='between(t,${decimal(parsed.treatmentRange.startSeconds)},${decimal(parsed.treatmentRange.endSeconds)})'`;
+}
+
+export function newDialogueRepairJob(input: Omit<DialogueRepairJob, "kind" | "version">) {
+  return parseDialogueRepairJob({ ...input, kind: DIALOGUE_REPAIR_JOB_KIND, version: DIALOGUE_REPAIR_CONTRACT_VERSION });
+}
+
+export function parseDialogueRepairJob(value: unknown, expectedJobId?: string): DialogueRepairJob {
+  const row = record(value);
+  const jobId = identifier(row.jobId, "jobId");
+  const source = sourceBinding(row.source);
+  const proposal = parseDialogueRepairProposal(row.proposal);
+  const target = record(row.target);
+  const expectedLocator = buildDialogueRepairTargetLocator({ assetId: source.assetId, sourceSha256: source.sha256, candidateId: proposal.candidate.candidateId, range: proposal.candidate.range });
+  const provider = target.provider === "local" || target.provider === "gcs" ? target.provider : invalid("target.provider");
+  if (
+    row.kind !== DIALOGUE_REPAIR_JOB_KIND || row.version !== DIALOGUE_REPAIR_CONTRACT_VERSION
+    || (expectedJobId && jobId !== expectedJobId) || !sameSource(source, proposal.source)
+    || provider !== source.provider || target.locator !== expectedLocator
+    || target.contentType !== "audio/wav" || target.codec !== "pcm_s24le" || target.sampleRateHz !== 48_000
+    || target.variantKind !== "dialogue-repair-preview"
+  ) throw new Error("Dialogue repair job contract or target authority is invalid.");
+  return {
+    kind: DIALOGUE_REPAIR_JOB_KIND,
+    version: DIALOGUE_REPAIR_CONTRACT_VERSION,
+    jobId,
+    projectId: identifier(row.projectId, "projectId"),
+    requestedByEmail: email(row.requestedByEmail, "requestedByEmail"),
+    queuedAt: date(row.queuedAt, "queuedAt"),
+    source,
+    proposal,
+    target: { provider, locator: expectedLocator, contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "dialogue-repair-preview" },
+  };
+}
+
+export function parseDialogueRepairResult(value: unknown, expectedJob?: DialogueRepairJob | unknown): DialogueRepairResult {
+  const row = record(value);
+  const job = expectedJob ? parseDialogueRepairJob(expectedJob) : null;
+  const source = sourceBinding(row.source);
+  const proposal = parseDialogueRepairProposal(row.proposal);
+  const sourceMeasurement = parseAudioMasteryMeasurement(row.sourceMeasurement);
+  const sourceDiagnosis = parseAudioSignalDiagnosis(row.sourceDiagnosis);
+  const derivative = record(row.derivative);
+  const derivativeSource = sourceBinding({
+    assetId: source.assetId,
+    provider: derivative.provider,
+    locator: derivative.locator,
+    generation: derivative.generation,
+    sha256: derivative.sha256,
+    sizeBytes: derivative.sizeBytes,
+    contentType: derivative.contentType,
+  });
+  const outputMeasurement = parseAudioMasteryMeasurement(derivative.measurement);
+  const outputDiagnosis = parseAudioSignalDiagnosis(derivative.diagnosis);
+  const verification = record(row.verification);
+  const sourceDurationSeconds = round(sourceMeasurement.durationSeconds, 6);
+  const outputDurationSeconds = round(outputMeasurement.durationSeconds, 6);
+  const durationDeltaSeconds = round(Math.abs(sourceDurationSeconds - outputDurationSeconds), 6);
+  const passes = durationDeltaSeconds <= 0.05
+    && sourceMeasurement.channels === outputMeasurement.channels
+    && sourceDiagnosis.channelCount === outputDiagnosis.channelCount
+    && outputMeasurement.analyzer.completeDecode && outputDiagnosis.analyzer.completeDecode;
+  const boundaries = record(row.boundaries);
+  if (
+    row.kind !== DIALOGUE_REPAIR_RESULT_KIND || row.version !== DIALOGUE_REPAIR_CONTRACT_VERSION
+    || (job && row.jobId !== job.jobId) || !sameSource(source, proposal.source)
+    || !sameSource(source, sourceMeasurement.source) || !sameSource(source, sourceDiagnosis.source)
+    || (job && (!sameSource(job.source, source) || !sameJson(job.proposal, proposal) || job.target.locator !== derivativeSource.locator))
+    || derivativeSource.provider !== source.provider || derivative.contentType !== "audio/wav"
+    || derivative.codec !== "pcm_s24le" || derivative.sampleRateHz !== 48_000 || derivative.variantKind !== "dialogue-repair-preview"
+    || !sameSource(derivativeSource, outputMeasurement.source) || !sameSource(derivativeSource, outputDiagnosis.source)
+    || outputMeasurement.sampleRateHz !== 48_000 || outputDiagnosis.sampleRateHz !== 48_000 || !passes
+    || finiteSeconds(verification.sourceDurationSeconds, "verification.sourceDurationSeconds") !== sourceDurationSeconds
+    || finiteSeconds(verification.outputDurationSeconds, "verification.outputDurationSeconds") !== outputDurationSeconds
+    || finiteSeconds(verification.durationDeltaSeconds, "verification.durationDeltaSeconds") !== durationDeltaSeconds
+    || verification.maximumDurationDeltaSeconds !== 0.05
+    || positiveInteger(verification.sourceChannelCount, "verification.sourceChannelCount") !== sourceMeasurement.channels
+    || positiveInteger(verification.outputChannelCount, "verification.outputChannelCount") !== outputMeasurement.channels
+    || verification.sourceBytesPreserved !== true || verification.completeOutputDecode !== true || verification.passes !== true
+    || boundaries.originalRemainsSourceTruth !== true || boundaries.outputIsUnpromotedExperiment !== true
+    || boundaries.outputIsNotAMasteredDeliveryFile !== true || boundaries.matchedAuditionRequired !== true
+    || boundaries.promotionRequiresSeparateApproval !== true
+  ) throw new Error("Dialogue repair result or independent verification is invalid.");
+  const worker = record(row.worker);
+  return {
+    kind: DIALOGUE_REPAIR_RESULT_KIND,
+    version: DIALOGUE_REPAIR_CONTRACT_VERSION,
+    jobId: identifier(row.jobId, "jobId"),
+    completedAt: date(row.completedAt, "completedAt"),
+    source,
+    proposal,
+    sourceMeasurement,
+    sourceDiagnosis,
+    derivative: { provider: derivativeSource.provider, locator: derivativeSource.locator, generation: derivativeSource.generation, sha256: derivativeSource.sha256, sizeBytes: derivativeSource.sizeBytes, contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, variantKind: "dialogue-repair-preview", measurement: outputMeasurement, diagnosis: outputDiagnosis },
+    verification: { sourceDurationSeconds, outputDurationSeconds, durationDeltaSeconds, maximumDurationDeltaSeconds: 0.05, sourceChannelCount: sourceMeasurement.channels, outputChannelCount: outputMeasurement.channels, sourceBytesPreserved: true, completeOutputDecode: true, passes: true },
+    worker: { executionId: identifier(worker.executionId, "worker.executionId"), buildId: boundedText(worker.buildId, "worker.buildId", 300), imageDigest: worker.imageDigest === null ? null : boundedText(worker.imageDigest, "worker.imageDigest", 300), attempt: positiveInteger(worker.attempt, "worker.attempt") },
+    boundaries: { originalRemainsSourceTruth: true, outputIsUnpromotedExperiment: true, outputIsNotAMasteredDeliveryFile: true, matchedAuditionRequired: true, promotionRequiresSeparateApproval: true },
+  };
 }
 
 function newDialogueRepairGraph(treatmentRange: { startSeconds: number; endSeconds: number }): DialogueRepairProposal["graph"] {
