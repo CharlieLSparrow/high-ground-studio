@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { EpisodeAudioMixDesk } from "./EpisodeAudioMixDesk";
 
 describe("EpisodeAudioMixDesk", () => {
   const originalFetch = global.fetch;
-  afterEach(() => { global.fetch = originalFetch; });
+  afterEach(() => { global.fetch = originalFetch; jest.useRealTimers(); });
   it("queues a reversible mix proposal and explains held judgments", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, status: "not-queued", jobId: null, actionCount: 0, unresolvedCount: 0 }) })
@@ -46,5 +46,22 @@ describe("EpisodeAudioMixDesk", () => {
     expect(screen.getByLabelText("Episode mix audition playhead")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Approve as heard/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "0:30 B○ P○" })).toBeInTheDocument();
+  });
+  it("keeps polling when the worker has not changed state yet", async () => {
+    jest.useFakeTimers();
+    const processing = { ok: true, status: "processing", jobId: "mix_poll_0001", proposalId: "mix_poll_0001", programFingerprintSha256: "f".repeat(64), actionCount: 0, unresolvedCount: 0, requiredReviewSecondBins: [], preview: null, error: null, updatedAt: "2026-08-06T12:00:00.000Z" };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => processing })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => processing })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ...processing, status: "completed", updatedAt: "2026-08-06T12:01:00.000Z" }) });
+    global.fetch = fetchMock;
+    render(<EpisodeAudioMixDesk projectId="project_0001" projectSlug="nest-one" episodeProductionId="episode_0001" programFingerprintSha256={"f".repeat(64)} canWrite eligible eligibilityDetail="Ready" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => { jest.advanceTimersByTime(1_400); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => { jest.advanceTimersByTime(1_400); await Promise.resolve(); await Promise.resolve(); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole("button", { name: "Build a new proposal" })).toBeInTheDocument();
   });
 });
