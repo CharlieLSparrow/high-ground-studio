@@ -29,6 +29,7 @@ import { KeyframeControls } from "./KeyframeControls";
 import { VideoSegmentDesk } from "./VideoSegmentDesk";
 import { AudioMasteryAudition, type AudioDeliveryStatus, type AudioMasterPromotionSummary, type AudioMasteryMeasurement, type AudioSignalDiagnosisSummary } from "./AudioMasteryAudition";
 import { AudioTreatmentAudition } from "./AudioTreatmentAudition";
+import { DialogueRepairDesk } from "./DialogueRepairDesk";
 import { AutomatedEditEvidenceMap, type AutomatedEditBoundProof } from "./AutomatedEditEvidenceMap";
 import { StudioTranscriptReviewDesk } from "./StudioTranscriptReviewDesk";
 import { sourceBoundSpectralEditMarkers } from "@/components/audio/spectral-evidence-overlay";
@@ -10406,6 +10407,13 @@ function CloudEditorContent() {
                             <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.truePeakDbtp.toFixed(1)}</div><div>dBTP true peak</div></div>
                             <div className="rounded-md bg-white px-2 py-2"><div className="font-mono text-sm font-black">{audioMasteryStatus.sourceMeasurement.loudnessRangeLu.toFixed(1)}</div><div>LU range</div></div>
                           </div>
+                          <DialogueRepairDesk
+                            projectSlug={resolvedProjectSlug}
+                            assetId={asset.id}
+                            sourceId={asset.sourceId}
+                            sourceUrl={asset.playbackUrl}
+                            sourceMeasurement={audioMasteryStatus.sourceMeasurement}
+                          />
                           {audioMasteryStatus.derivative?.playbackUrl && audioMasteryStatus.proposal && (
                             <AudioMasteryAudition
                               masteryJobId={audioMasteryStatus.jobId}

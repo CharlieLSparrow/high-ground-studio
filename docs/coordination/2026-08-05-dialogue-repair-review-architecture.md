@@ -2,9 +2,9 @@
 
 Date: 2026-08-05
 
-Status: source-bound candidate, review, proposal, renderer, and retained impact
-scan foundation implemented; browser review persistence and human operation
-remain open
+Status: source-bound candidate, append-only review, exact-range proposal,
+renderer, retained impact scan, and browser review persistence implemented;
+human operation on a retained podcast defect remains open
 
 ## Outcome
 
@@ -209,3 +209,37 @@ The strongest unqualified treatment-impact suggestions begin at 11.41, 21.64,
 and 17.53 seconds. Those are triage suggestions, not assertions that a mouth
 click exists. No treatment, human review, promotion, delivery, or publication
 claim has been created.
+
+## Local browser operation
+
+The first end-to-end browser operation used the disposable verified emulator
+account `quipsly.dialogue.repair.qa@local.test` and an explicit local EDITOR
+grant on `high-ground-odyssey`. A fresh ungranted account was denied by the
+private editor before the grant was added, so this operation did not weaken the
+Nest boundary to make the test pass.
+
+In Episode 4 Part 2, the Audio Mastery card hydrated its completed source
+measurement and rendered the Dialogue Repair desk for the retained synthetic
+12-second `quipsly-audio-mastery-dogfood.wav` source. The browser then:
+
+1. created one `noise-event` candidate at source time `3.985-4.015` seconds;
+2. reloaded the complete editor and recovered that candidate from PostgreSQL;
+3. played the protected context from `2.485-5.515` seconds;
+4. kept every review action disabled until all four required source-clock
+   second bins had been observed;
+5. refused a false-positive decision without a listening note; and
+6. left the candidate unreviewed with zero receipts rather than presenting
+   client playback telemetry as proof of audibility.
+
+This qualifies candidate creation, protected playback gating, persistence, and
+the non-confirmation guard. It does not qualify the de-click sound quality or a
+real podcast repair. The next acceptance step is still a person listening to a
+retained High Ground Odyssey defect, recording an explicit decision, rendering
+the exact confirmed range, and comparing the matched source/derivative context.
+
+The operation also exposed a product-layout limitation: a mature Audio Mastery
+and Dialogue Repair workflow is too important to remain buried inside each
+imported-media card's compact scrolling area. Preserve the embedded status and
+quick action, but evolve detailed diagnosis, transcript-linked navigation,
+candidate review, treatment comparison, and delivery into a first-class Audio
+Mastery workspace.
