@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, LoaderCircle, SlidersHorizontal, Sparkles, TriangleAlert } from "lucide-react";
 
+import { EpisodeMixWaveformComparison, type EpisodeMixWaveformProfile } from "@/components/audio/EpisodeMixWaveformComparison";
+
 type MixPreview = { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number; baselineAssetId: string | null; baselinePlaybackUrl: string | null; baselineSha256: string | null; baselineDurationSeconds: number | null; baselineIntegratedLufs: number | null; baselineTruePeakDbtp: number | null; levelMatchedDeltaLufs: number | null; outputByteRelationship: "bit-identical" | "different" | null };
 type AuditionReadyMixPreview = MixPreview & { playbackUrl: string; baselinePlaybackUrl: string; baselineDurationSeconds: number; baselineIntegratedLufs: number; baselineTruePeakDbtp: number };
 type MixTranscriptReview = {
@@ -12,6 +14,14 @@ type MixTranscriptReview = {
   missingTrackCount: number;
   checkpoints: Array<{ second: number; snippets: Array<{ id: string; trackTitle: string; participantLabel: string | null; transcriptJobId: string; segmentId: string; programStartSeconds: number; programEndSeconds: number; sourceStartSeconds: number; sourceEndSeconds: number; text: string; speakerLabel: string | null; provider: string | null; providerModel: string | null; reviewStatus: "provider" | "human-corrected" | "human-confirmed"; reviewReceiptId: string | null; providerConfidence: number | null }> }>;
   tracks: Array<{ assetId: string; title: string; participantLabel: string | null; transcriptJobId: string | null; available: boolean; detail: string }>;
+};
+type MixWaveformProfile = EpisodeMixWaveformProfile & { jobId: string; status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed"; error: string | null };
+type MixWaveformReview = {
+  status: "not-queued" | "queued" | "processing" | "completed" | "partial" | "failed";
+  detail: string;
+  sharedByBitExactIdentity: boolean;
+  baseline: MixWaveformProfile | null;
+  proposal: MixWaveformProfile | null;
 };
 
 type MixStatus = {
@@ -25,13 +35,15 @@ type MixStatus = {
   unresolved: Array<{ eventId: string; reason: string; involvedAssetIds: string[] }>;
   requiredReviewSecondBins: number[];
   transcriptReview: MixTranscriptReview;
+  waveformReview: MixWaveformReview;
   preview: MixPreview | null;
   error: string | null;
   updatedAt: string | null;
 };
 
 const EMPTY_TRANSCRIPT_REVIEW: MixTranscriptReview = { status: "unavailable", detail: "Build a completed matched A/B preview before loading checkpoint transcript context.", transcribedTrackCount: 0, missingTrackCount: 0, checkpoints: [], tracks: [] };
-const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], transcriptReview: EMPTY_TRANSCRIPT_REVIEW, preview: null, error: null, updatedAt: null };
+const EMPTY_WAVEFORM_REVIEW: MixWaveformReview = { status: "not-queued", detail: "Build a completed matched A/B preview before measuring its real waveforms.", sharedByBitExactIdentity: false, baseline: null, proposal: null };
+const EMPTY: MixStatus = { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, actions: [], unresolved: [], requiredReviewSecondBins: [], transcriptReview: EMPTY_TRANSCRIPT_REVIEW, waveformReview: EMPTY_WAVEFORM_REVIEW, preview: null, error: null, updatedAt: null };
 
 export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionId, programFingerprintSha256, canWrite, eligible, eligibilityDetail }: { projectId: string; projectSlug: string; episodeProductionId: string; programFingerprintSha256: string | null; canWrite: boolean; eligible: boolean; eligibilityDetail: string }) {
   const [status, setStatus] = useState<MixStatus>(EMPTY);
@@ -105,7 +117,7 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
       {status.actions.length > 0 ? <MixActionMap actions={status.actions} durationSeconds={status.preview?.durationSeconds ?? Math.max(...status.actions.map((action) => action.endSeconds), 1)} /> : status.status === "completed" ? <div className="mt-4 rounded-xl border border-sky-700/60 bg-sky-950/40 px-3 py-3 text-xs font-bold leading-5 text-sky-100">Transparent result: no protected listening receipt authorized a gain move. {status.preview?.outputByteRelationship === "bit-identical" ? "Quipsly independently proved the proposal is bit-identical to its baseline." : "The output relationship is still awaiting verification."}</div> : null}
       {status.unresolved.length > 0 ? <div className="mt-3 rounded-xl border border-amber-700/60 bg-amber-950/40 p-3"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-amber-200">Held for human judgment</div>{status.unresolved.map((event) => <div key={`${event.eventId}:${event.reason}`} className="mt-2 text-[10px] font-bold text-amber-100">{event.eventId} · {event.reason.replaceAll("-", " ")} · {event.involvedAssetIds.length} track{event.involvedAssetIds.length === 1 ? "" : "s"}</div>)}</div> : null}
       {status.preview?.playbackUrl && !stale ? auditionReady(status.preview)
-        ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} transcriptReview={status.transcriptReview} coordinates={coordinates()} canWrite={canWrite} />
+        ? <EpisodeMixAudition key={status.jobId} preview={status.preview} jobId={status.jobId!} requiredSecondBins={status.requiredReviewSecondBins} transcriptReview={status.transcriptReview} initialWaveformReview={status.waveformReview} actions={status.actions} coordinates={coordinates()} canWrite={canWrite} />
         : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified legacy preview retained</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">This earlier result predates matched baseline rendering. Build a new proposal for trustworthy A/B review.</p></div>
         : null}
       {notice ? <div className="mt-3 rounded-xl border border-sky-600/60 bg-sky-950/60 px-3 py-2 text-xs font-bold leading-5 text-sky-100" role="status" aria-live="polite">{notice}</div> : null}
@@ -129,7 +141,7 @@ type MixDecisionSummary = {
 
 const EMPTY_DECISIONS: MixDecisionSummary = { review: { latest: null, approvalCount: 0, rejectionCount: 0 }, promotion: { active: false, activePromotion: null, candidatePlaybackUrl: null, promoteCount: 0, withdrawalCount: 0 } };
 
-function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptReview, coordinates, canWrite }: { preview: AuditionReadyMixPreview; jobId: string; requiredSecondBins: number[]; transcriptReview: MixTranscriptReview; coordinates: { projectId: string; projectSlug: string; episodeProductionId: string }; canWrite: boolean }) {
+function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptReview, initialWaveformReview, actions, coordinates, canWrite }: { preview: AuditionReadyMixPreview; jobId: string; requiredSecondBins: number[]; transcriptReview: MixTranscriptReview; initialWaveformReview: MixWaveformReview; actions: MixStatus["actions"]; coordinates: { projectId: string; projectSlug: string; episodeProductionId: string }; canWrite: boolean }) {
   const baselineRef = useRef<HTMLAudioElement>(null);
   const proposalRef = useRef<HTMLAudioElement>(null);
   const [version, setVersion] = useState<"baseline" | "proposal">("proposal");
@@ -143,6 +155,9 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
   const [withdrawalReason, setWithdrawalReason] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionMessage, setDecisionMessage] = useState("");
+  const [waveformReview, setWaveformReview] = useState(initialWaveformReview);
+  const [waveformBusy, setWaveformBusy] = useState(false);
+  const [waveformMessage, setWaveformMessage] = useState("");
   const duration = Math.max(preview.durationSeconds, preview.baselineDurationSeconds, 0.001);
   const activeRef = version === "baseline" ? baselineRef : proposalRef;
   const approvalReady = requiredSecondBins.every((second) => covered(baselineBins, second) && covered(proposalBins, second)) && switches.length > 0;
@@ -155,6 +170,39 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
       .catch((error) => { if (!controller.signal.aborted) setDecisionMessage(error instanceof Error ? error.message : "Could not read mix decisions."); });
     return () => controller.abort();
   }, [coordinates, jobId]);
+
+  useEffect(() => {
+    if (!["queued", "processing"].includes(waveformReview.status)) return;
+    const controller = new AbortController();
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/media-vault/episode-audio-program/mix", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...coordinates, jobId, operation: "reconcile-waveforms" }), signal: controller.signal });
+        const payload = await response.json() as ({ ok?: boolean; error?: string; waveformReview?: MixWaveformReview });
+        if (!response.ok || !payload.ok || !payload.waveformReview) throw new Error(payload.error || "Could not reconcile A/B waveform evidence.");
+        setWaveformReview(payload.waveformReview);
+        if (["queued", "processing"].includes(payload.waveformReview.status)) timer = window.setTimeout(poll, 1_400);
+        else setWaveformMessage(payload.waveformReview.detail);
+      } catch (error) {
+        if (!controller.signal.aborted) setWaveformMessage(error instanceof Error ? error.message : "Could not reconcile A/B waveform evidence.");
+      }
+    };
+    timer = window.setTimeout(poll, 1_000);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [coordinates, jobId, waveformReview.status]);
+
+  const analyzeWaveforms = async () => {
+    setWaveformBusy(true);
+    setWaveformMessage("Registering the verified A/B files and queueing a complete decode…");
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/mix", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...coordinates, jobId, operation: "queue-waveforms" }) });
+      const payload = await response.json() as ({ ok?: boolean; error?: string; waveformReview?: MixWaveformReview });
+      if (!response.ok || !payload.ok || !payload.waveformReview) throw new Error(payload.error || "Could not queue A/B waveform evidence.");
+      setWaveformReview(payload.waveformReview);
+      setWaveformMessage(payload.waveformReview.detail);
+    } catch (error) { setWaveformMessage(error instanceof Error ? error.message : "Could not queue A/B waveform evidence."); }
+    finally { setWaveformBusy(false); }
+  };
 
   const seek = (timeSeconds: number) => {
     const next = Math.max(0, Math.min(duration, timeSeconds));
@@ -241,6 +289,14 @@ function EpisodeMixAudition({ preview, jobId, requiredSecondBins, transcriptRevi
       <span className="w-24 font-mono text-[10px] font-bold text-slate-300">{clock(currentTime)} / {clock(duration)}</span>
       <input aria-label="Episode mix audition playhead" type="range" min="0" max={duration} step="0.05" value={Math.min(currentTime, duration)} onChange={(event) => seek(Number(event.currentTarget.value))} className="min-w-0 flex-1 accent-violet-300" />
     </div>
+    {waveformReview.status === "completed" && waveformReview.proposal && (waveformReview.baseline || waveformReview.sharedByBitExactIdentity)
+      ? <EpisodeMixWaveformComparison baseline={waveformReview.baseline ?? waveformReview.proposal} proposal={waveformReview.proposal} durationSeconds={duration} currentTime={currentTime} actions={actions} checkpoints={requiredSecondBins} sharedByBitExactIdentity={waveformReview.sharedByBitExactIdentity} seek={seek} />
+      : <div className="mt-3 rounded-lg border border-cyan-800/70 bg-cyan-950/25 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="text-[10px] font-black uppercase tracking-[0.1em] text-cyan-200">Same-clock signal evidence</div><p className="mt-1 max-w-2xl text-[9px] font-bold leading-4 text-slate-300">{waveformReview.detail}</p></div><span className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${waveformReview.status === "failed" || waveformReview.status === "partial" ? "border-rose-600 text-rose-200" : waveformReview.status === "queued" || waveformReview.status === "processing" ? "border-amber-600 text-amber-200" : "border-slate-600 text-slate-300"}`}>{waveformReview.status}</span></div>
+        <p className="mt-2 text-[9px] font-bold leading-4 text-slate-400">Quipsly will render only complete-decode windowed RMS and sample-peak measurements. It will not substitute decorative waveform bars.</p>
+        {!["queued", "processing"].includes(waveformReview.status) ? <button type="button" disabled={!canWrite || waveformBusy} onClick={() => void analyzeWaveforms()} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md border border-cyan-600 bg-cyan-950 px-3 text-[10px] font-black text-cyan-100 hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">{waveformBusy ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}Analyze real A/B waveforms</button> : <div className="mt-3 inline-flex items-center gap-2 text-[10px] font-black text-amber-200"><LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />Complete decode in progress</div>}
+        {waveformMessage ? <p className="mt-2 text-[9px] font-bold leading-4 text-cyan-100" role="status" aria-live="polite">{waveformMessage}</p> : null}
+      </div>}
     <div className="mt-3 rounded-lg border border-emerald-800/80 bg-slate-950/80 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-200">Required review checkpoints</div><span className={`rounded-full px-2 py-1 text-[9px] font-black ${approvalReady ? "bg-emerald-200 text-emerald-950" : "bg-slate-800 text-slate-300"}`}>{approvalReady ? "Coverage ready" : "Listen to both at each point"}</span></div>
       <div className="mt-2 flex flex-wrap gap-2">{requiredSecondBins.map((second) => <button key={second} type="button" onClick={() => seek(second)} className={`rounded-md border px-2 py-1 font-mono text-[9px] font-black ${covered(baselineBins, second) && covered(proposalBins, second) ? "border-emerald-500 bg-emerald-950 text-emerald-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}>{clock(second)} {covered(baselineBins, second) ? "B✓" : "B○"} {covered(proposalBins, second) ? "P✓" : "P○"}</button>)}</div>
