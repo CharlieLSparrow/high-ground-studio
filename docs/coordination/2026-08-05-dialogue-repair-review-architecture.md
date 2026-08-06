@@ -273,3 +273,33 @@ account. It found three real retained sources, selected
 performed no review, promotion, delivery, or publication mutation. This proves
 the new surface can operate the existing records; it does not replace the
 pending human-confirmed repair and matched A/B acceptance step.
+
+## Shared source-clock checkpoint
+
+Audio Studio now owns the complete source-clock review journey instead of
+requiring an editor detour. It reuses the existing media-vault signal-profile,
+source-transcript, and transcript-review APIs; no transcript copy, waveform
+copy, or audio-project identity was introduced. The editor and Audio Studio
+also compile against one shared client status contract so API evolution cannot
+silently produce two incompatible interpretations of the same ledger.
+
+The selected source now exposes:
+
+- independently loaded and retryable complete-decode signal and transcript
+  statuses;
+- distinct media-processing and transcript-consent release gates;
+- decoded duration, window count, and listen-required signal attention;
+- transcript coverage, corrections, and playback-verification counts;
+- the protected transcript correction desk with waveform, timed words,
+  mastering observations, and loudness evidence on one immutable clock; and
+- explicit empty-completion and failed-evidence states instead of optimistic
+  placeholders.
+
+A second browser operation selected the retained 12-second
+`quipsly-audio-mastery-dogfood.wav` source. It read back its completed 120-window
+signal profile and completed one-segment/two-word source transcript, then opened
+the protected transcript and audio dialog. The dialog showed the source-bound
+energy map, provider-timed words, source loudness evidence, the retained
+unreviewed Dialogue Repair event, and disabled correction actions until exact
+source playback occurs. The operation closed the dialog without recording a
+correction, review, treatment, promotion, delivery, or publication decision.

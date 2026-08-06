@@ -9,6 +9,7 @@ import {
   Check,
   Circle,
   FileAudio2,
+  FileText,
   Gauge,
   RefreshCcw,
   ShieldCheck,
@@ -21,16 +22,20 @@ import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-me
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
 import { AudioMasteryAudition } from "../editor/AudioMasteryAudition";
 import { DialogueRepairDesk } from "../editor/DialogueRepairDesk";
+import { StudioTranscriptReviewDesk } from "../editor/StudioTranscriptReviewDesk";
 import {
   audioMasteryLifecycle,
   audioWorkspaceAssets,
+  audioWorkspaceSignal,
+  type AudioSignalProfileClientStatus,
   type AudioMasteryClientStatus,
   type AudioWorkspaceAsset,
   type AudioWorkspaceInventory,
   type AudioWorkspaceProjectOption,
+  type StudioSourceTranscriptClientStatus,
 } from "./audio-mastery-workspace-model";
 
-type BusyOperation = "mastery" | "review" | "promotion" | "delivery" | "delivery-review" | null;
+type BusyOperation = "signal" | "transcript" | "mastery" | "review" | "promotion" | "delivery" | "delivery-review" | null;
 
 function errorMessage(value: unknown, fallback: string) {
   return value instanceof Error ? value.message : fallback;
@@ -87,6 +92,10 @@ export function AudioMasteryWorkspaceClient({
   const [inventoryError, setInventoryError] = useState<string | null>(loadError);
   const [status, setStatus] = useState<AudioMasteryClientStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [signalStatus, setSignalStatus] = useState<AudioSignalProfileClientStatus | null>(null);
+  const [signalStatusLoading, setSignalStatusLoading] = useState(false);
+  const [transcriptStatus, setTranscriptStatus] = useState<StudioSourceTranscriptClientStatus | null>(null);
+  const [transcriptStatusLoading, setTranscriptStatusLoading] = useState(false);
   const [operation, setOperation] = useState<BusyOperation>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [statusRefreshToken, setStatusRefreshToken] = useState(0);
@@ -104,6 +113,10 @@ export function AudioMasteryWorkspaceClient({
     ?? assets[0]
     ?? null;
   const lifecycle = useMemo(() => audioMasteryLifecycle(status), [status]);
+  const audioSignal = useMemo(
+    () => audioWorkspaceSignal(signalStatus),
+    [signalStatus?.audioSignal],
+  );
 
   const replaceSelection = useCallback((nextProject: string, nextEpisode: string, nextAsset?: string | null) => {
     setProjectSlug(nextProject);
@@ -205,6 +218,80 @@ export function AudioMasteryWorkspaceClient({
     return () => controller.abort();
   }, [projectSlug, selectedAsset, statusRefreshToken]);
 
+  useEffect(() => {
+    if (!selectedAsset || !projectSlug) {
+      setSignalStatus(null);
+      setSignalStatusLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSignalStatusLoading(true);
+    setSignalStatus(null);
+    const query = new URLSearchParams({ projectSlug, assetId: selectedAsset.id });
+    void fetch(`/api/media-vault/audio-signal-profile?${query.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioSignalProfileClientStatus>) | null;
+        if (!response.ok || !payload?.ok || !payload.status) {
+          throw new Error(payload?.error || `Audio signal profile returned HTTP ${response.status}.`);
+        }
+        return payload as { ok: true } & AudioSignalProfileClientStatus;
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setSignalStatus(payload);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setSignalStatus(null);
+        setNotice(errorMessage(error, "Quipsly could not load decoded signal evidence."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSignalStatusLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [projectSlug, selectedAsset, statusRefreshToken]);
+
+  useEffect(() => {
+    if (!selectedAsset || !projectSlug || !episodeSlug) {
+      setTranscriptStatus(null);
+      setTranscriptStatusLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setTranscriptStatusLoading(true);
+    setTranscriptStatus(null);
+    const query = new URLSearchParams({ projectSlug, episodeSlug, assetId: selectedAsset.id });
+    void fetch(`/api/media-vault/source-transcript?${query.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<StudioSourceTranscriptClientStatus>) | null;
+        if (!response.ok || !payload?.ok || !payload.status) {
+          throw new Error(payload?.error || `Source transcript returned HTTP ${response.status}.`);
+        }
+        return payload as { ok: true } & StudioSourceTranscriptClientStatus;
+      })
+      .then((payload) => {
+        if (!controller.signal.aborted) setTranscriptStatus(payload);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setTranscriptStatus(null);
+        setNotice(errorMessage(error, "Quipsly could not load the source transcript ledger."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTranscriptStatusLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [episodeSlug, projectSlug, selectedAsset, statusRefreshToken]);
+
   const updateStatus = useCallback((next: AudioMasteryClientStatus) => {
     setStatus(next);
   }, []);
@@ -256,6 +343,109 @@ export function AudioMasteryWorkspaceClient({
       if (operationSequence.current === sequence) setOperation(null);
     }
   }, [operation, requestMastery, selectedAsset]);
+
+  const requestSignalProfile = useCallback(async (asset: AudioWorkspaceAsset, action: "queue" | "reconcile") => {
+    const response = await fetch("/api/media-vault/audio-signal-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, projectSlug, assetId: asset.id, sourceId: asset.sourceId }),
+    });
+    const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudioSignalProfileClientStatus>) | null;
+    if (!response.ok || !payload?.ok || !payload.status) {
+      throw new Error(payload?.error || `Audio signal profile returned HTTP ${response.status}.`);
+    }
+    const next = payload as { ok: true } & AudioSignalProfileClientStatus;
+    setSignalStatus(next);
+    return next;
+  }, [projectSlug]);
+
+  const runSignalProfile = useCallback(async () => {
+    if (!selectedAsset || !selectedAsset.canProcess || operation) return;
+    const sequence = ++operationSequence.current;
+    setOperation("signal");
+    setNotice(`Decoding ${selectedAsset.originalName} into bounded waveform and frequency evidence. The source remains unchanged.`);
+    try {
+      let next = await requestSignalProfile(selectedAsset, "queue");
+      for (let attempt = 0; attempt < 300 && next.status !== "completed"; attempt += 1) {
+        if (next.status === "failed" || next.status === "blocked") {
+          throw new Error(next.error || `Audio signal profiling ${next.status}.`);
+        }
+        await sleep(2_000);
+        if (operationSequence.current !== sequence) return;
+        next = await requestSignalProfile(selectedAsset, "reconcile");
+      }
+      if (next.status !== "completed" || !next.audioSignal) {
+        throw new Error("Decoded signal profiling is still processing. Resume it from this source.");
+      }
+      setNotice("Verified source-clock waveform and broad-band evidence are ready for transcript and audio review.");
+    } catch (error) {
+      setNotice(errorMessage(error, "Decoded signal profiling could not finish."));
+    } finally {
+      if (operationSequence.current === sequence) setOperation(null);
+    }
+  }, [operation, requestSignalProfile, selectedAsset]);
+
+  const requestSourceTranscript = useCallback(async (
+    asset: AudioWorkspaceAsset,
+    action: "queue" | "reconcile",
+    authorizationKind: "participant-consent-confirmed" | "licensed-or-permitted-source",
+  ) => {
+    const response = await fetch("/api/media-vault/source-transcript", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        projectSlug,
+        episodeSlug,
+        assetId: asset.id,
+        sourceId: asset.sourceId,
+        ...(action === "queue" ? { authorizationKind, authorizationAccepted: true, language: "en" } : {}),
+      }),
+    });
+    const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<StudioSourceTranscriptClientStatus>) | null;
+    if (!response.ok || !payload?.ok || !payload.status) {
+      throw new Error(payload?.error || `Source transcript returned HTTP ${response.status}.`);
+    }
+    const next = payload as { ok: true } & StudioSourceTranscriptClientStatus;
+    setTranscriptStatus(next);
+    return next;
+  }, [episodeSlug, projectSlug]);
+
+  const runSourceTranscript = useCallback(async () => {
+    if (!selectedAsset || !selectedAsset.canTranscribe || operation) return;
+    const referenceRoles = new Set(["reference-clip", "b-roll", "source-clip", "youtube-source-clip"]);
+    const isReference = referenceRoles.has(String(selectedAsset.importRole || "episode-media").toLowerCase());
+    const authorizationKind = isReference ? "licensed-or-permitted-source" : "participant-consent-confirmed";
+    const authorizationCopy = isReference
+      ? `Transcribe ${selectedAsset.originalName}?\n\nConfirm that Quipsly is licensed or otherwise permitted to transcribe this reference material for production and review. This does not publish or edit the source.`
+      : `Transcribe ${selectedAsset.originalName}?\n\nConfirm that the recorded participants consented to transcription for this episode. Quipsly keeps immutable timed provider evidence and creates no tasks, goals, edits, or publications.`;
+    if (!window.confirm(authorizationCopy)) {
+      setNotice("Transcription was not queued because authorization was not confirmed.");
+      return;
+    }
+
+    const sequence = ++operationSequence.current;
+    setOperation("transcript");
+    setNotice(`Queueing immutable timed transcription for ${selectedAsset.originalName}.`);
+    try {
+      let next = await requestSourceTranscript(selectedAsset, "queue", authorizationKind);
+      for (let attempt = 0; attempt < 900 && next.status !== "completed"; attempt += 1) {
+        if (next.status === "failed") throw new Error(next.error || "Source transcription failed.");
+        await sleep(2_000);
+        if (operationSequence.current !== sequence) return;
+        next = await requestSourceTranscript(selectedAsset, "reconcile", authorizationKind);
+      }
+      if (next.status !== "completed") {
+        throw new Error("Source transcription is still processing. Resume it from this source.");
+      }
+      setInventoryRefreshToken((value) => value + 1);
+      setNotice("Canonical timed transcript ready. Confidence remains provider evidence, and corrections require protected playback review.");
+    } catch (error) {
+      setNotice(errorMessage(error, "Source transcription could not finish."));
+    } finally {
+      if (operationSequence.current === sequence) setOperation(null);
+    }
+  }, [operation, requestSourceTranscript, selectedAsset]);
 
   const reviewMastery = useCallback(async (
     decision: "approved" | "rejected",
@@ -610,6 +800,95 @@ export function AudioMasteryWorkspaceClient({
                 {!selectedAsset.canProcess ? "Processing held — resolve source release evidence" : operation === "mastery" ? "Measuring, rendering, and independently verifying…" : status?.status === "completed" ? status.signalDiagnosis === null ? "Add decoded signal diagnosis" : status.derivative ? "Verified mastering preview ready" : "Source already meets profile" : status?.status === "failed" ? "Retry Audio Mastery" : status && ["queued", "processing", "output-ready"].includes(status.status) ? "Resume Audio Mastery" : "Measure and prepare mastering preview"}
                 <span className="mt-1 block text-[10px] font-semibold leading-4 opacity-75">{selectedAsset.canProcess ? "Original bytes are never changed. This automatic pass excludes denoise, EQ, de-essing, silence removal, and editorial cuts." : "The source remains visible as inventory evidence, but Quipsly will not derive new media until its current release ledger authorizes processing."}</span>
               </button>
+            </section>
+
+            <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 p-4 shadow-sm sm:p-5" aria-labelledby="source-clock-heading">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-800"><FileText className="h-4 w-4" aria-hidden="true" /> Shared source clock</div>
+                  <h2 id="source-clock-heading" className="mt-1 text-xl font-black">Waveform, words, and attention at the same time</h2>
+                  <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-cyan-950/70">A complete decoded signal map and canonical timed transcript stay bound to this immutable source. Provider confidence helps triage review; it is never presented as measured accuracy.</p>
+                </div>
+                <button type="button" onClick={() => setStatusRefreshToken((value) => value + 1)} disabled={statusLoading || signalStatusLoading || transcriptStatusLoading || operation !== null} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 text-xs font-black text-cyan-950 hover:bg-cyan-100 disabled:opacity-50"><RefreshCcw className="h-4 w-4" aria-hidden="true" />Refresh source clock</button>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <article className="rounded-xl border border-cyan-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><div className="text-sm font-black">Decoded signal map</div><div className="mt-1 text-[10px] font-semibold leading-4 text-cyan-950/65">Complete-decode waveform, broad frequency bands, and listen-required signal observations.</div></div>
+                    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-[0.1em] text-cyan-900">{signalStatusLoading ? "loading" : signalStatus?.status?.replaceAll("-", " ") || "not queued"}</span>
+                  </div>
+                  {audioSignal ? (
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{audioSignal.durationSeconds.toFixed(1)}s</div><div className="text-[9px] font-bold">Decoded</div></div>
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{audioSignal.waveform.length}</div><div className="text-[9px] font-bold">Windows</div></div>
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{audioSignal.observations.length}</div><div className="text-[9px] font-bold">Attention</div></div>
+                    </div>
+                  ) : <p className="mt-3 text-[11px] font-semibold leading-5 text-cyan-950/70">No verified decoded signal map is registered for this exact source yet.</p>}
+                  {signalStatus?.error ? <p className="mt-2 text-[11px] font-bold text-rose-800" role="alert">{signalStatus.error}</p> : null}
+                  <button type="button" onClick={() => void runSignalProfile()} disabled={!selectedAsset.canProcess || operation !== null || signalStatusLoading || Boolean(audioSignal)} className="mt-3 w-full rounded-lg border border-cyan-300 bg-cyan-100 px-3 py-2 text-left text-xs font-black text-cyan-950 hover:bg-cyan-50 disabled:cursor-default disabled:opacity-60">
+                    {!selectedAsset.canProcess ? "Signal analysis held by media release" : operation === "signal" ? "Decoding and verifying source evidence…" : audioSignal ? "Verified signal map ready" : signalStatus && ["queued", "processing", "output-ready"].includes(signalStatus.status) ? "Resume signal map" : signalStatus?.status === "failed" || signalStatus?.status === "blocked" ? "Retry signal map" : "Build signal map"}
+                  </button>
+                </article>
+
+                <article className="rounded-xl border border-cyan-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><div className="text-sm font-black">Canonical source transcript</div><div className="mt-1 text-[10px] font-semibold leading-4 text-cyan-950/65">Timed provider words plus non-destructive correction and playback-verification receipts.</div></div>
+                    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 font-mono text-[9px] font-black uppercase tracking-[0.1em] text-cyan-900">{transcriptStatusLoading ? "loading" : transcriptStatus?.status?.replaceAll("-", " ") || "not queued"}</span>
+                  </div>
+                  {transcriptStatus?.coverage ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{transcriptStatus.coverage.segmentCount}</div><div className="text-[9px] font-bold">Segments</div></div>
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{transcriptStatus.coverage.timedWordCount}</div><div className="text-[9px] font-bold">Timed words</div></div>
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{transcriptStatus.coverage.correctionCount}</div><div className="text-[9px] font-bold">Corrections</div></div>
+                      <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{transcriptStatus.coverage.playbackVerificationCount}</div><div className="text-[9px] font-bold">Heard checks</div></div>
+                    </div>
+                  ) : <p className="mt-3 text-[11px] font-semibold leading-5 text-cyan-950/70">Transcription requires an explicit participant-consent or licensed-source authorization receipt.</p>}
+                  {transcriptStatus?.error ? <p className="mt-2 text-[11px] font-bold text-rose-800" role="alert">{transcriptStatus.error}</p> : null}
+                  <button type="button" onClick={() => void runSourceTranscript()} disabled={!selectedAsset.canTranscribe || operation !== null || transcriptStatusLoading || transcriptStatus?.status === "completed"} className="mt-3 w-full rounded-lg border border-cyan-300 bg-cyan-100 px-3 py-2 text-left text-xs font-black text-cyan-950 hover:bg-cyan-50 disabled:cursor-default disabled:opacity-60">
+                    {!selectedAsset.canTranscribe ? "Transcription held — consent release required" : operation === "transcript" ? "Transcribing and verifying immutable timing…" : transcriptStatus?.status === "completed" ? "Canonical timed transcript ready" : transcriptStatus && ["queued", "processing", "output-ready"].includes(transcriptStatus.status) ? "Resume source transcription" : transcriptStatus?.status === "failed" ? "Retry source transcription" : "Transcribe canonical source"}
+                  </button>
+                </article>
+              </div>
+
+              {transcriptStatus?.status === "completed" && (transcriptStatus.coverage?.segmentCount ?? 0) > 0 ? (
+                <div className="mt-4">
+                  <StudioTranscriptReviewDesk
+                    projectSlug={projectSlug}
+                    episodeSlug={episodeSlug}
+                    assetId={selectedAsset.id}
+                    sourceId={selectedAsset.sourceId}
+                    audioSignal={audioSignal}
+                    audioSignalStatus={signalStatus?.status ?? "not-queued"}
+                    audioSignalError={signalStatus?.error ?? null}
+                    isAudioSignalWorking={operation === "signal"}
+                    onRequestAudioSignal={() => void runSignalProfile()}
+                    processingEvidenceMarkers={(status?.signalDiagnosis?.observations ?? []).map((observation, index) => ({
+                      id: `mastery-source-${observation.kind}-${observation.startSeconds}-${index}`,
+                      category: "mastery" as const,
+                      startSeconds: observation.startSeconds,
+                      endSeconds: observation.endSeconds,
+                      label: `Mastery source scan · ${observation.kind.replaceAll("-", " ")}`,
+                      detail: observation.detail,
+                      severity: observation.severity,
+                    }))}
+                    loudnessEvidence={status?.sourceMeasurement ? {
+                      integratedLufs: status.sourceMeasurement.integratedLufs,
+                      truePeakDbtp: status.sourceMeasurement.truePeakDbtp,
+                      targetLufs: status.proposal?.profile.integratedLufs ?? null,
+                      points: status.sourceMeasurement.series.map((point) => ({
+                        timeSeconds: point.timeMs / 1_000,
+                        momentaryLufs: point.momentaryLufs,
+                        shortTermLufs: point.shortTermLufs,
+                        integratedLufs: point.integratedLufs,
+                        truePeakDbtp: point.truePeakDbtp,
+                      })),
+                    } : null}
+                  />
+                </div>
+              ) : transcriptStatus?.status === "completed" ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold leading-5 text-amber-950">The provider completed this source without timed segments. Keep the receipt, inspect the source, and retry only after the capture or provider issue is understood.</div>
+              ) : null}
             </section>
 
             {selectedAsset.canProcess && status?.sourceMeasurement ? (

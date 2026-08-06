@@ -4,6 +4,10 @@ import type {
   AudioMasteryMeasurement,
   AudioSignalDiagnosisSummary,
 } from "../editor/AudioMasteryAudition";
+import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
+import type { AudioSignalProfileClientStatus } from "@/lib/media-workflow-client-status";
+
+export type { AudioSignalProfileClientStatus, StudioSourceTranscriptClientStatus } from "@/lib/media-workflow-client-status";
 
 export type AudioMasteryClientStatus = {
   jobId: string | null;
@@ -92,6 +96,7 @@ export type AudioWorkspaceAsset = {
   mediaProcessingReleased: boolean | null;
   transcriptProcessingReleased: boolean | null;
   canProcess: boolean;
+  canTranscribe: boolean;
 };
 
 export type AudioWorkspaceInventory = {
@@ -176,8 +181,18 @@ export function audioWorkspaceAssets(inventory: AudioWorkspaceInventory | null) 
       canProcess: sourceSafe
         && raw.unresolvedRecordingReference !== true
         && mediaProcessingReleased !== false,
+      canTranscribe: sourceSafe
+        && raw.unresolvedRecordingReference !== true
+        && transcriptProcessingReleased !== false,
     }];
   });
+}
+
+export function audioWorkspaceSignal(
+  status: AudioSignalProfileClientStatus | null,
+  maximumWaveformPoints = 1_200,
+): AudioTranscriptEvidence["audio"]["signal"] {
+  return parseAudioSignalEvidence(status?.audioSignal, { maximumWaveformPoints });
 }
 
 export function audioMasteryLifecycle(status: AudioMasteryClientStatus | null) {

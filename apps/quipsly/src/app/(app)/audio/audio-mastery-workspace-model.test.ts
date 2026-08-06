@@ -1,6 +1,8 @@
 import {
   audioMasteryLifecycle,
   audioWorkspaceAssets,
+  audioWorkspaceSignal,
+  type AudioSignalProfileClientStatus,
   type AudioMasteryClientStatus,
   type AudioWorkspaceInventory,
 } from "./audio-mastery-workspace-model";
@@ -43,8 +45,36 @@ describe("Audio Studio workspace projections", () => {
         sourceId: "source-1",
         mediaProcessingReleased: false,
         canProcess: false,
+        transcriptProcessingReleased: false,
+        canTranscribe: false,
       }),
     ]);
+  });
+
+  it("parses only validated durable signal evidence for shared-clock review", () => {
+    const status = {
+      audioSignal: {
+        schemaVersion: 1,
+        algorithm: "quipsly-audio-signal-window-v1",
+        signalStatus: "signal-present",
+        sampleRate: 48_000,
+        channelCount: 1,
+        analyzedFrameCount: 480_000,
+        durationSeconds: 10,
+        windowDurationSeconds: 1,
+        rmsDbfs: -24,
+        samplePeakDbfs: -3,
+        clippedFrameCount: 0,
+        clippedFrameFraction: 0,
+        nearSilentFrameFraction: 0,
+        thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 1.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
+        waveform: [{ startSeconds: 0, durationSeconds: 10, rmsDbfs: -24, samplePeakDbfs: -3, clippedFrameCount: 0 }],
+        observations: [],
+      },
+    } as unknown as AudioSignalProfileClientStatus;
+
+    expect(audioWorkspaceSignal(status)).toEqual(expect.objectContaining({ durationSeconds: 10, waveform: expect.any(Array) }));
+    expect(audioWorkspaceSignal({ ...status, audioSignal: { schemaVersion: 2 } })).toBeNull();
   });
 
   it("projects the canonical review and delivery ledger as one lifecycle", () => {

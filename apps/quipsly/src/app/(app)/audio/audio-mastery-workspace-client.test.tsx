@@ -16,6 +16,10 @@ jest.mock("../editor/AudioMasteryAudition", () => ({
   AudioMasteryAudition: () => <div>Matched audition workspace</div>,
 }));
 
+jest.mock("../editor/StudioTranscriptReviewDesk", () => ({
+  StudioTranscriptReviewDesk: () => <div>Protected transcript review workspace</div>,
+}));
+
 const projects = [{
   id: "project-1",
   slug: "high-ground-odyssey",
@@ -82,15 +86,74 @@ function masteryStatus() {
   };
 }
 
+function signalStatus(status: "not-queued" | "completed" | "failed" = "not-queued") {
+  return {
+    ok: true,
+    jobId: status === "not-queued" ? null : "signal-1",
+    status,
+    media: status === "completed" ? { container: "wav", codec: "pcm_s16le", sampleRate: 48_000, channelCount: 1, durationSeconds: 12 } : null,
+    audioSignal: status === "completed" ? {
+      schemaVersion: 1,
+      algorithm: "quipsly-audio-signal-window-v1",
+      signalStatus: "signal-present",
+      sampleRate: 48_000,
+      channelCount: 1,
+      analyzedFrameCount: 576_000,
+      durationSeconds: 12,
+      windowDurationSeconds: 1,
+      rmsDbfs: -24,
+      samplePeakDbfs: -3,
+      clippedFrameCount: 0,
+      clippedFrameFraction: 0,
+      nearSilentFrameFraction: 0,
+      thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 1.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
+      waveform: [{ startSeconds: 0, durationSeconds: 12, rmsDbfs: -24, samplePeakDbfs: -3, clippedFrameCount: 0 }],
+      observations: [],
+    } : null,
+    analyzer: status === "completed" ? { algorithm: "quipsly-audio-signal-window-v1", completeDecode: true, maximumWindows: 1_200 } : null,
+    error: status === "failed" ? "Complete decode could not be verified." : null,
+    updatedAt: null,
+    boundaries: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true, observationsRequireHumanInterpretation: true },
+  };
+}
+
+function transcriptStatus(status: "not-queued" | "completed" | "failed" = "not-queued") {
+  const completed = status === "completed";
+  return {
+    ok: true,
+    jobId: completed ? "source-transcript-1" : null,
+    transcriptJobId: completed ? "transcript-1" : null,
+    status,
+    provider: completed ? "deepgram" : null,
+    language: completed ? "en" : null,
+    authorization: completed ? { kind: "participant-consent-confirmed", importRole: "local-audio-master", acceptedAt: "2026-08-05T20:00:00.000Z", acceptedByEmail: "tester@example.com" } : null,
+    coverage: completed ? { segmentCount: 2, wordCount: 12, timedWordCount: 12, confidenceWordCount: 12, speakerLabeledWordCount: 0, transcriptStartSeconds: 0, transcriptEndSeconds: 12, correctionCount: 1, playbackVerificationCount: 2 } : null,
+    segmentPreview: { count: completed ? 2 : 0, total: completed ? 2 : 0, truncated: false },
+    segments: [],
+    capabilities: null,
+    error: status === "failed" ? "Provider transcript evidence was unavailable." : null,
+    updatedAt: null,
+    boundaries: { originalRemainsSourceTruth: true, confidenceIsNotMeasuredAccuracy: true, correctionsRequirePlaybackReview: true, createsNoTasksGoalsOrEdits: true },
+  };
+}
+
+function workspaceFetch(options: { released: boolean; signal?: "not-queued" | "completed" | "failed"; transcript?: "not-queued" | "completed" | "failed" }) {
+  return jest.fn((input) => {
+    const url = String(input);
+    if (url.includes("episode-inventory")) return response(inventory(options.released));
+    if (url.includes("audio-signal-profile")) return response(signalStatus(options.signal));
+    if (url.includes("source-transcript")) return response(transcriptStatus(options.transcript));
+    return response(masteryStatus());
+  });
+}
+
 describe("AudioMasteryWorkspaceClient", () => {
   beforeEach(() => {
     replace.mockReset();
   });
 
   it("opens a real episode source and exposes its source-to-delivery workflow", async () => {
-    global.fetch = jest.fn((input) => String(input).includes("episode-inventory")
-      ? response(inventory(true))
-      : response(masteryStatus()));
+    global.fetch = workspaceFetch({ released: true });
 
     render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
 
@@ -98,18 +161,43 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByRole("button", { name: /Measure and prepare mastering preview/ })).toBeEnabled();
     expect(screen.getByLabelText("Audio delivery lifecycle")).toHaveTextContent("Measure");
     expect(screen.getByRole("link", { name: /Open video editor/ })).toHaveAttribute("href", "/editor?project=high-ground-odyssey&episode=episode-9&asset=asset-1");
+    expect(screen.getByRole("button", { name: /Build signal map/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Transcribe canonical source/ })).toBeEnabled();
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/media-vault/audio-mastery?"), expect.objectContaining({ cache: "no-store" })));
   });
 
   it("shows held source evidence but disables processing operations", async () => {
-    global.fetch = jest.fn((input) => String(input).includes("episode-inventory")
-      ? response(inventory(false))
-      : response(masteryStatus()));
+    global.fetch = workspaceFetch({ released: false });
 
     render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
 
     expect(await screen.findByRole("heading", { name: "Homer local master.wav" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Processing held/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Signal analysis held/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Transcription held/ })).toBeDisabled();
     expect(screen.getByText(/will not derive new media until its current release ledger authorizes processing/i)).toBeInTheDocument();
+  });
+
+  it("opens completed transcript review on the same decoded source clock", async () => {
+    global.fetch = workspaceFetch({ released: true, signal: "completed", transcript: "completed" });
+
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
+
+    expect(await screen.findByText("Protected transcript review workspace")).toBeInTheDocument();
+    expect(screen.getByText("12.0s")).toBeInTheDocument();
+    expect(screen.getByText("Timed words").previousSibling).toHaveTextContent("12");
+    expect(screen.getByRole("button", { name: /Verified signal map ready/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Canonical timed transcript ready/ })).toBeDisabled();
+  });
+
+  it("keeps failed signal and transcript evidence visible and retryable", async () => {
+    global.fetch = workspaceFetch({ released: true, signal: "failed", transcript: "failed" });
+
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
+
+    expect(await screen.findByText("Complete decode could not be verified.")).toBeInTheDocument();
+    expect(screen.getByText("Provider transcript evidence was unavailable.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Retry signal map/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Retry source transcription/ })).toBeEnabled();
   });
 });
