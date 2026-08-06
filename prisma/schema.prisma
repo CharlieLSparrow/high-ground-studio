@@ -3687,6 +3687,8 @@ model StudioProject {
   audioDeliveryReviews    StudioAudioDeliveryReviewReceipt[]
   episodeOutputSelections StudioEpisodeOutputSelectionReceipt[]
   episodeAudioDecisions   StudioEpisodeAudioTrackDecisionReceipt[]
+  episodeAudioAnalyses    StudioEpisodeAudioAnalysisReceipt[]
+  episodeAudioReviews     StudioEpisodeAudioReviewReceipt[]
   sourceUnits             StudioSourceUnit[]
   personalSourceFilings   StudioPersonalSourceFiling[]
   sourceAnnotations       StudioSourceAnnotation[]
@@ -3812,6 +3814,8 @@ model StudioEpisodeProduction {
   outputPackets       StudioOutputPacket[]
   outputSelections    StudioEpisodeOutputSelectionReceipt[]
   audioTrackDecisions StudioEpisodeAudioTrackDecisionReceipt[]
+  audioAnalyses       StudioEpisodeAudioAnalysisReceipt[]
+  audioReviews        StudioEpisodeAudioReviewReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4732,6 +4736,83 @@ model StudioEpisodeAudioTrackDecisionReceipt {
   @@index([assetId, sourceId, decisionKind, occurredAt], map: "StudioEpisodeAudioDecision_track_kind_time_idx")
   @@index([targetReceiptId], map: "StudioEpisodeAudioDecision_target_idx")
   @@index([programFingerprintSha256], map: "StudioEpisodeAudioDecision_program_fingerprint_idx")
+}
+
+enum StudioEpisodeAudioReviewDecision {
+  CONFIRMED_OVERLAP
+  INTENTIONAL_OVERLAP
+  SAME_PARTICIPANT_REDUNDANCY
+  MIC_BLEED
+  CONFIRMED_DIALOGUE_GAP
+  FALSE_POSITIVE
+  NEEDS_COMPARISON
+}
+
+// A deterministic, immutable cross-track analysis over one exact Episode
+// program. It records measurements and listen-required suggestions only; it
+// never authorizes timeline edits, gain automation, or derivative promotion.
+model StudioEpisodeAudioAnalysisReceipt {
+  id                       String   @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  supersedesAnalysisId     String?
+  actorUserId              String?
+  actorEmail               String
+  clientRequestId          String
+  programFingerprintSha256 String
+  algorithm                String
+  configurationSha256      String
+  inputSha256              String
+  requestSha256            String
+  inputJson                Json
+  analysisJson             Json
+  analyzedAt               DateTime
+  createdAt                DateTime @default(now())
+
+  project            StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction  StudioEpisodeProduction             @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  supersedesAnalysis StudioEpisodeAudioAnalysisReceipt?  @relation("StudioEpisodeAudioAnalysisSupersession", fields: [supersedesAnalysisId], references: [id], onDelete: Restrict)
+  supersededBy       StudioEpisodeAudioAnalysisReceipt[]  @relation("StudioEpisodeAudioAnalysisSupersession")
+  reviews            StudioEpisodeAudioReviewReceipt[]
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeAudioAnalysis_project_actor_request_key")
+  @@unique([episodeProductionId, inputSha256], map: "StudioEpisodeAudioAnalysis_episode_input_key")
+  @@index([episodeProductionId, analyzedAt], map: "StudioEpisodeAudioAnalysis_episode_time_idx")
+  @@index([programFingerprintSha256], map: "StudioEpisodeAudioAnalysis_program_fingerprint_idx")
+  @@index([supersedesAnalysisId], map: "StudioEpisodeAudioAnalysis_supersedes_idx")
+}
+
+// A human conclusion after protected, matched-source listening. The receipt is
+// bound to one immutable analysis event and records playback evidence; it does
+// not itself change media, the timeline, or a mix plan.
+model StudioEpisodeAudioReviewReceipt {
+  id                       String                           @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  analysisId               String
+  eventId                  String
+  actorUserId              String?
+  actorEmail               String
+  clientRequestId          String
+  decision                 StudioEpisodeAudioReviewDecision
+  programFingerprintSha256 String
+  eventKind                String
+  startSeconds             Float
+  endSeconds               Float
+  involvedAssetIdsJson     Json
+  playbackEvidenceJson     Json
+  requestSha256            String
+  note                     String?
+  occurredAt               DateTime
+  createdAt                DateTime                         @default(now())
+
+  project           StudioProject                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction            @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  analysis          StudioEpisodeAudioAnalysisReceipt  @relation(fields: [analysisId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeAudioReview_project_actor_request_key")
+  @@index([analysisId, eventId, occurredAt], map: "StudioEpisodeAudioReview_analysis_event_time_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeAudioReview_episode_time_idx")
 }
 
 model StudioPublishAttempt {

@@ -25,11 +25,21 @@ export function EpisodeAudioActivityMap({
   selectedAssetId,
   onSelectTrack,
   onInspectMoment,
+  analysisReceipt,
+  analysisBusy = false,
+  canRegisterAnalysis = false,
+  onRegisterAnalysis,
+  analysisError = null,
 }: {
   map: ActivityMap;
   selectedAssetId: string | null;
   onSelectTrack: (assetId: string) => void;
   onInspectMoment: (moment: EpisodeAudioActivityMoment) => void;
+  analysisReceipt?: null | { id: string; stale: boolean; analyzedAt: string; momentCount: number; inputSha256?: string; currentInputSha256?: string };
+  analysisBusy?: boolean;
+  canRegisterAnalysis?: boolean;
+  onRegisterAnalysis?: () => void;
+  analysisError?: string | null;
 }) {
   const tickSeconds = [0, 0.25, 0.5, 0.75, 1].map((fraction) => map.programDurationSeconds * fraction);
   return (
@@ -62,6 +72,13 @@ export function EpisodeAudioActivityMap({
             {map.coverage.unidentifiedDialogueTrackCount ? <span className="rounded-full border border-slate-700 px-2 py-1">{map.coverage.unidentifiedDialogueTrackCount} dialogue identity needed</span> : null}
           </div>
         ) : null}
+        {onRegisterAnalysis ? (
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-cyan-900 bg-slate-900/80 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><div className="text-[10px] font-black text-cyan-100">{analysisReceipt ? analysisReceipt.stale ? "Analysis receipt needs refresh" : "Current analysis is registered" : "No canonical analysis receipt yet"}</div><p className="mt-1 text-[9px] font-semibold leading-4 text-slate-400">{analysisReceipt ? `${analysisReceipt.momentCount} listen point${analysisReceipt.momentCount === 1 ? "" : "s"} · ${new Date(analysisReceipt.analyzedAt).toLocaleString()}${analysisReceipt.stale && analysisReceipt.inputSha256 && analysisReceipt.currentInputSha256 && analysisReceipt.inputSha256 !== analysisReceipt.currentInputSha256 ? ` · receipt ${analysisReceipt.inputSha256.slice(0, 8)} ≠ current ${analysisReceipt.currentInputSha256.slice(0, 8)}` : ""}` : "Register the current evidence references and derived regions before collaborative review."}</p></div>
+            <button type="button" disabled={!canRegisterAnalysis || analysisBusy} onClick={onRegisterAnalysis} className="min-h-11 rounded-xl border border-cyan-500 bg-cyan-100 px-4 text-xs font-black text-cyan-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50">{analysisBusy ? "Registering receipt…" : analysisReceipt?.stale ? "Refresh analysis receipt" : analysisReceipt ? "Recheck current evidence" : "Register current analysis"}</button>
+          </div>
+        ) : null}
+        {analysisError ? <p className="mt-2 rounded-lg border border-rose-800 bg-rose-950/50 p-2 text-[10px] font-bold text-rose-100" role="alert">{analysisError}</p> : null}
       </div>
 
       {map.programClock && map.lanes.length > 0 ? (

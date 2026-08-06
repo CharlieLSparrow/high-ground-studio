@@ -53,6 +53,11 @@ import {
 
 type BusyOperation = "signal" | "transcript" | "mastery" | "review" | "promotion" | "delivery" | "delivery-review" | null;
 
+type EpisodeAudioAnalysisLedgerClient = {
+  currentInputSha256: string;
+  latest: null | { id: string; stale: boolean; inputSha256: string; analyzedAt: string; momentCount: number };
+};
+
 function errorMessage(value: unknown, fallback: string) {
   return value instanceof Error ? value.message : fallback;
 }
@@ -128,6 +133,11 @@ export function AudioMasteryWorkspaceClient({
   const [inventoryRefreshToken, setInventoryRefreshToken] = useState(0);
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionNotice, setDecisionNotice] = useState<string | null>(null);
+  const [analysisLedger, setAnalysisLedger] = useState<EpisodeAudioAnalysisLedgerClient | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisRefreshToken, setAnalysisRefreshToken] = useState(0);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const operationSequence = useRef(0);
   const immutableSourceRef = useRef<HTMLMediaElement | null>(null);
   const sourceClockFocusAppliedRef = useRef("");
@@ -224,6 +234,33 @@ export function AudioMasteryWorkspaceClient({
 
     return () => controller.abort();
   }, [activeProjectId, episodeSlug, inventoryRefreshToken, projectSlug, selectedProject]);
+
+  useEffect(() => {
+    if (!selectedEpisode || !projectSlug) {
+      setAnalysisLedger(null);
+      setAnalysisLoading(false);
+      setAnalysisError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    const query = new URLSearchParams({ projectId: activeProjectId, projectSlug, episodeProductionId: selectedEpisode.id });
+    void fetch(`/api/media-vault/episode-audio-program/analysis?${query.toString()}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; ledger?: EpisodeAudioAnalysisLedgerClient } | null;
+        if (!response.ok || !payload?.ok || !payload.ledger) throw new Error(payload?.error || `Episode analysis ledger returned HTTP ${response.status}.`);
+        return payload.ledger;
+      })
+      .then((ledger) => { if (!controller.signal.aborted) setAnalysisLedger(ledger); })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setAnalysisLedger(null);
+        setAnalysisError(errorMessage(error, "Quipsly could not load the Episode analysis ledger."));
+      })
+      .finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
+    return () => controller.abort();
+  }, [activeProjectId, analysisRefreshToken, inventoryRefreshToken, projectSlug, selectedEpisode]);
 
   useEffect(() => {
     if (assets.length === 0) {
@@ -773,6 +810,27 @@ export function AudioMasteryWorkspaceClient({
     router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, selectedEpisode.slug, lane.assetId, sourceSeconds));
   }, [assets, audioActivityMap, projectId, projectSlug, router, selectedAsset?.id, selectedEpisode, selectedProject?.id]);
 
+  const registerActivityAnalysis = useCallback(async () => {
+    if (analysisBusy || !selectedEpisode || !audioProgram.fingerprintSha256 || selectedProject?.role === "VIEWER") return;
+    setAnalysisBusy(true);
+    setDecisionNotice(null);
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: activeProjectId, projectSlug, episodeProductionId: selectedEpisode.id, programFingerprintSha256: audioProgram.fingerprintSha256, clientRequestId: crypto.randomUUID() }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string; reusedInput?: boolean; analysis?: { momentCount?: number } } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Episode analysis registration returned HTTP ${response.status}.`);
+      setDecisionNotice(payload.reusedInput ? "The exact current analysis receipt already exists; Quipsly reused it without duplicating machine evidence." : `Registered the exact current analysis with ${payload.analysis?.momentCount ?? audioActivityMap.moments.length} listen point${(payload.analysis?.momentCount ?? audioActivityMap.moments.length) === 1 ? "" : "s"}. No classification, timeline edit, or mix was authorized.`);
+      setAnalysisRefreshToken((current) => current + 1);
+    } catch (error) {
+      setDecisionNotice(errorMessage(error, "Quipsly could not register the current Episode analysis."));
+    } finally {
+      setAnalysisBusy(false);
+    }
+  }, [activeProjectId, analysisBusy, audioActivityMap.moments.length, audioProgram.fingerprintSha256, projectSlug, selectedEpisode, selectedProject?.role]);
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 pb-16 text-[#3d3122]">
       <header className="overflow-hidden rounded-[2rem] border border-fuchsia-200 bg-[radial-gradient(circle_at_top_right,_rgba(232,121,249,0.25),_transparent_38%),linear-gradient(135deg,#171020,#27143a_54%,#10283c)] p-6 text-white shadow-xl shadow-fuchsia-950/10 md:p-8">
@@ -913,6 +971,11 @@ export function AudioMasteryWorkspaceClient({
                 router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
               }}
               onInspectMoment={inspectActivityMoment}
+              analysisReceipt={analysisLedger?.latest ? { ...analysisLedger.latest, currentInputSha256: analysisLedger.currentInputSha256, stale: analysisLedger.latest.stale || analysisLedger.latest.inputSha256 !== analysisLedger.currentInputSha256 } : null}
+              analysisBusy={analysisBusy || analysisLoading}
+              canRegisterAnalysis={Boolean(audioProgram.fingerprintSha256 && selectedEpisode && selectedProject?.role !== "VIEWER")}
+              onRegisterAnalysis={() => void registerActivityAnalysis()}
+              analysisError={analysisError}
             />
             {comparisonPlan ? (
               <EpisodeAudioMatchedAudition

@@ -39,4 +39,13 @@ describe("EpisodeAudioActivityMap", () => {
     expect(screen.getByText("Choose a reviewed program clock first")).toBeInTheDocument();
     expect(screen.queryByLabelText("Aligned source energy lanes")).not.toBeInTheDocument();
   });
+
+  it("exposes canonical analysis registration separately from listening decisions", () => {
+    const onRegisterAnalysis = jest.fn();
+    render(<EpisodeAudioActivityMap map={map()} selectedAssetId={null} onSelectTrack={jest.fn()} onInspectMoment={jest.fn()} analysisReceipt={{ id: "analysis-1", stale: false, analyzedAt: "2026-08-06T20:00:00.000Z", momentCount: 1 }} canRegisterAnalysis onRegisterAnalysis={onRegisterAnalysis} />);
+    expect(screen.getByText("Current analysis is registered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Recheck current evidence" }));
+    expect(onRegisterAnalysis).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Register the current evidence references and derived regions/i)).not.toBeInTheDocument();
+  });
 });
