@@ -159,6 +159,9 @@ describe("AudioMasteryWorkspaceClient", () => {
     render(<AudioMasteryWorkspaceClient projects={projects} initialProjectId="project-1" initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
 
     expect(await screen.findByRole("heading", { name: "Homer local master.wav" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "One program, every retained track" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Episode audio track readiness")).toHaveTextContent("Homer local master.wav");
+    expect(screen.getByText(/Evidence, not an automatic mix/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Measure and prepare mastering preview/ })).toBeEnabled();
     expect(screen.getByLabelText("Audio delivery lifecycle")).toHaveTextContent("Measure");
     expect(screen.getByRole("link", { name: /Open video editor/ })).toHaveAttribute("href", "/editor?project=high-ground-odyssey&episode=episode-9&asset=asset-1");

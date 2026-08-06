@@ -8,6 +8,7 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
 import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
+import { episodeAudioProcessingEvidence } from "@/lib/episode-audio-processing-evidence";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import {
@@ -150,6 +151,10 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     variants: Array.isArray(asset.variants) ? asset.variants : [],
     promotionEvents: audioMasterPromotionEvents,
   });
+  const audioProcessingEvidence = episodeAudioProcessingEvidence(
+    Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
+    Array.isArray(asset.transcriptJobs) ? asset.transcriptJobs : [],
+  );
   const proxyAssets: any[] = proxies.map((proxy) => publicAsset(proxy, [])).filter(Boolean);
   const hasProxy =
     proxyAssets.length > 0 ||
@@ -173,6 +178,7 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     attachments,
     variants,
     jobs,
+    audioProcessingEvidence,
     proxyAssets,
     audioMasterDeliveryCandidate,
     audioDeliveryArtifact,
@@ -439,10 +445,16 @@ export async function GET(request: Request) {
           take: 20,
         },
         processingJobs: {
-          where: { type: "audio-delivery" },
+          where: { type: { in: ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery", "audio-delivery"] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 5,
+          take: 25,
           include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },
+        },
+        transcriptJobs: {
+          where: { episodeProductionId: episodeProduction.id },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 10,
+          include: { _count: { select: { segments: true, words: true } } },
         },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },
@@ -471,10 +483,16 @@ export async function GET(request: Request) {
           take: 20,
         },
         processingJobs: {
-          where: { type: "audio-delivery" },
+          where: { type: { in: ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery", "audio-delivery"] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 5,
+          take: 25,
           include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },
+        },
+        transcriptJobs: {
+          where: { episodeProductionId: episodeProduction.id },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 10,
+          include: { _count: { select: { segments: true, words: true } } },
         },
         assetAttachments: {
           include: { project: { select: { id: true, slug: true, name: true } } },

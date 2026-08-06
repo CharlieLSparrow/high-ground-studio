@@ -20,6 +20,8 @@ import {
 import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
+import { EpisodeAudioProgramMap } from "@/components/audio/EpisodeAudioProgramMap";
+import { buildEpisodeAudioProgram } from "@/lib/episode-audio-program";
 import { AudioMasteryAudition } from "../editor/AudioMasteryAudition";
 import { DialogueRepairDesk } from "../editor/DialogueRepairDesk";
 import { StudioTranscriptReviewDesk } from "../editor/StudioTranscriptReviewDesk";
@@ -122,6 +124,7 @@ export function AudioMasteryWorkspaceClient({
   const activeProjectId = selectedProject?.id ?? projectId;
   const selectedEpisode = projectEpisodes.find((episode) => episode.slug === episodeSlug) ?? null;
   const assets = useMemo(() => audioWorkspaceAssets(inventory), [inventory]);
+  const audioProgram = useMemo(() => buildEpisodeAudioProgram(inventory), [inventory]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId || asset.sourceId === selectedAssetId)
     ?? assets[0]
     ?? null;
@@ -779,6 +782,14 @@ export function AudioMasteryWorkspaceClient({
           </aside>
 
           <main className="min-w-0 space-y-4">
+            <EpisodeAudioProgramMap
+              program={audioProgram}
+              selectedAssetId={selectedAsset.id}
+              onSelectTrack={(assetId) => {
+                setSelectedAssetId(assetId);
+                router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
+              }}
+            />
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">

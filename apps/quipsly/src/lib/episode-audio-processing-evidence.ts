@@ -1,0 +1,234 @@
+import {
+  parseAudioAlignmentJob,
+  parseAudioAlignmentResult,
+  parseAudioMasteryJob,
+  parseAudioMasteryResult,
+  parseAudioSignalProfileJob,
+  parseAudioSignalProfileResult,
+  parseStudioSourceTranscriptJob,
+  parseStudioSourceTranscriptResult,
+} from "@high-ground/quipsly-media-processing";
+
+export type EpisodeAudioProcessingStatus =
+  | "not-queued"
+  | "queued"
+  | "processing"
+  | "output-ready"
+  | "completed"
+  | "blocked"
+  | "failed";
+
+type EvidenceBase = {
+  jobId: string | null;
+  status: EpisodeAudioProcessingStatus;
+  integrityVerified: boolean;
+  error: string | null;
+  updatedAt: string | null;
+};
+
+export type EpisodeAudioProcessingEvidence = {
+  signal: EvidenceBase & {
+    durationSeconds: number | null;
+    signalStatus: "signal-present" | "attention" | "near-digital-silence" | null;
+    observationCount: number;
+  };
+  transcript: EvidenceBase & {
+    transcriptJobId: string | null;
+    segmentCount: number;
+    wordCount: number;
+    timedWordCount: number;
+  };
+  alignment: EvidenceBase & {
+    spineAssetId: string | null;
+    qualifiedForReview: boolean | null;
+    openingOffsetSeconds: number | null;
+    residualDriftMilliseconds: number | null;
+  };
+  mastery: EvidenceBase & {
+    action: "no-change" | "render-loudness-master" | null;
+    sourcePassesProfile: boolean | null;
+    previewVerified: boolean;
+  };
+};
+
+const JOB_TYPES = ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery"] as const;
+
+function record(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+}
+
+function iso(value: unknown) {
+  if (value && typeof (value as { toISOString?: unknown }).toISOString === "function") {
+    return (value as Date).toISOString();
+  }
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function status(value: unknown): EpisodeAudioProcessingStatus {
+  return ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(String(value))
+    ? value as EpisodeAudioProcessingStatus
+    : "failed";
+}
+
+function latestByType(jobs: any[]) {
+  const rows = new Map<string, any>();
+  for (const job of Array.isArray(jobs) ? jobs : []) {
+    if (JOB_TYPES.includes(job?.type) && !rows.has(job.type)) rows.set(job.type, job);
+  }
+  return rows;
+}
+
+function base(job: any | null): EvidenceBase {
+  return job
+    ? {
+        jobId: String(job.id),
+        status: status(job.status),
+        integrityVerified: false,
+        error: typeof job.error === "string" && job.error.trim() ? job.error.trim() : null,
+        updatedAt: iso(job.updatedAt),
+      }
+    : { jobId: null, status: "not-queued", integrityVerified: false, error: null, updatedAt: null };
+}
+
+function failed<T extends EvidenceBase>(value: T, label: string): T {
+  return {
+    ...value,
+    status: "failed",
+    integrityVerified: false,
+    error: `${label} evidence failed integrity validation.`,
+  };
+}
+
+/**
+ * Projects the latest exact-source processing receipts for one episode asset.
+ * A completed state is never exposed unless both its job contract and result
+ * receipt validate. The projection is read-only and does not queue work.
+ */
+export function episodeAudioProcessingEvidence(
+  jobs: any[],
+  transcriptJobs: any[] = [],
+): EpisodeAudioProcessingEvidence {
+  const latest = latestByType(jobs);
+
+  const signalJob = latest.get("audio-signal-profile") ?? null;
+  let signal: EpisodeAudioProcessingEvidence["signal"] = {
+    ...base(signalJob),
+    durationSeconds: null,
+    signalStatus: null,
+    observationCount: 0,
+  };
+  if (signalJob) {
+    try {
+      const contract = parseAudioSignalProfileJob(signalJob.inputJson, signalJob.id);
+      const declared = status(signalJob.status);
+      const result = ["output-ready", "completed"].includes(declared)
+        ? parseAudioSignalProfileResult(record(signalJob.resultJson).receipt, contract)
+        : null;
+      signal = {
+        ...signal,
+        integrityVerified: true,
+        durationSeconds: result?.audioSignal.durationSeconds ?? null,
+        signalStatus: result?.audioSignal.signalStatus ?? null,
+        observationCount: result?.audioSignal.observations.length ?? 0,
+      };
+    } catch {
+      signal = failed(signal, "Audio signal");
+    }
+  }
+
+  const transcriptJob = latest.get("source-transcript") ?? null;
+  let transcript: EpisodeAudioProcessingEvidence["transcript"] = {
+    ...base(transcriptJob),
+    transcriptJobId: null,
+    segmentCount: 0,
+    wordCount: 0,
+    timedWordCount: 0,
+  };
+  if (transcriptJob) {
+    try {
+      const contract = parseStudioSourceTranscriptJob(transcriptJob.inputJson, transcriptJob.id);
+      const declared = status(transcriptJob.status);
+      const result = ["output-ready", "completed"].includes(declared)
+        ? parseStudioSourceTranscriptResult(record(transcriptJob.resultJson).receipt, contract)
+        : null;
+      const canonical = transcriptJobs.find((candidate) => candidate?.id === contract.transcriptJobId) ?? null;
+      const canonicalCompleted = canonical?.status === "COMPLETED";
+      const canonicalSegmentCount = Number(canonical?._count?.segments ?? 0);
+      const canonicalWordCount = Number(canonical?._count?.words ?? 0);
+      if (declared === "completed" && (
+        !result
+        || !canonicalCompleted
+        || canonicalSegmentCount !== result.coverage.segmentCount
+        || canonicalWordCount !== result.coverage.wordCount
+      )) throw new Error("Canonical transcript registration does not match its receipt.");
+      transcript = {
+        ...transcript,
+        integrityVerified: true,
+        transcriptJobId: contract.transcriptJobId,
+        segmentCount: result?.coverage.segmentCount ?? canonicalSegmentCount,
+        wordCount: result?.coverage.wordCount ?? canonicalWordCount,
+        timedWordCount: result?.coverage.timedWordCount ?? 0,
+      };
+    } catch {
+      transcript = failed(transcript, "Transcript");
+    }
+  }
+
+  const alignmentJob = latest.get("audio-alignment") ?? null;
+  let alignment: EpisodeAudioProcessingEvidence["alignment"] = {
+    ...base(alignmentJob),
+    spineAssetId: null,
+    qualifiedForReview: null,
+    openingOffsetSeconds: null,
+    residualDriftMilliseconds: null,
+  };
+  if (alignmentJob) {
+    try {
+      const contract = parseAudioAlignmentJob(alignmentJob.inputJson, alignmentJob.id);
+      const declared = status(alignmentJob.status);
+      const result = ["output-ready", "completed"].includes(declared)
+        ? parseAudioAlignmentResult(record(alignmentJob.resultJson).receipt, contract)
+        : null;
+      alignment = {
+        ...alignment,
+        integrityVerified: true,
+        spineAssetId: contract.spine.assetId,
+        qualifiedForReview: result?.evidence.qualification.qualifiedForAuthorizedAgentReview ?? null,
+        openingOffsetSeconds: result?.evidence.opening.measuredOffsetSeconds ?? null,
+        residualDriftMilliseconds: result?.evidence.drift.residualDriftMilliseconds ?? null,
+      };
+    } catch {
+      alignment = failed(alignment, "Alignment");
+    }
+  }
+
+  const masteryJob = latest.get("audio-mastery") ?? null;
+  let mastery: EpisodeAudioProcessingEvidence["mastery"] = {
+    ...base(masteryJob),
+    action: null,
+    sourcePassesProfile: null,
+    previewVerified: false,
+  };
+  if (masteryJob) {
+    try {
+      const contract = parseAudioMasteryJob(masteryJob.inputJson, masteryJob.id);
+      const declared = status(masteryJob.status);
+      const result = ["output-ready", "completed"].includes(declared)
+        ? parseAudioMasteryResult(record(masteryJob.resultJson).receipt, contract)
+        : null;
+      mastery = {
+        ...mastery,
+        integrityVerified: true,
+        action: result?.proposal.action ?? null,
+        sourcePassesProfile: result?.proposal.assessment.passes ?? null,
+        previewVerified: Boolean(result && (result.proposal.action === "no-change" || result.derivative?.verification.passes)),
+      };
+    } catch {
+      mastery = failed(mastery, "Audio mastery");
+    }
+  }
+
+  return { signal, transcript, alignment, mastery };
+}
