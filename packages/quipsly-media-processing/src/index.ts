@@ -9,6 +9,7 @@ export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";
 export * from "./audio-spectral-evidence.js";
 export * from "./audio-pair-correlation.js";
+export * from "./episode-audio-mix.js";
 export * from "./studio-source-transcript.js";
 export * from "./audio-treatment.js";
 export * from "./audio-dialogue-repair.js";
