@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Clock3, DatabaseZap, ShieldAlert } from "lucide-react";
 
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import { buildSessionFinishingCockpit, type SessionFinishingEvidence } from "./session-finishing-cockpit";
+import { buildSessionSourceJourneyProjection, type SessionSourceJourneyCheckpoint } from "./session-source-journey";
 
 type Props = {
   roomId: string;
@@ -20,8 +21,29 @@ function laneHref(roomId: string, lane: string) {
   return `/sessions/${encodeURIComponent(roomId)}?mode=${lane}`;
 }
 
+function checkpointTone(state: SessionSourceJourneyCheckpoint["state"]) {
+  if (state === "COMPLETE") return "border-emerald-200 bg-emerald-50 text-emerald-950";
+  if (state === "HELD") return "border-rose-200 bg-rose-50 text-rose-950";
+  if (state === "CURRENT") return "border-sky-200 bg-sky-50 text-sky-950";
+  if (state === "MISSING") return "border-amber-200 bg-amber-50 text-amber-950";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function checkpointStateLabel(state: SessionSourceJourneyCheckpoint["state"]) {
+  if (state === "NOT_APPLICABLE") return "Not part of this path";
+  return state.toLowerCase().replaceAll("_", " ");
+}
+
+function timestamp(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export function SessionFinishingCockpitCard(props: Props) {
   const cockpit = buildSessionFinishingCockpit(props);
+  const sourceJourney = buildSessionSourceJourneyProjection(props);
   const severityStyle = {
     BLOCKER: "border-rose-200 bg-rose-50 text-rose-950",
     HIGH: "border-amber-200 bg-amber-50 text-amber-950",
@@ -59,6 +81,54 @@ export function SessionFinishingCockpitCard(props: Props) {
         <Link href={stage.href ?? laneHref(props.roomId, stage.lane)} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-violet-800 hover:underline">{stage.actionLabel ?? `Inspect ${stage.label}`}<ArrowRight size={12} aria-hidden="true" /></Link>
       </li>)}
     </ol>
+
+    <div className="mt-6 rounded-3xl border border-sky-200 bg-white p-4 sm:p-5" data-testid="session-source-journey">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-sky-800"><DatabaseZap size={15} aria-hidden="true" />Source journey</p>
+          <h3 className="mt-1 font-serif text-2xl font-black text-[#3d3122]">What happened to each planned master</h3>
+          <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">A read-only reconstruction from the recording plan, Capture boundaries, exact-byte finalization, transcript attempts, and canonical editor receipts. Live call presence is intentionally not rewritten as historical proof.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-wide">
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-900">{sourceJourney.counts.complete} complete</span>
+          <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-900">{sourceJourney.counts.inProgress} moving</span>
+          <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-rose-900">{sourceJourney.counts.attention} attention</span>
+        </div>
+      </div>
+
+      {sourceJourney.journeys.length ? <ol className="mt-4 space-y-4">
+        {sourceJourney.journeys.map((journey) => <li key={journey.id} className="rounded-2xl border border-slate-200 bg-[#fffdf8] p-4" data-source-journey-state={journey.state}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#8a7354]">{journey.participantLabel} · {journey.retentionRole.replaceAll("-", " ")} · {journey.sourceKind}</p>
+              <h4 className="mt-1 text-base font-black text-[#3d3122]">{journey.label}</h4>
+              <p className="mt-1 text-[11px] font-semibold text-[#765f40]">{journey.deviceLabel}</p>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-wide ${journey.state === "COMPLETE" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : journey.state === "ATTENTION" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-sky-200 bg-sky-50 text-sky-900"}`}>{journey.state.replaceAll("_", " ")}</span>
+          </div>
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold leading-5 text-slate-700">{journey.summary}</p>
+          <ol className="mt-3 grid gap-2 md:grid-cols-5" aria-label={`${journey.label} source checkpoints`}>
+            {journey.checkpoints.map((checkpoint) => <li key={checkpoint.id} className={`rounded-xl border p-3 ${checkpointTone(checkpoint.state)}`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[9px] font-black uppercase tracking-wide">{checkpoint.label}</p>
+                {checkpoint.state === "COMPLETE" ? <CheckCircle2 size={14} aria-hidden="true" /> : checkpoint.state === "HELD" ? <ShieldAlert size={14} aria-hidden="true" /> : <Clock3 size={14} aria-hidden="true" />}
+              </div>
+              <p className="mt-1 text-[9px] font-black uppercase tracking-wide opacity-70">{checkpointStateLabel(checkpoint.state)}</p>
+              <p className="mt-2 text-[10px] font-semibold leading-4">{checkpoint.detail}</p>
+              {timestamp(checkpoint.at) ? <time className="mt-2 block text-[9px] font-bold opacity-70" dateTime={checkpoint.at ?? undefined}>{timestamp(checkpoint.at)}</time> : null}
+            </li>)}
+          </ol>
+          <details className="mt-3 text-[10px] font-semibold text-slate-600">
+            <summary className="cursor-pointer font-black uppercase tracking-wide text-sky-800">Evidence identities</summary>
+            <dl className="mt-2 grid gap-1 rounded-xl bg-slate-50 p-3 font-mono">
+              <div><dt className="inline font-black">Plan </dt><dd className="inline break-all">{journey.expectedSourceId ?? "not declared"}</dd></div>
+              <div><dt className="inline font-black">Capture </dt><dd className="inline break-all">{journey.captureId ?? "not observed"}</dd></div>
+              <div><dt className="inline font-black">RecordingAsset </dt><dd className="inline break-all">{journey.recordingAssetId ?? "not retained"}</dd></div>
+            </dl>
+          </details>
+        </li>)}
+      </ol> : <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-950">No retained-source plan or observed source can be reconstructed yet. Declare the intended masters before recording so a device that never starts remains visible.</p>}
+    </div>
 
     <div className="mt-6">
       <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#5b472f]"><AlertTriangle size={16} aria-hidden="true" />Ranked attention queue</h3>

@@ -14,6 +14,7 @@ export type SessionEpisodeAssemblyEvidence = {
   state: SessionEpisodeAssemblyState;
   captureGroupId: string | null;
   selectedMediaCount: number;
+  selectedRecordingAssetIds?: string[];
   plannedSourceCount: number;
   blockerCount: number;
   warningCount: number;
@@ -93,6 +94,7 @@ export function buildSessionEpisodeAssemblyEvidence(input: {
   productionUpdatedAt: string;
   captureGroupId: string;
   selectedMediaCount: number;
+  selectedRecordingAssetIds?: string[];
   plannedSourceCount: number;
   plan: Plan;
   timelineClipCount: number;
@@ -174,6 +176,7 @@ export function buildSessionEpisodeAssemblyEvidence(input: {
     state,
     captureGroupId: input.captureGroupId || null,
     selectedMediaCount: input.selectedMediaCount,
+    selectedRecordingAssetIds: [...new Set(input.selectedRecordingAssetIds ?? [])].sort(),
     plannedSourceCount: input.plannedSourceCount,
     blockerCount: planBlockers,
     warningCount: planWarnings,

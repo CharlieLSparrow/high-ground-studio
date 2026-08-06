@@ -2,6 +2,25 @@
 
 Date: 2026-08-06
 
+## Session source-journey flight recorder checkpoint
+
+- The Episode and Session Finishing Cockpit now reconstructs one readable
+  Plan → Capture → Retain → Transcript → Editor journey for every declared or
+  observed source. The projection is derived from existing canonical receipts;
+  it creates no workflow state and does not convert live presence, server bytes,
+  transcript attempts, or editor materialization into stronger claims than the
+  evidence supports.
+- Editor membership is now bound to the exact RecordingAsset identifiers in the
+  canonical assembly plan. Historical sources that share a capture group remain
+  visible, but are not falsely presented as members of the selected take.
+- A read-only retained operation reconstructed four real local source journeys,
+  selected exactly the two recovered masters for the editor, preserved two older
+  recordings outside the take, and surfaced the remaining transcript and capture
+  evidence gaps. Focused model/component/page tests and Quipsly typecheck pass.
+  Rendered localhost operation remains explicitly queued because the in-app
+  browser rejected loopback navigation under its URL policy. See
+  `docs/coordination/2026-08-06-session-source-journey-flight-recorder.md`.
+
 ## Obvious-depth feature portfolio decision
 
 - Current primary-source market research and the repository's operated depth

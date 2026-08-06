@@ -91,6 +91,7 @@ export async function loadSessionEpisodeAssemblyEvidence(input: {
     productionUpdatedAt: materialization.production.updatedAt.toISOString(),
     captureGroupId: materialization.captureGroupId,
     selectedMediaCount: materialization.selectedMediaCount,
+    selectedRecordingAssetIds: materialization.plan.sourceBindings.map((binding) => binding.recordingAssetId),
     plannedSourceCount: materialization.sourceCount,
     plan: materialization.plan,
     timelineClipCount: timeline.clips.length,
