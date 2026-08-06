@@ -34,12 +34,12 @@ docs/coordination/quipsly-episode-4-editing-hardening-log.md
 
 - Worktree: `/Users/wall-e/Dev/high-ground-studio-product`
 - Branch: `codex/quipsly-product-20260724`
-- Current slice: the one-hour Capture suite is now split into a fast critical
-  lane plus bounded deep shards; next advance the research-led Session Truth
-  Console and Dialogue Repair Review.
-- Latest pushed commit: `0500f526` adds USB-independent, privacy-bounded
-  physical TestFlight install/authentication readback without inventing
-  recording proof.
+- Current slice: source-bound Dialogue Repair candidates, review authorization,
+  conservative range rendering, and retained impact triage are implemented;
+  next persist the linked browser review journey and operate a confirmed A/B.
+- Latest coherent commit: `d0a2b98d` establishes the Dialogue Repair contract,
+  real FFmpeg range proof, bounded-memory impact scanner, and exact retained
+  Charlie sound-check packet without inventing listening approval.
 - Evidence: current Build 28 public TestFlight readback is green. The new
   critical lane passed 11/11 in 258 seconds end to end on iOS 26.3.1. The
   complete clean-install qualification passed 63/63 across four source-derived
@@ -56,10 +56,11 @@ docs/coordination/quipsly-episode-4-editing-hardening-log.md
   `docs/coordination/2026-08-05-dialogue-repair-review-architecture.md`
   turns the first audio gap into a production vertical slice over the existing
   generation-bound mastery, audition, approval, and delivery contracts.
-- Owned paths for this slice: Capture Fastfile/scripts/tests,
-  `.github/workflows/capture-pr-tests.yml`, Capture release/architecture docs,
-  and the unified product blueprint. No deploy, schema, production database,
-  billing, or provider mutation is planned for the test-lane repair.
+- Owned paths for this slice: `audio-dialogue-repair.ts`, the media processor's
+  dialogue renderer, impact-scan scripts/tests, the existing Audio Mastery
+  audition/server boundary, Dialogue Repair architecture docs, and the unified
+  product blueprint. No deploy, schema, production database, billing, or
+  provider mutation occurred in the contract/retained-triage checkpoint.
 
 ### Current product-development authority
 
