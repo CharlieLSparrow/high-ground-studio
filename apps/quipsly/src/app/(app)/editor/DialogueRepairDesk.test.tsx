@@ -66,6 +66,13 @@ const audibleReviewStatus = {
   boundaries: { detectorOutputIsListeningTriageOnly: true, humanStateComesFromAppendOnlyReceipts: true, reviewDoesNotAuthorizeRepairOrEdit: true, sourceIdentityIsReverifiedServerSide: true, surfacedSuggestionsAloneCannotMeasureRecall: true },
 };
 
+const audibleCorpusStatus = {
+  available: true,
+  sourceReceipts: [],
+  projectQualification: { detector: { algorithm: audibleEventAnalysis.algorithm, classifierIdentifier: audibleEventAnalysis.classifierIdentifier, configurationSha256: "c".repeat(64) }, activeReceiptCount: 0, supersededReceiptCount: 0, sourceCount: 0, metrics: [] },
+  boundaries: { unlabeledTimeIsExcluded: true, groundTruthIsIndependentFromSuggestions: true, qualificationAllowsListeningTriageOnly: true, qualificationNeverAuthorizesTreatmentOrEditing: true, reviewerIdentityIsNotProjected: true },
+};
+
 function response(payload: unknown, code = 200) {
   return Promise.resolve({ ok: code >= 200 && code < 300, status: code, json: async () => payload } as Response);
 }
@@ -75,6 +82,7 @@ describe("DialogueRepairDesk", () => {
     jest.restoreAllMocks();
     global.fetch = jest.fn((input, init) => {
       const url = String(input);
+      if (url.includes("audible-event-corpus")) return init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...audibleCorpusStatus });
       if (url.includes("audible-event-reviews")) return init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...audibleReviewStatus });
       return init?.method === "POST" ? response({ ok: true }) : response({ ok: true, ...status });
     });
@@ -143,5 +151,25 @@ describe("DialogueRepairDesk", () => {
     await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST")).toBe(true));
     const postCall = jest.mocked(global.fetch).mock.calls.find(([input, init]) => String(input) === "/api/media-vault/audible-event-reviews" && init?.method === "POST");
     expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "review-suggestion", analysisId: audibleEventAnalysis.analysisId, eventId: audibleEventAnalysis.suggestions[0].eventId, decision: "confirmed", playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [7, 8, 9] } });
+  });
+
+  it("labels independent corpus truth only after complete protected-window playback", async () => {
+    render(<DialogueRepairDesk projectSlug="high-ground-odyssey" assetId="asset_001" sourceId="source_001" sourceUrl="/api/ingest/media/source_001" sourceMeasurement={measurement} audibleEventAnalysis={audibleEventAnalysis} />);
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "play", { configurable: true, value: jest.fn().mockResolvedValue(undefined) });
+    Object.defineProperty(audio, "paused", { configurable: true, get: () => false });
+    fireEvent.click(await screen.findByRole("button", { name: /00:08 dialogue cough unreviewed/i }));
+    fireEvent.click(screen.getByText(/Private detector qualification lab/));
+    expect(screen.getByLabelText("Corpus classification identifier")).toHaveValue("cough");
+    const save = screen.getByRole("button", { name: "Add playback-reviewed corpus evidence" });
+    expect(save).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Play complete label window" }));
+    for (const second of [7.1, 8.1, 9.1]) { audio.currentTime = second; fireEvent.timeUpdate(audio); }
+    fireEvent.change(screen.getByLabelText("Corpus listening note"), { target: { value: "Cough is clearly audible in the complete reviewed window." } });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(jest.mocked(global.fetch).mock.calls.some(([input, init]) => String(input) === "/api/media-vault/audible-event-corpus" && init?.method === "POST")).toBe(true));
+    const postCall = jest.mocked(global.fetch).mock.calls.find(([input, init]) => String(input) === "/api/media-vault/audible-event-corpus" && init?.method === "POST");
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({ action: "label-corpus-window", verdict: "positive", workload: "podcast", split: "retained-challenge", classificationIdentifier: "cough", eventStartSeconds: 8, eventEndSeconds: 8.75, playbackEvidence: { protectedPlaybackSourceId: "source_001", listenedSecondBins: [7, 8, 9] } });
   });
 });

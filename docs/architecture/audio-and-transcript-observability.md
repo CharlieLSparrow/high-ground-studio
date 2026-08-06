@@ -1,6 +1,6 @@
 # Audio and transcript observability
 
-Status: implemented local and generation-bound cloud signal observability plus append-only classifier review; production corpus gate remains
+Status: implemented local and generation-bound cloud signal observability, append-only classifier review, and independent corpus ground truth; production corpus collection remains
 Last reviewed: 2026-08-06
 
 Quipsly treats captured audio, provider inference, and playback-backed review as
@@ -149,6 +149,30 @@ over append-only receipts. Surface-level confirmation rates can measure the
 precision of reviewed suggestions and false positives per source hour; they
 cannot measure recall because the detector never surfaced the missing events.
 Recall requires independently labeled positive and negative corpus windows.
+
+The private Audio Studio qualification lab now supplies that missing boundary.
+`StudioAudibleEventTruthReceipt` stores one append-only, playback-complete
+positive event or one explicit class-absent window. It binds exact source bytes,
+detector analysis and configuration, podcast/coaching workload, calibration,
+validation, or retained-challenge split, reviewed source-clock range, optional
+event range, and a human listening note. A correction supersedes one current
+receipt without deleting it. Contradictory active positive and absent evidence
+for the same class, source, and range fails closed.
+
+The project projection scores only validation and retained-challenge evidence;
+calibration labels remain visible but cannot qualify the detector they helped
+tune. It excludes every unlabeled source interval, merges overlapping reviewed
+windows before calculating hours, and reports per-class true/false positives,
+misses, precision, recall, F1, false positives per labeled hour, onset/offset
+error, and podcast/coaching coverage. Stored analysis snapshots are re-parsed
+and re-hashed before measurement. One invalid source or detector binding fails
+the complete projection instead of disappearing from an attractive scorecard.
+
+The default listening-triage gate remains deliberately demanding: 20 positive
+events across five sources, 15 minutes of explicit negative audio, both
+podcast and coaching evidence, at least 0.85 precision, at least 0.80 recall,
+and at most one false positive per labeled hour. Passing cannot authorize a
+treatment, edit, derivative promotion, or production-default change.
 
 The guarded retained operation
 `scripts/quipsly-retained-audible-event-review-operation.mjs` runs the real

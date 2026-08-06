@@ -3460,6 +3460,7 @@ model StudioProject {
   studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
   studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
   audibleEventReviewReceipts         StudioAudibleEventReviewReceipt[]
+  audibleEventTruthReceipts          StudioAudibleEventTruthReceipt[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -3996,6 +3997,69 @@ model StudioAudibleEventReviewReceipt {
   @@index([sourceId, occurredAt], map: "StudioAudibleEventReview_source_idx")
 }
 
+enum StudioAudibleEventTruthVerdict {
+  POSITIVE
+  ABSENT
+}
+
+enum StudioAudibleEventTruthWorkload {
+  PODCAST
+  COACHING
+}
+
+enum StudioAudibleEventTruthSplit {
+  CALIBRATION
+  VALIDATION
+  RETAINED_CHALLENGE
+}
+
+// Independent playback-reviewed ground truth for detector qualification.
+// A positive identifies an exact audible event inside a fully reviewed window;
+// an absent receipt asserts only that one named classification is absent from
+// that exact window. Unlabeled time is never negative evidence.
+model StudioAudibleEventTruthReceipt {
+  id                          String                          @id @default(cuid())
+  projectId                   String
+  assetId                     String
+  sourceId                    String
+  actorUserId                 String?
+  actorEmail                  String
+  clientRequestId             String
+  supersedesReceiptId         String?                         @unique(map: "StudioAudibleEventTruth_supersedes_key")
+  verdict                     StudioAudibleEventTruthVerdict
+  workload                    StudioAudibleEventTruthWorkload
+  split                       StudioAudibleEventTruthSplit
+  classificationIdentifier    String
+  displayLabel                String
+  family                      String
+  detectorAnalysisId          String
+  detectorAlgorithm           String
+  classifierIdentifier        String
+  detectorConfigurationSha256 String
+  sourceSha256                String
+  sourceGeneration            String
+  sourceDurationSeconds       Float
+  reviewStartSeconds          Float
+  reviewEndSeconds            Float
+  eventStartSeconds           Float?
+  eventEndSeconds             Float?
+  requestSha256               String
+  analysisJson                Json
+  evidenceJson                Json
+  note                        String
+  occurredAt                  DateTime                        @default(now())
+  createdAt                   DateTime                        @default(now())
+
+  project StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asset   StudioMediaAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  source  StudioVideoSource @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioAudibleEventTruth_project_actor_request_key")
+  @@index([projectId, classificationIdentifier, occurredAt], map: "StudioAudibleEventTruth_project_class_idx")
+  @@index([sourceId, classificationIdentifier, occurredAt], map: "StudioAudibleEventTruth_source_class_idx")
+  @@index([detectorAnalysisId, occurredAt], map: "StudioAudibleEventTruth_analysis_idx")
+}
+
 model StudioSourceUnit {
   id             String    @id @default(cuid())
   projectId      String
@@ -4363,8 +4427,9 @@ model StudioVideoSource {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  dialogueRepairCandidates StudioDialogueRepairCandidate[]
-  audibleEventReviews      StudioAudibleEventReviewReceipt[]
+  dialogueRepairCandidates  StudioDialogueRepairCandidate[]
+  audibleEventReviews       StudioAudibleEventReviewReceipt[]
+  audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
 
   @@index([provider])
   @@index([providerSourceId])
@@ -5186,23 +5251,24 @@ model StudioMediaAsset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects                 StudioProject[]
-  mediaBin                 MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips                    MediaClip[]
-  mediaTags                StudioMediaTag[]
-  assetAttachments         StudioAssetAttachment[]
-  variants                 StudioAssetVariant[]
-  processingJobs           StudioAssetProcessingJob[]
-  audioMasterReviews       StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions    StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews     StudioAudioDeliveryReviewReceipt[]
-  dialogueRepairCandidates StudioDialogueRepairCandidate[]
-  dialogueRepairReviews    StudioDialogueRepairReviewReceipt[]
-  audibleEventReviews      StudioAudibleEventReviewReceipt[]
-  sourceUnits              StudioSourceUnit[]
-  workflowJobs             StudioWorkflowJob[]
-  transcriptJobs           TranscriptJob[]
-  transcriptVerifications  TranscriptSegmentVerification[]
+  projects                  StudioProject[]
+  mediaBin                  MediaBin?                           @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips                     MediaClip[]
+  mediaTags                 StudioMediaTag[]
+  assetAttachments          StudioAssetAttachment[]
+  variants                  StudioAssetVariant[]
+  processingJobs            StudioAssetProcessingJob[]
+  audioMasterReviews        StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  dialogueRepairCandidates  StudioDialogueRepairCandidate[]
+  dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]
+  audibleEventReviews       StudioAudibleEventReviewReceipt[]
+  audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
+  sourceUnits               StudioSourceUnit[]
+  workflowJobs              StudioWorkflowJob[]
+  transcriptJobs            TranscriptJob[]
+  transcriptVerifications   TranscriptSegmentVerification[]
 
   @@index([createdAt])
   @@index([mediaBinId])

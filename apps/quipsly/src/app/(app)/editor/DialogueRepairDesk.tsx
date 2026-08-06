@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AudibleEventMap, audibleEventMapMoments } from "@/components/audio/AudibleEventMap";
 import type { AudibleEventDetectorReceipt } from "@/lib/audio/audible-event-analysis";
+import type { AudibleEventCorpusStatus, AudibleEventTruthSplit, AudibleEventTruthVerdict, AudibleEventTruthWorkload } from "@/lib/audio/audible-event-corpus";
 import type { AudibleEventReviewDecision, AudibleEventReviewStatus } from "@/lib/audio/audible-event-review";
 import type { AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
@@ -78,6 +79,7 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const stopAtRef = useRef<number | null>(null);
   const [status, setStatus] = useState<DialogueRepairStatus | null>(null);
   const [audibleReviewStatus, setAudibleReviewStatus] = useState<AudibleEventReviewStatus | null>(null);
+  const [audibleCorpusStatus, setAudibleCorpusStatus] = useState<AudibleEventCorpusStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [playhead, setPlayhead] = useState(0);
@@ -91,6 +93,19 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [detectorNotes, setDetectorNotes] = useState<Record<string, string>>({});
   const [comparisonMode, setComparisonMode] = useState<"source" | "repaired">("source");
+  const [truthVerdict, setTruthVerdict] = useState<AudibleEventTruthVerdict>("positive");
+  const [truthWorkload, setTruthWorkload] = useState<AudibleEventTruthWorkload>("podcast");
+  const [truthSplit, setTruthSplit] = useState<AudibleEventTruthSplit>("retained-challenge");
+  const [truthClassification, setTruthClassification] = useState("mouth_click");
+  const [truthDisplayLabel, setTruthDisplayLabel] = useState("Mouth click");
+  const [truthFamily, setTruthFamily] = useState("dialogue");
+  const [truthReviewStart, setTruthReviewStart] = useState(0);
+  const [truthReviewEnd, setTruthReviewEnd] = useState(() => Math.min(10, sourceMeasurement.durationSeconds));
+  const [truthEventStart, setTruthEventStart] = useState(0);
+  const [truthEventEnd, setTruthEventEnd] = useState(0.03);
+  const [truthNote, setTruthNote] = useState("");
+  const [truthSupersedesReceiptId, setTruthSupersedesReceiptId] = useState<string | null>(null);
+  const [truthListenedBins, setTruthListenedBins] = useState<Set<number>>(() => new Set());
 
   const coordinates = useMemo(() => ({ projectSlug, assetId, sourceId }), [assetId, projectSlug, sourceId]);
   const refresh = useCallback(async () => {
@@ -113,11 +128,21 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
     return payload as { ok: true } & AudibleEventReviewStatus;
   }, [audibleEventAnalysis, coordinates]);
 
+  const refreshAudibleCorpus = useCallback(async () => {
+    if (!audibleEventAnalysis) { setAudibleCorpusStatus(null); return null; }
+    const query = new URLSearchParams(coordinates);
+    const response = await fetch(`/api/media-vault/audible-event-corpus?${query}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null) as ({ ok?: boolean; error?: string } & Partial<AudibleEventCorpusStatus>) | null;
+    if (!response.ok || !payload?.ok || !payload.projectQualification || !payload.sourceReceipts) throw new Error(payload?.error || `Audible-event corpus returned HTTP ${response.status}.`);
+    setAudibleCorpusStatus(payload as { ok: true } & AudibleEventCorpusStatus);
+    return payload as { ok: true } & AudibleEventCorpusStatus;
+  }, [audibleEventAnalysis, coordinates]);
+
   useEffect(() => {
     let canceled = false;
-    void Promise.all([refresh(), refreshAudibleReviews()]).catch((reason) => { if (!canceled) setError(reason instanceof Error ? reason.message : "Dialogue Repair could not load."); });
+    void Promise.all([refresh(), refreshAudibleReviews(), refreshAudibleCorpus()]).catch((reason) => { if (!canceled) setError(reason instanceof Error ? reason.message : "Dialogue Repair could not load."); });
     return () => { canceled = true; };
-  }, [refresh, refreshAudibleReviews]);
+  }, [refresh, refreshAudibleCorpus, refreshAudibleReviews]);
 
   const activeEntry = status?.candidates.find((entry) => entry.candidate.candidateId === activeCandidateId) ?? status?.candidates[0] ?? null;
   const activeCandidate = activeEntry?.candidate ?? null;
@@ -132,6 +157,8 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
   } : null;
   const detectorRequiredBins = activeDetectorWindow ? secondBins(activeDetectorWindow.startSeconds, activeDetectorWindow.endSeconds) : [];
   const detectorContextListened = detectorRequiredBins.length > 0 && detectorRequiredBins.every((bin) => detectorListenedBins.has(bin));
+  const truthRequiredBins = secondBins(truthReviewStart, truthReviewEnd);
+  const truthWindowListened = truthRequiredBins.length > 0 && truthRequiredBins.every((bin) => truthListenedBins.has(bin));
   const audibleMoments = useMemo(
     () => audibleEventMapMoments(audioSignal, status?.candidates ?? [], audibleEventAnalysis, audibleReviewStatus),
     [audioSignal, audibleEventAnalysis, audibleReviewStatus, status?.candidates],
@@ -189,6 +216,7 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
       if (!element.paused) {
         setListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
         setDetectorListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
+        setTruthListenedBins((previous) => new Set(previous).add(Math.floor(element.currentTime)));
       }
     }
     if (stopAtRef.current !== null && element.currentTime >= stopAtRef.current) {
@@ -208,6 +236,19 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
     if (moment?.detectorAnalysisId && moment.detectorEventId) {
       setActiveDetectorEventId(moment.detectorEventId);
       setDetectorListenedBins(new Set());
+      const detector = audibleReviewStatus?.entries.find((candidate) => candidate.suggestion.eventId === moment.detectorEventId)?.suggestion;
+      if (detector) {
+        setTruthVerdict("positive");
+        setTruthClassification(detector.classificationIdentifier.toLowerCase());
+        setTruthDisplayLabel(detector.displayLabel);
+        setTruthFamily(detector.family);
+        setTruthEventStart(detector.startSeconds);
+        setTruthEventEnd(detector.endSeconds);
+        setTruthReviewStart(Math.max(0, detector.startSeconds - 1));
+        setTruthReviewEnd(Math.min(sourceMeasurement.durationSeconds, detector.endSeconds + 1));
+        setTruthListenedBins(new Set());
+        setTruthSupersedesReceiptId(null);
+      }
     }
     const source = sourceRef.current;
     if (!source) return;
@@ -254,6 +295,78 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Audible-event review returned HTTP ${response.status}.`);
       await refreshAudibleReviews();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "The listening review could not be saved."); }
+    finally { setBusyKey(null); }
+  };
+
+  const useMarkedEventForTruth = () => {
+    setTruthVerdict("positive");
+    setTruthEventStart(startSeconds);
+    setTruthEventEnd(endSeconds);
+    setTruthReviewStart(Math.max(0, startSeconds - 1));
+    setTruthReviewEnd(Math.min(sourceMeasurement.durationSeconds, endSeconds + 1));
+    setTruthListenedBins(new Set());
+    setTruthSupersedesReceiptId(null);
+  };
+
+  const correctTruthReceipt = (receipt: NonNullable<typeof audibleCorpusStatus>["sourceReceipts"][number]) => {
+    setTruthSupersedesReceiptId(receipt.id);
+    setTruthVerdict(receipt.verdict);
+    setTruthWorkload(receipt.workload);
+    setTruthSplit(receipt.split);
+    setTruthClassification(receipt.classificationIdentifier);
+    setTruthDisplayLabel(receipt.displayLabel);
+    setTruthFamily(receipt.family);
+    setTruthReviewStart(receipt.reviewStartSeconds);
+    setTruthReviewEnd(receipt.reviewEndSeconds);
+    setTruthEventStart(receipt.eventStartSeconds ?? receipt.reviewStartSeconds);
+    setTruthEventEnd(receipt.eventEndSeconds ?? Math.min(receipt.reviewEndSeconds, receipt.reviewStartSeconds + 0.03));
+    setTruthNote("");
+    setTruthListenedBins(new Set());
+  };
+
+  const playTruthWindow = async () => {
+    const source = sourceRef.current;
+    if (!source || truthReviewEnd <= truthReviewStart) return;
+    source.currentTime = truthReviewStart;
+    stopAtRef.current = truthReviewEnd;
+    setTruthListenedBins(new Set());
+    await source.play();
+  };
+
+  const saveTruth = async () => {
+    if (!truthWindowListened) return;
+    const key = "save-truth";
+    setBusyKey(key);
+    setError(null);
+    try {
+      const response = await fetch("/api/media-vault/audible-event-corpus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...coordinates,
+          action: "label-corpus-window",
+          clientRequestId: crypto.randomUUID(),
+          supersedesReceiptId: truthSupersedesReceiptId,
+          verdict: truthVerdict,
+          workload: truthWorkload,
+          split: truthSplit,
+          classificationIdentifier: truthClassification,
+          displayLabel: truthDisplayLabel,
+          family: truthFamily,
+          reviewStartSeconds: truthReviewStart,
+          reviewEndSeconds: truthReviewEnd,
+          eventStartSeconds: truthVerdict === "positive" ? truthEventStart : null,
+          eventEndSeconds: truthVerdict === "positive" ? truthEventEnd : null,
+          playbackEvidence: { protectedPlaybackSourceId: sourceId, contextStartSeconds: truthReviewStart, contextEndSeconds: truthReviewEnd, listenedSecondBins: truthRequiredBins, clientTrackedPlaybackIsNotProofOfAudibility: true },
+          note: truthNote,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Audible-event corpus returned HTTP ${response.status}.`);
+      await refreshAudibleCorpus();
+      setTruthNote("");
+      setTruthSupersedesReceiptId(null);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The corpus label could not be saved."); }
     finally { setBusyKey(null); }
   };
 
@@ -352,6 +465,50 @@ export function DialogueRepairDesk({ projectSlug, assetId, sourceId, sourceUrl, 
           <p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">This receipt improves the detector corpus. It cannot authorize repair, editing, or promotion.</p>
         </section>
       )}
+      {audibleEventAnalysis && (
+        <details className="mt-3 rounded-xl border border-cyan-700 bg-cyan-950/20 p-3" aria-label="Audible-event qualification lab">
+          <summary className="cursor-pointer text-xs font-black text-cyan-100">Private detector qualification lab · {audibleCorpusStatus?.projectQualification.activeReceiptCount ?? 0} active labels</summary>
+          <p className="mt-2 max-w-3xl text-[10px] font-bold leading-4 text-slate-300">Create playback-reviewed truth independently of classifier suggestions. Positive ranges expose misses for recall; absent ranges expose false positives. Unlabeled time is excluded, calibration stays out of acceptance, and even a passing class can only prioritize listening.</p>
+          {audibleCorpusStatus?.projectQualification.metrics.length ? (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {audibleCorpusStatus.projectQualification.metrics.map((metric) => <div key={metric.classificationIdentifier} className="rounded-lg border border-cyan-800 bg-slate-950 p-3">
+                <div className="flex items-center justify-between gap-2"><span className="font-black">{metric.displayLabel}</span><span className="rounded-full border border-cyan-700 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-cyan-200">{metric.status.replaceAll("-", " ")}</span></div>
+                <div className="mt-2 grid grid-cols-3 gap-2 font-mono text-[10px] text-slate-300"><span>P {formatPercent(metric.precision)}</span><span>R {formatPercent(metric.recall)}</span><span>FP/h {formatMetric(metric.falsePositivesPerLabeledHour)}</span><span>TP {metric.truePositiveCount}</span><span>FP {metric.falsePositiveCount}</span><span>FN {metric.falseNegativeCount}</span></div>
+                <p className="mt-2 text-[9px] font-bold text-slate-500">{metric.positiveEventCount} positive events · {metric.negativeHours.toFixed(3)} negative hours · {metric.workloadCoverage.podcast} podcast / {metric.workloadCoverage.coaching} coaching sources</p>
+              </div>)}
+            </div>
+          ) : <div className="mt-3 rounded-lg border border-dashed border-cyan-800 px-3 py-3 text-[10px] font-bold text-slate-400">No independent ground truth yet. Suggestions and their confirmation rate cannot measure recall.</div>}
+          {audibleCorpusStatus?.sourceReceipts.length ? <ul className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Current source corpus labels">{audibleCorpusStatus.sourceReceipts.map((receipt) => <li key={receipt.id} className="rounded-lg border border-slate-700 bg-slate-950 p-3"><div className="flex items-center justify-between gap-2"><span className="font-black">{receipt.displayLabel}</span><span className="rounded-full border border-slate-600 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-slate-300">{receipt.verdict}</span></div><p className="mt-1 font-mono text-[10px] text-slate-400">{receipt.reviewStartSeconds.toFixed(3)}–{receipt.reviewEndSeconds.toFixed(3)} s · {receipt.workload} · {receipt.split}</p><p className="mt-1 text-[10px] font-bold text-slate-300">{receipt.note}</p><button type="button" onClick={() => correctTruthReceipt(receipt)} className="mt-2 rounded-md border border-cyan-700 px-2 py-1 text-[10px] font-black text-cyan-200">Correct with a superseding receipt</button></li>)}</ul> : null}
+          <div className="mt-3 grid gap-2 lg:grid-cols-4">
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Truth
+              <select aria-label="Corpus truth verdict" value={truthVerdict} onChange={(event) => { setTruthVerdict(event.target.value as AudibleEventTruthVerdict); setTruthListenedBins(new Set()); }} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white"><option value="positive">Event is present</option><option value="absent">Class is absent</option></select>
+            </label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Workload
+              <select aria-label="Corpus workload" value={truthWorkload} onChange={(event) => setTruthWorkload(event.target.value as AudibleEventTruthWorkload)} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white"><option value="podcast">Podcast</option><option value="coaching">Coaching</option></select>
+            </label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Split
+              <select aria-label="Corpus split" value={truthSplit} onChange={(event) => setTruthSplit(event.target.value as AudibleEventTruthSplit)} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white"><option value="calibration">Calibration</option><option value="validation">Validation</option><option value="retained-challenge">Retained challenge</option></select>
+            </label>
+            <button type="button" onClick={useMarkedEventForTruth} className="self-end rounded-md border border-cyan-500 bg-cyan-950 px-3 py-2 text-xs font-black text-cyan-100">Use marked event as independent truth</button>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Classifier identifier<input aria-label="Corpus classification identifier" value={truthClassification} onChange={(event) => setTruthClassification(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 font-mono text-xs text-white" /></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Display label<input aria-label="Corpus display label" value={truthDisplayLabel} onChange={(event) => setTruthDisplayLabel(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white" /></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Family<input aria-label="Corpus family" value={truthFamily} onChange={(event) => setTruthFamily(event.target.value)} className="mt-1 block w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white" /></label>
+          </div>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Review start<input aria-label="Corpus review start" type="number" min={0} max={sourceMeasurement.durationSeconds} step="0.001" value={truthReviewStart} onChange={(event) => { setTruthReviewStart(Number(event.target.value)); setTruthListenedBins(new Set()); }} className="mt-1 block w-24 rounded-md border border-slate-600 bg-slate-900 px-2 py-2 font-mono text-xs text-white" /></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Review end<input aria-label="Corpus review end" type="number" min={0} max={sourceMeasurement.durationSeconds} step="0.001" value={truthReviewEnd} onChange={(event) => { setTruthReviewEnd(Number(event.target.value)); setTruthListenedBins(new Set()); }} className="mt-1 block w-24 rounded-md border border-slate-600 bg-slate-900 px-2 py-2 font-mono text-xs text-white" /></label>
+            {truthVerdict === "positive" && <><label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Event start<input aria-label="Corpus event start" type="number" min={truthReviewStart} max={truthReviewEnd} step="0.001" value={truthEventStart} onChange={(event) => setTruthEventStart(Number(event.target.value))} className="mt-1 block w-24 rounded-md border border-slate-600 bg-slate-900 px-2 py-2 font-mono text-xs text-white" /></label><label className="text-[10px] font-black uppercase tracking-wide text-slate-300">Event end<input aria-label="Corpus event end" type="number" min={truthReviewStart} max={truthReviewEnd} step="0.001" value={truthEventEnd} onChange={(event) => setTruthEventEnd(Number(event.target.value))} className="mt-1 block w-24 rounded-md border border-slate-600 bg-slate-900 px-2 py-2 font-mono text-xs text-white" /></label></>}
+            <button type="button" onClick={() => void playTruthWindow()} disabled={truthReviewEnd <= truthReviewStart} className="rounded-md border border-cyan-500 bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">Play complete label window</button>
+            <span className="self-center text-[10px] font-bold text-slate-400">{truthWindowListened ? "Complete window observed" : `Listen through ${truthRequiredBins.length} source-clock bins`}</span>
+          </div>
+          <textarea aria-label="Corpus listening note" value={truthNote} onChange={(event) => setTruthNote(event.target.value)} placeholder="What you heard, including why this class is present or absent" className="mt-2 min-h-16 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white placeholder:text-slate-500" />
+          {truthSupersedesReceiptId && <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-600 bg-amber-950/30 px-3 py-2 text-[10px] font-bold text-amber-100"><span>This will supersede {truthSupersedesReceiptId}; history remains append-only.</span><button type="button" onClick={() => setTruthSupersedesReceiptId(null)} className="rounded border border-amber-500 px-2 py-1">Cancel correction</button></div>}
+          <button type="button" onClick={() => void saveTruth()} disabled={!truthWindowListened || truthNote.trim().length < 2 || busyKey !== null || !truthClassification.trim() || truthReviewEnd <= truthReviewStart || (truthVerdict === "positive" && (truthEventEnd <= truthEventStart || truthEventStart < truthReviewStart || truthEventEnd > truthReviewEnd))} className="mt-2 w-full rounded-md border border-cyan-500 bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-40">{busyKey === "save-truth" ? "Saving source-bound truth…" : "Add playback-reviewed corpus evidence"}</button>
+          <p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">Reviewer identity stays out of the projection. Ground truth cannot authorize treatment, editing, or promotion.</p>
+        </details>
+      )}
       <div className="mt-2 flex flex-wrap items-end gap-2">
         <label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">Event
           <select value={label} onChange={(event) => setLabel(event.target.value as DialogueRepairLabel)} className="mt-1 block rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-white">
@@ -433,5 +590,7 @@ function secondBins(startSeconds: number, endSeconds: number) { const start = Ma
 function matchedGain(sourceLufs: number, repairedLufs: number, kind: "source" | "repaired") { const quietest = Math.min(sourceLufs, repairedLufs); const selected = kind === "source" ? sourceLufs : repairedLufs; return clamp(10 ** ((quietest - selected) / 20), 0, 1); }
 function labelName(value: DialogueRepairLabel) { return LABELS.find((item) => item.value === value)?.label ?? value; }
 function formatClock(value: number) { const seconds = Math.max(0, value); const minutes = Math.floor(seconds / 60); return `${minutes}:${(seconds - minutes * 60).toFixed(2).padStart(5, "0")}`; }
+function formatPercent(value: number | null) { return value === null ? "—" : `${Math.round(value * 100)}%`; }
+function formatMetric(value: number | null) { return value === null ? "—" : value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2); }
 function clamp(value: number, minimum: number, maximum: number) { return Math.min(maximum, Math.max(minimum, value)); }
 function round(value: number, digits: number) { const multiplier = 10 ** digits; return Math.round(value * multiplier) / multiplier; }

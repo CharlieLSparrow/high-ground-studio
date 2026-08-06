@@ -74,7 +74,7 @@ export async function appendAudibleEventReview(input: Coordinates & {
   }
   const playbackEvidence = validatePlaybackEvidence(input.playbackEvidence, context.source.id, suggestion, analysis.durationSeconds);
   const occurredAt = new Date();
-  const detectorConfigurationSha256 = detectorConfigurationHash(analysis);
+  const detectorConfigurationSha256 = audibleEventDetectorConfigurationHash(analysis);
   const receipt = {
     schema: "quipsly-audible-event-review-receipt-v1",
     receiptId: `audible_review_${randomUUID().replaceAll("-", "")}`,
@@ -161,7 +161,7 @@ export async function appendAudibleEventReview(input: Coordinates & {
   return { ok: true, idempotentReplay: false, receipt: publicReview(stored), status: await readAudibleEventReviewStatus(input) };
 }
 
-async function loadAudibleEventContext(input: Coordinates) {
+export async function loadAudibleEventContext(input: Coordinates) {
   const context = await loadDialogueRepairContext(input);
   const productions = await input.prisma.studioEpisodeProduction.findMany({
     where: { projectId: context.project.id },
@@ -291,7 +291,7 @@ function reviewBoundaries(): AudibleEventReviewStatus["boundaries"] {
 }
 function reviewCounts(rows: any[]) { return { confirmed: rows.filter((row) => row.decision === "CONFIRMED").length, falsePositive: rows.filter((row) => row.decision === "FALSE_POSITIVE").length, needsComparison: rows.filter((row) => row.decision === "NEEDS_COMPARISON").length }; }
 function publicReview(row: any): PublicAudibleEventReview { return { id: String(row.id), analysisId: String(row.analysisId), eventId: String(row.eventId), decision: databaseToDecision(row.decision), actorEmail: String(row.actorEmail), note: typeof row.note === "string" ? row.note : null, occurredAt: row.occurredAt?.toISOString?.() ?? String(row.occurredAt) }; }
-function detectorConfigurationHash(analysis: AudibleEventDetectorReceipt) { return hashJson({ algorithm: analysis.algorithm, classifierIdentifier: analysis.classifierIdentifier, requestedWindowDurationSeconds: analysis.requestedWindowDurationSeconds, effectiveWindowDurationSeconds: analysis.effectiveWindowDurationSeconds, overlapFactor: analysis.overlapFactor, minimumCandidateConfidence: analysis.minimumCandidateConfidence, knownClassificationCount: analysis.knownClassificationCount, knownClassificationsSHA256: analysis.knownClassificationsSHA256 }); }
+export function audibleEventDetectorConfigurationHash(analysis: AudibleEventDetectorReceipt) { return hashJson({ algorithm: analysis.algorithm, classifierIdentifier: analysis.classifierIdentifier, requestedWindowDurationSeconds: analysis.requestedWindowDurationSeconds, effectiveWindowDurationSeconds: analysis.effectiveWindowDurationSeconds, overlapFactor: analysis.overlapFactor, minimumCandidateConfidence: analysis.minimumCandidateConfidence, knownClassificationCount: analysis.knownClassificationCount, knownClassificationsSHA256: analysis.knownClassificationsSHA256 }); }
 function decisionToDatabase(decision: AudibleEventReviewDecision) { return decision === "confirmed" ? "CONFIRMED" : decision === "false-positive" ? "FALSE_POSITIVE" : "NEEDS_COMPARISON"; }
 function databaseToDecision(decision: unknown): AudibleEventReviewDecision { return decision === "CONFIRMED" ? "confirmed" : decision === "FALSE_POSITIVE" ? "false-positive" : "needs-comparison"; }
 function secondBins(startSeconds: number, endSeconds: number) { const start = Math.floor(startSeconds); const end = Math.max(start, Math.ceil(endSeconds) - 1); return Array.from({ length: end - start + 1 }, (_, index) => start + index); }

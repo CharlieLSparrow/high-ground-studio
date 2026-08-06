@@ -26,6 +26,25 @@ false positives per hour, boundary error, runtime, battery, thermal behavior,
 and reviewer effort. Physical-iPhone long-take operation remains the release
 gate.
 
+### Independent detector truth checkpoint
+
+Audio Studio now goes beyond confirmation of surfaced suggestions. A reviewer
+can label an arbitrary protected-source window as containing one exact class or
+as explicitly absent for that class, including a detector miss that never
+appeared in the review queue. The label is source/configuration bound,
+append-only, correctable by supersession, workload-aware, and isolated into
+calibration, validation, and retained-challenge splits. Only complete protected
+playback enables persistence.
+
+The resulting project scorecard measures per-class precision, recall, F1,
+false positives per labeled hour, boundary error, and podcast/coaching source
+coverage while excluding unlabeled time and calibration evidence from
+qualification. The first retained HGO beep source was opened in the real
+authenticated Audio Studio and its complete eight-second label window passed
+the playback gate. No listening verdict was saved by the agent. The next human
+operation can create the first genuine positive or absent receipt without a
+schema or UI retrofit.
+
 ## Executive decision
 
 Quipsly should not measure progress by how many categories appear in the
