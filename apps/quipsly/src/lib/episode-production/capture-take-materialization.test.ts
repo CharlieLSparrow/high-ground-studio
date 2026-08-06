@@ -42,6 +42,21 @@ function source(
       deviceLabel: kind === "audio" ? "MV7i" : "Homer iPhone",
     },
     cameraPosition: kind === "video" ? "front" : null,
+    audioDecodeEvidence: kind === "audio" ? {
+      status: "complete",
+      jobId: `decode-${recordingAssetId}`,
+      sourceSha256: recordingAssetId.padEnd(64, "a").slice(0, 64),
+      completedAt: "2026-08-06T15:55:00.000Z",
+      completeDecode: true,
+      error: null,
+    } : {
+      status: "not-observed",
+      jobId: null,
+      sourceSha256: null,
+      completedAt: null,
+      completeDecode: false,
+      error: null,
+    },
     alignment: kind === "audio" ? null : {
       reviewId: `review-${recordingAssetId}`,
       method: "human-waveform-and-drift-review-v1",
@@ -77,6 +92,35 @@ function transcript(
 }
 
 describe("Capture take materialization", () => {
+  it("blocks a byte-verified source whose complete decode failed", () => {
+    const result = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [source("audio-broken", "audio", {
+        audioDecodeEvidence: {
+          status: "failed",
+          jobId: "decode-broken",
+          sourceSha256: "b".repeat(64),
+          completedAt: null,
+          completeDecode: false,
+          error: "audio-signal-probe-invalid: invalid stream metadata",
+        },
+      })],
+      actor,
+      materializedAt,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "source-media-unplayable",
+        severity: "blocker",
+        message: expect.stringContaining("invalid stream metadata"),
+      }),
+    ]);
+    expect(result.nextAction).toContain("Replace or recover");
+    expect(result.timeline.clips).toHaveLength(0);
+  });
+
   it("materializes aligned media, corrected transcript provenance, and an unambiguous participant camera", () => {
     const result = planCaptureTakeMaterialization({
       timeline: { clips: [], transcript: [] },
@@ -96,6 +140,12 @@ describe("Capture take materialization", () => {
         recordingAssetId: "video-1",
         alignmentReviewId: "review-video-1",
         participant: { participantId: "participant-homer" },
+      },
+    });
+    expect(result.timeline.clips.find((clip) => clip.kind === "audio")?.captureTakeSource).toMatchObject({
+      audioDecodeEvidence: {
+        jobId: "decode-audio-1",
+        completeDecode: true,
       },
     });
     expect(result.timeline.transcript[0]).toMatchObject({

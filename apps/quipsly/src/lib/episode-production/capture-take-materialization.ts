@@ -33,6 +33,14 @@ export type CaptureTakeMaterializationSource = {
   durationSeconds: number;
   participant: CaptureTakeParticipantIdentity | null;
   cameraPosition: string | null;
+  audioDecodeEvidence: {
+    status: "not-observed" | "pending" | "failed" | "complete";
+    jobId: string | null;
+    sourceSha256: string | null;
+    completedAt: string | null;
+    completeDecode: boolean;
+    error: string | null;
+  };
   alignment: CaptureTakeReviewedAlignment | null;
 };
 
@@ -63,6 +71,7 @@ export type CaptureTakeMaterializationIssue = {
     | "capture-group-identity-mismatch"
     | "source-identity-incomplete"
     | "source-media-unplayable"
+    | "source-decode-incomplete"
     | "source-duration-invalid"
     | "spine-source-ambiguous"
     | "spine-source-missing"
@@ -143,6 +152,9 @@ function sourceSetFingerprint(sources: CaptureTakeMaterializationSource[]) {
         durationSeconds: rounded(source.durationSeconds),
         participantId: source.participant?.participantId ?? null,
         cameraPosition: source.cameraPosition,
+        audioCompleteDecode: source.kind === "audio"
+          ? source.audioDecodeEvidence.completeDecode
+          : null,
         alignmentReviewId: source.alignment?.reviewId ?? null,
         alignmentAnchorTimelineSeconds: source.alignment
           ? rounded(source.alignment.anchorTimelineSeconds)
@@ -259,6 +271,18 @@ function clipForSource(
       cameraPosition: source.cameraPosition,
       alignmentReviewId: alignment?.reviewId ?? null,
       alignmentMethod: alignment?.method ?? "spine-origin-v1",
+      audioDecodeEvidence: source.kind === "audio"
+        && source.audioDecodeEvidence.status === "complete"
+        && source.audioDecodeEvidence.completeDecode
+        && source.audioDecodeEvidence.jobId
+        && source.audioDecodeEvidence.completedAt
+        ? {
+            jobId: source.audioDecodeEvidence.jobId,
+            sourceSha256: source.audioDecodeEvidence.sourceSha256,
+            completedAt: source.audioDecodeEvidence.completedAt,
+            completeDecode: true,
+          }
+        : null,
     },
   };
   if (!existing) return canonical;
@@ -418,9 +442,26 @@ export function planCaptureTakeMaterialization(input: {
     if (!Number.isFinite(source.durationSeconds) || source.durationSeconds <= 0.05) {
       issues.push({ code: "source-duration-invalid", severity: "blocker", recordingAssetId: source.recordingAssetId, message: `${source.originalName} does not have a trustworthy duration.` });
     }
+    if (source.kind === "audio" && source.audioDecodeEvidence.status !== "complete") {
+      const failed = source.audioDecodeEvidence.status === "failed";
+      issues.push({
+        code: failed ? "source-media-unplayable" : "source-decode-incomplete",
+        severity: "blocker",
+        recordingAssetId: source.recordingAssetId,
+        message: failed
+          ? `${source.originalName} failed complete source decoding${source.audioDecodeEvidence.error ? `: ${source.audioDecodeEvidence.error}` : "."}`
+          : `${source.originalName} has no completed exact-source decode receipt.`,
+      });
+    }
   }
   if (issues.some((issue) => issue.severity === "blocker")) {
-    return blocked("Repair the held source evidence before materializing this take.");
+    return blocked(
+      issues.some((issue) => issue.code === "source-media-unplayable")
+        ? "Replace or recover every source that failed complete decoding before materializing this take."
+        : issues.some((issue) => issue.code === "source-decode-incomplete")
+          ? "Run complete exact-source decode for every audio master before materializing this take."
+          : "Repair the held source evidence before materializing this take.",
+    );
   }
 
   const priorReceipt = (input.timeline.captureTakeMaterializations ?? []).find((receipt) => receipt.captureGroupId === captureGroupId);

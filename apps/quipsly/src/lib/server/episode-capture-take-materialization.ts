@@ -13,6 +13,7 @@ import {
   type CaptureTakeMaterializationTranscript,
 } from "@/lib/episode-production/capture-take-materialization";
 import type { EpisodeProductionActor } from "@/lib/server/episode-production-access";
+import { toPublicAudioSignalProfileStatus } from "@/lib/server/audio-signal-profile";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
 type JsonRecord = Record<string, unknown>;
@@ -84,6 +85,7 @@ function participantIdentity(recordingAsset: any) {
 function materializationSource(
   importedAsset: JsonRecord,
   recordingAsset: any,
+  audioDecodeEvidence: CaptureTakeMaterializationSource["audioDecodeEvidence"],
 ): CaptureTakeMaterializationSource | null {
   const recordingSync = recordingSyncForImportedAsset(importedAsset);
   const sourceProfile = record(recordingSync.reportedSourceProfile);
@@ -121,6 +123,7 @@ function materializationSource(
       text(recordingSync.cameraPosition)
       || text(sourceProfile.cameraPosition)
       || null,
+    audioDecodeEvidence,
     alignment: alignment
       ? {
           reviewId: alignment.reviewId,
@@ -129,6 +132,46 @@ function materializationSource(
           targetSourceSeconds: alignment.placement.targetSourceSeconds,
         }
       : null,
+  };
+}
+
+function audioDecodeEvidence(
+  job: any | null | undefined,
+  sourceSha256: string | null,
+): CaptureTakeMaterializationSource["audioDecodeEvidence"] {
+  if (!job) return {
+    status: "not-observed",
+    jobId: null,
+    sourceSha256,
+    completedAt: null,
+    completeDecode: false,
+    error: null,
+  };
+  const status = toPublicAudioSignalProfileStatus(job);
+  const jobSourceSha256 = text(record(record(job.inputJson).source).sha256).toLowerCase() || null;
+  const exactSourceBound = Boolean(
+    sourceSha256
+    && jobSourceSha256
+    && sourceSha256 === jobSourceSha256,
+  );
+  const complete = status.status === "completed"
+    && status.analyzer?.completeDecode === true
+    && exactSourceBound;
+  return {
+    status: complete
+      ? "complete"
+      : status.status === "failed" || (status.status === "completed" && !exactSourceBound)
+        ? "failed"
+        : "pending",
+    jobId: status.jobId,
+    sourceSha256: jobSourceSha256,
+    completedAt: complete
+      ? job.completedAt?.toISOString?.() ?? status.updatedAt
+      : null,
+    completeDecode: complete,
+    error: status.status === "completed" && !exactSourceBound
+      ? "Complete decode receipt is not bound to these exact source bytes."
+      : status.error,
   };
 }
 
@@ -226,17 +269,47 @@ export async function loadEpisodeCaptureTakeMaterialization(input: {
   const recordingAssetIds = Array.from(new Set(
     selectedMedia.map(recordingAssetIdForImportedAsset).filter(Boolean),
   ));
-  const recordingAssets = recordingAssetIds.length > 0
-    ? await input.prisma.recordingAsset.findMany({
+  const audioMediaAssetIds = selectedMedia
+    .filter((asset) => asset.kind === "audio" || text(asset.contentType).startsWith("audio/"))
+    .map((asset) => text(asset.id))
+    .filter(Boolean);
+  const [recordingAssets, audioSignalJobs] = await Promise.all([
+    recordingAssetIds.length > 0
+      ? input.prisma.recordingAsset.findMany({
         where: { id: { in: recordingAssetIds } },
         include: { participant: true },
       })
-    : [];
-  const recordingById = new Map(recordingAssets.map((asset: any) => [asset.id, asset]));
+      : [],
+    audioMediaAssetIds.length > 0
+      ? input.prisma.studioAssetProcessingJob.findMany({
+        where: {
+          assetId: { in: audioMediaAssetIds },
+          type: "audio-signal-profile",
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      })
+      : [],
+  ]);
+  const recordingById = new Map<string, any>(recordingAssets.map((asset: any) => [asset.id, asset]));
+  const decodeCandidatesByMediaAssetId = new Map<string, any[]>();
+  for (const job of audioSignalJobs) {
+    const candidates = decodeCandidatesByMediaAssetId.get(job.assetId) ?? [];
+    candidates.push(job);
+    decodeCandidatesByMediaAssetId.set(job.assetId, candidates);
+  }
   const sources = selectedMedia.flatMap((asset) => {
+    const recordingAsset = recordingById.get(recordingAssetIdForImportedAsset(asset));
+    const sourceSha256 = text(recordingSyncForImportedAsset(asset).expectedSha256).toLowerCase()
+      || text(recordingAsset?.checksum).toLowerCase()
+      || null;
+    const decodeCandidates = decodeCandidatesByMediaAssetId.get(text(asset.id)) ?? [];
+    const selectedDecodeJob = decodeCandidates.find((job) => (
+      audioDecodeEvidence(job, sourceSha256).status === "complete"
+    )) ?? decodeCandidates[0] ?? null;
     const source = materializationSource(
       asset,
-      recordingById.get(recordingAssetIdForImportedAsset(asset)),
+      recordingAsset,
+      audioDecodeEvidence(selectedDecodeJob, sourceSha256),
     );
     return source ? [source] : [];
   });

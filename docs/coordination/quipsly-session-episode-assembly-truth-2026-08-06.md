@@ -60,6 +60,29 @@ The client maintains two fingerprints for this reason:
 The API independently enforces the receipt rule. Client behavior alone is not
 trusted as the history boundary.
 
+## Exact bytes are not playable-media proof
+
+The retained operation also exposed a second boundary defect. A
+`RecordingAsset.status = VERIFIED` proves that the protected bytes reached the
+server and matched their upload checksum. It does not prove that a decoder can
+read those bytes. The two test WebMs had exact checksums and promoted Studio
+attachments, but their complete signal-profile jobs failed with invalid stream
+metadata.
+
+Capture-take materialization now requires every audio master to have a
+completed, complete-decode signal receipt bound to the same source SHA-256.
+Queued or missing decode work blocks materialization without calling the source
+broken. A failed or source-mismatched decode receipt blocks materialization as
+unplayable. Successful materialization carries the decode job, source hash,
+completion time, and `completeDecode: true` into the source binding so the
+canonical timeline records why that lane was admitted.
+
+After this repair, the retained cockpit changed from the misleading “choose a
+spine” instruction to two explicit decode blockers and the action “Replace or
+recover every source that failed complete decoding.” Upload verification,
+decode verification, editorial spine choice, and timeline materialization now
+remain four distinct facts.
+
 ## Retained operation
 
 The checkpoint was operated in the running local app with the dedicated
@@ -113,7 +136,8 @@ After the repair:
 
 ```text
 4 focused Jest suites passed
-27 focused tests passed
+27 finishing-cockpit and save-integrity tests passed
+22 materialization, route, and cockpit decode-gate tests passed
 Quipsly Next.js route generation passed
 Quipsly TypeScript typecheck passed
 Running-app reload did not append a receipt

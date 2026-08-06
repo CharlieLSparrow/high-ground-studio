@@ -22,6 +22,12 @@ export type CaptureTakeSourceBinding = {
   cameraPosition: string | null;
   alignmentReviewId: string | null;
   alignmentMethod: string;
+  audioDecodeEvidence?: {
+    jobId: string;
+    sourceSha256: string | null;
+    completedAt: string;
+    completeDecode: true;
+  } | null;
 };
 
 export type CaptureTakeTranscriptBinding = {
