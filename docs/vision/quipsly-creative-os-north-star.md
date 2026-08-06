@@ -195,3 +195,11 @@ As of 2026-06-02:
 Quipsly is a notebook that understands what you are making, remembers it
 durably, finds relevant examples with receipts, and projects the same source
 into books, episodes, clips, articles, notes, and publishing packets.
+
+## Current expansion research
+
+The [2026-08-05 product expansion opportunity audit](../research/2026-08-05-quipsly-product-expansion-opportunity-audit.md)
+translates this north star into a ranked research and implementation portfolio.
+Its immediate program is to make Quipsly's existing breadth cohere as Sessions,
+Audio and Transcript Studio, and Evidence and Follow-through before adding more
+disconnected top-level surfaces.
