@@ -3,16 +3,14 @@ import "server-only";
 import type {
   Prisma,
   PrismaClient,
-  StudioProjectAccessRole,
 } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   ensureStudioProjectOwnerGrant,
+  listStudioProjectsForAccess,
   normalizeAccessEmail,
-  resolveStudioAccessIdentity,
-  strongestAccessGrant,
 } from "@/lib/server/studio-project-access";
 import {
   ensureStudioWorkspace,
@@ -184,58 +182,12 @@ export async function listProjectsVisibleToEmail(
 ) {
   const normalizedEmail = normalizeAccessEmail(email);
   if (!normalizedEmail) return [];
-
-  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
-  const rows = await prisma.studioProjectAccessGrant.findMany({
-    where: {
-      email: { in: identity.emails },
-      status: "ACTIVE",
-    },
-    include: {
-      project: {
-        select: {
-          id: true,
-          workspaceId: true,
-          slug: true,
-          name: true,
-          sourceLabel: true,
-          updatedAt: true,
-          accessGrants: {
-            where: { status: "ACTIVE" },
-            select: { email: true, role: true },
-          },
-        },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
+  const projects = await listStudioProjectsForAccess({
+    email: normalizedEmail,
+    action: "read",
+    prisma,
   });
-
-  const byId = new Map<string, {
-    id: string;
-    workspaceId: string;
-    slug: string;
-    name: string;
-    sourceLabel: string | null;
-    updatedAt: Date;
-    role: StudioProjectAccessRole;
-    collaborators?: { email: string; role: StudioProjectAccessRole }[];
-  }>();
-
-  for (const row of rows) {
-    const existing = byId.get(row.project.id);
-    const effectiveGrant = strongestAccessGrant(existing
-      ? [{ role: existing.role, row: existing }, { role: row.role, row }]
-      : [{ role: row.role, row }]);
-    if (!effectiveGrant || effectiveGrant.row === existing) continue;
-
-    byId.set(row.project.id, {
-      ...row.project,
-      role: row.role,
-      collaborators: row.project.accessGrants,
-    });
-  }
-
-  return [...byId.values()].sort((a, b) => {
+  return projects.sort((a, b) => {
     const aHome = a.sourceLabel === sourceLabelForNestKind("home") ? 0 : 1;
     const bHome = b.sourceLabel === sourceLabelForNestKind("home") ? 0 : 1;
     if (aHome !== bHome) return aHome - bHome;

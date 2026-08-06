@@ -4,7 +4,6 @@ import {
 } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
-import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 
 import { AudioMasteryWorkspaceClient } from "./audio-mastery-workspace-client";
 import type { AudioWorkspaceProjectOption } from "./audio-mastery-workspace-model";
@@ -58,23 +57,7 @@ export default async function AudioMasteryWorkspacePage({
 
   try {
     const prisma = getPrismaClient();
-    const hasOperatorAccess = Boolean(
-      session?.user?.isStaff || isUserManagementAdminEmail(actorEmail),
-    );
-    const accessibleProjects = hasOperatorAccess
-      ? await prisma.studioProject.findMany({
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          updatedAt: true,
-        },
-        orderBy: { updatedAt: "desc" },
-      }).then((rows) => rows.map((project) => ({
-        ...project,
-        role: "OWNER" as const,
-      })))
-      : await listProjectsVisibleToEmail(actorEmail, prisma);
+    const accessibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
     const productions = accessibleProjects.length
       ? await prisma.studioEpisodeProduction.findMany({
         where: { projectId: { in: accessibleProjects.map((project) => project.id) } },

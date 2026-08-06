@@ -18,6 +18,7 @@ export type StudioProjectAccessResolution = {
 
 export type AccessibleStudioProjectSummary = {
   id: string;
+  workspaceId: string;
   slug: string;
   name: string;
   description: string | null;
@@ -26,10 +27,16 @@ export type AccessibleStudioProjectSummary = {
   workspaceName: string;
   workspaceSlug: string;
   role: StudioProjectAccessRole;
-  accessSource: "grant";
+  accessSource: "workspace-owner-label" | "grant" | "staff";
   updatedAt: Date;
   collaborators?: { email: string; role: StudioProjectAccessRole }[];
 };
+
+function rolesForAction(action: StudioProjectAccessAction): StudioProjectAccessRole[] {
+  if (action === "manage") return ["OWNER"];
+  if (action === "write") return ["OWNER", "EDITOR"];
+  return ["OWNER", "EDITOR", "VIEWER"];
+}
 
 type ProjectWithAccess = Prisma.StudioProjectGetPayload<{
   include: { workspace: true; accessGrants: true };
@@ -209,6 +216,7 @@ function accessibleProjectSummaryFromGrant(
   grant: Awaited<ReturnType<PrismaClient["studioProjectAccessGrant"]["findMany"]>>[number] & {
     project: {
       id: string;
+      workspaceId: string;
       slug: string;
       name: string;
       description: string | null;
@@ -222,6 +230,7 @@ function accessibleProjectSummaryFromGrant(
 ): AccessibleStudioProjectSummary {
   return {
     id: grant.project.id,
+    workspaceId: grant.project.workspaceId,
     slug: grant.project.slug,
     name: grant.project.name,
     description: grant.project.description,
@@ -234,6 +243,119 @@ function accessibleProjectSummaryFromGrant(
     updatedAt: grant.project.updatedAt,
     collaborators: grant.project.accessGrants,
   };
+}
+
+type ProjectListRow = Prisma.StudioProjectGetPayload<{
+  include: {
+    workspace: true;
+    accessGrants: {
+      select: { email: true; role: true };
+    };
+  };
+}>;
+
+function accessibleProjectSummaryFromProject(
+  project: ProjectListRow,
+  accessSource: "workspace-owner-label" | "staff",
+): AccessibleStudioProjectSummary {
+  return {
+    id: project.id,
+    workspaceId: project.workspaceId,
+    slug: project.slug,
+    name: project.name,
+    description: project.description,
+    sourceLabel: project.sourceLabel,
+    isPrivate: project.isPrivate,
+    workspaceName: project.workspace.name,
+    workspaceSlug: project.workspace.slug,
+    role: "OWNER",
+    accessSource,
+    updatedAt: project.updatedAt,
+    collaborators: project.accessGrants,
+  };
+}
+
+/**
+ * Canonical project-list authorization. Every returned project must produce the
+ * same allowed decision through resolveStudioProjectAccess for the requested
+ * action. Email allowlists and UI-only operator shortcuts deliberately do not
+ * participate in content visibility.
+ */
+export async function listStudioProjectsForAccess({
+  email,
+  action = "read",
+  prisma = getPrismaClient(),
+}: {
+  email?: string | null;
+  action?: StudioProjectAccessAction;
+  prisma?: PrismaClient;
+}): Promise<AccessibleStudioProjectSummary[]> {
+  const normalizedEmail = normalizeAccessEmail(email);
+  if (!normalizedEmail) return [];
+
+  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
+  if (!identity.emails.length) return [];
+
+  const projectInclude = {
+    workspace: true,
+    accessGrants: {
+      where: { status: "ACTIVE" as const },
+      select: { email: true, role: true },
+    },
+  } satisfies Prisma.StudioProjectInclude;
+
+  if (identity.roles.some(isStaffRole)) {
+    const projects = await prisma.studioProject.findMany({
+      include: projectInclude,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    });
+    return projects.map((project) => accessibleProjectSummaryFromProject(project, "staff"));
+  }
+
+  const grants = await prisma.studioProjectAccessGrant.findMany({
+    where: {
+      email: { in: identity.emails },
+      status: "ACTIVE",
+      role: { in: rolesForAction(action) },
+    },
+    include: { project: { include: projectInclude } },
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+  });
+  const strongestGrantByProject = new Map<string, (typeof grants)[number]>();
+  for (const grant of grants) {
+    const current = strongestGrantByProject.get(grant.projectId);
+    strongestGrantByProject.set(
+      grant.projectId,
+      strongestAccessGrant(current ? [current, grant] : [grant]) ?? grant,
+    );
+  }
+
+  // Workspace owner labels are a compatibility identity until every legacy
+  // Nest has an explicit OWNER grant. They are resolved with the same verified
+  // alias set as direct access and never confer access to an unrelated email.
+  const ownerProjects = await prisma.studioProject.findMany({
+    where: {
+      workspace: {
+        ownerLabel: { in: identity.emails, mode: "insensitive" },
+      },
+    },
+    include: projectInclude,
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+  });
+
+  const visible = new Map<string, AccessibleStudioProjectSummary>();
+  for (const project of ownerProjects) {
+    visible.set(project.id, accessibleProjectSummaryFromProject(project, "workspace-owner-label"));
+  }
+  for (const grant of strongestGrantByProject.values()) {
+    if (!visible.has(grant.projectId)) {
+      visible.set(grant.projectId, accessibleProjectSummaryFromGrant(grant));
+    }
+  }
+  return [...visible.values()].sort((left, right) => (
+    right.updatedAt.getTime() - left.updatedAt.getTime()
+    || left.id.localeCompare(right.id)
+  ));
 }
 
 export async function canAccessStudioProjectBySlug({
@@ -312,41 +434,7 @@ export async function listAccessibleStudioProjectSummariesForEmail(
   email?: string | null,
   prisma: PrismaClient = getPrismaClient(),
 ): Promise<AccessibleStudioProjectSummary[]> {
-  const normalizedEmail = normalizeAccessEmail(email);
-  if (!normalizedEmail) return [];
-
-  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
-  const grants = await prisma.studioProjectAccessGrant.findMany({
-    where: {
-      email: { in: identity.emails },
-      status: "ACTIVE",
-    },
-    include: {
-      project: {
-        include: {
-          workspace: true,
-          accessGrants: {
-            where: { status: "ACTIVE" },
-            select: { email: true, role: true },
-          },
-        },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  const strongestGrantByProject = new Map<string, (typeof grants)[number]>();
-  for (const grant of grants) {
-    const current = strongestGrantByProject.get(grant.projectId);
-    strongestGrantByProject.set(
-      grant.projectId,
-      strongestAccessGrant(current ? [current, grant] : [grant]) ?? grant,
-    );
-  }
-
-  return [...strongestGrantByProject.values()]
-    .sort((a, b) => b.project.updatedAt.getTime() - a.project.updatedAt.getTime())
-    .map(accessibleProjectSummaryFromGrant);
+  return listStudioProjectsForAccess({ email, action: "read", prisma });
 }
 
 export async function grantStudioProjectAccessByEmail({
