@@ -106,6 +106,52 @@ their primitives. A course builder, social suite, storyboard, or research graph
 becomes dramatically more valuable after it can consume reviewed sources,
 stable structure, canonical actions, and versioned outputs.
 
+## Standing big-feature research loop
+
+Feature discovery is now a continuous product lane rather than an occasional
+brainstorm. Large swings are encouraged, but each wave produces evidence that
+can survive implementation:
+
+1. **Observe the consequential job.** Use real HGO, coaching, research, or
+   writing work and name the failure, delay, uncertainty, or tool switch.
+2. **Research leaders and adjacencies.** Compare not only direct competitors
+   but professional tools that solve the hard subproblem: audio restoration,
+   source management, review, scheduling, learning, or publishing.
+3. **Map capability depth.** Record what Quipsly already owns at the canonical
+   model, permission, evidence, recovery, collaboration, and UX layers.
+4. **Choose the wedge.** Prefer a feature that strengthens Session certainty,
+   speech intelligence, or evidence-to-follow-through and can be reused by
+   more than one audience.
+5. **Build a production-shaped vertical slice.** Real schema, durable identity,
+   explicit authority, progress/evidence UI, retry/recovery, and export or
+   rollback are designed together. A throwaway facade is not the research
+   result.
+6. **Dogfood and measure.** Complete the real work in the product; retain both
+   successes and failures as evaluation evidence.
+7. **Deepen, redirect, or discard.** Code volume and prior effort do not protect
+   an idea. The decision is based on workflow value, quality, reliability,
+   cost, and strategic differentiation.
+
+Each research packet should end with: user promise, market evidence, current
+Quipsly substrate, proposed architecture, key UX, non-negotiable boundaries,
+cost/operational risks, matched acceptance work, and an explicit decision.
+
+The first implementation under this loop is the terminology-aware transcript
+memory in
+`docs/coordination/2026-08-06-transcript-terminology-memory-architecture.md`.
+
+### Terminology-memory dogfood checkpoint
+
+The first terminology run demonstrated the loop's intended behavior. A
+production-shaped vocabulary snapshot, v2 worker capability boundary, exact
+provider receipt, and real Audio Studio operation all worked; the resulting
+text was still bad. Carried prompting amplified a hallucination on non-speech,
+and a safer first-window prompt still produced physically implausible,
+very-low-confidence word timing. Quipsly retained all attempts, changed the
+adapter mode, and added deterministic `review-required` quality visibility
+instead of relabeling the attempt successful. The next matched study must use
+human-reviewed speech windows containing and not containing target terms.
+
 ## The feature-depth ladder
 
 A feature is not mature merely because its route and happy path exist. Quipsly

@@ -117,7 +117,7 @@ function signalStatus(status: "not-queued" | "completed" | "failed" = "not-queue
   };
 }
 
-function transcriptStatus(status: "not-queued" | "completed" | "failed" = "not-queued") {
+function transcriptStatus(status: "not-queued" | "completed" | "failed" = "not-queued", reviewRequired = false) {
   const completed = status === "completed";
   return {
     ok: true,
@@ -131,18 +131,26 @@ function transcriptStatus(status: "not-queued" | "completed" | "failed" = "not-q
     segmentPreview: { count: completed ? 2 : 0, total: completed ? 2 : 0, truncated: false },
     segments: [],
     capabilities: null,
+    terminology: null,
+    quality: completed ? {
+      disposition: reviewRequired ? "review-required" : "provider-evidence",
+      warnings: reviewRequired ? ["implausible-timing-density", "very-low-provider-confidence"] : [],
+      metrics: { activeTranscriptSeconds: reviewRequired ? 0.08 : 12, wordsPerActiveMinute: reviewRequired ? 5_250 : 60, zeroDurationWordRatio: reviewRequired ? 0.4 : 0, lowConfidenceWordRatio: reviewRequired ? 0.8 : 0.1 },
+      boundaries: { deterministicTriageNotMeasuredAccuracy: true, playbackReviewRequiredForTrust: true, providerOutputRemainsInspectible: true },
+    } : null,
     error: status === "failed" ? "Provider transcript evidence was unavailable." : null,
     updatedAt: null,
     boundaries: { originalRemainsSourceTruth: true, confidenceIsNotMeasuredAccuracy: true, correctionsRequirePlaybackReview: true, createsNoTasksGoalsOrEdits: true },
   };
 }
 
-function workspaceFetch(options: { released: boolean; signal?: "not-queued" | "completed" | "failed"; transcript?: "not-queued" | "completed" | "failed" }) {
+function workspaceFetch(options: { released: boolean; signal?: "not-queued" | "completed" | "failed"; transcript?: "not-queued" | "completed" | "failed"; transcriptReviewRequired?: boolean }) {
   return jest.fn((input) => {
     const url = String(input);
     if (url.includes("episode-inventory")) return response(inventory(options.released));
     if (url.includes("audio-signal-profile")) return response(signalStatus(options.signal));
-    if (url.includes("source-transcript")) return response(transcriptStatus(options.transcript));
+    if (url.includes("transcript-terminology")) return response({ ok: true, terms: [], candidates: [], activeRevisionToken: null, activeTermCount: 0 });
+    if (url.includes("source-transcript")) return response(transcriptStatus(options.transcript, options.transcriptReviewRequired));
     return response(masteryStatus());
   });
 }
@@ -240,7 +248,17 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByText("12.0s")).toBeInTheDocument();
     expect(screen.getByText("Timed words").previousSibling).toHaveTextContent("12");
     expect(screen.getByRole("button", { name: /Verified signal map ready/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Canonical timed transcript ready/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Timed provider transcript ready/ })).toBeDisabled();
+  });
+
+  it("keeps implausible provider words visible without labeling them ready", async () => {
+    global.fetch = workspaceFetch({ released: true, signal: "completed", transcript: "completed", transcriptReviewRequired: true });
+
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" />);
+
+    expect(await screen.findByText(/Provider output needs listening review/i)).toHaveTextContent(/too dense to represent plausible speech/i);
+    expect(screen.getByText(/Provider output needs listening review/i)).toHaveTextContent(/word confidences are very low/i);
+    expect(screen.getByRole("button", { name: /Provider transcript needs review/ })).toBeDisabled();
   });
 
   it("keeps failed signal and transcript evidence visible and retryable", async () => {

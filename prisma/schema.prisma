@@ -855,6 +855,10 @@ model User {
   transcriptEvaluationCandidates    TranscriptEvaluationCandidate[]             @relation("TranscriptEvaluationCandidateSubmitter")
   transcriptProviderPolicies        TranscriptProviderPolicyReceipt[]           @relation("TranscriptProviderPolicyCapturer")
   transcriptEvaluationCorrections   TranscriptEvaluationCorrectionObservation[] @relation("TranscriptEvaluationCorrectionReviewer")
+  transcriptTerminologyTermsCreated StudioTranscriptTerminologyTerm[]           @relation("StudioTranscriptTerminologyTermCreator")
+  transcriptTerminologyRevisions    StudioTranscriptTerminologyRevision[]       @relation("StudioTranscriptTerminologyRevisionActor")
+  transcriptTerminologyCandidates   StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateCreator")
+  transcriptTerminologyDecisions    StudioTranscriptTerminologyCandidate[]      @relation("StudioTranscriptTerminologyCandidateDecider")
   companySupportRequests            CompanySupportRequest[]
   storyDraftsCreated                StoryDraft[]                                @relation("StoryDraftCreatedBy")
   storyDraftsUpdated                StoryDraft[]                                @relation("StoryDraftUpdatedBy")
@@ -2574,17 +2578,18 @@ model TranscriptJob {
   createdAt                DateTime            @default(now())
   updatedAt                DateTime            @updatedAt
 
-  room                CallRoom?                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  asset               RecordingAsset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  studioMediaAsset    StudioMediaAsset?               @relation(fields: [studioMediaAssetId], references: [id], onDelete: Restrict)
-  studioProject       StudioProject?                  @relation(fields: [studioProjectId], references: [id], onDelete: Restrict)
-  episodeProduction   StudioEpisodeProduction?        @relation(fields: [episodeProductionId], references: [id], onDelete: Restrict)
-  segments            TranscriptSegment[]
-  words               TranscriptWord[]
-  verifications       TranscriptSegmentVerification[]
-  speakerAttributions TranscriptSpeakerAttribution[]
-  evaluationWindows   TranscriptEvaluationWindow[]
-  corrections         TranscriptCorrection[]
+  room                  CallRoom?                              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  asset                 RecordingAsset?                        @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  studioMediaAsset      StudioMediaAsset?                      @relation(fields: [studioMediaAssetId], references: [id], onDelete: Restrict)
+  studioProject         StudioProject?                         @relation(fields: [studioProjectId], references: [id], onDelete: Restrict)
+  episodeProduction     StudioEpisodeProduction?               @relation(fields: [episodeProductionId], references: [id], onDelete: Restrict)
+  segments              TranscriptSegment[]
+  words                 TranscriptWord[]
+  verifications         TranscriptSegmentVerification[]
+  speakerAttributions   TranscriptSpeakerAttribution[]
+  evaluationWindows     TranscriptEvaluationWindow[]
+  corrections           TranscriptCorrection[]
+  terminologyCandidates StudioTranscriptTerminologyCandidate[]
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
@@ -2670,12 +2675,13 @@ model TranscriptCorrection {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  room          CallRoom?                      @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  transcriptJob TranscriptJob                  @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
-  segment       TranscriptSegment              @relation(fields: [segmentId], references: [id], onDelete: Restrict)
-  createdBy     User                           @relation("TranscriptCorrectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  reviewedBy    User?                          @relation("TranscriptCorrectionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  revisions     TranscriptCorrectionRevision[]
+  room                  CallRoom?                              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transcriptJob         TranscriptJob                          @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
+  segment               TranscriptSegment                      @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  createdBy             User                                   @relation("TranscriptCorrectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reviewedBy            User?                                  @relation("TranscriptCorrectionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  revisions             TranscriptCorrectionRevision[]
+  terminologyCandidates StudioTranscriptTerminologyCandidate[]
 
   @@unique([createdByUserId, clientRequestId])
   @@index([roomId, status, createdAt])
@@ -2697,6 +2703,95 @@ model TranscriptCorrectionRevision {
 
   @@unique([correctionId, revision])
   @@index([actorUserId, createdAt])
+}
+
+// Project vocabulary is intentionally separate from provider transcript
+// evidence. The current row is a fast projection; every mutation also writes
+// an immutable revision, and each queued provider job retains its own compiled
+// snapshot so later vocabulary edits cannot rewrite history.
+model StudioTranscriptTerminologyTerm {
+  id                     String   @id @default(cuid())
+  projectId              String
+  canonicalText          String
+  normalizedText         String
+  aliasesJson            Json     @default("[]")
+  category               String   @default("general")
+  pronunciationHint      String?
+  contextHint            String?
+  priority               Int      @default(50)
+  status                 String   @default("active")
+  currentRevision        Int      @default(1)
+  createdByUserId        String?
+  createdByEmailSnapshot String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  project      StudioProject                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy    User?                                  @relation("StudioTranscriptTerminologyTermCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  revisions    StudioTranscriptTerminologyRevision[]
+  acceptedFrom StudioTranscriptTerminologyCandidate[] @relation("StudioTranscriptTerminologyAcceptedTerm")
+
+  @@unique([projectId, normalizedText])
+  @@index([projectId, status, priority, updatedAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model StudioTranscriptTerminologyRevision {
+  id                 String   @id @default(cuid())
+  termId             String
+  revision           Int
+  operation          String
+  actorUserId        String?
+  actorEmailSnapshot String?
+  snapshotJson       Json
+  createdAt          DateTime @default(now())
+
+  term  StudioTranscriptTerminologyTerm @relation(fields: [termId], references: [id], onDelete: Cascade)
+  actor User?                           @relation("StudioTranscriptTerminologyRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([termId, revision])
+  @@index([actorUserId, createdAt])
+}
+
+// Accepted transcript corrections may suggest reusable terms, but they never
+// mutate the vocabulary automatically. Review preserves the exact correction
+// and proposed spelling that informed the decision.
+model StudioTranscriptTerminologyCandidate {
+  id                     String    @id @default(cuid())
+  projectId              String
+  sourceCorrectionId     String?
+  sourceTranscriptJobId  String?
+  proposedCanonicalText  String
+  normalizedText         String
+  aliasesJson            Json      @default("[]")
+  category               String    @default("general")
+  pronunciationHint      String?
+  contextHint            String?
+  priority               Int       @default(50)
+  status                 String    @default("proposed")
+  evidenceJson           Json      @default("{}")
+  createdByUserId        String?
+  createdByEmailSnapshot String?
+  decidedByUserId        String?
+  decidedByEmailSnapshot String?
+  decisionNote           String?
+  acceptedTermId         String?
+  decidedAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  project          StudioProject                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceCorrection TranscriptCorrection?            @relation(fields: [sourceCorrectionId], references: [id], onDelete: SetNull)
+  sourceTranscript TranscriptJob?                   @relation(fields: [sourceTranscriptJobId], references: [id], onDelete: SetNull)
+  createdBy        User?                            @relation("StudioTranscriptTerminologyCandidateCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  decidedBy        User?                            @relation("StudioTranscriptTerminologyCandidateDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  acceptedTerm     StudioTranscriptTerminologyTerm? @relation("StudioTranscriptTerminologyAcceptedTerm", fields: [acceptedTermId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, sourceCorrectionId])
+  @@index([projectId, status, createdAt])
+  @@index([sourceTranscriptJobId, status])
+  @@index([decidedByUserId, decidedAt])
+  @@index([acceptedTermId])
 }
 
 // Append-only proof that a person listened to an immutable provider segment
@@ -3721,6 +3816,8 @@ model StudioProject {
 
   scrollExperiences                  StudioScrollExperience[]
   transcriptJobs                     TranscriptJob[]
+  transcriptTerminologyTerms         StudioTranscriptTerminologyTerm[]
+  transcriptTerminologyCandidates    StudioTranscriptTerminologyCandidate[]
   studioDialogueRepairCandidates     StudioDialogueRepairCandidate[]
   studioDialogueRepairReviewReceipts StudioDialogueRepairReviewReceipt[]
   studioDialogueRepairAuditions      StudioDialogueRepairAuditionReceipt[]

@@ -4,15 +4,18 @@ import { randomUUID } from "node:crypto";
 
 import type { Prisma } from "@prisma/client";
 import {
+  assessStudioSourceTranscriptQuality,
   newStudioSourceTranscriptJob,
   parseStudioSourceTranscriptJob,
   parseStudioSourceTranscriptResult,
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V2,
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES,
   type StudioSourceTranscriptAuthorizationKind,
 } from "@high-ground/quipsly-media-processing";
 
 import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { compileStudioTranscriptTerminologySnapshot } from "@/lib/server/studio-transcript-terminology";
 
-const JOB_TYPE = "source-transcript";
 const ORIGINAL_ROLES = new Set(["spine-audio", "audio-source", "phone-audio", "camera-video", "episode-media"]);
 const REFERENCE_ROLES = new Set(["reference-clip", "b-roll", "source-clip", "youtube-source-clip"]);
 
@@ -61,6 +64,17 @@ export type PublicStudioSourceTranscriptStatus = {
     speakerDiarization: "unavailable";
     alternatives: "unavailable";
   };
+  terminology: null | {
+    termsSha256: string;
+    promptSha256: string;
+    termCount: number;
+    promptCharacterCount: number;
+    revisionToken: string;
+    compiledAt: string;
+    mode: "initial-prompt-first-window" | "initial-prompt-carried";
+    appliedByProvider: boolean;
+  };
+  quality: null | ReturnType<typeof assessStudioSourceTranscriptQuality>;
   error: string | null;
   updatedAt: string | null;
   boundaries: {
@@ -92,8 +106,15 @@ export async function queueStudioSourceTranscript(input: {
   }
   const evidence = await inspectImmutableStudioMediaSource(context.source.providerSourceId, context.asset.mimeType);
   if (evidence.provider !== "local") throw new Error("Cloud episode transcription is not qualified yet. This release accepts local Nest media only.");
+  const now = new Date();
+  const terminology = await compileStudioTranscriptTerminologySnapshot({
+    prisma: input.prisma,
+    projectId: context.project.id,
+    compiledAt: now,
+  });
+  const language = input.language?.trim() || "en";
   const existing = await input.prisma.studioAssetProcessingJob.findFirst({
-    where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
+    where: { projectId: context.project.id, assetId: context.asset.id, type: { in: [...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES] } },
     orderBy: { createdAt: "desc" },
   });
   if (existing && existing.status !== "failed") {
@@ -101,16 +122,20 @@ export async function queueStudioSourceTranscript(input: {
       const current = parseStudioSourceTranscriptJob(existing.inputJson, existing.id);
       if (
         current.episodeProductionId === context.production.id
+        && (!terminology || existing.type === STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V2)
         && current.source.sha256 === evidence.sha256
         && current.source.generation === evidence.generation
         && current.source.sizeBytes === evidence.sizeBytes
+        && current.provider.language === language
+        && current.terminology?.termsSha256 === terminology?.termsSha256
+        && current.terminology?.providerInput.promptSha256 === terminology?.providerInput.promptSha256
+        && current.terminology?.providerInput.mode === terminology?.providerInput.mode
       ) return toPublicStudioSourceTranscriptStatus(input.prisma, existing);
     } catch {
       // A malformed or legacy row cannot own a new immutable transcript request.
     }
   }
 
-  const now = new Date();
   const jobId = `studio_transcript_${randomUUID().replaceAll("-", "")}`;
   const transcriptJobId = `transcript_${randomUUID().replaceAll("-", "")}`;
   const contract = newStudioSourceTranscriptJob({
@@ -135,10 +160,11 @@ export async function queueStudioSourceTranscript(input: {
     provider: {
       name: "openai-whisper-local",
       model: "large-v3-turbo",
-      language: input.language?.trim() || "en",
+      language,
       wordTimestamps: true,
       speakerDiarization: false,
     },
+    terminology,
   });
   const saved = await input.prisma.$transaction(async (transaction: any) => {
     await transaction.transcriptJob.create({
@@ -161,6 +187,11 @@ export async function queueStudioSourceTranscript(input: {
           authorization: contract.authorization,
           immutableProviderEvidence: true,
           humanReviewed: false,
+          terminologySnapshot: terminology ? {
+            termsSha256: terminology.termsSha256,
+            promptSha256: terminology.providerInput.promptSha256,
+            termCount: terminology.providerInput.includedTermIds.length,
+          } : null,
           createsNoTasksGoalsOrEdits: true,
         }),
       },
@@ -170,7 +201,9 @@ export async function queueStudioSourceTranscript(input: {
         id: jobId,
         projectId: context.project.id,
         assetId: context.asset.id,
-        type: JOB_TYPE,
+        // A new queue type is a rolling-deploy safety boundary: workers that
+        // predate terminology snapshots cannot claim and falsely satisfy it.
+        type: STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V2,
         status: "queued",
         requestedByEmail: input.actorEmail,
         inputJson: toPrismaJson(contract),
@@ -199,7 +232,7 @@ export async function readStudioSourceTranscriptStatus(input: {
   });
   if (!attachment || jsonObject(attachment.metadataJson).episodeSlug !== input.episodeSlug) return emptyStatus();
   const job = await input.prisma.studioAssetProcessingJob.findFirst({
-    where: { projectId: project.id, assetId: input.assetId, type: JOB_TYPE },
+    where: { projectId: project.id, assetId: input.assetId, type: { in: [...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES] } },
     orderBy: { createdAt: "desc" },
   });
   return job ? toPublicStudioSourceTranscriptStatus(input.prisma, job) : emptyStatus();
@@ -214,7 +247,7 @@ export async function reconcileStudioSourceTranscript(input: {
 }) {
   const context = await loadStudioSourceTranscriptContext(input);
   const row = await input.prisma.studioAssetProcessingJob.findFirst({
-    where: { projectId: context.project.id, assetId: context.asset.id, type: JOB_TYPE },
+    where: { projectId: context.project.id, assetId: context.asset.id, type: { in: [...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES] } },
     orderBy: { createdAt: "desc" },
   });
   if (!row || row.status !== "output-ready") return row ? toPublicStudioSourceTranscriptStatus(input.prisma, row) : emptyStatus();
@@ -391,6 +424,7 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
   }) : 0;
   const segmentPreviewCount = completed ? transcript.segments.length : 0;
   const segmentTotal = completed ? transcript._count.segments : 0;
+  const quality = result ? assessStudioSourceTranscriptQuality(result.segments, result.words) : null;
   return {
     jobId: String(job.id),
     transcriptJobId: contract?.transcriptJobId ?? null,
@@ -425,6 +459,17 @@ export async function toPublicStudioSourceTranscriptStatus(prisma: any, job: any
       confidence: segment.confidence,
     })) : [],
     capabilities: result?.provider.capabilities ?? null,
+    terminology: contract?.terminology ? {
+      termsSha256: contract.terminology.termsSha256,
+      promptSha256: contract.terminology.providerInput.promptSha256,
+      termCount: contract.terminology.providerInput.includedTermIds.length,
+      promptCharacterCount: contract.terminology.providerInput.promptText.length,
+      revisionToken: contract.terminology.revisionToken,
+      compiledAt: contract.terminology.compiledAt,
+      mode: contract.terminology.providerInput.mode,
+      appliedByProvider: Boolean(result?.provider.terminology),
+    } : null,
+    quality,
     error: integrityFailure ? "Transcript evidence failed integrity validation." : typeof job.error === "string" ? job.error : transcript?.errorMessage || null,
     updatedAt: job.updatedAt?.toISOString?.() ?? null,
     boundaries: transcriptBoundaries(),
@@ -443,6 +488,8 @@ function emptyStatus(): PublicStudioSourceTranscriptStatus {
     segmentPreview: { count: 0, total: 0, truncated: false },
     segments: [],
     capabilities: null,
+    terminology: null,
+    quality: null,
     error: null,
     updatedAt: null,
     boundaries: transcriptBoundaries(),

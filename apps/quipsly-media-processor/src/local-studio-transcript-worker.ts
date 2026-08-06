@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION,
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES,
   STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND,
   parseStudioSourceTranscriptJob,
   parseStudioSourceTranscriptResult,
@@ -19,7 +20,6 @@ import pg from "pg";
 import { sha256File } from "./transcoder.js";
 
 const { Pool } = pg;
-const JOB_TYPE = "source-transcript";
 
 export type LocalStudioTranscriptClaim = { id: string; inputJson: unknown; attempt: number; executionId: string };
 
@@ -38,7 +38,7 @@ export type LocalStudioTranscriptProviderResult = {
 };
 
 export interface LocalStudioTranscriber {
-  transcribe(input: { sourcePath: string; model: string; language: string | null }): Promise<LocalStudioTranscriptProviderResult>;
+  transcribe(input: { sourcePath: string; model: string; language: string | null; terminologyPrompt: string | null }): Promise<LocalStudioTranscriptProviderResult>;
 }
 
 export type LocalStudioTranscriptWorkerOptions = {
@@ -90,6 +90,7 @@ export async function runOneLocalStudioTranscriptJob(
       sourcePath,
       model: job.provider.model,
       language: job.provider.language,
+      terminologyPrompt: job.terminology?.providerInput.promptText || null,
     });
     if (!providerResult.segments.length || !providerResult.words.length) {
       throw new TerminalStudioTranscriptError("studio-transcript-empty", "Whisper returned no usable timed transcript words.");
@@ -116,6 +117,13 @@ export async function runOneLocalStudioTranscriptJob(
         rawEvidenceSha256: evidence.sha256,
         rawEvidenceSizeBytes: evidence.sizeBytes,
         rawEvidenceLocator: evidence.locator,
+        terminology: job.terminology ? {
+          snapshotSha256: job.terminology.termsSha256,
+          promptSha256: job.terminology.providerInput.promptSha256,
+          termCount: job.terminology.providerInput.includedTermIds.length,
+          promptCharacterCount: job.terminology.providerInput.promptText.length,
+          mode: job.terminology.providerInput.mode,
+        } : null,
         capabilities: {
           segmentTiming: "provider",
           wordTiming: "provider",
@@ -173,14 +181,14 @@ export class PostgresLocalStudioTranscriptStore implements LocalStudioTranscript
         text: `
           SELECT "id", "inputJson", "resultJson"
           FROM "StudioAssetProcessingJob"
-          WHERE "type" = $1
+          WHERE "type" = ANY($1::text[])
             AND "inputJson"->'source'->>'provider' = 'local'
             AND ("status" = 'queued' OR ("status" = 'processing' AND "updatedAt" < $2))
           ORDER BY "createdAt" ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         `,
-        values: [JOB_TYPE, new Date(input.now.getTime() - input.leaseMs)],
+        values: [[...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES], new Date(input.now.getTime() - input.leaseMs)],
       });
       const row = selected.rows[0];
       if (!row) { await client.query("COMMIT"); return null; }
@@ -253,22 +261,11 @@ export class WhisperCliStudioTranscriber implements LocalStudioTranscriber {
   private readonly device: string;
   constructor(executable: string, device: string) { this.executable = executable; this.device = device; }
 
-  async transcribe(input: { sourcePath: string; model: string; language: string | null }) {
+  async transcribe(input: { sourcePath: string; model: string; language: string | null; terminologyPrompt: string | null }) {
     const outputDirectory = await mkdtemp(path.join(tmpdir(), "quipsly-studio-whisper-"));
     const outputPath = path.join(outputDirectory, `${path.basename(input.sourcePath, path.extname(input.sourcePath))}.json`);
     try {
-      const args = [
-        input.sourcePath,
-        "--model", input.model,
-        "--device", this.device,
-        "--output_dir", outputDirectory,
-        "--output_format", "json",
-        "--verbose", "False",
-        "--word_timestamps", "True",
-        "--condition_on_previous_text", "False",
-        "--fp16", this.device === "cpu" ? "False" : "True",
-      ];
-      if (input.language) args.push("--language", input.language);
+      const args = buildWhisperCliArguments({ ...input, device: this.device, outputDirectory });
       const stderr = await runProcess(this.executable, args);
       const raw = await readFile(outputPath).catch(() => { throw new Error(`Whisper produced no JSON output: ${stderr.slice(-800)}`); });
       return normalizeWhisperJson(raw);
@@ -276,6 +273,30 @@ export class WhisperCliStudioTranscriber implements LocalStudioTranscriber {
       await rm(outputDirectory, { recursive: true, force: true });
     }
   }
+}
+
+export function buildWhisperCliArguments(input: {
+  sourcePath: string;
+  model: string;
+  language: string | null;
+  terminologyPrompt: string | null;
+  device: string;
+  outputDirectory: string;
+}) {
+  const args = [
+    input.sourcePath,
+    "--model", input.model,
+    "--device", input.device,
+    "--output_dir", input.outputDirectory,
+    "--output_format", "json",
+    "--verbose", "False",
+    "--word_timestamps", "True",
+    "--condition_on_previous_text", "False",
+    "--fp16", input.device === "cpu" ? "False" : "True",
+  ];
+  if (input.language) args.push("--language", input.language);
+  if (input.terminologyPrompt) args.push("--initial_prompt", input.terminologyPrompt);
+  return args;
 }
 
 export function normalizeWhisperJson(raw: Buffer): LocalStudioTranscriptProviderResult {

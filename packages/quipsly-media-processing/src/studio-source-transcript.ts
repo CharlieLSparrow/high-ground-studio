@@ -1,8 +1,18 @@
 import type { AudioMasterySourceBinding } from "./audio-mastery.js";
+import {
+  parseStudioTranscriptTerminologySnapshot,
+  type StudioTranscriptTerminologySnapshot,
+} from "./transcript-terminology.js";
 
 export const STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION = 1 as const;
 export const STUDIO_SOURCE_TRANSCRIPT_JOB_KIND = "quipsly-studio-source-transcript-job-v1" as const;
 export const STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND = "quipsly-studio-source-transcript-result-v1" as const;
+export const STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V1 = "source-transcript" as const;
+export const STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V2 = "source-transcript-v2" as const;
+export const STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES = [
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V2,
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPE_V1,
+] as const;
 
 export type StudioSourceTranscriptAuthorizationKind =
   | "participant-consent-confirmed"
@@ -40,6 +50,7 @@ export type StudioSourceTranscriptJob = {
   source: AudioMasterySourceBinding;
   authorization: StudioSourceTranscriptAuthorization;
   provider: StudioSourceTranscriptProviderRequest;
+  terminology: StudioTranscriptTerminologySnapshot | null;
   boundaries: {
     originalRemainsSourceTruth: true;
     transcriptIsAppendOnlyProviderEvidence: true;
@@ -71,6 +82,28 @@ export type StudioSourceTranscriptSegment = {
   wordEndIndexExclusive: number;
 };
 
+export type StudioSourceTranscriptQualityWarning =
+  | "implausible-timing-density"
+  | "collapsed-word-timing"
+  | "repetitive-provider-output"
+  | "very-low-provider-confidence";
+
+export type StudioSourceTranscriptQualityAssessment = {
+  disposition: "provider-evidence" | "review-required";
+  warnings: StudioSourceTranscriptQualityWarning[];
+  metrics: {
+    activeTranscriptSeconds: number;
+    wordsPerActiveMinute: number;
+    zeroDurationWordRatio: number;
+    lowConfidenceWordRatio: number | null;
+  };
+  boundaries: {
+    deterministicTriageNotMeasuredAccuracy: true;
+    playbackReviewRequiredForTrust: true;
+    providerOutputRemainsInspectible: true;
+  };
+};
+
 export type StudioSourceTranscriptResult = {
   kind: typeof STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND;
   version: typeof STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION;
@@ -85,6 +118,13 @@ export type StudioSourceTranscriptResult = {
     rawEvidenceSha256: string;
     rawEvidenceSizeBytes: number;
     rawEvidenceLocator: string;
+    terminology: {
+      snapshotSha256: string;
+      promptSha256: string;
+      termCount: number;
+      promptCharacterCount: number;
+      mode: "initial-prompt-first-window" | "initial-prompt-carried";
+    } | null;
     capabilities: {
       segmentTiming: "provider";
       wordTiming: "provider";
@@ -123,7 +163,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
 
 export function newStudioSourceTranscriptJob(
-  input: Omit<StudioSourceTranscriptJob, "kind" | "version" | "boundaries">,
+  input: Omit<StudioSourceTranscriptJob, "kind" | "version" | "boundaries" | "terminology"> & {
+    terminology?: StudioTranscriptTerminologySnapshot | null;
+  },
 ): StudioSourceTranscriptJob {
   return parseStudioSourceTranscriptJob({
     ...input,
@@ -172,6 +214,7 @@ export function parseStudioSourceTranscriptJob(
       wordTimestamps: true,
       speakerDiarization: false,
     },
+    terminology: row.terminology == null ? null : parseStudioTranscriptTerminologySnapshot(row.terminology),
     boundaries: transcriptBoundaries(),
   };
 }
@@ -187,6 +230,7 @@ export function parseStudioSourceTranscriptResult(
   const source = parseSource(row.source);
   const provider = record(row.provider);
   const capabilities = record(provider.capabilities);
+  const providerTerminology = provider.terminology == null ? null : record(provider.terminology);
   const coverage = record(row.coverage);
   const worker = record(row.worker);
   const boundaries = record(row.boundaries);
@@ -194,6 +238,7 @@ export function parseStudioSourceTranscriptResult(
     row.kind !== STUDIO_SOURCE_TRANSCRIPT_RESULT_KIND
     || row.version !== STUDIO_SOURCE_TRANSCRIPT_CONTRACT_VERSION
     || (job && (job.jobId !== jobId || job.transcriptJobId !== transcriptJobId || !sameSource(job.source, source) || provider.model !== job.provider.model))
+    || (job && !sameTerminologyReceipt(job.terminology, providerTerminology))
     || provider.name !== "openai-whisper-local"
     || capabilities.segmentTiming !== "provider"
     || capabilities.wordTiming !== "provider"
@@ -237,6 +282,15 @@ export function parseStudioSourceTranscriptResult(
       rawEvidenceSha256: requiredSha256(provider.rawEvidenceSha256, "provider.rawEvidenceSha256"),
       rawEvidenceSizeBytes: positiveInteger(provider.rawEvidenceSizeBytes, "provider.rawEvidenceSizeBytes"),
       rawEvidenceLocator: requiredText(provider.rawEvidenceLocator, "provider.rawEvidenceLocator"),
+      terminology: providerTerminology ? {
+        snapshotSha256: requiredSha256(providerTerminology.snapshotSha256, "provider.terminology.snapshotSha256"),
+        promptSha256: requiredSha256(providerTerminology.promptSha256, "provider.terminology.promptSha256"),
+        termCount: nonNegativeInteger(providerTerminology.termCount, "provider.terminology.termCount"),
+        promptCharacterCount: nonNegativeInteger(providerTerminology.promptCharacterCount, "provider.terminology.promptCharacterCount"),
+        mode: providerTerminology.mode === "initial-prompt-first-window" || providerTerminology.mode === "initial-prompt-carried"
+          ? providerTerminology.mode
+          : invalid("provider.terminology.mode"),
+      } : null,
       capabilities: {
         segmentTiming: "provider",
         wordTiming: "provider",
@@ -264,6 +318,49 @@ export function parseStudioSourceTranscriptResult(
       attempt: positiveInteger(worker.attempt, "worker.attempt"),
     },
     boundaries: { ...transcriptBoundaries(), completeSourceRead: true, providerEvidenceRetained: true },
+  };
+}
+
+export function assessStudioSourceTranscriptQuality(
+  segments: StudioSourceTranscriptSegment[],
+  words: StudioSourceTranscriptWord[],
+): StudioSourceTranscriptQualityAssessment {
+  const transcriptStart = segments.length ? Math.min(...segments.map((segment) => segment.startSeconds)) : 0;
+  const transcriptEnd = segments.length ? Math.max(...segments.map((segment) => segment.endSeconds)) : transcriptStart;
+  const activeTranscriptSeconds = Math.max(0, transcriptEnd - transcriptStart);
+  const wordsPerActiveMinute = words.length ? words.length * 60 / Math.max(activeTranscriptSeconds, 0.001) : 0;
+  const zeroDurationWords = words.filter((word) => word.endSeconds - word.startSeconds <= 0.001).length;
+  const zeroDurationWordRatio = words.length ? zeroDurationWords / words.length : 0;
+  const confidenceWords = words.filter((word) => word.confidence != null);
+  const lowConfidenceWordRatio = confidenceWords.length
+    ? confidenceWords.filter((word) => Number(word.confidence) < 0.2).length / confidenceWords.length
+    : null;
+  const lexical = words.map((word) => word.word.normalize("NFKC").toLocaleLowerCase("en-US").replace(/[^\p{L}\p{N}]+/gu, "")).filter(Boolean);
+  const bigrams = new Map<string, number>();
+  for (let index = 0; index + 1 < lexical.length; index += 1) {
+    const key = `${lexical[index]}\u0000${lexical[index + 1]}`;
+    bigrams.set(key, (bigrams.get(key) || 0) + 1);
+  }
+  const maximumBigramOccurrences = Math.max(0, ...bigrams.values());
+  const warnings: StudioSourceTranscriptQualityWarning[] = [];
+  if (words.length >= 4 && wordsPerActiveMinute > 600) warnings.push("implausible-timing-density");
+  if (words.length >= 4 && zeroDurationWordRatio >= 0.25) warnings.push("collapsed-word-timing");
+  if (words.length >= 6 && maximumBigramOccurrences >= 3 && maximumBigramOccurrences / Math.max(1, lexical.length - 1) >= 0.4) warnings.push("repetitive-provider-output");
+  if (confidenceWords.length >= 4 && lowConfidenceWordRatio != null && lowConfidenceWordRatio >= 0.5) warnings.push("very-low-provider-confidence");
+  return {
+    disposition: warnings.length ? "review-required" : "provider-evidence",
+    warnings,
+    metrics: {
+      activeTranscriptSeconds,
+      wordsPerActiveMinute,
+      zeroDurationWordRatio,
+      lowConfidenceWordRatio,
+    },
+    boundaries: {
+      deterministicTriageNotMeasuredAccuracy: true,
+      playbackReviewRequiredForTrust: true,
+      providerOutputRemainsInspectible: true,
+    },
   };
 }
 
@@ -359,6 +456,18 @@ function sameSource(left: AudioMasterySourceBinding, right: AudioMasterySourceBi
   return left.assetId === right.assetId && left.provider === right.provider && left.locator === right.locator
     && left.generation === right.generation && left.sha256 === right.sha256 && left.sizeBytes === right.sizeBytes
     && left.contentType === right.contentType;
+}
+
+function sameTerminologyReceipt(
+  snapshot: StudioTranscriptTerminologySnapshot | null,
+  receipt: Record<string, unknown> | null,
+) {
+  if (!snapshot) return receipt == null;
+  return receipt?.snapshotSha256 === snapshot.termsSha256
+    && receipt?.promptSha256 === snapshot.providerInput.promptSha256
+    && receipt?.termCount === snapshot.providerInput.includedTermIds.length
+    && receipt?.promptCharacterCount === snapshot.providerInput.promptText.length
+    && receipt?.mode === snapshot.providerInput.mode;
 }
 
 function transcriptBoundaries(): StudioSourceTranscriptJob["boundaries"] {

@@ -134,6 +134,20 @@ local_transcript_worker_build_id="${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-$(
 if [[ -n "$(git status --porcelain=v1 --untracked-files=all -- scripts/dev/quipsly-local-transcript-worker.mjs)" ]]; then
   local_transcript_worker_build_id="${local_transcript_worker_build_id}-dirty"
 fi
+worker_source_paths=(
+  apps/quipsly-media-processor
+  packages/quipsly-media-processing
+  scripts/dev/quipsly-local-transcript-worker.mjs
+  scripts/register-ts-extension-loader.mjs
+)
+local_worker_source_revision="$({
+  git rev-parse HEAD
+  git diff --binary HEAD -- "${worker_source_paths[@]}"
+  while IFS= read -r untracked_worker_file; do
+    printf '%s\n' "${untracked_worker_file}"
+    git hash-object "${untracked_worker_file}"
+  done < <(git ls-files --others --exclude-standard -- "${worker_source_paths[@]}")
+} | git hash-object --stdin)"
 umask 077
 mkdir -p "${state_dir}"
 
@@ -225,6 +239,8 @@ replace_macos_jobs() {
     "${state_dir}/media-worker.label" \
     "${state_dir}/transcript-worker.label" \
     "${state_dir}/transcript-worker.enabled" \
+    "${state_dir}/media-worker.source-revision" \
+    "${state_dir}/transcript-worker.source-revision" \
     "${state_dir}/repo-root" \
     "${state_dir}/source-revision"
 }
@@ -262,9 +278,13 @@ start_macos_job() {
       "QUIPSLY_LOCAL_WHISPER_LANGUAGE=${local_whisper_language}" \
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${local_transcript_worker_available}" \
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${local_transcript_worker_build_id}" \
+      "QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=${local_worker_source_revision}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
+  if [[ "${name}" == "media-worker" || "${name}" == "transcript-worker" ]]; then
+    printf "%s\n" "${local_worker_source_revision}" >"${state_dir}/${name}.source-revision"
+  fi
 }
 
 if [[ "${replace_existing}" == "1" ]]; then
@@ -324,9 +344,13 @@ rm -f \
 if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
   printf "%s\n" "${local_whisper_executable}" >"${state_dir}/transcript-worker.enabled"
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    if launchctl_job_exists "${transcript_worker_label}"; then
+    recorded_transcript_source_revision="$(sed -n '1p' "${state_dir}/transcript-worker.source-revision" 2>/dev/null || true)"
+    if launchctl_job_exists "${transcript_worker_label}" && [[ "${recorded_transcript_source_revision}" == "${local_worker_source_revision}" ]]; then
       printf "REUSE %-24s job %s\n" "Transcript worker" "${transcript_worker_label}"
     else
+      if launchctl_job_exists "${transcript_worker_label}"; then
+        printf "RELOAD %-23s source %s -> %s\n" "Transcript worker" "${recorded_transcript_source_revision:-unknown}" "${local_worker_source_revision}"
+      fi
       start_macos_job "transcript-worker" "${transcript_worker_label}" "--run-transcript-worker"
       sleep 1
     fi
@@ -371,9 +395,13 @@ fi
 
 rm -f "${state_dir}/media-worker.pid" "${state_dir}/media-worker.cwd"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  if launchctl_job_exists "${media_worker_label}"; then
+  recorded_media_source_revision="$(sed -n '1p' "${state_dir}/media-worker.source-revision" 2>/dev/null || true)"
+  if launchctl_job_exists "${media_worker_label}" && [[ "${recorded_media_source_revision}" == "${local_worker_source_revision}" ]]; then
     printf "REUSE %-24s job %s\n" "Episode media worker" "${media_worker_label}"
   else
+    if launchctl_job_exists "${media_worker_label}"; then
+      printf "RELOAD %-23s source %s -> %s\n" "Episode media worker" "${recorded_media_source_revision:-unknown}" "${local_worker_source_revision}"
+    fi
     start_macos_job "media-worker" "${media_worker_label}" "--run-media-worker"
     sleep 1
   fi

@@ -490,7 +490,7 @@ export async function GET(request: Request) {
           take: 20,
         },
         processingJobs: {
-          where: { type: { in: ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery", "audio-delivery"] } },
+          where: { type: { in: ["audio-signal-profile", "source-transcript", "source-transcript-v2", "audio-alignment", "audio-mastery", "audio-delivery"] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 25,
           include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },
@@ -528,7 +528,7 @@ export async function GET(request: Request) {
           take: 20,
         },
         processingJobs: {
-          where: { type: { in: ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery", "audio-delivery"] } },
+          where: { type: { in: ["audio-signal-profile", "source-transcript", "source-transcript-v2", "audio-alignment", "audio-mastery", "audio-delivery"] } },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: 25,
           include: { audioDeliveryReviews: { orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 20 } },

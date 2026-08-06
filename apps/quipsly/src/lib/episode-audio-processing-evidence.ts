@@ -7,6 +7,7 @@ import {
   parseAudioSignalProfileResult,
   parseStudioSourceTranscriptJob,
   parseStudioSourceTranscriptResult,
+  STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES,
 } from "@high-ground/quipsly-media-processing";
 
 export type EpisodeAudioProcessingStatus =
@@ -81,7 +82,7 @@ export type EpisodeAudioTranscriptActivityEvidence = {
   boundaries: { providerTimingIsNotMeasuredAccuracy: true; wordsAreNotVoiceActivity: true; sourceIdentityBound: true; textExcludedFromActivityProjection: true };
 };
 
-const JOB_TYPES = ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery"] as const;
+const JOB_TYPES = ["audio-signal-profile", ...STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES, "audio-alignment", "audio-mastery"] as const;
 
 function record(value: unknown): Record<string, any> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -105,7 +106,10 @@ function status(value: unknown): EpisodeAudioProcessingStatus {
 function latestByType(jobs: any[]) {
   const rows = new Map<string, any>();
   for (const job of Array.isArray(jobs) ? jobs : []) {
-    if (JOB_TYPES.includes(job?.type) && !rows.has(job.type)) rows.set(job.type, job);
+    if (JOB_TYPES.includes(job?.type)) {
+      const canonicalType = STUDIO_SOURCE_TRANSCRIPT_PROCESSING_TYPES.includes(job.type) ? "source-transcript" : job.type;
+      if (!rows.has(canonicalType)) rows.set(canonicalType, job);
+    }
   }
   return rows;
 }

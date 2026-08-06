@@ -116,6 +116,8 @@ fi
 rm -f \
   "${state_dir}/repo-root" \
   "${state_dir}/source-revision" \
+  "${state_dir}/media-worker.source-revision" \
+  "${state_dir}/transcript-worker.source-revision" \
   "${state_dir}/transcript-worker.enabled"
 
 echo

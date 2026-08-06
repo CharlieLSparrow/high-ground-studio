@@ -64,6 +64,31 @@ export type StudioSourceTranscriptClientStatus = {
     speakerDiarization: "unavailable";
     alternatives: "unavailable";
   };
+  terminology: null | {
+    termsSha256: string;
+    promptSha256: string;
+    termCount: number;
+    promptCharacterCount: number;
+    revisionToken: string;
+    compiledAt: string;
+    mode: "initial-prompt-first-window" | "initial-prompt-carried";
+    appliedByProvider: boolean;
+  };
+  quality: null | {
+    disposition: "provider-evidence" | "review-required";
+    warnings: Array<"implausible-timing-density" | "collapsed-word-timing" | "repetitive-provider-output" | "very-low-provider-confidence">;
+    metrics: {
+      activeTranscriptSeconds: number;
+      wordsPerActiveMinute: number;
+      zeroDurationWordRatio: number;
+      lowConfidenceWordRatio: number | null;
+    };
+    boundaries: {
+      deterministicTriageNotMeasuredAccuracy: true;
+      playbackReviewRequiredForTrust: true;
+      providerOutputRemainsInspectible: true;
+    };
+  };
   error: string | null;
   updatedAt: string | null;
   boundaries: {

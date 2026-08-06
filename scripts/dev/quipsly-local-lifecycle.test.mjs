@@ -194,6 +194,18 @@ test("healthy ports cannot hide another worktree", () => {
   assert.match(doctor, /quipsly_local_process_cwd "\$\{nest_listener\}"/);
 });
 
+test("local workers reload when their executable source fingerprint changes", () => {
+  assert.match(up, /local_worker_source_revision/);
+  assert.match(up, /git diff --binary HEAD -- "\$\{worker_source_paths\[@\]\}"/);
+  assert.match(up, /media-worker\.source-revision/);
+  assert.match(up, /transcript-worker\.source-revision/);
+  assert.match(up, /recorded_media_source_revision.*local_worker_source_revision/s);
+  assert.match(up, /recorded_transcript_source_revision.*local_worker_source_revision/s);
+  assert.match(up, /QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=\$\{local_worker_source_revision\}/);
+  assert.match(down, /media-worker\.source-revision/);
+  assert.match(down, /transcript-worker\.source-revision/);
+});
+
 test("the local lane generates the Prisma client before applying migrations", () => {
   const generateIndex = up.indexOf('pnpm db:generate');
   const migrateIndex = up.indexOf('pnpm exec prisma migrate deploy');

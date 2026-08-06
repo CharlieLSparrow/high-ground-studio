@@ -44,6 +44,7 @@ import {
 import { AudioMasteryAudition } from "../editor/AudioMasteryAudition";
 import { DialogueRepairDesk } from "../editor/DialogueRepairDesk";
 import { StudioTranscriptReviewDesk } from "../editor/StudioTranscriptReviewDesk";
+import { TranscriptTerminologyDesk } from "./TranscriptTerminologyDesk";
 import {
   audioMasteryLifecycle,
   audioWorkspaceAssets,
@@ -102,6 +103,19 @@ function sleep(milliseconds: number) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function transcriptQualityWarningText(warnings: NonNullable<StudioSourceTranscriptClientStatus["quality"]>["warnings"]) {
+  const labels = warnings.map((warning) => warning === "implausible-timing-density"
+    ? "word timing is too dense to represent plausible speech"
+    : warning === "collapsed-word-timing"
+      ? "several words collapse onto the same instant"
+      : warning === "repetitive-provider-output"
+        ? "the provider repeated the same phrase pattern"
+        : "most provider word confidences are very low");
+  if (labels.length === 1) return `${labels[0]}.`;
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}.`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}.`;
+}
+
 export function AudioMasteryWorkspaceClient({
   projects,
   initialProjectId = "",
@@ -136,6 +150,7 @@ export function AudioMasteryWorkspaceClient({
   const [signalStatusLoading, setSignalStatusLoading] = useState(false);
   const [transcriptStatus, setTranscriptStatus] = useState<StudioSourceTranscriptClientStatus | null>(null);
   const [transcriptStatusLoading, setTranscriptStatusLoading] = useState(false);
+  const [activeTerminologyRevisionToken, setActiveTerminologyRevisionToken] = useState<string | null | undefined>(undefined);
   const [operation, setOperation] = useState<BusyOperation>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [statusRefreshToken, setStatusRefreshToken] = useState(0);
@@ -177,6 +192,8 @@ export function AudioMasteryWorkspaceClient({
     ?? assets[0]
     ?? null;
   const lifecycle = useMemo(() => audioMasteryLifecycle(status), [status]);
+  const transcriptTerminologyStale = activeTerminologyRevisionToken !== undefined
+    && activeTerminologyRevisionToken !== (transcriptStatus?.terminology?.revisionToken ?? null);
   const audioSignal = useMemo(
     () => audioWorkspaceSignal(signalStatus),
     [signalStatus?.audioSignal],
@@ -574,7 +591,9 @@ export function AudioMasteryWorkspaceClient({
         throw new Error("Source transcription is still processing. Resume it from this source.");
       }
       setInventoryRefreshToken((value) => value + 1);
-      setNotice("Canonical timed transcript ready. Confidence remains provider evidence, and corrections require protected playback review.");
+      setNotice(next.quality?.disposition === "review-required"
+        ? "Provider transcript retained for review. Deterministic timing or confidence checks found suspicious output; listen before trusting or correcting it."
+        : "Timed provider transcript ready for playback review. Confidence remains provider evidence, and corrections require protected listening.");
     } catch (error) {
       setNotice(errorMessage(error, "Source transcription could not finish."));
     } finally {
@@ -1136,6 +1155,15 @@ export function AudioMasteryWorkspaceClient({
               </button>
             </section>
 
+            <TranscriptTerminologyDesk
+              projectId={activeProjectId}
+              projectSlug={projectSlug}
+              canWrite={selectedProject?.role !== "VIEWER"}
+              transcriptRevisionToken={transcriptStatus?.terminology?.revisionToken ?? null}
+              transcriptApplied={transcriptStatus?.terminology?.appliedByProvider === true}
+              onActiveVocabularyChange={setActiveTerminologyRevisionToken}
+            />
+
             <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-sky-50 p-4 shadow-sm sm:p-5" aria-labelledby="source-clock-heading">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1178,9 +1206,14 @@ export function AudioMasteryWorkspaceClient({
                       <div className="rounded-lg bg-cyan-50 px-2 py-2"><div className="font-mono text-sm font-black">{transcriptStatus.coverage.playbackVerificationCount}</div><div className="text-[9px] font-bold">Heard checks</div></div>
                     </div>
                   ) : <p className="mt-3 text-[11px] font-semibold leading-5 text-cyan-950/70">Transcription requires an explicit participant-consent or licensed-source authorization receipt.</p>}
+                  {transcriptStatus?.quality?.disposition === "review-required" ? (
+                    <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-950" role="status">
+                      Provider output needs listening review. {transcriptQualityWarningText(transcriptStatus.quality.warnings)} It remains inspectable evidence and has not been treated as measured accuracy.
+                    </div>
+                  ) : null}
                   {transcriptStatus?.error ? <p className="mt-2 text-[11px] font-bold text-rose-800" role="alert">{transcriptStatus.error}</p> : null}
-                  <button type="button" onClick={() => void runSourceTranscript()} disabled={!selectedAsset.canTranscribe || operation !== null || transcriptStatusLoading || transcriptStatus?.status === "completed"} className="mt-3 w-full rounded-lg border border-cyan-300 bg-cyan-100 px-3 py-2 text-left text-xs font-black text-cyan-950 hover:bg-cyan-50 disabled:cursor-default disabled:opacity-60">
-                    {!selectedAsset.canTranscribe ? "Transcription held — consent release required" : operation === "transcript" ? "Transcribing and verifying immutable timing…" : transcriptStatus?.status === "completed" ? "Canonical timed transcript ready" : transcriptStatus && ["queued", "processing", "output-ready"].includes(transcriptStatus.status) ? "Resume source transcription" : transcriptStatus?.status === "failed" ? "Retry source transcription" : "Transcribe canonical source"}
+                  <button type="button" onClick={() => void runSourceTranscript()} disabled={!selectedAsset.canTranscribe || operation !== null || transcriptStatusLoading || (transcriptStatus?.status === "completed" && !transcriptTerminologyStale)} className="mt-3 w-full rounded-lg border border-cyan-300 bg-cyan-100 px-3 py-2 text-left text-xs font-black text-cyan-950 hover:bg-cyan-50 disabled:cursor-default disabled:opacity-60">
+                    {!selectedAsset.canTranscribe ? "Transcription held — consent release required" : operation === "transcript" ? "Transcribing and verifying immutable timing…" : transcriptStatus?.status === "completed" && transcriptTerminologyStale ? "Create a new attempt with updated terminology" : transcriptStatus?.status === "completed" && transcriptStatus.quality?.disposition === "review-required" ? "Provider transcript needs review" : transcriptStatus?.status === "completed" ? "Timed provider transcript ready" : transcriptStatus && ["queued", "processing", "output-ready"].includes(transcriptStatus.status) ? "Resume source transcription" : transcriptStatus?.status === "failed" ? "Retry source transcription" : "Transcribe canonical source"}
                   </button>
                 </article>
               </div>
