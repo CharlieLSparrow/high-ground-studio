@@ -51,6 +51,21 @@ export type EpisodeAudioProcessingEvidence = {
   };
 };
 
+export type EpisodeAudioSignalActivityEvidence = {
+  schema: "quipsly-episode-audio-signal-activity-evidence-v1";
+  jobId: string;
+  source: { sha256: string; generation: string; sizeBytes: number };
+  algorithm: "quipsly-audio-signal-window-v1";
+  completeDecode: true;
+  durationSeconds: number;
+  windowDurationSeconds: number;
+  rmsDbfs: number;
+  thresholds: { nearSilenceDbfs: number };
+  waveform: Array<{ startSeconds: number; durationSeconds: number; rmsDbfs: number; samplePeakDbfs: number; clippedFrameCount: number }>;
+  observations: Array<{ kind: string; severity: "warning" | "attention"; startSeconds: number; endSeconds: number; detail: string }>;
+  boundaries: { energyIsNotVoiceActivity: true; measurementDoesNotChangeMedia: true; sourceIdentityBound: true };
+};
+
 const JOB_TYPES = ["audio-signal-profile", "source-transcript", "audio-alignment", "audio-mastery"] as const;
 
 function record(value: unknown): Record<string, any> {
@@ -231,4 +246,40 @@ export function episodeAudioProcessingEvidence(
   }
 
   return { signal, transcript, alignment, mastery };
+}
+
+/**
+ * Returns bounded complete-decode windows for cross-track visual comparison.
+ * RMS energy is deliberately not promoted to speech, speaker, bleed, or echo
+ * evidence. A completed, contract-valid exact-source receipt is required.
+ */
+export function episodeAudioSignalActivityEvidence(jobs: any[]): EpisodeAudioSignalActivityEvidence | null {
+  const signalJob = latestByType(jobs).get("audio-signal-profile") ?? null;
+  if (!signalJob || signalJob.status !== "completed") return null;
+  try {
+    const contract = parseAudioSignalProfileJob(signalJob.inputJson, signalJob.id);
+    const result = parseAudioSignalProfileResult(record(signalJob.resultJson).receipt, contract);
+    return {
+      schema: "quipsly-episode-audio-signal-activity-evidence-v1",
+      jobId: contract.jobId,
+      source: { sha256: result.source.sha256, generation: result.source.generation, sizeBytes: result.source.sizeBytes },
+      algorithm: result.audioSignal.algorithm,
+      completeDecode: true,
+      durationSeconds: result.audioSignal.durationSeconds,
+      windowDurationSeconds: result.audioSignal.windowDurationSeconds,
+      rmsDbfs: result.audioSignal.rmsDbfs,
+      thresholds: { nearSilenceDbfs: result.audioSignal.thresholds.nearSilenceDbfs },
+      waveform: result.audioSignal.waveform.slice(0, 1_200).map((window) => ({
+        startSeconds: window.startSeconds,
+        durationSeconds: window.durationSeconds,
+        rmsDbfs: window.rmsDbfs,
+        samplePeakDbfs: window.samplePeakDbfs,
+        clippedFrameCount: window.clippedFrameCount,
+      })),
+      observations: result.audioSignal.observations.slice(0, 2_000).map((observation) => ({ ...observation })),
+      boundaries: { energyIsNotVoiceActivity: true, measurementDoesNotChangeMedia: true, sourceIdentityBound: true },
+    };
+  } catch {
+    return null;
+  }
 }

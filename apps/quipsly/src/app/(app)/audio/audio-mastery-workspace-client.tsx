@@ -20,7 +20,12 @@ import {
 import type { AudioMasteryPlaybackReviewEvidence } from "@high-ground/quipsly-media-processing";
 
 import { AudioMasteryLoudnessGraph } from "@/components/audio/AudioMasteryLoudnessGraph";
+import { EpisodeAudioActivityMap } from "@/components/audio/EpisodeAudioActivityMap";
 import { EpisodeAudioProgramMap } from "@/components/audio/EpisodeAudioProgramMap";
+import {
+  buildEpisodeAudioActivityMap,
+  type EpisodeAudioActivityMoment,
+} from "@/lib/episode-audio-activity-map";
 import {
   buildEpisodeAudioProgram,
   type EpisodeAudioProgramDecision,
@@ -54,12 +59,13 @@ function statusTone(status: AudioMasteryClientStatus | null) {
   return "border-amber-700 bg-amber-950 text-amber-100";
 }
 
-function selectionHref(projectId: string, projectSlug: string, episodeSlug: string, assetId?: string | null) {
+function selectionHref(projectId: string, projectSlug: string, episodeSlug: string, assetId?: string | null, sourceSeconds?: number | null) {
   const query = new URLSearchParams();
   if (projectId) query.set("projectId", projectId);
   if (projectSlug) query.set("project", projectSlug);
   if (episodeSlug) query.set("episode", episodeSlug);
   if (assetId) query.set("asset", assetId);
+  if (sourceSeconds !== null && sourceSeconds !== undefined && Number.isFinite(sourceSeconds) && sourceSeconds >= 0) query.set("at", sourceSeconds.toFixed(3));
   return `/audio?${query.toString()}`;
 }
 
@@ -131,6 +137,7 @@ export function AudioMasteryWorkspaceClient({
   const selectedEpisode = projectEpisodes.find((episode) => episode.slug === episodeSlug) ?? null;
   const assets = useMemo(() => audioWorkspaceAssets(inventory), [inventory]);
   const audioProgram = useMemo(() => buildEpisodeAudioProgram(inventory), [inventory]);
+  const audioActivityMap = useMemo(() => buildEpisodeAudioActivityMap(audioProgram), [audioProgram]);
   const selectedAsset = assets.find((asset) => asset.id === selectedAssetId || asset.sourceId === selectedAssetId)
     ?? assets[0]
     ?? null;
@@ -734,6 +741,23 @@ export function AudioMasteryWorkspaceClient({
     }
   }, [activeProjectId, audioProgram.fingerprintSha256, decisionBusy, projectSlug, selectedEpisode?.id]);
 
+  const inspectActivityMoment = useCallback((moment: EpisodeAudioActivityMoment) => {
+    const preferredAssetId = moment.assetIds.find((assetId) => audioActivityMap.lanes.some((lane) => lane.assetId === assetId))
+      ?? audioActivityMap.programClock?.assetId
+      ?? null;
+    const lane = audioActivityMap.lanes.find((candidate) => candidate.assetId === preferredAssetId) ?? null;
+    if (!lane || !selectedEpisode) return;
+    const cell = lane.cells.find((candidate) => moment.startSeconds >= candidate.programStartSeconds && moment.startSeconds < candidate.programEndSeconds) ?? null;
+    const sourceSeconds = cell?.sourceSeconds ?? null;
+    setSelectedAssetId(lane.assetId);
+    sourceClockFocusAppliedRef.current = "";
+    if (selectedAsset?.id === lane.assetId && sourceSeconds !== null && immutableSourceRef.current) {
+      immutableSourceRef.current.currentTime = sourceSeconds;
+    }
+    setNotice(`Opened ${moment.label.toLowerCase()} at program ${moment.startSeconds.toFixed(3)}s${sourceSeconds !== null ? ` · source ${sourceSeconds.toFixed(3)}s` : ""}. Press play to listen.`);
+    router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, selectedEpisode.slug, lane.assetId, sourceSeconds));
+  }, [audioActivityMap, projectId, projectSlug, router, selectedAsset?.id, selectedEpisode, selectedProject?.id]);
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-5 pb-16 text-[#3d3122]">
       <header className="overflow-hidden rounded-[2rem] border border-fuchsia-200 bg-[radial-gradient(circle_at_top_right,_rgba(232,121,249,0.25),_transparent_38%),linear-gradient(135deg,#171020,#27143a_54%,#10283c)] p-6 text-white shadow-xl shadow-fuchsia-950/10 md:p-8">
@@ -865,6 +889,15 @@ export function AudioMasteryWorkspaceClient({
               decisionNotice={decisionNotice}
               onSetDecision={(track, kind, value) => void setTrackDecision(track, kind, value)}
               onWithdrawDecision={(decision, reason) => void withdrawTrackDecision(decision, reason)}
+            />
+            <EpisodeAudioActivityMap
+              map={audioActivityMap}
+              selectedAssetId={selectedAsset.id}
+              onSelectTrack={(assetId) => {
+                setSelectedAssetId(assetId);
+                router.replace(selectionHref(selectedProject?.id ?? projectId, projectSlug, episodeSlug, assetId));
+              }}
+              onInspectMoment={inspectActivityMoment}
             />
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

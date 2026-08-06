@@ -8,7 +8,10 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
 import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
-import { episodeAudioProcessingEvidence } from "@/lib/episode-audio-processing-evidence";
+import {
+  episodeAudioProcessingEvidence,
+  episodeAudioSignalActivityEvidence,
+} from "@/lib/episode-audio-processing-evidence";
 import {
   episodeAudioProgramFingerprint,
   projectEpisodeAudioTrackDecisions,
@@ -159,6 +162,9 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
     Array.isArray(asset.transcriptJobs) ? asset.transcriptJobs : [],
   );
+  const audioSignalActivityEvidence = episodeAudioSignalActivityEvidence(
+    Array.isArray(asset.processingJobs) ? asset.processingJobs : [],
+  );
   const proxyAssets: any[] = proxies.map((proxy) => publicAsset(proxy, [])).filter(Boolean);
   const hasProxy =
     proxyAssets.length > 0 ||
@@ -183,6 +189,7 @@ function publicAsset(asset: any, proxies: any[] = []): any {
     variants,
     jobs,
     audioProcessingEvidence,
+    audioSignalActivityEvidence,
     proxyAssets,
     audioMasterDeliveryCandidate,
     audioDeliveryArtifact,
