@@ -2362,3 +2362,22 @@ These should be treated as cleanup candidates later, not as authoritative produc
   reversible, observable, immediately useful, and exercises device/provider
   boundaries without mutating source truth. See
   `docs/research/2026-08-06-quipsly-capability-depth-and-operating-agent.md`.
+
+### 2026-08-06 Session source exit readiness
+
+- The first Finishing Cockpit slice now distinguishes pending local capture,
+  server-copy completion, and the still-unproven global `Safe to leave` state.
+  Exact RecordingAsset verification plus its matching finalization receipt is
+  required; provider witness mixes do not count as required masters.
+- Authenticated local operation rendered both truth states: a one-source iPhone
+  capture still awaiting media and a four-source retained coaching Session with
+  every server copy released. Both correctly kept global endpoint exit false.
+- Operating the real page found a wrong-model Prisma projection that made every
+  authenticated Session read fail safely. Governance evidence now comes from
+  participant preflight receipts, not episode-binding receipts, with a
+  page-query regression to preserve the boundary.
+- Desktop and 390 x 844 mobile rendering passed. Four focused suites pass 50
+  tests, Quipsly typecheck passes, and diff checks pass. Next is a durable,
+  installation-owned endpoint drain receipt before `Safe to leave` can ever be
+  true. See
+  `docs/coordination/2026-08-06-session-source-exit-readiness.md`.

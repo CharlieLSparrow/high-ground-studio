@@ -7889,3 +7889,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   physical-iPhone and production proof remain open.
 - Architecture and evidence:
   `docs/coordination/2026-08-06-governed-conversation-to-work.md`.
+
+## 2026-08-06 feature-depth portfolio and Finishing Cockpit checkpoint
+
+- A primary-source research pass ranked twelve substantial depth bets across
+  recording recovery, audio mastery, transcription, explainable assembly,
+  research, coaching, and outcomes. The recommended next product is one Episode
+  and Session Finishing Cockpit with Recover, Understand, Repair, Assemble, and
+  Finish modes rather than more detached feature shells. See
+  `docs/research/2026-08-06-quipsly-obvious-depth-feature-portfolio.md`.
+- The first Recover slice is now production-shaped. Nest matches exact verified
+  RecordingAssets to their finalization receipts, keeps pending START/STOP-only
+  captures visible, excludes provider witness mixes from required-master
+  counts, and never upgrades a complete server copy into a whole-device exit
+  claim.
+- Authenticated local operation proved the pending state with 0/1 server-safe
+  masters and the complete-server state with 4/4. Both correctly rendered
+  `Safe to leave every endpoint: no` because endpoint-local queue confirmation
+  is not yet centralized.
+- Real operation also caught and repaired a wrong-model Prisma selection that
+  made authenticated Session pages fail safe. Four focused suites pass 50
+  tests, Quipsly typecheck passes, and desktop plus mobile rendering passed.
+- The next active slice is installation-owned endpoint drain receipts, followed
+  by a ranked recovery/attention queue and versioned master/output graph. This
+  remains local retained-QA proof, not physical-iPhone, TestFlight, production,
+  provider, deployment, or publication proof.

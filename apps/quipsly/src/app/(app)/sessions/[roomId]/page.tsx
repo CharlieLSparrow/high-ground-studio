@@ -87,7 +87,6 @@ export default async function SessionReviewPage({
           take: 5,
           select: {
             id: true,
-            governedActionId: true,
             action: true,
             previousEpisodeSlug: true,
             nextEpisodeSlug: true,
@@ -132,6 +131,7 @@ export default async function SessionReviewPage({
           take: 200,
           select: {
             id: true,
+            governedActionId: true,
             participantId: true,
             clientInstanceId: true,
             clientKind: true,
@@ -331,6 +331,7 @@ export default async function SessionReviewPage({
       grants: room.participantProviderGrants,
       preflights: room.participantPreflightReceipts,
       recordings: room.recordingAssets,
+      finalizations: finalizationReceipts,
       captures: Array.from(captureReceiptGroups.values()).map((capture) => ({
         captureId: capture.captureId,
         actorUserId: capture.actorUserId,

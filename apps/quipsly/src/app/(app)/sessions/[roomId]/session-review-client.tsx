@@ -2207,11 +2207,11 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
   return (
     <div className="space-y-8">
-      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-6 shadow-sm">
+      <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-[#987443]">Session workspace · {activeMode.eyebrow}</p>
-            <h1 className="mt-2 font-serif text-4xl font-black tracking-tight text-[#3d3122]">{sessionTitle}</h1>
+            <h1 className="mt-2 font-serif text-3xl font-black tracking-tight text-[#3d3122] sm:text-4xl">{sessionTitle}</h1>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">{activeMode.description}</p>
           </div>
           {mode === "transcript" ? <button type="button" onClick={() => void load()} disabled={loading || buildingPacket || busyCandidateId !== null || busyLaneId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""} aria-hidden="true" />Refresh transcript truth</button> : null}

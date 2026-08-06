@@ -61,6 +61,14 @@ const topology: SessionReadinessTopology = {
       durationSeconds: 600,
       byteSize: "1024",
       verified: true,
+      serverRetention: {
+        state: "SERVER_COPY_VERIFIED_RELEASED",
+        uploadSessionId: "upload-1",
+        exactBytesVerified: true,
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      },
     }],
   }],
   unassignedSources: [],
@@ -74,12 +82,24 @@ const topology: SessionReadinessTopology = {
     pendingCaptureCount: 0,
     attentionCount: 0,
   },
+  exitReadiness: {
+    state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+    label: "Server copy complete · check each recording device",
+    detail: "Every server-observed required master is verified and released. Confirm local queues.",
+    requiredSourceCount: 1,
+    serverSafeRequiredSourceCount: 1,
+    pendingCaptureCount: 0,
+    safeForServerObservedSources: true,
+    allEndpointQueuesConfirmedEmpty: false,
+    safeToLeaveAllEndpoints: false,
+  },
   boundaries: {
     personIsNotDevice: true,
     grantIsNotPresence: true,
     callTrackIsNotRetainedSource: true,
     captureReceiptIsNotUploadedMedia: true,
     recordingAssetOwnsRetainedSourceTruth: true,
+    serverCopyDoesNotProveEndpointQueueEmpty: true,
   },
 };
 
@@ -126,6 +146,10 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
     expect(screen.getByText("Governed action receipt · 12345678")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Server copy complete · check each recording device" })).toBeInTheDocument();
+    expect(screen.getByText(/Safe to leave every endpoint: no/i)).toBeInTheDocument();
+    expect(screen.getByText("Server copy safe")).toBeInTheDocument();
+    expect(screen.getByText("Upload upload-1")).toBeInTheDocument();
     expect(await screen.findByText(/provider-observed now/i)).toBeInTheDocument();
     expect(screen.getByText("Audio live")).toBeInTheDocument();
     expect(screen.getByText("Video muted")).toBeInTheDocument();

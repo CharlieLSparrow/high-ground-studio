@@ -57,6 +57,14 @@ describe("Session readiness topology", () => {
           },
         },
       ],
+      finalizations: [{
+        uploadSessionId: "upload-1",
+        captureId: "capture-1",
+        recordingAssetId: "asset-audio",
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "RELEASED",
+        updatedAt: "2026-08-05T17:59:30.000Z",
+      }],
       captures: [],
     });
 
@@ -72,6 +80,10 @@ describe("Session readiness topology", () => {
           evidenceKind: "recording-asset",
           verified: true,
           deviceLabel: "iPhone17,3 · DJI Mic 2",
+          serverRetention: expect.objectContaining({
+            state: "SERVER_COPY_VERIFIED_RELEASED",
+            uploadSessionId: "upload-1",
+          }),
         }),
       ],
     });
@@ -80,6 +92,12 @@ describe("Session readiness topology", () => {
       knownEndpointCount: 2,
       retainedSourceCount: 1,
       verifiedSourceCount: 1,
+    });
+    expect(topology.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+      safeForServerObservedSources: true,
+      allEndpointQueuesConfirmedEmpty: false,
+      safeToLeaveAllEndpoints: false,
     });
   });
 
@@ -104,12 +122,66 @@ describe("Session readiness topology", () => {
         evidenceKind: "capture-receipt",
         verified: false,
         status: "START_AND_STOP_RECEIVED",
+        serverRetention: expect.objectContaining({ state: "CAPTURE_AWAITING_MEDIA" }),
       }),
     ]);
     expect(topology.summary).toMatchObject({
       retainedSourceCount: 0,
       pendingCaptureCount: 1,
       attentionCount: 1,
+    });
+    expect(topology.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_INCOMPLETE",
+      pendingCaptureCount: 1,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
+  it("does not call verified bytes server-safe without their finalization receipt", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "asset-unreleased",
+        participantId: participant.id,
+        kind: "LOCAL_AUDIO",
+        status: "VERIFIED",
+        fileName: "unreleased.m4a",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources[0].serverRetention.state).toBe("FINALIZATION_RECEIPT_MISSING");
+    expect(topology.exitReadiness).toMatchObject({
+      state: "SERVER_COPY_INCOMPLETE",
+      safeForServerObservedSources: false,
+      safeToLeaveAllEndpoints: false,
+    });
+  });
+
+  it("keeps an optional provider witness out of the required-master exit count", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      captures: [],
+      recordings: [{
+        id: "provider-witness",
+        participantId: participant.id,
+        kind: "SERVER_MIX",
+        status: "VERIFIED",
+        fileName: "provider-reference.mp4",
+        verifiedAt: "2026-08-05T17:59:00.000Z",
+      }],
+    });
+
+    expect(topology.people[0].sources[0].sourceKind).toBe("provider");
+    expect(topology.exitReadiness).toMatchObject({
+      state: "NO_CAPTURE_EVIDENCE",
+      requiredSourceCount: 0,
+      safeToLeaveAllEndpoints: false,
     });
   });
 
@@ -145,6 +217,7 @@ describe("Session readiness topology", () => {
       expect.objectContaining({ id: "new-grant", leaseActive: true }),
     ]);
     expect(topology.boundaries.grantIsNotPresence).toBe(true);
+    expect(topology.boundaries.serverCopyDoesNotProveEndpointQueueEmpty).toBe(true);
     expect(JSON.stringify(topology)).not.toContain("providerIdentity");
   });
 

@@ -44,6 +44,15 @@ export type SessionTopologyCaptureInput = {
   lastReceivedAt: Date | string;
 };
 
+export type SessionTopologyFinalizationInput = {
+  uploadSessionId: string;
+  captureId: string;
+  recordingAssetId?: string | null;
+  processingDisposition: string;
+  transcriptDisposition: string;
+  updatedAt: Date | string;
+};
+
 export type SessionTopologyPreflightInput = {
   id: string;
   governedActionId?: string | null;
@@ -88,6 +97,19 @@ export type SessionReadinessSource = {
   durationSeconds: number | null;
   byteSize: string | null;
   verified: boolean;
+  serverRetention: {
+    state:
+      | "CAPTURE_AWAITING_MEDIA"
+      | "SERVER_COPY_PENDING"
+      | "SERVER_COPY_VERIFIED_HELD"
+      | "SERVER_COPY_VERIFIED_RELEASED"
+      | "FINALIZATION_RECEIPT_MISSING";
+    uploadSessionId: string | null;
+    exactBytesVerified: boolean;
+    processingDisposition: string | null;
+    transcriptDisposition: string | null;
+    updatedAt: string | null;
+  };
 };
 
 export type SessionReadinessPreflight = {
@@ -138,12 +160,27 @@ export type SessionReadinessTopology = {
     pendingCaptureCount: number;
     attentionCount: number;
   };
+  exitReadiness: {
+    state:
+      | "NO_CAPTURE_EVIDENCE"
+      | "SERVER_COPY_INCOMPLETE"
+      | "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED";
+    label: string;
+    detail: string;
+    requiredSourceCount: number;
+    serverSafeRequiredSourceCount: number;
+    pendingCaptureCount: number;
+    safeForServerObservedSources: boolean;
+    allEndpointQueuesConfirmedEmpty: false;
+    safeToLeaveAllEndpoints: false;
+  };
   boundaries: {
     personIsNotDevice: true;
     grantIsNotPresence: true;
     callTrackIsNotRetainedSource: true;
     captureReceiptIsNotUploadedMedia: true;
     recordingAssetOwnsRetainedSourceTruth: true;
+    serverCopyDoesNotProveEndpointQueueEmpty: true;
   };
 };
 
@@ -161,12 +198,24 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     pendingCaptureCount: 0,
     attentionCount: 0,
   },
+  exitReadiness: {
+    state: "NO_CAPTURE_EVIDENCE",
+    label: "No retained capture evidence",
+    detail: "Quipsly cannot tell any recording endpoint that it is safe to leave.",
+    requiredSourceCount: 0,
+    serverSafeRequiredSourceCount: 0,
+    pendingCaptureCount: 0,
+    safeForServerObservedSources: false,
+    allEndpointQueuesConfirmedEmpty: false,
+    safeToLeaveAllEndpoints: false,
+  },
   boundaries: {
     personIsNotDevice: true,
     grantIsNotPresence: true,
     callTrackIsNotRetainedSource: true,
     captureReceiptIsNotUploadedMedia: true,
     recordingAssetOwnsRetainedSourceTruth: true,
+    serverCopyDoesNotProveEndpointQueueEmpty: true,
   },
 };
 
@@ -188,9 +237,9 @@ function iso(value: Date | string | null | undefined) {
 
 function sourceKind(kind: string): SessionReadinessSource["sourceKind"] {
   const normalized = kind.toLowerCase();
+  if (normalized.includes("provider") || normalized === "server_mix") return "provider";
   if (normalized.includes("video")) return "video";
   if (normalized.includes("audio")) return "audio";
-  if (normalized.includes("provider")) return "provider";
   return "unknown";
 }
 
@@ -217,11 +266,24 @@ function sourceDeviceLabel(profile: Record<string, unknown>, kind: SessionReadin
   return "Source device not reported";
 }
 
-function recordingSource(recording: SessionTopologyRecordingInput): SessionReadinessSource {
+function recordingSource(
+  recording: SessionTopologyRecordingInput,
+  finalization: SessionTopologyFinalizationInput | null,
+): SessionReadinessSource {
   const manifest = object(recording.localManifestJson);
   const profile = sourceProfile(manifest);
   const kind = sourceKind(recording.kind);
   const byteSize = recording.byteSize == null ? null : String(recording.byteSize);
+  const exactBytesVerified = recording.status === "VERIFIED" && Boolean(recording.verifiedAt);
+  const processingDisposition = finalization ? text(finalization.processingDisposition).toUpperCase() : null;
+  const transcriptDisposition = finalization ? text(finalization.transcriptDisposition).toUpperCase() : null;
+  const retentionState = !exactBytesVerified
+    ? "SERVER_COPY_PENDING" as const
+    : !finalization
+      ? "FINALIZATION_RECEIPT_MISSING" as const
+      : processingDisposition === "RELEASED"
+        ? "SERVER_COPY_VERIFIED_RELEASED" as const
+        : "SERVER_COPY_VERIFIED_HELD" as const;
   return {
     id: recording.id,
     evidenceKind: "recording-asset",
@@ -235,7 +297,15 @@ function recordingSource(recording: SessionTopologyRecordingInput): SessionReadi
     stoppedAt: iso(recording.recordedStoppedAt),
     durationSeconds: Number.isFinite(recording.durationSeconds) ? recording.durationSeconds ?? null : null,
     byteSize,
-    verified: recording.status === "VERIFIED" && Boolean(recording.verifiedAt),
+    verified: exactBytesVerified,
+    serverRetention: {
+      state: retentionState,
+      uploadSessionId: finalization?.uploadSessionId ?? null,
+      exactBytesVerified,
+      processingDisposition,
+      transcriptDisposition,
+      updatedAt: iso(finalization?.updatedAt),
+    },
   };
 }
 
@@ -256,6 +326,7 @@ export function buildSessionReadinessTopology(input: {
   grants: SessionTopologyGrantInput[];
   recordings: SessionTopologyRecordingInput[];
   captures: SessionTopologyCaptureInput[];
+  finalizations?: SessionTopologyFinalizationInput[];
   preflights?: SessionTopologyPreflightInput[];
   generatedAt?: Date;
 }): SessionReadinessTopology {
@@ -265,9 +336,21 @@ export function buildSessionReadinessTopology(input: {
       ? [[participant.userId, participant] as const]
       : []),
   );
+  const latestFinalizationByRecordingAssetId = new Map<string, SessionTopologyFinalizationInput>();
+  for (const finalization of input.finalizations ?? []) {
+    const recordingAssetId = text(finalization.recordingAssetId);
+    if (!recordingAssetId) continue;
+    const current = latestFinalizationByRecordingAssetId.get(recordingAssetId);
+    if (!current || (iso(current.updatedAt) ?? "") < (iso(finalization.updatedAt) ?? "")) {
+      latestFinalizationByRecordingAssetId.set(recordingAssetId, finalization);
+    }
+  }
   const recordingSources = input.recordings.map((recording) => ({
     participantId: recording.participantId ?? null,
-    source: recordingSource(recording),
+    source: recordingSource(
+      recording,
+      latestFinalizationByRecordingAssetId.get(recording.id) ?? null,
+    ),
   }));
   const recordingCaptureIds = new Set(
     recordingSources.map(({ source }) => source.captureId).filter(Boolean),
@@ -290,6 +373,14 @@ export function buildSessionReadinessTopology(input: {
         durationSeconds: null,
         byteSize: null,
         verified: false,
+        serverRetention: {
+          state: "CAPTURE_AWAITING_MEDIA" as const,
+          uploadSessionId: null,
+          exactBytesVerified: false,
+          processingDisposition: null,
+          transcriptDisposition: null,
+          updatedAt: null,
+        },
       },
     }));
   const allSources = [...recordingSources, ...pendingCaptureSources];
@@ -383,6 +474,48 @@ export function buildSessionReadinessTopology(input: {
     .filter((entry) => !entry.participantId || !assignedParticipantIds.has(entry.participantId))
     .map((entry) => entry.source);
   const sources = allSources.map((entry) => entry.source);
+  const requiredSources = sources.filter((source) => source.sourceKind !== "provider");
+  const serverSafeRequiredSources = requiredSources.filter((source) => (
+    source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED"
+  ));
+  const safeForServerObservedSources = requiredSources.length > 0
+    && pendingCaptureSources.length === 0
+    && serverSafeRequiredSources.length === requiredSources.length;
+  const exitReadiness = safeForServerObservedSources
+    ? {
+        state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED" as const,
+        label: "Server copy complete · check each recording device",
+        detail: "Every server-observed required master has exact verified bytes and a released finalization receipt. Quipsly still needs each browser and iPhone to confirm that its local upload queue is empty before calling the whole Session safe to leave.",
+        requiredSourceCount: requiredSources.length,
+        serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+        pendingCaptureCount: pendingCaptureSources.length,
+        safeForServerObservedSources: true,
+        allEndpointQueuesConfirmedEmpty: false as const,
+        safeToLeaveAllEndpoints: false as const,
+      }
+    : requiredSources.length > 0 || pendingCaptureSources.length > 0
+      ? {
+          state: "SERVER_COPY_INCOMPLETE" as const,
+          label: "Do not close recording devices yet",
+          detail: `${serverSafeRequiredSources.length} of ${requiredSources.length} server-observed required masters are verified and released${pendingCaptureSources.length ? `; ${pendingCaptureSources.length} stopped capture${pendingCaptureSources.length === 1 ? " is" : "s are"} still awaiting retained media` : ""}. Keep browser and Capture upload recovery available.`,
+          requiredSourceCount: requiredSources.length,
+          serverSafeRequiredSourceCount: serverSafeRequiredSources.length,
+          pendingCaptureCount: pendingCaptureSources.length,
+          safeForServerObservedSources: false,
+          allEndpointQueuesConfirmedEmpty: false as const,
+          safeToLeaveAllEndpoints: false as const,
+        }
+      : {
+          state: "NO_CAPTURE_EVIDENCE" as const,
+          label: "No retained capture evidence",
+          detail: "No retained master or stopped local capture is visible to Nest. Quipsly cannot tell any recording endpoint that it is safe to leave.",
+          requiredSourceCount: 0,
+          serverSafeRequiredSourceCount: 0,
+          pendingCaptureCount: 0,
+          safeForServerObservedSources: false,
+          allEndpointQueuesConfirmedEmpty: false as const,
+          safeToLeaveAllEndpoints: false as const,
+        };
   const attentionCount = people.reduce((total, person) => total + person.attentionCount, 0)
     + unassignedSources.length;
   return {
@@ -399,12 +532,14 @@ export function buildSessionReadinessTopology(input: {
       pendingCaptureCount: pendingCaptureSources.length,
       attentionCount,
     },
+    exitReadiness,
     boundaries: {
       personIsNotDevice: true,
       grantIsNotPresence: true,
       callTrackIsNotRetainedSource: true,
       captureReceiptIsNotUploadedMedia: true,
       recordingAssetOwnsRetainedSourceTruth: true,
+      serverCopyDoesNotProveEndpointQueueEmpty: true,
     },
   };
 }

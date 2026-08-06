@@ -77,6 +77,14 @@ function sourceDetail(source: SessionReadinessSource) {
   return parts.join(" · ");
 }
 
+function retentionLabel(source: SessionReadinessSource) {
+  if (source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED") return "Server copy safe";
+  if (source.serverRetention.state === "SERVER_COPY_VERIFIED_HELD") return "Verified · policy held";
+  if (source.serverRetention.state === "FINALIZATION_RECEIPT_MISSING") return "Finalization receipt missing";
+  if (source.serverRetention.state === "CAPTURE_AWAITING_MEDIA") return "Awaiting retained media";
+  return "Upload or verification pending";
+}
+
 function preflightIssueLabel(value: string) {
   return value.toLowerCase().replaceAll("_", " ");
 }
@@ -138,6 +146,7 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
     return result;
   }, [presence]);
   const unmatchedLive = (presence?.devices ?? []).filter((device) => !device.matchedToCanonicalParticipant);
+  const exitReady = topology.exitReadiness.safeForServerObservedSources;
 
   return <section className="rounded-3xl border border-sky-200 bg-sky-50/45 p-5 shadow-sm sm:p-7" aria-labelledby="session-readiness-topology-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -151,6 +160,20 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
         {refreshing ? "Reading room…" : "Refresh live room"}
       </button>
     </div>
+
+    <section className={`mt-5 rounded-2xl border p-5 ${exitReady ? "border-sky-300 bg-sky-50" : "border-amber-300 bg-amber-50"}`} aria-labelledby="session-exit-readiness-heading" data-testid="session-exit-readiness">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-3xl">
+          <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${exitReady ? "text-sky-800" : "text-amber-800"}`}>Post-session source recovery</p>
+          <h3 id="session-exit-readiness-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{topology.exitReadiness.label}</h3>
+          <p className={`mt-2 text-xs font-bold leading-5 ${exitReady ? "text-sky-950" : "text-amber-950"}`}>{topology.exitReadiness.detail}</p>
+        </div>
+        <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${exitReady ? "border-sky-300 bg-white text-sky-950" : "border-amber-300 bg-white text-amber-950"}`}>
+          {topology.exitReadiness.serverSafeRequiredSourceCount}/{topology.exitReadiness.requiredSourceCount} server-safe masters
+        </span>
+      </div>
+      <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#765f40]">Safe to leave every endpoint: no · endpoint-local queue confirmation is not yet centralized</p>
+    </section>
 
     <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
       <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">People</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.peopleCount}</dd><dd className="text-xs font-bold text-[#765f40]">{topology.summary.consentReadyCount} capture-consent ready</dd></div>
@@ -190,7 +213,8 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
               <div className="flex items-center justify-between gap-3"><h4 className="text-xs font-black uppercase tracking-wide text-violet-950">Retained sources</h4><span className="text-[10px] font-black text-violet-800">{person.sources.filter((source) => source.verified).length}/{person.sources.length} verified</span></div>
               {person.sources.length ? <ul className="mt-3 space-y-2">{person.sources.map((source) => {
                 const Icon = source.sourceKind === "video" ? Video : Mic2;
-                return <li key={source.id} className="rounded-lg border border-violet-100 bg-white p-3"><div className="flex items-start gap-2"><Icon size={16} className="mt-0.5 text-violet-700" aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="break-all text-xs font-black text-[#3d3122]">{source.label}</p><span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusTone(source.verified ? "verified" : source.status)}`}>{source.verified ? "Byte verified" : source.evidenceKind === "capture-receipt" ? "Awaiting media" : source.status.replaceAll("_", " ")}</span></div><p className="mt-1 text-[10px] font-bold leading-4 text-[#765f40]">{sourceDetail(source)}</p></div></div></li>;
+                const serverSafe = source.serverRetention.state === "SERVER_COPY_VERIFIED_RELEASED";
+                return <li key={source.id} className="rounded-lg border border-violet-100 bg-white p-3"><div className="flex items-start gap-2"><Icon size={16} className="mt-0.5 text-violet-700" aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="break-all text-xs font-black text-[#3d3122]">{source.label}</p><span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusTone(serverSafe ? "verified" : source.serverRetention.state)}`}>{retentionLabel(source)}</span></div><p className="mt-1 text-[10px] font-bold leading-4 text-[#765f40]">{sourceDetail(source)}</p>{source.serverRetention.uploadSessionId ? <p className="mt-1 break-all font-mono text-[9px] font-bold text-violet-800">Upload {source.serverRetention.uploadSessionId}</p> : null}</div></div></li>;
               })}</ul> : <p className="mt-3 rounded-lg border border-dashed border-violet-200 bg-white/75 p-3 text-xs font-bold text-violet-900">No retained-source asset or pending local capture receipt is attributed to this person yet.</p>}
             </section>
           </div>
