@@ -35,6 +35,7 @@ test("automatic mix suggestions attenuate only a uniquely lower-authority review
     ],
     evidenceReviews: [{ receiptId: "review_0001", analysisReceiptId: "analysis_0001", eventId: "event_0001", decision: "mic-bleed", startSeconds: 12, endSeconds: 15, involvedAssetIds: ["asset_scratch", "asset_primary"], playbackEvidenceSha256: "c".repeat(64) }],
     output: { assetId: "mix_asset_0001", provider: "local", locator: "/tmp/quipsly/mix.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId: "apple-podcasts-dialogue-v1" },
+    baselineOutput: { assetId: "mix_baseline_0001", provider: "local", locator: "/tmp/quipsly/baseline.wav", contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-baseline", masteryProfileId: "apple-podcasts-dialogue-v1" },
   });
   assert.equal(proposal.actions.length, 1);
   assert.deepEqual(proposal.actions[0], { id: "mix_action_review_0001_asset_scratch", operation: "gain-envelope", origin: "review-derived", targetAssetId: "asset_scratch", programStartSeconds: 12, programEndSeconds: 15, gainDb: -18, attackMilliseconds: 75, releaseMilliseconds: 150, reason: "mic-bleed", evidenceReviewReceiptIds: ["review_0001"], replacesActionId: null });
@@ -44,6 +45,9 @@ test("automatic mix suggestions attenuate only a uniquely lower-authority review
   const jsonbRoundTrip = JSON.parse(JSON.stringify(proposal));
   jsonbRoundTrip.boundaries = Object.fromEntries(Object.entries(jsonbRoundTrip.boundaries).reverse());
   assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).proposalId, proposal.proposalId, "JSONB key ordering must not invalidate an exact safety contract");
+  assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).baselineOutput?.variantKind, "episode-mix-baseline");
+  delete jsonbRoundTrip.baselineOutput;
+  assert.equal(parseEpisodeAudioMixProposal(jsonbRoundTrip).baselineOutput, null, "retained v1 proposals without an A/B baseline stay readable");
 });
 
 test("ambiguous primary tracks stay unresolved instead of receiving guessed gain", () => {

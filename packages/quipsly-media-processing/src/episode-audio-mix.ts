@@ -59,6 +59,27 @@ export type EpisodeAudioMixUnresolvedEvent = {
   involvedAssetIds: string[];
 };
 
+export type EpisodeAudioMixOutput = {
+  assetId: string;
+  provider: "local" | "gcs";
+  locator: string;
+  contentType: "audio/wav";
+  codec: "pcm_s24le";
+  sampleRateHz: 48_000;
+  channelCount: 2;
+  variantKind: "episode-mix-preview" | "episode-mix-baseline";
+  masteryProfileId: AudioMasteryProfileId;
+};
+
+export type EpisodeAudioMixDerivative = AudioMasterySourceBinding & {
+  variantKind: "episode-mix-preview" | "episode-mix-baseline";
+  codec: "pcm_s24le";
+  sampleRateHz: 48_000;
+  channelCount: 2;
+  durationSeconds: number;
+  measurement: AudioMasteryMeasurement;
+};
+
 export type EpisodeAudioMixProposal = {
   kind: typeof EPISODE_AUDIO_MIX_PROPOSAL_KIND;
   version: typeof EPISODE_AUDIO_MIX_CONTRACT_VERSION;
@@ -75,17 +96,8 @@ export type EpisodeAudioMixProposal = {
   evidenceReviews: EpisodeAudioMixReviewEvidence[];
   actions: EpisodeAudioMixGainAction[];
   unresolvedEvents: EpisodeAudioMixUnresolvedEvent[];
-  output: {
-    assetId: string;
-    provider: "local" | "gcs";
-    locator: string;
-    contentType: "audio/wav";
-    codec: "pcm_s24le";
-    sampleRateHz: 48_000;
-    channelCount: 2;
-    variantKind: "episode-mix-preview";
-    masteryProfileId: AudioMasteryProfileId;
-  };
+  output: EpisodeAudioMixOutput & { variantKind: "episode-mix-preview" };
+  baselineOutput: (EpisodeAudioMixOutput & { variantKind: "episode-mix-baseline" }) | null;
   boundaries: {
     originalTracksRemainSourceTruth: true;
     proposalDoesNotChangeTimelineOrMedia: true;
@@ -102,14 +114,8 @@ export type EpisodeAudioMixResult = {
   jobId: string;
   completedAt: string;
   proposal: EpisodeAudioMixProposal;
-  derivative: AudioMasterySourceBinding & {
-    variantKind: "episode-mix-preview";
-    codec: "pcm_s24le";
-    sampleRateHz: 48_000;
-    channelCount: 2;
-    durationSeconds: number;
-    measurement: AudioMasteryMeasurement;
-  };
+  derivative: EpisodeAudioMixDerivative & { variantKind: "episode-mix-preview" };
+  baselineDerivative: (EpisodeAudioMixDerivative & { variantKind: "episode-mix-baseline" }) | null;
   verification: {
     exactSourcesVerifiedBeforeAndAfter: true;
     outputCompletelyDecoded: true;
@@ -117,6 +123,10 @@ export type EpisodeAudioMixResult = {
     integratedLoudnessPasses: true;
     truePeakPasses: true;
     originalTracksRemainSourceTruth: true;
+    baselineOutputCompletelyDecoded: true | null;
+    baselineDurationDeltaSeconds: number | null;
+    levelMatchedDeltaLufs: number | null;
+    levelMatchedWithinPointTwoLu: true | null;
   };
   renderer: {
     ffmpegVersion: string;
@@ -142,6 +152,7 @@ type AutomaticMixProposalInput = {
   tracks: EpisodeAudioMixTrack[];
   evidenceReviews: EpisodeAudioMixReviewEvidence[];
   output: EpisodeAudioMixProposal["output"];
+  baselineOutput?: EpisodeAudioMixProposal["baselineOutput"];
 };
 
 const SAFE_ID = /^[A-Za-z0-9_-]{8,180}$/;
@@ -160,6 +171,10 @@ const ROLE_RANK: Record<EpisodeAudioMixTrack["role"], number> = {
 
 export function buildEpisodeAudioMixTargetLocator(input: { episodeProductionId: string; programFingerprintSha256: string; proposalId: string }) {
   return `media-vault/mixes/${id(input.episodeProductionId, "episodeProductionId")}/${sha(input.programFingerprintSha256, "programFingerprintSha256")}/${id(input.proposalId, "proposalId")}/preview-v1.wav`;
+}
+
+export function buildEpisodeAudioMixBaselineTargetLocator(input: { episodeProductionId: string; programFingerprintSha256: string; proposalId: string }) {
+  return `media-vault/mixes/${id(input.episodeProductionId, "episodeProductionId")}/${sha(input.programFingerprintSha256, "programFingerprintSha256")}/${id(input.proposalId, "proposalId")}/baseline-v1.wav`;
 }
 
 export function newAutomaticEpisodeAudioMixProposal(input: AutomaticMixProposalInput): EpisodeAudioMixProposal {
@@ -217,6 +232,7 @@ export function newAutomaticEpisodeAudioMixProposal(input: AutomaticMixProposalI
     actions,
     unresolvedEvents,
     output: input.output,
+    baselineOutput: input.baselineOutput ?? null,
     boundaries: boundaries(),
   });
 }
@@ -269,7 +285,10 @@ export function parseEpisodeAudioMixProposal(value: unknown): EpisodeAudioMixPro
   const reviews = array(row.evidenceReviews, "evidenceReviews").map(parseReview);
   const actions = array(row.actions, "actions").map((action) => parseAction(action, tracks, reviews));
   const unresolvedEvents = array(row.unresolvedEvents, "unresolvedEvents").map(parseUnresolved);
-  const output = parseOutput(row.output);
+  const output = parseOutput(row.output, "episode-mix-preview") as EpisodeAudioMixProposal["output"];
+  const baselineOutput = row.baselineOutput === null || row.baselineOutput === undefined
+    ? null
+    : parseOutput(row.baselineOutput, "episode-mix-baseline") as NonNullable<EpisodeAudioMixProposal["baselineOutput"]>;
   const boundary = record(row.boundaries);
   if (!sameExactRecord(boundary, boundaries())) throw new Error("Episode mix safety boundaries are invalid.");
   const parentProposalId = row.parentProposalId === null ? null : id(row.parentProposalId, "parentProposalId");
@@ -294,6 +313,7 @@ export function parseEpisodeAudioMixProposal(value: unknown): EpisodeAudioMixPro
     actions,
     unresolvedEvents,
     output,
+    baselineOutput,
     boundaries: boundaries(),
   };
 }
@@ -326,6 +346,7 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
     || verification.truePeakPasses !== true || verification.originalTracksRemainSourceTruth !== true
     || resultBoundaries.outputIsUnpromotedPreview !== true || resultBoundaries.proposalAndSourcesRemainImmutable !== true || resultBoundaries.playbackReviewRequiredBeforePromotion !== true
   ) throw new Error("Episode mix result or independent verification is invalid.");
+  const baseline = parseBaselineDerivative(row.baselineDerivative, proposal, expectedDuration, measurement);
   return {
     kind: EPISODE_AUDIO_MIX_RESULT_KIND,
     version: EPISODE_AUDIO_MIX_CONTRACT_VERSION,
@@ -333,7 +354,8 @@ export function parseEpisodeAudioMixResult(value: unknown, expectedProposal?: Ep
     completedAt: isoDate(row.completedAt, "completedAt"),
     proposal,
     derivative: { ...derivative, variantKind: "episode-mix-preview", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, durationSeconds, measurement },
-    verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true },
+    baselineDerivative: baseline?.derivative ?? null,
+    verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs: baseline?.levelMatchedDeltaLufs ?? null, levelMatchedWithinPointTwoLu: baseline ? true : null },
     renderer: { ffmpegVersion: text(renderer.ffmpegVersion, "renderer.ffmpegVersion", 500), executionId: id(renderer.executionId, "renderer.executionId"), buildId: text(renderer.buildId, "renderer.buildId", 500), imageDigest: renderer.imageDigest === null ? null : text(renderer.imageDigest, "renderer.imageDigest", 500), attempt: positiveInteger(renderer.attempt, "renderer.attempt") },
     boundaries: { outputIsUnpromotedPreview: true, proposalAndSourcesRemainImmutable: true, playbackReviewRequiredBeforePromotion: true },
   };
@@ -380,12 +402,35 @@ function parseUnresolved(value: unknown): EpisodeAudioMixUnresolvedEvent {
   return { reviewReceiptId: id(row.reviewReceiptId, "unresolved.reviewReceiptId"), eventId: id(row.eventId, "unresolved.eventId"), reason, involvedAssetIds: uniqueSortedIds(row.involvedAssetIds, "unresolved.involvedAssetIds") };
 }
 
-function parseOutput(value: unknown): EpisodeAudioMixProposal["output"] {
+function parseOutput(value: unknown, variantKind: EpisodeAudioMixOutput["variantKind"]): EpisodeAudioMixOutput {
   const row = record(value);
   const provider = row.provider === "local" || row.provider === "gcs" ? row.provider : invalid("output.provider");
   const masteryProfileId = row.masteryProfileId === "apple-podcasts-dialogue-v1" || row.masteryProfileId === "ebu-r128-broadcast-v1" ? row.masteryProfileId : invalid("output.masteryProfileId");
-  if (row.contentType !== "audio/wav" || row.codec !== "pcm_s24le" || row.sampleRateHz !== 48_000 || row.channelCount !== 2 || row.variantKind !== "episode-mix-preview") throw new Error("Episode mix preview output contract is invalid.");
-  return { assetId: id(row.assetId, "output.assetId"), provider, locator: text(row.locator, "output.locator", 1_500), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind: "episode-mix-preview", masteryProfileId };
+  if (row.contentType !== "audio/wav" || row.codec !== "pcm_s24le" || row.sampleRateHz !== 48_000 || row.channelCount !== 2 || row.variantKind !== variantKind) throw new Error(`Episode mix ${variantKind} output contract is invalid.`);
+  return { assetId: id(row.assetId, "output.assetId"), provider, locator: text(row.locator, "output.locator", 1_500), contentType: "audio/wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, variantKind, masteryProfileId };
+}
+
+function parseBaselineDerivative(value: unknown, proposal: EpisodeAudioMixProposal, expectedDuration: number, proposedMeasurement: AudioMasteryMeasurement) {
+  if (!proposal.baselineOutput) {
+    if (value !== null && value !== undefined) throw new Error("A legacy Episode mix cannot claim an undeclared baseline derivative.");
+    return null;
+  }
+  const row = record(value);
+  const derivative = parseSource(row);
+  const measurement = parseAudioMasteryMeasurement(row.measurement);
+  const durationSeconds = finite(row.durationSeconds, "baselineDerivative.durationSeconds", 0.001, 172_800);
+  const durationDeltaSeconds = Math.round(Math.abs(expectedDuration - durationSeconds) * 1_000_000) / 1_000_000;
+  const levelMatchedDeltaLufs = Math.round(Math.abs(measurement.integratedLufs - proposedMeasurement.integratedLufs) * 1_000_000) / 1_000_000;
+  const assessment = assessAudioMastery(measurement, proposal.baselineOutput.masteryProfileId);
+  if (
+    derivative.assetId !== proposal.baselineOutput.assetId || derivative.provider !== proposal.baselineOutput.provider || derivative.locator !== proposal.baselineOutput.locator
+    || derivative.contentType !== "audio/wav" || row.variantKind !== "episode-mix-baseline" || row.codec !== "pcm_s24le"
+    || row.sampleRateHz !== 48_000 || row.channelCount !== 2
+    || measurement.source.assetId !== derivative.assetId || measurement.source.sha256 !== derivative.sha256 || measurement.source.generation !== derivative.generation
+    || measurement.source.locator !== derivative.locator || measurement.profileId !== proposal.baselineOutput.masteryProfileId || measurement.analyzer.completeDecode !== true
+    || durationDeltaSeconds > 0.05 || !assessment.passes || levelMatchedDeltaLufs > 0.2
+  ) throw new Error("Episode mix baseline or level-matched comparison is invalid.");
+  return { derivative: { ...derivative, variantKind: "episode-mix-baseline" as const, codec: "pcm_s24le" as const, sampleRateHz: 48_000 as const, channelCount: 2 as const, durationSeconds, measurement }, durationDeltaSeconds, levelMatchedDeltaLufs };
 }
 
 function parseSource(value: unknown): AudioMasterySourceBinding {

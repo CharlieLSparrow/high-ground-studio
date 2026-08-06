@@ -24,4 +24,22 @@ describe("EpisodeAudioMixDesk", () => {
     expect(await screen.findByText("Choose a program clock and align every included track.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build mix proposal" })).toBeDisabled();
   });
+  it("shows an exact-clock matched A/B surface only when both verified derivatives exist", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({
+      ok: true,
+      status: "completed",
+      jobId: "mix_0002",
+      proposalId: "mix_0002",
+      programFingerprintSha256: "f".repeat(64),
+      actionCount: 1,
+      unresolvedCount: 0,
+      preview: { assetId: "proposal_asset", playbackUrl: "/proposal.wav", sha256: "a".repeat(64), durationSeconds: 60, integratedLufs: -16, truePeakDbtp: -1.5, baselineAssetId: "baseline_asset", baselinePlaybackUrl: "/baseline.wav", baselineSha256: "b".repeat(64), baselineDurationSeconds: 60, baselineIntegratedLufs: -15.9, baselineTruePeakDbtp: -1.7, levelMatchedDeltaLufs: 0.1 },
+    }) });
+    render(<EpisodeAudioMixDesk projectId="project_0001" projectSlug="nest-one" episodeProductionId="episode_0001" programFingerprintSha256={"f".repeat(64)} canWrite eligible eligibilityDetail="Ready" />);
+    expect(await screen.findByText("Matched A/B ready for a deliberate listen")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Baseline · no gain moves" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Proposal · reviewed moves" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("0.10 LU apart")).toBeInTheDocument();
+    expect(screen.getByLabelText("Episode mix audition playhead")).toBeInTheDocument();
+  });
 });

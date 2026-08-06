@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, LoaderCircle, SlidersHorizontal, Sparkles, TriangleAlert } from "lucide-react";
 
+type MixPreview = { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number; baselineAssetId: string | null; baselinePlaybackUrl: string | null; baselineSha256: string | null; baselineDurationSeconds: number | null; baselineIntegratedLufs: number | null; baselineTruePeakDbtp: number | null; levelMatchedDeltaLufs: number | null };
+type AuditionReadyMixPreview = MixPreview & { playbackUrl: string; baselinePlaybackUrl: string; baselineDurationSeconds: number; baselineIntegratedLufs: number; baselineTruePeakDbtp: number };
+
 type MixStatus = {
   jobId: string | null;
   status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
@@ -10,7 +13,7 @@ type MixStatus = {
   programFingerprintSha256: string | null;
   actionCount: number;
   unresolvedCount: number;
-  preview: null | { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number };
+  preview: MixPreview | null;
   error: string | null;
   updatedAt: string | null;
 };
@@ -82,7 +85,10 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
         <Metric label="Delivery target" value="−16" detail="LUFS dialogue · true peak independently checked." />
       </div>
       {!eligible ? <div className="mt-4 flex gap-2 rounded-xl border border-amber-500/50 bg-amber-950/60 px-3 py-3 text-xs font-bold leading-5 text-amber-100"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />{eligibilityDetail}</div> : null}
-      {status.preview?.playbackUrl && !stale ? <div className="mt-4 rounded-xl border border-emerald-700 bg-emerald-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified preview ready for a deliberate listen</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><div className="mt-2 flex flex-wrap gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-200"><span>{status.preview.integratedLufs.toFixed(1)} LUFS</span><span>·</span><span>{status.preview.truePeakDbtp.toFixed(1)} dBTP</span><span>·</span><span>{status.preview.durationSeconds.toFixed(1)} s</span></div></div> : null}
+      {status.preview?.playbackUrl && !stale ? auditionReady(status.preview)
+        ? <EpisodeMixAudition key={status.jobId} preview={status.preview} />
+        : <div className="mt-4 rounded-xl border border-amber-700 bg-amber-950/50 p-3"><div className="flex items-center gap-2 text-xs font-black text-amber-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Verified legacy preview retained</div><audio className="mt-3 w-full" controls preload="metadata" src={status.preview.playbackUrl} aria-label="Verified Episode mix preview" /><p className="mt-2 text-[10px] font-bold leading-4 text-amber-200">This earlier result predates matched baseline rendering. Build a new proposal for trustworthy A/B review.</p></div>
+        : null}
       {notice ? <div className="mt-3 rounded-xl border border-sky-600/60 bg-sky-950/60 px-3 py-2 text-xs font-bold leading-5 text-sky-100" role="status" aria-live="polite">{notice}</div> : null}
       {status.error ? <div className="mt-3 rounded-xl border border-rose-600 bg-rose-950/70 px-3 py-2 text-xs font-bold text-rose-100" role="alert">{status.error}</div> : null}
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -94,3 +100,85 @@ export function EpisodeAudioMixDesk({ projectId, projectSlug, episodeProductionI
 }
 
 function Metric({ label, value, detail }: { label: string; value: string | number; detail: string }) { return <div className="rounded-xl border border-white/10 bg-white/5 p-3"><div className="text-[9px] font-black uppercase tracking-[0.12em] text-violet-200">{label}</div><div className="mt-1 text-2xl font-black">{value}</div><div className="mt-1 text-[10px] font-semibold leading-4 text-slate-400">{detail}</div></div>; }
+
+function EpisodeMixAudition({ preview }: { preview: AuditionReadyMixPreview }) {
+  const baselineRef = useRef<HTMLAudioElement>(null);
+  const proposalRef = useRef<HTMLAudioElement>(null);
+  const [version, setVersion] = useState<"baseline" | "proposal">("proposal");
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [baselineBins, setBaselineBins] = useState<number[]>([]);
+  const [proposalBins, setProposalBins] = useState<number[]>([]);
+  const duration = Math.max(preview.durationSeconds, preview.baselineDurationSeconds, 0.001);
+  const activeRef = version === "baseline" ? baselineRef : proposalRef;
+
+  const seek = (timeSeconds: number) => {
+    const next = Math.max(0, Math.min(duration, timeSeconds));
+    if (baselineRef.current) baselineRef.current.currentTime = next;
+    if (proposalRef.current) proposalRef.current.currentTime = next;
+    setCurrentTime(next);
+  };
+
+  const togglePlayback = async () => {
+    const active = activeRef.current;
+    if (!active) return;
+    if (active.paused) {
+      try { await active.play(); setPlaying(true); }
+      catch { setPlaying(false); }
+    } else { active.pause(); setPlaying(false); }
+  };
+
+  const switchVersion = async (nextVersion: "baseline" | "proposal") => {
+    if (nextVersion === version) return;
+    const current = activeRef.current;
+    const next = nextVersion === "baseline" ? baselineRef.current : proposalRef.current;
+    const shouldContinue = Boolean(current && !current.paused);
+    const time = current?.currentTime ?? currentTime;
+    current?.pause();
+    if (next) next.currentTime = Math.max(0, Math.min(time, duration));
+    setVersion(nextVersion);
+    setCurrentTime(time);
+    if (shouldContinue && next) {
+      try { await next.play(); setPlaying(true); }
+      catch { setPlaying(false); }
+    }
+  };
+
+  const observePlayback = (candidate: "baseline" | "proposal", timeSeconds: number) => {
+    if (candidate !== version) return;
+    setCurrentTime(timeSeconds);
+    if (!playing) return;
+    const bin = Math.max(0, Math.floor(timeSeconds));
+    const update = (current: number[]) => current.includes(bin) ? current : [...current, bin].sort((left, right) => left - right);
+    if (candidate === "baseline") setBaselineBins(update);
+    else setProposalBins(update);
+  };
+
+  return <div className="mt-4 rounded-xl border border-emerald-700 bg-emerald-950/50 p-3">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div><div className="flex items-center gap-2 text-xs font-black text-emerald-100"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Matched A/B ready for a deliberate listen</div><p className="mt-1 text-[10px] font-bold leading-4 text-emerald-200">Switch instantly at the same playhead. Both files were independently mastered and measured, so louder-is-better bias stays below 0.2 LU.</p></div>
+      <span className="rounded-full border border-emerald-600 bg-emerald-950 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-100">{(preview.levelMatchedDeltaLufs ?? 0).toFixed(2)} LU apart</span>
+    </div>
+    <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-emerald-800 bg-slate-950 p-1" role="group" aria-label="Episode mix audition version">
+      {(["baseline", "proposal"] as const).map((candidate) => <button key={candidate} type="button" aria-pressed={version === candidate} onClick={() => void switchVersion(candidate)} className={`rounded-md px-3 py-2 text-xs font-black ${version === candidate ? "bg-white text-slate-950" : "text-slate-300 hover:bg-slate-900"}`}>{candidate === "baseline" ? "Baseline · no gain moves" : "Proposal · reviewed moves"}</button>)}
+    </div>
+    <audio ref={baselineRef} src={preview.baselinePlaybackUrl} preload="metadata" data-audition-version="baseline" onTimeUpdate={(event) => observePlayback("baseline", event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+    <audio ref={proposalRef} src={preview.playbackUrl} preload="metadata" data-audition-version="proposal" onTimeUpdate={(event) => observePlayback("proposal", event.currentTarget.currentTime)} onEnded={() => setPlaying(false)} />
+    <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-950 px-3 py-3">
+      <button type="button" onClick={() => void togglePlayback()} className="min-w-20 rounded-md bg-violet-300 px-3 py-2 text-xs font-black text-violet-950 hover:bg-violet-200">{playing ? "Pause" : "Play"}</button>
+      <span className="w-24 font-mono text-[10px] font-bold text-slate-300">{clock(currentTime)} / {clock(duration)}</span>
+      <input aria-label="Episode mix audition playhead" type="range" min="0" max={duration} step="0.05" value={Math.min(currentTime, duration)} onChange={(event) => seek(Number(event.currentTarget.value))} className="min-w-0 flex-1 accent-violet-300" />
+    </div>
+    <div className="mt-3 grid grid-cols-2 gap-2 text-center text-[10px] font-bold sm:grid-cols-4">
+      <AuditionMetric value={preview.baselineIntegratedLufs.toFixed(1)} label="Baseline LUFS" />
+      <AuditionMetric value={preview.integratedLufs.toFixed(1)} label="Proposal LUFS" />
+      <AuditionMetric value={preview.baselineTruePeakDbtp.toFixed(1)} label="Baseline dBTP" />
+      <AuditionMetric value={preview.truePeakDbtp.toFixed(1)} label="Proposal dBTP" />
+    </div>
+    <p className="mt-2 text-[9px] font-bold text-emerald-300" aria-live="polite">Listening evidence: baseline {baselineBins.length}s · proposal {proposalBins.length}s. Approval remains unavailable until a separate receipt-backed review is implemented.</p>
+  </div>;
+}
+
+function AuditionMetric({ value, label }: { value: string; label: string }) { return <div className="rounded-lg bg-slate-950 px-2 py-2"><div className="font-mono text-sm font-black text-emerald-100">{value}</div><div className="text-slate-400">{label}</div></div>; }
+function auditionReady(preview: MixPreview): preview is AuditionReadyMixPreview { return Boolean(preview.playbackUrl && preview.baselinePlaybackUrl && preview.baselineDurationSeconds !== null && preview.baselineIntegratedLufs !== null && preview.baselineTruePeakDbtp !== null); }
+function clock(seconds: number) { const safe = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0; return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`; }

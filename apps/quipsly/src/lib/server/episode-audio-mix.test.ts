@@ -52,6 +52,8 @@ describe("Episode audio mix server boundary", () => {
     expect(proposal.tracks).toHaveLength(2);
     expect(proposal.actions[0]).toMatchObject({ targetAssetId: "asset_scratch", reason: "mic-bleed", gainDb: -18 });
     expect(proposal.output.locator).toContain("media-vault/mixes/episode_0001/");
+    expect(proposal.baselineOutput?.locator).toContain("media-vault/mixes/episode_0001/");
+    expect(proposal.baselineOutput?.variantKind).toBe("episode-mix-baseline");
     expect(proposal.boundaries.correlationNeverAuthorizesAutomation).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ import {
   parseEpisodeAudioMixResult,
   type AudioMasteryMeasurement,
   type AudioMasterySourceBinding,
+  type EpisodeAudioMixOutput,
   type EpisodeAudioMixProposal,
   type EpisodeAudioMixResult,
 } from "@high-ground/quipsly-media-processing";
@@ -60,30 +61,25 @@ export async function runOneLocalEpisodeAudioMixJob(store: LocalEpisodeAudioMixS
     const sourcePaths = new Map<string, string>();
     for (const track of proposal.tracks) sourcePaths.set(track.assetId, await authorizedPath(root, track.source.locator, "source"));
     const outputPath = await authorizedTarget(root, proposal.output.locator);
-    await rm(outputPath, { force: true });
+    const baselineOutputPath = proposal.baselineOutput ? await authorizedTarget(root, proposal.baselineOutput.locator) : null;
+    await Promise.all([rm(outputPath, { force: true }), baselineOutputPath ? rm(baselineOutputPath, { force: true }) : Promise.resolve()]);
     workRoot = await mkdtemp(path.join(tmpdir(), `quipsly-episode-mix-${claim.id}-`));
-    const unmasteredPath = path.join(workRoot, "unmastered.wav");
-    const raw = await renderer.renderUnmasteredPreview({ proposal, sourcePathsByAssetId: sourcePaths, outputPath: unmasteredPath });
-    const rawSource = await bindingFor(proposal.output.assetId, unmasteredPath, "audio/wav");
-    const sourceMeasurement = await mastery.measure(unmasteredPath, { source: rawSource, profileId: proposal.output.masteryProfileId, measurementId: `mix_measure_source_${randomUUID().replaceAll("-", "")}`, measuredAt: options.now().toISOString() });
-    const masteringProposal = newAudioMasteryProposal({ proposalId: `mix_master_${randomUUID().replaceAll("-", "")}`, createdAt: options.now().toISOString(), measurement: sourceMeasurement, profileId: proposal.output.masteryProfileId });
-    if (masteringProposal.action === "render-loudness-master") await mastery.renderLoudnessMaster(unmasteredPath, outputPath, { proposal: masteringProposal, measurement: sourceMeasurement });
-    else await renderer.encodePcm24(unmasteredPath, outputPath);
-    const outputSource = await bindingFor(proposal.output.assetId, outputPath, "audio/wav", proposal.output.locator);
-    const outputMeasurement = await mastery.measure(outputPath, { source: outputSource, profileId: proposal.output.masteryProfileId, measurementId: `mix_measure_output_${randomUUID().replaceAll("-", "")}`, measuredAt: options.now().toISOString() });
-    const assessment = assessAudioMastery(outputMeasurement, proposal.output.masteryProfileId);
-    if (!assessment.passes) throw new TerminalEpisodeAudioMixError("episode-mix-mastery-verification-failed", "The rendered mix preview failed independent loudness or true-peak verification.");
-    const expectedDurationSeconds = Math.max(...proposal.tracks.map((track) => Math.max(0, track.programOffsetSeconds) + Math.max(0, track.sourceDurationSeconds + Math.min(0, track.programOffsetSeconds))));
-    const durationDeltaSeconds = Math.round(Math.abs(expectedDurationSeconds - outputMeasurement.durationSeconds) * 1_000_000) / 1_000_000;
+    const proposed = await renderMasteredVariant({ renderer, mastery, proposal, renderProposal: proposal, output: proposal.output, outputPath, unmasteredPath: path.join(workRoot, "proposal-unmastered.wav"), sourcePaths, now: options.now });
+    const baseline = proposal.baselineOutput && baselineOutputPath
+      ? await renderMasteredVariant({ renderer, mastery, proposal, renderProposal: { ...proposal, actions: [] }, output: proposal.baselineOutput, outputPath: baselineOutputPath, unmasteredPath: path.join(workRoot, "baseline-unmastered.wav"), sourcePaths, now: options.now })
+      : null;
+    const levelMatchedDeltaLufs = baseline ? Math.round(Math.abs(proposed.derivative.measurement.integratedLufs - baseline.derivative.measurement.integratedLufs) * 1_000_000) / 1_000_000 : null;
+    if (levelMatchedDeltaLufs !== null && levelMatchedDeltaLufs > 0.2) throw new TerminalEpisodeAudioMixError("episode-mix-comparison-not-level-matched", "The baseline and proposed mix are not close enough in integrated loudness for an honest A/B comparison.");
     const receipt = parseEpisodeAudioMixResult({
       kind: EPISODE_AUDIO_MIX_RESULT_KIND,
       version: EPISODE_AUDIO_MIX_CONTRACT_VERSION,
       jobId: claim.id,
       completedAt: options.now().toISOString(),
       proposal,
-      derivative: { ...outputSource, variantKind: "episode-mix-preview", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 2, durationSeconds: outputMeasurement.durationSeconds, measurement: outputMeasurement },
-      verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true },
-      renderer: { ffmpegVersion: raw.ffmpegVersion, executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt },
+      derivative: proposed.derivative,
+      baselineDerivative: baseline?.derivative ?? null,
+      verification: { exactSourcesVerifiedBeforeAndAfter: true, outputCompletelyDecoded: true, durationDeltaSeconds: proposed.durationDeltaSeconds, integratedLoudnessPasses: true, truePeakPasses: true, originalTracksRemainSourceTruth: true, baselineOutputCompletelyDecoded: baseline ? true : null, baselineDurationDeltaSeconds: baseline?.durationDeltaSeconds ?? null, levelMatchedDeltaLufs, levelMatchedWithinPointTwoLu: baseline ? true : null },
+      renderer: { ffmpegVersion: proposed.ffmpegVersion, executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt },
       boundaries: { outputIsUnpromotedPreview: true, proposalAndSourcesRemainImmutable: true, playbackReviewRequiredBeforePromotion: true },
     }, proposal);
     const committed = await store.complete({ claim, receipt, now: options.now() });
@@ -96,6 +92,21 @@ export async function runOneLocalEpisodeAudioMixJob(store: LocalEpisodeAudioMixS
   } finally {
     if (workRoot) await rm(workRoot, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+async function renderMasteredVariant(input: { renderer: LocalEpisodeAudioMixRenderer; mastery: LocalEpisodeAudioMixMasteringEngine; proposal: EpisodeAudioMixProposal; renderProposal: EpisodeAudioMixProposal | unknown; output: EpisodeAudioMixOutput; outputPath: string; unmasteredPath: string; sourcePaths: ReadonlyMap<string, string>; now: () => Date }) {
+  const raw = await input.renderer.renderUnmasteredPreview({ proposal: input.renderProposal, sourcePathsByAssetId: input.sourcePaths, outputPath: input.unmasteredPath });
+  const rawSource = await bindingFor(input.output.assetId, input.unmasteredPath, "audio/wav");
+  const sourceMeasurement = await input.mastery.measure(input.unmasteredPath, { source: rawSource, profileId: input.output.masteryProfileId, measurementId: `mix_measure_source_${randomUUID().replaceAll("-", "")}`, measuredAt: input.now().toISOString() });
+  const masteringProposal = newAudioMasteryProposal({ proposalId: `mix_master_${randomUUID().replaceAll("-", "")}`, createdAt: input.now().toISOString(), measurement: sourceMeasurement, profileId: input.output.masteryProfileId });
+  if (masteringProposal.action === "render-loudness-master") await input.mastery.renderLoudnessMaster(input.unmasteredPath, input.outputPath, { proposal: masteringProposal, measurement: sourceMeasurement });
+  else await input.renderer.encodePcm24(input.unmasteredPath, input.outputPath);
+  const outputSource = await bindingFor(input.output.assetId, input.outputPath, "audio/wav", input.output.locator);
+  const outputMeasurement = await input.mastery.measure(input.outputPath, { source: outputSource, profileId: input.output.masteryProfileId, measurementId: `mix_measure_output_${randomUUID().replaceAll("-", "")}`, measuredAt: input.now().toISOString() });
+  if (!assessAudioMastery(outputMeasurement, input.output.masteryProfileId).passes) throw new TerminalEpisodeAudioMixError("episode-mix-mastery-verification-failed", `The rendered ${input.output.variantKind} failed independent loudness or true-peak verification.`);
+  const expectedDurationSeconds = Math.max(...input.proposal.tracks.map((track) => Math.max(0, track.programOffsetSeconds) + Math.max(0, track.sourceDurationSeconds + Math.min(0, track.programOffsetSeconds))));
+  const durationDeltaSeconds = Math.round(Math.abs(expectedDurationSeconds - outputMeasurement.durationSeconds) * 1_000_000) / 1_000_000;
+  return { ffmpegVersion: raw.ffmpegVersion, durationDeltaSeconds, derivative: { ...outputSource, variantKind: input.output.variantKind, codec: "pcm_s24le" as const, sampleRateHz: 48_000 as const, channelCount: 2 as const, durationSeconds: outputMeasurement.durationSeconds, measurement: outputMeasurement } };
 }
 
 export class PostgresLocalEpisodeAudioMixStore implements LocalEpisodeAudioMixStore {
