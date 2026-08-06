@@ -1,0 +1,159 @@
+import "server-only";
+
+import { createHash, randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import type { Prisma } from "@prisma/client";
+import {
+  buildEpisodeAudioMixTargetLocator,
+  newAutomaticEpisodeAudioMixProposal,
+  parseEpisodeAudioMixProposal,
+  parseEpisodeAudioMixResult,
+  type EpisodeAudioMixProposal,
+  type EpisodeAudioMixReviewEvidence,
+  type EpisodeAudioMixTrack,
+} from "@high-ground/quipsly-media-processing";
+
+import { inspectImmutableStudioMediaSource } from "@/lib/server/episode-collaboration-proxy";
+import { loadEpisodeAudioActivityAnalysisContext } from "@/lib/server/episode-audio-activity-analysis";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
+import { resolveAllowedLocalStudioMediaPath } from "@/lib/server/studio-media-location-security";
+
+const JOB_TYPE = "episode-audio-mix";
+const ROLES = new Set<EpisodeAudioMixTrack["role"]>(["dialogue-primary", "dialogue-backup", "camera-scratch", "reference", "music", "sound-effect", "program-master"]);
+
+export class EpisodeAudioMixError extends Error { constructor(message: string, readonly status: number, readonly code: string) { super(message); } }
+
+export type PublicEpisodeAudioMixStatus = {
+  jobId: string | null;
+  status: "not-queued" | "queued" | "processing" | "output-ready" | "completed" | "failed";
+  proposalId: string | null;
+  programFingerprintSha256: string | null;
+  actionCount: number;
+  unresolvedCount: number;
+  preview: null | { assetId: string; playbackUrl: string | null; sha256: string; durationSeconds: number; integratedLufs: number; truePeakDbtp: number };
+  error: string | null;
+  updatedAt: string | null;
+  boundaries: { sourceTracksRemainImmutable: true; automationIsProposalNotTimelineMutation: true; previewIsUnpromoted: true; playbackApprovalRequired: true };
+};
+
+export async function queueEpisodeAudioMix(input: { prisma: any; projectSlug: string; episodeProductionId: string; actorEmail: string }) {
+  const context = await loadMixContext(input);
+  const proposalId = `episode_mix_${randomUUID().replaceAll("-", "")}`;
+  const outputAssetId = `episode_mix_asset_${randomUUID().replaceAll("-", "")}`;
+  const provider = context.tracks[0]!.source.provider;
+  if (context.tracks.some((track) => track.source.provider !== provider) || provider !== "local") throw new EpisodeAudioMixError("This release can render Episode mix previews only when every exact source is retained locally.", 409, "EPISODE_AUDIO_MIX_PROVIDER_UNSUPPORTED");
+  const proposal = newAutomaticEpisodeAudioMixProposal({
+    proposalId,
+    createdAt: new Date().toISOString(),
+    projectId: context.project.id,
+    episodeProductionId: context.episode.id,
+    programFingerprintSha256: context.program.fingerprintSha256!,
+    activeDecisionReceiptIds: context.program.activeDecisions.map((decision) => decision.id),
+    tracks: context.tracks,
+    evidenceReviews: context.reviews,
+    output: {
+      assetId: outputAssetId,
+      provider,
+      locator: buildEpisodeAudioMixTargetLocator({ episodeProductionId: context.episode.id, programFingerprintSha256: context.program.fingerprintSha256!, proposalId }),
+      contentType: "audio/wav",
+      codec: "pcm_s24le",
+      sampleRateHz: 48_000,
+      channelCount: 2,
+      variantKind: "episode-mix-preview",
+      masteryProfileId: "apple-podcasts-dialogue-v1",
+    },
+  });
+  const saved = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `episode-audio-decisions:${context.episode.id}`);
+    await acquirePrismaAdvisoryTransactionLock(tx, `episode-audio-mix:${context.episode.id}`);
+    const existing = await tx.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, assetId: context.programClockAssetId, type: JOB_TYPE, AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }, { inputJson: { path: ["programFingerprintSha256"], equals: context.program.fingerprintSha256 } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    if (existing && existing.status !== "failed") {
+      try {
+        const current = parseEpisodeAudioMixProposal(existing.inputJson);
+        if (sameProposalInputs(current, proposal)) return existing;
+      } catch { /* a malformed row cannot own the current exact mix request */ }
+    }
+    return tx.studioAssetProcessingJob.create({ data: { id: proposal.proposalId, projectId: context.project.id, assetId: context.programClockAssetId, type: JOB_TYPE, status: "queued", requestedByEmail: input.actorEmail.toLowerCase(), inputJson: json(proposal) } });
+  }, { isolationLevel: "Serializable" });
+  return publicStatus(saved);
+}
+
+export async function readEpisodeAudioMix(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
+  const context = await loadEpisodeAudioActivityAnalysisContext(input);
+  const row = await input.prisma.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, type: JOB_TYPE, AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  return row ? publicStatus(row) : emptyStatus();
+}
+
+export async function reconcileEpisodeAudioMix(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
+  const context = await loadEpisodeAudioActivityAnalysisContext(input);
+  const row = await input.prisma.studioAssetProcessingJob.findFirst({ where: { projectId: context.project.id, type: JOB_TYPE, AND: [{ inputJson: { path: ["episodeProductionId"], equals: context.episode.id } }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  if (!row || row.status !== "output-ready") return row ? publicStatus(row) : emptyStatus();
+  const proposal = parseEpisodeAudioMixProposal(row.inputJson);
+  if (proposal.programFingerprintSha256 !== context.program.fingerprintSha256 || JSON.stringify(proposal.activeDecisionReceiptIds) !== JSON.stringify(context.program.activeDecisions.map((decision) => decision.id).sort())) throw new EpisodeAudioMixError("The Episode or its canonical audio decisions changed before mix preview registration.", 409, "EPISODE_AUDIO_MIX_PROPOSAL_STALE");
+  const result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal);
+  const currentSources = await Promise.all(proposal.tracks.map((track) => currentBinding(input.prisma, context.project.id, track.assetId, track.sourceId)));
+  if (currentSources.some((source, index) => !sameBinding(source.binding, proposal.tracks[index]!.source))) throw new EpisodeAudioMixError("An exact retained source changed before mix preview registration.", 409, "EPISODE_AUDIO_MIX_SOURCE_DRIFT");
+  const root = path.resolve(process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT || path.join(tmpdir(), "quipsly-media-ingest"));
+  const outputPath = await resolveAllowedLocalStudioMediaPath(path.resolve(root, result.derivative.locator));
+  if (!outputPath) throw new EpisodeAudioMixError("The mix preview escaped the authorized local media root.", 409, "EPISODE_AUDIO_MIX_OUTPUT_PATH_INVALID");
+  const [outputStat, outputEvidence] = await Promise.all([stat(outputPath), inspectImmutableStudioMediaSource(outputPath, "audio/wav")]);
+  if (!outputStat.isFile() || !sameBinding(outputEvidence, result.derivative)) throw new EpisodeAudioMixError("The mix preview no longer matches its verified output receipt.", 409, "EPISODE_AUDIO_MIX_OUTPUT_DRIFT");
+  const updated = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `episode-audio-mix:${context.episode.id}`);
+    let source = await tx.studioVideoSource.findFirst({ where: { providerSourceId: outputPath } });
+    if (!source) source = await tx.studioVideoSource.create({ data: { provider: "local-episode-audio-mix-worker", providerSourceId: outputPath, url: "/api/ingest/media/pending", title: `${context.episode.slug} mix preview` } });
+    const playbackUrl = `/api/ingest/media/${source.id}`;
+    if (source.url !== playbackUrl) source = await tx.studioVideoSource.update({ where: { id: source.id }, data: { url: playbackUrl } });
+    const collision = await tx.studioMediaAsset.findUnique({ where: { id: proposal.output.assetId } });
+    if (collision && collision.url !== playbackUrl) throw new EpisodeAudioMixError("The reserved mix preview asset id is already in use.", 409, "EPISODE_AUDIO_MIX_ASSET_COLLISION");
+    if (!collision) await tx.studioMediaAsset.create({ data: { id: proposal.output.assetId, filename: `${context.episode.slug}-mix-preview-r${proposal.revision}.wav`, url: playbackUrl, mimeType: "audio/wav", sizeBytes: BigInt(result.derivative.sizeBytes), isProxy: false, cloudProvider: "local", duration: result.derivative.durationSeconds, projects: { connect: { id: context.project.id } } } });
+    return tx.studioAssetProcessingJob.update({ where: { id: row.id }, data: { status: "completed", completedAt: new Date(result.completedAt), error: null, resultJson: json({ state: "completed", receipt: result, registration: { playbackUrl, sourceId: source.id, outputPath, outputAssetId: proposal.output.assetId, outputIsUnpromotedPreview: true } }) } });
+  }, { isolationLevel: "Serializable" });
+  return publicStatus(updated);
+}
+
+async function loadMixContext(input: { prisma: any; projectSlug: string; episodeProductionId: string }) {
+  const context = await loadEpisodeAudioActivityAnalysisContext(input);
+  if (!context.program.fingerprintSha256 || !context.program.summary.hasProgramClock) throw new EpisodeAudioMixError("Choose one canonical program clock before creating a mix proposal.", 409, "EPISODE_AUDIO_MIX_CLOCK_REQUIRED");
+  const lanes = context.map.lanes.filter((lane) => lane.mixDisposition === "include");
+  if (lanes.length === 0 || lanes.some((lane) => lane.alignment !== "program-clock" && lane.alignment !== "qualified-candidate")) throw new EpisodeAudioMixError("Every included track needs qualified shared-clock alignment before mix planning.", 409, "EPISODE_AUDIO_MIX_ALIGNMENT_REQUIRED");
+  const tracks = await Promise.all(lanes.map(async (lane) => {
+    const programTrack = context.program.tracks.find((track) => track.assetId === lane.assetId && track.sourceId === lane.sourceId)!;
+    if (!ROLES.has(programTrack.role as EpisodeAudioMixTrack["role"])) throw new EpisodeAudioMixError(`Classify ${programTrack.title} with a canonical track role before mixing.`, 409, "EPISODE_AUDIO_MIX_ROLE_REQUIRED");
+    const exact = await currentBinding(input.prisma, context.project.id, lane.assetId, lane.sourceId);
+    if (exact.binding.provider !== "local") throw new EpisodeAudioMixError("Cloud Episode mix rendering is not qualified in this release.", 409, "EPISODE_AUDIO_MIX_PROVIDER_UNSUPPORTED");
+    return { assetId: lane.assetId, sourceId: lane.sourceId, title: lane.title, participantId: lane.participantId, participantLabel: lane.participantLabel, role: programTrack.role as EpisodeAudioMixTrack["role"], mixDisposition: "include" as const, alignment: lane.alignment as "program-clock" | "qualified-candidate", programOffsetSeconds: lane.programOffsetSeconds!, sourceDurationSeconds: lane.sourceDurationSeconds!, alignmentEvidenceJobId: lane.alignment === "program-clock" ? null : programTrack.processing.alignment.jobId, source: exact.binding };
+  }));
+  if (tracks.some((track) => track.alignment === "qualified-candidate" && !track.alignmentEvidenceJobId)) throw new EpisodeAudioMixError("A qualified track is missing its immutable alignment evidence receipt.", 409, "EPISODE_AUDIO_MIX_ALIGNMENT_EVIDENCE_REQUIRED");
+  const analysis = await input.prisma.studioEpisodeAudioAnalysisReceipt.findFirst({ where: { episodeProductionId: context.episode.id, programFingerprintSha256: context.program.fingerprintSha256 }, orderBy: [{ analyzedAt: "desc" }, { id: "desc" }] });
+  const reviewRows = analysis ? await input.prisma.studioEpisodeAudioReviewReceipt.findMany({ where: { episodeProductionId: context.episode.id, analysisId: analysis.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], take: 200 }) : [];
+  const latestByEvent = new Map<string, any>();
+  for (const row of reviewRows) if (!latestByEvent.has(String(row.eventId))) latestByEvent.set(String(row.eventId), row);
+  const reviews = [...latestByEvent.values()].map(reviewEvidence);
+  const programClockAssetId = tracks.find((track) => track.alignment === "program-clock")!.assetId;
+  return { ...context, tracks, reviews, programClockAssetId };
+}
+
+async function currentBinding(prisma: any, projectId: string, assetId: string, sourceId: string) {
+  const [asset, source] = await Promise.all([
+    prisma.studioMediaAsset.findUnique({ where: { id: assetId }, include: { assetAttachments: { where: { projectId }, select: { metadataJson: true } } } }),
+    prisma.studioVideoSource.findUnique({ where: { id: sourceId }, select: { id: true, url: true, providerSourceId: true } }),
+  ]);
+  const attached = asset?.assetAttachments?.some((attachment: any) => String(record(attachment.metadataJson).sourceId || "") === sourceId);
+  if (!asset || asset.isProxy || !source?.providerSourceId || source.url !== `/api/ingest/media/${source.id}` || (asset.url !== source.url && !attached)) throw new EpisodeAudioMixError("Mix planning requires exact originals attached to this Nest and Episode.", 409, "EPISODE_AUDIO_MIX_SOURCE_BINDING_INVALID");
+  return { asset, source, binding: { assetId, ...await inspectImmutableStudioMediaSource(source.providerSourceId, asset.mimeType || "application/octet-stream") } };
+}
+
+function reviewEvidence(row: any): EpisodeAudioMixReviewEvidence { return { receiptId: String(row.id), analysisReceiptId: String(row.analysisId), eventId: String(row.eventId), decision: String(row.decision).toLowerCase().replaceAll("_", "-") as EpisodeAudioMixReviewEvidence["decision"], startSeconds: Number(row.startSeconds), endSeconds: Number(row.endSeconds), involvedAssetIds: Array.isArray(row.involvedAssetIdsJson) ? row.involvedAssetIdsJson.map(String) : [], playbackEvidenceSha256: sha256(row.playbackEvidenceJson) }; }
+function sameProposalInputs(left: EpisodeAudioMixProposal, right: EpisodeAudioMixProposal) { return left.programFingerprintSha256 === right.programFingerprintSha256 && stableJson(left.activeDecisionReceiptIds) === stableJson(right.activeDecisionReceiptIds) && stableJson(left.tracks.map((track) => track.source)) === stableJson(right.tracks.map((track) => track.source)) && stableJson(left.evidenceReviews) === stableJson(right.evidenceReviews); }
+function publicStatus(row: any): PublicEpisodeAudioMixStatus { let proposal: EpisodeAudioMixProposal | null = null; let result: ReturnType<typeof parseEpisodeAudioMixResult> | null = null; try { proposal = parseEpisodeAudioMixProposal(row.inputJson); } catch { /* fail closed */ } try { if (proposal) result = parseEpisodeAudioMixResult(record(row.resultJson).receipt, proposal); } catch { /* fail closed */ } const declared = ["queued", "processing", "output-ready", "completed", "failed"].includes(row.status) ? row.status as PublicEpisodeAudioMixStatus["status"] : "failed"; const invalid = !proposal || (["output-ready", "completed"].includes(declared) && !result); const registration = record(record(row.resultJson).registration); return { jobId: String(row.id), status: invalid ? "failed" : declared, proposalId: proposal?.proposalId ?? null, programFingerprintSha256: proposal?.programFingerprintSha256 ?? null, actionCount: proposal?.actions.length ?? 0, unresolvedCount: proposal?.unresolvedEvents.length ?? 0, preview: result ? { assetId: result.derivative.assetId, playbackUrl: typeof registration.playbackUrl === "string" ? registration.playbackUrl : null, sha256: result.derivative.sha256, durationSeconds: result.derivative.durationSeconds, integratedLufs: result.derivative.measurement.integratedLufs, truePeakDbtp: result.derivative.measurement.truePeakDbtp } : null, error: invalid ? "Episode mix evidence failed integrity validation." : typeof row.error === "string" ? row.error : null, updatedAt: row.updatedAt?.toISOString?.() ?? null, boundaries: publicBoundaries() }; }
+function emptyStatus(): PublicEpisodeAudioMixStatus { return { jobId: null, status: "not-queued", proposalId: null, programFingerprintSha256: null, actionCount: 0, unresolvedCount: 0, preview: null, error: null, updatedAt: null, boundaries: publicBoundaries() }; }
+function publicBoundaries(): PublicEpisodeAudioMixStatus["boundaries"] { return { sourceTracksRemainImmutable: true, automationIsProposalNotTimelineMutation: true, previewIsUnpromoted: true, playbackApprovalRequired: true }; }
+function sameBinding(left: { sha256: string; generation: string; sizeBytes: number }, right: { sha256: string; generation: string; sizeBytes: number }) { return left.sha256 === right.sha256 && left.generation === right.generation && left.sizeBytes === right.sizeBytes; }
+function record(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
+function stableJson(value: unknown): string { if (value === null || value === undefined) return "null"; if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`; if (typeof value === "object") { const row = value as Record<string, unknown>; return `{${Object.keys(row).sort().map((key) => `${JSON.stringify(key)}:${stableJson(row[key])}`).join(",")}}`; } return JSON.stringify(value); }
+function sha256(value: unknown) { return createHash("sha256").update(stableJson(value)).digest("hex"); }
+function json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }

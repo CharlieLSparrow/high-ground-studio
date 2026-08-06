@@ -158,6 +158,10 @@ const ROLE_RANK: Record<EpisodeAudioMixTrack["role"], number> = {
   "sound-effect": 5,
 };
 
+export function buildEpisodeAudioMixTargetLocator(input: { episodeProductionId: string; programFingerprintSha256: string; proposalId: string }) {
+  return `media-vault/mixes/${id(input.episodeProductionId, "episodeProductionId")}/${sha(input.programFingerprintSha256, "programFingerprintSha256")}/${id(input.proposalId, "proposalId")}/preview-v1.wav`;
+}
+
 export function newAutomaticEpisodeAudioMixProposal(input: AutomaticMixProposalInput): EpisodeAudioMixProposal {
   const tracks = input.tracks.map(parseTrack).sort((left, right) => `${left.assetId}:${left.sourceId}`.localeCompare(`${right.assetId}:${right.sourceId}`));
   if (tracks.length === 0) throw new Error("An Episode mix proposal requires at least one included, aligned exact source.");
