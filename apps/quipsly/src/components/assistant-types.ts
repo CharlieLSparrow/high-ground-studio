@@ -31,6 +31,15 @@ export type AssistantAction = {
   payload: Record<string, unknown>;
   status: AssistantActionStatus;
   createdAt: string;
+  governance?: {
+    actionId: string;
+    runId: string | null;
+    capabilityId: string;
+    decisionPolicy: string;
+    decisionStatus: string;
+    status: string;
+    recovery?: unknown;
+  };
 };
 
 export type AssistantPreviewCard = {

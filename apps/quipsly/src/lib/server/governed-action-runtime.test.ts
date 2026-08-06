@@ -1,0 +1,225 @@
+/** @jest-environment node */
+
+import {
+  GOVERNED_ACTION_CAPABILITIES,
+  SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+  governedCapabilityForAssistantToolKind,
+} from "@high-ground/quipsly-domain/governed-actions";
+import {
+  createGovernedAssistantProposalRun,
+  governedActionSha256,
+  governedActionStableJson,
+  recordGovernedAssistantTransition,
+  recordSucceededSessionPreflightAction,
+} from "./governed-action-runtime";
+
+jest.mock("server-only", () => ({}));
+
+function transaction() {
+  return {
+    governedActionRun: {
+      create: jest.fn().mockResolvedValue({ id: "run-1" }),
+      update: jest.fn().mockResolvedValue({ id: "run-1" }),
+    },
+    governedAction: {
+      create: jest.fn().mockResolvedValue({ id: "governed-action-1" }),
+      update: jest.fn().mockResolvedValue({ id: "governed-action-1" }),
+      findUnique: jest.fn().mockResolvedValue({ id: "governed-action-1", runId: "run-1", status: "PROPOSED" }),
+      findMany: jest.fn().mockResolvedValue([{ status: "SUCCEEDED" }]),
+    },
+    governedActionAttempt: {
+      create: jest.fn().mockResolvedValue({ id: "attempt-1" }),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    governedActionReceipt: {
+      create: jest.fn().mockResolvedValue({ id: "receipt-1" }),
+    },
+    studioAssistantAction: {
+      update: jest.fn().mockResolvedValue({ id: "assistant-action-1" }),
+    },
+  };
+}
+
+describe("governed action capability and ledger runtime", () => {
+  it("publishes one unique manifest per registered capability and refuses unknown assistant tools", () => {
+    expect(new Set(GOVERNED_ACTION_CAPABILITIES.map((manifest) => manifest.id)).size)
+      .toBe(GOVERNED_ACTION_CAPABILITIES.length);
+    expect(governedCapabilityForAssistantToolKind("PROPOSE_REWRITE")).toMatchObject({
+      id: "quipsly.writing.rewrite.propose",
+      decisionPolicy: "EXPLICIT_APPROVAL",
+      riskLevel: "HIGH",
+      recovery: expect.arrayContaining(["UNDO"]),
+    });
+    expect(governedCapabilityForAssistantToolKind("DELETE_EVERYTHING")).toBeNull();
+  });
+
+  it("hashes canonical JSON independently of object insertion order", () => {
+    expect(governedActionStableJson({ z: 1, a: { y: 2, x: 3 } }))
+      .toBe('{"a":{"x":3,"y":2},"z":1}');
+    expect(governedActionSha256({ z: 1, a: { y: 2, x: 3 } }))
+      .toBe(governedActionSha256({ a: { x: 3, y: 2 }, z: 1 }));
+  });
+
+  it("adapts writing proposals into one project run with typed actions and immutable receipts", async () => {
+    const tx = transaction();
+    const result = await createGovernedAssistantProposalRun(tx as never, {
+      projectId: "project-1",
+      documentId: "document-1",
+      assistantSessionId: "assistant-session-1",
+      actorUserId: "user-1",
+      actorEmail: "writer@example.test",
+      intent: "Draft a safer opening.",
+      sourceSurface: "nest-writing-assistant",
+      provider: "local-fallback",
+      readSet: [{ objectType: "StudioDocumentBlock", objectId: "block-1", contentSha256: "source-hash" }],
+      proposals: [{
+        assistantActionId: "assistant-action-1",
+        kind: "PROPOSE_REWRITE",
+        label: "Rewrite the opening",
+        explanation: "The user requested a different opening.",
+        payload: { blockId: "block-1", originalText: "Before", rewriteText: "After" },
+      }],
+    });
+
+    expect(result).toEqual({
+      runId: "run-1",
+      actions: [{ assistantActionId: "assistant-action-1", governedActionId: "governed-action-1", capabilityId: "quipsly.writing.rewrite.propose" }],
+    });
+    expect(tx.governedActionRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        decisionPolicy: "EXPLICIT_APPROVAL",
+        riskLevel: "HIGH",
+        status: "AWAITING_DECISION",
+        consequenceJson: expect.objectContaining({ sourceTruthChanged: false }),
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        capabilityId: "quipsly.writing.rewrite.propose",
+        capabilityVersion: 1,
+        decisionStatus: "PENDING",
+        status: "PROPOSED",
+        payloadSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+        requestSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "PROPOSAL_RECORDED", newStatus: "PROPOSED" }),
+    });
+    expect(tx.studioAssistantAction.update).toHaveBeenCalledWith({
+      where: { id: "assistant-action-1" },
+      data: { governedActionId: "governed-action-1" },
+    });
+  });
+
+  it("fails the whole proposal adapter before writing when a tool kind is unregistered", async () => {
+    const tx = transaction();
+    await expect(createGovernedAssistantProposalRun(tx as never, {
+      projectId: "project-1",
+      documentId: "document-1",
+      assistantSessionId: "assistant-session-1",
+      actorUserId: "user-1",
+      actorEmail: "writer@example.test",
+      intent: "Do something unregistered.",
+      sourceSurface: "nest-writing-assistant",
+      provider: "test",
+      readSet: [],
+      proposals: [{
+        assistantActionId: "assistant-action-1",
+        kind: "DELETE_EVERYTHING",
+        label: "No",
+        explanation: "No",
+        payload: {},
+      }],
+    })).rejects.toThrow("UNREGISTERED_ASSISTANT_CAPABILITY");
+    expect(tx.governedActionRun.create).not.toHaveBeenCalled();
+  });
+
+  it("records a user-initiated preflight as a zero-byte succeeded attempt with domain readback", async () => {
+    const tx = transaction();
+    const result = await recordSucceededSessionPreflightAction(tx as never, {
+      requestId: "6e4cc29d-baf7-4a24-9148-d3ba9e808ca1",
+      requestSha256: "domain-sha",
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      actorEmail: "charlie@example.test",
+      clientKind: "ios",
+      payload: {
+        clientInstanceId: "ios-install-1",
+        microphoneLabel: "iPhone microphone",
+        playbackDecision: "HEARD_CLEAR",
+        privateSampleBytesRetained: false,
+        privateSampleUploaded: false,
+      },
+      status: "READY",
+      issueCodes: [],
+      testedAt: new Date("2026-08-06T12:00:00.000Z"),
+      expiresAt: new Date("2026-08-06T14:00:00.000Z"),
+    });
+
+    expect(result).toEqual({ runId: "run-1", actionId: "governed-action-1", attemptId: "attempt-1", receiptId: "receipt-1" });
+    expect(tx.governedAction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        capabilityId: SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+        decisionPolicy: "USER_INITIATED",
+        decisionStatus: "NOT_REQUIRED",
+        status: "READY",
+      }),
+      select: { id: true },
+    });
+    expect(tx.governedActionAttempt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: "SUCCEEDED", executorKind: "quipsly-session-preflight-domain-service" }),
+      select: { id: true },
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        kind: "EXECUTION_SUCCEEDED",
+        previousStatus: "READY",
+        newStatus: "SUCCEEDED",
+        evidenceJson: expect.objectContaining({
+          privateSampleBytesRetained: false,
+          privateSampleUploaded: false,
+          recordingStarted: false,
+          providerJoined: false,
+          sourceTruthChanged: false,
+        }),
+      }),
+      select: { id: true },
+    });
+  });
+
+  it("projects an approved writing decision into the governed action and parent run", async () => {
+    const tx = transaction();
+    tx.governedAction.findMany.mockResolvedValue([{ status: "READY" }]);
+
+    await recordGovernedAssistantTransition(tx as never, {
+      governedActionId: "governed-action-1",
+      assistantActionId: "assistant-action-1",
+      previousStatus: "proposed",
+      newStatus: "approved",
+      actorUserId: "user-1",
+      actorEmail: "writer@example.test",
+      evidence: { decision: "approved" },
+    });
+
+    expect(tx.governedAction.update).toHaveBeenCalledWith({
+      where: { id: "governed-action-1" },
+      data: expect.objectContaining({
+        status: "READY",
+        decisionStatus: "APPROVED",
+        approvedByUserId: "user-1",
+      }),
+    });
+    expect(tx.governedActionReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "DECISION_RECORDED", previousStatus: "PROPOSED", newStatus: "READY" }),
+    });
+    expect(tx.governedActionRun.update).toHaveBeenCalledWith({
+      where: { id: "run-1" },
+      data: expect.objectContaining({ status: "READY" }),
+    });
+  });
+});

@@ -1,6 +1,29 @@
 # Current State
 
-Date: 2026-08-05
+Date: 2026-08-06
+
+## Governed action runtime foundation
+
+- Quipsly now has one typed, provider-neutral action ledger spanning the mature
+  writing assistant and the first non-writing capability,
+  `quipsly.session.preflight.publish`. Runs retain intent, authority/read-set
+  snapshots, consequence, budget, progress, and completion; actions retain
+  capability/version, payload and envelope hashes, decision policy, result,
+  and recovery contract; numbered attempts and immutable receipts retain what
+  actually happened.
+- Existing `StudioAssistantAction` remains the writing UI adapter. Proposal,
+  approval/direct apply, commit, rejection, and undo now project into the same
+  governed lifecycle while preserving document-kernel stale-source checks and
+  reversible operations. The writing UI exposes the capability and receipt
+  identity without adding an approval layer.
+- Session preflight writes its canonical receipt and governed run/action/
+  attempt/receipt atomically. The retained coach/client operation proved two
+  distinct actors, exact replay, changed-payload conflict, stale offline
+  expiry, outsider 404, one succeeded attempt, and zero private sample bytes.
+- Prisma, TypeScript, focused UI/runtime tests, retained assistant PostgreSQL
+  integration, and the real local Session HTTP operation pass. Physical iPhone
+  and production qualification remain open. See
+  `docs/coordination/2026-08-06-governed-action-runtime-foundation.md`.
 
 ## Unified audible-event analysis checkpoint
 

@@ -155,7 +155,29 @@ export function useQuipslyAssistant({
 
   const updateActionStatus = (id: string, nextStatus: AssistantActionStatus) => {
     setActions((current) => current.map((action) => (
-      action.id === id ? { ...action, status: nextStatus } : action
+      action.id === id ? {
+        ...action,
+        status: nextStatus,
+        governance: action.governance && !["deciding", "applying", "committing"].includes(nextStatus)
+          ? {
+              ...action.governance,
+              status: nextStatus === "approved"
+                ? "READY"
+                : nextStatus === "rejected"
+                  ? "REJECTED"
+                  : nextStatus === "applied" || nextStatus === "committed"
+                    ? "SUCCEEDED"
+                    : nextStatus === "undone"
+                      ? "UNDONE"
+                      : "PROPOSED",
+              decisionStatus: nextStatus === "approved" || nextStatus === "applied" || nextStatus === "committed"
+                ? "APPROVED"
+                : nextStatus === "rejected"
+                  ? "REJECTED"
+                  : "PENDING",
+            }
+          : action.governance,
+      } : action
     )));
   };
 

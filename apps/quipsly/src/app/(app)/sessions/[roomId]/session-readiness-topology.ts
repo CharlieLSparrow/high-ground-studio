@@ -46,6 +46,7 @@ export type SessionTopologyCaptureInput = {
 
 export type SessionTopologyPreflightInput = {
   id: string;
+  governedActionId?: string | null;
   participantId: string;
   clientInstanceId: string;
   clientKind: string;
@@ -91,6 +92,7 @@ export type SessionReadinessSource = {
 
 export type SessionReadinessPreflight = {
   id: string;
+  governedActionId: string | null;
   clientInstanceId: string;
   clientKind: string;
   deviceLabel: string;
@@ -335,6 +337,7 @@ export function buildSessionReadinessTopology(input: {
         const status = preflight.status === "READY" ? "READY" as const : "NEEDS_ATTENTION" as const;
         return {
           id: preflight.id,
+          governedActionId: text(preflight.governedActionId) || null,
           clientInstanceId: preflight.clientInstanceId,
           clientKind: preflight.clientKind.toLowerCase() || "unknown",
           deviceLabel: text(preflight.deviceLabel) || (preflight.clientKind.toLowerCase() === "ios" ? "Quipsly Capture" : "Quipsly Web"),

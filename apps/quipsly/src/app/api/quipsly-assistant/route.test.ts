@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
+import { createGovernedAssistantProposalRun } from "@/lib/server/governed-action-runtime";
 import { POST } from "./route";
 
 const mockEmbedContent = jest.fn();
@@ -17,6 +18,10 @@ jest.mock("@google/genai", () => ({
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/server/access", () => ({ requireProjectAccess: jest.fn() }));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  createGovernedAssistantProposalRun: jest.fn(),
+  governedActionSha256: jest.fn((value: unknown) => `sha256:${JSON.stringify(value)}`),
+}));
 jest.mock("@high-ground/quipsly-domain/output-catalog", () => ({
   createOutputCapabilityPlan: jest.fn(),
   createOutputPacketSkeleton: jest.fn(),
@@ -86,6 +91,14 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     let actionNumber = 0;
     tx.studioAssistantAction.create.mockImplementation(async () => ({ id: `action-${++actionNumber}` }));
     tx.studioAssistantLedger.create.mockResolvedValue({ id: "ledger" });
+    jest.mocked(createGovernedAssistantProposalRun).mockImplementation(async (_tx, input) => ({
+      runId: "governed-run-1",
+      actions: input.proposals.map((proposal, index) => ({
+        assistantActionId: proposal.assistantActionId,
+        governedActionId: `governed-action-${index + 1}`,
+        capabilityId: "quipsly.story-bible.entity.propose-create",
+      })),
+    }));
     mockEmbedContent.mockResolvedValue({ embeddings: [] });
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({ assistantMessage: "Two proposals.", suggestions: [], toolIntents: [] }),
@@ -159,6 +172,9 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
 
     expect(response.status).toBe(200);
     expect(body.toolIntents.map((intent: any) => intent.id)).toEqual(["action-1", "action-2"]);
+    expect(body.toolIntents.map((intent: any) => intent.governance.actionId)).toEqual(["governed-action-1", "governed-action-2"]);
+    expect(body.toolIntents.every((intent: any) => intent.governance.runId === "governed-run-1")).toBe(true);
+    expect(body.toolIntents.every((intent: any) => intent.governance.capabilityId === "quipsly.story-bible.entity.propose-create")).toBe(true);
     expect(body.toolIntents.map((intent: any) => intent.payload.sourceBlockId)).toEqual(["block-1", "block-1"]);
     expect(body.toolIntents[0].payload.attributes).toMatchObject({
       sourceDocumentId: "document-1",
@@ -168,6 +184,16 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.studioAssistantAction.create).toHaveBeenCalledTimes(2);
     expect(tx.studioAssistantLedger.create).toHaveBeenCalledTimes(2);
+    expect(createGovernedAssistantProposalRun).toHaveBeenCalledWith(tx, expect.objectContaining({
+      projectId: "project-1",
+      documentId: "document-1",
+      actorUserId: "user-1",
+      actorEmail: "person@example.com",
+      intent: "Find the courage theme.",
+      proposals: expect.arrayContaining([
+        expect.objectContaining({ assistantActionId: "action-1", kind: "PROPOSE_ENTITY" }),
+      ]),
+    }));
     const providerPrompt = mockGenerateContent.mock.calls[0][0].contents as string;
     expect(providerPrompt).toContain("Canonical manuscript evidence.");
     expect(providerPrompt).toContain("Canonical Episode");

@@ -478,6 +478,15 @@ project-scoped runtime. The first non-writing operation should be a Session
 preflight action because it is reversible, observable, immediately useful, and
 crosses device/provider boundaries without mutating source truth.
 
+Implementation checkpoint, 2026-08-06: the first slice now exists. A shared
+capability manifest, `GovernedActionRun`, typed actions, numbered attempts, and
+immutable receipts adapt the current writing lifecycle and Session preflight.
+The retained local writing and two-collaborator Session operations pass. This
+does not yet qualify delegated/scheduled principals, a central action console,
+portable action export, physical iPhone operation, or production execution.
+Evidence and current limitations are in
+`docs/coordination/2026-08-06-governed-action-runtime-foundation.md`.
+
 ### Then: Evidence Lens and conversation-to-work
 
 Build selectable, permission-safe research scope and accepted source-backed
@@ -514,4 +523,3 @@ opaque or unrecoverable product.
 - [Trello mirror cards](https://support.atlassian.com/trello/docs/mirroring-cards/)
 - [Trello Planner](https://support.atlassian.com/trello/docs/trello-planner/)
 - [Linear project and initiative updates](https://linear.app/docs/initiative-and-project-updates)
-

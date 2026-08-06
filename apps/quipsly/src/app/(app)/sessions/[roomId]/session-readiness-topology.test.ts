@@ -198,6 +198,7 @@ describe("Session readiness topology", () => {
         },
         {
           id: "preflight-current",
+          governedActionId: "governed-action-12345678",
           participantId: participant.id,
           clientInstanceId: "mac-browser",
           clientKind: "web",
@@ -220,6 +221,7 @@ describe("Session readiness topology", () => {
     expect(topology.people[0].preflights).toEqual([
       expect.objectContaining({
         id: "preflight-current",
+        governedActionId: "governed-action-12345678",
         current: true,
         microphoneLabel: "Shure MV7i",
         outputLabel: "Shure MV7i Headphones",

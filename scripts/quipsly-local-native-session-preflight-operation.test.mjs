@@ -27,6 +27,11 @@ test("retained operation proves iPhone identity, privacy, idempotency, expiry, a
     "deleteUser(privacyUID)",
     "privateSampleBytesRetained === false",
     "privateSampleUploaded === false",
+    "quipsly.session.preflight.publish",
+    "decisionPolicy === \"USER_INITIATED\"",
+    "attempts.length === 1",
+    "receipts.length === 1",
+    "zeroByteBoundary: true",
   ]) {
     assert.match(source, new RegExp(evidence.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }

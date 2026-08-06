@@ -38,6 +38,7 @@ const config: Config = {
     '^@high-ground/quipsly-domain/coaching-packet$': '<rootDir>/../../packages/quipsly-domain/src/coaching-packet.ts',
     '^@high-ground/quipsly-domain/transcript-derived-task$': '<rootDir>/../../packages/quipsly-domain/src/transcript-derived-task.ts',
     '^@high-ground/quipsly-domain/weekly-review$': '<rootDir>/../../packages/quipsly-domain/src/weekly-review.ts',
+    '^@high-ground/quipsly-domain/governed-actions$': '<rootDir>/../../packages/quipsly-domain/src/governed-actions.ts',
     '^@high-ground/quipsly-domain/recording$': '<rootDir>/../../packages/quipsly-domain/src/recording.ts',
     '^@high-ground/quipsly-domain/retrieval$': '<rootDir>/../../packages/quipsly-domain/src/retrieval.ts',
   },

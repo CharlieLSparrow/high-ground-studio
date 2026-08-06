@@ -15,6 +15,10 @@ import {
   getOutputDefinition,
   listOutputsForNestKind,
 } from "@high-ground/quipsly-domain/output-catalog";
+import {
+  createGovernedAssistantProposalRun,
+  governedActionSha256,
+} from "@/lib/server/governed-action-runtime";
 
 type AssistantBlockContext = {
   id?: string;
@@ -338,10 +342,21 @@ async function persistAssistantToolIntents(
   prisma: ReturnType<typeof getPrismaClient>,
   sessionId: string,
   toolIntents: NormalizedToolIntent[],
+  governance: {
+    projectId: string;
+    documentId: string | null;
+    actorUserId: string;
+    actorEmail: string;
+    intent: string;
+    sourceSurface: string;
+    provider: string;
+    model?: string | null;
+    readSet: Array<Record<string, unknown>>;
+  },
 ) {
   if (toolIntents.length === 0) return toolIntents;
   const savedActions = await prisma.$transaction(async (tx) => {
-    const saved: Array<{ id: string; sourceIndex: number }> = [];
+    const saved: Array<{ id: string; sourceIndex: number; intent: NormalizedToolIntent }> = [];
     for (const [sourceIndex, intent] of toolIntents.entries()) {
       const action = await tx.studioAssistantAction.create({
         data: {
@@ -366,14 +381,38 @@ async function persistAssistantToolIntents(
           }),
         },
       });
-      saved.push({ id: action.id, sourceIndex });
+      saved.push({ id: action.id, sourceIndex, intent });
     }
-    return saved;
+    const governed = await createGovernedAssistantProposalRun(tx, {
+      ...governance,
+      assistantSessionId: sessionId,
+      proposals: saved.map((item) => ({
+        assistantActionId: item.id,
+        kind: item.intent.kind,
+        label: item.intent.label,
+        explanation: item.intent.explanation,
+        payload: item.intent.payload,
+      })),
+    });
+    return { saved, governed };
   });
-  const persistedIds = new Map(savedActions.map((saved) => [saved.sourceIndex, saved.id]));
+  const persistedIds = new Map(savedActions.saved.map((saved) => [saved.sourceIndex, saved.id]));
+  const governedIds = new Map(savedActions.governed.actions.map((saved) => [saved.assistantActionId, saved]));
   return toolIntents.map((intent, sourceIndex) => ({
     ...intent,
     id: persistedIds.get(sourceIndex),
+    governance: (() => {
+      const governed = governedIds.get(persistedIds.get(sourceIndex) ?? "");
+      return governed ? {
+        actionId: governed.governedActionId,
+        runId: savedActions.governed.runId,
+        capabilityId: governed.capabilityId,
+        decisionPolicy: "EXPLICIT_APPROVAL",
+        decisionStatus: "PENDING",
+        status: "PROPOSED",
+        recovery: null,
+      } : undefined;
+    })(),
   }));
 }
 
@@ -456,7 +495,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const session = await (prisma as any).studioAssistantSession.findFirst({
+    const session = await prisma.studioAssistantSession.findFirst({
       where: {
         projectId: project.id,
         documentId: documentId || null,
@@ -469,14 +508,27 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, session: null });
     }
 
-    let actions = [];
+    let actions: Array<Record<string, unknown>> = [];
     if (process.env.DATABASE_URL && session) {
-      const dbActions = await (prisma as any).studioAssistantAction.findMany({
+      const dbActions = await prisma.studioAssistantAction.findMany({
         where: { sessionId: session.id },
         orderBy: { createdAt: "desc" },
         take: 50,
+        include: {
+          governedAction: {
+            select: {
+              id: true,
+              runId: true,
+              capabilityId: true,
+              decisionPolicy: true,
+              decisionStatus: true,
+              status: true,
+              recoveryJson: true,
+            },
+          },
+        },
       });
-      actions = dbActions.map((dbAction: any) => ({
+      actions = dbActions.map((dbAction) => ({
         id: dbAction.id,
         kind: dbAction.kind,
         label: dbAction.label,
@@ -484,6 +536,15 @@ export async function GET(request: Request) {
         status: dbAction.status,
         payload: dbAction.payloadJson,
         createdAt: dbAction.createdAt,
+        governance: dbAction.governedAction ? {
+          actionId: dbAction.governedAction.id,
+          runId: dbAction.governedAction.runId,
+          capabilityId: dbAction.governedAction.capabilityId,
+          decisionPolicy: dbAction.governedAction.decisionPolicy,
+          decisionStatus: dbAction.governedAction.decisionStatus,
+          status: dbAction.governedAction.status,
+          recovery: dbAction.governedAction.recoveryJson,
+        } : undefined,
       }));
     }
 
@@ -621,13 +682,43 @@ export async function POST(request: Request) {
       }
     }
 
+    const actorEmail = actorSession.user.primaryEmail || actorSession.user.email || "unknown@quipsly.invalid";
+    const governanceFor = (
+      provider: string,
+      model: string | null,
+      additionalReadSet: Array<Record<string, unknown>> = [],
+    ) => ({
+      projectId: project.id,
+      documentId: context.documentId || null,
+      actorUserId,
+      actorEmail,
+      intent: context.message,
+      sourceSurface: "nest-writing-assistant",
+      provider,
+      model,
+      readSet: [
+        ...(context.documentId ? [{ objectType: "StudioDocument", objectId: context.documentId }] : []),
+        ...context.visibleBlocks.map((block) => ({
+          objectType: "StudioDocumentBlock",
+          objectId: block.id || null,
+          contentSha256: governedActionSha256(block.text || ""),
+        })),
+        ...additionalReadSet,
+      ],
+    });
+
     const providerDisabled = process.env.QUIPSLY_DISABLE_AI_PROVIDER === "true";
     const apiKey = providerDisabled ? undefined : process.env.GEMINI_API_KEY;
     if (!apiKey) {
       try {
         const fallback = localAssistantFallback(context);
         const normalizedFallback = normalizeAssistantPayload(fallback);
-        const toolIntents = await persistAssistantToolIntents(prisma, sessionId!, normalizedFallback.toolIntents);
+        const toolIntents = await persistAssistantToolIntents(
+          prisma,
+          sessionId!,
+          normalizedFallback.toolIntents,
+          governanceFor("local-fallback", null),
+        );
         return NextResponse.json({
           ok: true,
           sessionId,
@@ -743,7 +834,16 @@ export async function POST(request: Request) {
     if (!response.text) {
       try {
         const normalizedFallback = normalizeAssistantPayload(localAssistantFallback(context));
-        const toolIntents = await persistAssistantToolIntents(prisma, sessionId!, normalizedFallback.toolIntents);
+        const toolIntents = await persistAssistantToolIntents(
+          prisma,
+          sessionId!,
+          normalizedFallback.toolIntents,
+          governanceFor("local-fallback", null, ragContextChunks.map((chunk) => ({
+            objectType: chunk.sourceOrigin,
+            objectId: chunk.sourceId,
+            contentSha256: governedActionSha256(chunk.contentSnapshot),
+          }))),
+        );
         return NextResponse.json({
           ok: true,
           sessionId,
@@ -768,7 +868,20 @@ export async function POST(request: Request) {
 
     if (sessionId && payload.toolIntents.length > 0) {
       try {
-        payload.toolIntents = await persistAssistantToolIntents(prisma, sessionId, payload.toolIntents);
+        payload.toolIntents = await persistAssistantToolIntents(
+          prisma,
+          sessionId,
+          payload.toolIntents,
+          governanceFor(
+            "gemini",
+            process.env.GEMINI_ASSISTANT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
+            ragContextChunks.map((chunk) => ({
+              objectType: chunk.sourceOrigin,
+              objectId: chunk.sourceId,
+              contentSha256: governedActionSha256(chunk.contentSnapshot),
+            })),
+          ),
+        );
       } catch (dbError) {
         console.error("[quipsly-assistant] Failed to persist proposed actions:", dbError);
         return NextResponse.json({

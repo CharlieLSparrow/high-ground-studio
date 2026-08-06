@@ -9,6 +9,7 @@ import {
   sessionPreflightNextAction,
   sessionPreflightRequestSha256,
 } from "@/lib/server/session-preflight";
+import { recordSucceededSessionPreflightAction } from "@/lib/server/governed-action-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ function requestId(value: unknown) {
 function receiptView(receipt: CallParticipantPreflightReceipt) {
   return {
     id: receipt.id,
+    governedActionId: receipt.governedActionId,
     requestId: receipt.requestId,
     participantId: receipt.participantId,
     clientInstanceId: receipt.clientInstanceId,
@@ -72,6 +74,7 @@ async function authorizedRoom(request: Request, roomId: string) {
     where: captureRoomAccessWhere(roomId, session.user),
     select: {
       id: true,
+      projectId: true,
       booking: { select: { coachUserId: true, clientUserId: true } },
       participants: {
         where: { accessStatus: "ACTIVE" },
@@ -192,10 +195,53 @@ export async function POST(
           || existing.actorUserId !== access.actor.id
           || existing.requestSha256 !== requestSha256
         ) {
-          return { conflict: true as const, receipt: null, replay: false };
+          return { conflict: true as const, receipt: null, replay: false, governance: null };
         }
-        return { conflict: false as const, receipt: existing, replay: true };
+        return { conflict: false as const, receipt: existing, replay: true, governance: null };
       }
+      const governedPayload = {
+        contractKind: "quipsly-session-preflight-action-payload-v1",
+        clientInstanceId: evidence.clientInstanceId,
+        clientKind: evidence.clientKind,
+        deviceLabel: evidence.deviceLabel,
+        microphoneLabel: evidence.microphoneLabel,
+        cameraLabel: evidence.cameraLabel,
+        outputLabel: evidence.outputLabel,
+        cameraWanted: evidence.cameraWanted,
+        status: evidence.status,
+        audioSignalState: evidence.audioSignalState,
+        rmsDbfs: evidence.rmsDbfs,
+        samplePeakDbfs: evidence.samplePeakDbfs,
+        peakHoldDbfs: evidence.peakHoldDbfs,
+        clippedSampleCount: evidence.clippedSampleCount,
+        sampleRateHz: evidence.sampleRateHz,
+        channelCount: evidence.channelCount,
+        cameraWidth: evidence.cameraWidth,
+        cameraHeight: evidence.cameraHeight,
+        cameraFrameRate: evidence.cameraFrameRate,
+        privateSampleDurationSeconds: evidence.privateSampleDurationSeconds,
+        privateSamplePlaybackComplete: evidence.privateSamplePlaybackComplete,
+        playbackDecision: evidence.playbackDecision,
+        issueCodes: evidence.issueCodes,
+        testedAt: evidence.testedAt.toISOString(),
+        expiresAt: evidence.expiresAt.toISOString(),
+        privateSampleBytesRetained: false,
+        privateSampleUploaded: false,
+      };
+      const governance = await recordSucceededSessionPreflightAction(tx, {
+        requestId: idempotencyId,
+        requestSha256,
+        projectId: access.room.projectId,
+        roomId: access.room.id,
+        actorUserId: access.actor.id,
+        actorEmail: access.actor.primaryEmail || access.actor.email || "unknown@quipsly.invalid",
+        clientKind: evidence.clientKind,
+        payload: governedPayload,
+        status: evidence.status,
+        issueCodes: evidence.issueCodes,
+        testedAt: evidence.testedAt,
+        expiresAt: evidence.expiresAt,
+      });
       const receipt = await tx.callParticipantPreflightReceipt.create({
         data: {
           requestId: idempotencyId,
@@ -229,11 +275,12 @@ export async function POST(
           playbackDecision: evidence.playbackDecision,
           issueCodes: evidence.issueCodes,
           evidenceJson: evidence.evidenceJson as Prisma.InputJsonValue,
+          governedActionId: governance.actionId,
           testedAt: evidence.testedAt,
           expiresAt: evidence.expiresAt,
         },
       });
-      return { conflict: false as const, receipt, replay: false };
+      return { conflict: false as const, receipt, replay: false, governance };
     });
     if (result.conflict || !result.receipt) {
       return NextResponse.json({ ok: false, code: "REQUEST_ID_CONFLICT", error: "That setup-check request ID already belongs to different evidence. Run a fresh check." }, { status: 409, headers: PRIVATE_HEADERS });
@@ -242,6 +289,10 @@ export async function POST(
       ok: true,
       idempotentReplay: result.replay,
       preflight: receiptView(result.receipt),
+      governance: result.governance ?? (result.receipt.governedActionId ? {
+        actionId: result.receipt.governedActionId,
+        replayedFromDomainReceipt: true,
+      } : null),
       nextAction: sessionPreflightNextAction(evidence),
       boundaries: {
         sampleBytesRetained: false,

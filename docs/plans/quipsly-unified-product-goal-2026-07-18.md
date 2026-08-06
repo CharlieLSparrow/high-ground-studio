@@ -7844,3 +7844,26 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   physical-iPhone result, or production deployment.
 - Architecture and operated evidence are recorded in
   `docs/coordination/2026-08-05-session-preflight-receipt.md`.
+
+## 2026-08-06 governed action runtime foundation checkpoint
+
+- Added one typed action substrate beneath the existing writing assistant and
+  Session preflight rather than creating another chatbot, worker queue, or
+  authority system. Capability manifests declare promise, object/scope,
+  decision policy, risk, consequence, evidence, recovery, exposure,
+  accessibility, and qualification.
+- One assistant exchange now creates one governed run and typed proposals.
+  Direct apply/commit records explicit human approval plus execution; undo
+  appends a recovery attempt and receipt while preserving the document
+  kernel's stale-source refusal and reversible operation.
+- A deliberate Session setup submission now creates
+  `quipsly.session.preflight.publish` as a user-initiated action in the same
+  transaction as its canonical preflight receipt. It retains no private sample
+  bytes and cannot start recording, join the provider, or change source truth.
+- Retained PostgreSQL and HTTP operation proved coach/client separation,
+  outsider denial, exact replay, changed-evidence conflict, delayed-offline
+  expiry, and one succeeded action attempt/receipt. This is local evidence;
+  physical-iPhone, production-preview, recording/upload/editor, delegated
+  principal, and central action-console gates remain open.
+- Architecture and evidence:
+  `docs/coordination/2026-08-06-governed-action-runtime-foundation.md`.

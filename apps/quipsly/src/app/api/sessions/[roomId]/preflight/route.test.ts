@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { recordSucceededSessionPreflightAction } from "@/lib/server/governed-action-runtime";
 
 import { GET, POST } from "./route";
 
@@ -9,6 +10,9 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({
   getQuipslySessionFromRequest: jest.fn(),
+}));
+jest.mock("@/lib/server/governed-action-runtime", () => ({
+  recordSucceededSessionPreflightAction: jest.fn(),
 }));
 
 const REQUEST_ID = "6e4cc29d-baf7-4a24-9148-d3ba9e808ca1";
@@ -52,6 +56,7 @@ function receipt(overrides: Record<string, unknown> = {}) {
     testedAt,
     expiresAt,
     createdAt: testedAt,
+    governedActionId: "governed-action-1",
     ...overrides,
   };
 }
@@ -130,6 +135,7 @@ describe("Session preflight receipt API", () => {
     } as never);
     prisma.callRoom.findFirst.mockResolvedValue({
       id: "room-1",
+      projectId: "project-1",
       booking: null,
       participants: [{ id: "participant-1", userId: "user-1" }],
     });
@@ -144,6 +150,12 @@ describe("Session preflight receipt API", () => {
       expiresAt: data.expiresAt,
     }));
     prisma.$transaction.mockImplementation(async (operation) => operation(prisma));
+    jest.mocked(recordSucceededSessionPreflightAction).mockResolvedValue({
+      runId: "governed-run-1",
+      actionId: "governed-action-1",
+      attemptId: "governed-attempt-1",
+      receiptId: "governed-receipt-1",
+    });
   });
 
   it("authenticates before reading private Session or setup evidence", async () => {
@@ -194,6 +206,10 @@ describe("Session preflight receipt API", () => {
         audioSignalState: "ready",
         playbackDecision: "HEARD_CLEAR",
       },
+      governance: {
+        actionId: "governed-action-1",
+        receiptId: "governed-receipt-1",
+      },
       boundaries: {
         sampleBytesRetained: false,
         sampleBytesUploaded: false,
@@ -209,12 +225,26 @@ describe("Session preflight receipt API", () => {
         actorUserId: "user-1",
         microphoneLabel: "Shure MV7i",
         status: "READY",
+        governedActionId: "governed-action-1",
         evidenceJson: expect.objectContaining({
           privateSampleBytesRetained: false,
           privateSampleUploaded: false,
         }),
       }),
     });
+    expect(recordSucceededSessionPreflightAction).toHaveBeenCalledWith(prisma, expect.objectContaining({
+      requestId: REQUEST_ID,
+      projectId: "project-1",
+      roomId: "room-1",
+      actorUserId: "user-1",
+      status: "READY",
+      payload: expect.objectContaining({
+        clientInstanceId: "web-studio-1",
+        microphoneLabel: "Shure MV7i",
+        privateSampleBytesRetained: false,
+        privateSampleUploaded: false,
+      }),
+    }));
   });
 
   it("persists the same private-playback contract for an iPhone endpoint", async () => {
@@ -247,6 +277,7 @@ describe("Session preflight receipt API", () => {
   it("serializes participant identity before a first authorized endpoint receipt", async () => {
     prisma.callRoom.findFirst.mockResolvedValue({
       id: "room-1",
+      projectId: "project-1",
       booking: { coachUserId: "user-1", clientUserId: "client-1" },
       participants: [],
     });

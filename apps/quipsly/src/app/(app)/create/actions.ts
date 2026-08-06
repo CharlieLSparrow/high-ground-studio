@@ -68,6 +68,7 @@ import {
   assertPersonalWritingDocumentAccess,
   personalWritingDocumentVisibilityWhere,
 } from "@/lib/server/personal-writing-documents";
+import { recordGovernedAssistantTransition } from "@/lib/server/governed-action-runtime";
 
 const UNAVAILABLE_PROJECT_ID = "unavailable-quipsly";
 const UNAVAILABLE_DOCUMENT_ID = "unavailable-document";
@@ -3335,7 +3336,8 @@ async function prepareAssistantMutation(actionId: string) {
   try {
     const prisma = getPrismaClient();
     await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
-    return { prisma, actorEmail };
+    const actorUserId = await getActorUserId();
+    return { prisma, actorEmail, actorUserId };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (!message.includes("do not have write access") && message !== "Assistant action not found.") {
@@ -3357,7 +3359,7 @@ export async function applyAssistantDocumentEditAction(
 ): Promise<AssistantMutationResult<AssistantDocumentApplyReceipt>> {
   const prepared = await prepareAssistantMutation(actionId);
   if (prepared.error) return prepared.error;
-  const { prisma, actorEmail } = prepared;
+  const { prisma, actorEmail, actorUserId } = prepared;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -3504,6 +3506,22 @@ export async function applyAssistantDocumentEditAction(
           notes: JSON.stringify({ kind: "quipsly-assistant-document-apply-v1", actorEmail, receipt }),
         },
       });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: action.status,
+        newStatus: "applied",
+        actorUserId,
+        actorEmail,
+        evidence: {
+          operationId: receipt.operationId,
+          projectId: receipt.projectId,
+          documentId: receipt.documentId,
+          blockId: receipt.blockId,
+          kind: receipt.kind,
+          insertAfterBlockId: receipt.insertAfterBlockId,
+        },
+      });
       await tx.studioDocument.update({ where: { id: document.id }, data: { updatedAt: new Date() } });
       return { replay: false, receipt };
     });
@@ -3536,7 +3554,7 @@ export async function undoAppliedAssistantDocumentEditAction(
 ): Promise<AssistantMutationResult<AssistantDocumentApplyReceipt>> {
   const prepared = await prepareAssistantMutation(actionId);
   if (prepared.error) return prepared.error;
-  const { prisma, actorEmail } = prepared;
+  const { prisma, actorEmail, actorUserId } = prepared;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -3625,6 +3643,21 @@ export async function undoAppliedAssistantDocumentEditAction(
           notes: JSON.stringify({ kind: "quipsly-assistant-document-undo-v1", actorEmail, receipt }),
         },
       });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: "applied",
+        newStatus: "undone",
+        actorUserId,
+        actorEmail,
+        evidence: {
+          operationId: receipt.operationId,
+          projectId: receipt.projectId,
+          documentId: receipt.documentId,
+          blockId: receipt.blockId,
+          kind: receipt.kind,
+        },
+      });
       await tx.studioDocument.update({ where: { id: receipt.documentId }, data: { updatedAt: new Date() } });
       return { replay: false, receipt };
     });
@@ -3658,7 +3691,7 @@ export async function recordAssistantProposalDecisionAction(
 ): Promise<AssistantMutationResult<AssistantDecisionReceipt>> {
   const prepared = await prepareAssistantMutation(actionId);
   if (prepared.error) return prepared.error;
-  const { prisma, actorEmail } = prepared;
+  const { prisma, actorEmail, actorUserId } = prepared;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -3694,6 +3727,15 @@ export async function recordAssistantProposalDecisionAction(
           notes: JSON.stringify({ kind: "quipsly-assistant-human-decision-v1", actorEmail, receipt }),
         },
       });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: action.status,
+        newStatus: decision,
+        actorUserId,
+        actorEmail,
+        evidence: { decision },
+      });
       return { replay: false, receipt };
     });
     return { ok: true, state: "persisted", ...result };
@@ -3718,7 +3760,7 @@ export async function commitAssistantEntityAction(
 ): Promise<AssistantMutationResult<AssistantEntityCommitReceipt>> {
   const prepared = await prepareAssistantMutation(actionId);
   if (prepared.error) return prepared.error;
-  const { prisma, actorEmail } = prepared;
+  const { prisma, actorEmail, actorUserId } = prepared;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -3842,6 +3884,15 @@ export async function commitAssistantEntityAction(
           notes: JSON.stringify({ kind: "quipsly-assistant-entity-commit-v1", actorEmail, receipt, before }),
         },
       });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: action.status,
+        newStatus: "committed",
+        actorUserId,
+        actorEmail,
+        evidence: receipt,
+      });
       return { replay: false, receipt };
     });
     try {
@@ -3864,7 +3915,7 @@ export async function undoCommittedAssistantEntityAction(
 ): Promise<AssistantMutationResult<AssistantEntityCommitReceipt>> {
   const prepared = await prepareAssistantMutation(actionId);
   if (prepared.error) return prepared.error;
-  const { prisma, actorEmail } = prepared;
+  const { prisma, actorEmail, actorUserId } = prepared;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -3920,6 +3971,15 @@ export async function undoCommittedAssistantEntityAction(
           newStatus: "undone",
           notes: JSON.stringify({ kind: "quipsly-assistant-entity-undo-v1", actorEmail, receipt }),
         },
+      });
+      await recordGovernedAssistantTransition(tx, {
+        governedActionId: action.governedActionId,
+        assistantActionId: action.id,
+        previousStatus: "committed",
+        newStatus: "undone",
+        actorUserId,
+        actorEmail,
+        evidence: receipt,
       });
       return { replay: false, receipt };
     });

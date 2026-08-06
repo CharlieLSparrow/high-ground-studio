@@ -30,6 +30,7 @@ const topology: SessionReadinessTopology = {
     }],
     preflights: [{
       id: "preflight-1",
+      governedActionId: "governed-action-12345678",
       clientInstanceId: "mac-browser",
       clientKind: "web",
       deviceLabel: "Quipsly Web · Mac",
@@ -124,6 +125,7 @@ describe("Session readiness topology card", () => {
     expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent?.includes("Output: Shure MV7i Headphones") === true)).toBeInTheDocument();
     expect(screen.getByText("Ready now")).toBeInTheDocument();
     expect(screen.getByText(/sample bytes stayed on that browser tab/i)).toBeInTheDocument();
+    expect(screen.getByText("Governed action receipt · 12345678")).toBeInTheDocument();
     expect(await screen.findByText(/provider-observed now/i)).toBeInTheDocument();
     expect(screen.getByText("Audio live")).toBeInTheDocument();
     expect(screen.getByText("Video muted")).toBeInTheDocument();

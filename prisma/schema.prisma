@@ -107,6 +107,76 @@ enum UserAccountDeletionExecutionStatus {
   FAILED
 }
 
+enum GovernedPrincipalKind {
+  USER
+  SERVICE
+  SCHEDULED_AGENT
+  API_CLIENT
+}
+
+enum GovernedActionDecisionPolicy {
+  READ_ONLY
+  USER_INITIATED
+  EXPLICIT_APPROVAL
+  DELEGATED
+}
+
+enum GovernedActionRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum GovernedActionRunStatus {
+  AWAITING_DECISION
+  READY
+  EXECUTING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+  CANCELED
+  BLOCKED
+}
+
+enum GovernedActionStatus {
+  PROPOSED
+  READY
+  EXECUTING
+  SUCCEEDED
+  FAILED
+  REJECTED
+  UNDONE
+  SUPERSEDED
+  BLOCKED
+}
+
+enum GovernedActionDecisionStatus {
+  PENDING
+  NOT_REQUIRED
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum GovernedActionAttemptStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  BLOCKED
+}
+
+enum GovernedActionReceiptKind {
+  PROPOSAL_RECORDED
+  DECISION_RECORDED
+  EXECUTION_STARTED
+  EXECUTION_SUCCEEDED
+  EXECUTION_FAILED
+  RECOVERY_COMPLETED
+  SUPERSEDED
+  READBACK_VERIFIED
+}
+
 // Appointment state tracks the life of the scheduled event itself.
 enum AppointmentStatus {
   SCHEDULED
@@ -1856,6 +1926,7 @@ model CallRoom {
   goals                         Goal[]
   calendarLinks                 CalendarEventLink[]
   tagLinks                      CallRoomTagLink[]
+  governedActionRuns            GovernedActionRun[]
 
   @@index([purpose, status, scheduledStart])
   @@index([createdByUserId, createdAt])
@@ -2134,9 +2205,11 @@ model CallParticipantPreflightReceipt {
   testedAt                      DateTime
   expiresAt                     DateTime
   createdAt                     DateTime @default(now())
+  governedActionId              String?  @unique
 
-  room        CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  room           CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant    CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  governedAction GovernedAction? @relation("SessionPreflightGovernedAction", fields: [governedActionId], references: [id], onDelete: SetNull)
 
   @@index([roomId, testedAt])
   @@index([participantId, clientInstanceId, testedAt], map: "CallPreflight_participant_client_tested_idx")
@@ -3510,6 +3583,7 @@ model StudioProject {
   audibleEventAnalysisReceipts       StudioAudibleEventAnalysisReceipt[]
   audibleEventReviewReceipts         StudioAudibleEventReviewReceipt[]
   audibleEventTruthReceipts          StudioAudibleEventTruthReceipt[]
+  governedActionRuns                 GovernedActionRun[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -6216,21 +6290,140 @@ model StudioAssistantLedger {
 }
 
 model StudioAssistantAction {
-  id          String   @id @default(cuid())
-  sessionId   String
-  kind        String
-  label       String
-  explanation String?
-  riskLevel   String
-  payloadJson Json
-  status      String   @default("proposed")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  sessionId        String
+  kind             String
+  label            String
+  explanation      String?
+  riskLevel        String
+  payloadJson      Json
+  status           String   @default("proposed")
+  governedActionId String?  @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  session StudioAssistantSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  ledgers StudioAssistantLedger[]
+  session        StudioAssistantSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  ledgers        StudioAssistantLedger[]
+  governedAction GovernedAction?         @relation("StudioAssistantGovernedAction", fields: [governedActionId], references: [id], onDelete: SetNull)
 
   @@index([sessionId, createdAt])
+}
+
+// -----------------------------------------------------------------------------
+// GOVERNED ACTION RUNTIME
+// -----------------------------------------------------------------------------
+
+model GovernedActionRun {
+  id                String                       @id @default(cuid())
+  projectId         String?
+  roomId            String?
+  requestedByUserId String
+  requestedByEmail  String
+  principalKind     GovernedPrincipalKind
+  principalId       String
+  sourceSurface     String
+  intent            String
+  decisionPolicy    GovernedActionDecisionPolicy
+  riskLevel         GovernedActionRiskLevel
+  status            GovernedActionRunStatus
+  authorityJson     Json                         @default("{}")
+  budgetJson        Json                         @default("{}")
+  readSetJson       Json                         @default("[]")
+  consequenceJson   Json                         @default("{}")
+  progressJson      Json                         @default("{}")
+  summaryJson       Json                         @default("{}")
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  project StudioProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  room    CallRoom?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  actions GovernedAction[]
+
+  @@index([projectId, status, createdAt])
+  @@index([roomId, status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@index([principalKind, principalId, createdAt])
+}
+
+model GovernedAction {
+  id                String                       @id @default(cuid())
+  runId             String
+  requestId         String                       @unique @db.Uuid
+  capabilityId      String
+  capabilityVersion Int
+  actionKind        String
+  label             String
+  explanation       String?
+  payloadJson       Json
+  payloadSha256     String
+  requestSha256     String
+  idempotencyKey    String
+  decisionPolicy    GovernedActionDecisionPolicy
+  decisionStatus    GovernedActionDecisionStatus
+  riskLevel         GovernedActionRiskLevel
+  status            GovernedActionStatus
+  consequenceJson   Json                         @default("{}")
+  recoveryJson      Json                         @default("{}")
+  resultJson        Json                         @default("{}")
+  approvedByUserId  String?
+  approvedByEmail   String?
+  approvedAt        DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+
+  run              GovernedActionRun                @relation(fields: [runId], references: [id], onDelete: Cascade)
+  attempts         GovernedActionAttempt[]
+  receipts         GovernedActionReceipt[]
+  assistantAction  StudioAssistantAction?           @relation("StudioAssistantGovernedAction")
+  preflightReceipt CallParticipantPreflightReceipt? @relation("SessionPreflightGovernedAction")
+
+  @@unique([runId, idempotencyKey])
+  @@index([capabilityId, status, createdAt])
+  @@index([runId, createdAt])
+  @@index([payloadSha256])
+}
+
+model GovernedActionAttempt {
+  id            String                      @id @default(cuid())
+  actionId      String
+  attemptNumber Int
+  executorKind  String
+  status        GovernedActionAttemptStatus
+  errorCode     String?
+  errorMessage  String?
+  evidenceJson  Json                        @default("{}")
+  startedAt     DateTime                    @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime                    @default(now())
+
+  action   GovernedAction          @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  receipts GovernedActionReceipt[]
+
+  @@unique([actionId, attemptNumber])
+  @@index([status, startedAt])
+}
+
+model GovernedActionReceipt {
+  id             String                    @id @default(cuid())
+  actionId       String
+  attemptId      String?
+  kind           GovernedActionReceiptKind
+  previousStatus GovernedActionStatus?
+  newStatus      GovernedActionStatus
+  actorUserId    String?
+  actorEmail     String?
+  evidenceJson   Json                      @default("{}")
+  createdAt      DateTime                  @default(now())
+
+  action  GovernedAction         @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  attempt GovernedActionAttempt? @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  @@index([actionId, createdAt])
+  @@index([attemptId, createdAt])
+  @@index([kind, createdAt])
 }
 
 // -----------------------------------------------------------------------------

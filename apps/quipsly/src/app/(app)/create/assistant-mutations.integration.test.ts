@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { createGovernedAssistantProposalRun } from "@/lib/server/governed-action-runtime";
 import {
   applyAssistantDocumentEditAction,
   commitAssistantEntityAction,
@@ -51,6 +52,8 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
   const originalText = "The opening asks whether courage means certainty.";
   const rewrittenText = "The opening asks whether courage means staying present without certainty.";
   let existingEntityId = "";
+  let governedRewriteActionId = "";
+  let governedRewriteRunId = "";
 
   function signedInAs(email: string) {
     jest.mocked(auth).mockResolvedValue({ user: { id: email, email, primaryEmail: email } } as never);
@@ -169,6 +172,26 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
         },
       ],
     });
+    const governedRewrite = await prisma.$transaction((tx) => createGovernedAssistantProposalRun(tx, {
+      projectId,
+      documentId,
+      assistantSessionId: sessionId,
+      actorUserId: writerEmail,
+      actorEmail: writerEmail,
+      intent: "Clarify the exact opening without silently overwriting it.",
+      sourceSurface: "assistant-mutation-integration",
+      provider: "retained-fixture",
+      readSet: [{ objectType: "StudioDocumentBlock", objectId: firstBlockId }],
+      proposals: [{
+        assistantActionId: actionIds.rewrite,
+        kind: "PROPOSE_REWRITE",
+        label: "Clarify courage",
+        explanation: "Exercise the retained proposal, execution, and recovery lifecycle.",
+        payload: { blockId: firstBlockId, originalText, rewriteText: rewrittenText },
+      }],
+    }));
+    governedRewriteActionId = governedRewrite.actions[0]?.governedActionId ?? "";
+    governedRewriteRunId = governedRewrite.runId ?? "";
     const existing = await prisma.storyEntity.create({
       data: {
         projectId,
@@ -230,6 +253,27 @@ runLocalDatabaseSmoke("assistant mutation disposable database", () => {
       where: { documentId, operationType: "assistant-rewrite-apply" },
       select: { status: true, revertedAt: true },
     })).resolves.toMatchObject({ status: "reverted", revertedAt: expect.any(Date) });
+    await expect(prisma.governedAction.findUnique({
+      where: { id: governedRewriteActionId },
+      include: { attempts: { orderBy: { attemptNumber: "asc" } }, receipts: { orderBy: { createdAt: "asc" } } },
+    })).resolves.toMatchObject({
+      runId: governedRewriteRunId,
+      capabilityId: "quipsly.writing.rewrite.propose",
+      decisionPolicy: "EXPLICIT_APPROVAL",
+      decisionStatus: "APPROVED",
+      status: "UNDONE",
+      attempts: [
+        { attemptNumber: 1, status: "SUCCEEDED", executorKind: "quipsly-writing-domain-service" },
+        { attemptNumber: 2, status: "SUCCEEDED", executorKind: "quipsly-writing-recovery-domain-service" },
+      ],
+      receipts: [
+        { kind: "PROPOSAL_RECORDED", newStatus: "PROPOSED" },
+        { kind: "EXECUTION_SUCCEEDED", newStatus: "SUCCEEDED" },
+        { kind: "RECOVERY_COMPLETED", newStatus: "UNDONE" },
+      ],
+    });
+    await expect(prisma.governedActionRun.findUnique({ where: { id: governedRewriteRunId }, select: { status: true, completedAt: true } }))
+      .resolves.toMatchObject({ status: "SUCCEEDED", completedAt: expect.any(Date) });
   });
 
   it("refuses rollback when newer human work replaced the assistant text", async () => {

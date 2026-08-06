@@ -428,6 +428,16 @@ export function QuipslyAssistantSidebar({
                             <div className="text-[10px] font-bold uppercase tracking-widest text-[#a36f2e]">Why this suggestion?</div>
                             <p className="mt-1 text-xs leading-5 text-[#6b5b45]">{action.explanation.replace(/^Why this suggestion\?\s*/i, "")}</p>
                           </div>
+                          {action.governance ? (
+                            <details className="mt-2 rounded-lg border border-sky-200 bg-sky-50/60 px-2 py-1.5 text-[10px] leading-4 text-sky-950">
+                              <summary className="flex cursor-pointer list-none items-center gap-1 font-bold uppercase tracking-wide">
+                                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                Governed receipt · {action.governance.decisionPolicy === "EXPLICIT_APPROVAL" ? "review required" : "bounded action"}
+                              </summary>
+                              <p className="mt-1 break-all font-mono">{action.governance.capabilityId}</p>
+                              <p className="mt-1">Run {action.governance.runId?.slice(-8) || "pending"} · action {action.governance.actionId.slice(-8)} · {action.governance.status.toLowerCase().replaceAll("_", " ")}</p>
+                            </details>
+                          ) : null}
                           <EntityProposalEvidence action={action} />
                           {action.kind === "PROPOSE_DRAFT" && action.payload?.draftText ? (
                             <div className="mt-3 overflow-hidden rounded-lg border border-emerald-200">

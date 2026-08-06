@@ -91,6 +91,24 @@ describe("assistant human-review truth", () => {
     expect(screen.queryByRole("button", { name: "Apply persisted edit" })).not.toBeInTheDocument();
   });
 
+  it("makes the shared action capability and review policy inspectable without adding another approval step", () => {
+    const governed = action("PROPOSE_REWRITE", "proposed");
+    governed.governance = {
+      actionId: "governed-action-12345678",
+      runId: "governed-run-87654321",
+      capabilityId: "quipsly.writing.rewrite.propose",
+      decisionPolicy: "EXPLICIT_APPROVAL",
+      decisionStatus: "PENDING",
+      status: "PROPOSED",
+    };
+    renderSidebar([governed]);
+
+    expect(screen.getByText("Governed receipt · review required")).toBeInTheDocument();
+    expect(screen.getByText("quipsly.writing.rewrite.propose")).toBeInTheDocument();
+    expect(screen.getByText(/run 87654321 · action 12345678 · proposed/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply persisted edit" })).toBeInTheDocument();
+  });
+
   it("keeps research results attached to an exact continuation route", () => {
     renderSidebar([], [{
       id: "preview-1",

@@ -76,6 +76,10 @@
       "types": "./src/weekly-review.ts",
       "import": "./src/weekly-review.ts"
     },
+    "./governed-actions": {
+      "types": "./src/governed-actions.ts",
+      "import": "./src/governed-actions.ts"
+    },
     "./core": {
       "types": "./src/core.ts",
       "import": "./src/core.ts"

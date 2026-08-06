@@ -15,6 +15,7 @@ export * from "./output-catalog";
 export * from "./coaching-packet";
 export * from "./transcript-derived-task";
 export * from "./weekly-review";
+export * from "./governed-actions";
 
 export type VerificationStatus =
   | "verified"

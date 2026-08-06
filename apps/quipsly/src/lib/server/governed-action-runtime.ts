@@ -1,0 +1,495 @@
+import "server-only";
+
+import { createHash, randomUUID } from "node:crypto";
+import type { GovernedActionStatus, Prisma } from "@prisma/client";
+import {
+  assertGovernedActionPayload,
+  getGovernedActionCapability,
+  governedCapabilityForAssistantToolKind,
+  SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID,
+  type GovernedActionCapabilityManifest,
+  type GovernedActionRiskLevel,
+} from "@high-ground/quipsly-domain/governed-actions";
+
+type Tx = Prisma.TransactionClient;
+type JsonObject = Record<string, unknown>;
+
+type AssistantProposalInput = {
+  assistantActionId: string;
+  kind: string;
+  label: string;
+  explanation: string;
+  payload: JsonObject;
+};
+
+export type CreateAssistantProposalRunInput = {
+  projectId: string;
+  documentId: string | null;
+  assistantSessionId: string;
+  actorUserId: string;
+  actorEmail: string;
+  intent: string;
+  sourceSurface: string;
+  provider: string;
+  model?: string | null;
+  readSet: readonly JsonObject[];
+  proposals: readonly AssistantProposalInput[];
+};
+
+export type RecordSessionPreflightActionInput = {
+  requestId: string;
+  requestSha256: string;
+  projectId: string | null;
+  roomId: string;
+  actorUserId: string;
+  actorEmail: string;
+  clientKind: string;
+  payload: JsonObject;
+  status: "READY" | "NEEDS_ATTENTION";
+  issueCodes: readonly string[];
+  testedAt: Date;
+  expiresAt: Date;
+};
+
+function canonical(value: unknown): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "bigint") return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(canonical);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, child]) => child !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, canonical(child)]),
+    );
+  }
+  return String(value);
+}
+
+export function governedActionStableJson(value: unknown) {
+  return JSON.stringify(canonical(value));
+}
+
+export function governedActionSha256(value: unknown) {
+  return createHash("sha256").update(governedActionStableJson(value)).digest("hex");
+}
+
+function json(value: unknown): Prisma.InputJsonValue {
+  return canonical(value) as Prisma.InputJsonValue;
+}
+
+function highestRisk(manifests: readonly GovernedActionCapabilityManifest[]): GovernedActionRiskLevel {
+  const rank: Record<GovernedActionRiskLevel, number> = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+  return manifests.reduce<GovernedActionRiskLevel>(
+    (current, manifest) => rank[manifest.riskLevel] > rank[current] ? manifest.riskLevel : current,
+    "LOW",
+  );
+}
+
+function actionEnvelope(input: {
+  capability: GovernedActionCapabilityManifest;
+  principalKind: string;
+  principalId: string;
+  projectId: string | null;
+  roomId: string | null;
+  payload: JsonObject;
+  idempotencyKey: string;
+}) {
+  const payloadSha256 = governedActionSha256(input.payload);
+  return {
+    payloadSha256,
+    requestSha256: governedActionSha256({
+      contractKind: "quipsly-governed-action-request-v1",
+      capabilityId: input.capability.id,
+      capabilityVersion: input.capability.version,
+      principalKind: input.principalKind,
+      principalId: input.principalId,
+      projectId: input.projectId,
+      roomId: input.roomId,
+      idempotencyKey: input.idempotencyKey,
+      payloadSha256,
+    }),
+  };
+}
+
+export async function createGovernedAssistantProposalRun(
+  tx: Tx,
+  input: CreateAssistantProposalRunInput,
+) {
+  if (!input.proposals.length) return { runId: null, actions: [] as Array<{ assistantActionId: string; governedActionId: string; capabilityId: string }> };
+  const prepared = input.proposals.map((proposal) => {
+    const capability = governedCapabilityForAssistantToolKind(proposal.kind);
+    if (!capability) throw new Error(`UNREGISTERED_ASSISTANT_CAPABILITY:${proposal.kind}`);
+    assertGovernedActionPayload(capability.id, proposal.payload);
+    return { proposal, capability };
+  });
+  const manifests = prepared.map(({ capability }) => capability);
+  const run = await tx.governedActionRun.create({
+    data: {
+      projectId: input.projectId,
+      requestedByUserId: input.actorUserId,
+      requestedByEmail: input.actorEmail,
+      principalKind: "USER",
+      principalId: input.actorUserId,
+      sourceSurface: input.sourceSurface,
+      intent: input.intent,
+      decisionPolicy: "EXPLICIT_APPROVAL",
+      riskLevel: highestRisk(manifests),
+      status: "AWAITING_DECISION",
+      authorityJson: json({
+        contractKind: "quipsly-governed-authority-snapshot-v1",
+        basis: "authorized-project-read-and-explicit-review-before-mutation",
+        projectId: input.projectId,
+        documentId: input.documentId,
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+      }),
+      budgetJson: json({
+        provider: input.provider,
+        model: input.model ?? null,
+        proposalCount: input.proposals.length,
+        monetaryLimitUsd: null,
+      }),
+      readSetJson: json(input.readSet),
+      consequenceJson: json({
+        immediate: "proposal-ledger-only",
+        sourceTruthChanged: false,
+        requiresExplicitApprovalBeforeMutation: true,
+      }),
+      progressJson: json({ proposed: input.proposals.length, decided: 0, completed: 0 }),
+    },
+    select: { id: true },
+  });
+
+  const actions: Array<{ assistantActionId: string; governedActionId: string; capabilityId: string }> = [];
+  for (const { proposal, capability } of prepared) {
+    const requestId = randomUUID();
+    const envelope = actionEnvelope({
+      capability,
+      principalKind: "USER",
+      principalId: input.actorUserId,
+      projectId: input.projectId,
+      roomId: null,
+      payload: proposal.payload,
+      idempotencyKey: proposal.assistantActionId,
+    });
+    const action = await tx.governedAction.create({
+      data: {
+        runId: run.id,
+        requestId,
+        capabilityId: capability.id,
+        capabilityVersion: capability.version,
+        actionKind: proposal.kind,
+        label: proposal.label,
+        explanation: proposal.explanation,
+        payloadJson: json(proposal.payload),
+        payloadSha256: envelope.payloadSha256,
+        requestSha256: envelope.requestSha256,
+        idempotencyKey: proposal.assistantActionId,
+        decisionPolicy: capability.decisionPolicy,
+        decisionStatus: "PENDING",
+        riskLevel: capability.riskLevel,
+        status: "PROPOSED",
+        consequenceJson: json({ consequences: capability.consequences }),
+        recoveryJson: json({ supported: capability.recovery }),
+      },
+      select: { id: true },
+    });
+    await tx.governedActionReceipt.create({
+      data: {
+        actionId: action.id,
+        kind: "PROPOSAL_RECORDED",
+        previousStatus: null,
+        newStatus: "PROPOSED",
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+        evidenceJson: json({
+          contractKind: "quipsly-governed-action-proposal-receipt-v1",
+          assistantSessionId: input.assistantSessionId,
+          assistantActionId: proposal.assistantActionId,
+          capabilityId: capability.id,
+          capabilityVersion: capability.version,
+          requestSha256: envelope.requestSha256,
+          payloadSha256: envelope.payloadSha256,
+        }),
+      },
+    });
+    await tx.studioAssistantAction.update({
+      where: { id: proposal.assistantActionId },
+      data: { governedActionId: action.id },
+    });
+    actions.push({ assistantActionId: proposal.assistantActionId, governedActionId: action.id, capabilityId: capability.id });
+  }
+  return { runId: run.id, actions };
+}
+
+export async function recordSucceededSessionPreflightAction(
+  tx: Tx,
+  input: RecordSessionPreflightActionInput,
+) {
+  const capability = getGovernedActionCapability(SESSION_PREFLIGHT_PUBLISH_CAPABILITY_ID);
+  if (!capability) throw new Error("SESSION_PREFLIGHT_CAPABILITY_NOT_REGISTERED");
+  assertGovernedActionPayload(capability.id, input.payload);
+  const envelope = actionEnvelope({
+    capability,
+    principalKind: "USER",
+    principalId: input.actorUserId,
+    projectId: input.projectId,
+    roomId: input.roomId,
+    payload: input.payload,
+    idempotencyKey: input.requestId,
+  });
+  if (envelope.payloadSha256 !== governedActionSha256(input.payload)) {
+    throw new Error("GOVERNED_ACTION_PAYLOAD_HASH_MISMATCH");
+  }
+  const now = new Date();
+  const run = await tx.governedActionRun.create({
+    data: {
+      projectId: input.projectId,
+      roomId: input.roomId,
+      requestedByUserId: input.actorUserId,
+      requestedByEmail: input.actorEmail,
+      principalKind: "USER",
+      principalId: input.actorUserId,
+      sourceSurface: input.clientKind === "ios" ? "quipsly-capture" : input.clientKind === "macos" ? "quipsly-mac" : "nest-session-lobby",
+      intent: "Share this endpoint's bounded private-playback readiness receipt with Session collaborators.",
+      decisionPolicy: capability.decisionPolicy,
+      riskLevel: capability.riskLevel,
+      status: "EXECUTING",
+      authorityJson: json({
+        contractKind: "quipsly-governed-authority-snapshot-v1",
+        basis: "current-session-participant-or-project-collaborator-access",
+        roomId: input.roomId,
+        projectId: input.projectId,
+        actorUserId: input.actorUserId,
+        actorEmail: input.actorEmail,
+      }),
+      budgetJson: json({ providerCalls: 0, uploadedSampleBytes: 0, retainedSampleBytes: 0 }),
+      readSetJson: json([{ objectType: "CallRoom", objectId: input.roomId }]),
+      consequenceJson: json({
+        appendOnlyReceipt: true,
+        sampleBytesRetained: false,
+        sampleBytesUploaded: false,
+        recordingStarted: false,
+        providerJoined: false,
+        sourceTruthChanged: false,
+      }),
+      progressJson: json({ completed: 1, total: 1 }),
+      summaryJson: json({ status: input.status, issueCodes: input.issueCodes }),
+      startedAt: now,
+    },
+    select: { id: true },
+  });
+  const action = await tx.governedAction.create({
+    data: {
+      runId: run.id,
+      requestId: input.requestId,
+      capabilityId: capability.id,
+      capabilityVersion: capability.version,
+      actionKind: "PUBLISH_SESSION_PREFLIGHT_RECEIPT",
+      label: "Share private-playback setup receipt",
+      explanation: "The participant deliberately completed and submitted a bounded setup check; no private sample bytes crossed the endpoint boundary.",
+      payloadJson: json(input.payload),
+      payloadSha256: envelope.payloadSha256,
+      requestSha256: envelope.requestSha256,
+      idempotencyKey: input.requestId,
+      decisionPolicy: capability.decisionPolicy,
+      decisionStatus: "NOT_REQUIRED",
+      riskLevel: capability.riskLevel,
+      status: "READY",
+      consequenceJson: json({ consequences: capability.consequences }),
+      recoveryJson: json({ supported: capability.recovery, method: "publish-a-newer-expiring-receipt" }),
+      approvedByUserId: input.actorUserId,
+      approvedByEmail: input.actorEmail,
+      approvedAt: now,
+    },
+    select: { id: true },
+  });
+  const attempt = await tx.governedActionAttempt.create({
+    data: {
+      actionId: action.id,
+      attemptNumber: 1,
+      executorKind: "quipsly-session-preflight-domain-service",
+      status: "SUCCEEDED",
+      evidenceJson: json({
+        domainRequestId: input.requestId,
+        domainRequestSha256: input.requestSha256,
+        payloadSha256: envelope.payloadSha256,
+        requestSha256: envelope.requestSha256,
+      }),
+      startedAt: now,
+      completedAt: now,
+    },
+    select: { id: true },
+  });
+  await tx.governedAction.update({
+    where: { id: action.id },
+    data: {
+      status: "SUCCEEDED",
+      resultJson: json({
+        domainRequestId: input.requestId,
+        domainRequestSha256: input.requestSha256,
+        status: input.status,
+        issueCodes: input.issueCodes,
+        testedAt: input.testedAt,
+        expiresAt: input.expiresAt,
+      }),
+      completedAt: now,
+    },
+  });
+  const receipt = await tx.governedActionReceipt.create({
+    data: {
+      actionId: action.id,
+      attemptId: attempt.id,
+      kind: "EXECUTION_SUCCEEDED",
+      previousStatus: "READY",
+      newStatus: "SUCCEEDED",
+      actorUserId: input.actorUserId,
+      actorEmail: input.actorEmail,
+      evidenceJson: json({
+        contractKind: "quipsly-session-preflight-governed-action-receipt-v1",
+        domainRequestId: input.requestId,
+        domainRequestSha256: input.requestSha256,
+        capabilityId: capability.id,
+        capabilityVersion: capability.version,
+        privateSampleBytesRetained: false,
+        privateSampleUploaded: false,
+        recordingStarted: false,
+        providerJoined: false,
+        sourceTruthChanged: false,
+      }),
+    },
+    select: { id: true },
+  });
+  await tx.governedActionRun.update({
+    where: { id: run.id },
+    data: { status: "SUCCEEDED", completedAt: now },
+  });
+  return { runId: run.id, actionId: action.id, attemptId: attempt.id, receiptId: receipt.id };
+}
+
+function governedStatusForAssistantStatus(status: string): GovernedActionStatus {
+  if (status === "approved") return "READY";
+  if (status === "rejected") return "REJECTED";
+  if (status === "applied" || status === "committed") return "SUCCEEDED";
+  if (status === "undone") return "UNDONE";
+  return "PROPOSED";
+}
+
+async function projectRunStatus(tx: Tx, runId: string) {
+  const actions = await tx.governedAction.findMany({
+    where: { runId },
+    select: { status: true },
+  });
+  const statuses = actions.map((action) => action.status);
+  const status = statuses.every((value) => ["SUCCEEDED", "REJECTED", "UNDONE", "SUPERSEDED"].includes(value))
+    ? "SUCCEEDED"
+    : statuses.some((value) => value === "FAILED")
+      ? "PARTIAL"
+      : statuses.some((value) => value === "EXECUTING")
+        ? "EXECUTING"
+        : statuses.some((value) => value === "READY")
+          ? "READY"
+          : "AWAITING_DECISION";
+  await tx.governedActionRun.update({
+    where: { id: runId },
+    data: {
+      status,
+      completedAt: status === "SUCCEEDED" ? new Date() : null,
+      progressJson: json({
+        total: statuses.length,
+        proposed: statuses.filter((value) => value === "PROPOSED").length,
+        ready: statuses.filter((value) => value === "READY").length,
+        completed: statuses.filter((value) => ["SUCCEEDED", "REJECTED", "UNDONE", "SUPERSEDED"].includes(value)).length,
+      }),
+    },
+  });
+}
+
+export async function recordGovernedAssistantTransition(
+  tx: Tx,
+  input: {
+    governedActionId: string | null;
+    assistantActionId: string;
+    previousStatus: string;
+    newStatus: string;
+    actorUserId?: string | null;
+    actorEmail: string;
+    evidence: JsonObject;
+  },
+) {
+  if (!input.governedActionId) return null;
+  const action = await tx.governedAction.findUnique({
+    where: { id: input.governedActionId },
+    select: { id: true, runId: true, status: true },
+  });
+  if (!action) throw new Error("GOVERNED_ACTION_NOT_FOUND");
+  const nextStatus = governedStatusForAssistantStatus(input.newStatus);
+  const isExecution = nextStatus === "SUCCEEDED";
+  const isRecovery = nextStatus === "UNDONE";
+  const isDecision = ["READY", "REJECTED", "PROPOSED"].includes(nextStatus);
+  const now = new Date();
+  let attemptId: string | null = null;
+  if (isExecution || isRecovery) {
+    const count = await tx.governedActionAttempt.count({ where: { actionId: action.id } });
+    const attempt = await tx.governedActionAttempt.create({
+      data: {
+        actionId: action.id,
+        attemptNumber: count + 1,
+        executorKind: isRecovery ? "quipsly-writing-recovery-domain-service" : "quipsly-writing-domain-service",
+        status: "SUCCEEDED",
+        evidenceJson: json({ assistantActionId: input.assistantActionId, ...input.evidence }),
+        startedAt: now,
+        completedAt: now,
+      },
+      select: { id: true },
+    });
+    attemptId = attempt.id;
+  }
+  await tx.governedAction.update({
+    where: { id: action.id },
+    data: {
+      status: nextStatus,
+      decisionStatus: nextStatus === "READY" || isExecution
+        ? "APPROVED"
+        : nextStatus === "REJECTED"
+          ? "REJECTED"
+          : nextStatus === "PROPOSED"
+            ? "PENDING"
+            : undefined,
+      approvedByUserId: nextStatus === "READY" || isExecution ? input.actorUserId ?? null : undefined,
+      approvedByEmail: nextStatus === "READY" || isExecution ? input.actorEmail : undefined,
+      approvedAt: nextStatus === "READY" || isExecution ? now : undefined,
+      completedAt: isExecution || isRecovery || nextStatus === "REJECTED" ? now : null,
+      resultJson: isExecution || isRecovery ? json(input.evidence) : undefined,
+    },
+  });
+  await tx.governedActionReceipt.create({
+    data: {
+      actionId: action.id,
+      attemptId,
+      kind: isRecovery
+        ? "RECOVERY_COMPLETED"
+        : isExecution
+          ? "EXECUTION_SUCCEEDED"
+          : isDecision
+            ? "DECISION_RECORDED"
+            : "READBACK_VERIFIED",
+      previousStatus: action.status,
+      newStatus: nextStatus,
+      actorUserId: input.actorUserId ?? null,
+      actorEmail: input.actorEmail,
+      evidenceJson: json({
+        contractKind: "quipsly-assistant-governed-transition-v1",
+        assistantActionId: input.assistantActionId,
+        legacyPreviousStatus: input.previousStatus,
+        legacyNewStatus: input.newStatus,
+        ...input.evidence,
+      }),
+    },
+  });
+  await projectRunStatus(tx, action.runId);
+  return { actionId: action.id, runId: action.runId, status: nextStatus };
+}

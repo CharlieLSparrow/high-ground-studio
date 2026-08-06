@@ -159,12 +159,17 @@ export async function main() {
     console.error("[native-session-preflight] writing current iPhone receipt");
     const currentPayload = nativePayload(requestId);
     const first = await request(origin, coachToken, "POST", currentPayload);
-    assert(first.status === 201 && first.packet?.ok === true, "Nest did not create the native preflight receipt.");
+    assert(
+      first.status === 201 && first.packet?.ok === true,
+      `Nest did not create the native preflight receipt (${first.status} ${String(first.packet?.code || first.packet?.error || "unknown")}).`,
+    );
     assert(first.packet?.preflight?.clientKind === "ios", "Nest lost the iPhone endpoint kind.");
     assert(first.packet?.preflight?.status === "READY", "Healthy, fully heard native evidence did not become ready.");
     assert(first.packet?.preflight?.current === true, "The current native receipt was not projected current.");
     assert(first.packet?.boundaries?.sampleBytesUploaded === false, "Nest claimed private sample upload.");
     assert(first.packet?.boundaries?.recordingStarted === false, "Preflight incorrectly started recording.");
+    assert(typeof first.packet?.governance?.actionId === "string", "Nest did not return the governed action identity.");
+    assert(typeof first.packet?.governance?.receiptId === "string", "Nest did not return the immutable execution receipt identity.");
 
     console.error("[native-session-preflight] writing second collaborator iPhone receipt");
     const collaboratorPayload = nativePayload(
@@ -181,6 +186,7 @@ export async function main() {
     console.error("[native-session-preflight] proving idempotency and conflict handling");
     const replay = await request(origin, coachToken, "POST", currentPayload);
     assert(replay.status === 200 && replay.packet?.idempotentReplay === true, "Ambiguous retry did not converge idempotently.");
+    assert(replay.packet?.governance?.actionId === first.packet.governance.actionId, "Idempotent retry changed governed action identity.");
 
     const conflictBody = { ...currentPayload };
     conflictBody.outputLabel = "Changed output under reused request";
@@ -217,6 +223,23 @@ export async function main() {
     assert(persisted?.evidenceJson?.privateSampleUploaded === false, "PostgreSQL claimed private sample upload.");
     assert(collaboratorPersisted?.clientInstanceId === "ios-retained-collaborator-operation", "PostgreSQL lost the second collaborator's endpoint identity.");
     assert(collaboratorPersisted?.actorUserId !== persisted?.actorUserId, "Two collaborators collapsed into one actor identity.");
+    assert(persisted?.governedActionId === first.packet.governance.actionId, "Domain receipt did not bind the returned governed action.");
+    const governedAction = await prisma.governedAction.findUnique({
+      where: { id: persisted.governedActionId },
+      include: {
+        run: true,
+        attempts: { orderBy: { attemptNumber: "asc" } },
+        receipts: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    assert(governedAction?.capabilityId === "quipsly.session.preflight.publish", "Preflight used the wrong registered capability.");
+    assert(governedAction?.status === "SUCCEEDED" && governedAction?.run.status === "SUCCEEDED", "Governed preflight did not reach succeeded readback.");
+    assert(governedAction?.decisionPolicy === "USER_INITIATED" && governedAction?.decisionStatus === "NOT_REQUIRED", "User-initiated preflight acquired the wrong decision policy.");
+    assert(governedAction?.attempts.length === 1 && governedAction.attempts[0].status === "SUCCEEDED", "Governed preflight did not retain exactly one succeeded attempt.");
+    assert(governedAction?.receipts.length === 1 && governedAction.receipts[0].kind === "EXECUTION_SUCCEEDED", "Governed preflight did not retain its immutable execution receipt.");
+    const governedPacket = JSON.stringify(governedAction);
+    assert(!governedPacket.includes("audioBytes") && !governedPacket.includes("sampleBase64"), "Governed action retained private sample bytes.");
+    assert(governedPacket.includes('"privateSampleBytesRetained":false') && governedPacket.includes('"privateSampleUploaded":false'), "Governed action omitted its explicit zero-byte boundary.");
 
     const result = {
       ok: true,
@@ -240,6 +263,14 @@ export async function main() {
         privateSamplePlaybackComplete: persisted.privateSamplePlaybackComplete,
         privateSampleBytesRetained: persisted.evidenceJson.privateSampleBytesRetained,
         privateSampleUploaded: persisted.evidenceJson.privateSampleUploaded,
+      },
+      governance: {
+        runId: governedAction.runId,
+        actionId: governedAction.id,
+        capabilityId: governedAction.capabilityId,
+        attemptCount: governedAction.attempts.length,
+        receiptCount: governedAction.receipts.length,
+        zeroByteBoundary: true,
       },
       secretsPrinted: false,
     };

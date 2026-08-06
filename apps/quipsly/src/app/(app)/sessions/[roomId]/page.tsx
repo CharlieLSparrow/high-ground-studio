@@ -87,6 +87,7 @@ export default async function SessionReviewPage({
           take: 5,
           select: {
             id: true,
+            governedActionId: true,
             action: true,
             previousEpisodeSlug: true,
             nextEpisodeSlug: true,
