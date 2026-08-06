@@ -2,8 +2,9 @@
 
 Date: 2026-08-05
 
-Status: next production vertical slice; it extends the existing Audio Mastery
-system and does not create a parallel editor or processing authority
+Status: source-bound candidate, review, proposal, renderer, and retained impact
+scan foundation implemented; browser review persistence and human operation
+remain open
 
 ## Outcome
 
@@ -53,7 +54,7 @@ The installed FFmpeg build already exposes `adeclick`, `adeclip`, `afftdn`,
 `afwtdn`, `arnndn`, and `deesser`. The first shipping treatment should be a
 range-scoped conservative `adeclick` experiment because it directly addresses
 the observed issue and can reuse the current FFmpeg worker. `adeclick` supports
-timeline enablement, so a reviewed range plus short handles can be processed
+timeline enablement, so a reviewed range plus a short treatment pad can be processed
 without subjecting the entire performance to a repair algorithm.
 
 Noise suppression and neural speech enhancement remain separate treatment
@@ -72,7 +73,8 @@ Each candidate carries:
 
 - stable candidate ID and label;
 - exact source binding and detector/corpus versions;
-- source-clock start/end plus pre/post audition handles;
+- source-clock start/end plus pre/post audition roll that never widens the
+  processed range;
 - detector score and interpretable evidence, or `human-marked` origin;
 - overlapping transcript word anchors and speaker/source ownership;
 - state: unreviewed, confirmed, false positive, or needs comparison;
@@ -85,7 +87,8 @@ without rewriting an earlier false-positive decision.
 
 The first profile is `dialogue-declick-conservative-v1`:
 
-- exact approved candidate range plus bounded handles;
+- exact approved candidate range plus a separately versioned 20 ms treatment
+  pad; audition pre/post roll is context only and cannot widen processing;
 - ordered graph: decode -> range-scoped de-click -> measure -> diagnose ->
   complete-decode verify -> loudness-matched audition;
 - explicit FFmpeg version and all filter parameters;
@@ -168,3 +171,41 @@ problem faster, understand every change, and reliably reject damage.
 - [Essentia onset detection](https://essentia.upf.edu/reference/streaming_OnsetDetection.html)
 - [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet)
 - [Apple AVAudioEngine](https://developer.apple.com/documentation/AVFAudio/audio-engine)
+
+## Implementation checkpoint
+
+The shared media contract now distinguishes human marks, unqualified detector
+suggestions, and qualified detector snapshots. Every candidate binds immutable
+source bytes, exact source-clock range, transcript context, and audition roll.
+Audition roll is deliberately independent from the fixed 20 ms treatment pad,
+so listening to seconds of context cannot expand the processed range.
+
+An append-only review receipt requires the same source/range snapshot and
+source-context playback coverage. A false-positive or needs-comparison decision
+cannot authorize a render. The first conservative profile accepts only a
+confirmed `mouth-click`; other event labels require their own qualified
+treatment family. The resulting FFmpeg graph enables `adeclick` only inside the
+reviewed range plus pad, writes a versioned 48 kHz/24-bit PCM derivative, and
+leaves promotion as a separate approval.
+
+The real renderer fixture proves source-byte preservation, complete output
+decode, duration/channel preservation, a changed synthetic reviewed impulse,
+and sample-identical untreated audio containing a second impulse. JSONB-style
+object key reordering cannot invalidate or alter the canonical proposal.
+
+The retained impact scanner operates without persisting a treatment preview or
+review decision. Its first packet was quarantined after an in-graph subtraction
+compared unreconciled filter branches. Its second was quarantined because the
+values were correct but impact ranks were assigned after source-clock sorting.
+The corrected packet independently decodes source and treated streams, streams
+their difference in bounded memory, and preserves twelve source-only WAV and
+spectral listening contexts for the exact 21.8-second Charlie sound check:
+
+`/Users/wall-e/Movies/Quipsly Experiments/Dialogue Repair/charlie-sound-check-20260805-v004`
+
+Its exact source SHA-256 is
+`998e1e52510dea2a9e0cc1ba6154de63cf34cae95073cd809f19f789ec629669`.
+The strongest unqualified treatment-impact suggestions begin at 11.41, 21.64,
+and 17.53 seconds. Those are triage suggestions, not assertions that a mouth
+click exists. No treatment, human review, promotion, delivery, or publication
+claim has been created.

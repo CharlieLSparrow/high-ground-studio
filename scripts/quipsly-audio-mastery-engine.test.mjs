@@ -10,6 +10,8 @@ import {
   audioDeliveryReviewCoverage,
   assessAudioMastery,
   buildAudioDeliveryTargetLocator,
+  buildDialogueRepairFilterGraph,
+  buildDialogueRepairTargetLocator,
   buildAudioTreatmentTargetLocator,
   buildAudioSignalObservations,
   buildAudioMasteryTargetLocator,
@@ -18,6 +20,10 @@ import {
   newAudioMasteryProposal,
   newAudioTreatmentProposal,
   newAudioTreatmentJob,
+  newDialogueRepairCandidate,
+  newDialogueRepairProposal,
+  newDialogueRepairReviewReceipt,
+  parseDialogueRepairReviewReceipt,
   parseAudioSignalDiagnosis,
   parseAudioTreatmentResult,
   parseAudioMasteryJob,
@@ -507,6 +513,123 @@ test("real FFmpeg DC and rumble experiment is source-bound, reversible, and inde
   assert.throws(() => parseAudioTreatmentResult({ ...result, verification: { ...result.verification, maximumAbsoluteDcAfter: 0.02 } }, job), /verification is invalid/);
 });
 
+test("dialogue repair requires source-bound listening evidence before it can authorize a range-scoped experiment", () => {
+  const source = {
+    assetId: "asset_dialogue_repair_001",
+    provider: "local",
+    locator: "/tmp/dialogue-source.wav",
+    generation: `sha256:${"c".repeat(64)}`,
+    sha256: "c".repeat(64),
+    sizeBytes: 144_000,
+    contentType: "audio/wav",
+  };
+  const candidate = newDialogueRepairCandidate({
+    candidateId: "candidate_mouth_click_001",
+    createdAt: "2026-08-05T22:00:00.000Z",
+    createdByEmail: "editor@example.test",
+    label: "mouth-click",
+    source,
+    range: { startSeconds: 2.4, endSeconds: 2.46, auditionPreRollSeconds: 0.2, auditionPostRollSeconds: 0.3, sourceDurationSeconds: 6 },
+    origin: { kind: "human-marked" },
+    context: {
+      speakerId: "speaker_homer_001",
+      transcriptWordAnchors: [{ wordId: "word_dialogue_001", startSeconds: 2.1, endSeconds: 2.8, text: "testing", speakerId: "speaker_homer_001" }],
+    },
+  });
+  assert.equal(candidate.boundaries.candidateDoesNotAuthorizeTreatment, true);
+  const evidence = {
+    protectedPlaybackSourceId: "source_dialogue_001",
+    contextStartSeconds: 2.1,
+    contextEndSeconds: 2.8,
+    listenedSecondBins: [2],
+    clientTrackedPlaybackIsNotProofOfAudibility: true,
+  };
+  const falsePositive = newDialogueRepairReviewReceipt({
+    receiptId: "review_dialogue_false_001",
+    occurredAt: "2026-08-05T22:01:00.000Z",
+    actorEmail: "editor@example.test",
+    decision: "false-positive",
+    candidate,
+    evidence,
+    note: "Intentional consonant.",
+  });
+  assert.throws(() => newDialogueRepairProposal({ proposalId: "proposal_dialogue_false_001", createdAt: "2026-08-05T22:02:00.000Z", candidate, reviewReceipt: falsePositive }), /confirmed dialogue event/);
+  const confirmed = newDialogueRepairReviewReceipt({
+    receiptId: "review_dialogue_confirmed_001",
+    occurredAt: "2026-08-05T22:03:00.000Z",
+    actorEmail: "editor@example.test",
+    decision: "confirmed",
+    candidate,
+    evidence,
+    note: "Audible mouth click between words.",
+  });
+  const proposal = newDialogueRepairProposal({ proposalId: "proposal_dialogue_repair_001", createdAt: "2026-08-05T22:04:00.000Z", candidate, reviewReceipt: confirmed });
+  assert.deepEqual(proposal.treatmentRange, { startSeconds: 2.38, endSeconds: 2.48 });
+  assert.equal(proposal.graph.find((step) => step.id === "audition-output").automatic, false);
+  assert.equal(buildDialogueRepairFilterGraph(proposal), "adeclick=window=55:overlap=75:arorder=2:threshold=2:burst=2:method=add:enable='between(t,2.38,2.48)'");
+  assert.equal(buildDialogueRepairFilterGraph(sortObjectKeysLikeJsonb(proposal)), buildDialogueRepairFilterGraph(proposal));
+  assert.match(buildDialogueRepairTargetLocator({ assetId: source.assetId, sourceSha256: source.sha256, candidateId: candidate.candidateId, range: candidate.range }), /candidate_mouth_click_001-2400000-2460000\/preview-v1\.wav$/);
+  assert.notEqual(
+    buildDialogueRepairTargetLocator({ assetId: source.assetId, sourceSha256: source.sha256, candidateId: candidate.candidateId, range: candidate.range }),
+    buildDialogueRepairTargetLocator({ assetId: source.assetId, sourceSha256: source.sha256, candidateId: candidate.candidateId, range: { ...candidate.range, endSeconds: 2.47 } }),
+  );
+  assert.throws(() => parseDialogueRepairReviewReceipt({ ...confirmed, source: { ...source, sha256: "d".repeat(64) } }, candidate), /immutable candidate snapshot/);
+  assert.throws(() => parseDialogueRepairReviewReceipt({ ...confirmed, evidence: { ...confirmed.evidence, listenedSecondBins: [] } }, candidate), /review evidence/);
+  const plosive = newDialogueRepairCandidate({ ...candidate, candidateId: "candidate_plosive_001", label: "plosive" });
+  const plosiveReview = newDialogueRepairReviewReceipt({ receiptId: "review_dialogue_plosive_001", occurredAt: "2026-08-05T22:05:00.000Z", actorEmail: "editor@example.test", decision: "confirmed", candidate: plosive, evidence });
+  assert.throws(() => newDialogueRepairProposal({ proposalId: "proposal_dialogue_plosive_001", createdAt: "2026-08-05T22:06:00.000Z", candidate: plosive, reviewReceipt: plosiveReview }), /qualified only for confirmed mouth-click/);
+});
+
+test("real range-scoped de-click changes the reviewed event while preserving source bytes, clock, channels, and untreated audio", async (context) => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-dialogue-repair-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sourcePath = path.join(root, "source.wav");
+  const outputPath = path.join(root, "candidate.wav");
+  await run("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "aevalsrc=0.04*sin(2*PI*220*t)+if(lt(abs(t-1.5)\\,0.00002)\\,0.95\\,0)+if(lt(abs(t-3.5)\\,0.00002)\\,0.95\\,0):s=48000:d=5",
+    "-c:a", "pcm_s24le", sourcePath,
+  ]);
+  const sourceStat = await stat(sourcePath);
+  const sourceSha256 = await sha256File(sourcePath);
+  const source = { assetId: "asset_dialogue_real_001", provider: "local", locator: sourcePath, generation: `sha256:${sourceSha256}`, sha256: sourceSha256, sizeBytes: sourceStat.size, contentType: "audio/wav" };
+  const candidate = newDialogueRepairCandidate({
+    candidateId: "candidate_dialogue_real_001", createdAt: "2026-08-05T22:10:00.000Z", createdByEmail: "editor@example.test", label: "mouth-click", source,
+    range: { startSeconds: 1.49, endSeconds: 1.51, auditionPreRollSeconds: 0.45, auditionPostRollSeconds: 0.45, sourceDurationSeconds: 5 },
+    origin: { kind: "human-marked" }, context: { speakerId: null, transcriptWordAnchors: [] },
+  });
+  const reviewReceipt = newDialogueRepairReviewReceipt({
+    receiptId: "review_dialogue_real_001", occurredAt: "2026-08-05T22:11:00.000Z", actorEmail: "editor@example.test", decision: "confirmed", candidate,
+    evidence: { protectedPlaybackSourceId: "source_dialogue_real_001", contextStartSeconds: 1.04, contextEndSeconds: 1.96, listenedSecondBins: [1], clientTrackedPlaybackIsNotProofOfAudibility: true },
+  });
+  const proposal = newDialogueRepairProposal({ proposalId: "proposal_dialogue_real_001", createdAt: "2026-08-05T22:12:00.000Z", candidate, reviewReceipt });
+  const engine = new FfmpegAudioMasteringEngine();
+  const rendered = await engine.renderDialogueRepairExperiment(sourcePath, outputPath, { proposal });
+  assert.equal(rendered.outputIsUnpromotedExperiment, true);
+  assert.deepEqual(rendered.treatmentRange, { startSeconds: 1.47, endSeconds: 1.53 });
+  assert.equal(await sha256File(sourcePath), sourceSha256);
+  const outputSource = { ...source, locator: outputPath, generation: `sha256:${rendered.sha256}`, sha256: rendered.sha256, sizeBytes: rendered.sizeBytes };
+  const [sourceDiagnosis, outputDiagnosis] = await Promise.all([
+    engine.diagnose(sourcePath, { source, diagnosisId: "diagnosis_dialogue_source_001", analyzedAt: "2026-08-05T22:13:00.000Z" }),
+    engine.diagnose(outputPath, { source: outputSource, diagnosisId: "diagnosis_dialogue_output_001", analyzedAt: "2026-08-05T22:13:00.000Z" }),
+  ]);
+  assert.equal(outputDiagnosis.analyzer.completeDecode, true);
+  assert.equal(outputDiagnosis.channelCount, sourceDiagnosis.channelCount);
+  assert.ok(Math.abs(outputDiagnosis.durationSeconds - sourceDiagnosis.durationSeconds) <= 0.05);
+  const sourceInside = path.join(root, "source-inside.wav");
+  const outputInside = path.join(root, "output-inside.wav");
+  const sourceOutside = path.join(root, "source-outside.wav");
+  const outputOutside = path.join(root, "output-outside.wav");
+  await Promise.all([
+    extractPcmRange(sourcePath, sourceInside, 1.45, 0.1),
+    extractPcmRange(outputPath, outputInside, 1.45, 0.1),
+    extractPcmRange(sourcePath, sourceOutside, 3.45, 0.1),
+    extractPcmRange(outputPath, outputOutside, 3.45, 0.1),
+  ]);
+  assert.notEqual(await sha256File(sourceInside), await sha256File(outputInside), "the reviewed impulse should be treated");
+  assert.equal(await sha256File(sourceOutside), await sha256File(outputOutside), "audio outside the enabled repair range must remain sample-identical");
+});
+
 function fixtureMeasurement(overrides = {}) {
   return parseAudioMasteryMeasurement({
     kind: "quipsly-audio-measurement-v1",
@@ -685,6 +808,10 @@ function run(executable, args) {
     child.once("error", reject);
     child.once("close", (code) => code === 0 ? resolve() : reject(new Error(`${executable} exited ${code}: ${stderr}`)));
   });
+}
+
+function extractPcmRange(inputPath, outputPath, startSeconds, durationSeconds) {
+  return run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(startSeconds), "-i", inputPath, "-t", String(durationSeconds), "-map", "0:a:0", "-ar", "48000", "-c:a", "pcm_s24le", outputPath]);
 }
 
 function sortObjectKeysLikeJsonb(value) {

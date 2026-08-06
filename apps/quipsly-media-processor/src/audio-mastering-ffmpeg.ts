@@ -9,11 +9,14 @@ import {
   AUDIO_MASTERY_MEASUREMENT_KIND,
   AUDIO_MASTERY_CONTRACT_VERSION,
   buildAudioSignalObservations,
+  buildDialogueRepairFilterGraph,
+  parseDialogueRepairProposal,
   parseAudioSignalDiagnosis,
   parseAudioMasteryMeasurement,
   type AudioSignalChannelStatistics,
   type AudioSignalDiagnosis,
   type AudioTreatmentProposal,
+  type DialogueRepairProposal,
   type AudioLoudnessPoint,
   type AudioMasteryMeasurement,
   type AudioMasteryProfileId,
@@ -262,6 +265,36 @@ export class FfmpegAudioMasteringEngine {
       codec: "pcm_s24le" as const,
       originalRemainsSourceTruth: true as const,
       outputIsUnpromotedExperiment: true as const,
+    };
+  }
+
+  async renderDialogueRepairExperiment(inputPath: string, outputPath: string, input: {
+    proposal: DialogueRepairProposal;
+  }) {
+    const proposal = parseDialogueRepairProposal(input.proposal);
+    await inspectBoundSource(inputPath, proposal.source);
+    await runProcess(this.ffmpegPath, [
+      "-hide_banner", "-nostdin", "-nostats", "-n", "-i", inputPath,
+      "-map", "0:a:0", "-vn", "-sn", "-dn",
+      "-filter:a", buildDialogueRepairFilterGraph(proposal),
+      "-ar", "48000", "-c:a", "pcm_s24le", outputPath,
+    ], "audio-dialogue-repair-render-failed");
+    const outputStat = await stat(outputPath);
+    if (!outputStat.isFile() || outputStat.size <= 0) {
+      throw new ProxyTranscodeError("audio-dialogue-repair-output-empty", "The dialogue repair experiment output is empty.");
+    }
+    await inspectBoundSource(inputPath, proposal.source);
+    return {
+      outputPath,
+      sizeBytes: outputStat.size,
+      sha256: await sha256File(outputPath),
+      contentType: "audio/wav" as const,
+      sampleRateHz: 48_000 as const,
+      codec: "pcm_s24le" as const,
+      originalRemainsSourceTruth: true as const,
+      outputIsUnpromotedExperiment: true as const,
+      treatmentRange: proposal.treatmentRange,
+      authorizingReviewReceiptId: proposal.authorizingReviewReceiptId,
     };
   }
 }

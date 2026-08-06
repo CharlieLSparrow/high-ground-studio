@@ -2048,3 +2048,27 @@ These should be treated as cleanup candidates later, not as authoritative produc
   podcast/coaching windows. See
   `docs/research/quipsly-capability-expansion-2026-08-05.md` and
   `docs/coordination/2026-08-05-dialogue-repair-review-architecture.md`.
+
+### 2026-08-05 Dialogue Repair foundation and retained triage
+
+- Audio Mastery now has a strict event-level Dialogue Repair contract for
+  human marks, explicitly unqualified detector suggestions, future qualified
+  detector snapshots, append-only source-context review, and a separately
+  approved conservative mouth-click experiment.
+- Audition pre/post roll and the 20 ms treatment pad are different authorities.
+  False-positive and needs-comparison decisions cannot render. Plosive,
+  sibilance, breath, clipping, and general-noise labels cannot borrow the
+  mouth-click profile.
+- The FFmpeg renderer is enabled only over the approved source-clock range,
+  writes a versioned 48 kHz/24-bit PCM derivative, rechecks immutable source
+  bytes, and remains unpromoted. The real fixture changes the marked impulse
+  while preserving duration, channel count, source bytes, and sample-identical
+  audio around an untreated second impulse.
+- A bounded-memory retained scanner created twelve source-only review contexts
+  from the exact 21.8-second Charlie sound check. Two earlier packets were
+  visibly quarantined when evidence semantics were wrong; current v004 binds
+  source SHA-256 `998e1e52...629669` and labels every suggestion unqualified.
+  and records complete independent source/treatment decodes. No listening
+  receipt or treatment preview was manufactured. The next product
+  boundary is the linked browser review journey, then a real human confirmation
+  and matched source/candidate audition.

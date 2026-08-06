@@ -196,6 +196,8 @@
     "quipsly:media-processor:build": "pnpm --filter quipsly-media-processor build",
     "quipsly:media-processor:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-capture-proxy-worker.test.mjs scripts/quipsly-capture-proxy-control-plane.test.mjs scripts/quipsly-capture-proxy-cloud-fixture.test.mjs",
     "quipsly:audio-mastery:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-mastery-engine.test.mjs",
+    "quipsly:dialogue-repair:impact-scan": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-dialogue-repair-impact-scan.mjs",
+    "test:quipsly:dialogue-repair:impact-scan": "node --test scripts/quipsly-dialogue-repair-impact-scan.test.mjs",
     "quipsly:audio-mastery-cloud:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-mastery-cloud-worker.test.mjs",
     "quipsly:audio-mastery:gcs-fixture": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/release/quipsly-audio-mastery-gcs-fixture.mjs",
     "quipsly:audio-alignment:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-audio-alignment-evidence.test.mjs",

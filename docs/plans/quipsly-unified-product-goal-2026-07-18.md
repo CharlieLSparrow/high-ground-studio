@@ -7791,3 +7791,28 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   as physical app operation. The next human action is one share from Homer's
   Account screen; the next real product gate remains operating the short
   physical take and reading the same source through Nest and Studio.
+
+## 2026-08-05 Dialogue Repair foundation checkpoint
+
+- Implemented source-bound dialogue-event candidates, append-only listening
+  receipts, conservative mouth-click proposals, unique range-versioned target
+  locators, and an FFmpeg range renderer without creating a parallel media
+  authority.
+- Split seconds-long audition context from the fixed 20 ms treatment pad. A
+  wider listening context can no longer widen processing. Only a confirmed
+  mouth-click can use the first profile; false positives and unrelated labels
+  fail closed.
+- The complete Audio Mastery engine suite passes 17/17, including real FFmpeg
+  proof that the reviewed impulse changes while an untreated impulse remains
+  sample-identical and source bytes, duration, channels, and complete decode
+  remain intact. The retained impact-scanner regression passes independently.
+- Operated the unqualified scan on the exact Charlie sound-check source and
+  preserved twelve source-only WAV/spectrogram contexts in versioned v004 with
+  explicit complete-decode evidence.
+  Earlier flawed v001/v002 packets are quarantined with explicit invalidation
+  notes. No treatment, review, promotion, delivery, or publication claim was
+  inferred from automated analysis.
+- Next: persist candidate/review state in the existing Audio Mastery evidence
+  desk, connect transcript words and source-clock navigation, then have Charlie
+  confirm or reject retained suggestions before generating matched A/B repair
+  experiments.
