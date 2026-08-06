@@ -48,6 +48,9 @@ function source(
       sourceSha256: recordingAssetId.padEnd(64, "a").slice(0, 64),
       completedAt: "2026-08-06T15:55:00.000Z",
       completeDecode: true,
+      signalStatus: "signal-present",
+      rmsDbfs: -22,
+      samplePeakDbfs: -3,
       error: null,
     } : {
       status: "not-observed",
@@ -55,6 +58,9 @@ function source(
       sourceSha256: null,
       completedAt: null,
       completeDecode: false,
+      signalStatus: null,
+      rmsDbfs: null,
+      samplePeakDbfs: null,
       error: null,
     },
     alignment: kind === "audio" ? null : {
@@ -102,6 +108,9 @@ describe("Capture take materialization", () => {
           sourceSha256: "b".repeat(64),
           completedAt: null,
           completeDecode: false,
+          signalStatus: null,
+          rmsDbfs: null,
+          samplePeakDbfs: null,
           error: "audio-signal-probe-invalid: invalid stream metadata",
         },
       })],
@@ -119,6 +128,37 @@ describe("Capture take materialization", () => {
     ]);
     expect(result.nextAction).toContain("Replace or recover");
     expect(result.timeline.clips).toHaveLength(0);
+  });
+
+  it("blocks a completely decodable required master that contains only near-digital silence", () => {
+    const result = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [source("audio-silent", "audio", {
+        audioDecodeEvidence: {
+          status: "complete",
+          jobId: "decode-silent",
+          sourceSha256: "s".repeat(64),
+          completedAt: "2026-08-06T15:55:00.000Z",
+          completeDecode: true,
+          signalStatus: "near-digital-silence",
+          rmsDbfs: -160,
+          samplePeakDbfs: -160,
+          error: null,
+        },
+      })],
+      actor,
+      materializedAt,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      expect.objectContaining({
+        code: "source-audio-near-silence",
+        severity: "blocker",
+        message: expect.stringContaining("-160.0 dBFS"),
+      }),
+    ]);
+    expect(result.nextAction).toContain("near-silent required master");
   });
 
   it("materializes aligned media, corrected transcript provenance, and an unambiguous participant camera", () => {

@@ -145,6 +145,9 @@ function audioDecodeEvidence(
     sourceSha256,
     completedAt: null,
     completeDecode: false,
+    signalStatus: null,
+    rmsDbfs: null,
+    samplePeakDbfs: null,
     error: null,
   };
   const status = toPublicAudioSignalProfileStatus(job);
@@ -156,6 +159,7 @@ function audioDecodeEvidence(
   );
   const complete = status.status === "completed"
     && status.analyzer?.completeDecode === true
+    && status.audioSignal !== null
     && exactSourceBound;
   return {
     status: complete
@@ -169,6 +173,9 @@ function audioDecodeEvidence(
       ? job.completedAt?.toISOString?.() ?? status.updatedAt
       : null,
     completeDecode: complete,
+    signalStatus: complete ? status.audioSignal!.signalStatus : null,
+    rmsDbfs: complete ? status.audioSignal!.rmsDbfs : null,
+    samplePeakDbfs: complete ? status.audioSignal!.samplePeakDbfs : null,
     error: status.status === "completed" && !exactSourceBound
       ? "Complete decode receipt is not bound to these exact source bytes."
       : status.error,

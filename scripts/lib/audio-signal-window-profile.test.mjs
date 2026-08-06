@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -30,6 +30,26 @@ test("streams a complete bounded decode into the iPhone-compatible signal profil
     assert.equal(result.audioSignal.algorithm, "quipsly-audio-signal-window-v1");
     assert.equal(result.audioSignal.thresholds.nearSilenceDbfs, -72);
     assert.ok(result.audioSignal.observations.some((observation) => observation.kind === "possible-dropout"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("derives duration from a complete open-ended WebM decode", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-open-ended-signal-profile-"));
+  const source = path.join(root, "browser-source.webm");
+  try {
+    const { stdout } = await execFile("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+      "-t", "1.2", "-c:a", "libopus", "-live", "1", "-f", "webm", "pipe:1",
+    ], { encoding: "buffer", maxBuffer: 8 * 1024 * 1024 });
+    await writeFile(source, stdout);
+    const result = await analyzeAudioSignalFile(source);
+    assert.ok(result.media.durationSeconds > 1);
+    assert.equal(result.audioSignal.durationSeconds, result.media.durationSeconds);
+    assert.equal(result.audioSignal.signalStatus, "near-digital-silence");
+    assert.ok(result.audioSignal.waveform.length > 0 && result.audioSignal.waveform.length <= 1_200);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

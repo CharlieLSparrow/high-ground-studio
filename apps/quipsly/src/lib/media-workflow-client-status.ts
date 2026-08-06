@@ -8,7 +8,11 @@ export type AudioSignalProfileClientStatus = {
     channelCount: number;
     durationSeconds: number;
   };
-  audioSignal: Record<string, unknown> | null;
+  audioSignal: null | (Record<string, unknown> & {
+    signalStatus?: "signal-present" | "attention" | "near-digital-silence";
+    rmsDbfs?: number;
+    samplePeakDbfs?: number;
+  });
   analyzer: null | {
     algorithm: "quipsly-audio-signal-window-v1";
     completeDecode: true;

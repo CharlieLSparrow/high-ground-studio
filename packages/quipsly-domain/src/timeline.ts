@@ -27,6 +27,9 @@ export type CaptureTakeSourceBinding = {
     sourceSha256: string | null;
     completedAt: string;
     completeDecode: true;
+    signalStatus?: "signal-present" | "attention" | "near-digital-silence" | null;
+    rmsDbfs?: number | null;
+    samplePeakDbfs?: number | null;
   } | null;
 };
 

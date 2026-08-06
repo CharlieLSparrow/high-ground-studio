@@ -39,6 +39,9 @@ export type CaptureTakeMaterializationSource = {
     sourceSha256: string | null;
     completedAt: string | null;
     completeDecode: boolean;
+    signalStatus: "signal-present" | "attention" | "near-digital-silence" | null;
+    rmsDbfs: number | null;
+    samplePeakDbfs: number | null;
     error: string | null;
   };
   alignment: CaptureTakeReviewedAlignment | null;
@@ -72,6 +75,8 @@ export type CaptureTakeMaterializationIssue = {
     | "source-identity-incomplete"
     | "source-media-unplayable"
     | "source-decode-incomplete"
+    | "source-audio-near-silence"
+    | "source-audio-attention"
     | "source-duration-invalid"
     | "spine-source-ambiguous"
     | "spine-source-missing"
@@ -154,6 +159,9 @@ function sourceSetFingerprint(sources: CaptureTakeMaterializationSource[]) {
         cameraPosition: source.cameraPosition,
         audioCompleteDecode: source.kind === "audio"
           ? source.audioDecodeEvidence.completeDecode
+          : null,
+        audioSignalStatus: source.kind === "audio"
+          ? source.audioDecodeEvidence.signalStatus
           : null,
         alignmentReviewId: source.alignment?.reviewId ?? null,
         alignmentAnchorTimelineSeconds: source.alignment
@@ -281,6 +289,9 @@ function clipForSource(
             sourceSha256: source.audioDecodeEvidence.sourceSha256,
             completedAt: source.audioDecodeEvidence.completedAt,
             completeDecode: true,
+            signalStatus: source.audioDecodeEvidence.signalStatus,
+            rmsDbfs: source.audioDecodeEvidence.rmsDbfs,
+            samplePeakDbfs: source.audioDecodeEvidence.samplePeakDbfs,
           }
         : null,
     },
@@ -453,10 +464,35 @@ export function planCaptureTakeMaterialization(input: {
           : `${source.originalName} has no completed exact-source decode receipt.`,
       });
     }
+    if (
+      source.kind === "audio"
+      && source.audioDecodeEvidence.status === "complete"
+      && source.audioDecodeEvidence.signalStatus === "near-digital-silence"
+    ) {
+      issues.push({
+        code: "source-audio-near-silence",
+        severity: "blocker",
+        recordingAssetId: source.recordingAssetId,
+        message: `${source.originalName} completely decoded but contains near-digital silence (${source.audioDecodeEvidence.samplePeakDbfs?.toFixed(1) ?? "unknown"} dBFS sample peak).`,
+      });
+    } else if (
+      source.kind === "audio"
+      && source.audioDecodeEvidence.status === "complete"
+      && source.audioDecodeEvidence.signalStatus === "attention"
+    ) {
+      issues.push({
+        code: "source-audio-attention",
+        severity: "warning",
+        recordingAssetId: source.recordingAssetId,
+        message: `${source.originalName} decoded completely but its signal profile needs listening review before final delivery.`,
+      });
+    }
   }
   if (issues.some((issue) => issue.severity === "blocker")) {
     return blocked(
-      issues.some((issue) => issue.code === "source-media-unplayable")
+      issues.some((issue) => issue.code === "source-audio-near-silence")
+        ? "Replace or recover every near-silent required master before materializing this take."
+        : issues.some((issue) => issue.code === "source-media-unplayable")
         ? "Replace or recover every source that failed complete decoding before materializing this take."
         : issues.some((issue) => issue.code === "source-decode-incomplete")
           ? "Run complete exact-source decode for every audio master before materializing this take."

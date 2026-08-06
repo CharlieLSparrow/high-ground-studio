@@ -8993,9 +8993,23 @@ function CloudEditorContent() {
                             const decodeFailed = source.isAudio && signalProfile?.status === "failed";
                             const decodeComplete = source.isAudio && signalProfile?.status === "completed"
                               && signalProfile.analyzer?.completeDecode === true;
+                            const decodedSilence = decodeComplete
+                              && signalProfile.audioSignal?.signalStatus === "near-digital-silence";
+                            const decodedAttention = decodeComplete
+                              && signalProfile.audioSignal?.signalStatus === "attention";
+                            const decodedRmsDbfs = typeof signalProfile?.audioSignal?.rmsDbfs === "number"
+                              ? signalProfile.audioSignal.rmsDbfs
+                              : null;
+                            const decodedSamplePeakDbfs = typeof signalProfile?.audioSignal?.samplePeakDbfs === "number"
+                              ? signalProfile.audioSignal.samplePeakDbfs
+                              : null;
                             const decodeLabel = !source.isAudio
                               ? "Video verification separate"
-                              : decodeComplete
+                              : decodedSilence
+                                ? "Decoded near-silence"
+                                : decodedAttention
+                                  ? "Decoded · listen"
+                                  : decodeComplete
                                 ? "Complete decode verified"
                                 : decodeFailed
                                   ? "Complete decode failed"
@@ -9024,7 +9038,7 @@ function CloudEditorContent() {
                                     {source.isBaseline ? <span className="rounded-full bg-emerald-100 px-2 py-1 text-[9px] font-black uppercase text-emerald-900">Group baseline</span> : null}
                                     {selectedAsSpine ? <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-900">Spine selection</span> : null}
                                     {selectedAsTarget ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-900">Target selection</span> : null}
-                                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${decodeFailed ? "bg-red-100 text-red-900" : decodeComplete ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-700"}`}>{decodeLabel}</span>
+                                    <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${decodeFailed || decodedSilence ? "bg-red-100 text-red-900" : decodedAttention ? "bg-amber-100 text-amber-900" : decodeComplete ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-700"}`}>{decodeLabel}</span>
                                   </div>
                                 </div>
                                 <div className="mt-2 font-mono text-[10px] font-bold leading-5 text-sky-800">
@@ -9043,11 +9057,20 @@ function CloudEditorContent() {
                                     {signalProfile?.error || "The exact source could not be completely decoded."} Replace the protected master or retry after repairing the source; exact-byte upload verification alone is not playback proof.
                                   </p>
                                 ) : null}
+                                {decodedSilence ? (
+                                  <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[10px] font-bold leading-4 text-red-900">
+                                    Complete decode measured {decodedSamplePeakDbfs?.toFixed(1) ?? "unknown"} dBFS sample peak and {decodedRmsDbfs?.toFixed(1) ?? "unknown"} dBFS RMS. This protected master contains near-digital silence; replace or recover it instead of choosing it as the episode spine.
+                                  </p>
+                                ) : null}
                                 <div className="mt-3 grid grid-cols-2 gap-2">
                                   <button
                                     type="button"
-                                    disabled={!source.isAudio || decodeFailed}
-                                    title={decodeFailed ? "This source cannot become the spine until complete decoding succeeds." : undefined}
+                                    disabled={!source.isAudio || decodeFailed || decodedSilence}
+                                    title={decodeFailed
+                                      ? "This source cannot become the spine until complete decoding succeeds."
+                                      : decodedSilence
+                                        ? "This source cannot become the spine because complete decoding found near-digital silence."
+                                        : undefined}
                                     onClick={() => setSyncWizardSpineAssetId(source.asset.id)}
                                     className="rounded-md border border-sky-200 bg-sky-50 px-2 py-2 text-[10px] font-black text-sky-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                                   >

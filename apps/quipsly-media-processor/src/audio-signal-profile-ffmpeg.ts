@@ -69,12 +69,20 @@ export class FfmpegAudioSignalProfiler {
       throw new AudioSignalProfileDecodeError("audio-signal-source-unavailable", "Audio signal source must be a non-empty file.");
     }
     const [probe, ffmpegVersion] = await Promise.all([this.probe(resolvedPath), this.version()]);
-    const estimatedFrames = Math.ceil(probe.durationSeconds * probe.sampleRate);
     const minimumWindowFrames = Math.max(Math.round(probe.sampleRate * 0.1), 1);
-    const framesPerWindow = Math.max(minimumWindowFrames, Math.ceil(estimatedFrames / 1_200));
+    let framesPerWindow = probe.durationSeconds === null
+      ? minimumWindowFrames
+      : Math.max(minimumWindowFrames, Math.ceil(probe.durationSeconds * probe.sampleRate / 1_200));
     const frameBytes = probe.channelCount * 4;
     const nearSilenceAmplitude = 10 ** (THRESHOLDS.nearSilenceDbfs / 20);
-    const windows: AudioSignalProfile["waveform"] = [];
+    type WindowAggregate = {
+      startFrame: number;
+      frameCount: number;
+      sumSquares: number;
+      peak: number;
+      clippedFrameCount: number;
+    };
+    const windowAggregates: WindowAggregate[] = [];
     const channelSumSquares = Array.from({ length: probe.channelCount }, () => 0);
     let decodedFrames = 0;
     let totalSumSquares = 0;
@@ -89,20 +97,39 @@ export class FfmpegAudioSignalProfiler {
     let stderr = "";
     const decodeFailure: { value: Error | null } = { value: null };
 
+    const compactWindowAggregates = () => {
+      if (windowAggregates.length < 1_200) return;
+      const compacted: WindowAggregate[] = [];
+      for (let index = 0; index < windowAggregates.length; index += 2) {
+        const left = windowAggregates[index];
+        const right = windowAggregates[index + 1];
+        compacted.push(right ? {
+          startFrame: left.startFrame,
+          frameCount: left.frameCount + right.frameCount,
+          sumSquares: left.sumSquares + right.sumSquares,
+          peak: Math.max(left.peak, right.peak),
+          clippedFrameCount: left.clippedFrameCount + right.clippedFrameCount,
+        } : left);
+      }
+      windowAggregates.splice(0, windowAggregates.length, ...compacted);
+      framesPerWindow *= 2;
+    };
+
     const finishWindow = () => {
       if (!windowFrameCount) return;
       const startFrame = decodedFrames - windowFrameCount;
-      windows.push({
-        startSeconds: rounded(startFrame / probe.sampleRate),
-        durationSeconds: rounded(windowFrameCount / probe.sampleRate),
-        rmsDbfs: amplitudeDbfs(Math.sqrt(windowSumSquares / windowFrameCount)),
-        samplePeakDbfs: amplitudeDbfs(windowPeak),
+      windowAggregates.push({
+        startFrame,
+        frameCount: windowFrameCount,
+        sumSquares: windowSumSquares,
+        peak: windowPeak,
         clippedFrameCount: windowClippedFrames,
       });
       windowFrameCount = 0;
       windowSumSquares = 0;
       windowPeak = 0;
       windowClippedFrames = 0;
+      compactWindowAggregates();
     };
 
     const child = spawn(this.ffmpegPath, [
@@ -163,6 +190,13 @@ export class FfmpegAudioSignalProfiler {
     }
     if (remainder.length !== 0) throw new AudioSignalProfileDecodeError("audio-signal-partial-frame", "FFmpeg audio signal decode ended on a partial frame.");
     finishWindow();
+    const windows: AudioSignalProfile["waveform"] = windowAggregates.map((window) => ({
+      startSeconds: rounded(window.startFrame / probe.sampleRate),
+      durationSeconds: rounded(window.frameCount / probe.sampleRate),
+      rmsDbfs: amplitudeDbfs(Math.sqrt(window.sumSquares / window.frameCount)),
+      samplePeakDbfs: amplitudeDbfs(window.peak),
+      clippedFrameCount: window.clippedFrameCount,
+    }));
     if (decodedFrames <= 0 || windows.length <= 0 || windows.length > 1_200) {
       throw new AudioSignalProfileDecodeError("audio-signal-empty-decode", "Audio signal decode produced no bounded evidence windows.");
     }
@@ -324,15 +358,20 @@ export class FfmpegAudioSignalProfiler {
     const stream = result.streams?.[0];
     const sampleRate = Number(stream?.sample_rate);
     const channelCount = Number(stream?.channels);
-    const durationSeconds = Number(result.format?.duration);
+    const probedDurationSeconds = Number(result.format?.duration);
     if (!stream) throw new AudioSignalProfileDecodeError("audio-signal-no-audio-track", "The source has no decodable audio track.");
-    if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0 || !Number.isSafeInteger(channelCount) || channelCount <= 0 || channelCount > 32 || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    if (!Number.isSafeInteger(sampleRate) || sampleRate <= 0 || !Number.isSafeInteger(channelCount) || channelCount <= 0 || channelCount > 32) {
       throw new AudioSignalProfileDecodeError("audio-signal-probe-invalid", "Audio signal probe returned invalid stream metadata.");
     }
     return {
       sampleRate,
       channelCount,
-      durationSeconds,
+      // Streamed WebM and other live-fragment containers can be completely
+      // decodable while legitimately omitting duration metadata. The complete
+      // PCM decode below is the duration and coverage authority.
+      durationSeconds: Number.isFinite(probedDurationSeconds) && probedDurationSeconds > 0
+        ? probedDurationSeconds
+        : null,
       codec: String(stream.codec_name || "unknown"),
       container: String(result.format?.format_name || "unknown").split(",")[0],
     };

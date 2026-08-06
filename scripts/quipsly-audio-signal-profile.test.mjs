@@ -145,3 +145,32 @@ test("FFmpeg profile distinguishes low warmth from high presence on the immutabl
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("FFmpeg profile completely decodes streamed WebM without container duration metadata", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-streamed-webm-profile-"));
+  const sourcePath = path.join(root, "open-ended-browser-source.webm");
+  try {
+    const { stdout } = await execFile("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+      "-t", "1.2", "-c:a", "libopus", "-live", "1", "-f", "webm", "pipe:1",
+    ], { encoding: "buffer", maxBuffer: 8 * 1024 * 1024 });
+    assert.ok(Buffer.isBuffer(stdout) && stdout.length > 0, "FFmpeg did not emit the streamed WebM fixture.");
+    await writeFile(sourcePath, stdout);
+    const probe = JSON.parse((await execFile("ffprobe", [
+      "-v", "error", "-show_entries", "format=duration", "-of", "json", sourcePath,
+    ])).stdout);
+    assert.equal(probe.format?.duration, undefined, "The fixture unexpectedly contains seekable duration metadata.");
+
+    const result = await new FfmpegAudioSignalProfiler().analyze(sourcePath);
+    assert.equal(result.media.container, "matroska");
+    assert.equal(result.media.codec, "opus");
+    assert.equal(result.audioSignal.signalStatus, "near-digital-silence");
+    assert.ok(result.audioSignal.analyzedFrameCount > 0);
+    assert.equal(result.audioSignal.durationSeconds, result.media.durationSeconds);
+    assert.ok(result.audioSignal.waveform.length > 0 && result.audioSignal.waveform.length <= 1_200);
+    assert.equal(result.audioSignal.frequencyProfile?.completeDecode, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

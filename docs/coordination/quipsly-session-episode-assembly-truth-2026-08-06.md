@@ -60,14 +60,12 @@ The client maintains two fingerprints for this reason:
 The API independently enforces the receipt rule. Client behavior alone is not
 trusted as the history boundary.
 
-## Exact bytes are not playable-media proof
+## Exact bytes, complete decode, and useful signal are separate proof
 
 The retained operation also exposed a second boundary defect. A
 `RecordingAsset.status = VERIFIED` proves that the protected bytes reached the
 server and matched their upload checksum. It does not prove that a decoder can
-read those bytes. The two test WebMs had exact checksums and promoted Studio
-attachments, but their complete signal-profile jobs failed with invalid stream
-metadata.
+read those bytes or that the decoded source contains useful program audio.
 
 Capture-take materialization now requires every audio master to have a
 completed, complete-decode signal receipt bound to the same source SHA-256.
@@ -77,11 +75,24 @@ unplayable. Successful materialization carries the decode job, source hash,
 completion time, and `completeDecode: true` into the source binding so the
 canonical timeline records why that lane was admitted.
 
-After this repair, the retained cockpit changed from the misleading “choose a
-spine” instruction to two explicit decode blockers and the action “Replace or
-recover every source that failed complete decoding.” Upload verification,
-decode verification, editorial spine choice, and timeline materialization now
-remain four distinct facts.
+The first complete-decode run exposed an analyzer defect: Chrome's streamed
+WebM is open-ended and legitimately omits container duration metadata. Both
+retained files had a perfect WebM probe score, valid Opus streams, and completed
+full FFmpeg decoding (42 and 107 packets). The analyzer had incorrectly treated
+missing duration metadata as corrupt media.
+
+The analyzer now derives duration and completeness from decoded PCM frames. It
+dynamically coarsens evidence windows to remain bounded to 1,200 even for a
+long open-ended episode source. A production fixture generates a live WebM with
+no duration metadata and proves complete waveform and frequency analysis.
+
+The repaired decode then exposed the next true fact: both retained files are
+complete but contain near-digital silence at -160 dBFS. Materialization now
+blocks a near-silent required master separately from a corrupt or pending
+decode. The editor reports `Decoded near-silence`, displays RMS and sample peak,
+and disables spine selection. Upload verification, decode verification, signal
+viability, editorial spine choice, and timeline materialization now remain five
+distinct facts.
 
 ## Capture-time consent scope survives later collaboration
 
@@ -128,7 +139,7 @@ Observed UI and evidence:
 - two server-safe immutable source attachments;
 - no completed source-bound transcript;
 - no complete audio-analysis coverage;
-- the focused Capture take held on two explicit complete-decode failures;
+- the focused Capture take held on two explicit near-digital-silence blockers;
 - zero Session timeline clips and zero materialized takes for this capture
   group;
 - zero current proposal sets and zero unsaved local-draft actions;
@@ -136,15 +147,25 @@ Observed UI and evidence:
 - direct navigation from the cockpit into the exact Episode, capture group,
   and Guided Sync section.
 
-The source set contains two tiny test WebM audio files whose stream metadata
-cannot support a trustworthy sync/materialization decision. Quipsly correctly
-held them. Existing protected microphone and iPhone camera media in the Episode
-were not silently reassigned to this take.
+The source set contains two tiny, silent test WebM audio files. They are valid
+streamed Opus media, but neither can serve as a trustworthy episode spine.
+Quipsly correctly holds them. Existing protected microphone and iPhone camera
+media in the Episode were not silently reassigned to this take.
 
-The running editor showed `Complete decode failed` on both exact source cards,
-disabled spine selection for the failed sources, exposed `Retry complete
-decode`, and reported the decoder's `audio-signal-probe-invalid` evidence. The
-later QA producer no longer produced a false consent blocker.
+The running editor first exposed the analyzer's duration assumption, then
+successfully retried both exact sources through the repaired durable worker.
+It now shows `Decoded near-silence`, disables spine selection, displays -160.0
+dBFS RMS and sample peak, and holds the take on source recovery. The later QA
+producer no longer produces a false consent blocker.
+
+## Local processor lifecycle reliability
+
+Reloading the repaired media worker exposed a launchd startup race: the local
+lifecycle command slept for one second and immediately declared failure even
+when the worker was still starting. Worker startup now uses a bounded readiness
+poll (up to ten seconds), while preserving the existing exact-source revision
+check and launcher ownership boundary. The full local lane was restarted and
+read back healthy after the repair.
 
 ## Regression discovered and repaired
 
@@ -175,8 +196,10 @@ Quipsly TypeScript typecheck passed
 Running-app reload did not append a receipt
 Running-app unchanged manual Save did not append a receipt
 Session cockpit readback showed the exact five-save ledger and held take
-Running editor readback showed both invalid-source decode failures, not a
-post-capture collaborator consent failure
+Open-ended streamed-WebM analyzer fixture passed with complete frequency proof
+Running editor retried both real sources to complete-decode receipts
+Running editor showed two near-digital-silence holds and disabled spine controls
+Local lifecycle contract passed 12/12 and the full lane read back healthy
 ```
 
 ## Next production slice

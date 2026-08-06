@@ -119,14 +119,15 @@ async function probeAudio(inputPath, ffprobePath) {
   const stream = Array.isArray(result.streams) ? result.streams[0] : null;
   const sampleRate = Number(stream?.sample_rate);
   const channelCount = Number(stream?.channels);
-  const durationSeconds = Number(result.format?.duration);
+  const probedDurationSeconds = Number(result.format?.duration);
   assert(Number.isSafeInteger(sampleRate) && sampleRate > 0, "Audio signal probe found no valid sample rate.");
   assert(Number.isSafeInteger(channelCount) && channelCount > 0 && channelCount <= 32, "Audio signal probe found no valid channel layout.");
-  assert(Number.isFinite(durationSeconds) && durationSeconds > 0, "Audio signal probe found no positive duration.");
   return {
     sampleRate,
     channelCount,
-    durationSeconds,
+    durationSeconds: Number.isFinite(probedDurationSeconds) && probedDurationSeconds > 0
+      ? probedDurationSeconds
+      : null,
     codec: String(stream?.codec_name || "unknown"),
     container: String(result.format?.format_name || "unknown").split(",")[0],
   };
@@ -139,12 +140,13 @@ export async function analyzeAudioSignalFile(inputPath, options = {}) {
   const ffmpegPath = options.ffmpegPath || "ffmpeg";
   const ffprobePath = options.ffprobePath || "ffprobe";
   const probe = await probeAudio(resolvedPath, ffprobePath);
-  const estimatedFrames = Math.ceil(probe.durationSeconds * probe.sampleRate);
   const minimumWindowFrames = Math.max(Math.round(probe.sampleRate * 0.1), 1);
-  const framesPerWindow = Math.max(minimumWindowFrames, Math.ceil(estimatedFrames / 1_200));
+  let framesPerWindow = probe.durationSeconds === null
+    ? minimumWindowFrames
+    : Math.max(minimumWindowFrames, Math.ceil(probe.durationSeconds * probe.sampleRate / 1_200));
   const frameBytes = probe.channelCount * 4;
   const nearSilenceAmplitude = 10 ** (THRESHOLDS.nearSilenceDbfs / 20);
-  const windows = [];
+  const windowAggregates = [];
   const channelSumSquares = Array.from({ length: probe.channelCount }, () => 0);
   let decodedFrames = 0;
   let totalSumSquares = 0;
@@ -159,20 +161,39 @@ export async function analyzeAudioSignalFile(inputPath, options = {}) {
   let stderr = "";
   let decodeError = null;
 
+  function compactWindowAggregates() {
+    if (windowAggregates.length < 1_200) return;
+    const compacted = [];
+    for (let index = 0; index < windowAggregates.length; index += 2) {
+      const left = windowAggregates[index];
+      const right = windowAggregates[index + 1];
+      compacted.push(right ? {
+        startFrame: left.startFrame,
+        frameCount: left.frameCount + right.frameCount,
+        sumSquares: left.sumSquares + right.sumSquares,
+        peak: Math.max(left.peak, right.peak),
+        clippedFrameCount: left.clippedFrameCount + right.clippedFrameCount,
+      } : left);
+    }
+    windowAggregates.splice(0, windowAggregates.length, ...compacted);
+    framesPerWindow *= 2;
+  }
+
   function finishWindow() {
     if (!windowFrameCount) return;
     const startFrame = decodedFrames - windowFrameCount;
-    windows.push({
-      startSeconds: roundedSignal(startFrame / probe.sampleRate),
-      durationSeconds: roundedSignal(windowFrameCount / probe.sampleRate),
-      rmsDbfs: amplitudeDbfs(Math.sqrt(windowSumSquares / windowFrameCount)),
-      samplePeakDbfs: amplitudeDbfs(windowPeak),
+    windowAggregates.push({
+      startFrame,
+      frameCount: windowFrameCount,
+      sumSquares: windowSumSquares,
+      peak: windowPeak,
       clippedFrameCount: windowClippedFrames,
     });
     windowFrameCount = 0;
     windowSumSquares = 0;
     windowPeak = 0;
     windowClippedFrames = 0;
+    compactWindowAggregates();
   }
 
   const child = spawn(ffmpegPath, [
@@ -228,6 +249,13 @@ export async function analyzeAudioSignalFile(inputPath, options = {}) {
   assert(exitCode === 0, `FFmpeg audio signal decode failed (${exitCode}): ${stderr.trim() || "no diagnostic"}`);
   assert(remainder.length === 0, "FFmpeg audio signal decode ended on a partial frame.");
   finishWindow();
+  const windows = windowAggregates.map((window) => ({
+    startSeconds: roundedSignal(window.startFrame / probe.sampleRate),
+    durationSeconds: roundedSignal(window.frameCount / probe.sampleRate),
+    rmsDbfs: amplitudeDbfs(Math.sqrt(window.sumSquares / window.frameCount)),
+    samplePeakDbfs: amplitudeDbfs(window.peak),
+    clippedFrameCount: window.clippedFrameCount,
+  }));
   assert(decodedFrames > 0 && windows.length > 0 && windows.length <= 1_200, "Audio signal decode produced no bounded evidence windows.");
 
   const durationSeconds = decodedFrames / probe.sampleRate;
