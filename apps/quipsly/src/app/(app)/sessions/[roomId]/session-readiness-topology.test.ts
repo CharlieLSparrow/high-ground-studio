@@ -169,4 +169,63 @@ describe("Session readiness topology", () => {
     ]);
     expect(topology.summary.attentionCount).toBe(1);
   });
+
+  it("keeps the latest private-playback receipt on its exact person and browser endpoint", () => {
+    const topology = buildSessionReadinessTopology({
+      generatedAt,
+      participants: [participant],
+      grants: [],
+      recordings: [],
+      captures: [],
+      preflights: [
+        {
+          id: "preflight-old",
+          participantId: participant.id,
+          clientInstanceId: "mac-browser",
+          clientKind: "web",
+          deviceLabel: "Quipsly Web · Mac",
+          microphoneLabel: "MacBook microphone",
+          cameraLabel: null,
+          outputLabel: "MacBook speakers",
+          cameraWanted: false,
+          status: "NEEDS_ATTENTION",
+          audioSignalState: "low",
+          privateSamplePlaybackComplete: true,
+          playbackDecision: "NEEDS_ADJUSTMENT",
+          issueCodes: ["AUDIO_LOW"],
+          testedAt: "2026-08-05T17:00:00.000Z",
+          expiresAt: "2026-08-05T19:00:00.000Z",
+        },
+        {
+          id: "preflight-current",
+          participantId: participant.id,
+          clientInstanceId: "mac-browser",
+          clientKind: "web",
+          deviceLabel: "Quipsly Web · Mac",
+          microphoneLabel: "Shure MV7i",
+          cameraLabel: "Canon EOS R8",
+          outputLabel: "Shure MV7i Headphones",
+          cameraWanted: true,
+          status: "READY",
+          audioSignalState: "ready",
+          privateSamplePlaybackComplete: true,
+          playbackDecision: "HEARD_CLEAR",
+          issueCodes: [],
+          testedAt: "2026-08-05T17:55:00.000Z",
+          expiresAt: "2026-08-05T19:55:00.000Z",
+        },
+      ],
+    });
+
+    expect(topology.people[0].preflights).toEqual([
+      expect.objectContaining({
+        id: "preflight-current",
+        current: true,
+        microphoneLabel: "Shure MV7i",
+        outputLabel: "Shure MV7i Headphones",
+      }),
+    ]);
+    expect(topology.summary.currentPreflightCount).toBe(1);
+    expect(topology.summary.attentionCount).toBe(0);
+  });
 });

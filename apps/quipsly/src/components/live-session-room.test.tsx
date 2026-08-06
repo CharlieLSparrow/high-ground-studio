@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
 import { LiveSessionRoom } from "./live-session-room";
 
+const mockRouterRefresh = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: mockRouterRefresh }),
+}));
+
 jest.mock("@/components/browser-source-recorder", () => ({
   BrowserSourceRecorder: ({
     captureGroupId,

@@ -26,10 +26,15 @@ import {
   RoomEvent,
   Track,
 } from "livekit-client";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserSourceRecorder } from "@/components/browser-source-recorder";
 import { SessionGuardianCard } from "@/components/session-guardian-card";
-import { StudioSoundCheck } from "@/components/studio-sound-check";
+import {
+  StudioSoundCheck,
+  type StudioSoundCheckDecision,
+  type StudioSoundCheckDecisionResult,
+} from "@/components/studio-sound-check";
 import {
   decodeEpisodeWatchLiveHint,
   dispatchEpisodeWatchIncoming,
@@ -315,6 +320,7 @@ export function LiveSessionRoom({
   compact?: boolean;
   narrow?: boolean;
 }) {
+  const router = useRouter();
   const experience = useMemo(
     () => sessionExperienceForPurpose(purpose || (kind === "episode" ? "PODCAST" : "COACHING")),
     [kind, purpose],
@@ -424,6 +430,60 @@ export function LiveSessionRoom({
     setCameraEvidence(null);
   }, []);
   const currentPreflightStream = useCallback(() => preflightStreamRef.current, []);
+
+  const saveSoundCheckDecision = useCallback(async (
+    decision: StudioSoundCheckDecision,
+  ): Promise<StudioSoundCheckDecisionResult> => {
+    const microphoneLabel = microphones.find((device) => device.deviceId === microphoneId)?.label || "";
+    const cameraLabel = cameraWanted
+      ? cameras.find((device) => device.deviceId === cameraId)?.label || ""
+      : "";
+    const outputLabel = outputs.find((device) => device.deviceId === outputId)?.label
+      || (supportsOutputSelection ? "System default" : "System output selected outside this browser");
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(callRoomId)}/preflight`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          ...decision,
+          clientInstanceId: browserDeviceId(),
+          clientKind: "web",
+          deviceLabel: navigator.platform ? `Quipsly Web · ${navigator.platform}` : "Quipsly Web",
+          microphoneLabel,
+          cameraLabel,
+          outputLabel,
+          cameraWanted,
+          audioEvidence: meterEvidence,
+          cameraEvidence,
+          clientReportedAt: new Date().toISOString(),
+        }),
+      });
+      const packet = await response.json().catch(() => ({})) as {
+        ok?: boolean;
+        error?: string;
+        nextAction?: string;
+        preflight?: { status?: "READY" | "NEEDS_ATTENTION" };
+      };
+      if (!response.ok || !packet.ok) {
+        return {
+          ok: false,
+          message: packet.error || "Quipsly could not save the setup receipt. The private sample remains in this tab; retry the same decision.",
+        };
+      }
+      router.refresh();
+      return {
+        ok: true,
+        status: packet.preflight?.status,
+        message: `${packet.preflight?.status === "READY" ? "Setup receipt ready" : "Setup receipt needs attention"}. ${packet.nextAction || "Refresh Session readiness to share this endpoint result with collaborators."} No private audio was uploaded.`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: `${error instanceof Error ? error.message : "The setup receipt response was lost."} The private sample remains in this tab; retry the same decision and Quipsly will use the same request ID.`,
+      };
+    }
+  }, [callRoomId, cameraEvidence, cameraId, cameraWanted, cameras, meterEvidence, microphoneId, microphones, outputId, outputs, router, supportsOutputSelection]);
 
   const refreshProviderRecording = useCallback(async (announceFailure = false) => {
     try {
@@ -1077,6 +1137,8 @@ export function LiveSessionRoom({
               microphoneLabel={microphones.find((device) => device.deviceId === microphoneId)?.label || ""}
               outputId={outputId}
               evidence={meterEvidence}
+              setupKey={[microphoneId, cameraWanted ? cameraId : "camera-off", outputId || "system-output"].join(":")}
+              onDecision={saveSoundCheckDecision}
               disabled={!preflightStreamRef.current || status !== "ready"}
             />
           ) : null}

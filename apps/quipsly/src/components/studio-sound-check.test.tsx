@@ -1,21 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+/** @jest-environment jsdom */
+
+import "@testing-library/jest-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { StudioSoundCheck } from "./studio-sound-check";
 
 class TestMediaRecorder {
-  static isTypeSupported(type: string) {
-    return type === "audio/webm;codecs=opus";
-  }
-
+  static isTypeSupported = jest.fn(() => true);
   state: "inactive" | "recording" = "inactive";
-  mimeType: string;
-  ondataavailable: ((event: BlobEvent) => void) | null = null;
+  mimeType = "audio/webm;codecs=opus";
+  ondataavailable: ((event: { data: Blob }) => void) | null = null;
   onerror: (() => void) | null = null;
   onstop: (() => void) | null = null;
 
-  constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
-    this.mimeType = options?.mimeType || "audio/webm";
-  }
+  constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {}
 
   start() {
     this.state = "recording";
@@ -23,57 +21,126 @@ class TestMediaRecorder {
 
   stop() {
     this.state = "inactive";
-    this.ondataavailable?.({ data: new Blob(["private sample"], { type: this.mimeType }) } as BlobEvent);
+    this.ondataavailable?.({ data: new Blob(["private-sample"], { type: this.mimeType }) });
     this.onstop?.();
   }
 }
 
+class TestMediaStream {
+  private readonly tracks: MediaStreamTrack[];
+
+  constructor(tracks: MediaStreamTrack[] = []) {
+    this.tracks = tracks;
+  }
+
+  getAudioTracks() {
+    return this.tracks;
+  }
+}
+
+const evidence = {
+  state: "ready" as const,
+  rmsDbfs: -24,
+  samplePeakDbfs: -8,
+  clippedSampleCount: 0,
+  sampleCount: 2_048,
+  peakHoldDbfs: -5,
+  clippedSampleCountSinceStart: 0,
+  sampleRateHz: 48_000,
+  channelCount: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: false,
+};
+
 describe("StudioSoundCheck", () => {
-  const OriginalMediaRecorder = global.MediaRecorder;
-  const OriginalMediaStream = global.MediaStream;
-  const originalCreateObjectUrl = URL.createObjectURL;
-  const originalRevokeObjectUrl = URL.revokeObjectURL;
+  const originalMediaRecorder = global.MediaRecorder;
+  const originalMediaStream = global.MediaStream;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const originalPause = HTMLMediaElement.prototype.pause;
 
   beforeEach(() => {
     Object.defineProperty(global, "MediaRecorder", { configurable: true, value: TestMediaRecorder });
-    Object.defineProperty(global, "MediaStream", {
-      configurable: true,
-      value: class {
-        constructor(public tracks: MediaStreamTrack[]) {}
-      },
-    });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:private-sound-check") });
+    Object.defineProperty(global, "MediaStream", { configurable: true, value: TestMediaStream });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: jest.fn(() => "blob:private-check") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: jest.fn() });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: jest.fn() });
+    if (!crypto.randomUUID) {
+      Object.defineProperty(crypto, "randomUUID", { configurable: true, value: jest.fn(() => "64c22a6b-186a-49c4-97ca-7e4c08b27ae5") });
+    }
   });
 
-  afterEach(() => {
-    Object.defineProperty(global, "MediaRecorder", { configurable: true, value: OriginalMediaRecorder });
-    Object.defineProperty(global, "MediaStream", { configurable: true, value: OriginalMediaStream });
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectUrl });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectUrl });
-    jest.restoreAllMocks();
+  afterAll(() => {
+    Object.defineProperty(global, "MediaRecorder", { configurable: true, value: originalMediaRecorder });
+    Object.defineProperty(global, "MediaStream", { configurable: true, value: originalMediaStream });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+    Object.defineProperty(HTMLMediaElement.prototype, "pause", { configurable: true, value: originalPause });
   });
 
-  it("keeps the local sample unavailable until the selected setup is live", () => {
-    render(<StudioSoundCheck getInputStream={() => null} microphoneLabel="Shure MV7i" outputId="" evidence={null} disabled />);
-
-    expect(screen.getByRole("region", { name: "Private studio sound check" })).toHaveTextContent(/never uploaded, attached, or treated as a retained recording/i);
-    expect(screen.getByRole("button", { name: "Record private sample" })).toBeDisabled();
-    expect(screen.queryByLabelText("Private call-path sound-check sample")).not.toBeInTheDocument();
-  });
-
-  it("records, stops, and exposes only a tab-local playback sample", () => {
-    const track = { readyState: "live" } as MediaStreamTrack;
-    const stream = { getAudioTracks: () => [track] } as unknown as MediaStream;
-    render(<StudioSoundCheck getInputStream={() => stream} microphoneLabel="Shure MV7i" outputId="" evidence={null} />);
+  it("requires full playback and records only the listener decision callback", async () => {
+    const onDecision = jest.fn().mockResolvedValue({
+      ok: true,
+      status: "READY",
+      message: "Setup receipt ready. No private audio was uploaded.",
+    });
+    const stream = { getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
+    render(
+      <StudioSoundCheck
+        getInputStream={() => stream}
+        microphoneLabel="Shure MV7i"
+        outputId="mv7i-headphones"
+        evidence={evidence}
+        setupKey="mv7i:canon:mv7i-headphones"
+        onDecision={onDecision}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
-    expect(screen.getByRole("button", { name: "Stop and listen" })).toBeEnabled();
-    expect(screen.getByText(/Recording 10 private seconds from Shure MV7i/i)).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Stop and listen" }));
-    expect(screen.getByLabelText("Private call-path sound-check sample")).toHaveAttribute("src", "blob:private-sound-check");
-    expect(screen.getByText(/bytes remain only in this browser tab/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Clear sample" })).toBeEnabled();
+
+    const clearButton = await screen.findByRole("button", { name: "Sounds clear in headphones" });
+    expect(clearButton).toBeDisabled();
+    const audio = screen.getByLabelText("Private call-path sound-check sample");
+    fireEvent.ended(audio);
+    expect(clearButton).toBeEnabled();
+    fireEvent.click(clearButton);
+
+    await waitFor(() => expect(onDecision).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: expect.any(String),
+      playbackDecision: "HEARD_CLEAR",
+      privateSamplePlaybackComplete: true,
+    })));
+    expect(screen.getByRole("status")).toHaveTextContent(/no private audio was uploaded/i);
+  });
+
+  it("invalidates the tab-only sample when any selected studio endpoint changes", async () => {
+    const stream = { getAudioTracks: () => [{ readyState: "live" }] } as unknown as MediaStream;
+    const { rerender } = render(
+      <StudioSoundCheck
+        getInputStream={() => stream}
+        microphoneLabel="Shure MV7i"
+        outputId="mv7i-headphones"
+        evidence={evidence}
+        setupKey="mv7i:canon:mv7i-headphones"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Record private sample" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop and listen" }));
+    await screen.findByLabelText("Private call-path sound-check sample");
+
+    rerender(
+      <StudioSoundCheck
+        getInputStream={() => stream}
+        microphoneLabel="Shure MV7i"
+        outputId="mac-speakers"
+        evidence={evidence}
+        setupKey="mv7i:canon:mac-speakers"
+      />,
+    );
+
+    expect(screen.queryByLabelText("Private call-path sound-check sample")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/studio setup changed/i);
   });
 });

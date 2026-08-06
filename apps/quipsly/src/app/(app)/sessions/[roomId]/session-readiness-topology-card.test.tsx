@@ -28,6 +28,24 @@ const topology: SessionReadinessTopology = {
       leaseActive: true,
       truth: "join-grant-receipt",
     }],
+    preflights: [{
+      id: "preflight-1",
+      clientInstanceId: "mac-browser",
+      clientKind: "web",
+      deviceLabel: "Quipsly Web · Mac",
+      microphoneLabel: "Shure MV7i",
+      cameraLabel: "Canon EOS R8",
+      outputLabel: "Shure MV7i Headphones",
+      cameraWanted: true,
+      status: "READY",
+      audioSignalState: "ready",
+      privateSamplePlaybackComplete: true,
+      playbackDecision: "HEARD_CLEAR",
+      issueCodes: [],
+      testedAt: "2026-08-05T17:55:00.000Z",
+      expiresAt: "2026-08-05T19:55:00.000Z",
+      current: true,
+    }],
     sources: [{
       id: "asset-1",
       evidenceKind: "recording-asset",
@@ -49,6 +67,7 @@ const topology: SessionReadinessTopology = {
     peopleCount: 1,
     consentReadyCount: 1,
     knownEndpointCount: 1,
+    currentPreflightCount: 1,
     retainedSourceCount: 1,
     verifiedSourceCount: 1,
     pendingCaptureCount: 0,
@@ -102,6 +121,9 @@ describe("Session readiness topology card", () => {
 
     expect(screen.getByRole("heading", { name: "Scott Sparrow" })).toBeInTheDocument();
     expect(screen.getByText("Scott master.m4a")).toBeInTheDocument();
+    expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent?.includes("Output: Shure MV7i Headphones") === true)).toBeInTheDocument();
+    expect(screen.getByText("Ready now")).toBeInTheDocument();
+    expect(screen.getByText(/sample bytes stayed in that browser tab/i)).toBeInTheDocument();
     expect(await screen.findByText(/provider-observed now/i)).toBeInTheDocument();
     expect(screen.getByText("Audio live")).toBeInTheDocument();
     expect(screen.getByText("Video muted")).toBeInTheDocument();

@@ -7816,3 +7816,31 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   desk, connect transcript words and source-clock navigation, then have Charlie
   confirm or reject retained suggestions before generating matched A/B repair
   experiments.
+
+## 2026-08-05 durable Session preflight checkpoint
+
+- Replaced the ephemeral sound-check result with an append-only Session receipt
+  bound to the exact participant and browser endpoint. The ten-second sample
+  remains tab-only; Nest retains bounded device/evidence facts, the full-playback
+  result, human decision, server-computed issues, and a two-hour lease.
+- The server refuses a client-painted green state. Ready requires complete
+  playback, a human `HEARD_CLEAR` decision, healthy call-path evidence, and
+  camera evidence when requested. Needs-adjustment and expired receipts remain
+  visible without becoming retained-source, provider-presence, or consent
+  claims.
+- First-time participant identity and receipt idempotency are independently
+  serialized with PostgreSQL advisory locks. Concurrent first checks converge
+  on one participant, exact retries reuse one receipt, and changed evidence
+  under the same request identity fails closed.
+- Operated the real local Session as the retained coach test identity. The
+  browser enumerated the physical Shure MV7i input/output, reported no useful
+  signal, captured and fully played a 5.7885-second private sample, and saved a
+  truthful needs-adjustment receipt. Reloaded Session topology and independent
+  PostgreSQL readback matched the exact endpoint and explicit no-upload/no-byte-
+  retention boundary.
+- The Canon R8 was not visible during this operation, and no human certified
+  the Shure path as clear. This is production-shaped negative readiness proof,
+  not a successful studio calibration, provider join, retained recording,
+  physical-iPhone result, or production deployment.
+- Architecture and operated evidence are recorded in
+  `docs/coordination/2026-08-05-session-preflight-receipt.md`.

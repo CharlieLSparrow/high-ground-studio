@@ -10,6 +10,19 @@ import {
 
 const SOUND_CHECK_SECONDS = 10;
 
+export type StudioSoundCheckDecision = {
+  requestId: string;
+  playbackDecision: "HEARD_CLEAR" | "NEEDS_ADJUSTMENT";
+  privateSampleDurationSeconds: number;
+  privateSamplePlaybackComplete: true;
+};
+
+export type StudioSoundCheckDecisionResult = {
+  ok: boolean;
+  status?: "READY" | "NEEDS_ATTENTION";
+  message: string;
+};
+
 function supportedAudioMimeType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
   return [
@@ -29,12 +42,16 @@ export function StudioSoundCheck({
   microphoneLabel,
   outputId,
   evidence,
+  setupKey,
+  onDecision,
   disabled = false,
 }: {
   getInputStream: () => MediaStream | null;
   microphoneLabel: string;
   outputId: string;
   evidence: StudioAudioMeterEvidence | null;
+  setupKey?: string;
+  onDecision?: (decision: StudioSoundCheckDecision) => Promise<StudioSoundCheckDecisionResult>;
   disabled?: boolean;
 }) {
   const [phase, setPhase] = useState<"idle" | "recording" | "ready" | "error">("idle");
@@ -42,6 +59,8 @@ export function StudioSoundCheck({
   const [remainingSeconds, setRemainingSeconds] = useState(SOUND_CHECK_SECONDS);
   const [sampleUrl, setSampleUrl] = useState<string | null>(null);
   const [sampleDurationSeconds, setSampleDurationSeconds] = useState<number | null>(null);
+  const [playbackComplete, setPlaybackComplete] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
@@ -50,7 +69,8 @@ export function StudioSoundCheck({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sampleUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-  const previousMicrophoneLabelRef = useRef(microphoneLabel);
+  const sampleRequestIdRef = useRef<string | null>(null);
+  const previousSetupKeyRef = useRef(setupKey || microphoneLabel);
   const guidance = studioSoundCheckGuidance(evidence);
 
   const clearTimers = useCallback(() => {
@@ -67,6 +87,9 @@ export function StudioSoundCheck({
     sampleUrlRef.current = null;
     setSampleUrl(null);
     setSampleDurationSeconds(null);
+    setPlaybackComplete(false);
+    setReviewBusy(false);
+    sampleRequestIdRef.current = null;
     setRemainingSeconds(SOUND_CHECK_SECONDS);
     setPhase("idle");
     setMessage(nextMessage);
@@ -94,6 +117,7 @@ export function StudioSoundCheck({
     }
 
     clearSample("Preparing the private sample…");
+    sampleRequestIdRef.current = crypto.randomUUID();
     chunksRef.current = [];
     const mimeType = supportedAudioMimeType();
     try {
@@ -161,11 +185,12 @@ export function StudioSoundCheck({
   }, [outputId, sampleUrl]);
 
   useEffect(() => {
-    if (previousMicrophoneLabelRef.current === microphoneLabel) return;
-    previousMicrophoneLabelRef.current = microphoneLabel;
+    const currentSetupKey = setupKey || microphoneLabel;
+    if (previousSetupKeyRef.current === currentSetupKey) return;
+    previousSetupKeyRef.current = currentSetupKey;
     if (phase === "recording") stopRecording();
-    clearSample("The microphone selection changed. Run the setup test and record a fresh private sample.");
-  }, [clearSample, microphoneLabel, phase, stopRecording]);
+    clearSample("The studio setup changed. Run the selected-device test and record a fresh private sample.");
+  }, [clearSample, microphoneLabel, phase, setupKey, stopRecording]);
 
   useEffect(() => {
     // React development Strict Mode mounts, cleans up, then mounts this effect
@@ -188,6 +213,33 @@ export function StudioSoundCheck({
       : guidance.tone === "ready"
         ? "border-emerald-300 bg-emerald-50 text-emerald-950"
         : "border-[#d8c7a7] bg-white text-[#5b472f]";
+
+  const decide = useCallback(async (playbackDecision: StudioSoundCheckDecision["playbackDecision"]) => {
+    if (!sampleRequestIdRef.current || !sampleDurationSeconds || !playbackComplete || reviewBusy) return;
+    setReviewBusy(true);
+    setMessage("Saving a device-and-evidence receipt only. The private audio remains in this tab.");
+    try {
+      const result = onDecision
+        ? await onDecision({
+            requestId: sampleRequestIdRef.current,
+            playbackDecision,
+            privateSampleDurationSeconds: sampleDurationSeconds,
+            privateSamplePlaybackComplete: true,
+          })
+        : {
+            ok: true,
+            status: playbackDecision === "HEARD_CLEAR" ? "READY" as const : "NEEDS_ATTENTION" as const,
+            message: playbackDecision === "HEARD_CLEAR"
+              ? "You confirmed the private playback locally. No shared setup receipt was requested."
+              : "You marked this local setup for adjustment. No shared setup receipt was requested.",
+          };
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The setup receipt could not be saved. The private sample remains in this tab; retry the same decision.");
+    } finally {
+      setReviewBusy(false);
+    }
+  }, [onDecision, playbackComplete, reviewBusy, sampleDurationSeconds]);
 
   return (
     <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-4" aria-label="Private studio sound check">
@@ -217,7 +269,24 @@ export function StudioSoundCheck({
       {sampleUrl ? (
         <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-black uppercase tracking-wide text-violet-900"><span className="flex items-center gap-2"><Volume2 size={14} aria-hidden="true" />Call-path sample</span><span>{sampleDurationSeconds?.toFixed(1)} seconds · tab only</span></div>
-          <audio ref={audioRef} src={sampleUrl} controls preload="metadata" className="mt-2 w-full" aria-label="Private call-path sound-check sample" />
+          <audio
+            ref={audioRef}
+            src={sampleUrl}
+            controls
+            preload="metadata"
+            className="mt-2 w-full"
+            aria-label="Private call-path sound-check sample"
+            onPlay={() => setPlaybackComplete(false)}
+            onEnded={() => {
+              setPlaybackComplete(true);
+              setMessage("Full private sample played. Confirm whether you heard the intended microphone clearly through the intended headphones.");
+            }}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void decide("HEARD_CLEAR")} disabled={!playbackComplete || reviewBusy} className="min-h-11 rounded-full bg-emerald-800 px-4 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-45">{reviewBusy ? "Saving check…" : "Sounds clear in headphones"}</button>
+            <button type="button" onClick={() => void decide("NEEDS_ADJUSTMENT")} disabled={!playbackComplete || reviewBusy} className="min-h-11 rounded-full border border-amber-300 bg-amber-50 px-4 text-xs font-black uppercase tracking-wide text-amber-950 disabled:cursor-not-allowed disabled:opacity-45">Needs adjustment</button>
+          </div>
+          {!playbackComplete ? <p className="mt-2 text-[10px] font-bold leading-4 text-violet-950/70">Play the sample from beginning to end before recording a setup result. The meter alone cannot certify mouth noise, room sound, delay, or output routing.</p> : null}
         </div>
       ) : null}
 

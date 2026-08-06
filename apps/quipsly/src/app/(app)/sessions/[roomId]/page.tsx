@@ -126,6 +126,28 @@ export default async function SessionReviewPage({
             expiresAt: true,
           },
         },
+        participantPreflightReceipts: {
+          orderBy: { testedAt: "desc" },
+          take: 200,
+          select: {
+            id: true,
+            participantId: true,
+            clientInstanceId: true,
+            clientKind: true,
+            deviceLabel: true,
+            microphoneLabel: true,
+            cameraLabel: true,
+            outputLabel: true,
+            cameraWanted: true,
+            status: true,
+            audioSignalState: true,
+            privateSamplePlaybackComplete: true,
+            playbackDecision: true,
+            issueCodes: true,
+            testedAt: true,
+            expiresAt: true,
+          },
+        },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
@@ -306,6 +328,7 @@ export default async function SessionReviewPage({
         };
       }),
       grants: room.participantProviderGrants,
+      preflights: room.participantPreflightReceipts,
       recordings: room.recordingAssets,
       captures: Array.from(captureReceiptGroups.values()).map((capture) => ({
         captureId: capture.captureId,

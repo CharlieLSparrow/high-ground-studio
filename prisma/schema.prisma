@@ -1836,6 +1836,7 @@ model CallRoom {
   participants                  CallParticipant[]
   participantAccessReceipts     CallParticipantAccessReceipt[]
   participantProviderGrants     CallParticipantProviderGrantReceipt[]
+  participantPreflightReceipts  CallParticipantPreflightReceipt[]
   invitations                   CallRoomInvitation[]
   episodeBindingReceipts        CallRoomEpisodeBindingReceipt[]
   recordingConsents             RecordingConsent[]
@@ -2035,6 +2036,7 @@ model CallParticipant {
   accessChangedBy               User?                                 @relation("CallParticipantAccessChangedBy", fields: [accessChangedByUserId], references: [id], onDelete: SetNull)
   accessReceipts                CallParticipantAccessReceipt[]
   providerGrantReceipts         CallParticipantProviderGrantReceipt[]
+  preflightReceipts             CallParticipantPreflightReceipt[]
   recordingConsents             RecordingConsent[]
   recordingAssets               RecordingAsset[]
   transcriptSpeakerAttributions TranscriptSpeakerAttribution[]
@@ -2094,6 +2096,52 @@ model CallParticipantProviderGrantReceipt {
   @@index([participantId, expiresAt])
   @@index([roomId, providerIdentity, expiresAt], map: "CallProviderGrant_room_identity_expires_idx")
   @@index([providerRoomId, expiresAt], map: "CallProviderGrant_provider_room_expires_idx")
+}
+
+model CallParticipantPreflightReceipt {
+  id                            String   @id @default(cuid())
+  requestId                     String   @unique @db.Uuid
+  requestSha256                 String
+  roomId                        String
+  participantId                 String
+  actorUserId                   String
+  clientInstanceId              String
+  clientKind                    String
+  deviceLabel                   String?
+  microphoneLabel               String
+  cameraLabel                   String?
+  outputLabel                   String?
+  cameraWanted                  Boolean  @default(false)
+  status                        String
+  audioSignalState              String
+  rmsDbfs                       Float?
+  samplePeakDbfs                Float?
+  peakHoldDbfs                  Float?
+  clippedSampleCount            Int      @default(0)
+  sampleRateHz                  Int?
+  channelCount                  Int?
+  echoCancellation              Boolean?
+  noiseSuppression              Boolean?
+  autoGainControl               Boolean?
+  cameraWidth                   Int?
+  cameraHeight                  Int?
+  cameraFrameRate               Float?
+  privateSampleDurationSeconds  Float?
+  privateSamplePlaybackComplete Boolean  @default(false)
+  playbackDecision              String
+  issueCodes                    String[] @default([])
+  evidenceJson                  Json     @default("{}")
+  testedAt                      DateTime
+  expiresAt                     DateTime
+  createdAt                     DateTime @default(now())
+
+  room        CallRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant CallParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, testedAt])
+  @@index([participantId, clientInstanceId, testedAt], map: "CallPreflight_participant_client_tested_idx")
+  @@index([roomId, status, expiresAt])
+  @@index([actorUserId, testedAt])
 }
 
 model CallRoomInvitation {

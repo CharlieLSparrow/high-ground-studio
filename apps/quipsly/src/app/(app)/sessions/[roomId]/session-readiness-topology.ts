@@ -44,6 +44,25 @@ export type SessionTopologyCaptureInput = {
   lastReceivedAt: Date | string;
 };
 
+export type SessionTopologyPreflightInput = {
+  id: string;
+  participantId: string;
+  clientInstanceId: string;
+  clientKind: string;
+  deviceLabel?: string | null;
+  microphoneLabel: string;
+  cameraLabel?: string | null;
+  outputLabel?: string | null;
+  cameraWanted: boolean;
+  status: string;
+  audioSignalState: string;
+  privateSamplePlaybackComplete: boolean;
+  playbackDecision: string;
+  issueCodes: string[];
+  testedAt: Date | string;
+  expiresAt: Date | string;
+};
+
 export type SessionReadinessEndpoint = {
   id: string;
   clientKind: string;
@@ -70,6 +89,25 @@ export type SessionReadinessSource = {
   verified: boolean;
 };
 
+export type SessionReadinessPreflight = {
+  id: string;
+  clientInstanceId: string;
+  clientKind: string;
+  deviceLabel: string;
+  microphoneLabel: string;
+  cameraLabel: string | null;
+  outputLabel: string | null;
+  cameraWanted: boolean;
+  status: "READY" | "NEEDS_ATTENTION";
+  audioSignalState: string;
+  privateSamplePlaybackComplete: boolean;
+  playbackDecision: string;
+  issueCodes: string[];
+  testedAt: string;
+  expiresAt: string;
+  current: boolean;
+};
+
 export type SessionReadinessPerson = {
   id: string;
   label: string;
@@ -79,6 +117,7 @@ export type SessionReadinessPerson = {
   videoConsent: boolean;
   transcriptionConsent: boolean;
   endpoints: SessionReadinessEndpoint[];
+  preflights: SessionReadinessPreflight[];
   sources: SessionReadinessSource[];
   attentionCount: number;
 };
@@ -91,6 +130,7 @@ export type SessionReadinessTopology = {
     peopleCount: number;
     consentReadyCount: number;
     knownEndpointCount: number;
+    currentPreflightCount: number;
     retainedSourceCount: number;
     verifiedSourceCount: number;
     pendingCaptureCount: number;
@@ -113,6 +153,7 @@ export const EMPTY_SESSION_READINESS_TOPOLOGY: SessionReadinessTopology = {
     peopleCount: 0,
     consentReadyCount: 0,
     knownEndpointCount: 0,
+    currentPreflightCount: 0,
     retainedSourceCount: 0,
     verifiedSourceCount: 0,
     pendingCaptureCount: 0,
@@ -213,6 +254,7 @@ export function buildSessionReadinessTopology(input: {
   grants: SessionTopologyGrantInput[];
   recordings: SessionTopologyRecordingInput[];
   captures: SessionTopologyCaptureInput[];
+  preflights?: SessionTopologyPreflightInput[];
   generatedAt?: Date;
 }): SessionReadinessTopology {
   const generatedAt = input.generatedAt ?? new Date();
@@ -259,6 +301,15 @@ export function buildSessionReadinessTopology(input: {
     }
   }
 
+  const latestPreflightByEndpoint = new Map<string, SessionTopologyPreflightInput>();
+  for (const preflight of input.preflights ?? []) {
+    const key = [preflight.participantId, preflight.clientInstanceId].join("\0");
+    const current = latestPreflightByEndpoint.get(key);
+    if (!current || (iso(current.testedAt) ?? "") < (iso(preflight.testedAt) ?? "")) {
+      latestPreflightByEndpoint.set(key, preflight);
+    }
+  }
+
   const people = input.participants.map((participant) => {
     const endpoints = [...latestGrantByEndpoint.values()]
       .filter((grant) => grant.participantId === participant.id)
@@ -276,12 +327,39 @@ export function buildSessionReadinessTopology(input: {
       .filter((entry) => entry.participantId === participant.id)
       .map((entry) => entry.source)
       .sort((left, right) => (right.startedAt ?? "").localeCompare(left.startedAt ?? ""));
+    const preflights = [...latestPreflightByEndpoint.values()]
+      .filter((preflight) => preflight.participantId === participant.id)
+      .map((preflight): SessionReadinessPreflight => {
+        const testedAt = iso(preflight.testedAt) ?? generatedAt.toISOString();
+        const expiresAt = iso(preflight.expiresAt) ?? generatedAt.toISOString();
+        const status = preflight.status === "READY" ? "READY" as const : "NEEDS_ATTENTION" as const;
+        return {
+          id: preflight.id,
+          clientInstanceId: preflight.clientInstanceId,
+          clientKind: preflight.clientKind.toLowerCase() || "unknown",
+          deviceLabel: text(preflight.deviceLabel) || (preflight.clientKind.toLowerCase() === "ios" ? "Quipsly Capture" : "Quipsly Web"),
+          microphoneLabel: text(preflight.microphoneLabel) || "Microphone not identified",
+          cameraLabel: text(preflight.cameraLabel) || null,
+          outputLabel: text(preflight.outputLabel) || null,
+          cameraWanted: preflight.cameraWanted,
+          status,
+          audioSignalState: text(preflight.audioSignalState) || "inactive",
+          privateSamplePlaybackComplete: preflight.privateSamplePlaybackComplete,
+          playbackDecision: text(preflight.playbackDecision) || "not-reported",
+          issueCodes: Array.isArray(preflight.issueCodes) ? preflight.issueCodes.map(String) : [],
+          testedAt,
+          expiresAt,
+          current: status === "READY" && expiresAt > generatedAt.toISOString(),
+        };
+      })
+      .sort((left, right) => right.testedAt.localeCompare(left.testedAt));
     const consent = participant.role === "OBSERVER"
       ? "not-required" as const
       : participant.consent?.recordingReady
         ? "ready" as const
         : "missing-or-stale" as const;
     const attentionCount = (consent === "missing-or-stale" ? 1 : 0)
+      + preflights.filter((preflight) => preflight.status === "NEEDS_ATTENTION" && preflight.expiresAt > generatedAt.toISOString()).length
       + sources.filter((source) => source.evidenceKind === "capture-receipt" || source.status === "HELD" || source.status === "FAILED").length;
     return {
       id: participant.id,
@@ -292,6 +370,7 @@ export function buildSessionReadinessTopology(input: {
       videoConsent: participant.consent?.canRecordVideo === true,
       transcriptionConsent: participant.consent?.transcriptionReady === true,
       endpoints,
+      preflights,
       sources,
       attentionCount,
     };
@@ -311,6 +390,7 @@ export function buildSessionReadinessTopology(input: {
       peopleCount: people.length,
       consentReadyCount: people.filter((person) => person.consent === "ready" || person.consent === "not-required").length,
       knownEndpointCount: people.reduce((total, person) => total + person.endpoints.length, 0),
+      currentPreflightCount: people.reduce((total, person) => total + person.preflights.filter((preflight) => preflight.current).length, 0),
       retainedSourceCount: recordingSources.length,
       verifiedSourceCount: sources.filter((source) => source.verified).length,
       pendingCaptureCount: pendingCaptureSources.length,

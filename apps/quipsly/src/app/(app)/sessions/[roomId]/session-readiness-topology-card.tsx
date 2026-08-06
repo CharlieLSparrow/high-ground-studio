@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CircleAlert,
+  Headphones,
   Laptop,
   Mic2,
   Radio,
@@ -76,6 +77,10 @@ function sourceDetail(source: SessionReadinessSource) {
   return parts.join(" · ");
 }
 
+function preflightIssueLabel(value: string) {
+  return value.toLowerCase().replaceAll("_", " ");
+}
+
 function LiveTrackBadge({ label, track }: {
   label: string;
   track: LiveDevice["audio"] | LiveDevice["video"];
@@ -147,10 +152,11 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
       </button>
     </div>
 
-    <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
       <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">People</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.peopleCount}</dd><dd className="text-xs font-bold text-[#765f40]">{topology.summary.consentReadyCount} capture-consent ready</dd></div>
       <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Live now</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{presence?.connectedDeviceCount ?? "—"}</dd><dd className="text-xs font-bold text-[#765f40]">provider-observed endpoint{presence?.connectedDeviceCount === 1 ? "" : "s"}</dd></div>
       <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Prepared endpoints</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.knownEndpointCount}</dd><dd className="text-xs font-bold text-[#765f40]">join receipts, not presence</dd></div>
+      <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Setup checks</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.currentPreflightCount}</dd><dd className="text-xs font-bold text-[#765f40]">current private-playback receipts</dd></div>
       <div className="rounded-xl border border-white bg-white/90 p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Retained sources</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.retainedSourceCount}</dd><dd className="text-xs font-bold text-[#765f40]">{topology.summary.verifiedSourceCount} byte-verified</dd></div>
       <div className={`rounded-xl border p-3 ${topology.summary.attentionCount + (presence?.attentionCount ?? 0) ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50"}`}><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Attention</dt><dd className="mt-1 text-2xl font-black text-[#3d3122]">{topology.summary.attentionCount + (presence?.attentionCount ?? 0)}</dd><dd className="text-xs font-bold text-[#765f40]">explicit unresolved facts</dd></div>
     </dl>
@@ -176,6 +182,7 @@ export function SessionReadinessTopologyCard({ roomId, topology }: {
                 const Icon = clientIcon(device.clientKind);
                 return <li key={device.id} className="rounded-lg border border-emerald-200 bg-white p-3"><div className="flex items-start gap-2"><Icon size={16} className="mt-0.5 text-emerald-700" aria-hidden="true" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-[#3d3122]">{device.deviceLabel}</p><p className="mt-1 text-[10px] font-bold text-[#765f40]">Provider-observed now{device.joinedAt ? ` · joined ${timeLabel(device.joinedAt)}` : ""}</p><div className="mt-2 flex flex-wrap gap-1.5"><LiveTrackBadge label="Audio" track={device.audio} /><LiveTrackBadge label="Video" track={device.video} /></div></div></div></li>;
               })}</ul> : <p className="mt-3 rounded-lg border border-dashed border-sky-200 bg-white/75 p-3 text-xs font-bold text-sky-900">No provider-observed endpoint is currently matched to this person.</p>}
+              {person.preflights.length ? <details className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 p-3" open={person.preflights.some((preflight) => preflight.current || preflight.status === "NEEDS_ATTENTION")}><summary className="cursor-pointer text-xs font-black text-violet-950">Private playback setup checks</summary><ul className="mt-3 space-y-2">{person.preflights.map((preflight) => <li key={preflight.id} className="rounded-lg border border-violet-100 bg-white p-3 text-xs font-semibold leading-5 text-[#765f40]"><div className="flex flex-wrap items-start justify-between gap-2"><span className="flex items-center gap-2 font-black text-[#3d3122]"><Headphones size={14} aria-hidden="true" />{preflight.deviceLabel}</span><span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusTone(preflight.current ? "ready" : preflight.status)}`}>{preflight.current ? "Ready now" : preflight.status === "NEEDS_ATTENTION" ? "Needs adjustment" : "Expired"}</span></div><p className="mt-2"><strong>Mic:</strong> {preflight.microphoneLabel}<br /><strong>Output:</strong> {preflight.outputLabel || "system output not reported"}{preflight.cameraWanted ? <><br /><strong>Camera:</strong> {preflight.cameraLabel || "not verified"}</> : null}</p><p className="mt-2 text-[10px] font-bold">Full private sample {preflight.privateSamplePlaybackComplete ? "heard" : "not completed"} · signal {preflight.audioSignalState.replaceAll("-", " ")} · tested {timeLabel(preflight.testedAt)} · {preflight.current ? `valid until ${timeLabel(preflight.expiresAt)}` : "not a current readiness claim"}.</p>{preflight.issueCodes.length ? <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-950">{preflight.issueCodes.map(preflightIssueLabel).join(" · ")}</p> : null}<p className="mt-2 text-[9px] font-bold uppercase tracking-wide text-violet-800">Receipt only · sample bytes stayed in that browser tab</p></li>)}</ul></details> : null}
               {person.endpoints.length ? <details className="mt-3 rounded-lg border border-sky-100 bg-white/75 p-3"><summary className="cursor-pointer text-xs font-black text-sky-950">Prepared endpoint receipts</summary><ul className="mt-3 space-y-2">{person.endpoints.map((endpoint) => { const Icon = clientIcon(endpoint.clientKind); return <li key={endpoint.id} className="flex items-start gap-2 text-xs font-semibold text-[#765f40]"><Icon size={14} className="mt-0.5 shrink-0" aria-hidden="true" /><span><strong className="text-[#3d3122]">{endpoint.deviceLabel}</strong><br />Join grant {endpoint.leaseActive ? "still valid" : "expired"} · prepared {timeLabel(endpoint.preparedAt)}. This does not mean online.</span></li>; })}</ul></details> : null}
             </section>
 
