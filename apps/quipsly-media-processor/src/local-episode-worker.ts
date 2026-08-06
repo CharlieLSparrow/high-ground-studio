@@ -57,6 +57,10 @@ import {
   newLocalAudioAlignmentRuntime,
   runOneLocalAudioAlignmentJob,
 } from "./local-audio-alignment-worker.js";
+import {
+  newLocalAudioPairCorrelationRuntime,
+  runOneLocalAudioPairCorrelationJob,
+} from "./local-audio-pair-correlation-worker.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -537,6 +541,12 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const audioPairCorrelation = newLocalAudioPairCorrelationRuntime({
+    pool,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
@@ -564,9 +574,12 @@ async function main() {
       const transcriptResult = spectralResult.disposition === "idle"
         ? await runOneLocalStudioTranscriptJob(studioTranscript.store, studioTranscript.transcriber, studioTranscript.options)
         : spectralResult;
-      const result = transcriptResult.disposition === "idle"
+      const alignmentResult = transcriptResult.disposition === "idle"
         ? await runOneLocalAudioAlignmentJob(audioAlignment.store, audioAlignment.analyzer, audioAlignment.options)
         : transcriptResult;
+      const result = alignmentResult.disposition === "idle"
+        ? await runOneLocalAudioPairCorrelationJob(audioPairCorrelation.store, audioPairCorrelation.analyzer, audioPairCorrelation.options)
+        : alignmentResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

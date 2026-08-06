@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   AUDIO_PAIR_CORRELATION_RESULT_KIND,
@@ -8,6 +12,8 @@ import {
 } from "@high-ground/quipsly-media-processing";
 
 import { analyzeAudioPairCorrelation } from "./audio-pair-correlation.js";
+import { FfmpegAudioPairCorrelationAnalyzer } from "./audio-pair-correlation-ffmpeg.js";
+import { runOneLocalAudioPairCorrelationJob } from "./local-audio-pair-correlation-worker.js";
 
 const SAMPLE_RATE = 16_000;
 
@@ -60,6 +66,66 @@ test("binds a result to exact sources, program decisions, and analyzer settings"
   assert.equal(parseAudioPairCorrelationResult(receipt, job).measurement.sampleRate, 16_000);
   assert.throws(() => parseAudioPairCorrelationResult({ ...receipt, programFingerprintSha256: "9".repeat(64) }, job), /does not match/);
   assert.throws(() => parseAudioPairCorrelationResult({ ...receipt, analyzer: { ...receipt.analyzer, maximumLagMilliseconds: 500 } }, job), /analyzer contract/);
+});
+
+test("decodes two exact bounded WAV ranges through FFmpeg", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-audio-pair-test-"));
+  try {
+    const reference = patternedSignal(2, 7);
+    const observation = new Float32Array(reference.length);
+    const delaySamples = Math.round(SAMPLE_RATE * 0.08);
+    for (let index = 0; index < reference.length - delaySamples; index += 1) observation[index + delaySamples] = reference[index] * 0.5;
+    const referencePath = path.join(root, "reference.wav");
+    const observationPath = path.join(root, "observation.wav");
+    await Promise.all([writeFile(referencePath, pcm16Wav(reference)), writeFile(observationPath, pcm16Wav(observation))]);
+    const analyzer = new FfmpegAudioPairCorrelationAnalyzer();
+    const programClockRange = { programStartSeconds: 10, programEndSeconds: 12, sourceStartSeconds: 0, sourceEndSeconds: 2, alignment: "program-clock" as const, alignmentEvidenceJobId: null };
+    const result = await analyzer.analyze({
+      referencePath,
+      referenceRange: programClockRange,
+      observationPath,
+      observationRange: { ...programClockRange, alignment: "qualified-candidate", alignmentEvidenceJobId: "alignment_job_0001" },
+    });
+    assert.equal(result.measurement.bestLagMilliseconds, 80);
+    assert.ok(result.measurement.waveformCorrelationAtBestLag > 0.99);
+    assert.match(result.ffmpegVersion, /^ffmpeg version/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("worker verifies both retained sources before publishing an output-ready receipt", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "quipsly-audio-pair-worker-test-"));
+  try {
+    const referenceBytes = pcm16Wav(patternedSignal(2, 7));
+    const observationBytes = pcm16Wav(patternedSignal(2, 41));
+    const referencePath = path.join(root, "reference.wav");
+    const observationPath = path.join(root, "observation.wav");
+    await Promise.all([writeFile(referencePath, referenceBytes), writeFile(observationPath, observationBytes)]);
+    const source = (assetId: string, locator: string, bytes: Buffer) => {
+      const sha256 = createHash("sha256").update(bytes).digest("hex");
+      return { assetId, provider: "local" as const, locator, generation: `sha256:${sha256}`, sha256, sizeBytes: bytes.length, contentType: "audio/wav" };
+    };
+    const job = newAudioPairCorrelationJob({
+      ...correlationJob(),
+      jobId: "correlation_worker_job_0001",
+      reference: { ...correlationJob().reference, source: source("reference_worker_asset_0001", referencePath, referenceBytes), range: { ...correlationJob().reference.range, programStartSeconds: 0, programEndSeconds: 2, sourceStartSeconds: 0, sourceEndSeconds: 2 } },
+      observation: { ...correlationJob().observation, source: source("observation_worker_asset_0001", observationPath, observationBytes), range: { ...correlationJob().observation.range, programStartSeconds: 0, programEndSeconds: 2, sourceStartSeconds: 0, sourceEndSeconds: 2 } },
+    });
+    let completedReceipt: unknown = null;
+    const store = {
+      claim: async () => ({ id: job.jobId, inputJson: job, attempt: 1, executionId: "correlation_worker_execution_0001" }),
+      complete: async (input: { receipt: unknown }) => { completedReceipt = input.receipt; return true; },
+      retry: async () => { throw new Error("unexpected retry"); },
+      fail: async () => { throw new Error("unexpected failure"); },
+    };
+    const result = await runOneLocalAudioPairCorrelationJob(store, new FfmpegAudioPairCorrelationAnalyzer(), { executionId: "correlation_worker_execution_0001", buildId: "worker-test", imageDigest: null, leaseMs: 60_000, localMediaRoot: root, now: () => new Date("2026-08-06T15:02:00.000Z") });
+
+    assert.equal(result.disposition, "completed");
+    assert.equal(parseAudioPairCorrelationResult(completedReceipt, job).boundaries.exactSourcesVerifiedBeforeAndAfter, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 function patternedSignal(seconds: number, seed: number) {
@@ -116,4 +182,23 @@ function correlationJob() {
       range: { programStartSeconds: 20, programEndSeconds: 22, sourceStartSeconds: 19.8, sourceEndSeconds: 21.8, alignment: "qualified-candidate", alignmentEvidenceJobId: "alignment_job_0001" },
     },
   });
+}
+
+function pcm16Wav(samples: Float32Array) {
+  const dataBytes = samples.length * 2;
+  const buffer = Buffer.alloc(44 + dataBytes);
+  buffer.write("RIFF", 0, "ascii");
+  buffer.writeUInt32LE(36 + dataBytes, 4);
+  buffer.write("WAVEfmt ", 8, "ascii");
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(SAMPLE_RATE, 24);
+  buffer.writeUInt32LE(SAMPLE_RATE * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36, "ascii");
+  buffer.writeUInt32LE(dataBytes, 40);
+  for (let index = 0; index < samples.length; index += 1) buffer.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(samples[index] * 32767))), 44 + index * 2);
+  return buffer;
 }
