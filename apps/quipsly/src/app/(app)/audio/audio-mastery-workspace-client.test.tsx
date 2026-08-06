@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { AudioMasteryWorkspaceClient } from "./audio-mastery-workspace-client";
 
@@ -164,6 +164,20 @@ describe("AudioMasteryWorkspaceClient", () => {
     expect(screen.getByRole("button", { name: /Build signal map/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Transcribe canonical source/ })).toBeEnabled();
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/media-vault/audio-mastery?"), expect.objectContaining({ cache: "no-store" })));
+  });
+
+  it("opens an exact source-clock handoff without claiming playback", async () => {
+    global.fetch = workspaceFetch({ released: true });
+
+    render(<AudioMasteryWorkspaceClient projects={projects} initialProjectSlug="high-ground-odyssey" initialEpisodeSlug="episode-9" initialAssetId="asset-1" initialFocusSeconds={8.25} initialFocusId="transcript_attempt:segment-1" />);
+
+    const media = await screen.findByLabelText("Immutable source audio for Homer local master.wav") as HTMLMediaElement;
+    Object.defineProperty(media, "duration", { configurable: true, value: 30 });
+    fireEvent.loadedMetadata(media);
+    expect(media.currentTime).toBeCloseTo(8.25, 3);
+    expect(media.paused).toBe(true);
+    expect(screen.getByRole("status")).toHaveTextContent("Opened at exact source time 8.250s");
+    expect(screen.getByRole("status")).toHaveTextContent("Playback remains a deliberate human action");
   });
 
   it("shows held source evidence but disables processing operations", async () => {

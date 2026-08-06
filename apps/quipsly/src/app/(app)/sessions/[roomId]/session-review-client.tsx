@@ -51,6 +51,8 @@ import { SessionRecordingImportCard } from "./session-recording-import-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
+import { SessionSourceClockAttentionCard } from "./session-source-clock-attention-card";
+import type { SessionSourceClockAttention } from "./session-source-clock-attention";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
   EditableSessionNoteKind,
@@ -1853,7 +1855,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, sourceClockAttention = null, focusedAttentionId = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1869,6 +1871,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
   finishingEvidence?: SessionFinishingEvidence;
+  sourceClockAttention?: SessionSourceClockAttention | null;
+  focusedAttentionId?: string | null;
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
@@ -2293,6 +2297,8 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
             : <WorkspaceEmptyState title="No Studio output context" detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt." />}
         </div>
       ) : null}
+
+      {mode === "transcript" && sourceClockAttention ? <SessionSourceClockAttentionCard attention={sourceClockAttention} initialItemId={focusedAttentionId} /> : null}
 
       {mode === "transcript" ? (loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the Session’s transcript evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript workspace is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved Session was not changed.</p></section> : <>
         <section className="grid gap-4 lg:grid-cols-3" aria-label="Session evidence status">

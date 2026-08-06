@@ -75,12 +75,16 @@ export function AudioMasteryWorkspaceClient({
   initialProjectSlug,
   initialEpisodeSlug,
   initialAssetId,
+  initialFocusSeconds = null,
+  initialFocusId = null,
   loadError = null,
 }: {
   projects: AudioWorkspaceProjectOption[];
   initialProjectSlug: string;
   initialEpisodeSlug: string;
   initialAssetId: string | null;
+  initialFocusSeconds?: number | null;
+  initialFocusId?: string | null;
   loadError?: string | null;
 }) {
   const router = useRouter();
@@ -101,6 +105,8 @@ export function AudioMasteryWorkspaceClient({
   const [statusRefreshToken, setStatusRefreshToken] = useState(0);
   const [inventoryRefreshToken, setInventoryRefreshToken] = useState(0);
   const operationSequence = useRef(0);
+  const immutableSourceRef = useRef<HTMLMediaElement | null>(null);
+  const sourceClockFocusAppliedRef = useRef("");
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.slug === projectSlug) ?? null,
@@ -117,6 +123,21 @@ export function AudioMasteryWorkspaceClient({
     () => audioWorkspaceSignal(signalStatus),
     [signalStatus?.audioSignal],
   );
+
+  const applyInitialSourceClockFocus = useCallback((media: HTMLMediaElement) => {
+    if (initialFocusSeconds === null || !selectedAsset) return;
+    const key = `${selectedAsset.sourceId}:${initialFocusSeconds}`;
+    if (sourceClockFocusAppliedRef.current === key) return;
+    const duration = Number.isFinite(media.duration) ? media.duration : initialFocusSeconds;
+    media.currentTime = Math.max(0, Math.min(initialFocusSeconds, Math.max(0, duration - 0.001)));
+    sourceClockFocusAppliedRef.current = key;
+  }, [initialFocusSeconds, selectedAsset]);
+
+  useEffect(() => {
+    const media = immutableSourceRef.current;
+    if (!media || media.readyState < 1) return;
+    applyInitialSourceClockFocus(media);
+  }, [applyInitialSourceClockFocus]);
 
   const replaceSelection = useCallback((nextProject: string, nextEpisode: string, nextAsset?: string | null) => {
     setProjectSlug(nextProject);
@@ -742,7 +763,7 @@ export function AudioMasteryWorkspaceClient({
           </aside>
 
           <main className="min-w-0 space-y-4">
-            <section className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
+            <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-fuchsia-200"><FileAudio2 className="h-4 w-4" aria-hidden="true" /> Immutable source</div>
@@ -753,7 +774,8 @@ export function AudioMasteryWorkspaceClient({
                   {statusLoading ? "reading evidence" : status?.status?.replaceAll("-", " ") || "not measured"}
                 </span>
               </div>
-              <audio src={selectedAsset.playbackUrl} controls preload="metadata" className="mt-4 w-full" aria-label={`Immutable source audio for ${selectedAsset.originalName}`} />
+              {initialFocusSeconds !== null ? <div className="mt-3 rounded-lg border border-cyan-700 bg-cyan-950/40 px-3 py-2 text-[10px] font-black text-cyan-100" role="status">Opened at exact source time {initialFocusSeconds.toFixed(3)}s{initialFocusId ? ` for ${initialFocusId}` : ""}. Playback remains a deliberate human action.</div> : null}
+              <audio ref={(node) => { immutableSourceRef.current = node; }} src={selectedAsset.playbackUrl} controls preload="metadata" className="mt-4 w-full" aria-label={`Immutable source audio for ${selectedAsset.originalName}`} onLoadedMetadata={(event) => applyInitialSourceClockFocus(event.currentTarget)} />
               <div className="mt-4 grid gap-2 sm:grid-cols-5" aria-label="Audio delivery lifecycle">
                 {lifecycle.map((step) => (
                   <div key={step.id} className={`rounded-xl border px-3 py-3 ${step.complete ? "border-emerald-700 bg-emerald-950" : "border-slate-700 bg-slate-900"}`}>

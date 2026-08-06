@@ -15,10 +15,17 @@ type SearchParams = {
   project?: string;
   episode?: string;
   asset?: string;
+  at?: string;
+  focus?: string;
 };
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function sourceClockSeconds(value: unknown) {
+  const parsed = Number(text(value));
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 86_400 ? parsed : null;
 }
 
 function publicLoadError(error: unknown) {
@@ -119,6 +126,8 @@ export default async function AudioMasteryWorkspacePage({
       initialProjectSlug={selectedProject?.slug ?? ""}
       initialEpisodeSlug={selectedEpisode?.slug ?? ""}
       initialAssetId={text(resolved.asset) || null}
+      initialFocusSeconds={sourceClockSeconds(resolved.at)}
+      initialFocusId={text(resolved.focus).slice(0, 240) || null}
       loadError={loadError}
     />
   );

@@ -17,6 +17,7 @@ export type SessionFinishingEvidence = {
     updatedAt: string;
   }>;
   analyzedSourceCount: number;
+  sourceClockAttention?: { total: number; high: number; review: number };
 };
 
 type ContentReadiness = {
@@ -145,6 +146,14 @@ export function buildSessionFinishingCockpit(input: {
     detail: "A complete decoded signal scan or audible-event analysis is not projected for every source.",
     consequence: "Repair and automated assembly could miss clipping, silence, route loss, overlap, or boundary risk.",
   });
+  if ((finishingEvidence.sourceClockAttention?.total ?? 0) > 0) attention.push({
+    id: "source-clock-review",
+    severity: (finishingEvidence.sourceClockAttention?.high ?? 0) > 0 ? "HIGH" : "REVIEW",
+    lane: "transcript",
+    title: `${finishingEvidence.sourceClockAttention!.total} exact source range${finishingEvidence.sourceClockAttention!.total === 1 ? "" : "s"} need${finishingEvidence.sourceClockAttention!.total === 1 ? "s" : ""} a listen or decision`,
+    detail: `${finishingEvidence.sourceClockAttention!.high} high · ${finishingEvidence.sourceClockAttention!.review} review. Transcript, detector, repair, mastering, and edit evidence keep separate authority boundaries.`,
+    consequence: "Unresolved exact-clock evidence can mislead transcript, repair, assembly, or delivery decisions if it is flattened into a generic confidence score.",
+  });
 
   const releasedOutputs = finishingEvidence.outputs.filter((output) => output.status === "RELEASED");
   const deliveryCount = finishingEvidence.outputs.reduce((total, output) => total + output.deliveryCount, 0);
@@ -170,7 +179,7 @@ export function buildSessionFinishingCockpit(input: {
       label: "Repair",
       state: finishingEvidence.analyzedSourceCount > 0 ? "IN_PROGRESS" : "NOT_OBSERVED",
       summary: finishingEvidence.analyzedSourceCount ? "Audio evidence exists; treatment still requires audition and review." : "No complete audio-analysis coverage is observed.",
-      evidence: `${finishingEvidence.analyzedSourceCount}/${analyzableSourceCount} source analyses`,
+      evidence: `${finishingEvidence.analyzedSourceCount}/${analyzableSourceCount} source analyses · ${finishingEvidence.sourceClockAttention?.total ?? 0} exact ranges queued`,
       lane: "transcript",
     },
     {

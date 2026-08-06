@@ -3215,12 +3215,18 @@ function CloudEditorContent() {
   const timelineSavedFingerprintRef = useRef("");
   const timelineRouteRef = useRef("");
   const captureGroupFocusAppliedRef = useRef("");
+  const sourceClockFocusAppliedRef = useRef("");
   const audioSignalProfileAutoStartedRef = useRef<Set<string>>(new Set());
   const syncPreviewSpineRef = useRef<HTMLAudioElement | null>(null);
   const syncPreviewTargetRef = useRef<HTMLMediaElement | null>(null);
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project") ?? searchParams.get("projectId");
   const episodeSlug = searchParams.get("episode") ?? searchParams.get("boundary") ?? "current-episode";
+  const requestedSourceClockSecondsRaw = Number(searchParams.get("at"));
+  const requestedSourceClockSeconds = Number.isFinite(requestedSourceClockSecondsRaw) && requestedSourceClockSecondsRaw >= 0 && requestedSourceClockSecondsRaw <= 86_400
+    ? requestedSourceClockSecondsRaw
+    : null;
+  const requestedSourceClockFocusId = (searchParams.get("focus") || "").trim().slice(0, 240);
   const requestedCaptureGroupId = normalizeCaptureGroupFocusId(
     searchParams.get("captureGroup"),
   );
@@ -6988,6 +6994,16 @@ function CloudEditorContent() {
     timelineState.clips.reduce((acc, clip) => Math.max(acc, clip.startIn + clip.duration), 0),
     timelineState.transcript.reduce((acc, block) => Math.max(acc, block.time + block.duration), 0),
   );
+  useEffect(() => {
+    if (!isTimelineHydrated || requestedSourceClockSeconds === null) return;
+    const key = `${resolvedProjectSlug}:${episodeSlug}:${requestedSourceClockSeconds}:${requestedSourceClockFocusId}`;
+    if (sourceClockFocusAppliedRef.current === key) return;
+    setEditorMode("play-all");
+    setCurrentTime(Math.max(0, Math.min(totalDuration, requestedSourceClockSeconds)));
+    setViewMode("timeline");
+    setAiEditMessage(`Opened exact source-clock evidence at ${formatClock(requestedSourceClockSeconds)}${requestedSourceClockFocusId ? ` (${requestedSourceClockFocusId})` : ""}. No edit decision was applied.`);
+    sourceClockFocusAppliedRef.current = key;
+  }, [episodeSlug, isTimelineHydrated, requestedSourceClockFocusId, requestedSourceClockSeconds, resolvedProjectSlug, setEditorMode, totalDuration]);
   const projectedSkippedDuration = deactivatedTimelineIntervals(timelineState)
     .reduce((total, interval) => total + interval.endSeconds - interval.startSeconds, 0);
   const renderedDurationSeconds = timelineState.editorMode === "play-all"

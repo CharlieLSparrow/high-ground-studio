@@ -29,6 +29,7 @@ import {
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { buildSessionSourceEvidence } from "./session-source-evidence-model";
 import { buildSessionReadinessTopology } from "./session-readiness-topology";
+import { loadSessionSourceClockAttention } from "./session-source-clock-attention-loader";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
 export const dynamic = "force-dynamic";
@@ -54,12 +55,13 @@ export default async function SessionReviewPage({
   searchParams,
 }: {
   params: Promise<{ roomId: string }>;
-  searchParams: Promise<{ mode?: string | string[]; view?: string | string[]; joined?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; view?: string | string[]; joined?: string | string[]; attention?: string | string[] }>;
 }) {
   const [{ roomId }, query] = await Promise.all([params, searchParams]);
   const workspaceMode = parseSessionWorkspaceMode(query.mode);
   const sessionNoteView = parseSessionNoteView(query.view);
   const joinedFromInvitation = (Array.isArray(query.joined) ? query.joined[0] : query.joined) === "1";
+  const focusedAttentionId = cleanText(Array.isArray(query.attention) ? query.attention[0] : query.attention).slice(0, 240) || null;
   const session = await getQuipslySession();
   if (!session?.user) {
     return <main className="min-h-full px-6 py-10 lg:px-10"><section className="mx-auto max-w-3xl rounded-3xl border border-[#ead8b4] bg-[#fffaf0] p-8" role="status"><LockKeyhole className="text-amber-700" aria-hidden="true" /><h1 className="mt-4 font-serif text-3xl font-black text-[#3d3122]">This session review is private.</h1><p className="mt-2 font-semibold text-[#765f40]">Sign in before reading consent, transcript evidence, candidates, or committed tasks.</p><Link href={`/login?callbackUrl=${encodeURIComponent(`/sessions/${roomId}`)}`} className="mt-5 inline-flex rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">Sign in</Link></section></main>;
@@ -285,7 +287,7 @@ export default async function SessionReviewPage({
       const nestSlug = cleanText(promotion.nestSlug);
       const durationSeconds = Number(recording.durationSeconds);
       if (!mediaAssetId || !sourceId || playbackUrl !== `/api/ingest/media/${sourceId}` || nestSlug !== room.project.slug || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return [];
-      return [{ mediaAssetId, sourceId, sourceUrl: playbackUrl, durationSeconds, label: recording.fileName || "Session recording" }];
+      return [{ recordingAssetId: recording.id, mediaAssetId, sourceId, sourceUrl: playbackUrl, sourceKind: String(recording.contentType || "").startsWith("video/") ? "video" as const : "audio" as const, durationSeconds, label: recording.fileName || "Session recording" }];
     }) : [];
     const detectorAnalysisRows = room.project && promotedDetectorSources.length && typeof prisma.studioAudibleEventAnalysisReceipt?.findMany === "function" ? await prisma.studioAudibleEventAnalysisReceipt.findMany({
       where: { projectId: room.project.id, sourceId: { in: promotedDetectorSources.map((source: any) => source.sourceId) } },
@@ -411,6 +413,23 @@ export default async function SessionReviewPage({
     const boundEpisode = visibleProject && relationEpisode
       ? { id: relationEpisode.id, title: relationEpisode.title, slug: relationEpisode.slug }
       : legacyBoundEpisode;
+    const shouldLoadSourceClockAttention = workspaceMode === "transcript" || workspaceMode === "recordings" || workspaceMode === "outputs";
+    const sourceClockAttention = visibleProject && shouldLoadSourceClockAttention ? await loadSessionSourceClockAttention({
+      prisma,
+      roomId: room.id,
+      projectId: visibleProject.id,
+      projectSlug: visibleProject.slug,
+      episodeProductionId: boundEpisode?.id ?? null,
+      episodeSlug: boundEpisode?.slug ?? null,
+      sources: promotedDetectorSources.map((source: any) => ({
+        recordingAssetId: source.recordingAssetId,
+        mediaAssetId: source.mediaAssetId,
+        sourceId: source.sourceId,
+        sourceUrl: source.sourceUrl,
+        sourceKind: source.sourceKind,
+        label: source.label,
+      })),
+    }) : null;
     let episodeRepair = null;
     if (room.purpose === "PODCAST" && visibleProject && !boundEpisode) {
       const mutationAccess = await prisma.callRoom.findFirst({
@@ -615,8 +634,13 @@ export default async function SessionReviewPage({
         updatedAt: output.updatedAt.toISOString(),
       })),
       analyzedSourceCount: audibleEventSources.length,
+      sourceClockAttention: sourceClockAttention ? {
+        total: sourceClockAttention.counts.total,
+        high: sourceClockAttention.counts.high,
+        review: sourceClockAttention.counts.review,
+      } : { total: 0, high: 0, review: 0 },
     };
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} joinedFromInvitation={joinedFromInvitation} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} audibleEventSources={audibleEventSources} readinessTopology={sessionReadinessTopology} canReleaseHeldMedia={session.user.isStaff} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} finishingEvidence={finishingEvidence} sourceClockAttention={sourceClockAttention} focusedAttentionId={focusedAttentionId} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} collaborationContext={collaborationContext} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
