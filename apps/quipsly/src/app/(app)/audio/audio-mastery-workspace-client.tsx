@@ -1062,6 +1062,7 @@ export function AudioMasteryWorkspaceClient({
                 reviewBusy={activityReviewBusy}
                 reviewNotice={activityReviewNotice}
                 onSubmitReview={selectedProject?.role === "VIEWER" ? undefined : (input) => void submitActivityReview(input)}
+                {...(currentAnalysisId && selectedEpisode ? { correlationContext: { projectId: activeProjectId, projectSlug, episodeProductionId: selectedEpisode.id, analysisReceiptId: currentAnalysisId, canWrite: selectedProject?.role !== "VIEWER" } } : {})}
               />
             ) : null}
             <section id="selected-source" className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-white shadow-xl sm:p-5" aria-labelledby="selected-source-heading">

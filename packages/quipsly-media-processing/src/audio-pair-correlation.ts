@@ -28,6 +28,8 @@ export type AudioPairCorrelationJob = {
   jobId: string;
   projectId: string;
   episodeProductionId: string;
+  analysisReceiptId: string;
+  activityMomentId: string;
   programFingerprintSha256: string;
   activeDecisionReceiptIds: string[];
   requestedByEmail: string;
@@ -75,6 +77,8 @@ export type AudioPairCorrelationResult = {
   version: typeof AUDIO_PAIR_CORRELATION_CONTRACT_VERSION;
   jobId: string;
   completedAt: string;
+  analysisReceiptId: string;
+  activityMomentId: string;
   programFingerprintSha256: string;
   activeDecisionReceiptIds: string[];
   reference: AudioPairCorrelationSource;
@@ -134,6 +138,8 @@ export function parseAudioPairCorrelationJob(value: unknown, expectedJobId?: str
     jobId,
     projectId: id(row.projectId, "projectId"),
     episodeProductionId: id(row.episodeProductionId, "episodeProductionId"),
+    analysisReceiptId: id(row.analysisReceiptId, "analysisReceiptId"),
+    activityMomentId: id(row.activityMomentId, "activityMomentId"),
     programFingerprintSha256: sha(row.programFingerprintSha256, "programFingerprintSha256"),
     activeDecisionReceiptIds,
     requestedByEmail: email(row.requestedByEmail, "requestedByEmail"),
@@ -166,6 +172,8 @@ export function parseAudioPairCorrelationResult(value: unknown, expectedJob?: Au
     version: AUDIO_PAIR_CORRELATION_CONTRACT_VERSION,
     jobId: id(row.jobId, "jobId"),
     completedAt: iso(row.completedAt, "completedAt"),
+    analysisReceiptId: id(row.analysisReceiptId, "analysisReceiptId"),
+    activityMomentId: id(row.activityMomentId, "activityMomentId"),
     programFingerprintSha256: sha(row.programFingerprintSha256, "programFingerprintSha256"),
     activeDecisionReceiptIds: sortedUniqueIds(row.activeDecisionReceiptIds, "activeDecisionReceiptIds"),
     reference,
@@ -188,6 +196,8 @@ export function parseAudioPairCorrelationResult(value: unknown, expectedJob?: Au
   for (let index = 1; index < result.segments.length; index += 1) if (Math.abs(result.segments[index].programStartSeconds - result.segments[index - 1].programEndSeconds) > 0.001) throw new Error("Audio pair correlation segments are not contiguous.");
   if (job && (
     result.jobId !== job.jobId
+    || result.analysisReceiptId !== job.analysisReceiptId
+    || result.activityMomentId !== job.activityMomentId
     || result.programFingerprintSha256 !== job.programFingerprintSha256
     || JSON.stringify(result.activeDecisionReceiptIds) !== JSON.stringify(job.activeDecisionReceiptIds)
     || !sameCorrelationSource(result.reference, job.reference)

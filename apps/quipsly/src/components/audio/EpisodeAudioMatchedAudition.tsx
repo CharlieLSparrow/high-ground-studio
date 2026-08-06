@@ -4,6 +4,7 @@ import { Headphones, Pause, Play, RotateCcw, ShieldCheck, X } from "lucide-react
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { EpisodeAudioComparisonPlan } from "@/lib/episode-audio-comparison";
+import { EpisodeAudioPairCorrelationDesk } from "./EpisodeAudioPairCorrelationDesk";
 import {
   buildEpisodeAudioReviewPlaybackEvidence,
   episodeAudioReviewDecisionOptions,
@@ -28,6 +29,7 @@ export function EpisodeAudioMatchedAudition({
   reviewBusy = false,
   reviewNotice = null,
   onSubmitReview,
+  correlationContext,
 }: {
   plan: EpisodeAudioComparisonPlan;
   onClose: () => void;
@@ -36,6 +38,7 @@ export function EpisodeAudioMatchedAudition({
   reviewBusy?: boolean;
   reviewNotice?: string | null;
   onSubmitReview?: (input: { decision: EpisodeAudioReviewDecision; note: string; playbackEvidence: EpisodeAudioReviewPlaybackEvidence }) => void;
+  correlationContext?: { projectId: string; projectSlug: string; episodeProductionId: string; analysisReceiptId: string; canWrite: boolean };
 }) {
   const mediaByAsset = useRef(new Map<string, HTMLMediaElement>());
   const [monitor, setMonitor] = useState<"all" | string>("all");
@@ -219,6 +222,7 @@ export function EpisodeAudioMatchedAudition({
           <button type="button" disabled={!reviewReady || reviewBusy} onClick={() => onSubmitReview({ decision: reviewDecision, note: reviewNote.trim(), playbackEvidence })} className="mt-2 min-h-11 w-full rounded-lg bg-violet-800 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{reviewBusy ? "Recording review receipt…" : reviewReady ? "Record listening conclusion" : "Listen through the required coverage"}</button>
           {reviewNotice ? <p className="mt-2 text-[10px] font-bold" role="status">{reviewNotice}</p> : null}
         </div> : null}
+        {correlationContext ? <EpisodeAudioPairCorrelationDesk plan={plan} {...correlationContext} /> : null}
         <div className="mt-3 flex items-start gap-2 text-[10px] font-semibold leading-4 text-slate-600"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" /><p>All mode applies monitor-only attenuation to reduce summed playback level. Solo and timing controls never alter retained bytes, alignment, the timeline, or a classification. A later review receipt must still name what was actually heard.</p></div>
       </div>
     </section>

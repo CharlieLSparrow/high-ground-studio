@@ -82,6 +82,8 @@ export async function runOneLocalAudioPairCorrelationJob(
       version: AUDIO_PAIR_CORRELATION_CONTRACT_VERSION,
       jobId: job.jobId,
       completedAt: options.now().toISOString(),
+      analysisReceiptId: job.analysisReceiptId,
+      activityMomentId: job.activityMomentId,
       programFingerprintSha256: job.programFingerprintSha256,
       activeDecisionReceiptIds: job.activeDecisionReceiptIds,
       reference: job.reference,
