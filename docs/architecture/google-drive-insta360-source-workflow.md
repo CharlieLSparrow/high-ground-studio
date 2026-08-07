@@ -9,13 +9,17 @@
 Quipsly treats Google Drive as an external source vault, not as an upload
 staging area:
 
-- an INSV original remains in Drive until a creator intentionally conforms or
-  exports a final production;
+- an INSV original remains in Drive until a creator explicitly approves the
+  final-render preflight for that camera package;
 - the paired LRV is the default browse source;
 - attaching a source records provider identity, revision, checksum,
   capabilities, and source-unit membership without copying media;
 - preparing a browse copy materializes the exact selected LRV into the local
   cache, verifies it, and only then builds the collaboration proxy;
+- final conform shows exact remaining bytes, the active Mac's safety reserve,
+  and per-member transfer state before it queues any INSV download;
+- once every required member is checksum-bound locally, Quipsly creates one
+  immutable render-ready source set without changing the Drive originals;
 - cards, annotations, ranges, collections, and editor decisions bind to stable
   Quipsly source revisions rather than a mutable Drive URL.
 
@@ -36,8 +40,14 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
    state, and local-copy state.
 7. Prepare the LRV only when the segment needs playback, annotation,
    storyboarding, or editing.
-8. Work from the collaboration proxy in Nest. The local editor later resolves
-   the exact INSV generation for conform or export.
+8. Work from the collaboration proxy in Nest.
+9. Open **Final render preflight** when a selected segment is ready to finish.
+   Inspection is metadata-only; it does not download media.
+10. Review exact bytes remaining and safe Mac capacity, then explicitly choose
+    **Prepare … on this Mac**.
+11. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
+    becomes render-ready. Nest and the local editor then resolve the same
+    immutable source-set identity.
 
 If Google grants the selected folder identity but does not expose its
 descendants under per-file access, **Choose 360 files** is the equivalent
@@ -77,9 +87,10 @@ Quipsly
   StudioSourceUnit                         -> one camera-clock segment
     StudioExternalMediaReference           -> provider file identity
       StudioSourceRevision                 -> immutable observed generation
-        StudioMediaSourceReplica           -> verified local LRV only
+        StudioMediaSourceReplica           -> verified exact LRV or INSV bytes
         StudioMediaDerivative              -> collaboration proxy
         StudioSourceRange                  -> time-bound creative selection
+    StudioMediaSourceSet                   -> render-ready complete camera take
 ```
 
 The source unit is the grouping authority. UI projections may choose the LRV
@@ -98,6 +109,12 @@ the original package.
   creator's operation and provider file ID.
 - Legacy `full-original` projections normalize to
   `primary-original`; new writes use the current package vocabulary.
+- Paired INSV files receive stable `primary-original` and
+  `secondary-original` roles based on their camera channel; a single-file X4
+  segment remains a valid primary-only package.
+- Drive video duration and dimensions are retained when Google has finished
+  indexing them. Proxy decode fills missing clock metadata without trusting a
+  filename or browser estimate.
 - The source revision remains immutable. Provider drift creates a new observed
   generation or a held operation; it never silently changes an edited source.
 
@@ -105,13 +122,16 @@ the original package.
 
 ```text
 metadata-only
+  -> explicit browse or conform intent
   -> queued
   -> transferring (Range-resumable)
   -> provider re-read
   -> local MD5/SHA-256 verification
   -> exact local replica ready
-  -> collaboration proxy queued
-  -> collaboration proxy ready
+  -> browse member: collaboration proxy queued -> proxy ready
+  -> original member: exact replica retained, no proxy invented
+  -> all members exact + browse clock measured
+  -> immutable render-ready source set
 ```
 
 On failure:
@@ -122,8 +142,12 @@ On failure:
   partial transfer;
 - retry uses the same immutable job contract and never substitutes another
   file with a similar name;
-- INSV originals are ineligible for the browse-materialization action;
+- INSV originals are ineligible for the browse action and require the explicit
+  package conform action;
 - storage-pressure checks preserve a configured free-space reserve;
+- the Mac heartbeat reports safe capacity without exposing its local path;
+- each source member is independently resumable, while the package does not
+  claim render readiness until every required member is exact;
 - disconnecting Drive removes the encrypted refresh credential and holds new
   provider work without deleting source cards or editorial decisions.
 
@@ -134,6 +158,7 @@ On failure:
 | INSV original        | User's Google Drive                                                | Canonical camera source                               |
 | LRV original         | User's Google Drive                                                | Canonical browse companion                            |
 | Exact LRV replica    | Local media cache                                                  | Resume, verify, proxy input                           |
+| Exact INSV replica   | Local media cache, only after explicit conform                     | Reviewed stitch and final render input                |
 | Collaboration proxy  | Local during development; managed derivative storage in production | Browser playback and review                           |
 | Edit decisions       | Quipsly database                                                   | Durable, small, shareable editorial truth             |
 | Final conform/render | QuipslyStudio/local renderer initially                             | Resolve exact originals without routine cloud compute |
@@ -192,8 +217,12 @@ secret versions exist and pass private shape validation.
   `apps/quipsly/src/lib/google-drive-media-package.ts`
 - Exact LRV materialization request:
   `apps/quipsly/src/lib/server/google-drive-source-materialization.ts`
+- Package conform planner and immutable source-set creation:
+  `apps/quipsly/src/lib/server/google-drive-source-conform.ts`
 - Resumable worker:
   `apps/quipsly-media-processor/src/local-google-drive-source-materialization-worker.ts`
+- Provider-neutral local exact-source resolver:
+  `apps/quipsly/src/lib/spatial-exact-source.ts`
 - Source Room grouping:
   `apps/quipsly/src/lib/source-library-projection.ts`
 - Local lifecycle:
@@ -220,10 +249,17 @@ Insta360 operation proves all of the following:
 10. Confirm that the Source Room shows one camera segment with an inspectable
     member receipt.
 11. Create a time range and story card from playback.
-12. Open the same decision in the episode editor and local Studio handoff.
-13. Prove a second Quipsly account cannot use the connection or fetch the
+12. Inspect final conform and prove it reports actual bytes and safe Mac
+    capacity without starting a download.
+13. Explicitly conform one real segment, interrupt an INSV transfer, resume it,
+    and prove the complete package becomes one immutable source set.
+14. Export and visually review a full 5.7K stitched master from the exact Drive
+    replicas, register its receipt, then render one saved spatial selection.
+15. Open the same decision and output in the episode editor and local Studio
+    handoff.
+16. Prove a second Quipsly account cannot use the connection or fetch the
     source.
-14. Disconnect and reconnect Drive without losing source identities,
+17. Disconnect and reconnect Drive without losing source identities,
     annotations, cards, or the verified derivative ledger.
 
 The current loop-back trigger is successful Google Cloud reauthentication for
