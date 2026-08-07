@@ -48,6 +48,7 @@ import { SessionFinishingCockpitCard } from "./session-finishing-cockpit-card";
 import type { SessionFinishingEvidence } from "./session-finishing-cockpit";
 import type { SessionPreparation } from "./session-preparation-model";
 import { SessionRecordingImportCard } from "./session-recording-import-card";
+import { SessionRecordingHealthCard } from "./session-recording-health-card";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionReadinessTopologyCard } from "./session-readiness-topology-card";
 import { EMPTY_SESSION_READINESS_TOPOLOGY, type SessionReadinessTopology } from "./session-readiness-topology";
@@ -2307,6 +2308,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         <SessionRecordingImportCard roomId={roomId} preparation={preparation} />
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
+        <SessionRecordingHealthCard roomId={roomId} topology={readinessTopology} sourceEvidence={sourceEvidence} />
         <SessionSourceEvidenceCard roomId={roomId} evidence={sourceEvidence} canReleaseHeldMedia={canReleaseHeldMedia} />
       </> : null}
 

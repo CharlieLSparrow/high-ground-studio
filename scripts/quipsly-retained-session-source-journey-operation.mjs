@@ -21,6 +21,7 @@ const { getPrismaClient } = await import("../apps/quipsly/src/lib/prisma.ts");
 const { buildSessionReadinessTopology } = await import("../apps/quipsly/src/app/(app)/sessions/[roomId]/session-readiness-topology.ts");
 const { buildSessionSourceEvidence } = await import("../apps/quipsly/src/app/(app)/sessions/[roomId]/session-source-evidence-model.ts");
 const { buildSessionSourceJourneyProjection } = await import("../apps/quipsly/src/app/(app)/sessions/[roomId]/session-source-journey.ts");
+const { buildSessionRecordingHealth } = await import("../apps/quipsly/src/app/(app)/sessions/[roomId]/session-recording-health.ts");
 const { loadSessionEpisodeAssemblyEvidence } = await import("../apps/quipsly/src/app/(app)/sessions/[roomId]/session-episode-assembly-evidence-loader.ts");
 
 function assert(condition, message) {
@@ -152,6 +153,7 @@ try {
     sourceEvidence,
     finishingEvidence,
   });
+  const recordingHealth = buildSessionRecordingHealth({ topology, sourceEvidence });
 
   assert(topology.expectedSources.length === 2, `Expected two declared recovered masters, observed ${topology.expectedSources.length}.`);
   assert(sourceEvidence.sources.length >= 4, `Expected retained current and historical sources, observed ${sourceEvidence.sources.length}.`);
@@ -170,6 +172,10 @@ try {
   assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "HELD") || assembly.state === "BLOCKED", "A selected Editor checkpoint was held without a canonical assembly blocker.");
   assert(selectedEditorCheckpoints.every((checkpoint) => checkpoint?.state !== "CURRENT") || assembly.state === "READY_TO_MATERIALIZE", "A selected Editor checkpoint was current without a conflict-safe materialization path.");
   assert(historicalJourneys.every((journey) => journey.checkpoints.find((checkpoint) => checkpoint.id === "assembly")?.state === "NOT_APPLICABLE"), "A historical source was falsely projected onto the selected editor take.");
+  assert(recordingHealth.sources.length >= 4, `Expected recording-health evidence for retained current and historical sources, observed ${recordingHealth.sources.length}.`);
+  assert(recordingHealth.sources.every((source) => source.gates.length === 6), "A retained source lost one or more independently inspectable Audio Flight Deck gates.");
+  assert(recordingHealth.sources.every((source) => source.state !== "READY" || source.gates.every((gate) => gate.state === "READY")), "The Audio Flight Deck called a retained source ready while one of its gates was not ready.");
+  assert(recordingHealth.boundaries.noUniversalQualityScore, "The retained operation lost the no-universal-quality-score boundary.");
 
   console.log(JSON.stringify({
     ok: true,
@@ -190,6 +196,18 @@ try {
     assemblyState: assembly.state,
     assemblyNextAction: assembly.nextAction,
     historicalSourcesPreservedOutsideTake: historicalJourneys.length,
+    recordingHealth: {
+      state: recordingHealth.state,
+      counts: recordingHealth.counts,
+      sources: recordingHealth.sources.map((source) => ({
+        label: source.label,
+        recordingAssetId: source.recordingAssetId,
+        state: source.state,
+        gates: Object.fromEntries(source.gates.map((gate) => [gate.id, gate.state])),
+        nextAction: source.nextAction,
+      })),
+      universalQualityScoreEmitted: false,
+    },
     sourceStateMutated: false,
     publicationStarted: false,
     secretsPrinted: false,

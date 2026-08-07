@@ -3,6 +3,10 @@
 Date: 2026-08-06
 Status: first primary-source pass; Quipsly capability audit complete; corpus-backed product qualification open
 
+## Implementation update · 2026-08-06
+
+The first recommendation from this research is now implemented as the Session Audio Flight Deck. It projects source-plan, immutable-byte, complete-decode, useful-signal, processing-release, and transcript-release gates without inventing a universal quality score. Architecture and retained-operation findings are recorded in [`docs/architecture/audio-flight-deck.md`](../architecture/audio-flight-deck.md).
+
 ## Executive finding
 
 Quipsly is not starting from a weak audio prototype. It already has unusually
