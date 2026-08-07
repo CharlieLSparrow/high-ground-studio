@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -248,6 +257,80 @@ test("healthy Nest reloads when its exact application or schema source changes",
   assert.match(up, /local_nest_source_revision.*source-revision/s);
   assert.match(doctor, /Runtime source revision/);
   assert.match(doctor, /quipsly_local_nest_source_revision/);
+});
+
+test("source fingerprints ignore unrelated commits but detect executable input drift", () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "quipsly-source-revision-"));
+  const run = (command, args) =>
+    spawnSync(command, args, {
+      cwd: fixtureRoot,
+      encoding: "utf8",
+    });
+  const fingerprint = () =>
+    run("bash", [
+      "-c",
+      'source "$1"; quipsly_local_git_source_revision "$2" app',
+      "quipsly-source-revision-test",
+      stateHelperPath,
+      fixtureRoot,
+    ]);
+
+  try {
+    mkdirSync(join(fixtureRoot, "app"));
+    mkdirSync(join(fixtureRoot, "docs"));
+    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 1;\n");
+    writeFileSync(join(fixtureRoot, "docs", "readme.md"), "first\n");
+
+    assert.equal(run("git", ["init", "--quiet"]).status, 0);
+    assert.equal(run("git", ["config", "user.name", "Quipsly Test"]).status, 0);
+    assert.equal(
+      run("git", ["config", "user.email", "test@quipsly.invalid"]).status,
+      0,
+    );
+    assert.equal(run("git", ["add", "."]).status, 0);
+    assert.equal(
+      run("git", ["commit", "--quiet", "-m", "initial"]).status,
+      0,
+    );
+
+    const initial = fingerprint();
+    assert.equal(initial.status, 0, initial.stderr);
+
+    writeFileSync(join(fixtureRoot, "docs", "readme.md"), "second\n");
+    assert.equal(run("git", ["add", "docs/readme.md"]).status, 0);
+    assert.equal(
+      run("git", ["commit", "--quiet", "-m", "docs only"]).status,
+      0,
+    );
+    const afterDocsCommit = fingerprint();
+    assert.equal(afterDocsCommit.status, 0, afterDocsCommit.stderr);
+    assert.equal(afterDocsCommit.stdout, initial.stdout);
+
+    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 2;\n");
+    const afterContentEdit = fingerprint();
+    assert.equal(afterContentEdit.status, 0, afterContentEdit.stderr);
+    assert.notEqual(afterContentEdit.stdout, initial.stdout);
+
+    writeFileSync(join(fixtureRoot, "app", "entry.ts"), "export const value = 1;\n");
+    chmodSync(join(fixtureRoot, "app", "entry.ts"), 0o755);
+    const afterModeEdit = fingerprint();
+    assert.equal(afterModeEdit.status, 0, afterModeEdit.stderr);
+    assert.notEqual(afterModeEdit.stdout, initial.stdout);
+
+    chmodSync(join(fixtureRoot, "app", "entry.ts"), 0o644);
+    writeFileSync(join(fixtureRoot, "app", "draft.ts"), "export const draft = true;\n");
+    const afterUntrackedInput = fingerprint();
+    assert.equal(afterUntrackedInput.status, 0, afterUntrackedInput.stderr);
+    assert.notEqual(afterUntrackedInput.stdout, initial.stdout);
+
+    rmSync(join(fixtureRoot, "app", "draft.ts"));
+    rmSync(join(fixtureRoot, "app", "entry.ts"));
+    const afterTrackedDeletion = fingerprint();
+    assert.equal(afterTrackedDeletion.status, 0, afterTrackedDeletion.stderr);
+    assert.notEqual(afterTrackedDeletion.stdout, initial.stdout);
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test("local workers reload when their executable source fingerprint changes", () => {

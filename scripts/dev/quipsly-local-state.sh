@@ -47,11 +47,31 @@ quipsly_local_git_source_revision() {
   (
     cd "${repo_root}"
     {
-      git rev-parse HEAD
-      git diff --binary HEAD -- "$@"
+      # Hash the working-tree source closure itself, not the repository's
+      # global HEAD. Otherwise an unrelated docs-only commit restarts every
+      # durable local service even though none of its executable inputs moved.
+      while IFS= read -r -d '' tracked_file; do
+        printf 'tracked\0%s\0' "${tracked_file}"
+        if [[ -e "${tracked_file}" || -L "${tracked_file}" ]]; then
+          if [[ -x "${tracked_file}" ]]; then
+            printf 'executable\0'
+          else
+            printf 'non-executable\0'
+          fi
+          git hash-object -- "${tracked_file}"
+        else
+          printf 'missing\0'
+        fi
+      done < <(git ls-files -z -- "$@")
+
       while IFS= read -r -d '' untracked_file; do
-        printf '%s\0' "${untracked_file}"
-        git hash-object "${untracked_file}"
+        printf 'untracked\0%s\0' "${untracked_file}"
+        if [[ -x "${untracked_file}" ]]; then
+          printf 'executable\0'
+        else
+          printf 'non-executable\0'
+        fi
+        git hash-object -- "${untracked_file}"
       done < <(git ls-files -z --others --exclude-standard -- "$@")
     } | git hash-object --stdin
   )
