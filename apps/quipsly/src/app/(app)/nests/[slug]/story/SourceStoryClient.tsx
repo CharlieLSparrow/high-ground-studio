@@ -62,6 +62,7 @@ type Asset = {
   fps: number | null;
   thumbnailUrl: string | null;
   isProxy: boolean;
+  createdAt: string;
   updatedAt: string;
   _count: { clips: number; variants: number };
 };
@@ -219,6 +220,43 @@ type SourceStoryWorkspace = {
   }>;
   cards: SourceStoryCard[];
   boards: SourceStoryBoard[];
+  sourceCollections: SourceCollection[];
+};
+
+type SourceCollection = {
+  schema: "quipsly-source-collection-v1";
+  id: string;
+  projectId: string;
+  ownerUserId: string;
+  scope: "personal" | "project";
+  slug: string;
+  title: string;
+  description: string;
+  color: string | null;
+  revision: number;
+  archivedAt: string | null;
+  canEdit: boolean;
+  updatedAt: string;
+  items: Array<{ id: string; targetKey: string; sortOrder: number; note: string }>;
+};
+
+type SourcePageInfo = {
+  limit: number;
+  returned: number;
+  complete: boolean;
+  nextCursor: string | null;
+  totals: { sourceSets: number; externalSources: number; assets: number; all: number };
+};
+
+type SourceLibraryPagePayload = {
+  ok?: boolean;
+  error?: string;
+  page?: {
+    sourceSets: MediaSourceSet[];
+    externalSources: SourceStoryWorkspace["externalSources"];
+    assets: Asset[];
+    pageInfo: SourcePageInfo;
+  };
 };
 
 type MediaSourceSet = {
@@ -338,6 +376,20 @@ function boardKeyFromLabel(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]) {
+  const merged = new Map(current.map((item) => [item.id, item]));
+  for (const item of incoming) merged.set(item.id, item);
+  return [...merged.values()];
+}
+
+function reconcileWorkspaceInventory(current: SourceStoryWorkspace, next: SourceStoryWorkspace): SourceStoryWorkspace {
+  return {
+    ...next,
+    sourceSets: mergeById(current.sourceSets, next.sourceSets),
+    externalSources: mergeById(current.externalSources, next.externalSources),
+  };
+}
+
 function sourceHref(projectSlug: string, source: { kind: "asset" | "external" | "source-set"; id: string } | null, boardId: string | null) {
   const params = new URLSearchParams();
   if (source?.kind === "asset") params.set("asset", source.id);
@@ -354,7 +406,7 @@ export function SourceStoryClient({
   tags,
   episodes,
   initialWorkspace,
-  initialAssetTotal,
+  initialSourcePageInfo,
   spatialRenderReadiness,
   initialAssetId,
   initialExternalReferenceId,
@@ -367,7 +419,7 @@ export function SourceStoryClient({
   tags: Tag[];
   episodes: Episode[];
   initialWorkspace: SourceStoryWorkspace;
-  initialAssetTotal: number;
+  initialSourcePageInfo: SourcePageInfo;
   spatialRenderReadiness: SpatialRenderReadinessReport;
   initialAssetId: string | null;
   initialExternalReferenceId: string | null;
@@ -377,18 +429,27 @@ export function SourceStoryClient({
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const pendingPlaybackRef = useRef<{ sourceKey: string; startSeconds: number; endSeconds: number } | null>(null);
   const playbackBoundaryRef = useRef<number | null>(null);
+  const sourceSearchSequenceRef = useRef(0);
   const [workspace, setWorkspace] = useState(initialWorkspace);
+  const [sourceAssets, setSourceAssets] = useState(initialAssets);
+  const [sourcePageInfo, setSourcePageInfo] = useState(initialSourcePageInfo);
+  const [sourceAllTotal] = useState(initialSourcePageInfo.totals.all);
+  const [sourceServerQuery, setSourceServerQuery] = useState("");
+  const [sourcePagePending, setSourcePagePending] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState(initialAssetId);
   const [selectedExternalReferenceId, setSelectedExternalReferenceId] = useState<string | null>(initialExternalReferenceId);
   const [selectedSourceSetId, setSelectedSourceSetId] = useState<string | null>(initialSourceSetId);
   const [selectedBoardId, setSelectedBoardId] = useState(initialBoardId);
   const [sourceQuery, setSourceQuery] = useState("");
-  const [sourceCollection, setSourceCollection] = useState<SourceLibraryCollection>("all");
+  const [sourceCollection, setSourceCollection] = useState<SourceLibraryCollection | `collection:${string}`>("all");
   const [sourceMediaFilter, setSourceMediaFilter] = useState<SourceLibraryMediaFilter>("all");
   const [sourceGroupMode, setSourceGroupMode] = useState<SourceLibraryGroupMode>("capture-day");
   const [sourceSortMode, setSourceSortMode] = useState<SourceLibrarySortMode>("newest");
   const [sourceViewMode, setSourceViewMode] = useState<"grid" | "list">("grid");
   const [sourceVisibleLimit, setSourceVisibleLimit] = useState(60);
+  const [collectionTitle, setCollectionTitle] = useState("");
+  const [collectionDescription, setCollectionDescription] = useState("");
+  const [collectionScope, setCollectionScope] = useState<"personal" | "project">("personal");
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const [title, setTitle] = useState("");
@@ -411,7 +472,7 @@ export function SourceStoryClient({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const selectedAsset = initialAssets.find((asset) => asset.id === selectedAssetId) ?? null;
+  const selectedAsset = sourceAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const selectedExternalSource = workspace.externalSources.find((source) => source.id === selectedExternalReferenceId) ?? null;
   const selectedSourceSet = workspace.sourceSets.find((sourceSet) => sourceSet.id === selectedSourceSetId) ?? null;
   const selectedExternalProxy = selectedExternalSource?.latestSourceRevision?.collaborationProxy ?? null;
@@ -454,19 +515,25 @@ export function SourceStoryClient({
   } : null;
   const selectedBoard = workspace.boards.find((board) => board.id === selectedBoardId) ?? workspace.boards[0] ?? null;
   const sourceLibraryItems = useMemo(() => buildSourceLibraryItems({
-    assets: initialAssets,
+    assets: sourceAssets,
     externalSources: workspace.externalSources,
     sourceSets: workspace.sourceSets,
     cards: workspace.cards,
     boards: workspace.boards,
-  }), [initialAssets, workspace.boards, workspace.cards, workspace.externalSources, workspace.sourceSets]);
+  }), [sourceAssets, workspace.boards, workspace.cards, workspace.externalSources, workspace.sourceSets]);
   const sourceStats = useMemo(() => sourceLibraryStats(sourceLibraryItems), [sourceLibraryItems]);
-  const filteredSourceLibraryItems = useMemo(() => filterSourceLibraryItems(sourceLibraryItems, {
-    collection: sourceCollection,
+  const filteredSourceLibraryItems = useMemo(() => {
+    const customCollection = sourceCollection.startsWith("collection:")
+      ? workspace.sourceCollections.find((collection) => `collection:${collection.id}` === sourceCollection) ?? null
+      : null;
+    const allowedKeys = customCollection ? new Set(customCollection.items.map((item) => item.targetKey)) : null;
+    return filterSourceLibraryItems(sourceLibraryItems, {
+    collection: customCollection ? "all" : sourceCollection as SourceLibraryCollection,
     mediaFilter: sourceMediaFilter,
     query: sourceQuery,
     sort: sourceSortMode,
-  }), [sourceCollection, sourceLibraryItems, sourceMediaFilter, sourceQuery, sourceSortMode]);
+    }).filter((item) => !allowedKeys || allowedKeys.has(item.key));
+  }, [sourceCollection, sourceLibraryItems, sourceMediaFilter, sourceQuery, sourceSortMode, workspace.sourceCollections]);
   const visibleSourceLibraryItems = useMemo(
     () => filteredSourceLibraryItems.slice(0, sourceVisibleLimit),
     [filteredSourceLibraryItems, sourceVisibleLimit],
@@ -511,6 +578,44 @@ export function SourceStoryClient({
   useEffect(() => {
     setSourceVisibleLimit(60);
   }, [sourceCollection, sourceGroupMode, sourceMediaFilter, sourceQuery, sourceSortMode]);
+
+  useEffect(() => {
+    const query = sourceQuery.trim().replace(/\s+/g, " ").slice(0, 160);
+    if (query === sourceServerQuery) return;
+    const sequence = sourceSearchSequenceRef.current + 1;
+    sourceSearchSequenceRef.current = sequence;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSourcePagePending(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({ limit: "60" });
+        if (query) params.set("query", query);
+        const response = await fetch(`/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${params.toString()}`, { cache: "no-store", signal: controller.signal });
+        const payload = await response.json() as SourceLibraryPagePayload;
+        if (!response.ok || !payload.page) throw new Error(payload.error || "The source-library search could not be loaded.");
+        if (sourceSearchSequenceRef.current !== sequence) return;
+        setSourceAssets((current) => mergeById(payload.page!.assets, current.filter((asset) => asset.id === selectedAssetId)));
+        setWorkspace((current) => ({
+          ...current,
+          sourceSets: mergeById(payload.page!.sourceSets, current.sourceSets.filter((sourceSet) => sourceSet.id === selectedSourceSetId)),
+          externalSources: mergeById(payload.page!.externalSources, current.externalSources.filter((source) => source.id === selectedExternalReferenceId)),
+        }));
+        setSourcePageInfo(payload.page.pageInfo);
+        setSourceServerQuery(query);
+        setSourceVisibleLimit(60);
+      } catch (searchError) {
+        if (controller.signal.aborted) return;
+        setError(searchError instanceof Error ? searchError.message : "The source-library search could not be loaded.");
+      } finally {
+        if (sourceSearchSequenceRef.current === sequence) setSourcePagePending(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [project.slug, selectedAssetId, selectedExternalReferenceId, selectedSourceSetId, sourceQuery, sourceServerQuery]);
 
   useEffect(() => {
     const pendingPlayback = pendingPlaybackRef.current;
@@ -575,8 +680,62 @@ export function SourceStoryClient({
     const response = await fetch(`/api/nests/${encodeURIComponent(project.slug)}/source-story`, { cache: "no-store" });
     const payload = await response.json() as ApiPayload;
     if (!response.ok || !payload.workspace) throw new Error(payload.error || "The shared story workspace could not be refreshed.");
-    setWorkspace(payload.workspace);
+    setWorkspace((current) => reconcileWorkspaceInventory(current, payload.workspace!));
     return payload.workspace;
+  }
+
+  async function loadMoreSources() {
+    if (sourcePagePending || sourcePageInfo.complete || !sourcePageInfo.nextCursor) return;
+    setSourcePagePending(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ cursor: sourcePageInfo.nextCursor, limit: "60" });
+      if (sourceServerQuery) params.set("query", sourceServerQuery);
+      const response = await fetch(`/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${params.toString()}`, { cache: "no-store" });
+      const payload = await response.json() as SourceLibraryPagePayload;
+      if (!response.ok || !payload.page) throw new Error(payload.error || "The next source-library page could not be loaded.");
+      setSourceAssets((current) => mergeById(current, payload.page!.assets));
+      setWorkspace((current) => ({
+        ...current,
+        sourceSets: mergeById(current.sourceSets, payload.page!.sourceSets),
+        externalSources: mergeById(current.externalSources, payload.page!.externalSources),
+      }));
+      setSourcePageInfo(payload.page.pageInfo);
+      setSourceVisibleLimit((current) => Math.max(current, sourceLibraryItems.length + payload.page!.pageInfo.returned));
+    } catch (pageError) {
+      setError(pageError instanceof Error ? pageError.message : "The next source-library page could not be loaded.");
+    } finally {
+      setSourcePagePending(false);
+    }
+  }
+
+  async function createCollection() {
+    if (!collectionTitle.trim()) return;
+    const next = await mutate({
+      action: "create-source-collection",
+      clientRequestId: crypto.randomUUID(),
+      title: collectionTitle,
+      description: collectionDescription,
+      scope: collectionScope,
+    }, collectionScope === "personal" ? `Created your ${collectionTitle.trim()} source collection.` : `Created ${collectionTitle.trim()} for everyone in this Nest.`);
+    if (next) {
+      const created = next.sourceCollections.find((collection) => collection.title === collectionTitle.trim());
+      if (created) setSourceCollection(`collection:${created.id}`);
+      setCollectionTitle("");
+      setCollectionDescription("");
+    }
+  }
+
+  async function toggleSourceCollection(collection: SourceCollection, item: { kind: "source-set" | "external" | "asset"; id: string; key: string }) {
+    const filed = collection.items.some((candidate) => candidate.targetKey === item.key);
+    await mutate({
+      action: filed ? "remove-source-from-collection" : "add-source-to-collection",
+      collectionId: collection.id,
+      expectedRevision: collection.revision,
+      clientRequestId: crypto.randomUUID(),
+      sourceKind: item.kind,
+      sourceId: item.id,
+    }, filed ? `Removed this source from ${collection.title}. The source and its story uses remain unchanged.` : `Filed this source in ${collection.title} without copying its media.`);
   }
 
   async function mutate(body: Record<string, unknown>, successMessage: string) {
@@ -594,7 +753,7 @@ export function SourceStoryClient({
         if (response.status === 409) await refreshWorkspace();
         throw new Error(payload.error || "The story operation could not be saved.");
       }
-      setWorkspace(payload.workspace);
+      setWorkspace((current) => reconcileWorkspaceInventory(current, payload.workspace!));
       setMessage(successMessage);
       return payload.workspace;
     } catch (mutationError) {
@@ -895,7 +1054,7 @@ export function SourceStoryClient({
       });
       const payload = await response.json() as ApiPayload;
       if (!response.ok || !payload.workspace) throw new Error(payload.error || "The section writing page could not be opened.");
-      setWorkspace(payload.workspace);
+      setWorkspace((current) => reconcileWorkspaceInventory(current, payload.workspace!));
       const documentId = payload.operation?.document?.id;
       if (!documentId) throw new Error("The section writing page was saved, but its document identity was not returned.");
       window.location.assign(storyWritingHref(project.slug, selectedBoard.id, section.key, documentId));
@@ -987,6 +1146,19 @@ export function SourceStoryClient({
               ["attention", "Attention", sourceStats.attention],
             ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={sourceCollection === value} onClick={() => setSourceCollection(value)} className={`min-h-12 rounded-xl px-2 text-[10px] font-black uppercase tracking-wide ${sourceCollection === value ? "bg-white text-[#3e2f21] shadow-sm" : "text-[#765f40]"}`}><span className="block text-sm">{count}</span>{label}</button>)}
           </div>
+          {workspace.sourceCollections.length ? <div className="mt-2 flex gap-2 overflow-x-auto pb-1" aria-label="Saved source collections">{workspace.sourceCollections.map((collection) => {
+            const value = `collection:${collection.id}` as const;
+            return <button key={collection.id} type="button" aria-pressed={sourceCollection === value} onClick={() => setSourceCollection(value)} className={`min-h-11 shrink-0 rounded-xl border px-3 text-left text-[10px] font-black ${sourceCollection === value ? "border-violet-300 bg-violet-50 text-violet-950" : "border-[#dfd0b7] bg-white text-[#684f32]"}`}><span className="block max-w-36 truncate">{collection.title}</span><span className="text-[8px] uppercase tracking-wide opacity-70">{collection.items.length} source{collection.items.length === 1 ? "" : "s"} · {collection.scope === "personal" ? "Mine" : "Nest"}</span></button>;
+          })}</div> : null}
+          {canWrite ? <details className="mt-2 rounded-xl border border-dashed border-[#cdb993] bg-white px-3 py-2">
+            <summary className="cursor-pointer min-h-11 py-3 text-[10px] font-black uppercase tracking-wide text-[#76522c]"><Plus size={14} className="mr-1 inline" aria-hidden="true" />New source collection</summary>
+            <div className="grid gap-2 pb-2">
+              <input value={collectionTitle} onChange={(event) => setCollectionTitle(event.target.value)} maxLength={120} placeholder="Selects for cold open" className="min-h-11 rounded-xl border border-[#d9c7a5] px-3 text-sm font-bold" />
+              <textarea value={collectionDescription} onChange={(event) => setCollectionDescription(event.target.value)} maxLength={2000} rows={2} placeholder="What belongs here?" className="rounded-xl border border-[#d9c7a5] p-3 text-xs font-semibold" />
+              <label className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Visibility<select value={collectionScope} onChange={(event) => setCollectionScope(event.target.value as "personal" | "project")} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-xs font-bold normal-case"><option value="personal">Only me</option><option value="project">Everyone in this Nest</option></select></label>
+              <button type="button" disabled={pending || !collectionTitle.trim()} onClick={() => void createCollection()} className="min-h-11 rounded-xl bg-violet-900 px-3 text-xs font-black text-white disabled:opacity-40">Create collection</button>
+            </div>
+          </details> : null}
 
           <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-[#e2d2b6] bg-white p-3 text-center">
             <div><p className="text-lg font-black text-emerald-800">{sourceStats.browseReady}</p><p className="text-[9px] font-black uppercase tracking-wide text-[#806a4d]">Browse ready</p></div>
@@ -995,7 +1167,7 @@ export function SourceStoryClient({
           </div>
 
           <GoogleDriveSourcePicker projectSlug={project.slug} canWrite={canWrite} onAttached={refreshWorkspace} />
-          <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search cameras, files, tags…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
+          <label className="relative mt-4 block"><span className="sr-only">Search the complete source library</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder={`Search all ${sourceAllTotal.toLocaleString()} sources…`} className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-10 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" />{sourcePagePending && sourceQuery.trim() !== sourceServerQuery ? <Loader2 size={15} className="absolute right-3 top-3.5 animate-spin text-sky-800" aria-label="Searching complete source library" /> : null}</label>
           <details className="mt-2 rounded-xl border border-[#e2d2b6] bg-white px-3 py-2">
             <summary className="flex min-h-11 cursor-pointer items-center gap-2 py-2 text-[10px] font-black uppercase tracking-wide text-[#76522c]"><SlidersHorizontal size={14} aria-hidden="true" />Group, filter, and sort</summary>
             <div className="grid gap-3 pb-2 pt-1 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
@@ -1005,8 +1177,8 @@ export function SourceStoryClient({
             </div>
           </details>
 
-          <p className="mt-3 text-[10px] font-bold text-[#806a4d]">Showing {visibleSourceLibraryItems.length.toLocaleString()} of {filteredSourceLibraryItems.length.toLocaleString()} matching sources. A camera package stays one item even when final rendering needs several files.</p>
-          {(!workspace.sourceInventoryWindow.complete || initialAssetTotal > initialAssets.length) ? <p role="status" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-bold leading-4 text-amber-950">This first browsing window contains {workspace.sourceInventoryWindow.sourceSets.loaded.toLocaleString()} of {workspace.sourceInventoryWindow.sourceSets.total.toLocaleString()} camera packages, {workspace.sourceInventoryWindow.externalSources.loaded.toLocaleString()} of {workspace.sourceInventoryWindow.externalSources.total.toLocaleString()} connected files, and {initialAssets.length.toLocaleString()} of {initialAssetTotal.toLocaleString()} Quipsly assets. Nothing is deleted or hidden silently; server-cursor paging is required before this Nest exceeds the window.</p> : null}
+          <p className="mt-3 text-[10px] font-bold text-[#806a4d]">Showing {visibleSourceLibraryItems.length.toLocaleString()} of {filteredSourceLibraryItems.length.toLocaleString()} loaded matches · {sourceServerQuery ? `${sourcePageInfo.totals.all.toLocaleString()} matches across ${sourceAllTotal.toLocaleString()} sources` : `${sourcePageInfo.totals.all.toLocaleString()} canonical sources`}. A camera package stays one item even when final rendering needs several files.</p>
+          {!sourcePageInfo.complete ? <p role="status" className="mt-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-[10px] font-bold leading-4 text-sky-950">The library is cursor-paged: {sourceLibraryItems.length.toLocaleString()} of {sourcePageInfo.totals.all.toLocaleString()} sources are loaded. Loading more resumes each package, vault, and Quipsly-media stream from its exact stable identity.</p> : null}
           <div className="mt-3 max-h-[72vh] space-y-4 overflow-y-auto pr-1">
             {sourceLibraryGroups.map((group) => (
               <section key={group.key} aria-labelledby={`source-group-${group.key}`}>
@@ -1015,7 +1187,7 @@ export function SourceStoryClient({
                   {group.items.map((item) => {
                     const sourceSet = item.kind === "source-set" ? workspace.sourceSets.find((candidate) => candidate.id === item.id) ?? null : null;
                     const externalSource = item.kind === "external" ? workspace.externalSources.find((candidate) => candidate.id === item.id) ?? null : null;
-                    const asset = item.kind === "asset" ? initialAssets.find((candidate) => candidate.id === item.id) ?? null : null;
+                    const asset = item.kind === "asset" ? sourceAssets.find((candidate) => candidate.id === item.id) ?? null : null;
                     const selected = item.kind === "source-set" ? item.id === selectedSourceSet?.id : item.kind === "external" ? item.id === selectedExternalSource?.id : item.id === selectedAsset?.id;
                     const healthTone = item.health === "render-ready" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : item.health === "browse-ready" ? "border-sky-200 bg-sky-50 text-sky-950" : "border-amber-200 bg-amber-50 text-amber-950";
                     const open = () => item.kind === "source-set" ? chooseSourceSet(item.id) : item.kind === "external" ? chooseExternalSource(item.id) : chooseAsset(item.id);
@@ -1036,6 +1208,10 @@ export function SourceStoryClient({
                         </button>
                         {sourceSet && selected ? <details className="mt-2 rounded-xl border border-fuchsia-200 bg-white/70 px-2 py-2 text-[9px]"><summary className="cursor-pointer min-h-11 py-3 font-black uppercase tracking-wide text-fuchsia-950">Package health · {sourceSet.members.length} files</summary><ul className="space-y-1 text-[#765f40]">{sourceSet.members.map((member) => <li key={member.id} className="break-all"><span className="font-black text-fuchsia-950">{member.role.replaceAll("-", " ")}</span> · {member.sourceRevision.externalReference?.fileName ?? member.sourceRevision.id}{member.requiredForRender ? " · final required" : " · browse"}</li>)}</ul><p className="mt-2 font-mono text-[8px] text-[#806a4d]">Package {sourceSet.identitySha256.slice(0, 16)}…</p></details> : null}
                         {sourceSet?.sourceClockRevision.collaborationProxy ? <button type="button" onClick={open} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-fuchsia-900 px-2 text-[10px] font-black text-white"><Eye size={14} aria-hidden="true" />Look around</button> : null}
+                        {selected && workspace.sourceCollections.length ? <details className="mt-2 rounded-xl border border-violet-200 bg-white/80 px-2 py-1"><summary className="cursor-pointer min-h-11 py-3 text-[9px] font-black uppercase tracking-wide text-violet-950">File in collections…</summary><div className="space-y-1 pb-2">{workspace.sourceCollections.map((collection) => {
+                          const filed = collection.items.some((candidate) => candidate.targetKey === item.key);
+                          return <button key={collection.id} type="button" disabled={pending || !canWrite || !collection.canEdit} onClick={() => void toggleSourceCollection(collection, item)} className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-left text-[10px] font-black disabled:opacity-45 ${filed ? "border-violet-300 bg-violet-50 text-violet-950" : "border-[#dfd0b7] bg-white text-[#684f32]"}`}><span>{collection.title}</span><span>{filed ? "Filed" : "Add"}</span></button>;
+                        })}</div></details> : null}
                         {externalSource && !externalSource.latestSourceRevision?.collaborationProxy ? job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-2 text-[9px] font-black text-sky-950"><Loader2 size={13} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Building proxy…" : "Proxy queued…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(externalSource, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-2 text-[9px] font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : externalSource.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !externalSource.latestSourceRevision} onClick={() => void requestProxy(externalSource)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-2 text-[9px] font-black text-white disabled:opacity-45">Create browse proxy</button> : <p className="mt-2 text-[9px] font-semibold leading-4 text-[#765f40]">Attached without copying. Proxy work waits for approved provider execution.</p> : null}
                         {asset && sourceViewMode === "list" ? <p className="mt-2 text-[9px] font-semibold text-[#765f40]">{asset.resolution ?? "Resolution not retained"}{asset.fps ? ` · ${asset.fps.toFixed(2)} fps` : ""}</p> : null}
                       </article>
@@ -1046,6 +1222,7 @@ export function SourceStoryClient({
             ))}
             {!filteredSourceLibraryItems.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">Nothing matches this collection and filter. Try All sources or clear the search.</p> : null}
             {visibleSourceLibraryItems.length < filteredSourceLibraryItems.length ? <button type="button" onClick={() => setSourceVisibleLimit((current) => current + 60)} className="min-h-12 w-full rounded-xl border border-[#9f794c] bg-white px-4 text-xs font-black uppercase tracking-wide text-[#60492f]">Show 60 more</button> : null}
+            {!sourcePageInfo.complete ? <button type="button" disabled={sourcePagePending} onClick={() => void loadMoreSources()} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45">{sourcePagePending ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <FolderOpen size={16} aria-hidden="true" />}Load next {Math.max(0, Math.min(60, sourcePageInfo.totals.all - sourceLibraryItems.length)).toLocaleString()} {sourceServerQuery ? "matches" : "canonical sources"}</button> : null}
           </div>
         </aside>
 
@@ -1124,7 +1301,7 @@ export function SourceStoryClient({
                         <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
                         {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
                         {canWrite ? <BoardPlacementEditor placement={placement} groupKeys={boardGroupKeys} pending={pending} onSave={(next) => changeCardPlacement(placement.cardId, next)} onUnfile={() => unfileCard(placement.cardId)} /> : null}
-                        {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
+                        {canWrite ? <SourceRepairEditor card={placement.card} assets={sourceAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
                         {canWrite ? <TimelinePromotionEditor card={placement.card} board={selectedBoard} boardPlacementId={placement.id} workspace={workspace} pending={pending} mutate={mutate} projectSlug={project.slug} /> : null}
                         {canWrite ? <StoryCardEditor card={placement.card} tags={tags} pending={pending} mutate={mutate} /> : null}
                       </article>

@@ -135,8 +135,10 @@ The Source Story workspace now provides:
 - exact select, chosen-select, and board-use counts per source;
 - an initial 60-item render window with incremental reveal and CSS rendering
   containment, avoiding an unbounded media-card DOM;
-- explicit loaded-versus-retained capacity evidence at the current 500-row
-  database read boundary so a large library cannot be silently truncated.
+- server-wide search and an opaque mixed-source cursor whose independent
+  package, external-reference, and asset positions prevent one dense stream
+  from starving or skipping another; and
+- deliberate incremental page loading with exact loaded-versus-total evidence.
 
 The Working collection is intentionally derived rather than a second manual
 folder: a source enters it when a stable select exists or one of its cards is
@@ -144,21 +146,30 @@ used on a board. A future personal Favorite should be a small explicit filing
 or collection relation, not a mutation of the original or a duplicate tag
 taxonomy.
 
+Named personal and Nest-shared source collections now provide that explicit
+filing boundary. They reference source-set, external-reference, or asset
+identity without copying media and without changing tags, cards, boards,
+writing, or timelines. The database requires exactly one typed target and
+checks its stable prefixed key. Mutations are serializable, optimistic-revision
+checked, idempotent, and append-only.
+
+The cursor intentionally uses canonical `createdAt` plus stable kind/identity
+for continuation while capture timestamps remain a presentation/sort
+projection. Provider modification time and filenames can change during
+reconciliation; they are useful browsing evidence but unsafe cursor identity.
+
 ## Next production slices
 
-1. Replace the 500-row initial inventory window with cursor-paged, server-side
-   search over packages, external references, and Quipsly assets.
-2. Generate checksum-bound thumbnails and contact sheets as derivatives,
+1. Generate checksum-bound thumbnails and contact sheets as derivatives,
    including sampled spherical views for 360 packages.
-3. Add personal Favorites and named collections using explicit target joins;
-   retain project tags for shared meaning rather than overloading them as UI
-   folders.
-4. Add waveform/filmstrip navigation and keyboard range marking to the viewer.
-5. Add a freeform exploratory board that can deliberately commit an order to a
+2. Add waveform/filmstrip navigation and keyboard range marking to the viewer.
+3. Add a freeform exploratory board that can deliberately commit an order to a
    durable binder, preserving both arrangements and their receipts.
-6. Add comments/tasks beside a card and section through the existing Nest
+4. Add comments/tasks beside a card and section through the existing Nest
    collaboration and work kernels.
-7. Activate a licensed Insta360 MediaSDK stitch executor only after approval of
+5. Add collection rename, archive, and explicit reordering on the same
+   revisioned operation ledger; do not turn filing order into binder order.
+6. Activate a licensed Insta360 MediaSDK stitch executor only after approval of
    its provider, cost, retention, and minimum-capacity proposal. The executor
    must emit the existing exact-source stitch-master receipt.
 

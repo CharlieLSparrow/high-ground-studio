@@ -85,6 +85,30 @@ Run Job that receives only generation-bound GCS work:
 Release and operated-provider evidence is in
 `docs/coordination/2026-08-02-episode-collaboration-proxy-gcs-qualification.md`.
 
+## Source Library And Story Filing Boundary
+
+Source Story projects three canonical media owners into one browsable library:
+
+- `StudioMediaSourceSet` owns a logical multi-file camera take.
+- `StudioExternalMediaReference` owns a provider-neutral connected file that
+  remains outside Quipsly storage.
+- `StudioMediaAsset` owns registered Quipsly media.
+
+The source-library API uses one opaque, versioned cursor containing an
+independent `(createdAt, id)` continuation for each owner. Each request fetches
+bounded candidates from all three streams, merges them deterministically, and
+advances only cursors represented in the emitted page. Database predicates
+exclude external references and assets already represented by a source set;
+the client therefore never has to guess whether camera companion files are one
+take.
+
+`StudioSourceCollection` is a filing projection over those identities. It does
+not own bytes, source ranges, tags, story intent, binder structure, writing, or
+timeline placement. Personal visibility is owner-bound; project visibility
+inherits the Nest boundary. Collection mutations use current rows as the read
+model and append exact revision snapshots for replay, conflict explanation,
+and future rollback.
+
 ## Team Workflow Architecture
 
 Team workflows are server-rendered pages plus server actions:

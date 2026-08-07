@@ -2295,7 +2295,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     prisma.studioExternalMediaReference.findMany({
       where: { projectId },
       orderBy: [{ updatedAt: "desc" }, { fileName: "asc" }],
-      take: 500,
+      take: 80,
       select: {
         id: true,
         provider: true,
@@ -2333,13 +2333,13 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     prisma.studioWorkflowJob.findMany({
       where: { projectId, type: "external-source-proxy", source: "source-story.external-proxy" },
       orderBy: { updatedAt: "desc" },
-      take: 500,
+      take: 320,
       select: { id: true, status: true, inputJson: true, resultJson: true, error: true, updatedAt: true },
     }),
     prisma.studioMediaSourceSet.findMany({
       where: { projectId },
       orderBy: [{ createdAt: "desc" }, { displayName: "asc" }],
-      take: 500,
+      take: 80,
       select: {
         id: true,
         kind: true,
@@ -2500,7 +2500,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     sourceInventoryWindow: {
       externalSources: { loaded: externalSources.length, total: externalSourceTotal },
       sourceSets: { loaded: sourceSets.length, total: sourceSetTotal },
-      windowLimit: 500,
+      windowLimit: 80,
       complete: externalSources.length === externalSourceTotal && sourceSets.length === sourceSetTotal,
     },
     episodes: episodes.map((episode) => {

@@ -30,6 +30,8 @@ import {
 } from "./source-story";
 import { registerReviewedSpatialStitchMaster } from "./spatial-stitch-master";
 import { queueSpatialReframe, registerSpatialReframeResult } from "./spatial-render-job";
+import { readSourceLibraryPage } from "./source-library";
+import { addSourceToCollection, createSourceCollection, readSourceCollections, removeSourceFromCollection } from "./source-collections";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -65,6 +67,8 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
   let spatialOriginalRevisionId = "";
   let spatialVaultRoot = "";
   let spatialMasterPath = "";
+  const additionalAssetIds: string[] = [];
+  let collectionOtherUserId = "";
 
   beforeAll(async () => {
     spatialVaultRoot = await mkdtemp(path.join(os.tmpdir(), "quipsly-spatial-master-vault-"));
@@ -185,6 +189,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       // revision in isolation. Remove the package aggregate before deleting
       // the disposable Nest so the test exercises the production lifecycle.
       if (projectId) {
+        await prisma.studioSourceCollection.deleteMany({ where: { projectId } });
         await prisma.studioStoryTimelinePlacement.deleteMany({ where: { projectId } });
         await prisma.studioStoryCard.deleteMany({ where: { projectId } });
         await prisma.studioSourceRange.deleteMany({ where: { projectId } });
@@ -192,8 +197,9 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       }
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       await prisma.studioMediaAsset.deleteMany({
-        where: { id: { in: [firstAssetId, secondAssetId, otherAssetId].filter(Boolean) } },
+        where: { id: { in: [firstAssetId, secondAssetId, otherAssetId, ...additionalAssetIds].filter(Boolean) } },
       });
+      if (collectionOtherUserId) await prisma.user.deleteMany({ where: { id: collectionOtherUserId } });
       if (actorUserId) await prisma.user.deleteMany({ where: { id: actorUserId } });
     } finally {
       if (spatialVaultRoot) await rm(spatialVaultRoot, { recursive: true, force: true });
@@ -309,6 +315,196 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
         expect.objectContaining({ role: "browse-proxy", requiredForRender: false }),
       ]),
     }));
+  });
+
+  it("cursor-pages one mixed canonical source inventory without duplicating package members", async () => {
+    const [standaloneAsset, standaloneExternal] = await Promise.all([
+      prisma.studioMediaAsset.create({
+        data: {
+          filename: `standalone-camera-${nonce}.mov`,
+          url: `/source-story/${nonce}/standalone-camera.mov`,
+          mimeType: "video/quicktime",
+          duration: 42,
+          projects: { connect: { id: projectId } },
+        },
+      }),
+      prisma.studioExternalMediaReference.create({
+        data: {
+          projectId,
+          provider: "google-drive",
+          externalFileId: `standalone-drive-${nonce}`,
+          fileName: `standalone-interview-${nonce}.wav`,
+          mimeType: "audio/wav",
+          accessState: "available",
+          capabilityState: "downloadable",
+          importedByUserId: actorUserId,
+          importedByEmail: actorEmail,
+          clientRequestId: randomUUID(),
+        },
+      }),
+    ]);
+    additionalAssetIds.push(standaloneAsset.id);
+
+    const keys: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await readSourceLibraryPage({ prisma, projectId, limit: 1, cursor });
+      keys.push(...page.orderedKeys);
+      cursor = page.pageInfo.nextCursor;
+      if (keys.length > 20) throw new Error("The mixed source cursor did not converge.");
+    } while (cursor);
+
+    expect(keys).toEqual(expect.arrayContaining([
+      `source-set:${spatialSourceSetId}`,
+      `external:${standaloneExternal.id}`,
+      `asset:${standaloneAsset.id}`,
+    ]));
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys.filter((key) => key.startsWith("external:")).length).toBe(1);
+    expect(keys).not.toContain(`asset:${firstAssetId}`);
+    expect(keys).not.toContain(`asset:${secondAssetId}`);
+
+    const search = await readSourceLibraryPage({ prisma, projectId, limit: 10, query: "standalone-interview" });
+    expect(search.orderedKeys).toEqual([`external:${standaloneExternal.id}`]);
+    expect(search.pageInfo).toMatchObject({ complete: true, totals: { all: 1, externalSources: 1 } });
+
+    await expect(readSourceLibraryPage({ prisma, projectId, cursor: "not-a-cursor" })).rejects.toMatchObject({
+      code: "invalid-source-library-cursor",
+      status: 400,
+    });
+  });
+
+  it("files canonical sources into revisioned personal and shared collections without copying media", async () => {
+    const standaloneAsset = await prisma.studioMediaAsset.findFirstOrThrow({
+      where: { id: { in: additionalAssetIds }, projects: { some: { id: projectId } } },
+      select: { id: true },
+    });
+    const otherUser = await prisma.user.create({ data: { primaryEmail: `source-collection-reader-${nonce}@example.test` } });
+    collectionOtherUserId = otherUser.id;
+    const personalRequestId = randomUUID();
+    const personal = await createSourceCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      clientRequestId: personalRequestId,
+      title: "Homer selects",
+      description: "Private review bin before sharing.",
+      scope: "personal",
+    });
+    await expect(createSourceCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      clientRequestId: personalRequestId,
+      title: "Homer selects",
+      description: "Private review bin before sharing.",
+      scope: "personal",
+    })).resolves.toMatchObject({ replayed: true, collection: { id: personal.collection.id } });
+    const shared = await createSourceCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      clientRequestId: randomUUID(),
+      title: "Episode 9 shared selects",
+      scope: "project",
+    });
+
+    const added = await addSourceToCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      collectionId: personal.collection.id,
+      expectedRevision: 1,
+      clientRequestId: randomUUID(),
+      sourceKind: "source-set",
+      sourceId: spatialSourceSetId,
+    });
+    expect(added).toMatchObject({ replayed: false, unchanged: false, collection: { revision: 2 } });
+    const assetAdded = await addSourceToCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      collectionId: personal.collection.id,
+      expectedRevision: 2,
+      clientRequestId: randomUUID(),
+      sourceKind: "asset",
+      sourceId: standaloneAsset.id,
+      note: "Strong alternate angle",
+    });
+    expect(assetAdded.collection.items.map((item) => item.targetKey)).toEqual([
+      `source-set:${spatialSourceSetId}`,
+      `asset:${standaloneAsset.id}`,
+    ]);
+    await expect(prisma.studioSourceCollectionItem.create({
+      data: {
+        collectionId: personal.collection.id,
+        targetKey: `asset:${standaloneAsset.id}-wrong`,
+        mediaAssetId: standaloneAsset.id,
+        sortOrder: 9,
+        addedByUserId: actorUserId,
+      },
+    })).rejects.toThrow();
+    await expect(addSourceToCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      collectionId: personal.collection.id,
+      expectedRevision: 2,
+      clientRequestId: randomUUID(),
+      sourceKind: "asset",
+      sourceId: otherAssetId,
+    })).rejects.toMatchObject({ code: "stale-collection-revision", currentRevision: 3 });
+
+    await addSourceToCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      collectionId: shared.collection.id,
+      expectedRevision: 1,
+      clientRequestId: randomUUID(),
+      sourceKind: "source-set",
+      sourceId: spatialSourceSetId,
+    });
+    const [ownerView, collaboratorView] = await Promise.all([
+      readSourceCollections(prisma, { projectId, actorUserId }),
+      readSourceCollections(prisma, { projectId, actorUserId: otherUser.id }),
+    ]);
+    expect(ownerView.map((collection) => collection.id)).toEqual(expect.arrayContaining([personal.collection.id, shared.collection.id]));
+    expect(collaboratorView.map((collection) => collection.id)).toEqual([shared.collection.id]);
+    expect(collaboratorView[0]).toMatchObject({ scope: "project", canEdit: true, items: [{ targetKey: `source-set:${spatialSourceSetId}` }] });
+
+    await expect(addSourceToCollection({
+      prisma,
+      projectId,
+      actorUserId: otherUser.id,
+      collectionId: personal.collection.id,
+      expectedRevision: 3,
+      clientRequestId: randomUUID(),
+      sourceKind: "source-set",
+      sourceId: spatialSourceSetId,
+    })).rejects.toMatchObject({ code: "collection-owner-required" });
+
+    const removed = await removeSourceFromCollection({
+      prisma,
+      projectId,
+      actorUserId,
+      collectionId: personal.collection.id,
+      expectedRevision: 3,
+      clientRequestId: randomUUID(),
+      sourceKind: "source-set",
+      sourceId: spatialSourceSetId,
+    });
+    expect(removed).toMatchObject({ collection: { revision: 4, items: [{ targetKey: `asset:${standaloneAsset.id}`, sortOrder: 0 }] } });
+    await expect(prisma.studioSourceCollectionOperation.findMany({
+      where: { collectionId: personal.collection.id },
+      orderBy: { revision: "asc" },
+      select: { operation: true, revision: true, previousRevision: true },
+    })).resolves.toEqual([
+      { operation: "create-collection", revision: 1, previousRevision: 0 },
+      { operation: "add-source", revision: 2, previousRevision: 1 },
+      { operation: "add-source", revision: 3, previousRevision: 2 },
+      { operation: "remove-source", revision: 4, previousRevision: 3 },
+    ]);
   });
 
   it("registers one checksum-bound reviewed 5.7K master and exposes it without its local locator", async () => {

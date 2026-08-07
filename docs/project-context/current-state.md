@@ -2,6 +2,35 @@
 
 Date: 2026-08-07
 
+## Cursor-paged source library and durable collections checkpoint
+
+- Source Story no longer depends on three silent 500-row media windows. One
+  versioned cursor advances camera packages, standalone connected files, and
+  Quipsly assets independently, merges them on a stable `createdAt + kind + id`
+  order, and resumes only the streams actually emitted on the prior page.
+- Package members are excluded at the database query boundary, so an Insta360
+  take remains one library item even when its originals, LRV, and Quipsly asset
+  registrations all exist. Server-side search spans the complete source
+  library, including package-member filenames, while exact deep links pin an
+  older source beside the first current page.
+- `StudioSourceCollection` is a distinct filing kernel, not an overload of
+  tags, personal research promotion, story boards, or media bytes. A collection
+  is personal or Nest-shared; every item references exactly one canonical
+  source set, external reference, or media asset; PostgreSQL checks the stable
+  target key against that foreign key.
+- Create, file, and unfile operations are client-request idempotent,
+  optimistic-revision checked, serializable, and append-only. Personal
+  collections are owner-only; shared collections remain bounded by the
+  existing Nest read/write authorization surface.
+- Source Story now searches all sources after a short debounce, loads further
+  pages deliberately, creates personal/shared collections, and files the
+  selected source without copying it or changing tags, cards, boards, writing,
+  timelines, or media.
+- Prisma format/validate/generate, Quipsly TypeScript, 31 focused tests against
+  real PostgreSQL, and the complete 194-page production build pass. The local
+  schema has all 104 migrations applied. Retained signed-in HGO operation is
+  the next gate before this checkpoint is committed.
+
 ## Source bin checkpoint
 
 - Source Story now opens with a package-aware Source bin rather than three

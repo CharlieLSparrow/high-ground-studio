@@ -13,8 +13,8 @@ import {
   type StoryBoardPlacementIntent,
   type StoryReframeRecipe,
 } from "@/lib/source-story-contract";
-import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
+import { requireSourceStoryAccess } from "@/lib/server/source-story-access";
 import {
   attachGoogleDriveFileToNest,
   googleDriveSourceErrorResponse,
@@ -41,42 +41,20 @@ import {
   updateStoryBoardSection,
   withdrawSourceStoryTimelinePlacement,
 } from "@/lib/server/source-story";
-import { SpatialRenderQueueError, queueSpatialReframe, registerSpatialReframeResult } from "@/lib/server/spatial-render-job";
 import {
-  findStudioProjectForAccess,
-  normalizeAccessEmail,
-  resolveStudioProjectAccess,
-  type StudioProjectAccessAction,
-} from "@/lib/server/studio-project-access";
+  addSourceToCollection,
+  createSourceCollection,
+  readSourceCollections,
+  removeSourceFromCollection,
+} from "@/lib/server/source-collections";
+import { SpatialRenderQueueError, queueSpatialReframe, registerSpatialReframeResult } from "@/lib/server/spatial-render-job";
 
 export const dynamic = "force-dynamic";
-
-type Actor = {
-  userId: string;
-  email: string;
-  projectId: string;
-};
 
 function jsonSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value, (_key, item) => (
     typeof item === "bigint" ? item.toString() : item
   ))) as T;
-}
-
-async function requireAccess(request: Request, projectSlug: string, action: StudioProjectAccessAction): Promise<Actor> {
-  const session = await getQuipslySessionFromRequest(request);
-  const email = normalizeAccessEmail(session?.user.primaryEmail || session?.user.email);
-  if (!session?.user.id || !email) {
-    throw Object.assign(new Error("Sign in to open this source workspace."), { status: 401 });
-  }
-  const prisma = getPrismaClient();
-  const project = await findStudioProjectForAccess(projectSlug, prisma);
-  if (!project) throw Object.assign(new Error("This source workspace is unavailable."), { status: 404 });
-  const access = await resolveStudioProjectAccess({ projectSlug, email, action, prisma });
-  if (!access.allowed || !access.projectId) {
-    throw Object.assign(new Error("This source workspace is unavailable."), { status: 404 });
-  }
-  return { userId: session.user.id, email, projectId: access.projectId };
 }
 
 function text(value: unknown) {
@@ -167,12 +145,13 @@ function errorResponse(error: unknown) {
 export async function GET(request: Request, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
-    const actor = await requireAccess(request, slug, "read");
-    const [workspace, spatialRenderReadiness] = await Promise.all([
+    const actor = await requireSourceStoryAccess(request, slug, "read");
+    const [workspace, sourceCollections, spatialRenderReadiness] = await Promise.all([
       readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
+      readSourceCollections(getPrismaClient(), { projectId: actor.projectId, actorUserId: actor.userId }),
       readSpatialRenderReadiness(),
     ]);
-    return NextResponse.json(jsonSafe({ ok: true, workspace, spatialRenderReadiness }), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(jsonSafe({ ok: true, workspace: { ...workspace, sourceCollections }, spatialRenderReadiness }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }
@@ -181,7 +160,7 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
 export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await context.params;
-    const actor = await requireAccess(request, slug, "write");
+    const actor = await requireSourceStoryAccess(request, slug, "write");
     const body = await request.json() as Record<string, unknown>;
     const action = text(body.action);
     const prisma = getPrismaClient();
@@ -226,6 +205,40 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
             ? body.metadata as Record<string, unknown>
             : {},
         },
+      });
+    } else if (action === "create-source-collection") {
+      operation = await createSourceCollection({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        clientRequestId: text(body.clientRequestId),
+        title: text(body.title),
+        description: text(body.description),
+        scope: text(body.scope) || "personal",
+        color: text(body.color) || null,
+      });
+    } else if (action === "add-source-to-collection") {
+      operation = await addSourceToCollection({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        collectionId: text(body.collectionId),
+        expectedRevision: Number(body.expectedRevision),
+        clientRequestId: text(body.clientRequestId),
+        sourceKind: text(body.sourceKind),
+        sourceId: text(body.sourceId),
+        note: text(body.note),
+      });
+    } else if (action === "remove-source-from-collection") {
+      operation = await removeSourceFromCollection({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        collectionId: text(body.collectionId),
+        expectedRevision: Number(body.expectedRevision),
+        clientRequestId: text(body.clientRequestId),
+        sourceKind: text(body.sourceKind),
+        sourceId: text(body.sourceId),
       });
     } else if (action === "create-board") {
       operation = await createStoryBoard({
@@ -441,8 +454,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       return NextResponse.json({ error: "Choose a supported source-story action." }, { status: 400 });
     }
 
-    const workspace = await readSourceStoryWorkspace(prisma, actor.projectId);
-    return NextResponse.json(jsonSafe({ ok: true, operation, workspace }), { headers: { "Cache-Control": "no-store" } });
+    const [workspace, sourceCollections] = await Promise.all([
+      readSourceStoryWorkspace(prisma, actor.projectId),
+      readSourceCollections(prisma, { projectId: actor.projectId, actorUserId: actor.userId }),
+    ]);
+    return NextResponse.json(jsonSafe({ ok: true, operation, workspace: { ...workspace, sourceCollections } }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }

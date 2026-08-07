@@ -901,6 +901,11 @@ model User {
   storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
   storyBoardOperationsAuthored      StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
   mediaDerivativesCreated           StudioMediaDerivative[]                     @relation("StudioMediaDerivativeCreatedBy")
+  sourceCollectionsOwned            StudioSourceCollection[]                    @relation("StudioSourceCollectionOwner")
+  sourceCollectionsCreated          StudioSourceCollection[]                    @relation("StudioSourceCollectionCreatedBy")
+  sourceCollectionsUpdated          StudioSourceCollection[]                    @relation("StudioSourceCollectionUpdatedBy")
+  sourceCollectionItemsAdded        StudioSourceCollectionItem[]                @relation("StudioSourceCollectionItemAddedBy")
+  sourceCollectionOperations        StudioSourceCollectionOperation[]           @relation("StudioSourceCollectionOperationActor")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -3918,6 +3923,7 @@ model StudioProject {
   storyCards                    StudioStoryCard[]
   storyBoards                   StudioStoryBoard[]
   storyTimelinePlacements       StudioStoryTimelinePlacement[]
+  sourceCollections             StudioSourceCollection[]
   mediaDerivatives              StudioMediaDerivative[]
   documentOperations            StudioDocumentOperation[]
   productionRooms               StudioProductionRoom[]
@@ -4872,12 +4878,13 @@ model StudioExternalMediaReference {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  project    StudioProject                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceUnit StudioSourceUnit?                       @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
-  connection StudioMediaProviderConnection?          @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  importedBy User                                    @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
-  revisions  StudioMediaSourceRevision[]
-  operations StudioExternalMediaReferenceOperation[]
+  project         StudioProject                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceUnit      StudioSourceUnit?                       @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  connection      StudioMediaProviderConnection?          @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  importedBy      User                                    @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  revisions       StudioMediaSourceRevision[]
+  operations      StudioExternalMediaReferenceOperation[]
+  collectionItems StudioSourceCollectionItem[]
 
   @@unique([projectId, provider, externalFileId])
   @@unique([projectId, importedByUserId, clientRequestId])
@@ -4977,6 +4984,7 @@ model StudioMediaSourceSet {
   createdBy           User                         @relation("StudioMediaSourceSetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   members             StudioMediaSourceSetMember[]
   ranges              StudioSourceRange[]
+  collectionItems     StudioSourceCollectionItem[]
 
   @@unique([projectId, identitySha256])
   @@unique([projectId, createdByUserId, clientRequestId])
@@ -5339,6 +5347,92 @@ model StudioStoryTimelinePlacementOperation {
 
   @@unique([placementId, revision])
   @@unique([placementId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
+}
+
+// A source collection is a filing surface over canonical media identities. It
+// never copies bytes, changes a tag, creates a story card, or mutates a board.
+// Personal collections are visible only to their owner; project collections
+// are shared with people who already have access to the Nest.
+model StudioSourceCollection {
+  id              String    @id @default(cuid())
+  projectId       String
+  ownerUserId     String
+  scope           String    @default("personal")
+  slug            String
+  title           String
+  description     String    @default("") @db.Text
+  color           String?
+  revision        Int       @default(1)
+  clientRequestId String
+  createdByUserId String
+  updatedByUserId String?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project    StudioProject                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner      User                              @relation("StudioSourceCollectionOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  createdBy  User                              @relation("StudioSourceCollectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy  User?                             @relation("StudioSourceCollectionUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  items      StudioSourceCollectionItem[]
+  operations StudioSourceCollectionOperation[]
+
+  @@unique([projectId, ownerUserId, slug])
+  @@unique([projectId, createdByUserId, clientRequestId], map: "StudioSourceCollection_project_actor_request_key")
+  @@index([projectId, scope, archivedAt, updatedAt])
+  @@index([ownerUserId, archivedAt, updatedAt])
+}
+
+// Exactly one target is set. targetKey is the stable client-facing identity
+// (`source-set:…`, `external:…`, or `asset:…`) and is independently checked by
+// the database migration against the populated foreign key.
+model StudioSourceCollectionItem {
+  id                  String   @id @default(cuid())
+  collectionId        String
+  targetKey           String
+  sourceSetId         String?
+  externalReferenceId String?
+  mediaAssetId        String?
+  sortOrder           Int      @default(0)
+  note                String   @default("") @db.Text
+  addedByUserId       String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  collection        StudioSourceCollection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  sourceSet         StudioMediaSourceSet?         @relation(fields: [sourceSetId], references: [id], onDelete: Restrict)
+  externalReference StudioExternalMediaReference? @relation(fields: [externalReferenceId], references: [id], onDelete: Restrict)
+  mediaAsset        StudioMediaAsset?             @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  addedBy           User                          @relation("StudioSourceCollectionItemAddedBy", fields: [addedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, targetKey])
+  @@index([sourceSetId])
+  @@index([externalReferenceId])
+  @@index([mediaAssetId])
+  @@index([collectionId, sortOrder])
+}
+
+// Every collection mutation is idempotent and revisioned. snapshotJson keeps
+// the resulting ordered filing state inspectable without making the current
+// collection an event-store query.
+model StudioSourceCollectionOperation {
+  id               String   @id @default(cuid())
+  collectionId     String
+  revision         Int
+  previousRevision Int
+  operation        String
+  actorUserId      String
+  clientRequestId  String
+  requestSha256    String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  collection StudioSourceCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  actor      User                   @relation("StudioSourceCollectionOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, revision])
+  @@unique([collectionId, actorUserId, clientRequestId])
   @@index([actorUserId, createdAt])
 }
 
@@ -6699,6 +6793,7 @@ model StudioMediaAsset {
   transcriptJobs                TranscriptJob[]
   transcriptVerifications       TranscriptSegmentVerification[]
   mediaSourceRevisions          StudioMediaSourceRevision[]
+  sourceCollectionItems         StudioSourceCollectionItem[]
 
   @@index([createdAt])
   @@index([mediaBinId])

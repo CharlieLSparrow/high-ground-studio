@@ -46,6 +46,40 @@ App behavior:
 - `OWNER`, `TEAM_SCHEDULER`, and `COACH` all count as team/internal access today
 - membership management is narrower than general team access
 
+## Source Library Filing
+
+### `StudioSourceCollection`
+
+A durable named working set over canonical Nest media identities.
+
+Key fields:
+- `projectId`
+- `ownerUserId`
+- `scope` (`personal` or `project`)
+- `slug`, `title`, `description`, and optional presentation color
+- optimistic `revision`
+- `archivedAt`
+
+Boundary:
+- a personal collection is visible and mutable only by its owner
+- a project collection is visible to the Nest and mutable only through the
+  existing Nest write boundary
+- collection membership does not copy media or imply a tag, story-card,
+  binder, writing, timeline, render, or publication decision
+
+### `StudioSourceCollectionItem`
+
+One ordered filing reference. Exactly one of `sourceSetId`,
+`externalReferenceId`, or `mediaAssetId` must be populated. PostgreSQL also
+requires `targetKey` to equal the corresponding canonical identity prefix, so
+a stale or contradictory polymorphic reference cannot be persisted.
+
+### `StudioSourceCollectionOperation`
+
+Append-only, actor-bound collection history. Every mutating request preserves
+the previous and resulting contiguous revision, idempotent client request,
+request checksum, operation kind, and resulting ordered collection snapshot.
+
 ## Client And Commercial Ops
 
 ### `ClientProfile`

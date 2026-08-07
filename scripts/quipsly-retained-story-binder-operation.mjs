@@ -21,6 +21,7 @@ const productiveTitle = "Insta360 selects — editorial spine";
 const productiveSynopsis = "Organize Homer's strongest spatial moments into an opening promise, evidence, turns, and payoff before committing them to an Episode timeline.";
 const qaTitle = "Binder lifecycle QA · retained writing";
 const qaSynopsis = "A deliberately empty retained section used to prove revisioned writing and safe archive behavior.";
+const retainedCollectionTitle = "Homer spatial selects · retained";
 
 function deterministicUuid(value) {
   const hex = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
@@ -52,6 +53,12 @@ try {
     select: { id: true, title: true },
   });
   if (!board) throw new Error("The retained Homer Insta360 board is unavailable.");
+  const retainedSourceSet = await prisma.studioMediaSourceSet.findFirst({
+    where: { projectId: project.id, kind: "insta360-360" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, displayName: true },
+  });
+  if (!retainedSourceSet) throw new Error("The retained Homer Insta360 package is unavailable.");
 
   const password = `Local-only-${randomUUID()}!`;
   process.env.FIREBASE_AUTH_EMULATOR_HOST = new URL(authOrigin).host;
@@ -99,6 +106,47 @@ try {
     const projected = payload?.workspace?.boards?.find((candidate) => candidate?.id === board.id);
     if (response.status !== 200 || !projected) throw new Error("The retained board did not project through the authenticated app.");
     return projected;
+  }
+
+  const collectionCreateRequestId = deterministicUuid(`${project.id}:retained-source-collection-v1`);
+  const collectionCreate = await mutate({
+    action: "create-source-collection",
+    clientRequestId: collectionCreateRequestId,
+    title: retainedCollectionTitle,
+    description: "A durable personal working set for Homer's strongest 360 degree moments before they become shared story cards.",
+    scope: "personal",
+  });
+  const collectionId = collectionCreate.operation?.collection?.id;
+  if (!collectionId) throw new Error("The retained source collection returned no durable identity.");
+  let retainedCollection = await prisma.studioSourceCollection.findUniqueOrThrow({ where: { id: collectionId }, include: { items: true } });
+  const collectionAddRequestId = deterministicUuid(`${project.id}:${collectionId}:${retainedSourceSet.id}:file-v1`);
+  const priorCollectionAdd = await prisma.studioSourceCollectionOperation.findUnique({
+    where: { collectionId_actorUserId_clientRequestId: { collectionId, actorUserId: operator.id, clientRequestId: collectionAddRequestId } },
+  });
+  const collectionAdd = await mutate({
+    action: "add-source-to-collection",
+    collectionId,
+    expectedRevision: priorCollectionAdd?.previousRevision ?? retainedCollection.revision,
+    clientRequestId: collectionAddRequestId,
+    sourceKind: "source-set",
+    sourceId: retainedSourceSet.id,
+  });
+  retainedCollection = await prisma.studioSourceCollection.findUniqueOrThrow({ where: { id: collectionId }, include: { items: { orderBy: { sortOrder: "asc" } }, operations: { orderBy: { revision: "asc" } } } });
+
+  const pagedSourceKeys = [];
+  let sourceCursor = null;
+  do {
+    const params = new URLSearchParams({ limit: "1" });
+    if (sourceCursor) params.set("cursor", sourceCursor);
+    const response = await fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story/sources?${params}`, { headers: { cookie, "cache-control": "no-cache" } });
+    const payload = await response.json().catch(() => ({}));
+    if (response.status !== 200 || !payload.page) throw new Error(`The cursor-paged source inventory failed through the authenticated app (HTTP ${response.status}).`);
+    pagedSourceKeys.push(...(payload.page.orderedKeys || []));
+    sourceCursor = payload.page.pageInfo?.nextCursor || null;
+    if (pagedSourceKeys.length > 2_000) throw new Error("The retained cursor-paged source inventory did not converge.");
+  } while (sourceCursor);
+  if (new Set(pagedSourceKeys).size !== pagedSourceKeys.length || !pagedSourceKeys.includes(`source-set:${retainedSourceSet.id}`)) {
+    throw new Error("The retained cursor-paged source inventory duplicated or lost the exact Insta360 package.");
   }
 
   async function boardOperation(requestId) {
@@ -222,7 +270,7 @@ try {
   ]);
   const [storyHtml, writingHtml, deniedStoryHtml] = await Promise.all([storyPage.text(), writingPage.text(), deniedStoryPage.text()]);
   const workspacePayload = await workspaceResponse.json().catch(() => ({}));
-  const storyEvidence = [productiveTitle, productiveSynopsis, "Add an empty section or story beat", "Section details and lifecycle", "Source bin", "Working", "Attention", "Browse ready", "Render ready", "Exact selects", "Group, filter, and sort"];
+  const storyEvidence = [productiveTitle, productiveSynopsis, retainedCollectionTitle, "New source collection", "Add an empty section or story beat", "Section details and lifecycle", "Source bin", "Working", "Attention", "Browse ready", "Render ready", "Exact selects", "Group, filter, and sort"];
   const writingEvidence = ["Source-to-story writing context", productiveTitle];
   if (storyPage.status !== 200 || storyEvidence.some((value) => !storyHtml.includes(value))) throw new Error("The retained Story page did not render the complete binder controls and productive section.");
   const sourceInventoryWindow = workspacePayload?.workspace?.sourceInventoryWindow;
@@ -268,6 +316,22 @@ try {
       collaborationProxyReady: Boolean(retainedSpatialPackage.sourceClockRevision?.collaborationProxy),
       spatialStitchMasterReady: Boolean(retainedSpatialPackage.sourceClockRevision?.spatialStitchMaster),
       inventoryWindow: sourceInventoryWindow,
+    },
+    sourceCollection: {
+      id: retainedCollection.id,
+      title: retainedCollection.title,
+      scope: retainedCollection.scope,
+      revision: retainedCollection.revision,
+      targetKeys: retainedCollection.items.map((item) => item.targetKey),
+      operations: retainedCollection.operations.map((operation) => ({ revision: operation.revision, operation: operation.operation })),
+      createReplayed: collectionCreate.operation?.replayed === true,
+      filingReplayed: collectionAdd.operation?.replayed === true,
+    },
+    cursorInventory: {
+      pageSize: 1,
+      returned: pagedSourceKeys.length,
+      unique: new Set(pagedSourceKeys).size,
+      retainedSourceSetFound: true,
     },
   }, null, 2));
 } finally {

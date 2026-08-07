@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { readSourceStoryWorkspace } from "@/lib/server/source-story";
+import { readSourceCollections } from "@/lib/server/source-collections";
+import { readSourceLibraryPage } from "@/lib/server/source-library";
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import {
   findStudioProjectForAccess,
@@ -39,41 +41,9 @@ export default async function SourceStoryPage({
   const canWrite = Boolean(access.role && roleAllowsAction(access.role, "write"));
 
   try {
-    const [assets, assetTotal, tags, episodes, workspace, spatialRenderReadiness] = await Promise.all([
-      prisma.studioMediaAsset.findMany({
-        where: {
-          OR: [
-            { projects: { some: { id: project.id } } },
-            { mediaBin: { projectId: project.id } },
-            { assetAttachments: { some: { projectId: project.id } } },
-          ],
-        },
-        orderBy: [{ updatedAt: "desc" }, { filename: "asc" }],
-        take: 500,
-        select: {
-          id: true,
-          filename: true,
-          url: true,
-          mimeType: true,
-          sizeBytes: true,
-          duration: true,
-          resolution: true,
-          fps: true,
-          thumbnailUrl: true,
-          isProxy: true,
-          updatedAt: true,
-          _count: { select: { clips: true, variants: true } },
-        },
-      }),
-      prisma.studioMediaAsset.count({
-        where: {
-          OR: [
-            { projects: { some: { id: project.id } } },
-            { mediaBin: { projectId: project.id } },
-            { assetAttachments: { some: { projectId: project.id } } },
-          ],
-        },
-      }),
+    const [initialSourcePage, sourceCollections, tags, episodes, coreWorkspace, spatialRenderReadiness] = await Promise.all([
+      readSourceLibraryPage({ prisma, projectId: project.id, limit: 60 }),
+      readSourceCollections(prisma, { projectId: project.id, actorUserId: session.user.id }),
       prisma.studioTag.findMany({
         where: { projectId: project.id, isActive: true },
         orderBy: [{ category: "asc" }, { label: "asc" }],
@@ -92,16 +62,36 @@ export default async function SourceStoryPage({
     const requestedAssetId = typeof query.asset === "string" ? query.asset : null;
     const requestedExternalReferenceId = typeof query.external === "string" ? query.external : null;
     const requestedSourceSetId = typeof query.set === "string" ? query.set : null;
+    const requestedSourceId = requestedSourceSetId || requestedExternalReferenceId || requestedAssetId;
+    const focusedSourcePage = requestedSourceId && !initialSourcePage.orderedKeys.some((key) => key.endsWith(`:${requestedSourceId}`))
+      ? await readSourceLibraryPage({ prisma, projectId: project.id, limit: 3, query: requestedSourceId })
+      : null;
+    const sourcePage = focusedSourcePage ? {
+      ...initialSourcePage,
+      orderedKeys: [...focusedSourcePage.orderedKeys, ...initialSourcePage.orderedKeys.filter((key) => !focusedSourcePage.orderedKeys.includes(key))],
+      sourceSets: [...focusedSourcePage.sourceSets, ...initialSourcePage.sourceSets.filter((sourceSet) => !focusedSourcePage.sourceSets.some((focused) => focused.id === sourceSet.id))],
+      externalSources: [...focusedSourcePage.externalSources, ...initialSourcePage.externalSources.filter((source) => !focusedSourcePage.externalSources.some((focused) => focused.id === source.id))],
+      assets: [...focusedSourcePage.assets, ...initialSourcePage.assets.filter((asset) => !focusedSourcePage.assets.some((focused) => focused.id === asset.id))],
+    } : initialSourcePage;
+    const assets = sourcePage.assets;
+    const workspace = {
+      ...coreWorkspace,
+      sourceSets: sourcePage.sourceSets,
+      externalSources: sourcePage.externalSources,
+      sourceCollections,
+    };
+    const requestedAnySource = Boolean(requestedAssetId || requestedExternalReferenceId || requestedSourceSetId);
+    const fallbackSourceKey = sourcePage.orderedKeys[0] ?? null;
     const selectedSourceSetId = workspace.sourceSets.some((sourceSet) => sourceSet.id === requestedSourceSetId)
       ? requestedSourceSetId
-      : null;
+      : !requestedAnySource && fallbackSourceKey?.startsWith("source-set:") ? fallbackSourceKey.slice("source-set:".length) : null;
     const selectedExternalReferenceId = workspace.externalSources.some((source) => source.id === requestedExternalReferenceId)
       && !selectedSourceSetId ? requestedExternalReferenceId
-      : null;
+      : !requestedAnySource && !selectedSourceSetId && fallbackSourceKey?.startsWith("external:") ? fallbackSourceKey.slice("external:".length) : null;
     const requestedBoardId = typeof query.board === "string" ? query.board : null;
     const selectedAssetId = selectedExternalReferenceId || selectedSourceSetId ? null : assets.some((asset) => asset.id === requestedAssetId)
       ? requestedAssetId
-      : assets[0]?.id ?? null;
+      : !requestedAnySource && fallbackSourceKey?.startsWith("asset:") ? fallbackSourceKey.slice("asset:".length) : null;
     const selectedBoardId = workspace.boards.some((board) => board.id === requestedBoardId)
       ? requestedBoardId
       : workspace.boards[0]?.id ?? null;
@@ -110,15 +100,11 @@ export default async function SourceStoryPage({
       <SourceStoryClient
         project={{ id: project.id, slug: project.slug, name: project.name }}
         canWrite={canWrite}
-        initialAssets={assets.map((asset) => ({
-          ...asset,
-          sizeBytes: asset.sizeBytes?.toString() ?? null,
-          updatedAt: asset.updatedAt.toISOString(),
-        }))}
+        initialAssets={assets}
         tags={tags}
         episodes={episodes}
         initialWorkspace={workspace}
-        initialAssetTotal={assetTotal}
+        initialSourcePageInfo={sourcePage.pageInfo}
         spatialRenderReadiness={spatialRenderReadiness}
         initialAssetId={selectedAssetId}
         initialExternalReferenceId={selectedExternalReferenceId}
