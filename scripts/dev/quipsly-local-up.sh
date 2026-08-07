@@ -5,6 +5,45 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 script_repo_root="$(cd "${script_dir}/../.." && pwd)"
 source "${script_dir}/quipsly-local-state.sh"
 
+load_google_drive_local_secret() {
+  local environment_name="$1"
+  local secret_name="$2"
+  local project_id="${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-}"
+  local gcloud_bin="${QUIPSLY_LOCAL_GCLOUD_BIN:-}"
+  local secret_value
+
+  [[ -n "${project_id}" ]] || return 0
+  if [[ -n "${!environment_name:-}" ]]; then
+    return 0
+  fi
+  if [[ -z "${gcloud_bin}" || ! -x "${gcloud_bin}" ]]; then
+    echo "Google Drive local secrets are enabled, but the configured gcloud executable is unavailable." >&2
+    return 1
+  fi
+  if ! secret_value="$(
+    "${gcloud_bin}" secrets versions access latest \
+      --secret="${secret_name}" \
+      --project="${project_id}" \
+      2>/dev/null
+  )" || [[ -z "${secret_value}" ]]; then
+    echo "Google Drive local secret ${secret_name}:latest is missing or inaccessible in ${project_id}." >&2
+    return 1
+  fi
+  printf -v "${environment_name}" '%s' "${secret_value}"
+  export "${environment_name}"
+  secret_value=""
+}
+
+load_google_drive_local_secrets() {
+  [[ -n "${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-}" ]] || return 0
+  load_google_drive_local_secret GOOGLE_DRIVE_OAUTH_CLIENT_ID quipsly-google-drive-oauth-client-id
+  load_google_drive_local_secret GOOGLE_DRIVE_OAUTH_CLIENT_SECRET quipsly-google-drive-oauth-client-secret
+  load_google_drive_local_secret GOOGLE_DRIVE_OAUTH_STATE_SECRET quipsly-google-drive-oauth-state-secret
+  load_google_drive_local_secret GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY quipsly-google-drive-oauth-token-encryption-key
+  load_google_drive_local_secret GOOGLE_DRIVE_PICKER_API_KEY quipsly-google-drive-picker-api-key
+  load_google_drive_local_secret GOOGLE_DRIVE_PICKER_APP_ID quipsly-google-drive-picker-app-id
+}
+
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${script_repo_root}"
   exec "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" exec firebase emulators:start \
@@ -14,6 +53,7 @@ if [[ "${1:-}" == "--run-firebase" ]]; then
 fi
 
 if [[ "${1:-}" == "--run-nest" ]]; then
+  load_google_drive_local_secrets
   cd "${script_repo_root}/apps/quipsly"
   nest_environment=(
     PORT=3012
@@ -45,6 +85,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
 fi
 
 if [[ "${1:-}" == "--run-media-worker" ]]; then
+  load_google_drive_local_secrets
   cd "${script_repo_root}"
   worker_environment=(
     "DATABASE_URL=${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
@@ -145,6 +186,18 @@ worker_source_paths=(
 local_worker_source_revision="$(
   quipsly_local_git_source_revision "${repo_root}" "${worker_source_paths[@]}"
 )"
+local_google_drive_secret_project="${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-}"
+local_gcloud_bin="${QUIPSLY_LOCAL_GCLOUD_BIN:-$(command -v gcloud 2>/dev/null || true)}"
+if [[ -n "${local_google_drive_secret_project}" ]]; then
+  if [[ ! "${local_google_drive_secret_project}" =~ ^[a-z][a-z0-9-]{4,62}$ ]]; then
+    echo "QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT is not a safe Google Cloud project id." >&2
+    exit 64
+  fi
+  if [[ -z "${local_gcloud_bin}" || ! -x "${local_gcloud_bin}" ]]; then
+    echo "Google Drive local secrets require an executable gcloud path." >&2
+    exit 1
+  fi
+fi
 umask 077
 mkdir -p "${state_dir}"
 
@@ -310,6 +363,8 @@ start_macos_job() {
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_AVAILABLE=${local_transcript_worker_available}" \
       "QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID=${local_transcript_worker_build_id}" \
       "QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=${local_worker_source_revision}" \
+      "QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT=${local_google_drive_secret_project}" \
+      "QUIPSLY_LOCAL_GCLOUD_BIN=${local_gcloud_bin}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"

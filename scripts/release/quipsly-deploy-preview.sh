@@ -21,6 +21,7 @@ RELEASE_SMOKE_SECRET_VERSION="${RELEASE_SMOKE_SECRET_VERSION:-latest}"
 IMAGE_PROXY_TOKEN_SECRET_NAME="${IMAGE_PROXY_TOKEN_SECRET_NAME:-reefball-image-proxy-token}"
 IMAGE_PROXY_TOKEN_SECRET_VERSION="${IMAGE_PROXY_TOKEN_SECRET_VERSION:-latest}"
 ENABLE_GOOGLE_CALENDAR_OAUTH="${ENABLE_GOOGLE_CALENDAR_OAUTH:-0}"
+ENABLE_GOOGLE_DRIVE_OAUTH="${ENABLE_GOOGLE_DRIVE_OAUTH:-0}"
 ENABLE_TRANSCRIPT_WORKER="${ENABLE_TRANSCRIPT_WORKER:-0}"
 ENABLE_ACCOUNT_DELETION_WORKER="${ENABLE_ACCOUNT_DELETION_WORKER:-0}"
 ENABLE_LIVEKIT_PROVIDER="${ENABLE_LIVEKIT_PROVIDER:-1}"
@@ -46,6 +47,12 @@ GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_CLIENT_
 GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_STATE_SECRET_NAME:-quipsly-google-calendar-oauth-state-secret}"
 GOOGLE_CALENDAR_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME="${GOOGLE_CALENDAR_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME:-quipsly-google-calendar-oauth-token-encryption-key}"
 GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT="${GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT:-quipsly-calendar-push@${PROJECT_ID}.iam.gserviceaccount.com}"
+GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME:-quipsly-google-drive-oauth-client-id}"
+GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_SECRET_NAME:-quipsly-google-drive-oauth-client-secret}"
+GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME:-quipsly-google-drive-oauth-state-secret}"
+GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME="${GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME:-quipsly-google-drive-oauth-token-encryption-key}"
+GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME="${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME:-quipsly-google-drive-picker-api-key}"
+GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME="${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME:-quipsly-google-drive-picker-app-id}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
@@ -69,6 +76,11 @@ fi
 
 if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" != "0" && "${ENABLE_GOOGLE_CALENDAR_OAUTH}" != "1" ]]; then
   echo "ENABLE_GOOGLE_CALENDAR_OAUTH must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${ENABLE_GOOGLE_DRIVE_OAUTH}" != "0" && "${ENABLE_GOOGLE_DRIVE_OAUTH}" != "1" ]]; then
+  echo "ENABLE_GOOGLE_DRIVE_OAUTH must be 0 or 1." >&2
   exit 2
 fi
 
@@ -151,6 +163,7 @@ echo "Release-smoke signing key passed private byte validation."
 
 google_calendar_oauth_secrets=""
 google_calendar_push_env_vars=""
+google_drive_oauth_secrets=""
 
 require_enabled_secret() {
   local secret_name="$1"
@@ -158,7 +171,7 @@ require_enabled_secret() {
     --secret="${secret_name}" \
     --project="${PROJECT_ID}" \
     --format='value(state)' | grep -qx 'ENABLED'; then
-    echo "Required LiveKit secret ${secret_name}:latest is missing or disabled." >&2
+    echo "Required release secret ${secret_name}:latest is missing or disabled." >&2
     exit 2
   fi
 }
@@ -187,8 +200,17 @@ validate_private_secret() {
           } catch { valid = false; }
         } else if (kind === "api-key") {
           valid &&= value.length >= 8 && value.length <= 512;
-        } else if (kind === "api-secret") {
+        } else if (kind === "api-secret" || kind === "oauth-client-secret") {
           valid &&= value.length >= 16 && value.length <= 4096;
+        } else if (kind === "oauth-client-id") {
+          valid &&= /^[0-9]+-[a-z0-9_-]+\.apps\.googleusercontent\.com$/.test(value);
+        } else if (kind === "state-secret") {
+          valid &&= Buffer.byteLength(value, "utf8") >= 32 && Buffer.byteLength(value, "utf8") <= 4096;
+        } else if (kind === "encryption-key") {
+          try { valid &&= Buffer.from(value, "base64url").length === 32; }
+          catch { valid = false; }
+        } else if (kind === "decimal-id") {
+          valid &&= /^[0-9]{6,32}$/.test(value);
         } else if (kind === "bucket") {
           valid &&= /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/.test(value);
         } else if (kind === "gcp-credentials") {
@@ -205,7 +227,7 @@ validate_private_secret() {
         process.exit(valid ? 0 : 1);
       });
     '; then
-    echo "Required LiveKit secret ${secret_name}:latest failed private ${validation_kind} validation. Its value was not printed." >&2
+    echo "Required release secret ${secret_name}:latest failed private ${validation_kind} validation. Its value was not printed." >&2
     exit 2
   fi
 }
@@ -264,6 +286,26 @@ if [[ "${ENABLE_GOOGLE_CALENDAR_OAUTH}" == "1" ]]; then
   fi
   google_calendar_push_env_vars=",GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT=${GOOGLE_CALENDAR_PUSH_WORKER_SERVICE_ACCOUNT},GOOGLE_CALENDAR_PUSH_WORKER_AUDIENCE=${google_calendar_push_audience}"
   echo "Google Calendar OAuth secrets passed enabled-version validation."
+fi
+
+if [[ "${ENABLE_GOOGLE_DRIVE_OAUTH}" == "1" ]]; then
+  for secret_name in \
+    "${GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME}" \
+    "${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_SECRET_NAME}" \
+    "${GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME}" \
+    "${GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME}" \
+    "${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME}" \
+    "${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME}"; do
+    require_enabled_secret "${secret_name}"
+  done
+  validate_private_secret "${GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME}" "oauth-client-id"
+  validate_private_secret "${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_SECRET_NAME}" "oauth-client-secret"
+  validate_private_secret "${GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME}" "state-secret"
+  validate_private_secret "${GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME}" "encryption-key"
+  validate_private_secret "${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME}" "api-key"
+  validate_private_secret "${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME}" "decimal-id"
+  google_drive_oauth_secrets=",GOOGLE_DRIVE_OAUTH_CLIENT_ID=${GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME}:latest,GOOGLE_DRIVE_OAUTH_CLIENT_SECRET=${GOOGLE_DRIVE_OAUTH_CLIENT_SECRET_SECRET_NAME}:latest,GOOGLE_DRIVE_OAUTH_STATE_SECRET=${GOOGLE_DRIVE_OAUTH_STATE_SECRET_NAME}:latest,GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY=${GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME}:latest,GOOGLE_DRIVE_PICKER_API_KEY=${GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME}:latest,GOOGLE_DRIVE_PICKER_APP_ID=${GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME}:latest"
+  echo "Google Drive OAuth and Picker secrets passed enabled-version and private shape validation."
 fi
 
 transcript_worker_env_vars=""
@@ -590,7 +632,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
-  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${account_deletion_worker_secret}" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=${IMAGE_PROXY_TOKEN_SECRET_NAME}:${IMAGE_PROXY_TOKEN_SECRET_VERSION}${livekit_secret_mounts}${google_calendar_oauth_secrets}${google_drive_oauth_secrets}${account_deletion_worker_secret}" \
   --update-env-vars="FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT=firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com,QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,LIVEKIT_EGRESS_ENABLED=${livekit_egress_enabled_value}${google_calendar_push_env_vars}${transcript_worker_env_vars}${account_deletion_worker_env_vars}" \
   --quiet
 

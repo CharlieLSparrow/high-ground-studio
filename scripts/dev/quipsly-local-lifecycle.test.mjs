@@ -133,6 +133,43 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /--experimental-transform-types/);
 });
 
+test("optional Drive dogfood secrets are fetched inside durable children without entering launcher state", () => {
+  assert.match(up, /load_google_drive_local_secrets\(\)/);
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-/,
+  );
+  assert.match(
+    up,
+    /secrets versions access latest[\s\S]*--secret="\$\{secret_name\}"[\s\S]*--project="\$\{project_id\}"/,
+  );
+  assert.match(
+    up,
+    /load_google_drive_local_secret GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY quipsly-google-drive-oauth-token-encryption-key/,
+  );
+  assert.match(
+    up,
+    /load_google_drive_local_secret GOOGLE_DRIVE_PICKER_API_KEY quipsly-google-drive-picker-api-key/,
+  );
+  assert.match(
+    up,
+    /if \[\[ "\$\{1:-\}" == "--run-nest" \]\]; then\n  load_google_drive_local_secrets/,
+  );
+  assert.match(
+    up,
+    /if \[\[ "\$\{1:-\}" == "--run-media-worker" \]\]; then\n  load_google_drive_local_secrets/,
+  );
+  const launchdSubmission = up.match(
+    /launchctl submit[\s\S]*?scripts\/dev\/quipsly-local-up\.sh" "\$\{mode\}"/,
+  )?.[0];
+  assert.ok(launchdSubmission, "the durable launchd submission must exist");
+  assert.doesNotMatch(
+    launchdSubmission,
+    /GOOGLE_DRIVE_OAUTH_(?:CLIENT|STATE|TOKEN)/,
+    "launchd may receive the secret project, never resolved Drive secret values",
+  );
+});
+
 test("Docker control-plane calls are bounded and fail closed", () => {
   assert.match(stateHelper, /quipsly_local_run_bounded/);
   assert.match(stateHelper, /quipsly_local_run_docker/);

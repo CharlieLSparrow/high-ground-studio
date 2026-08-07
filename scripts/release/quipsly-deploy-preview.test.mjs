@@ -19,11 +19,26 @@ test("preview deploy mounts the required secrets and privately validates the rel
   assert.match(source, /!\/\[\\u0000-\\u001f\\u007f\]\//);
   assert.match(
     source,
-    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
+    /--update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=\$\{RELEASE_SMOKE_SECRET_NAME\}:\$\{RELEASE_SMOKE_SECRET_VERSION\},REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}\$\{livekit_secret_mounts\}\$\{google_calendar_oauth_secrets\}\$\{google_drive_oauth_secrets\}\$\{account_deletion_worker_secret\}"/,
   );
   assert.match(source, /The value was not printed/);
   assert.doesNotMatch(source, /echo "\$\{?QUIPSLY_RELEASE_SMOKE_SECRET/);
   assert.doesNotMatch(source, /set -x/);
+});
+
+test("Drive activation is explicit, least-privilege, and entirely Secret Manager backed", () => {
+  const source = readFileSync(deployScript, "utf8");
+
+  assert.match(source, /ENABLE_GOOGLE_DRIVE_OAUTH="\$\{ENABLE_GOOGLE_DRIVE_OAUTH:-0\}"/);
+  assert.match(source, /ENABLE_GOOGLE_DRIVE_OAUTH must be 0 or 1/);
+  assert.match(source, /GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME/);
+  assert.match(source, /GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME/);
+  assert.match(source, /GOOGLE_DRIVE_PICKER_API_KEY_SECRET_NAME/);
+  assert.match(source, /GOOGLE_DRIVE_PICKER_APP_ID_SECRET_NAME/);
+  assert.match(source, /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_CLIENT_ID_SECRET_NAME\}" "oauth-client-id"/);
+  assert.match(source, /validate_private_secret "\$\{GOOGLE_DRIVE_OAUTH_TOKEN_ENCRYPTION_KEY_SECRET_NAME\}" "encryption-key"/);
+  assert.match(source, /Google Drive OAuth and Picker secrets passed enabled-version and private shape validation/);
+  assert.doesNotMatch(source, /GOOGLE_DRIVE_OAUTH_CLIENT_SECRET=[^$]/);
 });
 
 test("preview deploy declares provider secrets while keeping optional egress default-off", () => {

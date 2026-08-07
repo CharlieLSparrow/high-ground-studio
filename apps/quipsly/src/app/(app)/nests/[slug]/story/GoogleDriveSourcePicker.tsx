@@ -29,8 +29,10 @@ type PickerNamespace = {
   Response: { ACTION: string; DOCUMENTS: string };
   Document: { ID: string; RESOURCE_KEY: string };
   ViewId: { DOCS: string };
+  DocsViewMode: { LIST: string };
   Feature: { MULTISELECT_ENABLED: string; SUPPORT_DRIVES: string };
   DocsView: new (viewId: string) => {
+    setMode(value: string): unknown;
     setIncludeFolders(value: boolean): unknown;
     setSelectFolderEnabled(value: boolean): unknown;
     setMimeTypes(value: string): unknown;
@@ -120,6 +122,11 @@ function pickerBuilder(
   },
 ) {
   const view = new picker.DocsView(picker.ViewId.DOCS);
+  // `drive.file` deliberately does not grant thumbnail access for every file
+  // the account can browse. Google's current Picker guidance recommends list
+  // mode for that least-privilege scope so the chooser remains complete and
+  // does not fill with unavailable preview tiles.
+  view.setMode(picker.DocsViewMode.LIST);
   view.setIncludeFolders(true);
   view.setSelectFolderEnabled(input.mode === "folder");
   if (input.mode === "folder")
