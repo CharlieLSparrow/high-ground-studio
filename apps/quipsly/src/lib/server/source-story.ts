@@ -1530,7 +1530,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     framesPerSecond: true,
     createdAt: true,
   } as const;
-  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements] = await Promise.all([
+  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements, spatialRenderJobs] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -1641,7 +1641,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
             heightPixels: true,
             framesPerSecond: true,
             externalReference: { select: { id: true, fileName: true, provider: true } },
-            derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
+            derivatives: { where: { kind: { in: ["collaboration-proxy", "spatial-stitch-master"] }, status: "ready" }, orderBy: { createdAt: "desc" }, take: 4, select: derivativeSelect },
           },
         },
         members: {
@@ -1696,6 +1696,12 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         createdAt: true,
         updatedAt: true,
       },
+    }),
+    prisma.studioWorkflowJob.findMany({
+      where: { projectId, type: "spatial-reframe", source: "source-story.spatial-reframe" },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 1_000,
+      select: { id: true, status: true, inputJson: true, error: true, requestedByEmail: true, createdAt: true, updatedAt: true, mediaDerivative: { select: derivativeSelect } },
     }),
   ]);
   const publicDerivative = (derivative: {
@@ -1793,6 +1799,22 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       createdAt: placement.createdAt.toISOString(),
       updatedAt: placement.updatedAt.toISOString(),
     })),
+    spatialRenderJobs: spatialRenderJobs.map((job) => {
+      const manifest = jsonRecord(job.inputJson);
+      const reframe = jsonRecord(manifest?.reframe);
+      return {
+        id: job.id,
+        status: job.status,
+        timelinePlacementId: typeof manifest?.timelinePlacementId === "string" ? manifest.timelinePlacementId : "",
+        timelineFingerprintSha256: typeof manifest?.timelineFingerprintSha256 === "string" ? manifest.timelineFingerprintSha256 : "",
+        profile: typeof reframe?.profile === "string" ? reframe.profile : "",
+        error: job.error,
+        requestedByEmail: job.requestedByEmail,
+        createdAt: job.createdAt.toISOString(),
+        updatedAt: job.updatedAt.toISOString(),
+        derivative: publicDerivative(job.mediaDerivative ?? undefined),
+      };
+    }),
     sourceSets: sourceSets.map((sourceSet) => ({
       id: sourceSet.id,
       kind: sourceSet.kind,
@@ -1808,7 +1830,8 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         heightPixels: sourceSet.sourceClockRevision.heightPixels,
         framesPerSecond: sourceSet.sourceClockRevision.framesPerSecond,
         externalReference: sourceSet.sourceClockRevision.externalReference,
-        collaborationProxy: publicDerivative(sourceSet.sourceClockRevision.derivatives[0]),
+        collaborationProxy: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "collaboration-proxy")),
+        spatialStitchMaster: publicDerivative(sourceSet.sourceClockRevision.derivatives.find((derivative) => derivative.kind === "spatial-stitch-master")),
       },
       members: sourceSet.members.map((member) => ({
         ...member,

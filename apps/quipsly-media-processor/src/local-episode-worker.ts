@@ -7,7 +7,7 @@ import {
   rm,
   stat,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,6 +69,10 @@ import {
   newLocalEpisodeRenderProofRuntime,
   runOneLocalEpisodeRenderProofJob,
 } from "./local-episode-render-proof-worker.js";
+import {
+  newLocalSpatialReframeRuntime,
+  runOneLocalSpatialReframeJob,
+} from "./local-spatial-reframe-worker.js";
 import { LocalExecutionPresence } from "./local-execution-presence.js";
 import {
   newLocalExternalSourceProxyRuntime,
@@ -573,6 +577,15 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const spatialVaultRoot = path.resolve(process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT || path.join(homedir(), "Movies", "Quipsly Media Vault"));
+  const spatialReframe = newLocalSpatialReframeRuntime({
+    pool,
+    executionId,
+    outputRoot: spatialVaultRoot,
+    authorizedSourceRoots: [localMediaRoot, spatialVaultRoot],
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const presence = new LocalExecutionPresence(pool, {
     executionId,
     buildId: options.buildId,
@@ -629,9 +642,12 @@ async function main() {
       const mixResult = pairResult.disposition === "idle"
         ? await runOneLocalEpisodeAudioMixJob(episodeAudioMix.store, episodeAudioMix.renderer, episodeAudioMix.mastery, episodeAudioMix.options)
         : pairResult;
-      const result = mixResult.disposition === "idle"
+      const episodeProofResult = mixResult.disposition === "idle"
         ? await runOneLocalEpisodeRenderProofJob(episodeRenderProof.store, episodeRenderProof.renderer, episodeRenderProof.options)
         : mixResult;
+      const result = episodeProofResult.disposition === "idle"
+        ? await runOneLocalSpatialReframeJob(spatialReframe.store, spatialReframe.renderer, spatialReframe.options)
+        : episodeProofResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }

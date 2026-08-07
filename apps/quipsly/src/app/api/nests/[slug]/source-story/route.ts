@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import os from "node:os";
+import path from "node:path";
 
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -32,6 +34,7 @@ import {
   updateSourceStoryCard,
   withdrawSourceStoryTimelinePlacement,
 } from "@/lib/server/source-story";
+import { SpatialRenderQueueError, queueSpatialReframe, registerSpatialReframeResult } from "@/lib/server/spatial-render-job";
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
@@ -124,6 +127,9 @@ function errorResponse(error: unknown) {
     return NextResponse.json({ error: error.message, errorCode: error.code }, { status: 400 });
   }
   if (error instanceof ExternalSourceProxyRequestError) {
+    return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+  }
+  if (error instanceof SpatialRenderQueueError) {
     return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
   }
   const status = typeof (error as { status?: unknown })?.status === "number"
@@ -317,6 +323,21 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           clientRequestId: text(body.clientRequestId),
         },
       });
+    } else if (action === "queue-spatial-reframe") {
+      const profile = text(body.profile);
+      if (profile !== "spatial-proof-720p24" && profile !== "spatial-flat-4k24") throw new SourceStoryContractError("invalid-spatial-render-profile", "Choose a supported spatial render profile.");
+      operation = await queueSpatialReframe({
+        prisma,
+        projectId: actor.projectId,
+        timelinePlacementId: text(body.timelinePlacementId),
+        profile,
+        requestedByUserId: actor.userId,
+        requestedByEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        localMediaRoot: localSpatialVaultRoot(),
+      });
+    } else if (action === "register-spatial-reframe") {
+      operation = await registerSpatialReframeResult({ prisma, projectId: actor.projectId, jobId: text(body.jobId), authorizedRoot: localSpatialVaultRoot() });
     } else {
       return NextResponse.json({ error: "Choose a supported source-story action." }, { status: 400 });
     }
@@ -326,4 +347,11 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
   } catch (error) {
     return errorResponse(error);
   }
+}
+
+function localSpatialVaultRoot() {
+  if (process.env.NODE_ENV === "production" && !process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim()) {
+    throw new SpatialRenderQueueError("spatial-local-renderer-unavailable", "This executor has no local spatial render vault configured.", 503);
+  }
+  return path.resolve(process.env.QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT?.trim() || path.join(os.homedir(), "Movies", "Quipsly Media Vault"));
 }

@@ -186,6 +186,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ["source card", "Micro take · spatial composition proof"],
       ["spatial render status", "Exact-source 360 render"],
       ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
+      ["spatial master state", "5.7K render master not registered"],
     ].filter(([, evidence]) => !html.includes(evidence)).map(([label]) => label);
     if (page.status !== 200 || missingPageEvidence.length > 0) {
       const pageKind = html.includes("Sign in") || html.includes("Welcome back")
