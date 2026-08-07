@@ -170,4 +170,73 @@ describe("Session finishing cockpit", () => {
       href: expect.stringContaining("/editor?"),
     });
   });
+
+  it("turns camera evidence into a precise cross-workflow next action", () => {
+    const cockpit = buildSessionFinishingCockpit({
+      topology: topology(),
+      sourceEvidence: sourceEvidence(),
+      contentReadiness: { status: "substantial", captureAssetCount: 2, substantialRecordingCount: 2 },
+      studioHandoff: { recordings: [{ status: "ATTACHED" }, { status: "ATTACHED" }] },
+      finishingEvidence: {
+        ...finishingEvidence,
+        analyzedSourceCount: 2,
+        assembly: {
+          episodeProductionId: "episode-9",
+          episodeTitle: "Episode 9",
+          projectSlug: "high-ground-odyssey",
+          episodeSlug: "episode-9",
+          editorHref: "/editor?project=high-ground-odyssey&episode=episode-9#automated-edit-evidence",
+          state: "MATERIALIZED_MEDIA",
+          captureGroupId: "take-9",
+          selectedMediaCount: 2,
+          plannedSourceCount: 2,
+          blockerCount: 0,
+          warningCount: 1,
+          nextAction: "Resolve camera review.",
+          cameraReadiness: {
+            status: "PRIMARY_ANGLE_REQUIRED",
+            videoSourceCount: 2,
+            participantBoundVideoSourceCount: 2,
+            unboundVideoSourceCount: 0,
+            reviewedSpeakerCount: 1,
+            attributedSpeakerCount: 1,
+            mappedSpeakerCount: 0,
+            participantCount: 1,
+            missingParticipantCount: 0,
+            ambiguousParticipantCount: 1,
+            nextAction: "Choose a primary synchronized camera for every reviewed speaker.",
+            actionHref: "/editor?project=high-ground-odyssey&episode=episode-9#automated-edit-evidence",
+            actionLabel: "Choose primary cameras",
+          },
+          canonicalTakeCount: 1,
+          canonicalSourceCount: 2,
+          canonicalAssemblyReadyCount: 0,
+          sessionTimelineClipCount: 2,
+          sessionTranscriptBlockCount: 80,
+          episodeTimelineClipCount: 2,
+          episodeTranscriptBlockCount: 80,
+          currentProposalSetCount: 0,
+          staleProposalSetCount: 0,
+          currentReviewReceiptCount: 0,
+          proofListenCount: 0,
+          proofWatchCount: 0,
+          localDraftActionCount: 0,
+          unsavedLocalDraftActionCount: 0,
+          canonicalTimelineSaveCount: 1,
+          canonicallyLinkedDraftActionCount: 0,
+          latestCanonicalSaveAt: "2026-08-07T01:00:00.000Z",
+          ledgerAvailable: true,
+          productionUpdatedAt: "2026-08-07T01:00:00.000Z",
+        },
+      },
+    });
+
+    expect(cockpit.attention).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: "episode-take-media-only",
+      title: "A reviewed speaker still needs a primary camera",
+      actionLabel: "Choose primary cameras",
+      href: expect.stringContaining("#automated-edit-evidence"),
+    })]));
+    expect(cockpit.stages.find((stage) => stage.id === "assemble")?.evidence).toContain("2 video sources · 0 camera maps");
+  });
 });

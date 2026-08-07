@@ -20,6 +20,17 @@ function build(overrides: Partial<Parameters<typeof buildSessionEpisodeAssemblyE
       changed: false,
       issues: [],
       nextAction: "Review deterministic camera assembly.",
+      cameraReadiness: {
+        status: "READY",
+        videoSourceCount: 1,
+        participantBoundVideoSourceCount: 1,
+        unboundVideoSourceCount: 0,
+        reviewedSpeakerCount: 1,
+        attributedSpeakerCount: 1,
+        mappedSpeakerCount: 1,
+        participants: [{ status: "MAPPED" }],
+        nextAction: "Every reviewed speaker has an explicit synchronized camera mapping.",
+      },
     },
     timelineClipCount: 3,
     transcriptBlockCount: 10,
@@ -55,6 +66,12 @@ describe("Session Episode assembly evidence", () => {
       currentProposalSetCount: 1,
       currentReviewReceiptCount: 0,
       canonicalTimelineSaveCount: 0,
+      cameraReadiness: {
+        status: "READY",
+        videoSourceCount: 1,
+        mappedSpeakerCount: 1,
+        actionLabel: "Review camera assembly",
+      },
     });
     expect(evidence.editorHref).toBe("/editor?project=high-ground-odyssey&episode=episode-9&captureGroup=take-9#automated-edit-evidence");
   });
@@ -150,5 +167,43 @@ describe("Session Episode assembly evidence", () => {
 
     expect(evidence.state).toBe("BLOCKED");
     expect(evidence.editorHref).toContain("#guided-sync-wizard");
+  });
+
+  it("routes an audio-only take to the exact Session recording sources", () => {
+    const evidence = build({
+      plan: {
+        ok: true,
+        status: "media-ready",
+        captureGroupId: "take-9",
+        changed: false,
+        issues: [{ severity: "warning" }],
+        nextAction: "Continue audio editing.",
+        cameraReadiness: {
+          status: "NO_VIDEO_SOURCES",
+          videoSourceCount: 0,
+          participantBoundVideoSourceCount: 0,
+          unboundVideoSourceCount: 0,
+          reviewedSpeakerCount: 1,
+          attributedSpeakerCount: 1,
+          mappedSpeakerCount: 0,
+          participants: [],
+          nextAction: "Add or recover a participant camera source.",
+        },
+      },
+      materializations: [{
+        captureGroupId: "take-9",
+        roomId: "room-9",
+        status: "media-materialized",
+        sourceBindings: [{ recordingAssetId: "audio-9", clipId: "clip-audio-9" }],
+        transcriptBinding: { blockIds: ["block-1"] },
+        materializedAt: "2026-08-07T00:00:00.000Z",
+      }],
+    });
+
+    expect(evidence.cameraReadiness).toMatchObject({
+      status: "NO_VIDEO_SOURCES",
+      actionHref: "/sessions/room-9?mode=recordings",
+      actionLabel: "Review recording sources",
+    });
   });
 });

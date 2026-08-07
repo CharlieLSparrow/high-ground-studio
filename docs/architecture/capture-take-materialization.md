@@ -122,6 +122,11 @@ Session projections deep-link a ready update to this panel. Only blocked source,
 spine, or alignment evidence routes back to Guided sync; an already materialized
 take routes to automated-edit evidence.
 
+The Session finishing cockpit consumes a bounded copy of the same camera
+readiness projection. It preserves counts and the next-action route while
+leaving the materialization planner authoritative. No Session workflow row or
+parallel camera status is created.
+
 Materialization warnings and the camera-readiness card carry evidence-bound
 resolution paths. A take with no video opens the exact Session recording-source
 workspace. Missing

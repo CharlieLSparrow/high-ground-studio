@@ -14,10 +14,15 @@ Date: 2026-08-06
   unresolved voices, and automated-edit evidence for primary-camera choices.
   Existing missing/ambiguous camera warnings no longer send producers to the
   unrelated Guided sync surface.
+- Session Episode assembly evidence now carries the same bounded projection
+  into the finishing cockpit. Its generic media-only warning becomes a precise
+  camera state and action without creating a second workflow record.
 - The retained audio-only Episode honestly reports `NO_VIDEO_SOURCES` while
-  both protected audio sources still play and pause. A synthetic two-camera
-  case reports `PRIMARY_ANGLE_REQUIRED`; focused tests, rendered operation, and
-  typecheck pass. See
+  both protected audio sources still play and pause. The rendered Session
+  cockpit says that canonical audio exists but no camera source does and routes
+  back to its exact Recordings mode. A synthetic two-camera case reports
+  `PRIMARY_ANGLE_REQUIRED`; focused tests, rendered operation, and typecheck
+  pass. See
   `docs/coordination/2026-08-06-participant-camera-readiness.md`.
 
 ## Exact-source speaker-review handoff checkpoint

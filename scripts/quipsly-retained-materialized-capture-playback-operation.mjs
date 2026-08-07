@@ -261,6 +261,16 @@ async function main() {
     await page.getByRole("heading", { name: "Listen, correct, preserve the source", exact: true }).waitFor({ timeout: 20_000 });
     assert(new URL(page.url()).hash === "#transcript-correction-review", "Speaker review navigation lost its exact review anchor.");
     await assertNoHorizontalOverflow(page.locator("body"), "exact-source speaker review");
+
+    await page.goto(`${baseURL}/sessions/${ROOM_ID}?mode=recordings`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: "What needs attention next", exact: true }).waitFor({ timeout: 30_000 });
+    const cameraAttention = page.getByRole("heading", { name: "The Episode has canonical audio but no camera source", exact: true });
+    await cameraAttention.waitFor({ timeout: 20_000 });
+    const cameraAttentionItem = cameraAttention.locator("xpath=ancestor::li[1]");
+    const cameraAttentionLink = cameraAttentionItem.getByRole("link", { name: "Review recording sources", exact: true });
+    await cameraAttentionLink.waitFor({ timeout: 20_000 });
+    assert(await cameraAttentionLink.getAttribute("href") === `/sessions/${ROOM_ID}?mode=recordings`, "The finishing cockpit did not preserve the exact audio-only camera recovery path.");
+    await assertNoHorizontalOverflow(page.locator("body"), "Session finishing camera readiness");
     assert(pageErrors.length === 0, `Materialized playback raised browser exceptions: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "retained-capture-playback-operator");
     sessionCleared = true;
@@ -287,6 +297,7 @@ async function main() {
       cameraReadiness: {
         status: "NO_VIDEO_SOURCES",
         recordingSourcesHref: `/sessions/${ROOM_ID}?mode=recordings`,
+        finishingCockpit: "The Episode has canonical audio but no camera source",
       },
       provenance: "recording asset + media asset + imported source retained",
       sourceMediaMutated: false,

@@ -50,6 +50,14 @@ The existing issue actions follow the same contract. Missing video returns to
 Session sources and camera ambiguity opens the primary-camera decision. Neither
 is mislabeled as synchronization work.
 
+The same projection now crosses back into the Session finishing cockpit through
+`SessionEpisodeAssemblyEvidence`. A generic media-only warning becomes the
+specific camera state, evidence counts, and action. This preserves one answer
+across Session and Episode surfaces without creating a duplicate workflow
+record. The cockpit can therefore say that canonical audio exists but camera
+video does not, that speaker review is blocking attribution, that a camera lacks
+identity, or that a primary angle remains a deliberate editorial decision.
+
 ## Operated evidence
 
 The retained High Ground Odyssey QA take contains two protected audio sources
@@ -64,6 +72,10 @@ selected its intended RecordingAsset and TranscriptJob, an unavailable source
 still failed closed with 404, and there were zero browser exceptions. No source
 media or publication state changed.
 
+The rendered run then opened the retained Session's Recordings mode. Its
+finishing cockpit displayed **The Episode has canonical audio but no camera
+source** and its action returned to that exact Session's recording sources.
+
 A synthetic two-camera fixture with one reviewed participant and two eligible
 cameras reported `PRIMARY_ANGLE_REQUIRED`. The planner did not silently choose
 an angle.
@@ -75,7 +87,9 @@ pnpm --filter quipsly exec jest --runInBand --runTestsByPath \
   'src/lib/episode-production/capture-take-materialization.test.ts' \
   'src/app/(app)/editor/CaptureTakeMaterializationPanel.test.tsx' \
   'src/app/api/episode-production/capture-takes/route.test.ts' \
-  'src/app/(app)/sessions/[roomId]/session-episode-assembly-evidence.test.ts'
+  'src/app/(app)/sessions/[roomId]/session-episode-assembly-evidence.test.ts' \
+  'src/app/(app)/sessions/[roomId]/session-finishing-cockpit.test.ts' \
+  'src/app/(app)/sessions/[roomId]/session-finishing-cockpit-card.test.tsx'
 node --test scripts/quipsly-retained-materialized-capture-playback-operation.test.mjs
 QUIPSLY_RETAINED_CAPTURE_PLAYBACK_OPERATION=1 \
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \

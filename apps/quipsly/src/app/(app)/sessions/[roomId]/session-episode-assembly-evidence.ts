@@ -19,6 +19,21 @@ export type SessionEpisodeAssemblyEvidence = {
   blockerCount: number;
   warningCount: number;
   nextAction: string;
+  cameraReadiness?: {
+    status: "NO_VIDEO_SOURCES" | "SPEAKER_REVIEW_REQUIRED" | "CAMERA_IDENTITY_REQUIRED" | "PRIMARY_ANGLE_REQUIRED" | "READY";
+    videoSourceCount: number;
+    participantBoundVideoSourceCount: number;
+    unboundVideoSourceCount: number;
+    reviewedSpeakerCount: number;
+    attributedSpeakerCount: number;
+    mappedSpeakerCount: number;
+    participantCount: number;
+    missingParticipantCount: number;
+    ambiguousParticipantCount: number;
+    nextAction: string;
+    actionHref: string;
+    actionLabel: string;
+  } | null;
   canonicalTakeCount: number;
   canonicalSourceCount: number;
   canonicalAssemblyReadyCount: number;
@@ -56,6 +71,18 @@ type Plan = {
   changed: boolean;
   issues: Array<{ severity: "blocker" | "warning" }>;
   nextAction: string;
+  transcriptBinding?: { recordingAssetId?: string | null } | null;
+  cameraReadiness?: {
+    status: "NO_VIDEO_SOURCES" | "SPEAKER_REVIEW_REQUIRED" | "CAMERA_IDENTITY_REQUIRED" | "PRIMARY_ANGLE_REQUIRED" | "READY";
+    videoSourceCount: number;
+    participantBoundVideoSourceCount: number;
+    unboundVideoSourceCount: number;
+    reviewedSpeakerCount: number;
+    attributedSpeakerCount: number;
+    mappedSpeakerCount: number;
+    participants: Array<{ status: "MISSING" | "AMBIGUOUS" | "MAPPED" }>;
+    nextAction: string;
+  } | null;
 };
 
 type ProposalSet = {
@@ -168,13 +195,26 @@ export function buildSessionEpisodeAssemblyEvidence(input: {
     : state === "READY_TO_MATERIALIZE"
       ? "capture-take-materialization"
       : "guided-sync-wizard";
+  const editorHref = `/editor?${query.toString()}#${editorAnchor}`;
+  const roomHref = `/sessions/${encodeURIComponent(input.roomId)}`;
+  const camera = input.plan.cameraReadiness ?? null;
+  const cameraAction = !camera || camera.status === "READY"
+    ? { href: editorHref, label: "Review camera assembly" }
+    : camera.status === "NO_VIDEO_SOURCES" || camera.status === "CAMERA_IDENTITY_REQUIRED"
+      ? { href: `${roomHref}?mode=recordings`, label: camera.status === "NO_VIDEO_SOURCES" ? "Review recording sources" : "Identify camera sources" }
+      : camera.status === "SPEAKER_REVIEW_REQUIRED"
+        ? {
+            href: `${roomHref}?mode=transcript${input.plan.transcriptBinding?.recordingAssetId ? `&source=${encodeURIComponent(input.plan.transcriptBinding.recordingAssetId)}` : ""}#transcript-correction-review`,
+            label: "Review exact-source speakers",
+          }
+        : { href: `/editor?${query.toString()}#automated-edit-evidence`, label: "Choose primary cameras" };
 
   return {
     episodeProductionId: input.episodeProductionId,
     episodeTitle: input.episodeTitle,
     projectSlug: input.projectSlug,
     episodeSlug: input.episodeSlug,
-    editorHref: `/editor?${query.toString()}#${editorAnchor}`,
+    editorHref,
     state,
     captureGroupId: input.captureGroupId || null,
     selectedMediaCount: input.selectedMediaCount,
@@ -183,6 +223,21 @@ export function buildSessionEpisodeAssemblyEvidence(input: {
     blockerCount: planBlockers,
     warningCount: planWarnings,
     nextAction: input.plan.nextAction,
+    cameraReadiness: camera ? {
+      status: camera.status,
+      videoSourceCount: camera.videoSourceCount,
+      participantBoundVideoSourceCount: camera.participantBoundVideoSourceCount,
+      unboundVideoSourceCount: camera.unboundVideoSourceCount,
+      reviewedSpeakerCount: camera.reviewedSpeakerCount,
+      attributedSpeakerCount: camera.attributedSpeakerCount,
+      mappedSpeakerCount: camera.mappedSpeakerCount,
+      participantCount: camera.participants.length,
+      missingParticipantCount: camera.participants.filter((participant) => participant.status === "MISSING").length,
+      ambiguousParticipantCount: camera.participants.filter((participant) => participant.status === "AMBIGUOUS").length,
+      nextAction: camera.nextAction,
+      actionHref: cameraAction.href,
+      actionLabel: cameraAction.label,
+    } : null,
     canonicalTakeCount: sessionMaterializations.length,
     canonicalSourceCount: new Set(sessionMaterializations.flatMap((receipt) => (
       receipt.sourceBindings.map((binding) => binding.recordingAssetId)

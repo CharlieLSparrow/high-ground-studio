@@ -207,11 +207,21 @@ export function buildSessionFinishingCockpit(input: {
     id: "episode-take-media-only",
     severity: "REVIEW",
     lane: "outputs",
-    title: "The Capture media is canonical, but automated assembly is not ready",
-    detail: `${assembly.sessionTimelineClipCount} Session clip${assembly.sessionTimelineClipCount === 1 ? "" : "s"} and ${assembly.sessionTranscriptBlockCount} transcript block${assembly.sessionTranscriptBlockCount === 1 ? "" : "s"} are persisted. ${assembly.nextAction}`,
+    title: assembly.cameraReadiness?.status === "NO_VIDEO_SOURCES"
+      ? "The Episode has canonical audio but no camera source"
+      : assembly.cameraReadiness?.status === "SPEAKER_REVIEW_REQUIRED"
+        ? "Camera assembly is waiting on exact-source speaker review"
+        : assembly.cameraReadiness?.status === "CAMERA_IDENTITY_REQUIRED"
+          ? "A camera source still needs participant identity"
+          : assembly.cameraReadiness?.status === "PRIMARY_ANGLE_REQUIRED"
+            ? "A reviewed speaker still needs a primary camera"
+            : "The Capture media is canonical, but automated assembly is not ready",
+    detail: assembly.cameraReadiness
+      ? `${assembly.cameraReadiness.videoSourceCount} video source${assembly.cameraReadiness.videoSourceCount === 1 ? "" : "s"} · ${assembly.cameraReadiness.attributedSpeakerCount}/${assembly.cameraReadiness.reviewedSpeakerCount} speaker identities · ${assembly.cameraReadiness.mappedSpeakerCount} camera mappings. ${assembly.cameraReadiness.nextAction}`
+      : `${assembly.sessionTimelineClipCount} Session clip${assembly.sessionTimelineClipCount === 1 ? "" : "s"} and ${assembly.sessionTranscriptBlockCount} transcript block${assembly.sessionTranscriptBlockCount === 1 ? "" : "s"} are persisted. ${assembly.nextAction}`,
     consequence: "Quipsly will not guess speaker identity, camera ownership, or non-spine alignment merely to make the timeline look complete.",
-    href: assembly.editorHref,
-    actionLabel: "Continue assembly review",
+    href: assembly.cameraReadiness?.actionHref ?? assembly.editorHref,
+    actionLabel: assembly.cameraReadiness?.actionLabel ?? "Continue assembly review",
   });
   if (assembly && assembly.state === "MATERIALIZED_ASSEMBLY" && assembly.currentProposalSetCount === 0) attention.push({
     id: "episode-current-proposal-missing",
@@ -292,6 +302,11 @@ export function buildSessionFinishingCockpit(input: {
     && assembly.canonicallyLinkedDraftActionCount > 0
     && assembly.unsavedLocalDraftActionCount === 0,
   );
+  const assemblyCameraEvidence = assembly?.cameraReadiness
+    ? `${assembly.cameraReadiness.videoSourceCount} video sources · ${assembly.cameraReadiness.mappedSpeakerCount} camera maps`
+    : assembly
+      ? `${assembly.canonicalTakeCount} materialized take${assembly.canonicalTakeCount === 1 ? "" : "s"}`
+      : null;
   const assemblyStage = assembly ? {
     state: assembly.state === "BLOCKED"
       ? "BLOCKED" as const
@@ -311,7 +326,7 @@ export function buildSessionFinishingCockpit(input: {
             : assembly.state === "BLOCKED"
               ? "The Capture take is held before trustworthy timeline materialization."
               : "No Capture take from this Session is observed in the bound Episode.",
-    evidence: `${assembly.sessionTimelineClipCount} Session clips · ${assembly.canonicalTakeCount} materialized take${assembly.canonicalTakeCount === 1 ? "" : "s"} · ${assembly.currentProposalSetCount} current proposal set${assembly.currentProposalSetCount === 1 ? "" : "s"} · ${assembly.unsavedLocalDraftActionCount} unsaved draft actions · ${assembly.canonicalTimelineSaveCount} canonical saves`,
+    evidence: `${assembly.sessionTimelineClipCount} Session clips · ${assemblyCameraEvidence} · ${assembly.currentProposalSetCount} current proposal set${assembly.currentProposalSetCount === 1 ? "" : "s"} · ${assembly.unsavedLocalDraftActionCount} unsaved draft actions · ${assembly.canonicalTimelineSaveCount} canonical saves`,
     href: assembly.editorHref,
     actionLabel: "Open exact Episode editor",
   } : null;
