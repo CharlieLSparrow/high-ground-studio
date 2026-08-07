@@ -6,13 +6,20 @@ import path from "node:path";
 import {
   AUDIO_DELIVERY_CONTRACT_VERSION,
   AUDIO_DELIVERY_RESULT_KIND,
+  EPISODE_PROGRAM_DELIVERY_CONTRACT_VERSION,
+  EPISODE_PROGRAM_DELIVERY_JOB_KIND,
+  EPISODE_PROGRAM_DELIVERY_RESULT_KIND,
   assessAudioMastery,
   parseAudioDeliveryJob,
   parseAudioDeliveryResult,
+  parseEpisodeProgramDeliveryJob,
+  parseEpisodeProgramDeliveryResult,
   type AudioDeliveryJob,
   type AudioDeliveryResult,
   type AudioMasteryMeasurement,
   type AudioMasterySourceBinding,
+  type EpisodeProgramDeliveryJob,
+  type EpisodeProgramDeliveryResult,
 } from "@high-ground/quipsly-media-processing";
 import pg from "pg";
 
@@ -21,21 +28,23 @@ import { FfmpegAudioMasteringEngine } from "./audio-mastering-ffmpeg.js";
 import { ProxyTranscodeError, sha256File } from "./transcoder.js";
 
 const { Pool } = pg;
-const JOB_TYPE = "audio-delivery";
+const JOB_TYPES = ["audio-delivery", "episode-program-delivery"] as const;
+type SupportedAudioDeliveryJob = AudioDeliveryJob | EpisodeProgramDeliveryJob;
+type SupportedAudioDeliveryResult = AudioDeliveryResult | EpisodeProgramDeliveryResult;
 
 export type LocalAudioDeliveryClaim = { id: string; inputJson: unknown; attempt: number; executionId: string };
 export interface LocalAudioDeliveryStore {
   claim(input: { executionId: string; leaseMs: number; now: Date }): Promise<LocalAudioDeliveryClaim | null>;
-  complete(input: { claim: LocalAudioDeliveryClaim; receipt: AudioDeliveryResult; now: Date }): Promise<boolean>;
+  complete(input: { claim: LocalAudioDeliveryClaim; receipt: SupportedAudioDeliveryResult; now: Date }): Promise<boolean>;
   retry(input: { claim: LocalAudioDeliveryClaim; code: string; message: string; now: Date }): Promise<boolean>;
   fail(input: { claim: LocalAudioDeliveryClaim; code: string; message: string; now: Date }): Promise<boolean>;
 }
 export interface LocalAudioDeliveryEncoder {
-  encode(inputPath: string, outputPath: string, job: AudioDeliveryJob): Promise<EncodedAudioDelivery>;
+  encode(inputPath: string, outputPath: string, job: SupportedAudioDeliveryJob): Promise<EncodedAudioDelivery>;
   inspect(outputPath: string): Promise<EncodedAudioDelivery>;
 }
 export interface LocalAudioDeliveryMeasurer {
-  measure(inputPath: string, input: { source: AudioMasterySourceBinding; profileId: AudioDeliveryJob["masteryProfileId"]; measurementId?: string; measuredAt?: string }): Promise<AudioMasteryMeasurement>;
+  measure(inputPath: string, input: { source: AudioMasterySourceBinding; profileId: SupportedAudioDeliveryJob["masteryProfileId"]; measurementId?: string; measuredAt?: string }): Promise<AudioMasteryMeasurement>;
 }
 export type LocalAudioDeliveryWorkerOptions = { executionId: string; buildId: string; imageDigest: string | null; leaseMs: number; localMediaRoot: string; now: () => Date };
 export type LocalAudioDeliveryWorkerResult =
@@ -53,8 +62,8 @@ class TerminalAudioDeliveryError extends Error {
 export async function runOneLocalAudioDeliveryJob(store: LocalAudioDeliveryStore, encoder: LocalAudioDeliveryEncoder, measurer: LocalAudioDeliveryMeasurer, options: LocalAudioDeliveryWorkerOptions): Promise<LocalAudioDeliveryWorkerResult> {
   const claim = await store.claim({ executionId: options.executionId, leaseMs: options.leaseMs, now: options.now() });
   if (!claim) return { disposition: "idle" };
-  let job: AudioDeliveryJob;
-  try { job = parseAudioDeliveryJob(claim.inputJson, claim.id); }
+  let job: SupportedAudioDeliveryJob;
+  try { job = parseSupportedJob(claim.inputJson, claim.id); }
   catch (error) {
     await store.fail({ claim, code: "audio-delivery-job-invalid", message: message(error), now: options.now() });
     return { disposition: "failed", jobId: claim.id, code: "audio-delivery-job-invalid" };
@@ -107,14 +116,7 @@ export async function runOneLocalAudioDeliveryJob(store: LocalAudioDeliveryStore
     }
     const verification = assessAudioMastery(verificationMeasurement, job.masteryProfileId);
     if (!verification.passes) throw new TerminalAudioDeliveryError("audio-delivery-loudness-verification-failed", "Lossy delivery encoding drifted outside the approved loudness and true-peak profile.");
-    const receipt = parseAudioDeliveryResult({
-      kind: AUDIO_DELIVERY_RESULT_KIND, version: AUDIO_DELIVERY_CONTRACT_VERSION,
-      jobId: job.jobId, completedAt: options.now().toISOString(), source: job.source,
-      masteryProfileId: job.masteryProfileId, profile: { ...job.target, id: job.profileId, label: "Apple Podcasts AAC-LC stereo", container: encoded.container },
-      output: { ...encoded, outputPath: undefined, provider: "local", locator: job.target.locator, generation: `sha256:${encoded.sha256}`, variantKind: "audio-delivery-artifact", verificationMeasurement, verification },
-      worker: { executionId: claim.executionId, buildId: options.buildId, imageDigest: options.imageDigest, attempt: claim.attempt, ffmpegVersion: encoded.ffmpegVersion },
-      boundaries: { originalRemainsSourceTruth: true, promotedMasterRemainsCandidateTruth: true, outputIsUnapprovedDeliveryArtifact: true, proofListenRequiredBeforeOutputPacket: true, uploadNotStarted: true, publicationNotStarted: true },
-    }, job);
+    const receipt = buildDeliveryReceipt({ job, claim, options, encoded, verificationMeasurement, verification });
     const committed = await store.complete({ claim, receipt, now: options.now() });
     return committed ? { disposition: "completed", jobId: job.jobId, outputPath, recoveredExistingOutput } : { disposition: "claim-lost", jobId: job.jobId };
   } catch (error) {
@@ -138,7 +140,7 @@ export class PostgresLocalAudioDeliveryStore implements LocalAudioDeliveryStore 
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const selected = await client.query({ text: `SELECT "id", "inputJson", "resultJson" FROM "StudioAssetProcessingJob" WHERE "type"=$1 AND "inputJson"->'source'->>'provider'='local' AND ("status"='queued' OR ("status"='processing' AND "updatedAt"<$2)) ORDER BY "createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPE, new Date(input.now.getTime() - input.leaseMs)] });
+      const selected = await client.query({ text: `SELECT "id", "inputJson", "resultJson" FROM "StudioAssetProcessingJob" WHERE "type"=ANY($1::text[]) AND "inputJson"->'source'->>'provider'='local' AND ("status"='queued' OR ("status"='processing' AND "updatedAt"<$2)) ORDER BY "createdAt" ASC FOR UPDATE SKIP LOCKED LIMIT 1`, values: [JOB_TYPES, new Date(input.now.getTime() - input.leaseMs)] });
       const row = selected.rows[0];
       if (!row) { await client.query("COMMIT"); return null; }
       const attempt = Math.max(0, Number(object(object(row.resultJson).lease).attempt) || 0) + 1;
@@ -147,7 +149,7 @@ export class PostgresLocalAudioDeliveryStore implements LocalAudioDeliveryStore 
       return { id: updated.rows[0].id, inputJson: updated.rows[0].inputJson, attempt, executionId: input.executionId };
     } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; } finally { client.release(); }
   }
-  async complete(input: { claim: LocalAudioDeliveryClaim; receipt: AudioDeliveryResult; now: Date }) { return (await this.pool.query({ text: `UPDATE "StudioAssetProcessingJob" SET "status"='output-ready', "updatedAt"=$3, "completedAt"=NULL, "error"=NULL, "resultJson"=$4::jsonb WHERE "id"=$1 AND "status"='processing' AND "resultJson"->'lease'->>'executionId'=$2`, values: [input.claim.id, input.claim.executionId, input.now, JSON.stringify({ state: "output-ready", receipt: input.receipt })] })).rowCount === 1; }
+  async complete(input: { claim: LocalAudioDeliveryClaim; receipt: SupportedAudioDeliveryResult; now: Date }) { return (await this.pool.query({ text: `UPDATE "StudioAssetProcessingJob" SET "status"='output-ready', "updatedAt"=$3, "completedAt"=NULL, "error"=NULL, "resultJson"=$4::jsonb WHERE "id"=$1 AND "status"='processing' AND "resultJson"->'lease'->>'executionId'=$2`, values: [input.claim.id, input.claim.executionId, input.now, JSON.stringify({ state: "output-ready", receipt: input.receipt })] })).rowCount === 1; }
   retry(input: { claim: LocalAudioDeliveryClaim; code: string; message: string; now: Date }) { return this.release(input, "queued"); }
   fail(input: { claim: LocalAudioDeliveryClaim; code: string; message: string; now: Date }) { return this.release(input, "failed"); }
   private async release(input: { claim: LocalAudioDeliveryClaim; code: string; message: string; now: Date }, status: "queued" | "failed") { return (await this.pool.query({ text: `UPDATE "StudioAssetProcessingJob" SET "status"=$3::text, "updatedAt"=$4::timestamp(3), "completedAt"=CASE WHEN $3::text='failed' THEN $4::timestamp(3) ELSE NULL::timestamp END, "error"=$5, "resultJson"=$6::jsonb WHERE "id"=$1 AND "status"='processing' AND "resultJson"->'lease'->>'executionId'=$2`, values: [input.claim.id, input.claim.executionId, status, input.now, `${input.code}: ${input.message}`.slice(0, 4_000), JSON.stringify({ state: status, failure: { code: input.code, message: input.message }, lease: { executionId: input.claim.executionId, attempt: input.claim.attempt } })] })).rowCount === 1; }
@@ -160,8 +162,81 @@ export function newLocalAudioDeliveryRuntime(input: { pool: InstanceType<typeof 
 async function authorizedRoot(configuredRoot: string) { const temp = await realpath(tmpdir()); const resolved = path.resolve(configuredRoot); await mkdir(resolved, { recursive: true, mode: 0o700 }); const root = await realpath(resolved); if (root === temp || !inside(temp, root)) throw new TerminalAudioDeliveryError("audio-delivery-root-rejected", "Local delivery root must be a dedicated directory below the operating-system temporary directory."); return root; }
 async function authorizedSource(root: string, locator: string) { const source = await realpath(locator).catch(() => ""); if (!source || !inside(root, source)) throw new TerminalAudioDeliveryError("audio-delivery-source-path-rejected", "Promoted master escaped the authorized media root."); return source; }
 function authorizedTarget(root: string, locator: string) { const output = path.resolve(root, locator); if (!inside(root, output) || !output.endsWith(".m4a")) throw new TerminalAudioDeliveryError("audio-delivery-target-path-rejected", "Delivery target escaped the authorized media root."); return output; }
-async function assertSource(job: AudioDeliveryJob, sourcePath: string) { const sourceStat = await stat(sourcePath); if (!sourceStat.isFile() || sourceStat.size !== job.source.sizeBytes || await sha256File(sourcePath) !== job.source.sha256) throw new TerminalAudioDeliveryError("audio-delivery-source-byte-mismatch", "Promoted candidate no longer matches its immutable byte receipt."); }
+async function assertSource(job: SupportedAudioDeliveryJob, sourcePath: string) { const sourceStat = await stat(sourcePath); if (!sourceStat.isFile() || sourceStat.size !== job.source.sizeBytes || await sha256File(sourcePath) !== job.source.sha256) throw new TerminalAudioDeliveryError("audio-delivery-source-byte-mismatch", "Promoted candidate no longer matches its immutable byte receipt."); }
 async function flushFile(filePath: string) { const handle = await open(filePath, "r+"); try { await handle.sync(); await handle.chmod(0o600); } finally { await handle.close(); } }
 function inside(root: string, candidate: string) { const relative = path.relative(root, candidate); return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)); }
 function object(value: unknown): Record<string, any> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {}; }
 function message(error: unknown) { return error instanceof Error && error.message.trim() ? error.message : "Audio delivery worker failed."; }
+
+function parseSupportedJob(value: unknown, expectedJobId: string): SupportedAudioDeliveryJob {
+  return object(value).kind === EPISODE_PROGRAM_DELIVERY_JOB_KIND
+    ? parseEpisodeProgramDeliveryJob(value, expectedJobId)
+    : parseAudioDeliveryJob(value, expectedJobId);
+}
+
+function buildDeliveryReceipt(input: {
+  job: SupportedAudioDeliveryJob;
+  claim: LocalAudioDeliveryClaim;
+  options: LocalAudioDeliveryWorkerOptions;
+  encoded: EncodedAudioDelivery;
+  verificationMeasurement: AudioMasteryMeasurement;
+  verification: ReturnType<typeof assessAudioMastery>;
+}): SupportedAudioDeliveryResult {
+  const common = {
+    jobId: input.job.jobId,
+    completedAt: input.options.now().toISOString(),
+    source: input.job.source,
+    masteryProfileId: input.job.masteryProfileId,
+    profile: {
+      ...input.job.target,
+      id: input.job.profileId,
+      label: "Apple Podcasts AAC-LC stereo",
+      container: input.encoded.container,
+    },
+    output: {
+      ...input.encoded,
+      outputPath: undefined,
+      provider: "local" as const,
+      locator: input.job.target.locator,
+      generation: `sha256:${input.encoded.sha256}`,
+      variantKind: input.job.target.variantKind,
+      verificationMeasurement: input.verificationMeasurement,
+      verification: input.verification,
+    },
+    worker: {
+      executionId: input.claim.executionId,
+      buildId: input.options.buildId,
+      imageDigest: input.options.imageDigest,
+      attempt: input.claim.attempt,
+      ffmpegVersion: input.encoded.ffmpegVersion,
+    },
+  };
+  if (input.job.kind === EPISODE_PROGRAM_DELIVERY_JOB_KIND) {
+    return parseEpisodeProgramDeliveryResult({
+      ...common,
+      kind: EPISODE_PROGRAM_DELIVERY_RESULT_KIND,
+      version: EPISODE_PROGRAM_DELIVERY_CONTRACT_VERSION,
+      boundaries: {
+        sourceTracksRemainImmutable: true,
+        promotedProgramRemainsCandidateTruth: true,
+        outputIsUnapprovedDeliveryArtifact: true,
+        proofListenRequiredBeforeOutputPacket: true,
+        uploadNotStarted: true,
+        publicationNotStarted: true,
+      },
+    }, input.job);
+  }
+  return parseAudioDeliveryResult({
+    ...common,
+    kind: AUDIO_DELIVERY_RESULT_KIND,
+    version: AUDIO_DELIVERY_CONTRACT_VERSION,
+    boundaries: {
+      originalRemainsSourceTruth: true,
+      promotedMasterRemainsCandidateTruth: true,
+      outputIsUnapprovedDeliveryArtifact: true,
+      proofListenRequiredBeforeOutputPacket: true,
+      uploadNotStarted: true,
+      publicationNotStarted: true,
+    },
+  }, input.job);
+}

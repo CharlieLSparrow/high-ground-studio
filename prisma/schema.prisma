@@ -3878,6 +3878,7 @@ model StudioProject {
   audioMasterReviews        StudioAudioMasterReviewReceipt[]
   audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
   episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
   episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
   episodeOutputSelections   StudioEpisodeOutputSelectionReceipt[]
@@ -4016,6 +4017,7 @@ model StudioEpisodeProduction {
   audioReviews        StudioEpisodeAudioReviewReceipt[]
   audioMixReviews     StudioEpisodeAudioMixReviewReceipt[]
   audioMixPromotions  StudioEpisodeAudioMixPromotionReceipt[]
+  programDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4244,6 +4246,7 @@ model StudioAssetProcessingJob {
   audioMasterReviews        StudioAudioMasterReviewReceipt[]
   audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
   episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
   episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
   dialogueRepairAuditions   StudioDialogueRepairAuditionReceipt[]
@@ -4387,6 +4390,7 @@ model StudioEpisodeAudioMixPromotionReceipt {
   episodeProduction StudioEpisodeProduction             @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
   mixJob            StudioAssetProcessingJob            @relation(fields: [mixJobId], references: [id], onDelete: Cascade)
   reviewReceipt     StudioEpisodeAudioMixReviewReceipt? @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+  deliveryReviews   StudioEpisodeProgramDeliveryReviewReceipt[]
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeMixPromotion_project_actor_request_key")
   @@index([mixJobId, occurredAt], map: "StudioEpisodeMixPromotion_job_occurred_idx")
@@ -4425,6 +4429,42 @@ model StudioAudioDeliveryReviewReceipt {
   @@index([deliveryJobId, occurredAt], map: "StudioAudioDeliveryReview_job_occurred_idx")
   @@index([projectId, assetId, occurredAt], map: "StudioAudioDeliveryReview_project_asset_occurred_idx")
   @@index([promotionReceiptId], map: "StudioAudioDeliveryReview_promotion_idx")
+}
+
+// A multitrack Episode program is not an asset-master promotion. Its lossy
+// delivery bytes therefore get a dedicated append-only proof-listen ledger
+// bound to the exact Episode mix promotion and canonical program fingerprint.
+model StudioEpisodeProgramDeliveryReviewReceipt {
+  id                       String                          @id @default(cuid())
+  projectId                String
+  episodeProductionId      String
+  programAssetId           String
+  deliveryJobId            String
+  promotionReceiptId       String
+  actorEmail               String
+  clientRequestId          String
+  decision                 StudioAudioMasterReviewDecision
+  deliveryProfileId        String
+  programFingerprintSha256 String
+  candidateSha256          String
+  deliverySha256           String
+  requestSha256            String
+  evidenceJson             Json
+  note                     String?
+  occurredAt               DateTime
+  createdAt                DateTime                        @default(now())
+
+  project           StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction               @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  programAsset      StudioMediaAsset                      @relation(fields: [programAssetId], references: [id], onDelete: Cascade)
+  deliveryJob       StudioAssetProcessingJob              @relation(fields: [deliveryJobId], references: [id], onDelete: Cascade)
+  promotionReceipt  StudioEpisodeAudioMixPromotionReceipt @relation(fields: [promotionReceiptId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeProgramDeliveryReview_project_actor_request_key")
+  @@index([deliveryJobId, occurredAt], map: "StudioEpisodeProgramDeliveryReview_job_occurred_idx")
+  @@index([episodeProductionId, occurredAt], map: "StudioEpisodeProgramDeliveryReview_episode_occurred_idx")
+  @@index([promotionReceiptId], map: "StudioEpisodeProgramDeliveryReview_promotion_idx")
+  @@index([programAssetId, occurredAt], map: "StudioEpisodeProgramDeliveryReview_asset_occurred_idx")
 }
 
 enum StudioDialogueRepairReviewDecision {
@@ -6041,6 +6081,7 @@ model StudioMediaAsset {
   audioMasterReviews        StudioAudioMasterReviewReceipt[]
   audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
   audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
   episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
   dialogueRepairCandidates  StudioDialogueRepairCandidate[]
   dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]

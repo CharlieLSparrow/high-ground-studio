@@ -4,6 +4,7 @@ export * from "./audio-alignment-evidence.js";
 export * from "./audio-alignment-job.js";
 export * from "./audio-mastery-review.js";
 export * from "./audio-delivery.js";
+export * from "./episode-program-delivery.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";
 export * from "./audio-signal-profile.js";

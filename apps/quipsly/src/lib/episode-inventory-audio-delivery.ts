@@ -63,3 +63,54 @@ export function episodeInventoryAudioDeliveryArtifact(input: {
     publicationNotStarted: true as const,
   };
 }
+
+export function episodeInventoryProgramDeliveryArtifact(input: {
+  jobs: any[];
+  variants: any[];
+  promotionEvents: any[];
+}) {
+  const job = input.jobs.find((candidate) => candidate?.type === "episode-program-delivery") || null;
+  if (!job) return null;
+  const contract = object(job.inputJson);
+  const source = object(contract.source);
+  const envelope = object(job.resultJson);
+  const receipt = object(envelope.receipt);
+  const output = object(receipt.output);
+  const registration = object(envelope.registration);
+  const latestReview = Array.isArray(job.episodeProgramDeliveryReviews) ? job.episodeProgramDeliveryReviews[0] || null : null;
+  const latestPromotion = input.promotionEvents[0] || null;
+  const promotionStillActive = Boolean(latestPromotion && latestPromotion.operation === "PROMOTE" && latestPromotion.id === source.promotionReceiptId);
+  const variant = input.variants.find((candidate) => candidate?.kind === "episode-program-delivery-artifact" && candidate?.url === registration.playbackUrl) || null;
+  const completed = job.status === "completed" && Boolean(text(output.sha256) && text(registration.playbackUrl) && variant);
+  return {
+    jobId: job.id,
+    status: job.status,
+    profileId: text(contract.profileId) || null,
+    mixJobId: text(source.mixJobId) || null,
+    promotionReceiptId: text(source.promotionReceiptId) || null,
+    candidateSha256: text(source.sha256) || null,
+    deliverySha256: text(output.sha256) || null,
+    playbackUrl: completed ? text(registration.playbackUrl) : null,
+    sizeBytes: output.sizeBytes == null ? null : String(output.sizeBytes),
+    durationSeconds: Number.isFinite(Number(output.durationSeconds)) ? Number(output.durationSeconds) : null,
+    review: latestReview ? {
+      id: latestReview.id,
+      decision: latestReview.decision === "APPROVED" ? "approved" : "rejected",
+      reviewedAt: iso(latestReview.occurredAt),
+      actorEmail: latestReview.actorEmail,
+      note: text(latestReview.note) || null,
+    } : null,
+    promotionStillActive,
+    readiness: {
+      encodedAndVerified: completed,
+      proofListenApproved: completed && promotionStillActive && latestReview?.decision === "APPROVED",
+      outputPacketEligible: completed && promotionStillActive && latestReview?.decision === "APPROVED",
+      uploadEligible: false,
+      publicationEligible: false,
+    },
+    sourceTracksRemainImmutable: true as const,
+    outputPacketNotCreated: true as const,
+    uploadNotStarted: true as const,
+    publicationNotStarted: true as const,
+  };
+}

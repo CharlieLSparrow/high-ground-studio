@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import { open, stat } from "node:fs/promises";
 
-import type { AudioDeliveryJob } from "@high-ground/quipsly-media-processing";
+import type {
+  AudioDeliveryJob,
+  EpisodeProgramDeliveryJob,
+} from "@high-ground/quipsly-media-processing";
 
 import { ProxyTranscodeError, sha256File } from "./transcoder.js";
 
@@ -39,7 +42,11 @@ export class FfmpegAudioDeliveryEncoder {
     this.ffprobePath = ffprobePath;
   }
 
-  async encode(inputPath: string, outputPath: string, job: AudioDeliveryJob): Promise<EncodedAudioDelivery> {
+  async encode(
+    inputPath: string,
+    outputPath: string,
+    job: AudioDeliveryJob | EpisodeProgramDeliveryJob,
+  ): Promise<EncodedAudioDelivery> {
     await run(this.ffmpegPath, [
       "-hide_banner", "-nostdin", "-y", "-i", inputPath,
       "-map", "0:a:0", "-vn", "-c:a", "aac", "-profile:a", "aac_low",

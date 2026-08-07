@@ -27,6 +27,8 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [withdrawReason, setWithdrawReason] = useState("");
+  const [programListenedBins, setProgramListenedBins] = useState<number[]>([]);
+  const [programReviewNote, setProgramReviewNote] = useState("");
 
   async function operate(body: Record<string, unknown>, busyKey: string) {
     setBusyAssetId(busyKey);
@@ -46,6 +48,57 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The Episode package operation failed.");
+    } finally {
+      setBusyAssetId(null);
+    }
+  }
+
+  async function operateProgramDelivery(operation: "queue" | "reconcile") {
+    if (!graph.programMix) return;
+    setBusyAssetId("program-delivery");
+    setMessage(null);
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/delivery", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ operation, projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, mixJobId: graph.programMix.jobId }),
+      });
+      const result = await response.json().catch(() => null) as { ok?: boolean; error?: string; status?: string } | null;
+      if (!response.ok || result?.ok !== true) throw new Error(result?.error || "The Episode program could not advance to its encoded delivery stage.");
+      setMessage(result.status === "completed" ? "The exact AAC Episode program is registered and ready for encoded-byte proof-listening." : "The Episode program delivery job is queued or still processing. Its promoted lossless source remains unchanged.");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The Episode program delivery operation failed.");
+    } finally {
+      setBusyAssetId(null);
+    }
+  }
+
+  async function reviewProgramDelivery(decision: "approved" | "rejected") {
+    if (!graph.programMix?.deliveryJobId) return;
+    setBusyAssetId("program-review");
+    setMessage(null);
+    try {
+      const response = await fetch("/api/media-vault/episode-audio-program/delivery/review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          projectSlug: graph.episode!.projectSlug,
+          episodeProductionId: graph.episode!.id,
+          deliveryJobId: graph.programMix.deliveryJobId,
+          clientRequestId: crypto.randomUUID(),
+          decision,
+          playbackEvidence: { schema: "quipsly-audio-delivery-playback-review-v1", listenedSecondBins: programListenedBins, completedAt: new Date().toISOString() },
+          note: programReviewNote,
+        }),
+      });
+      const result = await response.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+      if (!response.ok || result?.ok !== true) throw new Error(result?.error || "The encoded-program listening decision could not be saved.");
+      setMessage(decision === "approved" ? "The exact encoded Episode bytes are proof-listened and packet-eligible. Nothing was uploaded or published." : "The encoded bytes were rejected and preserved as version history.");
+      setProgramReviewNote("");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The encoded-program listening decision failed.");
     } finally {
       setBusyAssetId(null);
     }
@@ -90,13 +143,19 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
       <ol className="mt-4 grid gap-2 lg:grid-cols-5" aria-label="Program output chain">{[
         ["Exact source tracks", `${graph.programMix.sourceTrackCount} BOUND`],
         ["Program mix", graph.programMix.state],
-        ["Encoded AAC", "NOT_OBSERVED"],
-        ["Proof-listen", "NOT_OBSERVED"],
+        ["Encoded AAC", ["APPROVED", "PROOF_LISTEN_REQUIRED", "REJECTED", "STALE"].includes(graph.programMix.deliveryState) ? "VERIFIED" : graph.programMix.deliveryState],
+        ["Proof-listen", graph.programMix.deliveryState === "APPROVED" ? "APPROVED" : graph.programMix.deliveryState === "REJECTED" ? "REJECTED" : "NOT_OBSERVED"],
         ["Episode packet", graph.programMix.packetState],
       ].map(([label, state], index) => <li key={label} className={`relative rounded-xl border p-3 ${stateTone(state)}`}><p className="text-[9px] font-black uppercase tracking-wide">{index + 1}. {label}</p><p className="mt-2 text-xs font-black">{human(state)}</p>{index < 4 ? <ArrowRight size={13} className="absolute -right-3 top-1/2 hidden -translate-y-1/2 text-slate-400 lg:block" aria-hidden="true" /> : null}</li>)}</ol>
       {graph.programMix.playbackUrl ? <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 p-3"><audio controls preload="metadata" src={graph.programMix.playbackUrl} className="w-full" aria-label="Promoted Episode program mix" /><p className="mt-2 text-[10px] font-bold">This is the reviewed lossless program candidate. It is not the final AAC enclosure and playback here does not create delivery approval.</p></div> : null}
+      {graph.programMix.deliveryPlaybackUrl ? <div className="mt-4 rounded-xl border border-cyan-200 bg-white/90 p-3">
+        <p className="text-[10px] font-black uppercase tracking-wide">Encoded-byte proof player</p>
+        <audio controls preload="metadata" src={graph.programMix.deliveryPlaybackUrl} className="mt-2 w-full" aria-label="Encoded AAC Episode program" onTimeUpdate={(event) => { const bin = Math.max(0, Math.floor(event.currentTarget.currentTime)); setProgramListenedBins((current) => current.includes(bin) ? current : [...current, bin].sort((a, b) => a - b)); }} />
+        <p className="mt-2 text-[10px] font-bold leading-4">Listen through the beginning, midpoint, and ending neighborhoods. Quipsly records second-bin coverage against these exact AAC bytes; tracked playback is evidence of player activity, not a claim about what you heard.</p>
+        {graph.programMix.deliveryState !== "APPROVED" ? <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]"><input value={programReviewNote} onChange={(event) => setProgramReviewNote(event.target.value)} placeholder="Optional approval note; required to reject" aria-label="Encoded Episode program review note" className="min-h-11 rounded-xl border border-cyan-300 bg-white px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-cyan-500" /><button type="button" disabled={busyAssetId !== null || !programCoverageReady(programListenedBins, graph.programMix.deliveryDurationSeconds)} onClick={() => void reviewProgramDelivery("approved")} className="min-h-11 rounded-xl bg-cyan-800 px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400">Approve exact bytes</button><button type="button" disabled={busyAssetId !== null || programListenedBins.length === 0 || programReviewNote.trim().length < 3} onClick={() => void reviewProgramDelivery("rejected")} className="min-h-11 rounded-xl border border-rose-300 bg-white px-4 text-xs font-black text-rose-900 disabled:cursor-not-allowed disabled:opacity-50">Reject bytes</button></div> : <p className="mt-3 flex items-center gap-2 text-xs font-black text-emerald-800"><CheckCircle2 size={15} aria-hidden="true" />Current encoded bytes have an approved proof-listen receipt.</p>}
+      </div> : null}
       {graph.programMix.state === "HELD" ? <div className="mt-4 flex gap-2 rounded-xl border border-rose-300 bg-white p-3 text-xs font-bold"><CircleAlert className="mt-0.5 shrink-0" size={16} aria-hidden="true" /><p>Quipsly found a promotion receipt but could not prove the completed job, registered asset, program fingerprint, and preview hash as one exact lineage. The candidate remains preserved and cannot advance.</p></div> : null}
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black">Next: {graph.programMix.nextAction}</p><p className="mt-1 break-all font-mono text-[9px] font-bold">program {shortHash(graph.programMix.programFingerprintSha256)} · preview {shortHash(graph.programMix.previewSha256)}</p></div><span className="rounded-full border border-current bg-white px-3 py-1.5 text-[9px] font-black uppercase">{graph.programMix.historicalEventCount} promotion receipt{graph.programMix.historicalEventCount === 1 ? "" : "s"}</span></div>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black">Next: {graph.programMix.nextAction}</p><p className="mt-1 break-all font-mono text-[9px] font-bold">program {shortHash(graph.programMix.programFingerprintSha256)} · preview {shortHash(graph.programMix.previewSha256)} · AAC {shortHash(graph.programMix.deliveryArtifactSha256)}</p></div><div className="flex flex-wrap gap-2">{graph.programMix.state === "ACTIVE" && ["NOT_OBSERVED", "FAILED", "STALE"].includes(graph.programMix.deliveryState) ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("queue")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Encode promoted program</button> : null}{graph.programMix.state === "ACTIVE" && graph.programMix.deliveryState === "PROCESSING" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operateProgramDelivery("reconcile")} className="min-h-11 rounded-full bg-cyan-800 px-4 text-xs font-black text-white disabled:bg-slate-400">Check encoded output</button> : null}{graph.programMix.packetEligible && graph.programMix.assetId && graph.programMix.packetState !== "SELECTED" ? <button type="button" disabled={busyAssetId !== null} onClick={() => void operate({ action: "select", projectSlug: graph.episode!.projectSlug, episodeProductionId: graph.episode!.id, assetId: graph.programMix!.assetId!, deliveryJobId: graph.programMix!.deliveryJobId, clientRequestId: crypto.randomUUID(), exactEncodedBytesProofListened: true, selectAsEpisodeEnclosureCandidate: true, metadataStillRequiresReview: true }, "program-packet")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-5 text-xs font-black text-white disabled:bg-slate-400"><ShieldCheck size={15} aria-hidden="true" />Select program package</button> : null}<span className="rounded-full border border-current bg-white px-3 py-1.5 text-[9px] font-black uppercase">{graph.programMix.historicalEventCount} promotion receipt{graph.programMix.historicalEventCount === 1 ? "" : "s"}</span></div></div>
     </section> : null}
 
     <ol className="mt-5 space-y-4" aria-label="Versioned audio output branches">{graph.assets.map((asset) => <li key={asset.mediaAssetId} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -115,4 +174,12 @@ export function SessionVersionedOutputGraphCard({ graph }: { graph: SessionVersi
     {!graph.assets.length ? <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 text-sm font-bold text-slate-700">No canonically attached Episode source is available for the versioned output chain yet.</p> : null}
     <p className="mt-4 text-[10px] font-bold leading-5 text-[#765f40]">Apple-compatible packaging still requires a stable GUID, title, public enclosure URL, byte length, MIME type, HTTP HEAD and byte-range support, reviewed metadata, and an explicit destination action. Quipsly stores those as open facts rather than treating packet selection as publication.</p>
   </section>;
+}
+
+function programCoverageReady(listenedSecondBins: number[], durationSeconds: number | null) {
+  if (!durationSeconds || durationSeconds <= 0) return false;
+  const finalBin = Math.max(0, Math.floor(durationSeconds - 0.001));
+  const anchors = [...new Set([0, Math.floor(durationSeconds / 2), finalBin])];
+  const required = [...new Set(anchors.flatMap((anchor) => [anchor - 1, anchor, anchor + 1].filter((bin) => bin >= 0 && bin <= finalBin)))];
+  return required.every((bin) => listenedSecondBins.includes(bin));
 }

@@ -259,14 +259,18 @@ export async function loadApprovedAudioDeliveryPacketEvidence(input: {
     );
   }
   return {
+    authorityKind: "asset-master" as const,
     projectId: context.projectId,
     assetId: input.assetId,
     deliveryJobId: context.job.jobId,
     masteryJobId: context.job.source.masteryJobId,
+    mixJobId: null,
     promotionReceiptId: latestPromotion.id,
     masterReviewReceiptId: context.job.source.masterReviewReceiptId,
+    mixReviewReceiptId: null,
     deliveryReviewReceiptId: latestReview.id,
     profileId: context.job.profileId,
+    programFingerprintSha256: null,
     candidateSha256: context.job.source.sha256,
     deliverySha256: context.result.output.sha256,
     playbackUrl: text(context.registration.playbackUrl),

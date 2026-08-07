@@ -8,6 +8,10 @@ import {
   AudioDeliveryError,
   loadApprovedAudioDeliveryPacketEvidence,
 } from "@/lib/server/audio-delivery";
+import {
+  EpisodeProgramDeliveryError,
+  loadApprovedEpisodeProgramDeliveryPacketEvidence,
+} from "@/lib/server/episode-program-delivery";
 import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const PODCAST_OUTPUT_PACKET_KIND = "podcast-rss-episode";
@@ -175,16 +179,28 @@ export async function selectPodcastOutputPacket(input: {
     }
     return { ok: true, idempotentReplay: true, packet: publicPacket(existingRequest.outputPacket), selection: publicSelection(existingRequest) };
   }
+  const selectedDeliveryJob = await input.prisma.studioAssetProcessingJob.findFirst({
+    where: { id: input.deliveryJobId, projectId: context.project.id, assetId: input.assetId },
+    select: { type: true },
+  });
   let audio;
   try {
-    audio = await loadApprovedAudioDeliveryPacketEvidence({
-      prisma: input.prisma,
-      projectSlug: context.project.slug,
-      assetId: input.assetId,
-      deliveryJobId: input.deliveryJobId,
-    });
+    audio = selectedDeliveryJob?.type === "episode-program-delivery"
+      ? await loadApprovedEpisodeProgramDeliveryPacketEvidence({
+          prisma: input.prisma,
+          projectSlug: context.project.slug,
+          episodeProductionId: context.episode.id,
+          assetId: input.assetId,
+          deliveryJobId: input.deliveryJobId,
+        })
+      : await loadApprovedAudioDeliveryPacketEvidence({
+          prisma: input.prisma,
+          projectSlug: context.project.slug,
+          assetId: input.assetId,
+          deliveryJobId: input.deliveryJobId,
+        });
   } catch (error) {
-    if (error instanceof AudioDeliveryError) {
+    if (error instanceof AudioDeliveryError || error instanceof EpisodeProgramDeliveryError) {
       throw new PodcastOutputPacketError(error.message, error.status, error.code);
     }
     throw error;
@@ -214,11 +230,15 @@ export async function selectPodcastOutputPacket(input: {
       publishAt: null,
     },
     audio: {
+      authorityKind: audio.authorityKind,
       assetId: input.assetId,
       attachmentRole: context.attachment?.role ?? null,
       attachmentSource: context.attachment?.source ?? null,
       masteryJobId: audio.masteryJobId,
       masterReviewReceiptId: audio.masterReviewReceiptId,
+      mixJobId: audio.mixJobId,
+      mixReviewReceiptId: audio.mixReviewReceiptId,
+      programFingerprintSha256: audio.programFingerprintSha256,
       promotionReceiptId: audio.promotionReceiptId,
       deliveryJobId: audio.deliveryJobId,
       deliveryReviewReceiptId: audio.deliveryReviewReceiptId,
@@ -274,8 +294,12 @@ export async function selectPodcastOutputPacket(input: {
     schema: "quipsly-podcast-output-lineage-v1",
     episodeProductionId: context.episode.id,
     assetId: input.assetId,
+    authorityKind: audio.authorityKind,
     masteryJobId: audio.masteryJobId,
     masterReviewReceiptId: audio.masterReviewReceiptId,
+    mixJobId: audio.mixJobId,
+    mixReviewReceiptId: audio.mixReviewReceiptId,
+    programFingerprintSha256: audio.programFingerprintSha256,
     promotionReceiptId: audio.promotionReceiptId,
     deliveryJobId: audio.deliveryJobId,
     deliveryReviewReceiptId: audio.deliveryReviewReceiptId,
@@ -307,10 +331,15 @@ export async function selectPodcastOutputPacket(input: {
       if (replay.requestSha256 !== requestSha256) throw new PodcastOutputPacketError("That request id won a race with different Episode package evidence.", 409, "PODCAST_PACKET_IDEMPOTENCY_CONFLICT");
       return { ok: true, idempotentReplay: true, packet: publicPacket(replay.outputPacket), selection: publicSelection(replay) };
     }
-    const [latestPromotion, latestReview] = await Promise.all([
-      tx.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.project.id, assetId: input.assetId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
-      tx.studioAudioDeliveryReviewReceipt.findFirst({ where: { deliveryJobId: audio.deliveryJobId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
-    ]);
+    const [latestPromotion, latestReview] = audio.authorityKind === "episode-program"
+      ? await Promise.all([
+          tx.studioEpisodeAudioMixPromotionReceipt.findFirst({ where: { episodeProductionId: context.episode.id }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+          tx.studioEpisodeProgramDeliveryReviewReceipt.findFirst({ where: { deliveryJobId: audio.deliveryJobId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+        ])
+      : await Promise.all([
+          tx.studioAudioMasterPromotionReceipt.findFirst({ where: { projectId: context.project.id, assetId: input.assetId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+          tx.studioAudioDeliveryReviewReceipt.findFirst({ where: { deliveryJobId: audio.deliveryJobId }, orderBy: [{ occurredAt: "desc" }, { id: "desc" }] }),
+        ]);
     if (latestPromotion?.id !== audio.promotionReceiptId || latestPromotion.operation !== "PROMOTE"
         || latestReview?.id !== audio.deliveryReviewReceiptId || latestReview.decision !== "APPROVED") {
       throw new PodcastOutputPacketError("The audio selection changed before the Episode packet could be committed.", 409, "PODCAST_PACKET_AUDIO_CHANGED");

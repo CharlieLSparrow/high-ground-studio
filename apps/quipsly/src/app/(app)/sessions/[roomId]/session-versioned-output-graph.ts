@@ -19,6 +19,7 @@ export type SessionOutputGraphAssetInput = {
     promotionReceiptId: string | null;
     deliverySha256: string | null;
     playbackUrl: string | null;
+    durationSeconds?: number | null;
     promotionStillActive: boolean;
     review: null | { id: string; decision: "approved" | "rejected"; reviewedAt: string | null };
     readiness: {
@@ -59,6 +60,7 @@ export type SessionOutputGraphProgramMixInput = {
   playbackUrl: string | null;
   occurredAt: string | null;
   historicalEventCount: number;
+  deliveryArtifact: SessionOutputGraphAssetInput["deliveryArtifact"];
   integrity: {
     jobCompleted: boolean;
     assetRegistered: boolean;
@@ -87,6 +89,12 @@ export type SessionVersionedOutputGraph = {
     playbackUrl: string | null;
     occurredAt: string | null;
     historicalEventCount: number;
+    deliveryState: "NOT_OBSERVED" | "PROCESSING" | "FAILED" | "STALE" | "PROOF_LISTEN_REQUIRED" | "REJECTED" | "APPROVED";
+    deliveryJobId: string | null;
+    deliveryArtifactSha256: string | null;
+    deliveryPlaybackUrl: string | null;
+    deliveryDurationSeconds: number | null;
+    packetEligible: boolean;
     packetState: "NOT_SELECTED" | "SELECTED" | "WITHDRAWN" | "OTHER_ASSET_SELECTED";
     nextAction: string;
     editorHref: string;
@@ -156,8 +164,7 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function deliveryState(asset: SessionOutputGraphAssetInput) {
-  const delivery = asset.deliveryArtifact;
+function deliveryState(delivery: SessionOutputGraphAssetInput["deliveryArtifact"]) {
   if (!delivery) return "NOT_OBSERVED" as const;
   if (delivery.status === "failed") return "FAILED" as const;
   if (["queued", "processing", "output-ready"].includes(delivery.status)) return "PROCESSING" as const;
@@ -217,11 +224,12 @@ export function buildSessionVersionedOutputGraph(input: {
         ? "ACTIVE" as const
         : "HELD" as const;
   const hasActiveProgramMix = programMixState === "ACTIVE";
+  const programDeliveryState = deliveryState(input.programMix?.deliveryArtifact ?? null);
   const assets = input.assets.map((asset) => {
     const masterState = !asset.masterCandidate
       ? "NOT_OBSERVED" as const
       : asset.masterCandidate.active ? "ACTIVE" as const : "WITHDRAWN" as const;
-    const artifactState = deliveryState(asset);
+    const artifactState = deliveryState(asset.deliveryArtifact);
     const packetState = currentSelection
       ? selectedAssetId === asset.mediaAssetId ? "SELECTED" as const : "OTHER_ASSET_SELECTED" as const
       : latestSelection?.operation === "WITHDRAW" && latestSelection.artifactSha256 === asset.deliveryArtifact?.deliverySha256
@@ -266,19 +274,39 @@ export function buildSessionVersionedOutputGraph(input: {
       playbackUrl: programMixState === "ACTIVE" ? input.programMix.playbackUrl : null,
       occurredAt: input.programMix.occurredAt,
       historicalEventCount: input.programMix.historicalEventCount,
+      deliveryState: programDeliveryState,
+      deliveryJobId: input.programMix.deliveryArtifact?.jobId ?? null,
+      deliveryArtifactSha256: input.programMix.deliveryArtifact?.deliverySha256 ?? null,
+      deliveryPlaybackUrl: input.programMix.deliveryArtifact?.playbackUrl ?? null,
+      deliveryDurationSeconds: input.programMix.deliveryArtifact?.durationSeconds ?? null,
+      packetEligible: input.programMix.deliveryArtifact?.readiness.outputPacketEligible === true && programMixState === "ACTIVE",
       packetState: currentSelection
         ? selectedAssetId === input.programMix.assetId ? "SELECTED" : "OTHER_ASSET_SELECTED"
-        : latestSelection?.operation === "WITHDRAW" && latestSelection.artifactSha256 === input.programMix.previewSha256
+        : latestSelection?.operation === "WITHDRAW" && latestSelection.artifactSha256 === input.programMix.deliveryArtifact?.deliverySha256
           ? "WITHDRAWN"
           : "NOT_SELECTED",
       nextAction: programMixState === "HELD"
         ? "Inspect the program-mix registration or receipt mismatch before finishing."
         : programMixState === "WITHDRAWN"
           ? "Review and deliberately promote the correct multitrack program version."
-          : "Encode this promoted program as a separately verified delivery artifact, then proof-listen the encoded bytes.",
+          : programDeliveryState === "NOT_OBSERVED"
+            ? "Encode this promoted program as a separately verified AAC delivery artifact."
+            : programDeliveryState === "PROCESSING"
+              ? "Finish or recover the current Episode-program delivery encoding."
+              : programDeliveryState === "FAILED"
+                ? "Inspect the encoded-program evidence failure before retrying."
+                : programDeliveryState === "STALE"
+                  ? "The promoted program changed; encode a new artifact from the current promotion."
+                  : programDeliveryState === "REJECTED"
+                    ? "Keep the rejected bytes as history and prepare a replacement artifact."
+                    : programDeliveryState === "PROOF_LISTEN_REQUIRED"
+                      ? "Proof-listen the actual encoded beginning, midpoint, and ending."
+                      : currentSelection
+                        ? "Complete metadata, public enclosure hosting, and destination review; selection is not publication."
+                        : "Select these approved encoded program bytes as the reversible Episode package candidate.",
       editorHref: input.episode
-        ? `/editor?project=${encodeURIComponent(input.episode.projectSlug)}&episode=${encodeURIComponent(input.episode.slug)}#episode-audio-mix`
-        : "/editor",
+        ? `/audio?project=${encodeURIComponent(input.episode.projectSlug)}&episode=${encodeURIComponent(input.episode.slug)}#episode-audio-mix`
+        : "/audio",
       integrity: input.programMix.integrity,
     } : null,
     assets,
@@ -301,9 +329,9 @@ export function buildSessionVersionedOutputGraph(input: {
       sources: assets.length,
       activeProgramMixes: hasActiveProgramMix ? 1 : 0,
       activeMasters: assets.filter((asset) => asset.masterState === "ACTIVE").length,
-      verifiedArtifacts: assets.filter((asset) => !["NOT_OBSERVED", "PROCESSING", "FAILED"].includes(asset.deliveryState)).length,
-      approvedArtifacts: assets.filter((asset) => asset.deliveryState === "APPROVED").length,
-      packetEligible: assets.filter((asset) => asset.packetEligible && !asset.alternateToActiveProgramMix).length,
+      verifiedArtifacts: assets.filter((asset) => !["NOT_OBSERVED", "PROCESSING", "FAILED"].includes(asset.deliveryState)).length + (hasActiveProgramMix && !["NOT_OBSERVED", "PROCESSING", "FAILED"].includes(programDeliveryState) ? 1 : 0),
+      approvedArtifacts: assets.filter((asset) => asset.deliveryState === "APPROVED").length + (hasActiveProgramMix && programDeliveryState === "APPROVED" ? 1 : 0),
+      packetEligible: assets.filter((asset) => asset.packetEligible && !asset.alternateToActiveProgramMix).length + (hasActiveProgramMix && input.programMix?.deliveryArtifact?.readiness.outputPacketEligible === true ? 1 : 0),
       selectedPackets: currentSelection ? 1 : 0,
     },
     boundaries: {

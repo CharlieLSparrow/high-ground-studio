@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { episodeInventoryAudioDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
+import { episodeInventoryAudioDeliveryArtifact, episodeInventoryProgramDeliveryArtifact } from "@/lib/episode-inventory-audio-delivery";
 import { episodeInventoryAudioMasterCandidate } from "@/lib/episode-inventory-audio-master";
 
 import {
@@ -60,6 +60,11 @@ function programMixProjection(rows: any[], registeredAsset: any | null): Session
   const programFingerprintSha256 = text(proposal.programFingerprintSha256);
   const proposalSha256 = text(latest.proposalSha256);
   const previewSha256 = text(latest.previewSha256);
+  const delivery = registeredAsset ? episodeInventoryProgramDeliveryArtifact({
+    jobs: registeredAsset.processingJobs ?? [],
+    variants: registeredAsset.variants ?? [],
+    promotionEvents: rows,
+  }) : null;
   return {
     jobId: String(latest.mixJobId),
     assetId,
@@ -73,6 +78,21 @@ function programMixProjection(rows: any[], registeredAsset: any | null): Session
     playbackUrl: text(registration.playbackUrl) || text(object(latest.evidenceJson).candidatePlaybackUrl) || null,
     occurredAt: iso(latest.occurredAt),
     historicalEventCount: rows.length,
+    deliveryArtifact: delivery ? {
+      jobId: String(delivery.jobId),
+      status: String(delivery.status),
+      promotionReceiptId: delivery.promotionReceiptId,
+      deliverySha256: delivery.deliverySha256,
+      playbackUrl: delivery.playbackUrl,
+      durationSeconds: delivery.durationSeconds,
+      promotionStillActive: delivery.promotionStillActive,
+      review: delivery.review ? {
+        id: String(delivery.review.id),
+        decision: delivery.review.decision === "approved" ? "approved" as const : "rejected" as const,
+        reviewedAt: delivery.review.reviewedAt,
+      } : null,
+      readiness: delivery.readiness,
+    } : null,
     integrity: {
       jobCompleted: latest.mixJob.status === "completed",
       assetRegistered: Boolean(assetId
@@ -179,6 +199,18 @@ export async function loadSessionVersionedOutputGraph(input: {
     select: {
       id: true,
       url: true,
+      variants: { orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 20 },
+      processingJobs: {
+        where: { projectId: input.projectId, type: "episode-program-delivery" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 10,
+        include: {
+          episodeProgramDeliveryReviews: {
+            orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+            take: 50,
+          },
+        },
+      },
       assetAttachments: {
         where: { projectId: input.projectId, source: "episode-audio-mix-registration" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
@@ -206,6 +238,7 @@ export async function loadSessionVersionedOutputGraph(input: {
         promotionReceiptId: delivery.promotionReceiptId,
         deliverySha256: delivery.deliverySha256,
         playbackUrl: delivery.playbackUrl,
+        durationSeconds: delivery.durationSeconds,
         promotionStillActive: delivery.promotionStillActive,
         review: delivery.review ? {
           id: String(delivery.review.id),

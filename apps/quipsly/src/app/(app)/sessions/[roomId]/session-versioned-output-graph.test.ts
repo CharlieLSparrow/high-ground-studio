@@ -29,6 +29,7 @@ function programMix(overrides: Partial<SessionOutputGraphProgramMixInput> = {}):
     playbackUrl: "/api/ingest/media/program-mix-1",
     occurredAt: "2026-08-06T22:30:00.000Z",
     historicalEventCount: 1,
+    deliveryArtifact: null,
     integrity: {
       jobCompleted: true,
       assetRegistered: true,
@@ -102,7 +103,12 @@ describe("versioned Episode output graph", () => {
       selections: [],
     });
 
-    expect(graph.programMix).toMatchObject({ state: "ACTIVE", sourceTrackCount: 3, packetState: "NOT_SELECTED" });
+    expect(graph.programMix).toMatchObject({
+      state: "ACTIVE",
+      sourceTrackCount: 3,
+      packetState: "NOT_SELECTED",
+      editorHref: "/audio?project=high-ground-odyssey&episode=episode-9#episode-audio-mix",
+    });
     expect(graph.assets[0]).toMatchObject({ alternateToActiveProgramMix: true, packetEligible: true });
     expect(graph.assets[0].nextAction).toContain("single-source branch");
     expect(graph.counts).toMatchObject({ activeProgramMixes: 1, packetEligible: 0 });
@@ -120,5 +126,31 @@ describe("versioned Episode output graph", () => {
     expect(graph.programMix).toMatchObject({ state: "HELD", playbackUrl: null });
     expect(graph.counts.activeProgramMixes).toBe(0);
     expect(graph.assets[0].alternateToActiveProgramMix).toBe(false);
+  });
+
+  it("advances a promoted program through encoded-byte approval without treating the preview as the packet", () => {
+    const deliverySha = "9".repeat(64);
+    const graph = buildSessionVersionedOutputGraph({
+      episode,
+      programMix: programMix({
+        deliveryArtifact: {
+          jobId: "episode-program-delivery-1",
+          status: "completed",
+          promotionReceiptId: "episode-mix-promotion-1",
+          deliverySha256: deliverySha,
+          playbackUrl: "/api/ingest/media/program-aac-1",
+          durationSeconds: 600,
+          promotionStillActive: true,
+          review: { id: "episode-program-delivery-review-1", decision: "approved", reviewedAt: "2026-08-07T15:00:00.000Z" },
+          readiness: { encodedAndVerified: true, proofListenApproved: true, outputPacketEligible: true },
+        },
+      }),
+      assets: [asset()],
+      selections: [],
+    });
+
+    expect(graph.programMix).toMatchObject({ deliveryState: "APPROVED", packetEligible: true, deliveryArtifactSha256: deliverySha, packetState: "NOT_SELECTED" });
+    expect(graph.programMix?.previewSha256).not.toBe(graph.programMix?.deliveryArtifactSha256);
+    expect(graph.counts).toMatchObject({ verifiedArtifacts: 1, approvedArtifacts: 1, packetEligible: 1 });
   });
 });
