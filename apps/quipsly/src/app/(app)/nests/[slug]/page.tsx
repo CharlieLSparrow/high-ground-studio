@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  Clapperboard,
   ExternalLink,
   FileText,
   Film,
@@ -636,12 +637,15 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                   <h2 id="media-heading" className="mt-1 font-serif text-3xl font-black">Media</h2>
                   <p className="mt-2 text-sm font-semibold leading-6 text-[#765f40]">Bins and assets already attached to this project.</p>
                 </div>
-                <Link href={`/editor?project=${encodeURIComponent(project.slug)}`} className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 text-xs font-black text-white">Open media editor</Link>
+                <div className="flex flex-wrap gap-2">
+                  <Link href={`/nests/${encodeURIComponent(project.slug)}/story`} className="inline-flex min-h-11 items-center rounded-full bg-[#3e2f21] px-4 text-xs font-black text-white">Browse & build story</Link>
+                  <Link href={`/editor?project=${encodeURIComponent(project.slug)}`} className="inline-flex min-h-11 items-center rounded-full border border-[#dcc9a7] bg-white px-4 text-xs font-black text-[#684f32]">Open timeline editor</Link>
+                </div>
               </div>
               {assets.length || mediaBins.length ? (
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {mediaBins.map((bin) => <div key={bin.id} className="rounded-2xl border border-[#e3d4b9] bg-[#fffdf9] p-4"><FolderOpen size={17} className="text-[#8a653d]" aria-hidden="true" /><p className="mt-3 font-serif text-lg font-black">{bin.name}</p><p className="mt-2 text-xs font-bold text-[#806a4d]">Bin · updated {bin.updatedAt.toLocaleDateString()}</p></div>)}
-                  {assets.map((asset) => <div key={asset.id} className="rounded-2xl border border-[#e3d4b9] bg-[#fffdf9] p-4">{asset.mimeType?.includes("video") ? <Film size={17} className="text-[#8a653d]" aria-hidden="true" /> : <Camera size={17} className="text-[#8a653d]" aria-hidden="true" />}<p className="mt-3 truncate font-serif text-lg font-black">{asset.filename}</p><p className="mt-2 text-xs font-bold text-[#806a4d]">{asset.sizeBytes ? `${(Number(asset.sizeBytes) / 1024 / 1024).toFixed(1)} MB · ` : ""}{asset.createdAt.toLocaleDateString()}</p></div>)}
+                  {assets.map((asset) => <Link key={asset.id} href={`/nests/${encodeURIComponent(project.slug)}/story?asset=${encodeURIComponent(asset.id)}`} className="rounded-2xl border border-[#e3d4b9] bg-[#fffdf9] p-4 outline-none transition hover:border-[#bd9d68] focus-visible:ring-4 focus-visible:ring-sky-100">{asset.mimeType?.includes("video") ? <Film size={17} className="text-[#8a653d]" aria-hidden="true" /> : <Camera size={17} className="text-[#8a653d]" aria-hidden="true" />}<p className="mt-3 truncate font-serif text-lg font-black">{asset.filename}</p><p className="mt-2 text-xs font-bold text-[#806a4d]">{asset.sizeBytes ? `${(Number(asset.sizeBytes) / 1024 / 1024).toFixed(1)} MB · ` : ""}{asset.createdAt.toLocaleDateString()}</p><span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-wide text-[#8a653d]">Open source viewer</span></Link>)}
                 </div>
               ) : <div className="mt-5"><EmptyState title="No attached media yet." body="Use the editor or recorder to bring audio, video, photos, and working bins into this project." /></div>}
             </section>
@@ -658,6 +662,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                   {activeEpisode ? <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/episodes/${encodeURIComponent(activeEpisode.slug)}?mode=edit`} title="Episode editing desk" description="Switch episodes, watch synchronized angles, and make attributable display decisions without changing the protected sync baseline." icon={Film} /> : null}
                   <ToolCard href={`/create?project=${encodeURIComponent(project.slug)}`} title={documentActionLabel(nestKind)} description="Write, study, structure, tag, annotate, and work with transparent assistance." icon={BookOpen} />
                   {hasVisualResearchLab ? <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/visual-research`} title="Visual research lab" description="Review image batches, source metadata, visual labels, masks, and model-ready exports." icon={Microscope} /> : null}
+                  <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/story`} title="Source & story desk" description="Browse long-form media, mark immutable ranges, write source-backed cards, and arrange them into a shared story without changing originals." icon={Clapperboard} />
                   <ToolCard href={`/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`} title="Media editor" description="Sync, cut, and prepare episode or social timelines attached to this project." icon={Film} />
                   <ToolCard href={`/recorder?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`} title="Recorder" description="Record a live session with the project context and manuscript nearby." icon={Mic} />
                   <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/access`} title={canManage ? "Manage access" : "View collaborators"} description={canManage ? "Invite collaborators and set deliberate viewer, editor, or owner access." : "See who can access this project. An owner manages invitations."} icon={Users} />

@@ -879,6 +879,17 @@ model User {
   storyDraftsCreated                StoryDraft[]                                @relation("StoryDraftCreatedBy")
   storyDraftsUpdated                StoryDraft[]                                @relation("StoryDraftUpdatedBy")
   storyDraftsReviewed               StoryDraft[]                                @relation("StoryDraftReviewedBy")
+  externalMediaReferencesImported   StudioExternalMediaReference[]              @relation("StudioExternalMediaReferenceImportedBy")
+  mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
+  sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
+  storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
+  storyCardsUpdated                 StudioStoryCard[]                           @relation("StudioStoryCardUpdatedBy")
+  storyCardRevisionsAuthored        StudioStoryCardRevision[]                   @relation("StudioStoryCardRevisionActor")
+  storyCardTagsCreated              StudioStoryCardTagLink[]                    @relation("StudioStoryCardTagCreatedBy")
+  storyBoardsCreated                StudioStoryBoard[]                          @relation("StudioStoryBoardCreatedBy")
+  storyBoardsUpdated                StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
+  storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
+  storyBoardOperationsAuthored      StudioStoryBoardOperation[]                 @relation("StudioStoryBoardOperationActor")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -3889,6 +3900,11 @@ model StudioProject {
   personalSourceFilings     StudioPersonalSourceFiling[]
   sourceAnnotations         StudioSourceAnnotation[]
   sourceAnnotationUses      StudioSourceAnnotationUse[]
+  externalMediaReferences   StudioExternalMediaReference[]
+  mediaSourceRevisions      StudioMediaSourceRevision[]
+  sourceRanges              StudioSourceRange[]
+  storyCards                StudioStoryCard[]
+  storyBoards               StudioStoryBoard[]
   documentOperations        StudioDocumentOperation[]
   productionRooms           StudioProductionRoom[]
   outputPackets             StudioOutputPacket[]
@@ -4018,6 +4034,7 @@ model StudioEpisodeProduction {
   audioMixReviews     StudioEpisodeAudioMixReviewReceipt[]
   audioMixPromotions  StudioEpisodeAudioMixPromotionReceipt[]
   programDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
+  storyBoards         StudioStoryBoard[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4732,11 +4749,262 @@ model StudioSourceUnit {
   asset                StudioMediaAsset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
   annotations          StudioSourceAnnotation[]
   personalSourceFiling StudioPersonalSourceFiling?
+  externalMediaReferences StudioExternalMediaReference[]
+  mediaSourceRevisions StudioMediaSourceRevision[]
 
   @@unique([projectId, slug])
   @@index([projectId, kind])
   @@index([documentId])
   @@index([assetId])
+}
+
+// A provider-neutral pointer to media that remains in a creator-controlled
+// vault. Provider locator details are server-only; shared clients receive the
+// capability state and durable Quipsly identity, never a bearer credential.
+model StudioExternalMediaReference {
+  id                     String    @id @default(cuid())
+  projectId              String
+  sourceUnitId           String?
+  provider               String
+  connectionKey          String?
+  externalFileId         String
+  sharedDriveId          String?
+  fileName               String
+  mimeType               String?
+  sizeBytes              BigInt?
+  headRevisionKey        String?
+  checksumSha256         String?
+  providerCreatedAt      DateTime?
+  providerModifiedAt     DateTime?
+  accessState            String    @default("unverified")
+  capabilityState        String    @default("unknown")
+  providerLocatorJson    Json      @default("{}")
+  capabilitySnapshotJson Json      @default("{}")
+  lastVerifiedAt         DateTime?
+  importedByUserId       String
+  importedByEmail        String
+  clientRequestId        String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  project    StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceUnit StudioSourceUnit?           @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  importedBy User                        @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  revisions  StudioMediaSourceRevision[]
+
+  @@unique([projectId, provider, externalFileId])
+  @@unique([projectId, importedByUserId, clientRequestId])
+  @@index([projectId, accessState, updatedAt])
+  @@index([sourceUnitId])
+  @@index([connectionKey, provider])
+}
+
+// Immutable byte/revision identity used by ranges and render manifests. A
+// revision may resolve to an external vault object, an existing Quipsly media
+// asset, or both; changing provider metadata creates another revision row.
+model StudioMediaSourceRevision {
+  id                  String    @id @default(cuid())
+  projectId           String
+  externalReferenceId String?
+  mediaAssetId        String?
+  sourceUnitId        String?
+  revisionKey         String
+  identitySha256      String
+  contentSha256       String?
+  sizeBytes           BigInt?
+  durationSeconds     Float?
+  widthPixels         Int?
+  heightPixels        Int?
+  framesPerSecond     Float?
+  sourceState         String    @default("available")
+  providerModifiedAt  DateTime?
+  verifiedAt          DateTime?
+  verificationJson    Json      @default("{}")
+  provenanceJson      Json      @default("{}")
+  createdByUserId     String
+  createdAt           DateTime  @default(now())
+
+  project           StudioProject                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  externalReference StudioExternalMediaReference? @relation(fields: [externalReferenceId], references: [id], onDelete: Restrict)
+  mediaAsset        StudioMediaAsset?             @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  sourceUnit        StudioSourceUnit?             @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  createdBy         User                          @relation("StudioMediaSourceRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  ranges            StudioSourceRange[]
+
+  @@unique([projectId, identitySha256])
+  @@unique([externalReferenceId, revisionKey])
+  @@index([projectId, sourceState, createdAt])
+  @@index([mediaAssetId, createdAt])
+  @@index([sourceUnitId])
+}
+
+// A stable, immutable selection of one exact source revision. Reframing is a
+// recipe over source time, never a rewrite of camera bytes.
+model StudioSourceRange {
+  id                String   @id @default(cuid())
+  projectId         String
+  sourceRevisionId  String
+  selectorSha256    String
+  startSeconds      Float
+  endSeconds        Float
+  selectorJson      Json     @default("{}")
+  reframeRecipeJson Json?
+  createdByUserId   String
+  createdAt         DateTime @default(now())
+
+  project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  createdBy      User                      @relation("StudioSourceRangeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  storyCards     StudioStoryCard[]
+
+  @@unique([sourceRevisionId, selectorSha256])
+  @@index([projectId, createdAt])
+}
+
+// The source-backed index card is Quipsly's reusable unit of story intent.
+// Text and status may evolve through explicit revisions while its source range
+// remains immutable and independently resolvable.
+model StudioStoryCard {
+  id              String    @id @default(cuid())
+  projectId       String
+  sourceRangeId   String?
+  stableId        String    @unique
+  title           String
+  synopsis        String    @default("") @db.Text
+  notes           String    @default("") @db.Text
+  purpose         String    @default("select")
+  status          String    @default("candidate")
+  visibility      String    @default("project")
+  revision        Int       @default(1)
+  clientRequestId String
+  createdByUserId String
+  updatedByUserId String?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project     StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRange StudioSourceRange?          @relation(fields: [sourceRangeId], references: [id], onDelete: Restrict)
+  createdBy   User                        @relation("StudioStoryCardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy   User?                       @relation("StudioStoryCardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  revisions   StudioStoryCardRevision[]
+  tags        StudioStoryCardTagLink[]
+  placements  StudioStoryBoardPlacement[]
+
+  @@unique([projectId, createdByUserId, clientRequestId])
+  @@index([projectId, status, updatedAt])
+  @@index([sourceRangeId])
+  @@index([archivedAt, updatedAt])
+}
+
+// Append-only card history makes edits, source preservation, and rollback
+// inspectable without turning the current row into an event-store query.
+model StudioStoryCardRevision {
+  id              String   @id @default(cuid())
+  cardId          String
+  revision        Int
+  operation       String
+  actorUserId     String
+  clientRequestId String
+  snapshotJson    Json
+  createdAt       DateTime @default(now())
+
+  card  StudioStoryCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  actor User            @relation("StudioStoryCardRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([cardId, revision])
+  @@unique([cardId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
+}
+
+model StudioStoryCardTagLink {
+  cardId          String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  card      StudioStoryCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  tag       StudioTag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation("StudioStoryCardTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([cardId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model StudioStoryBoard {
+  id                  String    @id @default(cuid())
+  projectId           String
+  episodeProductionId String?
+  clientRequestId     String
+  slug                String
+  title               String
+  description         String?   @db.Text
+  kind                String    @default("story")
+  layout              String    @default("board")
+  revision            Int       @default(0)
+  createdByUserId     String
+  updatedByUserId     String?
+  archivedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  project           StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction?    @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
+  createdBy         User                        @relation("StudioStoryBoardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy         User?                       @relation("StudioStoryBoardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  placements        StudioStoryBoardPlacement[]
+  operations        StudioStoryBoardOperation[]
+
+  @@unique([projectId, slug])
+  @@unique([projectId, createdByUserId, clientRequestId], map: "StudioStoryBoard_project_actor_request_key")
+  @@index([projectId, archivedAt, updatedAt])
+  @@index([episodeProductionId])
+}
+
+// Placement owns only composition context. Reordering or grouping a card does
+// not alter its source range, prose, tags, or use on another board.
+model StudioStoryBoardPlacement {
+  id              String   @id @default(cuid())
+  boardId         String
+  cardId          String
+  groupKey        String   @default("unassigned")
+  laneKey         String   @default("story")
+  sortOrder       Int      @default(0)
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  board     StudioStoryBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card      StudioStoryCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("StudioStoryBoardPlacementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([boardId, cardId])
+  @@index([boardId, groupKey, sortOrder])
+  @@index([cardId])
+}
+
+// Every board mutation is one revisioned, idempotent operation. The current
+// board and placements are the read model; the receipt preserves authorship,
+// prior revision, and the exact resulting arrangement for compare/rollback.
+model StudioStoryBoardOperation {
+  id               String   @id @default(cuid())
+  boardId          String
+  revision         Int
+  previousRevision Int
+  operation        String
+  actorUserId      String
+  clientRequestId  String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  board StudioStoryBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  actor User             @relation("StudioStoryBoardOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([boardId, revision])
+  @@unique([boardId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
 }
 
 // Explicit promotion receipt from an actor-owned personal capture into one
@@ -5528,6 +5796,7 @@ model StudioTag {
   actionItems           ActionItemTagLink[]
   goals                 GoalTagLink[]
   callRooms             CallRoomTagLink[]
+  storyCards            StudioStoryCardTagLink[]
   aliases               StudioTagAlias[]
   revisions             StudioTagRevision[]
   mergedInto            StudioTag?                  @relation("StudioTagMergeRedirect", fields: [mergedIntoTagId], references: [id], onDelete: SetNull)
@@ -6093,6 +6362,7 @@ model StudioMediaAsset {
   workflowJobs              StudioWorkflowJob[]
   transcriptJobs            TranscriptJob[]
   transcriptVerifications   TranscriptSegmentVerification[]
+  mediaSourceRevisions      StudioMediaSourceRevision[]
 
   @@index([createdAt])
   @@index([mediaBinId])

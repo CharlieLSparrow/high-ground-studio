@@ -103,3 +103,41 @@ A card can appear in multiple boards and timelines. Deleting a placement does no
 6. **Cloud executor + lifecycle policy** — optional exact-source streaming, spend preflight, retention/eviction, and portable provider adapters.
 
 Acceptance for every slice includes real long-form media, revoked/changed Drive source recovery, collaborator access, device restart, and exact-revision render readback. A thumbnail grid alone is not completion.
+
+## Operated source-to-story slice
+
+The first production-shaped slice now exists inside each Nest at `/nests/:slug/story`:
+
+- a permission-aware source library over the Nest's retained media, with honest proxy/source and byte-health labels;
+- a video/audio source viewer with button and keyboard `I`/`O` marks on the source clock;
+- immutable `MediaSourceRevision` and `SourceRange` rows, including an explicit non-destructive 360 recipe contract;
+- editable, append-only-revisioned source cards with synopsis, notes, purpose, status, and the same canonical project tags used elsewhere in Quipsly;
+- Episode-aware boards whose revisioned placements own only group, lane, and order;
+- optimistic conflict handling and idempotent board/card/reorder requests for browser and native callers through one authenticated route;
+- exact-range audition that switches to the correct source, seeks only after its player mounts, and stops at the selected out-point;
+- no source mutation, proxy creation, transcription, rendering, or cloud execution merely from browsing or organizing.
+
+The schema is additive. The older `StudioStoryboard` tables remain untouched for compatibility, but the new source-story surface does not call their GET-time auto-creation or simulated-AI actions. Migration ownership was tested through project deletion; card placements cascade with their hard-deleted card, while normal product deletion remains an archive operation.
+
+### Retained High Ground Odyssey operation
+
+Operated locally as `render-dogfood@quipsly.test` against real retained High Ground Odyssey media:
+
+- created Episode-linked board `Episode 9 source selects — retained dogfood`;
+- played the retained 30-second local Episode proof and marked source clock `00:01.02–00:04.01`;
+- saved and revised `Rendezvous proof: source handoff opens cleanly`, including Episode 9, Homer, and Media tags;
+- marked `Ted Lasso Be Curious.collaboration-proxy.mp4` with keyboard `I`/`O` at `00:01.11–00:04.26` and saved it as a shared-viewing clip cue;
+- switched from that 254.63-second source back to the 30-second proof from a card, then observed playback stop at the exact persisted out-point;
+- reordered both cards and observed the board move from revision 3 to revision 4 without either source range changing;
+- read back two board/card revision histories, canonical tag links, exact selectors, and honest `identity-unverified` holds for both retained cards after invalidating the first checksum receipt algorithm;
+- confirmed the registered media row predates the card and was not updated by organizing it.
+
+### Defects found by operating the slice
+
+1. A placement's restrictive card foreign key could block project teardown even though both parent objects belonged to the project. Hard card deletion now cascades placements; source identity remains independently retained by its own contract.
+2. Parallel validation inside an interactive Prisma transaction could keep querying after another validation rolled it back. Transactional reads and writes are now sequential.
+3. Checksum discovery recursively treated primitive or missing nested metadata as another object, causing a stack overflow on real retained variant metadata. Recursion now stops at the JSON object boundary, and the database fixture contains nested checksum-missing metadata.
+4. Range playback originally sought the current player and ran past the out-point. Cross-asset audition now waits for the correct mounted player and enforces the exact range boundary for video and audio.
+5. A proxy attachment carries both the proxy output checksum and the original-behind-the-proxy checksum. The v1 lookup paired the original checksum with the proxy byte count. All v1 verification claims are now explicitly invalidated; v2 accepts only an output/direct-registration checksum whose declared byte count matches the exact `StudioMediaAsset`. The database fixture proves the proxy checksum is accepted while the tempting original checksum is rejected.
+
+The local database smoke covers request replay, request/slug collision, same-Nest asset and tag enforcement, rollback without partial rows, exact output-versus-original checksum binding, 360 range persistence, immutable ranges through reorder, stale revision rejection, append-only card history, and PostgreSQL range checks. The retained board and cards are deliberate dogfood evidence, not sample UI state. An explicit revision-rebind operation is the next required recovery slice before a corrected source can replace an invalidated revision on an existing card without deleting its history.
