@@ -256,6 +256,19 @@ one task, one tag link, and one `SOURCE_CARD_ANCHOR` evidence receipt, then
 removes every QA record. It is loopback PostgreSQL proof, not production or
 physical-device evidence.
 
+To operate the same path in a real browser against the retained Episode 5 card:
+
+```bash
+pnpm quipsly:retained:episode5-source-follow-through
+```
+
+The operation refuses non-loopback Nest, Auth, or database targets. It creates
+a disposable Firebase/Quipsly Editor, posts through the visible card thread,
+creates Work through the visible form, opens the focused task, verifies its
+exact-source return link and database evidence, and then proves cleanup. It
+does not replace a human Homer usability rehearsal or authorize any external
+message, calendar, render, upload, or publication.
+
 ### Operated iPhone Simulator edit journeys
 
 The generated mobile dogfood commands run current local Nest source, use a

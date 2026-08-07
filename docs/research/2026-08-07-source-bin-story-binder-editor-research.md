@@ -285,7 +285,8 @@ kept the signed-out shell private. The same operator created and idempotently
 replayed a personal source collection, traversed the mixed library one source
 per cursor page without loss or duplication, and rendered the collection and
 server-wide search interactions in Chrome. Step 4 was already proved by the
-retained spatial-card operation; step 8 now includes authenticated write/readback
-and cleanup on the real Episode 5 card. The next combined usability rehearsal
-should perform all nine steps consecutively as Homer rather than as separate QA
-operations.
+retained spatial-card operation. A second retained Chromium journey now
+performs discussion, explicit Work creation, focused Work review, and exact
+source return consecutively on the real Episode 5 card, then proves complete
+QA cleanup. The remaining acceptance is a human usability rehearsal performing
+all nine steps consecutively as Homer rather than as a disposable Editor.

@@ -2964,3 +2964,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   exact 12.25–24.5 second selector and source identities back, and removed all
   QA records. Focused server-action, model, component, and Work UI suites pass;
   no schema migration or parallel task database was introduced.
+- A retained Chromium journey now combines the pieces on the real Episode 5
+  card. A disposable Editor opened the exact source set and board, posted in
+  the card discussion, created the task through the visible Source Story form,
+  landed on its focused Work card, saw one `SOURCE_CARD_ANCHOR` receipt, and
+  verified the return URL retained source set, board, and card identity. Final
+  database readback found zero disposable users, QA tasks, QA messages, and QA
+  threads; the operation declares and proves zero external side effects.
