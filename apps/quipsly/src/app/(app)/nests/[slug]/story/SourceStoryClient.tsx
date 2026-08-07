@@ -305,6 +305,25 @@ type SourceStoryWorkspace = {
   cards: SourceStoryCard[];
   boards: SourceStoryBoard[];
   sourceCollections: SourceCollection[];
+  externalMediaLibraries: ExternalMediaLibrary[];
+};
+
+type ExternalMediaLibrary = {
+  id: string;
+  name: string;
+  provider: "google-drive";
+  status: string;
+  revision: number;
+  totalFileCount: number;
+  totalSizeBytes: string;
+  readySegmentCount: number;
+  heldSegmentCount: number;
+  notObservedCount: number;
+  lastCheckedAt: string;
+  lastSuccessfulRefreshAt: string;
+  canRefresh: boolean;
+  connectionState: string;
+  connectedByCurrentUser: boolean;
 };
 
 type SourceCollection = {
@@ -2839,6 +2858,7 @@ export function SourceStoryClient({
           <GoogleDriveSourcePicker
             projectSlug={project.slug}
             canWrite={canWrite}
+            libraries={workspace.externalMediaLibraries}
             onAttached={refreshWorkspace}
           />
           <label className="relative mt-4 block">

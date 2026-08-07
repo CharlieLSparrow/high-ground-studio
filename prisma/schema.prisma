@@ -907,6 +907,8 @@ model User {
   sourceCollectionsUpdated          StudioSourceCollection[]                    @relation("StudioSourceCollectionUpdatedBy")
   sourceCollectionItemsAdded        StudioSourceCollectionItem[]                @relation("StudioSourceCollectionItemAddedBy")
   sourceCollectionOperations        StudioSourceCollectionOperation[]           @relation("StudioSourceCollectionOperationActor")
+  externalMediaLibrariesCreated     StudioExternalMediaLibrary[]                @relation("StudioExternalMediaLibraryCreatedBy")
+  externalMediaLibraryOperations    StudioExternalMediaLibraryOperation[]       @relation("StudioExternalMediaLibraryOperationActor")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -3926,6 +3928,7 @@ model StudioProject {
   storyBoards                   StudioStoryBoard[]
   storyTimelinePlacements       StudioStoryTimelinePlacement[]
   sourceCollections             StudioSourceCollection[]
+  externalMediaLibraries        StudioExternalMediaLibrary[]
   mediaDerivatives              StudioMediaDerivative[]
   documentOperations            StudioDocumentOperation[]
   productionRooms               StudioProductionRoom[]
@@ -4768,13 +4771,14 @@ model StudioSourceUnit {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  project                 StudioProject                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document                StudioDocument?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  asset                   StudioMediaAsset?              @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  annotations             StudioSourceAnnotation[]
-  personalSourceFiling    StudioPersonalSourceFiling?
-  externalMediaReferences StudioExternalMediaReference[]
-  mediaSourceRevisions    StudioMediaSourceRevision[]
+  project                   StudioProject                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document                  StudioDocument?                  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  asset                     StudioMediaAsset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  annotations               StudioSourceAnnotation[]
+  personalSourceFiling      StudioPersonalSourceFiling?
+  externalMediaReferences   StudioExternalMediaReference[]
+  mediaSourceRevisions      StudioMediaSourceRevision[]
+  externalMediaLibraryItems StudioExternalMediaLibraryItem[]
 
   @@unique([projectId, slug])
   @@index([projectId, kind])
@@ -4806,6 +4810,7 @@ model StudioMediaProviderConnection {
   user               User                                     @relation("StudioMediaProviderConnectionUser", fields: [userId], references: [id], onDelete: Cascade)
   credential         StudioMediaProviderCredential?
   externalReferences StudioExternalMediaReference[]
+  externalLibraries  StudioExternalMediaLibrary[]
   operations         StudioMediaProviderConnectionOperation[]
 
   @@unique([provider, providerAccountKey])
@@ -4887,6 +4892,7 @@ model StudioExternalMediaReference {
   revisions       StudioMediaSourceRevision[]
   operations      StudioExternalMediaReferenceOperation[]
   collectionItems StudioSourceCollectionItem[]
+  libraryItems    StudioExternalMediaLibraryItem[]
 
   @@unique([projectId, provider, externalFileId])
   @@unique([projectId, importedByUserId, clientRequestId])
@@ -4894,6 +4900,102 @@ model StudioExternalMediaReference {
   @@index([sourceUnitId])
   @@index([connectionId])
   @@index([connectionKey, provider])
+}
+
+// A followed folder is a durable, provider-neutral intake boundary. Its
+// provider locator remains server-only; shared clients receive a safe inventory
+// summary and can reason about new, incomplete, or no-longer-observed media
+// without treating one provider listing as authority to delete source history.
+model StudioExternalMediaLibrary {
+  id                         String   @id @default(cuid())
+  projectId                  String
+  connectionId               String?
+  provider                   String
+  externalRootId             String
+  sharedDriveId              String?
+  name                       String
+  status                     String   @default("ready")
+  revision                   Int      @default(1)
+  inventoryFingerprintSha256 String
+  totalFileCount             Int      @default(0)
+  totalSizeBytes             BigInt   @default(0)
+  readySegmentCount          Int      @default(0)
+  heldSegmentCount           Int      @default(0)
+  providerLocatorJson        Json     @default("{}")
+  healthJson                 Json     @default("{}")
+  lastCheckedAt              DateTime
+  lastSuccessfulRefreshAt    DateTime
+  clientRequestId            String
+  createdByUserId            String
+  createdByEmail             String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  project    StudioProject                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  connection StudioMediaProviderConnection?        @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  createdBy  User                                  @relation("StudioExternalMediaLibraryCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items      StudioExternalMediaLibraryItem[]
+  operations StudioExternalMediaLibraryOperation[]
+
+  @@unique([projectId, provider, externalRootId])
+  @@unique([projectId, createdByUserId, clientRequestId], map: "StudioExternalMediaLibrary_project_actor_request_key")
+  @@index([projectId, status, updatedAt])
+  @@index([connectionId, status, updatedAt])
+}
+
+// Current observation projection for every object visible beneath a followed
+// library root, including unrecognized files. `not-observed` is deliberately
+// reversible and never deletes the canonical reference, revision, card, or
+// board history associated with an earlier observation.
+model StudioExternalMediaLibraryItem {
+  id                      String   @id @default(cuid())
+  libraryId               String
+  externalFileId          String
+  sourceUnitId            String?
+  externalReferenceId     String?
+  fileName                String
+  observedRevisionKey     String?
+  sizeBytes               BigInt?
+  state                   String   @default("present")
+  missingObservationCount Int      @default(0)
+  firstObservedAt         DateTime @default(now())
+  lastObservedAt          DateTime
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  library           StudioExternalMediaLibrary    @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  sourceUnit        StudioSourceUnit?             @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  externalReference StudioExternalMediaReference? @relation(fields: [externalReferenceId], references: [id], onDelete: SetNull)
+
+  @@unique([libraryId, externalFileId])
+  @@index([libraryId, state, updatedAt])
+  @@index([sourceUnitId])
+  @@index([externalReferenceId])
+}
+
+// Attach and refresh receipts contain safe counts and fingerprints rather than
+// provider object IDs. They make inventory changes explainable and replayable
+// without leaking Drive locators into collaborative API responses.
+model StudioExternalMediaLibraryOperation {
+  id                         String   @id @default(cuid())
+  libraryId                  String
+  revision                   Int
+  previousRevision           Int
+  operation                  String
+  outcome                    String
+  actorUserId                String
+  clientRequestId            String
+  requestSha256              String
+  inventoryFingerprintSha256 String
+  snapshotJson               Json
+  createdAt                  DateTime @default(now())
+
+  library StudioExternalMediaLibrary @relation(fields: [libraryId], references: [id], onDelete: Cascade)
+  actor   User                       @relation("StudioExternalMediaLibraryOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([libraryId, revision])
+  @@unique([libraryId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
 }
 
 // Append-only provider inspection and attachment receipts. The reference row

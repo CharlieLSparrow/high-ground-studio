@@ -1,6 +1,6 @@
 # Google Drive and Insta360 source workflow
 
-**Status:** Implemented foundation; real-provider acceptance pending  
+**Status:** Implemented durable intake foundation; real-provider acceptance pending
 **Last reviewed:** 2026-08-07  
 **Product surface:** Quipsly Nest Source Room, local media worker, hybrid episode editor
 
@@ -37,21 +37,26 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
 3. Quipsly inspects direct batch folders and shows ready, incomplete, syncing,
    restricted, and ambiguous camera segments before attachment.
 4. Attach the library. This stores exact metadata only.
-5. Each camera segment appears as one Source Room item even when it contains
+5. The chosen folder becomes a **followed library** with a safe inventory
+   fingerprint, refresh history, and ready/held/not-observed health.
+6. Refresh the library when Drive finishes syncing or new camera files arrive.
+   A complete scan can add or revise observations. A missing file becomes
+   `not-observed`; it never deletes source revisions, ranges, cards, or boards.
+7. Each camera segment appears as one Source Room item even when it contains
    multiple INSV originals and an LRV companion.
-6. Open a segment receipt to inspect every provider file, role, size, access
+8. Open a segment receipt to inspect every provider file, role, size, access
    state, and local-copy state.
-7. Prepare the LRV only when the segment needs playback, annotation,
+9. Prepare the LRV only when the segment needs playback, annotation,
    storyboarding, or editing.
-8. Work from the collaboration proxy in Nest.
+10. Work from the collaboration proxy in Nest.
    Unstitched camera pixels use a normal video viewer for timing and ranges;
    spatial look-around activates only after a stitched equirectangular
    derivative is verified.
-9. Open **Final render preflight** when a selected segment is ready to finish.
+11. Open **Final render preflight** when a selected segment is ready to finish.
    Inspection is metadata-only; it does not download media.
-10. Review exact bytes remaining and safe Mac capacity, then explicitly choose
+12. Review exact bytes remaining and safe Mac capacity, then explicitly choose
     **Prepare … on this Mac**.
-11. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
+13. Transfers resume by byte range and bind MD5 plus SHA-256 before the package
     becomes render-ready. Nest and the local editor then resolve the same
     immutable source-set identity.
 
@@ -90,6 +95,9 @@ Google Drive
       LRV_<clock>_<channel>_<segment>.lrv   -> browse companion
 
 Quipsly
+  StudioExternalMediaLibrary               -> followed provider folder
+    StudioExternalMediaLibraryItem         -> present/not-observed inventory
+    StudioExternalMediaLibraryOperation    -> append-only attach/refresh receipt
   StudioSourceUnit                         -> one camera-clock segment
     StudioExternalMediaReference           -> provider file identity
       StudioSourceRevision                 -> immutable observed generation
@@ -123,6 +131,15 @@ the original package.
   filename or browser estimate.
 - The source revision remains immutable. Provider drift creates a new observed
   generation or a held operation; it never silently changes an edited source.
+- A full selected-folder listing is the correctness baseline. Drive change
+  tokens may later reduce polling cost, but they cannot replace complete
+  reconciliation or become deletion authority.
+- Refresh records added, changed, restored, unchanged, and not-observed counts
+  plus a deterministic inventory fingerprint. Provider file and resource-key
+  identities remain server-only.
+- An unexpectedly empty refresh for a previously non-empty library is
+  inconclusive. Quipsly preserves the last successful inventory and performs
+  no source mutation.
 
 ## Materialization state machine
 
@@ -186,6 +203,9 @@ recorded provider generation while access remains valid.
   launchd's submitted environment.
 - Connections are user-owned. A project collaborator cannot use another
   creator's Drive credential merely because both can see a Nest.
+- Followed-library health is project-visible, but only the connection owner can
+  refresh it. Collaborative responses omit root IDs, file IDs, resource keys,
+  and account credentials.
 - API routes repeat project membership and connection ownership checks at the
   server boundary.
 
@@ -248,6 +268,8 @@ secret versions exist and pass private shape validation.
   `apps/quipsly/src/app/(app)/nests/[slug]/story/GoogleDriveSourcePicker.tsx`
 - Provider verification and package attachment:
   `apps/quipsly/src/lib/server/google-drive-source.ts`
+- Followed-library reconciliation and safe projection:
+  `apps/quipsly/src/lib/server/external-media-library.ts`
 - Camera filename/package planner:
   `apps/quipsly/src/lib/google-drive-media-package.ts`
 - Exact LRV materialization request:
@@ -276,25 +298,30 @@ Insta360 operation proves all of the following:
 4. If it does not, select an INSV/LRV pair through **Choose 360 files** and
    prove the same grouped source unit.
 5. Attach metadata without transferring any source bytes.
-6. Start one real LRV transfer, interrupt it after measurable progress, and
+6. Add or finish a file in Drive, refresh the followed library, and prove the
+   safe diff appears without duplicate source units.
+7. Temporarily move one observed file outside the selected folder, refresh,
+   and prove it becomes `not-observed` without deleting source, range, card,
+   board, or revision history. Restore it and prove the observation recovers.
+8. Start one real LRV transfer, interrupt it after measurable progress, and
    resume without restarting from zero.
-7. Re-read provider revision, MD5, and size after transfer.
-8. Verify local MD5 and SHA-256 before admitting the replica.
-9. Build and play the collaboration proxy.
-10. Confirm that the Source Room shows one camera segment with an inspectable
+9. Re-read provider revision, MD5, and size after transfer.
+10. Verify local MD5 and SHA-256 before admitting the replica.
+11. Build and play the collaboration proxy.
+12. Confirm that the Source Room shows one camera segment with an inspectable
     member receipt.
-11. Create a time range and story card from playback.
-12. Inspect final conform and prove it reports actual bytes and safe Mac
+13. Create a time range and story card from playback.
+14. Inspect final conform and prove it reports actual bytes and safe Mac
     capacity without starting a download.
-13. Explicitly conform one real segment, interrupt an INSV transfer, resume it,
+15. Explicitly conform one real segment, interrupt an INSV transfer, resume it,
     and prove the complete package becomes one immutable source set.
-14. Export and visually review a full 5.7K stitched master from the exact Drive
+16. Export and visually review a full 5.7K stitched master from the exact Drive
     replicas, register its receipt, then render one saved spatial selection.
-15. Open the same decision and output in the episode editor and local Studio
+17. Open the same decision and output in the episode editor and local Studio
     handoff.
-16. Prove a second Quipsly account cannot use the connection or fetch the
+18. Prove a second Quipsly account cannot use the connection or fetch the
     source.
-17. Disconnect and reconnect Drive without losing source identities,
+19. Disconnect and reconnect Drive without losing source identities,
     annotations, cards, or the verified derivative ledger.
 
 The current loop-back trigger is successful Google Cloud reauthentication for

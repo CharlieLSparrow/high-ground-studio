@@ -21,7 +21,12 @@ import {
   attachGoogleDriveFileToNest,
   googleDriveSourceErrorResponse,
   inspectGoogleDriveFolderForNest,
+  refreshGoogleDriveLibraryForNest,
 } from "@/lib/server/google-drive-source";
+import {
+  ExternalMediaLibraryError,
+  listExternalMediaLibraries,
+} from "@/lib/server/external-media-library";
 import {
   ExternalSourceProxyRequestError,
   requestExternalSourceProxy,
@@ -206,6 +211,12 @@ function errorResponse(error: unknown) {
       { status: 409 },
     );
   }
+  if (error instanceof ExternalMediaLibraryError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceStoryContractError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -272,10 +283,20 @@ export async function GET(
   try {
     const { slug } = await context.params;
     const actor = await requireSourceStoryAccess(request, slug, "read");
-    const [workspace, sourceCollections, spatialRenderReadiness] =
+    const [
+      workspace,
+      sourceCollections,
+      externalMediaLibraries,
+      spatialRenderReadiness,
+    ] =
       await Promise.all([
         readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
         readSourceCollections(getPrismaClient(), {
+          projectId: actor.projectId,
+          actorUserId: actor.userId,
+        }),
+        listExternalMediaLibraries({
+          prisma: getPrismaClient(),
           projectId: actor.projectId,
           actorUserId: actor.userId,
         }),
@@ -284,7 +305,11 @@ export async function GET(
     return NextResponse.json(
       jsonSafe({
         ok: true,
-        workspace: { ...workspace, sourceCollections },
+        workspace: {
+          ...workspace,
+          sourceCollections,
+          externalMediaLibraries,
+        },
         spatialRenderReadiness,
       }),
       { headers: { "Cache-Control": "no-store" } },
@@ -347,6 +372,16 @@ export async function POST(
         connectionId: text(body.connectionId),
         folderId: text(body.folderId),
         resourceKey: text(body.resourceKey) || null,
+        clientRequestId: text(body.clientRequestId),
+        requestUrl: request.url,
+      });
+    } else if (action === "refresh-google-drive-library") {
+      operation = await refreshGoogleDriveLibraryForNest({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        libraryId: text(body.libraryId),
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
       });

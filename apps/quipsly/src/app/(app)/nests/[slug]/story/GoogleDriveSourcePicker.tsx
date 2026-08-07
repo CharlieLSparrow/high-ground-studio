@@ -19,6 +19,22 @@ type DriveConnection = {
   verifiedAt: string | null;
 };
 
+type ExternalMediaLibrary = {
+  id: string;
+  name: string;
+  status: string;
+  revision: number;
+  totalFileCount: number;
+  totalSizeBytes: string;
+  readySegmentCount: number;
+  heldSegmentCount: number;
+  notObservedCount: number;
+  lastCheckedAt: string;
+  canRefresh: boolean;
+  connectionState: string;
+  connectedByCurrentUser: boolean;
+};
+
 type PickerDocument = {
   id?: string;
   resourceKey?: string;
@@ -30,7 +46,7 @@ type PickerNamespace = {
   Document: { ID: string; RESOURCE_KEY: string };
   ViewId: { DOCS: string };
   DocsViewMode: { LIST: string };
-  Feature: { MULTISELECT_ENABLED: string; SUPPORT_DRIVES: string };
+  Feature: { MULTISELECT_ENABLED: string };
   DocsView: new (viewId: string) => {
     setMode(value: string): unknown;
     setIncludeFolders(value: boolean): unknown;
@@ -138,7 +154,6 @@ function pickerBuilder(
   builder.setAppId(input.appId);
   if (input.mode === "files")
     builder.enableFeature(picker.Feature.MULTISELECT_ENABLED);
-  builder.enableFeature(picker.Feature.SUPPORT_DRIVES);
   builder.setCallback(input.callback);
   return builder.build();
 }
@@ -177,13 +192,106 @@ function formatBytes(value: string) {
   return `${Math.max(0, Math.round(bytes / 1024)).toLocaleString()} KB`;
 }
 
+function FollowedDriveLibraries({
+  libraries,
+  canWrite,
+  pending,
+  onRefresh,
+}: {
+  libraries: ExternalMediaLibrary[];
+  canWrite: boolean;
+  pending: boolean;
+  onRefresh(library: ExternalMediaLibrary): void;
+}) {
+  if (!libraries.length) return null;
+  return (
+    <section
+      aria-label="Followed Drive libraries"
+      className="mt-3 space-y-2 rounded-xl border border-teal-200 bg-white p-3"
+    >
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-teal-900">
+          Followed libraries
+        </p>
+        <p className="mt-1 text-[10px] font-semibold leading-4 text-[#5f684f]">
+          Refresh finds new or completed camera files. Missing items are marked
+          for review; Quipsly never deletes source history from a provider
+          listing.
+        </p>
+      </div>
+      {libraries.map((library) => (
+        <article
+          key={library.id}
+          className="rounded-xl border border-[#e4ddcf] bg-[#fffdf8] p-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-black text-[#3e2f21]">
+                {library.name}
+              </p>
+              <p className="mt-1 text-[9px] font-bold text-[#806a4d]">
+                {library.totalFileCount.toLocaleString()} files ·{" "}
+                {formatBytes(library.totalSizeBytes)} ·{" "}
+                {library.readySegmentCount} ready · {library.heldSegmentCount}{" "}
+                held
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-2 py-1 text-[8px] font-black uppercase ${library.status === "ready" ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-950"}`}
+            >
+              {library.status}
+            </span>
+          </div>
+          {library.notObservedCount > 0 ? (
+            <p className="mt-2 text-[9px] font-bold leading-4 text-amber-900">
+              {library.notObservedCount} previously seen file
+              {library.notObservedCount === 1 ? " was" : "s were"} not observed
+              in the latest complete scan. Existing cards, ranges, and revisions
+              remain intact.
+            </p>
+          ) : null}
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-[8px] font-semibold text-[#806a4d]">
+              Checked {new Date(library.lastCheckedAt).toLocaleString()}
+              {!library.connectedByCurrentUser
+                ? " · connected by a collaborator"
+                : ""}
+            </p>
+            <button
+              type="button"
+              disabled={!canWrite || pending || !library.canRefresh}
+              onClick={() => onRefresh(library)}
+              className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg border border-teal-300 bg-white px-3 text-[10px] font-black text-teal-950 disabled:opacity-50"
+            >
+              <RefreshCw
+                size={12}
+                className={pending ? "animate-spin" : ""}
+                aria-hidden="true"
+              />
+              Refresh
+            </button>
+          </div>
+          {!library.canRefresh ? (
+            <p className="mt-2 text-[9px] font-semibold leading-4 text-[#806a4d]">
+              The connected account owner can refresh this library;
+              collaborators can keep reviewing the existing sources.
+            </p>
+          ) : null}
+        </article>
+      ))}
+    </section>
+  );
+}
+
 export function GoogleDriveSourcePicker({
   projectSlug,
   canWrite,
+  libraries,
   onAttached,
 }: {
   projectSlug: string;
   canWrite: boolean;
+  libraries: ExternalMediaLibrary[];
   onAttached(): Promise<unknown>;
 }) {
   const [connections, setConnections] = useState<DriveConnection[]>([]);
@@ -515,6 +623,51 @@ export function GoogleDriveSourcePicker({
     }
   }
 
+  async function refreshLibrary(library: ExternalMediaLibrary) {
+    setPending(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/api/nests/${encodeURIComponent(projectSlug)}/source-story`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "refresh-google-drive-library",
+            libraryId: library.id,
+            clientRequestId: crypto.randomUUID(),
+          }),
+        },
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        operation?: {
+          library?: ExternalMediaLibrary;
+        };
+      };
+      if (!response.ok)
+        throw new Error(
+          payload.error || "That Drive library could not be refreshed.",
+        );
+      await onAttached();
+      const refreshed = payload.operation?.library;
+      setMessage(
+        refreshed
+          ? `Refreshed ${refreshed.name}: ${refreshed.totalFileCount} files, ${refreshed.readySegmentCount} ready, ${refreshed.heldSegmentCount} held. No source history was deleted.`
+          : `Refreshed ${library.name}. No source history was deleted.`,
+      );
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : "That Drive library could not be refreshed.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function disconnectDrive() {
     if (
       !selectedConnectionId ||
@@ -593,6 +746,14 @@ export function GoogleDriveSourcePicker({
           <Loader2 size={14} className="animate-spin" aria-hidden="true" />
           Checking Drive connection…
         </p>
+      ) : null}
+      {!loadingConnections ? (
+        <FollowedDriveLibraries
+          libraries={libraries}
+          canWrite={canWrite}
+          pending={pending}
+          onRefresh={(library) => void refreshLibrary(library)}
+        />
       ) : null}
       {!loadingConnections && verifiedConnections.length ? (
         <div className="mt-3 space-y-2">
@@ -760,9 +921,8 @@ export function GoogleDriveSourcePicker({
           ) : null}
           {!oauthConfigured ? (
             <p className="text-xs font-semibold text-amber-900">
-              This Drive connection is safe, but Quipsly cannot refresh it
-              until provider setup is complete. Existing sources remain
-              unchanged.
+              This Drive connection is safe, but Quipsly cannot refresh it until
+              provider setup is complete. Existing sources remain unchanged.
             </p>
           ) : null}
           {!canWrite ? (
@@ -772,9 +932,7 @@ export function GoogleDriveSourcePicker({
           ) : null}
         </div>
       ) : null}
-      {!loadingConnections &&
-      !verifiedConnections.length &&
-      oauthConfigured ? (
+      {!loadingConnections && !verifiedConnections.length && oauthConfigured ? (
         <a
           href={connectHref}
           className="mt-3 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-teal-900 px-4 text-sm font-black text-white"

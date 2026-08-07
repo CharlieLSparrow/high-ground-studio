@@ -12,6 +12,7 @@ import {
   type GoogleDriveMediaLibraryPlan,
 } from "@/lib/google-drive-media-package";
 import { attachVerifiedExternalMediaSource } from "@/lib/server/external-media-source";
+import { recordGoogleDriveLibraryObservation } from "@/lib/server/external-media-library";
 import { getGoogleDriveAccess } from "@/lib/server/google-drive-connection";
 import { GoogleDriveOAuthError } from "@/lib/server/google-drive-oauth";
 
@@ -721,7 +722,14 @@ export async function attachGoogleDriveFolderToNest(input: {
     folderId: input.folderId,
     selectedResourceKey: input.resourceKey,
   });
-  return attachGoogleDriveMediaPlanToNest({
+  if (folder.plan.totalFiles === 0) {
+    throw new GoogleDriveSourceError(
+      "Google shared the folder identity but not a complete child inventory. Choose the matching INSV and LRV files explicitly; Quipsly will not create an empty followed library.",
+      "drive-library-inventory-inconclusive",
+      409,
+    );
+  }
+  const attached = await attachGoogleDriveMediaPlanToNest({
     ...input,
     connectionId: access.connection.id,
     plan: folder.plan,
@@ -729,6 +737,27 @@ export async function attachGoogleDriveFolderToNest(input: {
     sourceUrl: (batch) =>
       `https://drive.google.com/drive/folders/${encodeURIComponent(batch.folder.id)}`,
   });
+  const observation = await recordGoogleDriveLibraryObservation({
+    prisma: input.prisma,
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+    actorEmail: input.actorEmail,
+    connectionId: access.connection.id,
+    externalRootId: folder.folder.id,
+    sharedDriveId: folder.folder.driveId,
+    resourceKey: folder.folder.resourceKey,
+    clientRequestId: input.clientRequestId,
+    plan: folder.plan,
+    attachments: attached.attachments,
+  });
+  return {
+    plan: attached.plan,
+    attachedCount: attached.attachedCount,
+    sourceUnitCount: attached.sourceUnitCount,
+    replayedCount: attached.replayedCount,
+    library: observation.library,
+    libraryReplayed: observation.replayed,
+  };
 }
 
 async function attachGoogleDriveMediaPlanToNest(input: {
@@ -746,6 +775,7 @@ async function attachGoogleDriveMediaPlanToNest(input: {
   ): string;
 }) {
   const attached: Array<{
+    externalFileId: string;
     referenceId: string;
     sourceRevisionId: string;
     sourceUnitId: string;
@@ -860,6 +890,7 @@ async function attachGoogleDriveMediaPlanToNest(input: {
           },
         });
         attached.push({
+          externalFileId: member.id,
           referenceId: result.reference.id,
           sourceRevisionId: result.sourceRevisionId,
           sourceUnitId: sourceUnit.id,
@@ -873,6 +904,11 @@ async function attachGoogleDriveMediaPlanToNest(input: {
     attachedCount: attached.length,
     sourceUnitCount: new Set(attached.map((value) => value.sourceUnitId)).size,
     replayedCount: attached.filter((value) => value.replayed).length,
+    attachments: attached.map((value) => ({
+      externalFileId: value.externalFileId,
+      externalReferenceId: value.referenceId,
+      sourceUnitId: value.sourceUnitId,
+    })),
   };
 }
 
@@ -902,7 +938,7 @@ export async function attachGoogleDriveFilesToNest(input: {
     connectionId: access.connection.id,
     selections: input.selections,
   });
-  return attachGoogleDriveMediaPlanToNest({
+  const attached = await attachGoogleDriveMediaPlanToNest({
     ...input,
     connectionId: access.connection.id,
     plan,
@@ -917,6 +953,105 @@ export async function attachGoogleDriveFilesToNest(input: {
         : "https://drive.google.com/drive/my-drive";
     },
   });
+  return {
+    plan: attached.plan,
+    attachedCount: attached.attachedCount,
+    sourceUnitCount: attached.sourceUnitCount,
+    replayedCount: attached.replayedCount,
+  };
+}
+
+function locatorResourceKey(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const resource = (value as Record<string, unknown>).resourceKey;
+  return typeof resource === "string" ? resource : null;
+}
+
+export async function refreshGoogleDriveLibraryForNest(input: {
+  prisma: PrismaClient;
+  projectId: string;
+  actorUserId: string;
+  actorEmail: string;
+  libraryId: string;
+  clientRequestId: string;
+  requestUrl: string;
+  environment?: NodeJS.ProcessEnv;
+}) {
+  const library = await input.prisma.studioExternalMediaLibrary.findFirst({
+    where: {
+      id: input.libraryId,
+      projectId: input.projectId,
+      provider: "google-drive",
+    },
+    include: { connection: { select: { id: true, userId: true } } },
+  });
+  if (!library) {
+    throw new GoogleDriveSourceError(
+      "That followed Drive library is unavailable in this Nest.",
+      "drive-library-not-found",
+      404,
+    );
+  }
+  if (!library.connection || library.connection.userId !== input.actorUserId) {
+    throw new GoogleDriveSourceError(
+      "Only the person who connected this Drive account can refresh its library. Other collaborators can keep using existing story work.",
+      "drive-library-owner-required",
+      403,
+    );
+  }
+  const access = await getGoogleDriveAccess({
+    prisma: input.prisma,
+    userId: input.actorUserId,
+    connectionId: library.connection.id,
+    requestUrl: input.requestUrl,
+    environment: input.environment,
+  });
+  const folder = await readGoogleDriveMediaFolder({
+    accessToken: access.accessToken,
+    connectionId: access.connection.id,
+    folderId: library.externalRootId,
+    selectedResourceKey: locatorResourceKey(library.providerLocatorJson),
+  });
+  if (folder.plan.totalFiles === 0 && library.totalFileCount > 0) {
+    throw new GoogleDriveSourceError(
+      "Google returned an empty child inventory for a library that previously contained media. Quipsly preserved the last successful inventory and made no source changes.",
+      "drive-library-inventory-inconclusive",
+      409,
+    );
+  }
+  const attached = await attachGoogleDriveMediaPlanToNest({
+    prisma: input.prisma,
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+    actorEmail: input.actorEmail,
+    connectionId: access.connection.id,
+    clientRequestId: input.clientRequestId,
+    plan: folder.plan,
+    sourceIdentity: (batch) => batch.folder.id,
+    sourceUrl: (batch) =>
+      `https://drive.google.com/drive/folders/${encodeURIComponent(batch.folder.id)}`,
+  });
+  const observation = await recordGoogleDriveLibraryObservation({
+    prisma: input.prisma,
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+    actorEmail: input.actorEmail,
+    connectionId: access.connection.id,
+    externalRootId: folder.folder.id,
+    sharedDriveId: folder.folder.driveId,
+    resourceKey: folder.folder.resourceKey,
+    clientRequestId: input.clientRequestId,
+    plan: folder.plan,
+    attachments: attached.attachments,
+  });
+  return {
+    plan: attached.plan,
+    attachedCount: attached.attachedCount,
+    sourceUnitCount: attached.sourceUnitCount,
+    replayedCount: attached.replayedCount,
+    library: observation.library,
+    libraryReplayed: observation.replayed,
+  };
 }
 
 export async function attachGoogleDriveFileToNest(input: {

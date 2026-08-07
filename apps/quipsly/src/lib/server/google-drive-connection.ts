@@ -260,6 +260,19 @@ export async function disconnectGoogleDriveConnection(input: {
             revisions: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true } },
           },
         },
+        externalLibraries: {
+          select: {
+            id: true,
+            revision: true,
+            projectId: true,
+            name: true,
+            inventoryFingerprintSha256: true,
+            totalFileCount: true,
+            totalSizeBytes: true,
+            readySegmentCount: true,
+            heldSegmentCount: true,
+          },
+        },
       },
     });
     const replay = latest.operations[0];
@@ -335,6 +348,62 @@ export async function disconnectGoogleDriveConnection(input: {
             accessState: "revoked",
             capabilityState: "needs-reauth",
             sourceRevisionId: reference.revisions[0]?.id ?? "",
+          },
+        },
+      });
+    }
+    for (const library of latest.externalLibraries) {
+      const libraryRevision = library.revision + 1;
+      const libraryRequestSha256 = sha256({
+        schema: "quipsly-external-media-library-connection-revocation-v1",
+        connectionId: latest.id,
+        libraryId: library.id,
+        previousRevision: library.revision,
+      });
+      const libraryUpdated = await tx.studioExternalMediaLibrary.updateMany({
+        where: { id: library.id, revision: library.revision },
+        data: {
+          status: "needs-reauth",
+          revision: libraryRevision,
+          lastCheckedAt: new Date(),
+          healthJson: {
+            schema: "quipsly-external-media-library-health-v1",
+            connectionState: "needs-reauth",
+            noAutomaticDeletion: true,
+          },
+        },
+      });
+      if (libraryUpdated.count !== 1) {
+        throw new GoogleDriveOAuthError(
+          "A followed Drive library changed during disconnect.",
+          "stale-external-library",
+          409,
+        );
+      }
+      await tx.studioExternalMediaLibraryOperation.create({
+        data: {
+          libraryId: library.id,
+          revision: libraryRevision,
+          previousRevision: library.revision,
+          operation: "connection-revoked",
+          outcome: "needs-attention",
+          actorUserId: input.userId,
+          clientRequestId: requestId,
+          requestSha256: libraryRequestSha256,
+          inventoryFingerprintSha256:
+            library.inventoryFingerprintSha256,
+          snapshotJson: {
+            schema: "quipsly-external-media-library-receipt-v1",
+            libraryId: library.id,
+            revision: libraryRevision,
+            projectId: library.projectId,
+            name: library.name,
+            status: "needs-reauth",
+            totalFileCount: library.totalFileCount,
+            totalSizeBytes: library.totalSizeBytes.toString(),
+            readySegmentCount: library.readySegmentCount,
+            heldSegmentCount: library.heldSegmentCount,
+            noAutomaticDeletion: true,
           },
         },
       });

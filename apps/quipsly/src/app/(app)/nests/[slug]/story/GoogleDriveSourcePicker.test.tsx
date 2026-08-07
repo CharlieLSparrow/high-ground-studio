@@ -22,6 +22,7 @@ describe("Google Drive source picker entry", () => {
       <GoogleDriveSourcePicker
         projectSlug="high-ground-odyssey"
         canWrite
+        libraries={[]}
         onAttached={async () => undefined}
       />,
     );
@@ -57,6 +58,7 @@ describe("Google Drive source picker entry", () => {
       <GoogleDriveSourcePicker
         projectSlug="high-ground-odyssey"
         canWrite
+        libraries={[]}
         onAttached={async () => undefined}
       />,
     );
@@ -75,6 +77,55 @@ describe("Google Drive source picker entry", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/quipsly groups them into camera segments/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows safe followed-library health without exposing another collaborator's refresh authority", async () => {
+    global.fetch = jest.fn(async () =>
+      jsonResponse({
+        ok: true,
+        pickerConfigured: true,
+        connections: [],
+      }),
+    ) as unknown as typeof fetch;
+    render(
+      <GoogleDriveSourcePicker
+        projectSlug="high-ground-odyssey"
+        canWrite
+        libraries={[
+          {
+            id: "library-1",
+            name: "Homer 360 Library",
+            status: "attention",
+            revision: 2,
+            totalFileCount: 30,
+            totalSizeBytes: "435214857419",
+            readySegmentCount: 13,
+            heldSegmentCount: 11,
+            notObservedCount: 1,
+            lastCheckedAt: "2026-08-07T20:00:00.000Z",
+            canRefresh: false,
+            connectionState: "verified",
+            connectedByCurrentUser: false,
+          },
+        ]}
+        onAttached={async () => undefined}
+      />,
+    );
+    expect(await screen.findByText("Homer 360 Library")).toBeInTheDocument();
+    expect(screen.getByText(/30 files/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/previously seen file was not observed/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/never deletes source history/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^refresh$/i })).toBeDisabled();
+    expect(
+      screen.getByText(/connected account owner can refresh/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /connect google drive/i }),
     ).toBeInTheDocument();
   });
 });

@@ -8301,3 +8301,30 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   original conform/export. Global cache eviction/pinning is also still open;
   the present worker provides bounded admission rather than claiming a full
   lifecycle manager.
+
+## 2026-08-07 followed Drive library checkpoint
+
+- Promoted a selected Drive folder from a one-time attachment gesture to a
+  durable followed-library domain. The current projection records a safe
+  inventory fingerprint, byte/file totals, ready and held 360 segments, and
+  last successful scan; append-only operations explain attach, refresh, and
+  disconnect transitions.
+- Added reversible per-file observation state for recognized and unrecognized
+  provider objects. A missing object becomes `not-observed`; it never deletes
+  an external reference, immutable revision, range, card, board placement, or
+  source unit. A later scan restores the same observation identity.
+- Source Room now shows followed libraries, refresh recency, safe diff health,
+  collaborator-owned refresh boundaries, and explicit no-deletion copy. Only
+  the user-owned Drive connection can refresh; all authorized collaborators can
+  keep using existing story work.
+- A previously non-empty library receiving an empty provider inventory fails as
+  inconclusive and preserves its last successful state. Provider IDs, resource
+  keys, and credentials stay out of collaborative responses.
+- The real shared-folder inspection informed the package shape (30 visible
+  files, 13 complete segments, 11 held segments, roughly 435 GB). It was not
+  represented as a signed-in Quipsly OAuth selection or a completed transfer.
+- Focused UI/provider tests pass 12/12. A disposable PostgreSQL operation proved
+  attach, replay, changed evidence, new files, not-observed retention, restored
+  presence, second-account privacy, and disconnect-to-needs-reauth. Detailed
+  architecture and evidence:
+  `docs/coordination/2026-08-07-followed-drive-library.md`.

@@ -7,6 +7,7 @@ import { readSourceStoryWorkspace } from "@/lib/server/source-story";
 import { readSourceCollections } from "@/lib/server/source-collections";
 import { readSourceLibraryPage } from "@/lib/server/source-library";
 import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
+import { listExternalMediaLibraries } from "@/lib/server/external-media-library";
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
@@ -41,9 +42,10 @@ export default async function SourceStoryPage({
   const canWrite = Boolean(access.role && roleAllowsAction(access.role, "write"));
 
   try {
-    const [initialSourcePage, sourceCollections, tags, episodes, coreWorkspace, spatialRenderReadiness] = await Promise.all([
+    const [initialSourcePage, sourceCollections, externalMediaLibraries, tags, episodes, coreWorkspace, spatialRenderReadiness] = await Promise.all([
       readSourceLibraryPage({ prisma, projectId: project.id, limit: 60 }),
       readSourceCollections(prisma, { projectId: project.id, actorUserId: session.user.id }),
+      listExternalMediaLibraries({ prisma, projectId: project.id, actorUserId: session.user.id }),
       prisma.studioTag.findMany({
         where: { projectId: project.id, isActive: true },
         orderBy: [{ category: "asc" }, { label: "asc" }],
@@ -79,6 +81,7 @@ export default async function SourceStoryPage({
       sourceSets: sourcePage.sourceSets,
       externalSources: sourcePage.externalSources,
       sourceCollections,
+      externalMediaLibraries,
     };
     const requestedAnySource = Boolean(requestedAssetId || requestedExternalReferenceId || requestedSourceSetId);
     const fallbackSourceKey = sourcePage.orderedKeys[0] ?? null;
