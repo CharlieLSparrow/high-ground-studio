@@ -56,12 +56,14 @@ Before and after counts prove the operation created:
 - zero publication actions.
 
 The read-only source journey then updated without a special migration: both
-recovered masters now have complete Transcript checkpoints. Both Editor
-checkpoints are `CURRENT`, not `COMPLETE`, because the canonical assembly moved
-to `READY_TO_MATERIALIZE` after new immutable evidence arrived. Its next action
-still asks the producer to resolve speaker/camera review warnings before an
-automated camera assembly. This is the intended conflict-safe boundary: new
-evidence can make an edit stale, but cannot silently rewrite it.
+recovered masters gained complete Transcript checkpoints. Before an explicit
+editor update, both Editor checkpoints were `CURRENT`, not `COMPLETE`, because
+the canonical assembly had moved to `READY_TO_MATERIALIZE`. After the separately
+operated rendered update, both Editor checkpoints became complete and the
+assembly converged to `MATERIALIZED_MEDIA`. Its next action still asks the
+producer to resolve speaker/camera review warnings before an automated camera
+assembly. This is the intended conflict-safe boundary: new evidence can make an
+edit stale, but cannot silently rewrite it.
 
 ## Reproduction and verification
 

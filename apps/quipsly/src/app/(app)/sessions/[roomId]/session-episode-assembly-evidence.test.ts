@@ -133,6 +133,22 @@ describe("Session Episode assembly evidence", () => {
       canonicalTakeCount: 0,
       warningCount: 1,
     });
+    expect(evidence.editorHref).toContain("#capture-take-materialization");
+  });
+
+  it("keeps blocked evidence repair routed to Guided sync", () => {
+    const evidence = build({
+      plan: {
+        ok: false,
+        status: "blocked",
+        captureGroupId: "take-10",
+        changed: false,
+        issues: [{ severity: "blocker" }],
+        nextAction: "Review the changed protected-master set.",
+      },
+    });
+
+    expect(evidence.state).toBe("BLOCKED");
     expect(evidence.editorHref).toContain("#guided-sync-wizard");
   });
 });

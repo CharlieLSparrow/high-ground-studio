@@ -90,6 +90,18 @@ episode**. The panel shows protected source count, reviewed placements,
 transcript readiness, explicit speaker-camera mappings, blockers, warnings, and
 the safety boundaries before a write.
 
+When new immutable evidence makes an existing take stale, the same panel becomes
+**Update this take with new evidence**. A deterministic preview distinguishes
+new from reused source lanes, added from replaced transcript turns, preserved
+unrelated edit work, and new from preserved manual speaker-camera mappings. The
+button says **Update episode with current evidence**; it is not described as a
+new take or as a completed assembly. The server still rechecks the exact current
+timeline fingerprint before the write.
+
+Session projections deep-link a ready update to this panel. Only blocked source,
+spine, or alignment evidence routes back to Guided sync; an already materialized
+take routes to automated-edit evidence.
+
 After a successful operation, the editor consumes the returned canonical
 artifact, preserves stable `sourceId` through hydration, and suppresses no human
 edit. A recheck of an unchanged take renders a disabled **Take already
@@ -111,6 +123,12 @@ editor and operated through the guarded button. Database readback proved:
 - after the editor hydration fix, waiting beyond the autosave window produced
   no redundant autosave receipt;
 - reinspection was inert and the action control was disabled.
+
+Later that day, a second exact-source transcript made the same materialization
+stale. The rendered update preview proved zero lanes created, two lanes reused,
+four transcript turns added, and three prior turns replaced. The guarded update
+then converged to `MATERIALIZED_MEDIA`; both protected recordings played and
+paused together, with no browser exception, source mutation, or publication.
 
 The fixture is synthetic retained evidence, not the physical-device acceptance
 gate. The next real gate remains a new multi-device Capture session with actual

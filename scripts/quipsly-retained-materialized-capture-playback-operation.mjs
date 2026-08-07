@@ -135,7 +135,13 @@ async function main() {
 
     let materialization = "already current";
     if (before.body.plan.changed) {
-      const readyButton = panel.getByRole("button", { name: "Materialize ready take", exact: true });
+      const impact = before.body.plan?.impact;
+      assert(impact?.operation === "evidence-update", `Expected a retained evidence update preview: ${JSON.stringify(impact)}`);
+      assert(impact.sourceLanesCreated === 0 && impact.sourceLanesReused === 2, `The update would not reuse both protected source lanes: ${JSON.stringify(impact)}`);
+      assert(impact.transcriptBlocksAdded === 4 && impact.transcriptBlocksReplaced === 3, `The transcript update preview changed unexpectedly: ${JSON.stringify(impact)}`);
+      await panel.getByRole("heading", { name: "Update this take with new evidence", exact: true }).waitFor({ timeout: 20_000 });
+      await panel.getByLabel("Exact episode update preview").waitFor({ timeout: 20_000 });
+      const readyButton = panel.getByRole("button", { name: "Update episode with current evidence", exact: true });
       await readyButton.waitFor({ timeout: 20_000 });
       assert(await readyButton.isEnabled(), "The rendered materialization action was not enabled for a changed ready take.");
       const [materializeResponse] = await Promise.all([
@@ -148,7 +154,7 @@ async function main() {
         `Rendered materialization returned HTTP ${materializeResponse.status()}: ${JSON.stringify({ body: materializeBody, request: materializeResponse.request().postDataJSON() })}`,
       );
       await panel.getByRole("button", { name: "Take already materialized", exact: true }).waitFor({ timeout: 30_000 });
-      materialization = "performed through rendered editor";
+      materialization = "evidence update performed through rendered editor";
     } else {
       await panel.getByRole("button", { name: "Take already materialized", exact: true }).waitFor({ timeout: 20_000 });
     }

@@ -126,6 +126,11 @@ describe("Capture take materialization route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(payload.plan.status).toBe("media-ready");
+    expect(payload.plan.impact).toMatchObject({
+      operation: "initial-materialization",
+      sourceLanesCreated: 1,
+      sourceLanesReused: 0,
+    });
     expect(payload.plan.timeline).toBeUndefined();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });

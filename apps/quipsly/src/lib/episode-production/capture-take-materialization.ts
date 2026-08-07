@@ -109,7 +109,21 @@ export type CaptureTakeMaterializationPlan = {
   issues: CaptureTakeMaterializationIssue[];
   nextAction: string;
   changed: boolean;
+  impact: CaptureTakeMaterializationImpact | null;
   boundaries: CaptureTakeMaterializationReceipt["boundaries"];
+};
+
+export type CaptureTakeMaterializationImpact = {
+  operation: "initial-materialization" | "evidence-update" | "no-change";
+  priorMaterializationStatus: CaptureTakeMaterializationReceipt["status"] | null;
+  sourceLanesCreated: number;
+  sourceLanesReused: number;
+  transcriptBlocksAdded: number;
+  transcriptBlocksReplaced: number;
+  unrelatedTimelineClipsPreserved: number;
+  unrelatedTranscriptBlocksPreserved: number;
+  manualSpeakerCameraMappingsPreserved: number;
+  speakerCameraMappingsAdded: number;
 };
 
 const BOUNDARIES: CaptureTakeMaterializationReceipt["boundaries"] = {
@@ -464,6 +478,7 @@ export function planCaptureTakeMaterialization(input: {
     issues,
     nextAction,
     changed: false,
+    impact: null,
     boundaries: BOUNDARIES,
   });
 
@@ -703,6 +718,22 @@ export function planCaptureTakeMaterialization(input: {
       receipt,
     ],
   };
+  const changed = !unchangedTimeline(input.timeline, nextTimeline);
+  const nextTranscriptBlockIds = new Set(transcriptBlocks.map((block) => block.id));
+  const impact: CaptureTakeMaterializationImpact = {
+    operation: priorReceipt
+      ? changed ? "evidence-update" : "no-change"
+      : "initial-materialization",
+    priorMaterializationStatus: priorReceipt?.status ?? null,
+    sourceLanesCreated: clips.filter((clip) => !existingClipByRecordingAssetId.get(clip.captureTakeSource!.recordingAssetId)).length,
+    sourceLanesReused: clips.filter((clip) => existingClipByRecordingAssetId.get(clip.captureTakeSource!.recordingAssetId)).length,
+    transcriptBlocksAdded: transcriptBlocks.filter((block) => !priorTranscriptBlockIds.has(block.id)).length,
+    transcriptBlocksReplaced: [...priorTranscriptBlockIds].filter((id) => !nextTranscriptBlockIds.has(id)).length,
+    unrelatedTimelineClipsPreserved: preservedClips.length,
+    unrelatedTranscriptBlocksPreserved: preservedTranscript.length,
+    manualSpeakerCameraMappingsPreserved: preservedMappings.filter((mapping) => mapping.source === "manual").length,
+    speakerCameraMappingsAdded: mapped.generated.length,
+  };
 
   return {
     ok: true,
@@ -720,7 +751,8 @@ export function planCaptureTakeMaterialization(input: {
       : input.transcript
         ? "Resolve the remaining speaker/camera review warnings before automated camera assembly."
         : "Continue media review now; materialize the completed canonical transcript when it arrives.",
-    changed: !unchangedTimeline(input.timeline, nextTimeline),
+    changed,
+    impact,
     boundaries: BOUNDARIES,
   };
 }

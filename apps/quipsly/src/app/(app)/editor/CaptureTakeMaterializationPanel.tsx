@@ -37,6 +37,18 @@ type MaterializationInspection = {
     issues: MaterializationIssue[];
     nextAction: string;
     changed: boolean;
+    impact: {
+      operation: "initial-materialization" | "evidence-update" | "no-change";
+      priorMaterializationStatus: "media-materialized" | "assembly-ready" | null;
+      sourceLanesCreated: number;
+      sourceLanesReused: number;
+      transcriptBlocksAdded: number;
+      transcriptBlocksReplaced: number;
+      unrelatedTimelineClipsPreserved: number;
+      unrelatedTranscriptBlocksPreserved: number;
+      manualSpeakerCameraMappingsPreserved: number;
+      speakerCameraMappingsAdded: number;
+    } | null;
     boundaries: {
       sourceMediaUnchanged: true;
       providerWordsUnchanged: true;
@@ -140,16 +152,21 @@ export function CaptureTakeMaterializationPanel({
   const status = inspection?.plan.status ?? "blocked";
   const blockingIssues = inspection?.plan.issues.filter((issue) => issue.severity === "blocker") ?? [];
   const warnings = inspection?.plan.issues.filter((issue) => issue.severity === "warning") ?? [];
+  const impact = inspection?.plan.impact ?? null;
+  const isEvidenceUpdate = impact?.operation === "evidence-update";
 
   return (
     <section
+      id="capture-take-materialization"
       aria-labelledby="capture-take-materialization-title"
       className="mt-3 rounded-xl border border-violet-200 bg-violet-50/80 p-3 text-violet-950"
       data-testid="capture-take-materialization"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 id="capture-take-materialization-title" className="font-black">Build this take into the episode</h3>
+          <h3 id="capture-take-materialization-title" className="font-black">
+            {isEvidenceUpdate ? "Update this take with new evidence" : "Build this take into the episode"}
+          </h3>
           <p className="mt-1 max-w-3xl text-[10px] font-bold leading-4 text-violet-900">
             One guarded handoff creates source lanes, translates the canonical transcript onto the reviewed clock, and maps speakers only when participant-camera identity is unambiguous. Existing human cuts and approvals stay untouched.
           </p>
@@ -180,6 +197,46 @@ export function CaptureTakeMaterializationPanel({
         </div>
       ) : null}
 
+      {impact ? (
+        <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3" aria-label="Exact episode update preview">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+              {impact.operation === "initial-materialization"
+                ? "First episode handoff"
+                : impact.operation === "evidence-update"
+                  ? "Evidence update preview"
+                  : "Canonical take is current"}
+            </div>
+            {impact.priorMaterializationStatus ? (
+              <span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-700">
+                Prior {impact.priorMaterializationStatus === "assembly-ready" ? "assembly" : "media"} retained
+              </span>
+            ) : null}
+          </div>
+          <dl className="mt-2 grid gap-2 text-[10px] sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <dt className="font-black text-violet-700">Source lanes</dt>
+              <dd className="mt-0.5 font-bold text-violet-950">{impact.sourceLanesCreated} new · {impact.sourceLanesReused} reused</dd>
+            </div>
+            <div>
+              <dt className="font-black text-violet-700">Transcript turns</dt>
+              <dd className="mt-0.5 font-bold text-violet-950">{impact.transcriptBlocksAdded} add · {impact.transcriptBlocksReplaced} replace</dd>
+            </div>
+            <div>
+              <dt className="font-black text-violet-700">Other edit work</dt>
+              <dd className="mt-0.5 font-bold text-violet-950">{impact.unrelatedTimelineClipsPreserved} clips · {impact.unrelatedTranscriptBlocksPreserved} turns preserved</dd>
+            </div>
+            <div>
+              <dt className="font-black text-violet-700">Speaker cameras</dt>
+              <dd className="mt-0.5 font-bold text-violet-950">{impact.speakerCameraMappingsAdded} add · {impact.manualSpeakerCameraMappingsPreserved} manual preserved</dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">
+            This preview is computed from the exact current timeline. The server rechecks its fingerprint before writing, and a timeline conflict stops the update.
+          </p>
+        </div>
+      ) : null}
+
       {blockingIssues.length || warnings.length ? (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {blockingIssues.map((issue) => (
@@ -203,10 +260,12 @@ export function CaptureTakeMaterializationPanel({
           className="rounded-lg border border-violet-300 bg-violet-700 px-4 py-2 font-black text-white shadow-sm hover:bg-violet-800 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-200 disabled:text-slate-500"
         >
           {state === "materializing"
-            ? "Building take…"
+            ? isEvidenceUpdate ? "Updating take…" : "Building take…"
             : inspection?.plan.changed === false
               ? "Take already materialized"
-              : "Materialize ready take"}
+              : isEvidenceUpdate
+                ? "Update episode with current evidence"
+                : "Build episode take"}
         </button>
         <button
           type="button"

@@ -2,6 +2,23 @@
 
 Date: 2026-08-06
 
+## Conflict-safe Episode evidence update checkpoint
+
+- A ready Episode update now deep-links from its Session to the exact take
+  update control. Blocked source/sync evidence still routes to Guided sync, and
+  a current materialized take still routes to automated-edit evidence.
+- The editor explains the exact projected write before enabling it: source
+  lanes created/reused, transcript turns added/replaced, unrelated clip and
+  transcript work preserved, and speaker-camera mappings added/manual mappings
+  preserved. Existing materializations use plain-language update copy rather
+  than appearing to create a second take.
+- The retained rendered Episode previewed zero new and two reused protected
+  lanes, four current transcript turns added and three stale turns replaced.
+  The guarded update converged to `MATERIALIZED_MEDIA`; both protected sources
+  returned range bytes, played in the Remotion timeline, and paused together.
+  No browser exception, source mutation, or publication occurred. See
+  `docs/coordination/2026-08-06-conflict-safe-episode-evidence-update.md`.
+
 ## Matched-source retained transcription checkpoint
 
 - An explicitly authorized local QA operation started transcription for the
@@ -15,9 +32,9 @@ Date: 2026-08-06
   the microphone transcript heard `Quipsley` while the backup transcript heard
   `Quipsly`, and neither was silently corrected or declared ground truth.
 - The operation created no Note, Task, Goal, correction overlay, or publication
-  state. The source journey now shows both recovered transcripts complete and
-  both Editor checkpoints current because the canonical assembly is
-  `READY_TO_MATERIALIZE`, with its speaker/camera review warning preserved. See
+  state. It first made both Editor checkpoints current because the canonical
+  assembly was `READY_TO_MATERIALIZE`; the separately reviewed editor update
+  then made them complete while preserving its speaker/camera warning. See
   `docs/coordination/2026-08-06-matched-source-retained-transcript-operation.md`.
 
 ## Session source-journey flight recorder checkpoint

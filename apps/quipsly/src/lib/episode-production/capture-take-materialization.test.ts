@@ -381,6 +381,58 @@ describe("Capture take materialization", () => {
     expect(hydrated.transcript[0]).toMatchObject({ deactivated: false });
     expect(replay.timeline).toEqual(hydrated);
     expect(replay.changed).toBe(false);
+    expect(replay.impact).toMatchObject({
+      operation: "no-change",
+      sourceLanesCreated: 0,
+      sourceLanesReused: 2,
+      transcriptBlocksAdded: 0,
+      transcriptBlocksReplaced: 0,
+    });
+  });
+
+  it("previews transcript enrichment while retaining source lanes and unrelated human work", () => {
+    const first = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [source("audio-1", "audio")],
+      actor,
+      materializedAt,
+    });
+    const enriched = planCaptureTakeMaterialization({
+      timeline: {
+        ...first.timeline,
+        clips: [...first.timeline.clips, {
+          id: "human-clip",
+          assetId: "manual-media",
+          trackId: "V1",
+          startIn: 30,
+          duration: 5,
+          sourceStart: 0,
+          sourceEnd: 5,
+          name: "Human cutaway",
+          color: "#123456",
+          kind: "video",
+        }],
+      },
+      sources: [source("audio-1", "audio")],
+      transcript: transcript(),
+      actor,
+      materializedAt: "2026-08-07T00:00:00.000Z",
+    });
+
+    expect(enriched.changed).toBe(true);
+    expect(enriched.impact).toEqual({
+      operation: "evidence-update",
+      priorMaterializationStatus: "media-materialized",
+      sourceLanesCreated: 0,
+      sourceLanesReused: 1,
+      transcriptBlocksAdded: 1,
+      transcriptBlocksReplaced: 0,
+      unrelatedTimelineClipsPreserved: 1,
+      unrelatedTranscriptBlocksPreserved: 0,
+      manualSpeakerCameraMappingsPreserved: 0,
+      speakerCameraMappingsAdded: 0,
+    });
+    expect(enriched.timeline.clips.find((clip) => clip.id === "human-clip")).toBeDefined();
   });
 
   it("materializes protected playback URLs while retaining durable source identity", () => {

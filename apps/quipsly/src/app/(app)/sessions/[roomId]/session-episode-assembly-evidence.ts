@@ -165,7 +165,9 @@ export function buildSessionEpisodeAssemblyEvidence(input: {
   if (input.captureGroupId) query.set("captureGroup", input.captureGroupId);
   const editorAnchor = state === "MATERIALIZED_MEDIA" || state === "MATERIALIZED_ASSEMBLY"
     ? "automated-edit-evidence"
-    : "guided-sync-wizard";
+    : state === "READY_TO_MATERIALIZE"
+      ? "capture-take-materialization"
+      : "guided-sync-wizard";
 
   return {
     episodeProductionId: input.episodeProductionId,
