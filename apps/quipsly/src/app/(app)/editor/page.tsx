@@ -1522,6 +1522,20 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
 
   const recordingSync = asObject(record.recordingSync);
   const captureTakeSource = normalizeCaptureTakeSource(record.captureTakeSource);
+  const sourceStory = asObject(record.sourceStory);
+  const transforms = coerceArray(record.transforms)
+    .map((value) => asObject(value))
+    .filter((value): value is Record<string, unknown> => Boolean(value))
+    .map((value) => ({
+      id: coerceString(value.id, makeId("transform")),
+      timeOffset: Math.max(0, coerceNumber(value.timeOffset, 0)),
+      ...(typeof value.scale === "number" && Number.isFinite(value.scale) ? { scale: value.scale } : {}),
+      ...(typeof value.x === "number" && Number.isFinite(value.x) ? { x: value.x } : {}),
+      ...(typeof value.y === "number" && Number.isFinite(value.y) ? { y: value.y } : {}),
+      ...(typeof value.rotation === "number" && Number.isFinite(value.rotation) ? { rotation: value.rotation } : {}),
+      ...(value.easing === "linear" ? { easing: "linear" as const } : value.easing === "ease-in-out" ? { easing: "ease-in-out" as const } : {}),
+      ...(value.aiSuggested === true ? { aiSuggested: true } : {}),
+    }));
   const episodeRoomSessionId = coerceString(recordingSync?.episodeRoomSessionId);
   const watchSegmentId = coerceString(recordingSync?.watchSegmentId);
   const startReceiptId = coerceString(recordingSync?.startReceiptId);
@@ -1548,6 +1562,13 @@ function normalizeTimelineClip(raw: unknown): TimelineClip | null {
     name: coerceString(record.name, "Clip"),
     color: coerceString(record.color, "#2563eb"),
     generatedFrom: coerceOptionalString(record.generatedFrom),
+    volume: typeof record.volume === "number" && Number.isFinite(record.volume) ? record.volume : undefined,
+    deactivated: coerceBoolean(record.deactivated, false),
+    aiSuggested: coerceBoolean(record.aiSuggested, false),
+    transforms,
+    ...(sourceStory?.schema === "quipsly-source-story-timeline-binding-v1"
+      ? { sourceStory: sourceStory as TimelineClip["sourceStory"] }
+      : {}),
     ...(captureTakeSource ? { captureTakeSource } : {}),
     ...(hasRecordingSync ? {
       recordingSync: {

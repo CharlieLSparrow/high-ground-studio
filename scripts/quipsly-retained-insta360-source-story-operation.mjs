@@ -13,7 +13,7 @@ import { getAuth } from "firebase-admin/auth";
 
 import { attachVerifiedExternalMediaSource } from "../apps/quipsly/src/lib/server/external-media-source.ts";
 import { requestExternalSourceProxy } from "../apps/quipsly/src/lib/server/external-source-proxy.ts";
-import { createMediaSourceSet, createSourceStoryCard, createStoryBoard, readSourceStoryWorkspace } from "../apps/quipsly/src/lib/server/source-story.ts";
+import { createMediaSourceSet, createSourceStoryCard, createStoryBoard, promoteSourceStoryCardToEpisode, readSourceStoryWorkspace, withdrawSourceStoryTimelinePlacement } from "../apps/quipsly/src/lib/server/source-story.ts";
 
 const databaseUrl = process.env.QUIPSLY_LOCAL_DATABASE_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio";
 const parsedDatabase = new URL(databaseUrl);
@@ -105,7 +105,7 @@ async function retainExactFile(filePath, metadata, actor, project, prisma) {
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, derivative, derivativeStat }) {
+async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, derivative, derivativeStat, episode, placementId }) {
   const appOrigin = "http://127.0.0.1:3012";
   const authOrigin = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099"}`;
   const authUrl = new URL(authOrigin);
@@ -125,7 +125,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     const user = await prisma.user.create({ data: { primaryEmail: email, name: "Source Story readback" }, select: { id: true } });
     userId = user.id;
     const grant = await prisma.studioProjectAccessGrant.create({
-      data: { projectId: project.id, email, role: "VIEWER", status: "ACTIVE", createdByUserId: createdBy.id, createdByEmail: actorEmail },
+      data: { projectId: project.id, email, role: "EDITOR", status: "ACTIVE", createdByUserId: createdBy.id, createdByEmail: actorEmail },
       select: { id: true },
     });
     grantId = grant.id;
@@ -163,8 +163,11 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     if (session.status !== 200 || sessionBody.success !== true || !cookie) throw new Error("The disposable Source Story reader could not establish a first-party session.");
     const derivativeUrl = `${appOrigin}/api/media/derivatives/${encodeURIComponent(derivative.id)}`;
     const storyUrl = `${appOrigin}/nests/${encodeURIComponent(project.slug)}/story?set=${encodeURIComponent(sourceSetId)}&board=${encodeURIComponent(boardId)}`;
-    const [page, range, rangeTail, invalidRange, denied, head] = await Promise.all([
+    const [page, sourceStoryReadback, editorPage, episodeReadback, range, rangeTail, invalidRange, denied, head] = await Promise.all([
       fetch(storyUrl, { redirect: "manual", headers: { cookie, "cache-control": "no-cache" } }),
+      fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, { headers: { cookie, "cache-control": "no-cache" } }),
+      fetch(`${appOrigin}/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episode.slug)}`, { redirect: "manual", headers: { cookie, "cache-control": "no-cache" } }),
+      fetch(`${appOrigin}/api/episode-production`, { method: "POST", headers: { cookie, "content-type": "application/json", "cache-control": "no-cache" }, body: JSON.stringify({ action: "ensure", projectSlug: project.slug, episodeSlug: episode.slug }) }),
       fetch(derivativeUrl, { headers: { cookie, range: "bytes=0-1023", "cache-control": "no-cache" } }),
       fetch(derivativeUrl, { headers: { cookie, range: "bytes=-32", "cache-control": "no-cache" } }),
       fetch(derivativeUrl, { headers: { cookie, range: "bytes=999999999-", "cache-control": "no-cache" } }),
@@ -172,6 +175,9 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       fetch(derivativeUrl, { method: "HEAD", headers: { cookie, "cache-control": "no-cache" } }),
     ]);
     const html = await page.text();
+    const sourceStoryBody = await sourceStoryReadback.json().catch(() => ({}));
+    const editorHtml = await editorPage.text();
+    const episodeBody = await episodeReadback.json().catch(() => ({}));
     const rangeBytes = new Uint8Array(await range.arrayBuffer());
     const tailBytes = new Uint8Array(await rangeTail.arrayBuffer());
     const missingPageEvidence = [
@@ -186,6 +192,33 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
           ? "not-found"
           : "unknown-shell";
       throw new Error(`The retained Insta360 Source-to-Story page failed canonical render readback (HTTP ${page.status}; redirect ${page.headers.get("location") || "none"}; page ${pageKind}; ${html.length} bytes; missing ${missingPageEvidence.join(", ") || "no named evidence"}).`);
+    }
+    if (editorPage.status !== 200 || editorHtml.includes("Welcome back") || editorHtml.includes("Sign in to Quipsly")) {
+      throw new Error(`The retained Source-to-Story editor shell failed authenticated readback (HTTP ${editorPage.status}; ${editorHtml.length} bytes).`);
+    }
+    const projectedPlacement = Array.isArray(sourceStoryBody?.workspace?.timelinePlacements)
+      ? sourceStoryBody.workspace.timelinePlacements.find((placement) => placement?.id === placementId && placement?.status === "active")
+      : null;
+    const projectedEpisode = Array.isArray(sourceStoryBody?.workspace?.episodes)
+      ? sourceStoryBody.workspace.episodes.find((candidate) => candidate?.id === episode.id && candidate?.clipCount >= 1)
+      : null;
+    if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode) {
+      throw new Error(`The authenticated Source Story API did not project the retained Episode placement (HTTP ${sourceStoryReadback.status}).`);
+    }
+    const promotedClip = Array.isArray(episodeBody?.timelineJson?.timelineClips)
+      ? episodeBody.timelineJson.timelineClips.find((clip) => clip?.sourceStory?.placementId === placementId)
+      : null;
+    const promotedMedia = Array.isArray(episodeBody?.productionJson?.importedMedia)
+      ? episodeBody.productionJson.importedMedia.find((asset) => asset?.metadata?.sourceStory?.placementId === placementId)
+      : null;
+    if (episodeReadback.status !== 200 || !promotedClip || promotedClip.sourceStory?.boundaries?.finalRenderMustResolveExactSource !== true) {
+      throw new Error(`The canonical Episode API did not return the exact promoted Source Story clip (HTTP ${episodeReadback.status}).`);
+    }
+    if (episodeBody.timelineJson?.projectSlug !== project.slug || episodeBody.productionJson?.projectSlug !== project.slug) {
+      throw new Error(`The canonical Episode artifact lost its project slug boundary (timeline ${episodeBody.timelineJson?.projectSlug || "missing"}; production ${episodeBody.productionJson?.projectSlug || "missing"}).`);
+    }
+    if (!promotedMedia || promotedMedia.is360 !== true || promotedMedia.originalFormat !== "lrv") {
+      throw new Error(`The canonical Episode artifact did not preserve the spatial-source descriptor (is360 ${String(promotedMedia?.is360)}; original format ${promotedMedia?.originalFormat || "missing"}).`);
     }
     if (range.status !== 206 || rangeBytes.byteLength !== 1_024 || !String(range.headers.get("content-range")).startsWith("bytes 0-1023/")) {
       throw new Error(`The protected spatial proxy route failed byte-range playback readback (HTTP ${range.status}).`);
@@ -205,6 +238,13 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       sourceSetVisible: true,
       boardVisible: true,
       sourceCardVisible: true,
+      timelinePlacementVisible: true,
+      sourceStoryApiStatus: sourceStoryReadback.status,
+      editorPageStatus: editorPage.status,
+      canonicalEpisodeStatus: episodeReadback.status,
+      canonicalPlacementId: promotedClip.sourceStory.placementId,
+      canonicalProjectSlug: episodeBody.timelineJson.projectSlug,
+      canonicalSpatialMedia: { is360: promotedMedia.is360, originalFormat: promotedMedia.originalFormat },
       proxyRangeStatus: range.status,
       proxyRangeBytes: rangeBytes.byteLength,
       proxySuffixRangeStatus: rangeTail.status,
@@ -345,6 +385,78 @@ try {
   }
   if (!card?.sourceRange || card.sourceRange.sourceSetId !== sourceSetResult.sourceSet.id) throw new Error("The story card did not retain its exact source-set identity.");
 
+  let episodeDocument = await prisma.studioDocument.findUnique({ where: { stableId: `source-story-spatial-promotion-dogfood-${project.id}` } });
+  if (!episodeDocument) {
+    episodeDocument = await prisma.studioDocument.create({
+      data: {
+        projectId: project.id,
+        stableId: `source-story-spatial-promotion-dogfood-${project.id}`,
+        title: "Source Story spatial promotion dogfood",
+        projectionStatus: "review",
+        isPrivate: false,
+      },
+    });
+  }
+  const episode = await prisma.studioEpisodeProduction.upsert({
+    where: { projectId_slug: { projectId: project.id, slug: "source-story-spatial-promotion-qa-20260807" } },
+    update: {},
+    create: {
+      projectId: project.id,
+      documentId: episodeDocument.id,
+      slug: "source-story-spatial-promotion-qa-20260807",
+      title: "Source Story spatial promotion QA",
+      boundaryLabel: "Source Story spatial promotion QA",
+      status: "draft",
+    },
+  });
+  const boardPlacement = await prisma.studioStoryBoardPlacement.findFirstOrThrow({ where: { boardId: board.id, cardId: card.id } });
+  const promotionRequestId = deterministicUuid(`${project.id}:${card.id}:${episode.id}:timeline-promotion-v5-canonical-relation-identity`);
+  const existingPromotion = await prisma.studioStoryTimelinePlacement.findUnique({
+    where: { episodeProductionId_createdByUserId_clientRequestId: { episodeProductionId: episode.id, createdByUserId: actor.id, clientRequestId: promotionRequestId } },
+    select: { timelineFingerprintBeforeSha256: true },
+  });
+  if (!existingPromotion) {
+    const supersededPlacements = await prisma.studioStoryTimelinePlacement.findMany({
+      where: { episodeProductionId: episode.id, cardId: card.id, status: "active" },
+      orderBy: { createdAt: "asc" },
+    });
+    for (const superseded of supersededPlacements) {
+      const beforeWithdrawal = await readSourceStoryWorkspace(prisma, project.id);
+      const episodeBeforeWithdrawal = beforeWithdrawal.episodes.find((candidate) => candidate.id === episode.id);
+      if (!episodeBeforeWithdrawal) throw new Error("The retained QA Episode disappeared before superseded placement withdrawal.");
+      await withdrawSourceStoryTimelinePlacement({
+        prisma,
+        actorUserId: actor.id,
+        value: {
+          projectId: project.id,
+          placementId: superseded.id,
+          expectedRevision: superseded.revision,
+          expectedTimelineFingerprint: episodeBeforeWithdrawal.timelineFingerprint,
+          clientRequestId: deterministicUuid(`${project.id}:${superseded.id}:withdraw-for-canonical-relation-identity-v5`),
+        },
+      });
+    }
+  }
+  const workspaceBeforePromotion = await readSourceStoryWorkspace(prisma, project.id);
+  const episodeBeforePromotion = workspaceBeforePromotion.episodes.find((candidate) => candidate.id === episode.id);
+  if (!episodeBeforePromotion) throw new Error("The retained QA Episode did not project into Source Story.");
+  const promotion = await promoteSourceStoryCardToEpisode({
+    prisma,
+    actorUserId: actor.id,
+    actorEmail,
+    value: {
+      projectId: project.id,
+      episodeProductionId: episode.id,
+      cardId: card.id,
+      originBoardId: board.id,
+      originBoardPlacementId: boardPlacement.id,
+      clientRequestId: promotionRequestId,
+      expectedTimelineFingerprint: existingPromotion?.timelineFingerprintBeforeSha256 ?? episodeBeforePromotion.timelineFingerprint,
+      placementMode: "append",
+      trackId: "V1",
+    },
+  });
+
   const [workspace, originalShaAfter, browseShaAfter, derivativeStat, derivativeSha] = await Promise.all([
     readSourceStoryWorkspace(prisma, project.id),
     sha256File(originalPath),
@@ -367,6 +479,8 @@ try {
     boardId: board.id,
     derivative,
     derivativeStat,
+    episode,
+    placementId: promotion.placement.id,
   });
 
   console.log(JSON.stringify({
@@ -381,6 +495,10 @@ try {
     spatialDerivative: { id: derivative.id, widthPixels: derivative.widthPixels, heightPixels: derivative.heightPixels, durationSeconds: derivative.durationSeconds, sizeBytes: derivative.sizeBytes.toString(), contentSha256: derivative.contentSha256 },
     boardId: board.id,
     cardId: card.id,
+    episodeId: episode.id,
+    episodeSlug: episode.slug,
+    timelinePlacementId: promotion.placement.id,
+    timelinePlacementReplayed: promotion.replayed,
     sourceRange: [card.sourceRange.startSeconds, card.sourceRange.endSeconds],
     reframeKeyframes: Array.isArray(card.sourceRange.reframeRecipeJson?.keyframes) ? card.sourceRange.reframeRecipeJson.keyframes.length : 0,
     originalPackageMutated: false,

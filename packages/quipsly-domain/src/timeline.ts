@@ -81,6 +81,61 @@ export type TransformKeyframe = {
   aiSuggested?: boolean;
 };
 
+export type SourceStoryReframeKeyframe = {
+  sourceSeconds: number;
+  panDegrees: number;
+  tiltDegrees: number;
+  rollDegrees: number;
+  fieldOfViewDegrees: number;
+  interpolation: "hold" | "linear" | "ease";
+};
+
+/**
+ * Immutable Source-to-Story provenance carried by a canonical Episode clip.
+ * The editor may move or trim the clip, but this binding always identifies the
+ * exact retained range/package that was deliberately promoted into the edit.
+ */
+export type SourceStoryTimelineBinding = {
+  schema: "quipsly-source-story-timeline-binding-v1";
+  placementId: string;
+  cardId: string;
+  cardStableId: string;
+  cardRevision: number;
+  sourceRangeId: string;
+  selectorSha256: string;
+  sourceRevisionId: string;
+  sourceIdentitySha256: string;
+  sourceContentSha256: string | null;
+  sourceSetId: string | null;
+  sourceSetIdentitySha256: string | null;
+  externalReferenceId: string | null;
+  browseDerivative: null | {
+    id: string;
+    profile: string;
+    contentSha256: string;
+    sizeBytes: string;
+    mimeType: string;
+  };
+  reframeRecipe: null | {
+    schema: "quipsly-360-reframe-v1";
+    projection: "equirectangular";
+    aspectRatio: "16:9" | "9:16" | "1:1" | "4:5";
+    stabilization: "source" | "flowstate" | "off";
+    horizonLock: boolean;
+    keyframes: SourceStoryReframeKeyframe[];
+  };
+  promotedAt: string;
+  promotedByUserId: string;
+  promotedByEmail: string;
+  boundaries: {
+    sourceMediaUnchanged: true;
+    browseDerivativeIsNotOriginal: true;
+    sourceClockPreserved: true;
+    finalRenderMustResolveExactSource: true;
+    publicationNotStarted: true;
+  };
+};
+
 export type TimelineClip = {
   id: string;
   assetId: string;
@@ -115,6 +170,8 @@ export type TimelineClip = {
     endReceiptId: string;
     watchedAt: string;
   };
+  /** Source Story range/package identity and explicit promotion evidence. */
+  sourceStory?: SourceStoryTimelineBinding;
 };
 
 export type TranscriptBlock = {

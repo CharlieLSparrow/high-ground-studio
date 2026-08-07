@@ -168,8 +168,8 @@ describe("Capture take materialization route", () => {
     });
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        timelineJson: expect.objectContaining({ payloadVersion: 5 }),
-        transcriptJson: expect.objectContaining({ payloadVersion: 5 }),
+        timelineJson: expect.objectContaining({ payloadVersion: 6 }),
+        transcriptJson: expect.objectContaining({ payloadVersion: 6 }),
         productionJson: expect.objectContaining({
           lastCaptureTakeMaterialization: expect.objectContaining({
             sourceMediaUnchanged: true,

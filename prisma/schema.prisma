@@ -890,6 +890,9 @@ model User {
   storyCardsUpdated                 StudioStoryCard[]                           @relation("StudioStoryCardUpdatedBy")
   storyCardRevisionsAuthored        StudioStoryCardRevision[]                   @relation("StudioStoryCardRevisionActor")
   storyCardTagsCreated              StudioStoryCardTagLink[]                    @relation("StudioStoryCardTagCreatedBy")
+  storyTimelinePlacementsCreated    StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementCreatedBy")
+  storyTimelinePlacementsUpdated    StudioStoryTimelinePlacement[]              @relation("StudioStoryTimelinePlacementUpdatedBy")
+  storyTimelineOperationsAuthored   StudioStoryTimelinePlacementOperation[]     @relation("StudioStoryTimelinePlacementOperationActor")
   storyBoardsCreated                StudioStoryBoard[]                          @relation("StudioStoryBoardCreatedBy")
   storyBoardsUpdated                StudioStoryBoard[]                          @relation("StudioStoryBoardUpdatedBy")
   storyBoardPlacementsCreated       StudioStoryBoardPlacement[]                 @relation("StudioStoryBoardPlacementCreatedBy")
@@ -3911,6 +3914,7 @@ model StudioProject {
   sourceRanges                  StudioSourceRange[]
   storyCards                    StudioStoryCard[]
   storyBoards                   StudioStoryBoard[]
+  storyTimelinePlacements       StudioStoryTimelinePlacement[]
   mediaDerivatives              StudioMediaDerivative[]
   documentOperations            StudioDocumentOperation[]
   productionRooms               StudioProductionRoom[]
@@ -4026,22 +4030,23 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project                StudioProject                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document               StudioDocument                              @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  milestones             StudioEpisodeMilestone[]
-  editProposalSets       StudioEpisodeEditProposalSet[]
-  editReviewReceipts     StudioEpisodeEditReviewReceipt[]
-  transcriptJobs         TranscriptJob[]
-  recordingRooms         CallRoom[]
-  outputPackets          StudioOutputPacket[]
-  outputSelections       StudioEpisodeOutputSelectionReceipt[]
-  audioTrackDecisions    StudioEpisodeAudioTrackDecisionReceipt[]
-  audioAnalyses          StudioEpisodeAudioAnalysisReceipt[]
-  audioReviews           StudioEpisodeAudioReviewReceipt[]
-  audioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
-  audioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
-  programDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
-  storyBoards            StudioStoryBoard[]
+  project                 StudioProject                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document                StudioDocument                              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  milestones              StudioEpisodeMilestone[]
+  editProposalSets        StudioEpisodeEditProposalSet[]
+  editReviewReceipts      StudioEpisodeEditReviewReceipt[]
+  transcriptJobs          TranscriptJob[]
+  recordingRooms          CallRoom[]
+  outputPackets           StudioOutputPacket[]
+  outputSelections        StudioEpisodeOutputSelectionReceipt[]
+  audioTrackDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
+  audioAnalyses           StudioEpisodeAudioAnalysisReceipt[]
+  audioReviews            StudioEpisodeAudioReviewReceipt[]
+  audioMixReviews         StudioEpisodeAudioMixReviewReceipt[]
+  audioMixPromotions      StudioEpisodeAudioMixPromotionReceipt[]
+  programDeliveryReviews  StudioEpisodeProgramDeliveryReviewReceipt[]
+  storyBoards             StudioStoryBoard[]
+  storyTimelinePlacements StudioStoryTimelinePlacement[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -5046,11 +5051,12 @@ model StudioSourceRange {
   createdByUserId   String
   createdAt         DateTime @default(now())
 
-  project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
-  sourceSet      StudioMediaSourceSet?     @relation(fields: [sourceSetId], references: [id], onDelete: Restrict)
-  createdBy      User                      @relation("StudioSourceRangeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  storyCards     StudioStoryCard[]
+  project            StudioProject                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRevision     StudioMediaSourceRevision      @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  sourceSet          StudioMediaSourceSet?          @relation(fields: [sourceSetId], references: [id], onDelete: Restrict)
+  createdBy          User                           @relation("StudioSourceRangeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  storyCards         StudioStoryCard[]
+  timelinePlacements StudioStoryTimelinePlacement[]
 
   @@unique([sourceRevisionId, selectorSha256])
   @@index([projectId, createdAt])
@@ -5079,13 +5085,14 @@ model StudioStoryCard {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  project     StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceRange StudioSourceRange?          @relation(fields: [sourceRangeId], references: [id], onDelete: Restrict)
-  createdBy   User                        @relation("StudioStoryCardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy   User?                       @relation("StudioStoryCardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  revisions   StudioStoryCardRevision[]
-  tags        StudioStoryCardTagLink[]
-  placements  StudioStoryBoardPlacement[]
+  project            StudioProject                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceRange        StudioSourceRange?             @relation(fields: [sourceRangeId], references: [id], onDelete: Restrict)
+  createdBy          User                           @relation("StudioStoryCardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy          User?                          @relation("StudioStoryCardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  revisions          StudioStoryCardRevision[]
+  tags               StudioStoryCardTagLink[]
+  placements         StudioStoryBoardPlacement[]
+  timelinePlacements StudioStoryTimelinePlacement[]
 
   @@unique([projectId, createdByUserId, clientRequestId])
   @@index([projectId, status, updatedAt])
@@ -5146,12 +5153,13 @@ model StudioStoryBoard {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  project           StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  episodeProduction StudioEpisodeProduction?    @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
-  createdBy         User                        @relation("StudioStoryBoardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy         User?                       @relation("StudioStoryBoardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  placements        StudioStoryBoardPlacement[]
-  operations        StudioStoryBoardOperation[]
+  project            StudioProject                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction  StudioEpisodeProduction?       @relation(fields: [episodeProductionId], references: [id], onDelete: SetNull)
+  createdBy          User                           @relation("StudioStoryBoardCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy          User?                          @relation("StudioStoryBoardUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  placements         StudioStoryBoardPlacement[]
+  operations         StudioStoryBoardOperation[]
+  timelinePlacements StudioStoryTimelinePlacement[]
 
   @@unique([projectId, slug])
   @@unique([projectId, createdByUserId, clientRequestId], map: "StudioStoryBoard_project_actor_request_key")
@@ -5172,9 +5180,10 @@ model StudioStoryBoardPlacement {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  board     StudioStoryBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  card      StudioStoryCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  createdBy User             @relation("StudioStoryBoardPlacementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  board              StudioStoryBoard               @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card               StudioStoryCard                @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  createdBy          User                           @relation("StudioStoryBoardPlacementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  timelinePlacements StudioStoryTimelinePlacement[]
 
   @@unique([boardId, cardId])
   @@index([boardId, groupKey, sortOrder])
@@ -5200,6 +5209,77 @@ model StudioStoryBoardOperation {
 
   @@unique([boardId, revision])
   @@unique([boardId, actorUserId, clientRequestId])
+  @@index([actorUserId, createdAt])
+}
+
+// Current projection of one deliberate Source Story card placement in an
+// Episode timeline. The canonical Episode artifact owns edit playback; this
+// row preserves the exact card/range/package origin and reversible lifecycle.
+model StudioStoryTimelinePlacement {
+  id                              String    @id @default(cuid())
+  projectId                       String
+  episodeProductionId             String
+  cardId                          String
+  sourceRangeId                   String
+  originBoardId                   String?
+  originBoardPlacementId          String?
+  clipId                          String
+  trackId                         String
+  episodeStartSeconds             Float
+  durationSeconds                 Float
+  status                          String    @default("active")
+  revision                        Int       @default(1)
+  timelineFingerprintBeforeSha256 String
+  timelineFingerprintAfterSha256  String
+  sourceSnapshotJson              Json
+  timelineClipJson                Json
+  clientRequestId                 String
+  createdByUserId                 String
+  createdByEmail                  String
+  updatedByUserId                 String?
+  withdrawnAt                     DateTime?
+  createdAt                       DateTime  @default(now())
+  updatedAt                       DateTime  @updatedAt
+
+  project              StudioProject                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction    StudioEpisodeProduction                 @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  card                 StudioStoryCard                         @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  sourceRange          StudioSourceRange                       @relation(fields: [sourceRangeId], references: [id], onDelete: Restrict)
+  originBoard          StudioStoryBoard?                       @relation(fields: [originBoardId], references: [id], onDelete: SetNull)
+  originBoardPlacement StudioStoryBoardPlacement?              @relation(fields: [originBoardPlacementId], references: [id], onDelete: SetNull)
+  createdBy            User                                    @relation("StudioStoryTimelinePlacementCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy            User?                                   @relation("StudioStoryTimelinePlacementUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  operations           StudioStoryTimelinePlacementOperation[]
+
+  @@unique([episodeProductionId, clipId])
+  @@unique([episodeProductionId, createdByUserId, clientRequestId], map: "StudioStoryTimelinePlacement_episode_actor_request_key")
+  @@index([projectId, status, updatedAt])
+  @@index([episodeProductionId, status, episodeStartSeconds])
+  @@index([cardId, status, updatedAt])
+  @@index([sourceRangeId])
+  @@index([originBoardId])
+  @@index([originBoardPlacementId])
+}
+
+// Append-only promotion and withdrawal ledger. Every operation binds the
+// exact before/after timeline fingerprints and the normalized request hash.
+model StudioStoryTimelinePlacementOperation {
+  id               String   @id @default(cuid())
+  placementId      String
+  revision         Int
+  previousRevision Int
+  operation        String
+  actorUserId      String
+  clientRequestId  String
+  requestSha256    String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+
+  placement StudioStoryTimelinePlacement @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  actor     User                         @relation("StudioStoryTimelinePlacementOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([placementId, revision])
+  @@unique([placementId, actorUserId, clientRequestId])
   @@index([actorUserId, createdAt])
 }
 

@@ -102,6 +102,27 @@ export type RebindSourceStoryCardInput = {
   reframeRecipe?: StoryReframeRecipe | null;
 };
 
+export type PromoteSourceStoryCardInput = {
+  projectId: string;
+  episodeProductionId: string;
+  cardId: string;
+  originBoardId?: string | null;
+  originBoardPlacementId?: string | null;
+  clientRequestId: string;
+  expectedTimelineFingerprint: string;
+  placementMode: "append" | "at-time";
+  episodeStartSeconds?: number | null;
+  trackId?: string;
+};
+
+export type WithdrawSourceStoryTimelinePlacementInput = {
+  projectId: string;
+  placementId: string;
+  expectedRevision: number;
+  expectedTimelineFingerprint: string;
+  clientRequestId: string;
+};
+
 export class SourceStoryContractError extends Error {
   readonly code: string;
 
@@ -352,6 +373,63 @@ export function normalizeRebindSourceStoryCardInput(value: RebindSourceStoryCard
     endSeconds,
     reason: boundedText(value.reason, "Reason", 2_000, true),
     reframeRecipe: normalizeStoryReframeRecipe(value.reframeRecipe, { startSeconds, endSeconds }),
+  };
+}
+
+function sha256Fingerprint(value: unknown, field: string) {
+  const normalized = boundedText(value, field, 64, true).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new SourceStoryContractError("invalid-fingerprint", `${field} must be a SHA-256 fingerprint.`);
+  }
+  return normalized;
+}
+
+export function normalizePromoteSourceStoryCardInput(value: PromoteSourceStoryCardInput) {
+  const placementMode = value.placementMode;
+  if (!(placementMode === "append" || placementMode === "at-time")) {
+    throw new SourceStoryContractError("invalid-placement-mode", "Choose append or an exact Episode time.");
+  }
+  const episodeStartSeconds = placementMode === "at-time"
+    ? finiteSeconds(value.episodeStartSeconds, "episodeStartSeconds")
+    : null;
+  const trackId = boundedText(value.trackId ?? "V1", "trackId", 8, true).toUpperCase();
+  if (!/^V[1-9][0-9]?$/.test(trackId)) {
+    throw new SourceStoryContractError("invalid-track", "Source Story video must be placed on a video track from V1 through V99.");
+  }
+  const originBoardId = value.originBoardId ? opaqueId(value.originBoardId, "originBoardId") : null;
+  const originBoardPlacementId = value.originBoardPlacementId
+    ? opaqueId(value.originBoardPlacementId, "originBoardPlacementId")
+    : null;
+  if (originBoardPlacementId && !originBoardId) {
+    throw new SourceStoryContractError("orphan-board-placement", "A board placement requires its board identity.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    episodeProductionId: opaqueId(value.episodeProductionId, "episodeProductionId"),
+    cardId: opaqueId(value.cardId, "cardId"),
+    originBoardId,
+    originBoardPlacementId,
+    clientRequestId: clientRequestId(value.clientRequestId),
+    expectedTimelineFingerprint: sha256Fingerprint(value.expectedTimelineFingerprint, "expectedTimelineFingerprint"),
+    placementMode,
+    episodeStartSeconds,
+    trackId,
+  };
+}
+
+export function normalizeWithdrawSourceStoryTimelinePlacementInput(value: WithdrawSourceStoryTimelinePlacementInput) {
+  const expectedRevision = Number(value.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw new SourceStoryContractError("invalid-revision", "The current timeline placement revision is required.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    placementId: opaqueId(value.placementId, "placementId"),
+    expectedRevision,
+    expectedTimelineFingerprint: sha256Fingerprint(value.expectedTimelineFingerprint, "expectedTimelineFingerprint"),
+    clientRequestId: clientRequestId(value.clientRequestId),
   };
 }
 

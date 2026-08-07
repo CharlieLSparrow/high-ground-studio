@@ -310,7 +310,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
-      expect(saved.payloadVersion).toBe(5);
+      expect(saved.payloadVersion).toBe(6);
       expect(saved.cameraAssemblyPolicy).toEqual(expect.objectContaining({ style: "natural-conversation", wideClipId: "wide-cam" }));
       expect(saved.cameraSwitchDecisions).toEqual(expect.arrayContaining([expect.objectContaining({ source: "deterministic-assembly", evidence: expect.objectContaining({ policyId: "camera-assembly-policy" }) })]));
     });
@@ -576,7 +576,7 @@ describe("CloudEditor production truth UX", () => {
       });
       expect(saveCall).toBeDefined();
       const saved = JSON.parse(String(saveCall?.[1]?.body)).timelineJson;
-      expect(saved.payloadVersion).toBe(5);
+      expect(saved.payloadVersion).toBe(6);
       expect(saved.deactivatedRanges[0]).toEqual(expect.objectContaining({
         startSeconds: 2,
         durationSeconds: 3,

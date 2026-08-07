@@ -3,6 +3,15 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type { SourceStoryTimelineBinding, TimelineClip, TimelineState } from "@high-ground/quipsly-domain";
+
+import {
+  buildEpisodeArtifactPayload,
+  episodeTimelineContentFingerprint,
+  normalizeEpisodeArtifact,
+  timelineStateFromEpisodeArtifact,
+  type EpisodeImportedMediaAsset,
+} from "@/app/(app)/episode-production/episodeArtifact";
 
 import {
   SOURCE_STORY_SCHEMA_VERSION,
@@ -10,12 +19,17 @@ import {
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
+  normalizePromoteSourceStoryCardInput,
+  normalizeStoryReframeRecipe,
+  normalizeWithdrawSourceStoryTimelinePlacementInput,
   stableSourceStoryJson,
   storyCardPurposes,
   storyCardStatuses,
   type CreateSourceStoryCardInput,
   type CreateMediaSourceSetInput,
   type RebindSourceStoryCardInput,
+  type PromoteSourceStoryCardInput,
+  type WithdrawSourceStoryTimelinePlacementInput,
   type StoryCardPurpose,
   type StoryCardStatus,
 } from "@/lib/source-story-contract";
@@ -1114,6 +1128,395 @@ export async function reorderStoryBoard(input: {
   }, { isolationLevel: "Serializable" });
 }
 
+function episodeFingerprintSha256(timeline: TimelineState) {
+  return sha256(episodeTimelineContentFingerprint(timeline));
+}
+
+function episodeEndSeconds(timeline: TimelineState) {
+  return timeline.clips.reduce((end, clip) => Math.max(end, clip.startIn + Math.max(clip.duration, 0.05)), 0);
+}
+
+function prismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function sourceStoryPublicPlacement<T extends {
+  createdAt: Date;
+  updatedAt: Date;
+  withdrawnAt: Date | null;
+}>(placement: T) {
+  return {
+    ...placement,
+    createdAt: placement.createdAt.toISOString(),
+    updatedAt: placement.updatedAt.toISOString(),
+    withdrawnAt: placement.withdrawnAt?.toISOString() ?? null,
+  };
+}
+
+export async function promoteSourceStoryCardToEpisode(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  actorEmail: string;
+  value: PromoteSourceStoryCardInput;
+}) {
+  const value = normalizePromoteSourceStoryCardInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const actorEmail = cleanText(input.actorEmail, "actorEmail", 320, true).toLowerCase();
+  const requestSha256 = sha256(stableSourceStoryJson(value));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryTimelinePlacement.findUnique({
+      where: {
+        episodeProductionId_createdByUserId_clientRequestId: {
+          episodeProductionId: value.episodeProductionId,
+          createdByUserId: actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      include: { operations: { where: { revision: 1 }, take: 1 } },
+    });
+    if (replay) {
+      if (replay.operations[0]?.requestSha256 !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already promoted a different Story card.", replay.revision);
+      }
+      return { placement: sourceStoryPublicPlacement(replay), replayed: true };
+    }
+
+    const episode = await tx.studioEpisodeProduction.findFirst({
+      where: { id: value.episodeProductionId, projectId: value.projectId },
+      include: { project: { select: { slug: true } } },
+    });
+    if (!episode) throw new SourceStoryContractError("episode-project-mismatch", "That Episode is unavailable in this Nest.");
+
+    const currentArtifact = normalizeEpisodeArtifact(episode.timelineJson);
+    const timeline = timelineStateFromEpisodeArtifact(episode.timelineJson);
+    const beforeFingerprint = episodeFingerprintSha256(timeline);
+    if (beforeFingerprint !== value.expectedTimelineFingerprint) {
+      throw new SourceStoryConflictError("stale-episode-timeline", "The Episode timeline changed before this card could be promoted.");
+    }
+
+    const card = await tx.studioStoryCard.findFirst({
+      where: { id: value.cardId, projectId: value.projectId, archivedAt: null },
+      include: {
+        sourceRange: {
+          include: {
+            sourceSet: { select: { id: true, kind: true, identitySha256: true, completeness: true } },
+            sourceRevision: {
+              include: {
+                mediaAsset: { select: { id: true, filename: true, url: true, mimeType: true, sizeBytes: true, duration: true } },
+                externalReference: { select: { id: true, provider: true, fileName: true, mimeType: true, accessState: true } },
+                derivatives: {
+                  where: { kind: "collaboration-proxy", status: "ready" },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                  select: { id: true, profile: true, contentSha256: true, sizeBytes: true, mimeType: true, durationSeconds: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!card?.sourceRange) throw new SourceStoryContractError("story-card-source-missing", "That Story card no longer resolves to an immutable source range.");
+    const range = card.sourceRange;
+    const revision = range.sourceRevision;
+    if (!revision.contentSha256 || !SHA256.test(revision.contentSha256)) {
+      throw new SourceStoryContractError("source-checksum-required", "The exact Story source must be checksum-verified before timeline promotion.");
+    }
+    if (!(revision.sourceState === "available" || revision.sourceState === "checksum-bound")) {
+      throw new SourceStoryContractError("source-unavailable", "The exact Story source is not currently available for editing.");
+    }
+    const derivative = revision.derivatives[0] ?? null;
+    if (revision.externalReference && !derivative) {
+      throw new SourceStoryContractError("external-proxy-required", "A verified collaboration proxy is required before an external Story source can enter an Episode.");
+    }
+    if (!revision.mediaAsset && !revision.externalReference) {
+      throw new SourceStoryContractError("source-resolution-missing", "The retained Story source has no resolvable asset or provider reference.");
+    }
+    if (range.sourceSet && range.sourceSet.completeness !== "complete") {
+      throw new SourceStoryContractError("source-set-incomplete", "Complete the multi-file camera package before timeline promotion.");
+    }
+
+    let originBoardPlacement: { id: string; boardId: string } | null = null;
+    if (value.originBoardPlacementId) {
+      originBoardPlacement = await tx.studioStoryBoardPlacement.findFirst({
+        where: {
+          id: value.originBoardPlacementId,
+          boardId: value.originBoardId!,
+          cardId: card.id,
+          board: { projectId: value.projectId, archivedAt: null },
+        },
+        select: { id: true, boardId: true },
+      });
+      if (!originBoardPlacement) throw new SourceStoryContractError("board-placement-mismatch", "That card is no longer in the selected Story board position.");
+    } else if (value.originBoardId) {
+      const board = await tx.studioStoryBoard.findFirst({ where: { id: value.originBoardId, projectId: value.projectId, archivedAt: null }, select: { id: true } });
+      if (!board) throw new SourceStoryContractError("board-project-mismatch", "That Story board is unavailable in this Nest.");
+    }
+
+    const duration = Math.max(0.05, range.endSeconds - range.startSeconds);
+    const episodeStartSeconds = value.placementMode === "append"
+      ? episodeEndSeconds(timeline)
+      : value.episodeStartSeconds!;
+    const placementId = randomUUID();
+    const clipId = `source-story:${placementId}`;
+    const importedAssetId = `source-story-source:${revision.id}`;
+    const promotedAt = new Date().toISOString();
+    const reframeRecipe = normalizeStoryReframeRecipe(
+      range.reframeRecipeJson as Parameters<typeof normalizeStoryReframeRecipe>[0],
+      { startSeconds: range.startSeconds, endSeconds: range.endSeconds },
+    );
+    const sourceStory: SourceStoryTimelineBinding = {
+      schema: "quipsly-source-story-timeline-binding-v1",
+      placementId,
+      cardId: card.id,
+      cardStableId: card.stableId,
+      cardRevision: card.revision,
+      sourceRangeId: range.id,
+      selectorSha256: range.selectorSha256,
+      sourceRevisionId: revision.id,
+      sourceIdentitySha256: revision.identitySha256,
+      sourceContentSha256: revision.contentSha256,
+      sourceSetId: range.sourceSet?.id ?? null,
+      sourceSetIdentitySha256: range.sourceSet?.identitySha256 ?? null,
+      externalReferenceId: revision.externalReference?.id ?? null,
+      browseDerivative: derivative ? {
+        id: derivative.id,
+        profile: derivative.profile,
+        contentSha256: derivative.contentSha256,
+        sizeBytes: derivative.sizeBytes.toString(),
+        mimeType: derivative.mimeType,
+      } : null,
+      reframeRecipe,
+      promotedAt,
+      promotedByUserId: actorUserId,
+      promotedByEmail: actorEmail,
+      boundaries: {
+        sourceMediaUnchanged: true,
+        browseDerivativeIsNotOriginal: true,
+        sourceClockPreserved: true,
+        finalRenderMustResolveExactSource: true,
+        publicationNotStarted: true,
+      },
+    };
+    const transforms = reframeRecipe?.keyframes.map((keyframe, index) => ({
+      id: `${clipId}:reframe:${index}`,
+      timeOffset: Math.max(0, keyframe.sourceSeconds - range.startSeconds),
+      scale: keyframe.fieldOfViewDegrees,
+      x: keyframe.panDegrees,
+      y: keyframe.tiltDegrees,
+      rotation: keyframe.rollDegrees,
+      easing: keyframe.interpolation === "ease" ? "ease-in-out" as const : "linear" as const,
+    })) ?? [];
+    const clip: TimelineClip = {
+      id: clipId,
+      assetId: importedAssetId,
+      sourceId: revision.id,
+      kind: "video",
+      trackId: value.trackId,
+      startIn: episodeStartSeconds,
+      duration,
+      sourceStart: range.startSeconds,
+      sourceEnd: range.endSeconds,
+      name: card.title,
+      color: "#7c3aed",
+      transforms,
+      generatedFrom: "quipsly-source-story-promotion-v1",
+      sourceStory,
+    };
+    const nextTimeline: TimelineState = { ...timeline, clips: [...timeline.clips, clip] };
+    const afterFingerprint = episodeFingerprintSha256(nextTimeline);
+    const playbackUrl = derivative
+      ? `/api/media/derivatives/${encodeURIComponent(derivative.id)}`
+      : revision.mediaAsset!.url;
+    const importedMedia: EpisodeImportedMediaAsset = {
+      id: importedAssetId,
+      sourceId: revision.id,
+      projectSlug: episode.project.slug,
+      episodeSlug: episode.slug,
+      originalName: revision.externalReference?.fileName ?? revision.mediaAsset?.filename ?? card.title,
+      contentType: derivative?.mimeType ?? revision.mediaAsset?.mimeType ?? revision.externalReference?.mimeType ?? "video/mp4",
+      size: Number(derivative?.sizeBytes ?? revision.mediaAsset?.sizeBytes ?? BigInt(0)),
+      kind: "video",
+      is360: Boolean(reframeRecipe || range.sourceSet?.kind === "insta360-360"),
+      originalFormat: revision.externalReference?.fileName.split(".").pop()?.toLowerCase() ?? revision.mediaAsset?.filename.split(".").pop()?.toLowerCase() ?? "",
+      bucketName: "",
+      objectName: derivative?.id ?? revision.mediaAsset?.id ?? revision.id,
+      gcsUri: "",
+      playbackUrl,
+      importedAt: promotedAt,
+      source: "source-story",
+      importRole: "story-select",
+      metadata: { sourceStory: prismaJson(sourceStory) as Record<string, unknown> },
+      sync: { status: "synced", anchorTimelineSeconds: episodeStartSeconds, targetClipId: clipId, source: "source-story-promotion", syncedAt: promotedAt },
+      proxy: derivative ? {
+        status: "external-preview",
+        proxyUrl: playbackUrl,
+        proxyAssetId: derivative.id,
+        sourceId: revision.id,
+        profile: derivative.profile,
+        sourceOriginalPreserved: true,
+        immutableObjectEvidence: { contentSha256: derivative.contentSha256, sizeBytes: derivative.sizeBytes.toString() },
+        note: "Collaboration proxy only; final render resolves the exact retained source binding.",
+      } : { status: "not-required", sourceOriginalPreserved: true },
+    };
+    const priorImported = currentArtifact?.importedMedia ?? [];
+    const nextImported = [...priorImported.filter((asset) => asset.id !== importedAssetId), importedMedia];
+    const artifact = buildEpisodeArtifactPayload({
+      timeline: nextTimeline,
+      projectSlug: episode.project.slug,
+      episodeSlug: episode.slug,
+      generatedFrom: "quipsly-source-story-promotion-v1",
+      savedAt: promotedAt,
+      source: "quipsly-editor",
+    });
+    artifact.importedMedia = nextImported;
+    const priorProduction = jsonRecord(episode.productionJson) ?? {};
+    const productionJson = {
+      ...priorProduction,
+      episodeProductionPayloadVersion: 1,
+      projectSlug: artifact.projectSlug,
+      episodeSlug: episode.slug,
+      importedMedia: nextImported,
+      timelineClips: artifact.timelineClips,
+      lastSourceStoryPromotion: {
+        placementId,
+        cardId: card.id,
+        clipId,
+        promotedAt,
+        sourceMediaUnchanged: true,
+        publicationNotStarted: true,
+      },
+    };
+    const sourceSnapshot = {
+      schema: "quipsly-source-story-promotion-snapshot-v1",
+      card: { id: card.id, stableId: card.stableId, revision: card.revision, title: card.title, purpose: card.purpose },
+      range: { id: range.id, selectorSha256: range.selectorSha256, startSeconds: range.startSeconds, endSeconds: range.endSeconds },
+      sourceStory,
+      importedMedia,
+    };
+
+    await tx.studioEpisodeProduction.update({
+      where: { id: episode.id },
+      data: { timelineJson: prismaJson(artifact), transcriptJson: prismaJson(artifact), productionJson: prismaJson(productionJson) },
+    });
+    const placement = await tx.studioStoryTimelinePlacement.create({
+      data: {
+        id: placementId,
+        projectId: value.projectId,
+        episodeProductionId: episode.id,
+        cardId: card.id,
+        sourceRangeId: range.id,
+        originBoardId: value.originBoardId,
+        originBoardPlacementId: originBoardPlacement?.id ?? null,
+        clipId,
+        trackId: value.trackId,
+        episodeStartSeconds,
+        durationSeconds: duration,
+        timelineFingerprintBeforeSha256: beforeFingerprint,
+        timelineFingerprintAfterSha256: afterFingerprint,
+        sourceSnapshotJson: prismaJson(sourceSnapshot),
+        timelineClipJson: prismaJson(clip),
+        clientRequestId: value.clientRequestId,
+        createdByUserId: actorUserId,
+        createdByEmail: actorEmail,
+        updatedByUserId: actorUserId,
+        operations: { create: {
+          revision: 1,
+          previousRevision: 0,
+          operation: "promote",
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+          requestSha256,
+          snapshotJson: prismaJson({ sourceSnapshot, beforeFingerprint, afterFingerprint, episodeUpdatedAt: promotedAt }),
+        } },
+      },
+    });
+    return { placement: sourceStoryPublicPlacement(placement), replayed: false, episode: { id: episode.id, slug: episode.slug, timelineFingerprint: afterFingerprint } };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function withdrawSourceStoryTimelinePlacement(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: WithdrawSourceStoryTimelinePlacementInput;
+}) {
+  const value = normalizeWithdrawSourceStoryTimelinePlacementInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson(value));
+
+  return input.prisma.$transaction(async (tx) => {
+    const placement = await tx.studioStoryTimelinePlacement.findFirst({
+      where: { id: value.placementId, projectId: value.projectId },
+      include: {
+        episodeProduction: { include: { project: { select: { slug: true } } } },
+        operations: { where: { actorUserId, clientRequestId: value.clientRequestId }, take: 1 },
+      },
+    });
+    if (!placement) throw new SourceStoryContractError("timeline-placement-missing", "That Story timeline placement is unavailable in this Nest.");
+    const replay = placement.operations[0];
+    if (replay) {
+      if (replay.requestSha256 !== requestSha256) throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already changed this placement differently.", placement.revision);
+      return { placement: sourceStoryPublicPlacement(placement), replayed: true };
+    }
+    if (placement.revision !== value.expectedRevision) throw new SourceStoryConflictError("stale-timeline-placement", "That timeline placement changed before it could be withdrawn.", placement.revision);
+    if (placement.status !== "active") throw new SourceStoryConflictError("timeline-placement-not-active", "That Story clip is already withdrawn.", placement.revision);
+
+    const episode = placement.episodeProduction;
+    const currentArtifact = normalizeEpisodeArtifact(episode.timelineJson);
+    const timeline = timelineStateFromEpisodeArtifact(episode.timelineJson);
+    const beforeFingerprint = episodeFingerprintSha256(timeline);
+    if (beforeFingerprint !== value.expectedTimelineFingerprint) throw new SourceStoryConflictError("stale-episode-timeline", "The Episode timeline changed before this Story clip could be withdrawn.");
+    if (!timeline.clips.some((clip) => clip.id === placement.clipId)) throw new SourceStoryConflictError("timeline-clip-missing", "The canonical Episode no longer contains this placement clip.", placement.revision);
+
+    const nextTimeline = { ...timeline, clips: timeline.clips.filter((clip) => clip.id !== placement.clipId) };
+    const storedClip = jsonRecord(placement.timelineClipJson);
+    const importedAssetId = typeof storedClip?.assetId === "string" ? storedClip.assetId : "";
+    const assetStillUsed = nextTimeline.clips.some((clip) => clip.assetId === importedAssetId);
+    const nextImported = (currentArtifact?.importedMedia ?? []).filter((asset) => assetStillUsed || asset.id !== importedAssetId);
+    const withdrawnAt = new Date().toISOString();
+    const artifact = buildEpisodeArtifactPayload({
+      timeline: nextTimeline,
+      projectSlug: episode.project.slug,
+      episodeSlug: episode.slug,
+      generatedFrom: "quipsly-source-story-withdrawal-v1",
+      savedAt: withdrawnAt,
+      source: "quipsly-editor",
+    });
+    artifact.importedMedia = nextImported;
+    const priorProduction = jsonRecord(episode.productionJson) ?? {};
+    const productionJson = {
+      ...priorProduction,
+      importedMedia: nextImported,
+      timelineClips: artifact.timelineClips,
+      lastSourceStoryWithdrawal: { placementId: placement.id, clipId: placement.clipId, withdrawnAt, sourceMediaUnchanged: true, publicationNotStarted: true },
+    };
+    const afterFingerprint = episodeFingerprintSha256(nextTimeline);
+    const nextRevision = placement.revision + 1;
+    await tx.studioEpisodeProduction.update({ where: { id: episode.id }, data: { timelineJson: prismaJson(artifact), transcriptJson: prismaJson(artifact), productionJson: prismaJson(productionJson) } });
+    const updated = await tx.studioStoryTimelinePlacement.update({
+      where: { id: placement.id },
+      data: {
+        status: "withdrawn",
+        revision: nextRevision,
+        timelineFingerprintAfterSha256: afterFingerprint,
+        withdrawnAt: new Date(withdrawnAt),
+        updatedByUserId: actorUserId,
+        operations: { create: {
+          revision: nextRevision,
+          previousRevision: placement.revision,
+          operation: "withdraw",
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+          requestSha256,
+          snapshotJson: prismaJson({ beforeFingerprint, afterFingerprint, clipId: placement.clipId, withdrawnAt }),
+        } },
+      },
+    });
+    return { placement: sourceStoryPublicPlacement(updated), replayed: false, episode: { id: episode.id, slug: episode.slug, timelineFingerprint: afterFingerprint } };
+  }, { isolationLevel: "Serializable" });
+}
+
 export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: string) {
   const derivativeSelect = {
     id: true,
@@ -1127,7 +1530,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     framesPerSecond: true,
     createdAt: true,
   } as const;
-  const [boards, cards, externalSources, externalProxyJobs, sourceSets] = await Promise.all([
+  const [boards, cards, externalSources, externalProxyJobs, sourceSets, episodes, timelinePlacements] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -1263,6 +1666,37 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         },
       },
     }),
+    prisma.studioEpisodeProduction.findMany({
+      where: { projectId },
+      orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
+      take: 500,
+      select: { id: true, slug: true, title: true, status: true, timelineJson: true, updatedAt: true },
+    }),
+    prisma.studioStoryTimelinePlacement.findMany({
+      where: { projectId },
+      orderBy: [{ updatedAt: "desc" }, { episodeStartSeconds: "asc" }],
+      take: 1_000,
+      select: {
+        id: true,
+        episodeProductionId: true,
+        cardId: true,
+        sourceRangeId: true,
+        originBoardId: true,
+        originBoardPlacementId: true,
+        clipId: true,
+        trackId: true,
+        episodeStartSeconds: true,
+        durationSeconds: true,
+        status: true,
+        revision: true,
+        timelineFingerprintBeforeSha256: true,
+        timelineFingerprintAfterSha256: true,
+        createdByEmail: true,
+        withdrawnAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
   ]);
   const publicDerivative = (derivative: {
     id: string;
@@ -1340,6 +1774,25 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
   const cardById = new Map(cards.map((card) => [card.id, card]));
   return {
     schema: SOURCE_STORY_SCHEMA_VERSION,
+    episodes: episodes.map((episode) => {
+      const timeline = timelineStateFromEpisodeArtifact(episode.timelineJson);
+      return {
+        id: episode.id,
+        slug: episode.slug,
+        title: episode.title,
+        status: episode.status,
+        updatedAt: episode.updatedAt.toISOString(),
+        timelineFingerprint: episodeFingerprintSha256(timeline),
+        timelineDurationSeconds: episodeEndSeconds(timeline),
+        clipCount: timeline.clips.length,
+      };
+    }),
+    timelinePlacements: timelinePlacements.map((placement) => ({
+      ...placement,
+      withdrawnAt: placement.withdrawnAt?.toISOString() ?? null,
+      createdAt: placement.createdAt.toISOString(),
+      updatedAt: placement.updatedAt.toISOString(),
+    })),
     sourceSets: sourceSets.map((sourceSet) => ({
       id: sourceSet.id,
       kind: sourceSet.kind,

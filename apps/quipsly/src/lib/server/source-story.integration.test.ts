@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { normalizeEpisodeArtifact, timelineStateFromEpisodeArtifact } from "@/app/(app)/episode-production/episodeArtifact";
 
 import {
   SourceStoryConflictError,
@@ -10,9 +11,11 @@ import {
   createSourceStoryCard,
   createStoryBoard,
   readSourceStoryWorkspace,
+  promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
+  withdrawSourceStoryTimelinePlacement,
 } from "./source-story";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
@@ -551,6 +554,17 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
         startSeconds: 2.25,
         endSeconds: 8.75,
         reason: "The exact replacement source bytes are now registered.",
+        reframeRecipe: {
+          schema: "quipsly-360-reframe-v1" as const,
+          projection: "equirectangular" as const,
+          aspectRatio: "16:9" as const,
+          stabilization: "flowstate" as const,
+          horizonLock: true,
+          keyframes: [
+            { sourceSeconds: 2.25, panDegrees: 14, tiltDegrees: 0, rollDegrees: 0, fieldOfViewDegrees: 92, interpolation: "ease" as const },
+            { sourceSeconds: 8.75, panDegrees: 30, tiltDegrees: -3, rollDegrees: 0, fieldOfViewDegrees: 78, interpolation: "ease" as const },
+          ],
+        },
       },
     };
     const rebound = await rebindSourceStoryCard(input);
@@ -626,5 +640,72 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
         placementsMutated: false,
       },
     });
+  });
+
+  it("promotes a verified Story range into the canonical Episode and withdraws it reversibly", async () => {
+    const document = await prisma.studioDocument.create({
+      data: { projectId, stableId: `source-story-document-${nonce}`, title: "Episode 9 source build", projectionStatus: "review", isPrivate: false },
+    });
+    const episode = await prisma.studioEpisodeProduction.create({
+      data: { projectId, documentId: document.id, slug: `source-story-episode-${nonce}`, title: "Episode 9 source promotion", boundaryLabel: "Episode 9", status: "draft" },
+    });
+    const boardPlacement = await prisma.studioStoryBoardPlacement.findFirstOrThrow({ where: { boardId, cardId: firstCardId } });
+    const beforeWorkspace = await readSourceStoryWorkspace(prisma, projectId);
+    const beforeEpisode = beforeWorkspace.episodes.find((candidate) => candidate.id === episode.id)!;
+    const clientRequestId = randomUUID();
+    const value = {
+      projectId,
+      episodeProductionId: episode.id,
+      cardId: firstCardId,
+      originBoardId: boardId,
+      originBoardPlacementId: boardPlacement.id,
+      clientRequestId,
+      expectedTimelineFingerprint: beforeEpisode.timelineFingerprint,
+      placementMode: "append" as const,
+      trackId: "V2",
+    };
+    const promoted = await promoteSourceStoryCardToEpisode({ prisma, actorUserId, actorEmail, value });
+    expect(promoted).toMatchObject({ replayed: false, placement: { status: "active", revision: 1, trackId: "V2", episodeStartSeconds: 0 } });
+    await expect(promoteSourceStoryCardToEpisode({ prisma, actorUserId, actorEmail, value })).resolves.toMatchObject({ replayed: true, placement: { id: promoted.placement.id } });
+    await expect(promoteSourceStoryCardToEpisode({ prisma, actorUserId, actorEmail, value: { ...value, trackId: "V3" } })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 1 });
+
+    const afterPromotion = await prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
+    const artifact = normalizeEpisodeArtifact(afterPromotion.timelineJson)!;
+    const timeline = timelineStateFromEpisodeArtifact(afterPromotion.timelineJson);
+    expect(artifact).toMatchObject({
+      payloadVersion: 6,
+      importedMedia: [expect.objectContaining({ source: "source-story", is360: true, proxy: expect.objectContaining({ sourceOriginalPreserved: true }) })],
+      timelineClips: [expect.objectContaining({
+        id: promoted.placement.clipId,
+        sourceStory: expect.objectContaining({ cardId: firstCardId, boundaries: expect.objectContaining({ finalRenderMustResolveExactSource: true }) }),
+        transforms: [expect.objectContaining({ x: 14, scale: 92 }), expect.objectContaining({ x: 30, scale: 78 })],
+      })],
+    });
+    expect(timeline.clips[0]?.sourceStory?.placementId).toBe(promoted.placement.id);
+    expect(await prisma.studioStoryTimelinePlacementOperation.count({ where: { placementId: promoted.placement.id } })).toBe(1);
+
+    const promotedWorkspace = await readSourceStoryWorkspace(prisma, projectId);
+    const promotedEpisode = promotedWorkspace.episodes.find((candidate) => candidate.id === episode.id)!;
+    expect(promotedEpisode).toMatchObject({ clipCount: 1, timelineDurationSeconds: 6.5 });
+    const withdrawRequestId = randomUUID();
+    const withdrawValue = {
+      projectId,
+      placementId: promoted.placement.id,
+      expectedRevision: 1,
+      expectedTimelineFingerprint: promotedEpisode.timelineFingerprint,
+      clientRequestId: withdrawRequestId,
+    };
+    const withdrawn = await withdrawSourceStoryTimelinePlacement({ prisma, actorUserId, value: withdrawValue });
+    expect(withdrawn).toMatchObject({ replayed: false, placement: { status: "withdrawn", revision: 2 } });
+    await expect(withdrawSourceStoryTimelinePlacement({ prisma, actorUserId, value: withdrawValue })).resolves.toMatchObject({ replayed: true, placement: { revision: 2 } });
+    const afterWithdrawal = await prisma.studioEpisodeProduction.findUniqueOrThrow({ where: { id: episode.id } });
+    expect(timelineStateFromEpisodeArtifact(afterWithdrawal.timelineJson).clips).toEqual([]);
+    expect(normalizeEpisodeArtifact(afterWithdrawal.timelineJson)?.importedMedia).toEqual([]);
+    expect(await prisma.studioStoryCard.findUnique({ where: { id: firstCardId } })).not.toBeNull();
+    expect(await prisma.studioSourceRange.findUnique({ where: { id: firstRangeId } })).not.toBeNull();
+    expect(await prisma.studioStoryTimelinePlacementOperation.findMany({ where: { placementId: promoted.placement.id }, orderBy: { revision: "asc" }, select: { revision: true, operation: true } })).toEqual([
+      { revision: 1, operation: "promote" },
+      { revision: 2, operation: "withdraw" },
+    ]);
   });
 });

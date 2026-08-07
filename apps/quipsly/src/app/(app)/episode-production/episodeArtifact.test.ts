@@ -1,16 +1,18 @@
 import {
   EPISODE_ARTIFACT_CURRENT_VERSION,
   EPISODE_ARTIFACT_LEGACY_VERSION,
+  buildEpisodeArtifactPayload,
   episodeTimelineContentFingerprint,
   getEpisodePayloadVersion,
   normalizeEpisodeArtifact,
+  timelineStateFromEpisodeArtifact,
 } from "./episodeArtifact";
 
-describe("episode artifact v5", () => {
+describe("episode artifact v6", () => {
   it("keeps unversioned recorder payloads on the legacy version", () => {
     expect(getEpisodePayloadVersion({ version: "quipsly-recording-room.v1" })).toBe(EPISODE_ARTIFACT_LEGACY_VERSION);
     expect(getEpisodePayloadVersion({ timelineClips: [], transcript: [] })).toBe(EPISODE_ARTIFACT_LEGACY_VERSION);
-    expect(EPISODE_ARTIFACT_CURRENT_VERSION).toBe(5);
+    expect(EPISODE_ARTIFACT_CURRENT_VERSION).toBe(6);
   });
 
   it("round-trips optional exact range decisions and speaker metadata", () => {
@@ -147,5 +149,74 @@ describe("episode artifact v5", () => {
 
     expect(episodeTimelineContentFingerprint(changedVolume)).not.toBe(episodeTimelineContentFingerprint(base));
     expect(episodeTimelineContentFingerprint(changedTransform)).not.toBe(episodeTimelineContentFingerprint(base));
+  });
+
+  it("round-trips Source Story identity and spatial view decisions without flattening them", () => {
+    const sourceStory = {
+      schema: "quipsly-source-story-timeline-binding-v1" as const,
+      placementId: "placement-1",
+      cardId: "card-1",
+      cardStableId: "story-card:project:card-1",
+      cardRevision: 3,
+      sourceRangeId: "range-1",
+      selectorSha256: "1".repeat(64),
+      sourceRevisionId: "revision-1",
+      sourceIdentitySha256: "2".repeat(64),
+      sourceContentSha256: "3".repeat(64),
+      sourceSetId: "set-1",
+      sourceSetIdentitySha256: "4".repeat(64),
+      externalReferenceId: "external-1",
+      browseDerivative: { id: "proxy-1", profile: "browse-1080p", contentSha256: "5".repeat(64), sizeBytes: "1234", mimeType: "video/mp4" },
+      reframeRecipe: {
+        schema: "quipsly-360-reframe-v1" as const,
+        projection: "equirectangular" as const,
+        aspectRatio: "16:9" as const,
+        stabilization: "flowstate" as const,
+        horizonLock: true,
+        keyframes: [{ sourceSeconds: 12, panDegrees: 20, tiltDegrees: -4, rollDegrees: 1, fieldOfViewDegrees: 80, interpolation: "ease" as const }],
+      },
+      promotedAt: "2026-08-08T00:00:00.000Z",
+      promotedByUserId: "user-1",
+      promotedByEmail: "editor@quipsly.com",
+      boundaries: {
+        sourceMediaUnchanged: true as const,
+        browseDerivativeIsNotOriginal: true as const,
+        sourceClockPreserved: true as const,
+        finalRenderMustResolveExactSource: true as const,
+        publicationNotStarted: true as const,
+      },
+    };
+    const timeline = {
+      clips: [{
+        id: "source-story:placement-1",
+        assetId: "source-story-source:revision-1",
+        sourceId: "revision-1",
+        kind: "video" as const,
+        trackId: "V2",
+        startIn: 30,
+        duration: 8,
+        sourceStart: 10,
+        sourceEnd: 18,
+        name: "Spatial select",
+        color: "#7c3aed",
+        volume: 0.8,
+        deactivated: false,
+        transforms: [{ id: "view-1", timeOffset: 2, scale: 80, x: 20, y: -4, rotation: 1, easing: "ease-in-out" as const }],
+        sourceStory,
+      }],
+      transcript: [],
+    };
+
+    const artifact = buildEpisodeArtifactPayload({ timeline, projectSlug: "high-ground-odyssey", episodeSlug: "episode-9", generatedFrom: "test", savedAt: "2026-08-08T00:00:00.000Z" });
+    const hydrated = timelineStateFromEpisodeArtifact(artifact);
+
+    expect(artifact.payloadVersion).toBe(6);
+    expect(hydrated.clips[0]).toEqual(expect.objectContaining({
+      volume: 0.8,
+      deactivated: false,
+      transforms: [expect.objectContaining({ id: "view-1", scale: 80, x: 20 })],
+      sourceStory: expect.objectContaining({ placementId: "placement-1", sourceContentSha256: "3".repeat(64) }),
+    }));
+    expect(episodeTimelineContentFingerprint(hydrated)).toBe(episodeTimelineContentFingerprint(timeline));
   });
 });

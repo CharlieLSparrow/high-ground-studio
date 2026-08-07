@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  ArrowRight,
   Check,
   CircleAlert,
   Cloud,
@@ -23,6 +24,7 @@ import {
   Save,
   Search,
   Tags,
+  Undo2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -106,6 +108,36 @@ type SourceStoryBoard = {
 
 type SourceStoryWorkspace = {
   schema: "quipsly-source-story-v1";
+  episodes: Array<{
+    id: string;
+    slug: string;
+    title: string;
+    status: string;
+    updatedAt: string;
+    timelineFingerprint: string;
+    timelineDurationSeconds: number;
+    clipCount: number;
+  }>;
+  timelinePlacements: Array<{
+    id: string;
+    episodeProductionId: string;
+    cardId: string;
+    sourceRangeId: string;
+    originBoardId: string | null;
+    originBoardPlacementId: string | null;
+    clipId: string;
+    trackId: string;
+    episodeStartSeconds: number;
+    durationSeconds: number;
+    status: string;
+    revision: number;
+    timelineFingerprintBeforeSha256: string;
+    timelineFingerprintAfterSha256: string;
+    createdByEmail: string;
+    withdrawnAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
   sourceSets: MediaSourceSet[];
   externalSources: Array<{
     id: string;
@@ -776,6 +808,7 @@ export function SourceStoryClient({
                     <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
                     {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
                     {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
+                    {canWrite ? <TimelinePromotionEditor card={placement.card} board={selectedBoard} boardPlacementId={placement.id} workspace={workspace} pending={pending} mutate={mutate} projectSlug={project.slug} /> : null}
                     {canWrite ? <StoryCardEditor card={placement.card} tags={tags} pending={pending} mutate={mutate} /> : null}
                   </article>
                 ))}
@@ -788,6 +821,63 @@ export function SourceStoryClient({
         </aside>
       </div>
     </main>
+  );
+}
+
+function TimelinePromotionEditor({
+  card,
+  board,
+  boardPlacementId,
+  workspace,
+  pending,
+  mutate,
+  projectSlug,
+}: {
+  card: SourceStoryCard;
+  board: SourceStoryBoard;
+  boardPlacementId: string;
+  workspace: SourceStoryWorkspace;
+  pending: boolean;
+  mutate: (body: Record<string, unknown>, message: string) => Promise<SourceStoryWorkspace | null>;
+  projectSlug: string;
+}) {
+  const preferredEpisodeId = board.episodeProductionId && workspace.episodes.some((episode) => episode.id === board.episodeProductionId)
+    ? board.episodeProductionId
+    : workspace.episodes[0]?.id ?? "";
+  const [episodeId, setEpisodeId] = useState(preferredEpisodeId);
+  const [placementMode, setPlacementMode] = useState<"append" | "at-time">("append");
+  const [episodeStartSeconds, setEpisodeStartSeconds] = useState(0);
+  const [trackId, setTrackId] = useState("V1");
+
+  useEffect(() => {
+    if (!workspace.episodes.some((episode) => episode.id === episodeId)) setEpisodeId(preferredEpisodeId);
+  }, [episodeId, preferredEpisodeId, workspace.episodes]);
+
+  const episode = workspace.episodes.find((candidate) => candidate.id === episodeId) ?? null;
+  const placements = workspace.timelinePlacements.filter((placement) => placement.cardId === card.id);
+  const activePlacements = placements.filter((placement) => placement.status === "active");
+  const canPromote = Boolean(card.sourceRange && episode && /^V[1-9][0-9]?$/.test(trackId) && (placementMode === "append" || (Number.isFinite(episodeStartSeconds) && episodeStartSeconds >= 0)));
+
+  return (
+    <details className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-violet-950">Episode timeline · {activePlacements.length ? `${activePlacements.length} active placement${activePlacements.length === 1 ? "" : "s"}` : "not placed"}</summary>
+      <p className="mt-2 text-xs font-semibold leading-5 text-violet-900">Promotion creates one normal, editable Episode clip while retaining this exact card, source-clock range, checksum, camera package, and 360 view recipe. It never renders or publishes.</p>
+      {workspace.episodes.length ? (
+        <div className="mt-3 grid gap-3">
+          <label className="text-[10px] font-black uppercase tracking-wide text-violet-950">Episode<select value={episodeId} onChange={(event) => setEpisodeId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold">{workspace.episodes.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title} · {formatClock(candidate.timelineDurationSeconds)} · {candidate.clipCount} clips</option>)}</select></label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="text-[10px] font-black uppercase tracking-wide text-violet-950">Placement<select value={placementMode} onChange={(event) => setPlacementMode(event.target.value as "append" | "at-time")} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold"><option value="append">Append to Episode</option><option value="at-time">Place at exact time</option></select></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-violet-950">Episode time<input type="number" min="0" step="0.001" disabled={placementMode === "append"} value={placementMode === "append" ? episode?.timelineDurationSeconds ?? 0 : episodeStartSeconds} onChange={(event) => setEpisodeStartSeconds(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-mono text-xs font-bold disabled:bg-violet-100" /></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-violet-950">Video track<input value={trackId} onChange={(event) => setTrackId(event.target.value.toUpperCase())} maxLength={3} className="mt-1 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 font-mono text-xs font-bold" /></label>
+          </div>
+          <button type="button" disabled={pending || !canPromote} onClick={() => episode && void mutate({ action: "promote-card-to-episode", cardId: card.id, originBoardId: board.id, originBoardPlacementId: boardPlacementId, episodeProductionId: episode.id, expectedTimelineFingerprint: episode.timelineFingerprint, placementMode, episodeStartSeconds: placementMode === "at-time" ? episodeStartSeconds : null, trackId, clientRequestId: crypto.randomUUID() }, `Placed ${card.title} in ${episode.title} with a reversible source receipt.`)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-violet-900 px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"><ArrowRight size={15} aria-hidden="true" />Place in Episode timeline</button>
+        </div>
+      ) : <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-950">Create an Episode production before promoting Story cards.</p>}
+      {placements.length ? <ol className="mt-4 grid gap-2">{placements.map((placement) => {
+        const target = workspace.episodes.find((candidate) => candidate.id === placement.episodeProductionId);
+        return <li key={placement.id} className="rounded-xl border border-violet-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black text-violet-950">{target?.title ?? "Episode"} · {placement.trackId} at {formatClock(placement.episodeStartSeconds)}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-violet-700">{placement.status} · receipt r{placement.revision} · {placement.createdByEmail}</p></div><div className="flex flex-wrap gap-2">{target ? <Link href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(target.slug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-[10px] font-black uppercase tracking-wide text-violet-950"><Clapperboard size={14} aria-hidden="true" />Open editor</Link> : null}{placement.status === "active" && target ? <button type="button" disabled={pending} onClick={() => void mutate({ action: "withdraw-timeline-placement", placementId: placement.id, expectedRevision: placement.revision, expectedTimelineFingerprint: target.timelineFingerprint, clientRequestId: crypto.randomUUID() }, `Withdrew ${card.title} from ${target.title}; the card and immutable source remain intact.`)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-[10px] font-black uppercase tracking-wide text-rose-950 disabled:opacity-45"><Undo2 size={14} aria-hidden="true" />Withdraw clip</button> : null}</div></div></li>;
+      })}</ol> : null}
+    </details>
   );
 }
 

@@ -25,9 +25,11 @@ import {
   createMediaSourceSet,
   createStoryBoard,
   readSourceStoryWorkspace,
+  promoteSourceStoryCardToEpisode,
   rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
+  withdrawSourceStoryTimelinePlacement,
 } from "@/lib/server/source-story";
 import {
   findStudioProjectForAccess,
@@ -278,6 +280,38 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         expectedRevision: Number(body.expectedRevision),
         orderedCardIds: stringArray(body.orderedCardIds),
         clientRequestId: text(body.clientRequestId),
+      });
+    } else if (action === "promote-card-to-episode") {
+      operation = await promoteSourceStoryCardToEpisode({
+        prisma,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        value: {
+          projectId: actor.projectId,
+          episodeProductionId: text(body.episodeProductionId),
+          cardId: text(body.cardId),
+          originBoardId: text(body.originBoardId) || null,
+          originBoardPlacementId: text(body.originBoardPlacementId) || null,
+          clientRequestId: text(body.clientRequestId),
+          expectedTimelineFingerprint: text(body.expectedTimelineFingerprint),
+          placementMode: text(body.placementMode) as "append" | "at-time",
+          episodeStartSeconds: body.episodeStartSeconds === null || body.episodeStartSeconds === undefined
+            ? null
+            : Number(body.episodeStartSeconds),
+          trackId: text(body.trackId) || "V1",
+        },
+      });
+    } else if (action === "withdraw-timeline-placement") {
+      operation = await withdrawSourceStoryTimelinePlacement({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          placementId: text(body.placementId),
+          expectedRevision: Number(body.expectedRevision),
+          expectedTimelineFingerprint: text(body.expectedTimelineFingerprint),
+          clientRequestId: text(body.clientRequestId),
+        },
       });
     } else {
       return NextResponse.json({ error: "Choose a supported source-story action." }, { status: 400 });

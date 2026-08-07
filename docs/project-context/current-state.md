@@ -2,6 +2,37 @@
 
 Date: 2026-08-07
 
+## Source Story to Episode timeline checkpoint
+
+- A source-backed Story card can now enter the existing canonical Episode
+  timeline without creating a second editor or flattening its source identity.
+  Promotion retains the exact card revision, immutable source range and clock,
+  source and package checksums, collaboration derivative, 360 reframe recipe,
+  actor, and explicit no-render/no-publication boundaries on the normal
+  `TimelineClip`.
+- Episode artifact v6 preserves visual transform keyframes and the
+  `quipsly-source-story-timeline-binding-v1` through save and browser hydration.
+  The browser edits against a provider-neutral proxy descriptor; final render
+  remains obligated to resolve and verify the exact retained source/package.
+- Source Story exposes Episode duration/fingerprint projections, deliberate
+  append or exact-time placement, video-track selection, editor navigation,
+  active-placement history, and withdrawal. Promotion and withdrawal are
+  serializable, request-idempotent, optimistic-fingerprint protected, and
+  recorded in an append-only operation ledger. Withdrawal removes only the
+  canonical clip and now-unused imported-media descriptor; it keeps the card,
+  source range, package, and history.
+- The retained High Ground Odyssey card `231ea3c6-c0bf-49a7-9541-320a63e4c6a6`
+  is actively placed as `fddb3f8f-3f94-4d3c-8a1c-645a5ba2e56f` in QA Episode
+  `source-story-spatial-promotion-qa-20260807`. Authenticated app readback
+  returned the Story projection, editor shell, and canonical Episode clip;
+  protected first/suffix ranges returned 206, an unauthenticated range returned
+  404, and both retained Insta360 originals kept their exact SHA-256 values.
+- The eight-case PostgreSQL smoke covers create/revise/rebind, promotion,
+  replay, request collision, artifact hydration, spatial transforms,
+  withdrawal, ledger order, and source/card survival. This is a local
+  production-shaped checkpoint, not a cloud deployment or final
+  Insta360-quality render claim.
+
 ## Insta360 source-to-story checkpoint
 
 - Source to Story now treats a multi-file camera take as one immutable package

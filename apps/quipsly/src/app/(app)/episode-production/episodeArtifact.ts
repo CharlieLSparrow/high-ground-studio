@@ -5,9 +5,11 @@ import type {
   CaptureTakeMaterializationReceipt,
   CaptureTakeSourceBinding,
   SpeakerCameraMapping,
+  SourceStoryTimelineBinding,
   TimelineClip,
   TimelineRangeEdit,
   TimelineState,
+  TransformKeyframe,
 } from "@high-ground/quipsly-domain";
 
 export type EpisodeArtifactTimelineClip = {
@@ -22,9 +24,14 @@ export type EpisodeArtifactTimelineClip = {
   name: string;
   color: string;
   kind?: "audio" | "video";
+  volume?: number;
+  deactivated?: boolean;
+  aiSuggested?: boolean;
   generatedFrom?: string;
   recordingSync?: Record<string, unknown>;
   captureTakeSource?: CaptureTakeSourceBinding;
+  transforms?: TransformKeyframe[];
+  sourceStory?: SourceStoryTimelineBinding;
   takeOrder?: number;
   segmentOrder?: number;
 };
@@ -65,6 +72,8 @@ export type EpisodeImportedMediaAsset = {
   contentType: string;
   size: number;
   kind: "audio" | "video" | "unknown";
+  is360?: boolean;
+  originalFormat?: string;
   bucketName: string;
   objectName: string;
   gcsUri: string;
@@ -125,8 +134,8 @@ export type EpisodeImportedMediaAsset = {
 
 import { DEFAULT_PROJECT_SLUG } from "@/lib/studio/project-registry";
 
-export const EPISODE_ARTIFACT_CURRENT_VERSION = 5;
-export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 4;
+export const EPISODE_ARTIFACT_CURRENT_VERSION = 6;
+export const EPISODE_ARTIFACT_PREVIOUS_VERSION = 5;
 export const EPISODE_ARTIFACT_LEGACY_VERSION = 1;
 export const EPISODE_PRODUCTION_CURRENT_VERSION = 1;
 export const EPISODE_AUDIO_TAKE_STACK_SOURCE = "quipsly-audio-take-stack-v1";
@@ -274,6 +283,7 @@ export function episodeTimelineContentFingerprint(timeline: TimelineState): stri
       generatedFrom: clip.generatedFrom,
       recordingSync: clip.recordingSync,
       captureTakeSource: clip.captureTakeSource,
+      sourceStory: clip.sourceStory,
     }))
     .sort((left, right) => left.id.localeCompare(right.id));
   const transcript = [...timeline.transcript]
@@ -388,9 +398,14 @@ export function buildEpisodeArtifactPayload(input: {
       name: clip.name,
       color: clip.color,
       kind: clip.kind,
+      volume: typeof clip.volume === "number" && Number.isFinite(clip.volume) ? clip.volume : undefined,
+      deactivated: clip.deactivated,
+      aiSuggested: clip.aiSuggested,
       generatedFrom: clip.generatedFrom,
       recordingSync: clip.recordingSync as Record<string, unknown> | undefined,
       captureTakeSource: clip.captureTakeSource,
+      transforms: clip.transforms?.map((transform) => ({ ...transform })),
+      sourceStory: clip.sourceStory,
     })),
     transcript: timeline.transcript.map((block) => ({
       id: block.id,
@@ -489,7 +504,8 @@ export function timelineStateFromEpisodeArtifact(value: unknown): TimelineState 
   const timelineClip = (clip: EpisodeArtifactTimelineClip): TimelineClip => ({
     ...clip,
     kind: clip.kind ?? (clip.trackId.toUpperCase().startsWith("A") ? "audio" : "video"),
-    transforms: [],
+    transforms: clip.transforms?.map((transform) => ({ ...transform })) ?? [],
+    sourceStory: clip.sourceStory,
   } as TimelineClip);
   const paperEditSnapshots = artifact.paperEditSnapshots
     ? Object.fromEntries(Object.entries(artifact.paperEditSnapshots).map(([blockId, snapshot]) => [

@@ -401,6 +401,9 @@ export async function executeAccountDeletion(input: {
           // a story card or silently turn a complete camera package into a
           // partial one. Account erasure is the exceptional hard-delete path:
           // remove dependants in an explicit, auditable order before the Nest.
+          await tx.studioStoryTimelinePlacement.deleteMany({
+            where: { projectId: { in: homeProjectIds } },
+          });
           await tx.studioStoryCard.deleteMany({
             where: { projectId: { in: homeProjectIds } },
           });

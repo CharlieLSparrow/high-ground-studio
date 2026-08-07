@@ -435,3 +435,58 @@ stitching, FlowState execution, optical metadata, and export remain executor
 adapter work. The next product slice should promote selected cards into a
 project timeline while preserving this package/reframe identity, then add the
 native Insta360 render adapter and long-form library indexing.
+
+## Canonical Episode promotion
+
+The next product slice now uses the existing
+`StudioEpisodeProduction.timelineJson` artifact as the only program timeline.
+It does not introduce a Story-only timeline. One deliberate promotion
+transaction:
+
+1. checks the caller's Episode fingerprint and project scope;
+2. resolves the card's immutable range, source revision, optional multi-file
+   package, exact checksums, and verified collaboration derivative;
+3. creates a normal video `TimelineClip`, translating source-time spatial view
+   instructions into editable transform keyframes while retaining the complete
+   reframe recipe;
+4. adds a provider-neutral imported-media descriptor for browser playback;
+5. writes Episode artifact v6 plus the production media projection;
+6. creates `StudioStoryTimelinePlacement` as the current reversible projection
+   and `StudioStoryTimelinePlacementOperation` as append-only intent evidence.
+
+The clip carries `quipsly-source-story-timeline-binding-v1`. Moving or trimming
+the clip later changes program intent but cannot erase its original source/card
+identity. The collaboration derivative is explicitly not an original. A final
+executor must resolve the exact source revision/package and refuse checksum or
+provider-revision substitution.
+
+Withdrawal is a second serializable operation. It requires the current
+placement revision and Episode fingerprint, removes only that clip and any
+now-unused imported descriptor, advances the placement to `withdrawn`, and
+appends a ledger operation. It does not delete the card, range, source,
+derivative, board placement, or earlier receipt.
+
+The Story UI exposes append versus exact Episode time, video track, active and
+historical placements, direct editor navigation, and withdrawal. Conflict
+responses refresh the workspace so a creator sees the collaborator's current
+timeline rather than overwriting it.
+
+### Retained spatial promotion proof
+
+The real High Ground Odyssey package and retained card were promoted into
+`source-story-spatial-promotion-qa-20260807` on V1. The local app proved:
+
+- Story page, Source Story API, editor shell, and canonical Episode API all
+  resolve under a disposable Editor identity;
+- the canonical clip retains placement/card/range/source-set identity, two
+  spatial keyframes, exact source and derivative hashes, and final-render
+  source-resolution boundaries;
+- protected proxy prefix and suffix requests return 206, invalid range returns
+  416, and unauthenticated media returns 404;
+- both original package members hash identically before and after;
+- replay converges on the same placement without creating another clip.
+
+This proves organization and edit-intent continuity. Full-quality Insta360
+stitching/stabilization through a versioned local executor, long-source
+performance, mobile arrangement UX, and a cloud cost proposal remain separate
+delivery gates.
