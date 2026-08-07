@@ -893,6 +893,8 @@ function checkReviewDigestContractSources() {
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
+  const sessionReadinessTopologyText = sourceText("apps/quipsly/src/lib/server/session-readiness-topology.ts");
+  const sessionReadinessTopologyCompatibilityText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-readiness-topology.ts");
   const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
   const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
   const canonicalGoalEditText = sourceText("apps/quipsly/src/lib/server/canonical-goal-edit.ts");
@@ -932,10 +934,24 @@ function checkReviewDigestContractSources() {
       && digestRouteText.includes("run-transcript")
       && digestRouteText.includes("build-review-packet")
       && digestRouteText.includes("review-packet")
+      && digestRouteText.includes("sourceExitReadinessForRoom")
+      && digestRouteText.includes("buildSessionReadinessTopology")
+      && digestRouteText.includes("confirm-endpoint-drain")
+      && digestRouteText.includes("protect-recording-sources")
+      && digestRouteText.includes("recoveryOpen")
+      && digestRouteText.includes("safeToLeave")
       && digestRouteText.includes("blockers")
       && digestRouteText.includes("nextActions"),
     "mobileCaptureReviewDigestShape",
     "Mobile capture review digest separates capture-pipeline proof from substantial non-simulator content while ranking explicit post-capture finishing steps.",
+  );
+  expect(
+    sessionReadinessTopologyText.includes("export function buildSessionReadinessTopology")
+      && sessionReadinessTopologyText.includes("safeToLeaveAllEndpoints")
+      && sessionReadinessTopologyText.includes("serverCopyDoesNotProveEndpointQueueEmpty: true")
+      && sessionReadinessTopologyCompatibilityText.trim() === 'export * from "@/lib/server/session-readiness-topology";',
+    "sharedSessionExitReadinessProjection",
+    "Nest Session UI and mobile digest consume one canonical retained-source, exact-server-copy, and installation-queue readiness projection.",
   );
   expect(
     bridgeText.includes("struct MobileCaptureReviewDigestResponse")
@@ -968,6 +984,7 @@ function checkReviewDigestContractSources() {
       && bridgeText.includes("let actionPackets: [MobileCaptureActionPacket]?")
       && bridgeText.includes("lifecycleSafeActions")
       && bridgeText.includes("struct MobileCaptureReviewDigestFinishAction")
+      && bridgeText.includes("struct MobileCaptureSourceExitReadiness")
       && bridgeText.includes("let finishActions: [MobileCaptureReviewDigestFinishAction]?")
       && bridgeText.includes("final class CaptureReviewDigestClient")
       && bridgeText.includes("stableOwnerSnapshot()")
@@ -983,6 +1000,9 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("Opening an item changes nothing by itself.")
       && capturePhoneShellText.includes("CaptureFinishQueueMetrics")
       && capturePhoneShellText.includes("CaptureFinishQueueBoundary")
+      && capturePhoneShellText.includes("digest.recoveryOpen")
+      && capturePhoneShellText.includes("digest.safeToLeave")
+      && capturePhoneShellText.includes("exit.evidenceLine")
       && capturePhoneShellText.includes("CaptureFinishAction_\\(action.callRoomId)_\\(action.kind)")
       && capturePhoneShellText.includes("model.sessions.first(where: { $0.callRoomId == roomID })")
       && capturePhoneShellText.includes("visibleTab = .record"),

@@ -491,19 +491,19 @@ private struct CaptureFinishQueueCard: View {
             if let digest = client.response?.digest {
                 HStack(spacing: 8) {
                     finishMetric(
-                        value: digest.needsFinish ?? 0,
-                        label: "Need a step",
-                        tint: .purple
+                        value: digest.recoveryOpen ?? 0,
+                        label: "Recovery",
+                        tint: .orange
+                    )
+                    finishMetric(
+                        value: digest.safeToLeave ?? 0,
+                        label: "Safe",
+                        tint: .green
                     )
                     finishMetric(
                         value: digest.recordingPromotedToMedia ?? 0,
                         label: "In Studio",
                         tint: .blue
-                    )
-                    finishMetric(
-                        value: digest.packetReady ?? 0,
-                        label: "Packets",
-                        tint: .orange
                     )
                     finishMetric(
                         value: digest.reviewReady ?? 0,
@@ -537,6 +537,13 @@ private struct CaptureFinishQueueCard: View {
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(3)
+                                        if let exit = action.sourceExitReadiness {
+                                            Text(exit.evidenceLine)
+                                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                                .foregroundStyle(exit.safeToLeaveAllEndpoints ? .green : .orange)
+                                                .lineLimit(2)
+                                                .accessibilityIdentifier("CaptureFinishActionEvidence_\(action.callRoomId)")
+                                        }
                                     }
                                     Spacer(minLength: 4)
                                     Image(systemName: "chevron.right")
@@ -606,6 +613,8 @@ private struct CaptureFinishQueueCard: View {
 
     private func finishActionIcon(_ kind: String) -> String {
         switch kind {
+        case "protect-recording-sources": "externaldrive.badge.exclamationmark"
+        case "confirm-endpoint-drain": "iphone.and.arrow.forward"
         case "promote-recording": "arrow.up.doc"
         case "run-transcript": "captions.bubble"
         case "build-review-packet": "doc.badge.gearshape"

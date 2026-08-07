@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
 
 const requireFromQuipsly = createRequire(new URL("../apps/quipsly/package.json", import.meta.url));
 const { PrismaClient } = requireFromQuipsly("@prisma/client");
@@ -16,6 +18,23 @@ function requireLoopback(value, label) {
   const url = new URL(String(value || ""));
   assert(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) && !url.username && !url.password, `${label} must be an explicit credential-free loopback URL.`);
   return url.origin;
+}
+
+async function requireTemporaryCredentialPath(value) {
+  const requested = String(value || "");
+  assert(requested, "Use an owner-only temporary QA credential file.");
+  const [target, temporaryRoot] = await Promise.all([
+    realpath(requested),
+    realpath(os.tmpdir()),
+  ]);
+  const relative = path.relative(temporaryRoot, target);
+  assert(
+    relative && !relative.startsWith("..") && !path.isAbsolute(relative),
+    "Use an owner-only credential file below the operating-system temporary directory.",
+  );
+  const metadata = await stat(target);
+  assert(metadata.isFile() && (metadata.mode & 0o077) === 0, "The temporary QA credential file must be owner-only.");
+  return target;
 }
 
 async function requestJson(url, token, method = "GET", body) {
@@ -37,8 +56,7 @@ async function main() {
   const authOrigin = requireLoopback(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099"}`, "Firebase emulator");
   const databaseURL = new URL(process.env.DATABASE_URL || "");
   assert(["127.0.0.1", "localhost", "[::1]"].includes(databaseURL.hostname), "The endpoint queue operation requires loopback PostgreSQL.");
-  const credentialPath = String(process.env.QUIPSLY_LOCAL_QA_CREDENTIAL_PATH || "");
-  assert(credentialPath.startsWith("/tmp/") || credentialPath.startsWith("/private/tmp/"), "Use an owner-only temporary QA credential file.");
+  const credentialPath = await requireTemporaryCredentialPath(process.env.QUIPSLY_LOCAL_QA_CREDENTIAL_PATH);
   const credentials = JSON.parse(await readFile(credentialPath, "utf8"));
   const signIn = await fetch(`${authOrigin}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`, {
     method: "POST",
@@ -109,6 +127,16 @@ async function main() {
       recordingAssetIds: capturedAssets.map((asset) => asset.id),
     });
     assert([200, 201].includes(notEmpty.status) && notEmpty.packet.ok && notEmpty.packet.safeToLeaveThisEndpoint === false, `NOT_EMPTY receipt failed (${notEmpty.status}): ${notEmpty.packet.error || "unknown"}`);
+    const recoveryDigest = await requestJson(`${appOrigin}/api/mobile/capture/review-digest`, auth.idToken);
+    const recoveringSession = recoveryDigest.packet.digest?.sessions?.find((session) => session.callRoomId === room.id);
+    const recoveryAction = recoveryDigest.packet.digest?.finishActions?.find((action) => action.callRoomId === room.id);
+    assert(recoveryDigest.status === 200 && recoveryDigest.packet.ok, `Recovery digest failed (${recoveryDigest.status}): ${recoveryDigest.packet.error || "unknown"}`);
+    assert(recoveringSession?.sourceExitReadiness?.safeToLeaveAllEndpoints === false, "The iPhone digest did not project the retained endpoint as unsafe to leave.");
+    assert(
+      ["protect-recording-sources", "confirm-endpoint-drain"].includes(recoveryAction?.kind),
+      "The iPhone Finish queue did not prioritize retained endpoint recovery.",
+    );
+    assert(recoveringSession.sourceExitReadiness.drainedEndpointCount === 0, "The iPhone digest did not preserve the NOT_EMPTY endpoint evidence.");
     const drained = await post({
       ...shared,
       queueRevision: String(revision++),
@@ -122,6 +150,13 @@ async function main() {
     assert([200, 201].includes(drained.status) && drained.packet.ok && drained.packet.safeToLeaveThisEndpoint === true, `DRAINED receipt failed (${drained.status}): ${drained.packet.error || "unknown"}`);
     const readback = await requestJson(`${appOrigin}/api/sessions/${encodeURIComponent(room.id)}/endpoint-queue`, auth.idToken);
     assert(readback.status === 200 && readback.packet.endpointQueues?.some((queue) => queue.clientInstanceId === clientInstanceId && queue.queueState === "DRAINED"), "Latest drained receipt did not survive HTTP readback.");
+    const drainedDigest = await requestJson(`${appOrigin}/api/mobile/capture/review-digest`, auth.idToken);
+    const safeSession = drainedDigest.packet.digest?.sessions?.find((session) => session.callRoomId === room.id);
+    const drainedRecoveryAction = drainedDigest.packet.digest?.finishActions?.find((action) => action.callRoomId === room.id);
+    assert(drainedDigest.status === 200 && drainedDigest.packet.ok, `Drained digest failed (${drainedDigest.status}): ${drainedDigest.packet.error || "unknown"}`);
+    assert(safeSession?.sourceExitReadiness?.drainedEndpointCount === 1, "The iPhone digest did not project the retained endpoint as drained.");
+    assert(safeSession.sourceExitReadiness.safeToLeaveAllEndpoints === false, "The iPhone digest falsely declared a Session with an incomplete retained-source plan safe to leave.");
+    assert(drainedRecoveryAction?.kind === "protect-recording-sources", "The iPhone Finish queue did not preserve the separate missing-master recovery action.");
     console.log(JSON.stringify({
       ok: true,
       localOnly: true,
@@ -130,6 +165,11 @@ async function main() {
       capturedSourceCount: capturedAssets.length,
       notEmptyRevision: notEmpty.packet.endpointQueue.queueRevision,
       drainedRevision: drained.packet.endpointQueue.queueRevision,
+      recoveryActionKind: recoveryAction.kind,
+      recoveryState: recoveringSession.sourceExitReadiness.state,
+      drainedState: safeSession.sourceExitReadiness.state,
+      drainedEndpointCount: safeSession.sourceExitReadiness.drainedEndpointCount,
+      safeToLeaveAfterDrain: safeSession.sourceExitReadiness.safeToLeaveAllEndpoints,
       secretsPrinted: false,
     }, null, 2));
   } finally {

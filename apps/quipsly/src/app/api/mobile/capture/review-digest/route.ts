@@ -3,10 +3,18 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  buildSessionReadinessTopology,
+  type SessionReadinessTopology,
+} from "@/lib/server/session-readiness-topology";
 
 export const runtime = "nodejs";
 
 const PACKET_KIND = "quipsly-mobile-capture-review-digest-v1";
+
+type SourceExitReadiness = SessionReadinessTopology["exitReadiness"] & {
+  attentionAt?: string | null;
+};
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -57,7 +65,7 @@ function countWhere<T>(items: T[], predicate: (item: T) => boolean) {
   return items.filter(predicate).length;
 }
 
-function digestSession(session: any) {
+function digestSession(session: any, sourceExitReadiness: SourceExitReadiness | null = null) {
   const blockers = sessionBlockers(session);
   const lifecycleChecks = asArray(session?.lifecycle?.checks);
   const attentionChecks = lifecycleChecks
@@ -78,6 +86,7 @@ function digestSession(session: any) {
     status: session.status,
     purpose: session.purpose,
     scheduledStart: session.scheduledStart,
+    updatedAt: session.updatedAt,
     provider: session.provider,
     providerReadiness: session.providerReadiness,
     providerCanJoin: session.providerCanJoin,
@@ -100,6 +109,7 @@ function digestSession(session: any) {
     coachingPacketHighlightCount: session.coachingPacketHighlightCount,
     coachingPacketActionItemCount: session.coachingPacketActionItemCount,
     providerRecordingReceiptSlotId: session.providerRecordingReceiptSlotId,
+    sourceExitReadiness,
     actionPacket: session.actionPacket,
     blockers,
     attentionChecks,
@@ -112,6 +122,22 @@ function finishAction(session: ReturnType<typeof digestSession>) {
   const capabilities = session.actionPacket?.capabilities || {};
   const hasCanonicalMedia = Boolean(session.latestRecordingMediaAssetId);
   const transcriptStatus = text(session.latestTranscriptStatus).toUpperCase();
+  const exit = session.sourceExitReadiness;
+
+  if (exit && !exit.safeToLeaveAllEndpoints) {
+    const endpointConfirmationOnly = exit.state === "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED";
+    return {
+      callRoomId: session.callRoomId,
+      title: session.title,
+      purpose: session.purpose,
+      stage: session.stage,
+      kind: endpointConfirmationOnly ? "confirm-endpoint-drain" : "protect-recording-sources",
+      label: exit.label,
+      detail: exit.detail,
+      priority: endpointConfirmationOnly ? 5 : 0,
+      sourceExitReadiness: exit,
+    };
+  }
 
   if (!hasCanonicalMedia && capabilities.canPromoteRecordingToMedia === true) {
     return {
@@ -188,12 +214,29 @@ function finishAction(session: ReturnType<typeof digestSession>) {
   return null;
 }
 
-function buildDigest(sessions: any[]) {
-  const sessionDigests = sessions.map(digestSession);
+function buildDigest(
+  sessions: any[],
+  sourceExitReadinessByRoom: ReadonlyMap<string, SourceExitReadiness> = new Map(),
+) {
+  const sessionDigests = sessions.map((session) => digestSession(
+    session,
+    sourceExitReadinessByRoom.get(text(session.callRoomId)) ?? null,
+  ));
+  const sessionDigestByRoom = new Map(
+    sessionDigests.map((session) => [text(session.callRoomId), session]),
+  );
   const allFinishActions = sessionDigests
     .map(finishAction)
     .filter(Boolean)
-    .sort((left: any, right: any) => left.priority - right.priority || text(left.title).localeCompare(text(right.title)));
+    .sort((left: any, right: any) => {
+      const priority = left.priority - right.priority;
+      if (priority) return priority;
+      const leftSession = sessionDigestByRoom.get(text(left.callRoomId));
+      const rightSession = sessionDigestByRoom.get(text(right.callRoomId));
+      const leftAttention = Date.parse(text(leftSession?.sourceExitReadiness?.attentionAt || leftSession?.updatedAt || leftSession?.scheduledStart)) || 0;
+      const rightAttention = Date.parse(text(rightSession?.sourceExitReadiness?.attentionAt || rightSession?.updatedAt || rightSession?.scheduledStart)) || 0;
+      return rightAttention - leftAttention || text(left.title).localeCompare(text(right.title));
+    });
   const finishActions = allFinishActions.slice(0, 8);
   const blockers = new Map<string, number>();
   for (const session of sessionDigests) {
@@ -224,6 +267,14 @@ function buildDigest(sessions: any[]) {
     transcriptNeeded: countWhere(sessions, (session) => sessionStage(session) === "transcription-needed" || session.coachingPacketStatus === "NOT_READY"),
     packetReady: countWhere(sessions, (session) => session.coachingPacketStatus === "READY_FOR_REVIEW"),
     reviewReady: countWhere(sessions, (session) => session.lifecycle?.readyForReview === true),
+    recoveryOpen: countWhere(sessionDigests, (session) => (
+      Number(session.recordingCount || 0) > 0
+      && Boolean(session.sourceExitReadiness && !session.sourceExitReadiness.safeToLeaveAllEndpoints)
+    )),
+    safeToLeave: countWhere(sessionDigests, (session) => (
+      Number(session.recordingCount || 0) > 0
+      && session.sourceExitReadiness?.safeToLeaveAllEndpoints === true
+    )),
     needsFinish: allFinishActions.length,
     finishActions,
     actionPackets: sessionDigests
@@ -245,6 +296,79 @@ function buildDigest(sessions: any[]) {
   };
 }
 
+function sourceExitReadinessForRoom(
+  room: any,
+  finalizationReceipts: any[],
+  currentUserId: string,
+): SourceExitReadiness {
+  const captures = new Map<string, {
+    captureId: string;
+    actorUserId: string;
+    status: "START_AND_STOP_RECEIVED" | "START_ONLY" | "STOP_ONLY";
+    startedAt: Date | string | null;
+    stoppedAt: Date | string | null;
+    lastReceivedAt: Date | string;
+  }>();
+  for (const receipt of asArray(room.stateReceipts)) {
+    const row = receipt as any;
+    const captureId = text(row.captureId).toLowerCase();
+    if (!captureId || row.outcome !== "APPLIED" || row.stateApplied !== true) continue;
+    const current = captures.get(captureId) ?? {
+      captureId,
+      actorUserId: text(row.captureOwnerUserId || row.actorUserId),
+      status: "STOP_ONLY" as const,
+      startedAt: null,
+      stoppedAt: null,
+      lastReceivedAt: row.receivedAt,
+    };
+    if (row.action === "START_RECORDING") current.startedAt = row.occurredAt;
+    if (row.action === "STOP_RECORDING") current.stoppedAt = row.occurredAt;
+    current.lastReceivedAt = row.receivedAt;
+    current.status = current.startedAt && current.stoppedAt
+      ? "START_AND_STOP_RECEIVED"
+      : current.startedAt
+        ? "START_ONLY"
+        : "STOP_ONLY";
+    captures.set(captureId, current);
+  }
+
+  const topology = buildSessionReadinessTopology({
+    participants: asArray(room.participants).map((participant) => {
+      const row = participant as any;
+      return {
+        id: text(row.id),
+        userId: text(row.userId) || null,
+        label: text(row.displayName || row.email, "Session participant"),
+        role: text(row.role, "PARTICIPANT"),
+        isCurrentActor: row.userId === currentUserId,
+        consent: null,
+      };
+    }).filter((participant) => participant.id),
+    grants: asArray(room.participantProviderGrants) as any[],
+    preflights: asArray(room.participantPreflightReceipts) as any[],
+    endpointQueues: asArray(room.endpointQueueReceipts) as any[],
+    expectedSources: asArray(room.expectedSources) as any[],
+    recordings: asArray(room.recordingAssets) as any[],
+    finalizations: finalizationReceipts,
+    captures: [...captures.values()],
+  });
+  const attentionAt = [
+    room.updatedAt,
+    ...asArray(room.endpointQueueReceipts).map((receipt) => (receipt as any).reconciledAt || (receipt as any).createdAt),
+    ...asArray(room.expectedSources).map((source) => (source as any).updatedAt || (source as any).createdAt),
+    ...asArray(room.recordingAssets).map((asset) => (asset as any).updatedAt || (asset as any).createdAt),
+    ...asArray(room.stateReceipts).map((receipt) => (receipt as any).receivedAt || (receipt as any).createdAt),
+    ...finalizationReceipts.map((receipt) => receipt.updatedAt || receipt.createdAt),
+  ]
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite)
+    .sort((left, right) => right - left)[0];
+  return {
+    ...topology.exitReadiness,
+    attentionAt: Number.isFinite(attentionAt) ? new Date(attentionAt).toISOString() : null,
+  };
+}
+
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
 
@@ -257,23 +381,23 @@ export async function GET(request: Request) {
 
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
-  const isStaff = session.user.isStaff;
   const actorEmail = text(session.user.primaryEmail || session.user.email).toLowerCase();
 
   const rooms = await prisma.callRoom.findMany({
-    where: isStaff
-      ? {}
-      : {
-          OR: [
-            { createdByUserId: userId },
-            { participants: { some: { userId, accessStatus: "ACTIVE" } } },
-            { booking: { clientUserId: userId } },
-            { booking: { coachUserId: userId } },
-            ...(actorEmail
-              ? [{ project: { accessGrants: { some: { email: actorEmail, status: "ACTIVE" } } } }]
-              : []),
-          ],
-        },
+    // This is a personal work projection, not an authorization search. Staff
+    // privilege may open a room explicitly, but must not fill the iPhone queue
+    // with every tenant's unfinished recording work.
+    where: {
+      OR: [
+        { createdByUserId: userId },
+        { participants: { some: { userId, accessStatus: "ACTIVE" } } },
+        { booking: { clientUserId: userId } },
+        { booking: { coachUserId: userId } },
+        ...(actorEmail
+          ? [{ project: { accessGrants: { some: { email: actorEmail, status: "ACTIVE" } } } }]
+          : []),
+      ],
+    },
     orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
     take: 30,
     include: {
@@ -287,6 +411,26 @@ export async function GET(request: Request) {
         },
       },
       participants: { where: { accessStatus: "ACTIVE" } },
+      participantProviderGrants: {
+        orderBy: { issuedAt: "desc" },
+        take: 200,
+      },
+      participantPreflightReceipts: {
+        orderBy: { testedAt: "desc" },
+        take: 200,
+      },
+      endpointQueueReceipts: {
+        orderBy: { queueRevision: "desc" },
+        take: 500,
+      },
+      expectedSources: {
+        orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+        take: 200,
+      },
+      stateReceipts: {
+        where: { captureId: { not: null } },
+        orderBy: { sequence: "asc" },
+      },
       recordingConsents: true,
       recordingAssets: true,
       transcriptJobs: {
@@ -326,7 +470,18 @@ export async function GET(request: Request) {
       })
     : [];
   const sessions = mapMobileCaptureSessionsForUser({ rooms, userId, finalizationReceipts });
-  const digest = buildDigest(sessions);
+  const sourceExitReadinessByRoom = new Map<string, SourceExitReadiness>();
+  for (const room of rooms as any[]) {
+    const roomAssetIds = new Set(asArray(room.recordingAssets).map((asset) => text((asset as any).id)).filter(Boolean));
+    const roomFinalizations = finalizationReceipts.filter((receipt: any) => (
+      receipt.roomId === room.id || roomAssetIds.has(text(receipt.recordingAssetId))
+    ));
+    sourceExitReadinessByRoom.set(
+      room.id,
+      sourceExitReadinessForRoom(room, roomFinalizations, userId),
+    );
+  }
+  const digest = buildDigest(sessions, sourceExitReadinessByRoom);
 
   return NextResponse.json({
     ok: true,
@@ -344,7 +499,7 @@ export async function GET(request: Request) {
       noExternalMeetingJoined: true,
       noPaymentMutation: true,
       sourceOfTruth:
-        "Nest owns operational capture truth. This digest only summarizes app-owned rooms, consent, payment evidence, recording assets, transcript jobs, packet notes, and next actions.",
+        "Nest owns operational capture truth. This digest shares the same retained-source plan, exact server-copy, and installation queue projection as the Session Finishing Cockpit before ranking downstream work.",
     },
     links: {
       readiness: "/api/mobile/capture/readiness",

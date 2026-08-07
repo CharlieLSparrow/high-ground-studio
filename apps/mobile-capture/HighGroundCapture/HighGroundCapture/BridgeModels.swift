@@ -2846,6 +2846,8 @@ struct MobileCaptureReviewDigest: Codable {
     let transcriptNeeded: Int?
     let packetReady: Int?
     let reviewReady: Int?
+    let recoveryOpen: Int?
+    let safeToLeave: Int?
     let needsFinish: Int?
     let blockers: [MobileCaptureReviewDigestBlocker]?
     let nextActions: [MobileCaptureReviewDigestNextAction]?
@@ -2858,6 +2860,27 @@ struct MobileCaptureReviewDigest: Codable {
     }
 }
 
+struct MobileCaptureSourceExitReadiness: Codable, Hashable {
+    let state: String
+    let label: String
+    let detail: String
+    let requiredSourceCount: Int
+    let serverSafeRequiredSourceCount: Int
+    let pendingCaptureCount: Int
+    let endpointQueueCount: Int
+    let drainedEndpointCount: Int
+    let allEndpointQueuesConfirmedEmpty: Bool
+    let requiredPlannedSourceCount: Int
+    let fulfilledRequiredPlannedSourceCount: Int
+    let safeForPlannedSources: Bool
+    let safeForServerObservedSources: Bool
+    let safeToLeaveAllEndpoints: Bool
+
+    var evidenceLine: String {
+        "\(serverSafeRequiredSourceCount)/\(requiredSourceCount) server-safe masters · \(drainedEndpointCount)/\(endpointQueueCount) endpoint queues drained"
+    }
+}
+
 struct MobileCaptureReviewDigestFinishAction: Codable, Identifiable, Hashable {
     let callRoomId: String
     let title: String?
@@ -2867,6 +2890,7 @@ struct MobileCaptureReviewDigestFinishAction: Codable, Identifiable, Hashable {
     let label: String
     let detail: String
     let priority: Int
+    let sourceExitReadiness: MobileCaptureSourceExitReadiness?
 
     var id: String { "\(callRoomId)-\(kind)" }
 
@@ -2934,6 +2958,7 @@ struct MobileCaptureReviewDigestSession: Codable, Identifiable {
     let coachingPacketHighlightCount: Int?
     let coachingPacketActionItemCount: Int?
     let providerRecordingReceiptSlotId: String?
+    let sourceExitReadiness: MobileCaptureSourceExitReadiness?
     let blockers: [String]?
     let attentionChecks: [MobileCaptureReviewDigestAttentionCheck]?
     let actionPacket: MobileCaptureActionPacket?
@@ -3024,6 +3049,22 @@ final class CaptureReviewDigestClient: ObservableObject {
     }
 
     func loadPreview() {
+        let previewRecovery = MobileCaptureSourceExitReadiness(
+            state: "SERVER_COPY_COMPLETE_DEVICE_CONFIRMATION_REQUIRED",
+            label: "Server copy complete · check each recording device",
+            detail: "Every required master is verified and released, but this iPhone's latest durable queue still has local recovery work.",
+            requiredSourceCount: 2,
+            serverSafeRequiredSourceCount: 2,
+            pendingCaptureCount: 0,
+            endpointQueueCount: 2,
+            drainedEndpointCount: 1,
+            allEndpointQueuesConfirmedEmpty: false,
+            requiredPlannedSourceCount: 2,
+            fulfilledRequiredPlannedSourceCount: 2,
+            safeForPlannedSources: true,
+            safeForServerObservedSources: true,
+            safeToLeaveAllEndpoints: false
+        )
         response = MobileCaptureReviewDigestResponse(
             ok: true,
             error: nil,
@@ -3057,6 +3098,8 @@ final class CaptureReviewDigestClient: ObservableObject {
                 transcriptNeeded: 1,
                 packetReady: 1,
                 reviewReady: 1,
+                recoveryOpen: 1,
+                safeToLeave: 1,
                 needsFinish: 2,
                 blockers: [],
                 nextActions: [],
@@ -3066,10 +3109,11 @@ final class CaptureReviewDigestClient: ObservableObject {
                         title: "Studio group ready",
                         purpose: "PODCAST",
                         stage: "recorded",
-                        kind: "promote-recording",
-                        label: "Move the verified recording into Studio",
-                        detail: "The retained source is verified and eligible for explicit promotion.",
-                        priority: 10
+                        kind: "confirm-endpoint-drain",
+                        label: previewRecovery.label,
+                        detail: previewRecovery.detail,
+                        priority: 5,
+                        sourceExitReadiness: previewRecovery
                     ),
                     MobileCaptureReviewDigestFinishAction(
                         callRoomId: "room-preview-coaching-ready",
@@ -3079,7 +3123,8 @@ final class CaptureReviewDigestClient: ObservableObject {
                         kind: "review-packet",
                         label: "Review coaching notes and actions",
                         detail: "A source-bound packet is ready for explicit human review.",
-                        priority: 40
+                        priority: 40,
+                        sourceExitReadiness: nil
                     ),
                 ],
                 sessions: [],

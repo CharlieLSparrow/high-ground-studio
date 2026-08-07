@@ -1146,11 +1146,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureFinishQueueBoundary"].exists)
 
         let action = app.buttons[
-            "CaptureFinishAction_room-preview-studio-group-ready_promote-recording"
+            "CaptureFinishAction_room-preview-studio-group-ready_confirm-endpoint-drain"
         ]
         reveal(action)
         XCTAssertTrue(action.exists)
-        XCTAssertTrue(action.label.contains("Move the verified recording into Studio"))
+        XCTAssertTrue(action.label.contains("Server copy complete · check each recording device"))
+        XCTAssertTrue(action.label.contains("2/2 server-safe masters · 1/2 endpoint queues drained"))
 
         action.tap()
 

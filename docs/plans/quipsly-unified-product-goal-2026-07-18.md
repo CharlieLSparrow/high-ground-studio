@@ -8071,3 +8071,37 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   Google user credentials and ADC require browser reauthentication. Physical
   iPhone, TestFlight, production-preview, and production-deployment proof
   remain explicitly open.
+
+## 2026-08-06 shared source-exit recovery checkpoint
+
+- Audited the prior "next slice" before rebuilding it. Durable, revisioned,
+  installation-owned endpoint queue receipts, idempotent HTTP reconciliation,
+  stale-revision refusal, and the Session Finishing Cockpit topology had
+  already shipped. The actual gap was that the iPhone Finish queue ranked
+  downstream work without consuming that canonical recovery authority.
+- Moved the pure Session readiness topology under server ownership while
+  preserving its prior UI import as a compatibility re-export. Nest Session
+  UI and the mobile review digest now calculate planned masters, exact
+  verified/released server copies, pending captures, and installation drain
+  evidence through one side-effect-free projection.
+- The iPhone queue now puts missing-master/server-copy recovery at priority 0
+  and endpoint confirmation at priority 5, before promotion, transcription,
+  packet building, or review. It shows exact server-safe-master and drained
+  endpoint counts and still opens the exact Session without performing an
+  action.
+- Retained operation exposed two surrounding UX defects and fixed them at the
+  ownership boundary: staff authorization no longer fills a personal iPhone
+  queue with every tenant room, and equal-severity recovery work is ordered by
+  its latest durable evidence rather than alphabetically by title.
+- The local coach operation wrote a real `NOT_EMPTY` receipt at revision 7 and
+  a `DRAINED` receipt at revision 8 through authenticated HTTP. The digest
+  changed from 0/1 to 1/1 drained endpoints while correctly remaining unsafe
+  because the retained Session is still missing one of three planned masters.
+  This proves endpoint drain cannot erase a separate retained-source hold.
+- Verification passes: review-digest route 7/7; shared topology 14/14; mobile
+  source contract 103/103; App Store/static checks 1,064/1,064; Quipsly strict
+  TypeScript; isolated 189-route production build; and the compiled iPhone 17
+  Pro simulator Today -> Finish -> exact Session journey. Three disposable
+  retained identities and their owner-only credential files were removed.
+  Physical iPhone, TestFlight, real-Firebase reauthentication, production
+  preview, and production deployment remain open gates.
