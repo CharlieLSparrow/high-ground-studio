@@ -12,6 +12,9 @@ staging area:
 - an INSV original remains in Drive until a creator explicitly approves the
   final-render preflight for that camera package;
 - the paired LRV is the default browse source;
+- an LRV is treated as an unstitched dual-fisheye camera preview unless its
+  exact revision carries verified stitched equirectangular evidence; a 2:1
+  canvas alone is not sufficient;
 - attaching a source records provider identity, revision, checksum,
   capabilities, and source-unit membership without copying media;
 - preparing a browse copy materializes the exact selected LRV into the local
@@ -41,6 +44,9 @@ Quipsly's editorial truth, provenance, and recovery behavior deterministic.
 7. Prepare the LRV only when the segment needs playback, annotation,
    storyboarding, or editing.
 8. Work from the collaboration proxy in Nest.
+   Unstitched camera pixels use a normal video viewer for timing and ranges;
+   spatial look-around activates only after a stitched equirectangular
+   derivative is verified.
 9. Open **Final render preflight** when a selected segment is ready to finish.
    Inspection is metadata-only; it does not download media.
 10. Review exact bytes remaining and safe Mac capacity, then explicitly choose

@@ -85,7 +85,8 @@ Insta360 browsing members. It intentionally does not stream an INSV original
 through the web editor and does not mislabel a copied LRV as a derivative:
 
 1. Source Room queues one deterministic, revision-bound materialization job
-   only for an equirectangular `browse-proxy` member.
+   only for the package's lightweight `browse-proxy` member. Camera LRVs are
+   not assumed to be stitched merely because their canvas is 2:1.
 2. The persistent Mac worker re-resolves the user-owned, verified Drive
    connection and inspects file ID, head revision, MD5, size, and download
    capability immediately before transfer.
@@ -420,14 +421,16 @@ exact file inventory remains discoverable under **Package contents**, including
 which files are render-required and which exist only for browsing. This avoids
 the false choice between a simple UX and source transparency.
 
-The interactive viewer follows the standard WebGL equirectangular model:
+Verified stitched sources use the standard WebGL equirectangular model:
 Three.js `VideoTexture` maps the protected video onto an inward-facing
 `SphereGeometry`, and `WebGLRenderer` draws the camera view. Drag, mouse wheel,
 arrow keys, plus/minus, playback, scrubbing, and reset are explicit controls.
 At any source time the creator can add a reframe keyframe containing pan, tilt,
 roll, field of view, interpolation, stabilization, horizon lock, and target
 aspect ratio. This is edit intent only; the original bytes and browse derivative
-remain unchanged.
+remain unchanged. Unstitched dual-fisheye camera previews stay in a normal
+video player for honest timing and range selection; Quipsly does not map those
+pixels onto a sphere or offer camera-direction keyframes prematurely.
 
 Official implementation references:
 
@@ -445,7 +448,7 @@ The operated package is intentionally tiny but real:
   HEVC tracks, 24 fps, SHA-256
   `df4834771a4cf1d8f460e10b6607b9809588bd6ca67183aebc4277febcf67277`;
 - browse `LRV_20250711_222639_01_037.lrv`: 14,209,349 bytes, 1664x832
-  equirectangular H.264, 24 fps, SHA-256
+  dual-fisheye H.264 camera preview, 24 fps, SHA-256
   `8e8ba0acc54cdd0e0258587132937d1c4fcf1facccc3a4be0de6f8f204a29971`;
 - verified collaboration derivative: 960x480 H.264/AAC, 30,884 bytes,
   SHA-256
@@ -480,11 +483,34 @@ Operating this slice uncovered three boundary defects:
    uses that explicit order instead of weakening immutable-source integrity.
 
 This is not yet Insta360-quality stitching or a final 360 renderer. The browser
-works against a camera-generated equirectangular browse carrier; final-quality
-stitching, FlowState execution, optical metadata, and export remain executor
-adapter work. The next product slice should promote selected cards into a
-project timeline while preserving this package/reframe identity, then add the
-native Insta360 render adapter and long-form library indexing.
+can use a camera-generated dual-fisheye browse carrier for timing and source
+ranges, and switches to spatial navigation only for a verified stitched
+equirectangular derivative. Final-quality stitching, FlowState execution,
+optical metadata, and export remain executor-adapter work.
+
+### Real Episode 5 segment proof
+
+The shared Drive inventory matched the retained Episode 5 files on the mounted
+external volume by name and byte count; that observation does not claim the two
+provider copies are byte-identical. Quipsly operated the local provider copy of
+segment 4 as its own provenance boundary:
+
+- exact INSV: 1,222,300,003 bytes, two 3840x3840 HEVC tracks, 25 fps, 81.76
+  seconds, SHA-256
+  `493ffae87185b11c0db96198ec43976ca06b9c87e36a7484cd946ca07e91ab84`;
+- exact LRV: 102,420,828 bytes, 1664x832 H.264 plus AAC, 25 fps, 81.76
+  seconds, dual-fisheye pixels on a 2:1 canvas, SHA-256
+  `035f07255b6903eb52605023b33a530025b8a6fa6b8e48d6e51b0d2631bbeaae`;
+- protected collaboration preview: 960x480 H.264/AAC, 1,597,198 bytes,
+  81.76 seconds, SHA-256
+  `d91b1104b8aba1d3a9e3eac0317721174e21f121eca96888946b9093d7ea9b9c`.
+
+The complete take now exists as `Episode 5 · lakeside walk · segment 4` on
+`Homer's Insta360 story selects`. Its notes explicitly record that no camera
+direction was invented from the unstitched preview. The same immutable range
+was promoted into the draft Episode artifact
+`episode-5-insta360-segment-4-source-handoff-20260807`; publication remains
+unstarted and final rendering must resolve the exact source-set identity.
 
 ## Canonical Episode promotion
 

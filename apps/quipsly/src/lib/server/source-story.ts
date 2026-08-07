@@ -153,7 +153,7 @@ export async function createMediaSourceSet(input: {
       ) {
         throw new SourceStoryContractError(
           "insta360-browse-clock-required",
-          "An Insta360 set must use its equirectangular browse member as the source clock.",
+          "An Insta360 set must use its lightweight browse member as the source clock.",
         );
       }
       if (
@@ -3564,6 +3564,8 @@ export async function readSourceStoryWorkspace(
             widthPixels: true,
             heightPixels: true,
             framesPerSecond: true,
+            mediaProjection: true,
+            projectionJson: true,
             externalReference: {
               select: { id: true, fileName: true, provider: true },
             },
@@ -3944,6 +3946,8 @@ export async function readSourceStoryWorkspace(
         widthPixels: sourceSet.sourceClockRevision.widthPixels,
         heightPixels: sourceSet.sourceClockRevision.heightPixels,
         framesPerSecond: sourceSet.sourceClockRevision.framesPerSecond,
+        mediaProjection: sourceSet.sourceClockRevision.mediaProjection,
+        projectionMetadata: sourceSet.sourceClockRevision.projectionJson,
         externalReference: sourceSet.sourceClockRevision.externalReference,
         collaborationProxy: publicDerivative(
           sourceSet.sourceClockRevision.derivatives.find(

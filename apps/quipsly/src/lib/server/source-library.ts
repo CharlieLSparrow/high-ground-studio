@@ -49,6 +49,8 @@ const sourceSetSelect = {
       widthPixels: true,
       heightPixels: true,
       framesPerSecond: true,
+      mediaProjection: true,
+      projectionJson: true,
       externalReference: {
         select: { id: true, fileName: true, provider: true },
       },
@@ -611,6 +613,8 @@ export async function readSourceLibraryPage(input: {
       createdAt: sourceSet.createdAt.toISOString(),
       sourceClockRevision: {
         ...sourceSet.sourceClockRevision,
+        projectionMetadata: sourceSet.sourceClockRevision.projectionJson,
+        projectionJson: undefined,
         collaborationProxy: publicDerivative(
           sourceSet.sourceClockRevision.derivatives.find(
             (derivative) => derivative.kind === "collaboration-proxy",

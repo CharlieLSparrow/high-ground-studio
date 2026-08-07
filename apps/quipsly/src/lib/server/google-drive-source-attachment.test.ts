@@ -118,7 +118,11 @@ describe("Google Drive selected-file package attachment", () => {
           sourceUnitId: "source_unit_01",
           verifiedFile: expect.objectContaining({
             externalFileId: "lrv_01",
-            mediaProjection: "equirectangular",
+            mediaProjection: "dual-fisheye",
+            projectionMetadata: expect.objectContaining({
+              stitched: false,
+              cameraViewLayout: "dual-fisheye",
+            }),
           }),
         }),
       ]),

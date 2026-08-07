@@ -209,7 +209,7 @@ export async function requestGoogleDriveSourceMaterialization(input: {
   if (
     (purpose === "browse" &&
       (memberRole !== "browse-proxy" ||
-        source.mediaProjection !== "equirectangular")) ||
+        source.mediaProjection !== "dual-fisheye")) ||
     (purpose === "conform" &&
       (memberRole === "browse-proxy" ||
         !memberRole ||

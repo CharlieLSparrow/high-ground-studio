@@ -33,7 +33,6 @@ if (!["127.0.0.1", "localhost", "::1"].includes(parsedDatabase.hostname)) {
     `Refusing retained Drive materialization against non-loopback database ${parsedDatabase.hostname}.`,
   );
 }
-
 const runKey = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
 const actorEmail = "drive-materialization-dogfood@quipsly.test";
 const workspaceSlug = "quipsly-retained-drive-360-lab";
@@ -152,11 +151,13 @@ try {
         sizeBytes: String(providerBytes.length),
         headRevisionKey: `retained-head-${runKey}`,
         checksumMd5: providerMd5,
-        mediaProjection: "equirectangular",
+        mediaProjection: "dual-fisheye",
         projectionMetadata: {
           memberRole: "browse-proxy",
           segment: runKey,
           proof: "fake-provider-exact-byte-materialization",
+          stitched: false,
+          cameraViewLayout: "dual-fisheye",
         },
         accessState: "available",
         capabilityState: "downloadable",

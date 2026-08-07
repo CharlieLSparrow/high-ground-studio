@@ -137,8 +137,7 @@ runDatabaseSmoke("Google Drive source materialization request", () => {
           headRevisionKey: `head-${memberRole}-${key}`,
           checksumMd5:
             memberRole === "browse-proxy" ? "a".repeat(32) : "b".repeat(32),
-          mediaProjection:
-            memberRole === "browse-proxy" ? "equirectangular" : "dual-fisheye",
+          mediaProjection: "dual-fisheye",
           projectionMetadata: { memberRole, segment: key },
           accessState: "available",
           capabilityState: "downloadable",

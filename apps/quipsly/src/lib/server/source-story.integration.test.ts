@@ -273,7 +273,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
           widthPixels: 1920,
           heightPixels: 960,
           framesPerSecond: 29.97,
-          mediaProjection: "equirectangular",
+          mediaProjection: "dual-fisheye",
           sourceState: "checksum-bound",
           createdByUserId: actorUserId,
         },

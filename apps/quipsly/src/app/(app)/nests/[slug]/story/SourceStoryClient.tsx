@@ -364,6 +364,8 @@ type MediaSourceSet = {
     widthPixels: number | null;
     heightPixels: number | null;
     framesPerSecond: number | null;
+    mediaProjection: string;
+    projectionMetadata: unknown;
     externalReference: null | {
       id: string;
       fileName: string;
@@ -484,6 +486,7 @@ type ViewerSource = {
   duration: number | null;
   thumbnailUrl: string | null;
   is360: boolean;
+  mediaProjection: string;
   sourceRevisionId?: string;
   externalReferenceId?: string;
   sourceSetId?: string;
@@ -1100,6 +1103,8 @@ export function SourceStoryClient({
             selectedSourceSet.sourceClockRevision.visualOverview?.playbackUrl ??
             null,
           is360: selectedSourceSet.kind === "insta360-360",
+          mediaProjection:
+            selectedSourceSet.sourceClockRevision.mediaProjection,
           sourceRevisionId: selectedSourceSet.sourceClockRevision.id,
           externalReferenceId:
             selectedSourceSet.sourceClockRevision.externalReference.id,
@@ -1118,6 +1123,7 @@ export function SourceStoryClient({
               selectedExternalSource.latestSourceRevision?.visualOverview
                 ?.playbackUrl ?? null,
             is360: false,
+            mediaProjection: "flat",
             sourceRevisionId: selectedExternalSource.latestSourceRevision?.id,
             externalReferenceId: selectedExternalSource.id,
           }
@@ -1132,6 +1138,7 @@ export function SourceStoryClient({
               duration: selectedAsset.duration,
               thumbnailUrl: selectedAsset.thumbnailUrl,
               is360: false,
+              mediaProjection: "flat",
             }
           : null;
   const selectedBoard =
@@ -1801,16 +1808,17 @@ export function SourceStoryClient({
         groupKey,
         laneKey: "story",
         tagIds: selectedTagIds,
-        reframeRecipe: preserve360
-          ? {
-              schema: "quipsly-360-reframe-v1",
-              projection: "equirectangular",
-              aspectRatio: reframeAspectRatio,
-              stabilization: "source",
-              horizonLock: true,
-              keyframes: reframeKeyframes,
-            }
-          : null,
+        reframeRecipe:
+          preserve360 || selectedViewerSource.is360
+            ? {
+                schema: "quipsly-360-reframe-v1",
+                projection: "equirectangular",
+                aspectRatio: reframeAspectRatio,
+                stabilization: "source",
+                horizonLock: true,
+                keyframes: reframeKeyframes,
+              }
+            : null,
       },
       board
         ? `Saved the source-backed card to ${board.title}.`
@@ -3415,7 +3423,9 @@ export function SourceStoryClient({
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bd91]">
                   {selectedViewerSource?.is360
-                    ? "Spatial 360° viewer"
+                    ? selectedViewerSource.mediaProjection === "equirectangular"
+                      ? "Spatial 360° viewer"
+                      : "360° camera preview · unstitched"
                     : "Viewer"}
                 </p>
                 <h2 className="truncate font-serif text-xl font-black">
@@ -3440,7 +3450,8 @@ export function SourceStoryClient({
                     ? "This source is safely attached. Create its lightweight collaboration proxy to scrub and mark ranges without editing the original."
                     : "Attach or choose project media to begin."}
                 </p>
-              ) : selectedViewerSource.is360 ? (
+              ) : selectedViewerSource.is360 &&
+                selectedViewerSource.mediaProjection === "equirectangular" ? (
                 <EquirectangularVideoViewer
                   key={selectedViewerSource.key}
                   ref={(node) => {
@@ -3721,7 +3732,8 @@ export function SourceStoryClient({
                     </div>
                   </fieldset>
                 ) : null}
-                {selectedViewerSource?.is360 ? (
+                {selectedViewerSource?.is360 &&
+                selectedViewerSource.mediaProjection === "equirectangular" ? (
                   <section
                     className="rounded-2xl border border-violet-200 bg-violet-50 p-4"
                     aria-label="Non-destructive 360 reframing"
@@ -3808,6 +3820,20 @@ export function SourceStoryClient({
                         the complete 360° sphere.
                       </p>
                     )}
+                  </section>
+                ) : selectedViewerSource?.is360 ? (
+                  <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                    <p className="flex items-center gap-2 text-sm font-black text-violet-950">
+                      <Rotate3d size={18} aria-hidden="true" />
+                      Unstitched 360° camera preview
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-violet-900">
+                      This lightweight camera file shows both fisheye lenses so
+                      you can review timing and mark the exact source range now.
+                      Quipsly preserves the complete 360° package, but camera
+                      direction stays unset until a reviewed stitched master is
+                      available.
+                    </p>
                   </section>
                 ) : (
                   <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3">

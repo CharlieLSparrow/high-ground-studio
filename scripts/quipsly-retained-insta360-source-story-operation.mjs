@@ -20,14 +20,62 @@ const parsedDatabase = new URL(databaseUrl);
 if (!["127.0.0.1", "localhost", "::1"].includes(parsedDatabase.hostname)) {
   throw new Error(`Refusing Insta360 dogfood against non-loopback database ${parsedDatabase.hostname}.`);
 }
-
-const packageDirectory = path.resolve(process.env.QUIPSLY_INSTA360_PACKAGE || "/Volumes/My Passport/Insta360 Download/VID_20250711_222639_00_037-Original");
-const originalPath = path.join(packageDirectory, "VID_20250711_222639_00_037.insv");
-const browsePath = path.join(packageDirectory, "LRV_20250711_222639_01_037.lrv");
+const profileArgument = process.argv.findIndex((argument) => argument === "--profile");
+const profileName = profileArgument >= 0 ? process.argv[profileArgument + 1] : "micro-take";
+const profiles = {
+  "micro-take": {
+    packageDirectory: "/Volumes/My Passport/Insta360 Download/VID_20250711_222639_00_037-Original",
+    originalFileName: "VID_20250711_222639_00_037.insv",
+    browseFileName: "LRV_20250711_222639_01_037.lrv",
+    captureKey: "VID_20250711_222639_037",
+    displayName: "Insta360 · July 11 micro take · 22:26:39",
+    durationSeconds: 0.416667,
+    framesPerSecond: 24,
+    expectedOriginalBytes: 21_549_387,
+    expectedBrowseBytes: 14_209_349,
+    cardTitle: "Micro take · spatial composition proof",
+    cardSynopsis: "A retained 360 source range with two source-time camera directions, ready for story arrangement and later full-quality rendering.",
+    cardNotes: "Dogfood proof over one real Insta360 INSV plus its real LRV. The card points at the complete package; the browser only sees a verified lightweight camera preview.",
+    rangeStartSeconds: 0.05,
+    rangeEndSeconds: 0.35,
+    reframeKeyframes: [
+      { sourceSeconds: 0.08, panDegrees: -18, tiltDegrees: 2, rollDegrees: 0, fieldOfViewDegrees: 74, interpolation: "ease" },
+      { sourceSeconds: 0.30, panDegrees: 24, tiltDegrees: -1, rollDegrees: 0, fieldOfViewDegrees: 62, interpolation: "ease" },
+    ],
+    episodeStableSuffix: "spatial-promotion-dogfood",
+    episodeSlug: "source-story-spatial-promotion-qa-20260807",
+    episodeTitle: "Source Story spatial promotion QA",
+  },
+  "episode5-segment4": {
+    packageDirectory: "/Volumes/My Passport/Episode 5",
+    originalFileName: "VID_20260402_080506_00_004.insv",
+    browseFileName: "LRV_20260402_080506_01_004.lrv",
+    captureKey: "VID_20260402_080506_004",
+    displayName: "Episode 5 · Insta360 segment 4 · lakeside dusk",
+    durationSeconds: 81.76,
+    framesPerSecond: 25,
+    expectedOriginalBytes: 1_222_300_003,
+    expectedBrowseBytes: 102_420_828,
+    cardTitle: "Episode 5 · lakeside walk · segment 4",
+    cardSynopsis: "Homer outdoors beside the lake at dusk, with trees and path lights visible across the complete 360° take.",
+    cardNotes: "Reviewed from the retained camera LRV contact sheet. This card preserves the complete 81.76-second take for story organization; no camera direction has been invented before a stitched master is reviewed.",
+    rangeStartSeconds: 0,
+    rangeEndSeconds: 81.76,
+    reframeKeyframes: [],
+    episodeStableSuffix: "episode-5-insta360-segment-4-dogfood",
+    episodeSlug: "episode-5-insta360-segment-4-source-handoff-20260807",
+    episodeTitle: "Episode 5 · Insta360 segment 4 source handoff",
+  },
+};
+const profile = profiles[profileName];
+if (!profile) throw new Error(`Unknown retained Insta360 profile: ${profileName}`);
+const packageDirectory = path.resolve(process.env.QUIPSLY_INSTA360_PACKAGE || profile.packageDirectory);
+const originalPath = path.join(packageDirectory, profile.originalFileName);
+const browsePath = path.join(packageDirectory, profile.browseFileName);
 const projectSlug = process.env.QUIPSLY_EXTERNAL_MEDIA_PROJECT || "high-ground-odyssey-manuscript";
 const actorEmail = String(process.env.QUIPSLY_EXTERNAL_MEDIA_ACTOR || "render-dogfood@quipsly.test").trim().toLowerCase();
-const captureKey = "VID_20250711_222639_037";
-const displayName = "Insta360 · July 11 micro take · 22:26:39";
+const captureKey = profile.captureKey;
+const displayName = profile.displayName;
 
 function deterministicUuid(value) {
   const hex = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
@@ -46,6 +94,7 @@ async function sha256File(filePath) {
 async function retainExactFile(filePath, metadata, actor, project, prisma) {
   const fileStat = await stat(filePath);
   if (!fileStat.isFile() || fileStat.size <= 0) throw new Error(`Missing retained package member: ${filePath}`);
+  if (metadata.expectedBytes && fileStat.size !== metadata.expectedBytes) throw new Error(`Retained package member size changed: ${filePath} (${fileStat.size} bytes, expected ${metadata.expectedBytes}).`);
   const checksumSha256 = await sha256File(filePath);
   const extension = path.extname(filePath).toLowerCase() || ".bin";
   const cacheDirectory = path.join(tmpdir(), "quipsly-media-ingest", "external-source-cache");
@@ -86,10 +135,10 @@ async function retainExactFile(filePath, metadata, actor, project, prisma) {
         localPath: cachePath,
         providerCreatedAt: fileStat.birthtime,
         providerModifiedAt: fileStat.mtime,
-        durationSeconds: 0.416667,
+        durationSeconds: metadata.durationSeconds,
         widthPixels: metadata.widthPixels,
         heightPixels: metadata.heightPixels,
-        framesPerSecond: 24,
+        framesPerSecond: metadata.framesPerSecond,
         mediaProjection: metadata.mediaProjection,
         projectionMetadata: metadata.projectionMetadata,
         accessState: "available",
@@ -123,7 +172,7 @@ async function verifyArrangementMutationThroughApp({ prisma, project, createdBy,
     update: { role: "EDITOR", status: "ACTIVE" },
     create: { projectId: project.id, email, role: "EDITOR", status: "ACTIVE", createdByUserId: createdBy.id, createdByEmail: actorEmail, note: "Loopback-only retained Source Story route acceptance." },
   });
-  const clientRequestId = deterministicUuid(`${project.id}:${boardId}:authenticated-arrangement-route-v1`);
+  const clientRequestId = deterministicUuid(`${project.id}:${boardId}:${cardId}:authenticated-arrangement-route-v2`);
   const existingOperation = await prisma.studioStoryBoardOperation.findUnique({
     where: { boardId_actorUserId_clientRequestId: { boardId, actorUserId: user.id, clientRequestId } },
   });
@@ -306,12 +355,12 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     const missingPageEvidence = [
       ["source set", displayName],
       ["board", "Insta360 story selects"],
-      ["source card", "Micro take · spatial composition proof"],
+      ["source card", profile.cardTitle],
       ["sectioned arrangement", "Episode Open"],
       ["outline view", "Outline"],
       ["spatial render status", "Exact-source 360 render"],
       ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
-      ["spatial master state", "5.7K render master not registered"],
+      ["spatial master state", "A reviewed 5.7K stitch master is required."],
     ].filter(([, evidence]) => !html.includes(evidence)).map(([label]) => label);
     if (page.status !== 200 || missingPageEvidence.length > 0) {
       const pageKind = html.includes("Sign in") || html.includes("Welcome back")
@@ -321,7 +370,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
           : "unknown-shell";
       throw new Error(`The retained Insta360 Source-to-Story page failed canonical render readback (HTTP ${page.status}; redirect ${page.headers.get("location") || "none"}; page ${pageKind}; ${html.length} bytes; missing ${missingPageEvidence.join(", ") || "no named evidence"}).`);
     }
-    const missingWritingEvidence = ["Source-to-story writing context", "Episode Open", "Micro take · spatial composition proof", "Open source select"]
+    const missingWritingEvidence = ["Source-to-story writing context", "Episode Open", profile.cardTitle, "Open source select"]
       .filter((evidence) => !writingHtml.includes(evidence));
     if (writingPage.status !== 200 || missingWritingEvidence.length > 0) {
       throw new Error(`The retained section Writing Desk failed source-context readback (HTTP ${writingPage.status}; missing ${missingWritingEvidence.join(", ") || "no named evidence"}).`);
@@ -339,7 +388,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ? sourceStoryBody.workspace.boards.find((candidate) => candidate?.id === boardId)
       : null;
     const projectedBoardPlacement = Array.isArray(projectedBoard?.placements)
-      ? projectedBoard.placements.find((candidate) => candidate?.card?.title === "Micro take · spatial composition proof")
+      ? projectedBoard.placements.find((candidate) => candidate?.card?.title === profile.cardTitle)
       : null;
     if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode || !projectedBoardPlacement) {
       throw new Error(`The authenticated Source Story API did not project the retained Episode placement (HTTP ${sourceStoryReadback.status}).`);
@@ -428,15 +477,21 @@ try {
       mimeType: "application/x-insta360-insv",
       widthPixels: 3840,
       heightPixels: 3840,
+      durationSeconds: profile.durationSeconds,
+      framesPerSecond: profile.framesPerSecond,
+      expectedBytes: profile.expectedOriginalBytes,
       mediaProjection: "dual-fisheye",
-      projectionMetadata: { schema: "quipsly-insta360-projection-v1", tracks: 2, trackShape: "dual-fisheye", cameraFamily: "insta360" },
+      projectionMetadata: { schema: "quipsly-insta360-projection-v1", tracks: 2, trackShape: "dual-fisheye", cameraFamily: "insta360", stitched: false },
     }, actor, project, prisma);
   const browse = await retainExactFile(browsePath, {
       mimeType: "video/mp4",
       widthPixels: 1664,
       heightPixels: 832,
-      mediaProjection: "equirectangular",
-      projectionMetadata: { schema: "quipsly-insta360-projection-v1", ratio: "2:1", purpose: "camera-generated-low-resolution-view" },
+      durationSeconds: profile.durationSeconds,
+      framesPerSecond: profile.framesPerSecond,
+      expectedBytes: profile.expectedBrowseBytes,
+      mediaProjection: "dual-fisheye",
+      projectionMetadata: { schema: "quipsly-insta360-projection-v1", ratio: "2:1", purpose: "camera-generated-low-resolution-view", cameraViewLayout: "dual-fisheye", stitched: false },
     }, actor, project, prisma);
 
   const sourceSetResult = await createMediaSourceSet({
@@ -453,7 +508,7 @@ try {
         { sourceRevisionId: original.sourceRevisionId, role: "primary-original", ordinal: 0, requiredForRender: true },
         { sourceRevisionId: browse.sourceRevisionId, role: "browse-proxy", ordinal: 0, requiredForRender: false },
       ],
-      metadata: { cameraFamily: "Insta360", browseProjection: "equirectangular", sourceDirectoryName: path.basename(packageDirectory) },
+      metadata: { cameraFamily: "Insta360", browseProjection: "dual-fisheye", sourceDirectoryName: path.basename(packageDirectory), profile: profileName },
     },
   });
 
@@ -496,7 +551,7 @@ try {
     kind: "episode-source-story",
   });
   const board = await prisma.studioStoryBoard.findUniqueOrThrow({ where: { id: boardResult.board.id } });
-  let card = await prisma.studioStoryCard.findFirst({ where: { projectId: project.id, title: "Micro take · spatial composition proof", archivedAt: null }, include: { sourceRange: true } });
+  let card = await prisma.studioStoryCard.findFirst({ where: { projectId: project.id, title: profile.cardTitle, archivedAt: null }, include: { sourceRange: true } });
   if (!card) {
     const created = await createSourceStoryCard({
       prisma,
@@ -510,12 +565,12 @@ try {
         boardId: board.id,
         expectedBoardRevision: board.revision,
         clientRequestId: deterministicUuid(`${project.id}:${captureKey}:spatial-card-v1`),
-        title: "Micro take · spatial composition proof",
-        synopsis: "A retained 360 source range with two source-time camera directions, ready for story arrangement and later full-quality rendering.",
-        notes: "Dogfood proof over one real Insta360 INSV plus its real LRV. The card points at the complete package; the browser only sees a verified 2:1 derivative.",
+        title: profile.cardTitle,
+        synopsis: profile.cardSynopsis,
+        notes: profile.cardNotes,
         purpose: "b-roll",
-        startSeconds: 0.05,
-        endSeconds: 0.35,
+        startSeconds: profile.rangeStartSeconds,
+        endSeconds: profile.rangeEndSeconds,
         groupKey: "spatial-selects",
         laneKey: "story",
         tagIds: [],
@@ -525,10 +580,7 @@ try {
           aspectRatio: "16:9",
           stabilization: "source",
           horizonLock: true,
-          keyframes: [
-            { sourceSeconds: 0.08, panDegrees: -18, tiltDegrees: 2, rollDegrees: 0, fieldOfViewDegrees: 74, interpolation: "ease" },
-            { sourceSeconds: 0.30, panDegrees: 24, tiltDegrees: -1, rollDegrees: 0, fieldOfViewDegrees: 62, interpolation: "ease" },
-          ],
+          keyframes: profile.reframeKeyframes,
         },
       },
     });
@@ -536,7 +588,7 @@ try {
   }
   if (!card?.sourceRange || card.sourceRange.sourceSetId !== sourceSetResult.sourceSet.id) throw new Error("The story card did not retain its exact source-set identity.");
 
-  const arrangementRequestId = deterministicUuid(`${project.id}:${board.id}:retained-sectioned-arrangement-v1`);
+  const arrangementRequestId = deterministicUuid(`${project.id}:${board.id}:${card.id}:retained-sectioned-arrangement-v2`);
   const existingArrangement = await prisma.studioStoryBoardOperation.findUnique({
     where: { boardId_actorUserId_clientRequestId: { boardId: board.id, actorUserId: actor.id, clientRequestId: arrangementRequestId } },
   });
@@ -567,27 +619,27 @@ try {
   }
   const arrangementRouteReadback = await verifyArrangementMutationThroughApp({ prisma, project, createdBy: actor, boardId: board.id, cardId: card.id });
 
-  let episodeDocument = await prisma.studioDocument.findUnique({ where: { stableId: `source-story-spatial-promotion-dogfood-${project.id}` } });
+  let episodeDocument = await prisma.studioDocument.findUnique({ where: { stableId: `source-story-${profile.episodeStableSuffix}-${project.id}` } });
   if (!episodeDocument) {
     episodeDocument = await prisma.studioDocument.create({
       data: {
         projectId: project.id,
-        stableId: `source-story-spatial-promotion-dogfood-${project.id}`,
-        title: "Source Story spatial promotion dogfood",
+        stableId: `source-story-${profile.episodeStableSuffix}-${project.id}`,
+        title: profile.episodeTitle,
         projectionStatus: "review",
         isPrivate: false,
       },
     });
   }
   const episode = await prisma.studioEpisodeProduction.upsert({
-    where: { projectId_slug: { projectId: project.id, slug: "source-story-spatial-promotion-qa-20260807" } },
+    where: { projectId_slug: { projectId: project.id, slug: profile.episodeSlug } },
     update: {},
     create: {
       projectId: project.id,
       documentId: episodeDocument.id,
-      slug: "source-story-spatial-promotion-qa-20260807",
-      title: "Source Story spatial promotion QA",
-      boundaryLabel: "Source Story spatial promotion QA",
+      slug: profile.episodeSlug,
+      title: profile.episodeTitle,
+      boundaryLabel: profile.episodeTitle,
       status: "draft",
     },
   });
@@ -670,7 +722,8 @@ try {
   });
 
   console.log(JSON.stringify({
-    schema: "quipsly-retained-insta360-source-story-operation-v1",
+    schema: "quipsly-retained-insta360-source-story-operation-v2",
+    profile: profileName,
     project: project.name,
     sourceSetId: sourceSetResult.sourceSet.id,
     sourceSetIdentitySha256: sourceSetResult.sourceSet.identitySha256,

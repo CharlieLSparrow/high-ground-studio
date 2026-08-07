@@ -843,7 +843,7 @@ async function attachGoogleDriveMediaPlanToNest(input: {
               }),
               mediaProjection:
                 member.role === "browse-proxy"
-                  ? "equirectangular"
+                  ? "dual-fisheye"
                   : "dual-fisheye",
               projectionMetadata: {
                 schema: "quipsly-insta360-drive-member-v1",
@@ -853,6 +853,8 @@ async function attachGoogleDriveMediaPlanToNest(input: {
                 memberRole: member.role,
                 channel: member.channel,
                 folderName: batch.folder.name,
+                stitched: false,
+                cameraViewLayout: "dual-fisheye",
               },
             },
           },

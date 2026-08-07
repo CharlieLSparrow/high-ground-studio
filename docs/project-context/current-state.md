@@ -206,11 +206,11 @@ Date: 2026-08-07
   members keep their own checksums, byte counts, roles, render requirements,
   projection metadata, and provider provenance; one explicit browse member owns
   the package source clock.
-- The Nest story workspace groups complete Insta360 packages, exposes their
-  contents on demand, and provides an interactive equirectangular viewer with
-  drag, keyboard, wheel, scrub, play/pause, and reset controls. A creator can
-  mark source-clock ranges and save source-time pan, tilt, FOV, aspect-ratio,
-  stabilization, and horizon intent as reversible reframe keyframes.
+- The Nest story workspace groups complete Insta360 packages and exposes their
+  contents on demand. Unstitched LRVs use an honest dual-fisheye video preview
+  for timing and source ranges; verified stitched equirectangular derivatives
+  activate the interactive look-around viewer and source-time pan, tilt, FOV,
+  aspect-ratio, stabilization, and horizon keyframes.
 - The real retained High Ground Odyssey package
   `VID_20250711_222639_00_037.insv` plus
   `LRV_20250711_222639_01_037.lrv` produced one 960x480 verified browse
@@ -2902,3 +2902,11 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   fake-provider LRV, then produced a 121,682-byte fast-start collaboration
   proxy. The source fixture remained unchanged. No real Drive original was
   downloaded in this proof.
+- A real retained Episode 5 segment now proves the same product path over an
+  81.76-second local provider package: a 1,222,300,003-byte dual-track INSV and
+  102,420,828-byte LRV were SHA-256-bound, a 1,597,198-byte protected preview
+  was generated, `Episode 5 · lakeside walk · segment 4` was retained on
+  Homer's Insta360 board, and the exact range was promoted into a draft Episode
+  timeline. Filename and byte-count agreement with the shared Drive folder is
+  recorded as inventory evidence only; provider-copy equality still requires
+  a later checksum comparison through the authenticated Drive path.
