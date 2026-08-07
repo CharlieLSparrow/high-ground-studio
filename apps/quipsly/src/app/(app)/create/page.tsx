@@ -276,7 +276,7 @@ export default async function CreatePage({
             startSeconds: range?.startSeconds ?? null,
             endSeconds: range?.endSeconds ?? null,
             tags: placement.card.tags.filter((link) => link.tag.isActive).map((link) => ({ id: link.tag.id, label: link.tag.label, slug: link.tag.slug })),
-            sourceHref: sourceQuery ? `${boardHref}&${sourceQuery}` : boardHref,
+            sourceHref: `${sourceQuery ? `${boardHref}&${sourceQuery}` : boardHref}#story-card-${encodeURIComponent(placement.card.id)}`,
           };
         }),
       };

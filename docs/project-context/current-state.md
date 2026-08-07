@@ -2985,3 +2985,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   follow-through path is keyboard reachable; it does not substitute for the
   remaining product-wide screen-reader, contrast, zoom, reduced-motion, and
   physical-device accessibility review.
+- The journey now continues from Work back to the exact Source Story card,
+  opens that card's durable **Episode Open** section writing through the visible
+  board control, verifies the writing rail still shows the 00:00.00–01:21.76
+  source clock, and returns through **Open source select** to the same source
+  set, board, and card hash. The writing rail's source link now deliberately
+  carries the card anchor, so a user lands on the decision they were writing
+  from rather than merely returning to the right board.

@@ -45,8 +45,16 @@ let outsiderFirebaseApp = null;
 let outsiderFirebaseUid = null;
 let outsiderSessionCookie = null;
 
+function formatClock(value) {
+  const seconds = Math.max(0, value);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const body = `${String(minutes).padStart(2, "0")}:${(seconds % 60).toFixed(2).padStart(5, "0")}`;
+  return hours ? `${hours}:${body}` : body;
+}
+
 try {
-  const [project, card] = await Promise.all([
+  const [project, card, placement] = await Promise.all([
     prisma.studioProject.findFirst({ where: { slug: projectSlug }, orderBy: { updatedAt: "desc" }, select: { id: true, slug: true, name: true } }),
     prisma.studioStoryCard.findFirst({
       where: { id: cardId, project: { slug: projectSlug }, archivedAt: null, placements: { some: { boardId } } },
@@ -57,8 +65,23 @@ try {
         sourceRange: { select: { id: true, startSeconds: true, endSeconds: true, selectorSha256: true, sourceSetId: true } },
       },
     }),
+    prisma.studioStoryBoardPlacement.findFirst({
+      where: { boardId, cardId, board: { archivedAt: null } },
+      select: {
+        groupKey: true,
+        board: {
+          select: {
+            sections: {
+              where: { archivedAt: null },
+              select: { id: true, key: true, title: true, documentId: true },
+            },
+          },
+        },
+      },
+    }),
   ]);
-  if (!project || !card?.sourceRange || card.sourceRange.sourceSetId !== sourceSetId) {
+  const writingSection = placement?.board.sections.find((section) => section.key === placement.groupKey) ?? null;
+  if (!project || !card?.sourceRange || card.sourceRange.sourceSetId !== sourceSetId || !writingSection?.documentId) {
     throw new Error("The retained Episode 5 source card, board placement, or exact source set is unavailable.");
   }
   const threadKey = `story-card:${card.id}`;
@@ -150,6 +173,39 @@ try {
   if (!returnHref?.includes(`set=${sourceSetId}`) || !returnHref.includes(`board=${boardId}`) || !returnHref.endsWith(`#story-card-${card.id}`)) {
     throw new Error(`Work lost the exact Source Story return path: ${returnHref || "missing"}.`);
   }
+  await returnLink.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL((url) => url.pathname === `/nests/${project.slug}/story` && url.searchParams.get("set") === sourceSetId && url.searchParams.get("board") === boardId && url.hash === `#story-card-${card.id}`);
+  await cardSurface.waitFor({ state: "visible" });
+
+  const sectionSurface = page.getByRole("heading", { name: writingSection.title, exact: true }).first().locator("xpath=ancestor::section[1]");
+  const writingLink = sectionSurface.getByRole("link", { name: /Open writing/ });
+  const writingHref = await writingLink.getAttribute("href");
+  const writingUrl = writingHref ? new URL(writingHref, appOrigin) : null;
+  if (
+    writingUrl?.pathname !== "/create"
+    || writingUrl.searchParams.get("project") !== project.slug
+    || writingUrl.searchParams.get("document") !== writingSection.documentId
+    || writingUrl.searchParams.get("storyBoard") !== boardId
+    || writingUrl.searchParams.get("storySection") !== writingSection.key
+  ) throw new Error(`The source board lost its exact section-writing path: ${writingHref || "missing"}.`);
+  await writingLink.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL((url) => url.pathname === "/create" && url.searchParams.get("document") === writingSection.documentId);
+  await page.getByText("Source-to-story writing context", { exact: true }).waitFor();
+  await page.getByRole("heading", { name: writingSection.title, exact: true }).waitFor();
+  const writingCard = page.getByRole("article").filter({ has: page.getByRole("heading", { name: card.title, exact: true }) });
+  await writingCard.waitFor({ state: "visible" });
+  await writingCard.getByText(`${formatClock(card.sourceRange.startSeconds)}–${formatClock(card.sourceRange.endSeconds)}`, { exact: true }).waitFor();
+  const writingSourceLink = writingCard.getByRole("link", { name: "Open source select" });
+  const writingSourceHref = await writingSourceLink.getAttribute("href");
+  if (!writingSourceHref?.includes(`set=${sourceSetId}`) || !writingSourceHref.includes(`board=${boardId}`) || !writingSourceHref.endsWith(`#story-card-${card.id}`)) {
+    throw new Error(`The writing surface lost its exact source-card return path: ${writingSourceHref || "missing"}.`);
+  }
+  await writingSourceLink.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL((url) => url.pathname === `/nests/${project.slug}/story` && url.searchParams.get("set") === sourceSetId && url.searchParams.get("board") === boardId && url.hash === `#story-card-${card.id}`);
+  await cardSurface.waitFor({ state: "visible" });
 
   const [task, message] = await Promise.all([
     prisma.actionItem.findUnique({
@@ -234,6 +290,9 @@ try {
     sourceEvidenceReceiptCount: task.evidenceReceipts.length,
     inheritedTagCount: task.tagLinks.length,
     workDeepLinkFocused: true,
+    sectionWritingContextVisible: true,
+    writingExactSourceReturnHref: writingSourceHref,
+    sourceWritingRoundTrip: true,
     keyboardOperated: true,
     exactSourceReturnHref: returnHref,
     separateAccountPrivacy: {

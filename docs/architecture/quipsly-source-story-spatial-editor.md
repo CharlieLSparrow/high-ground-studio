@@ -118,7 +118,7 @@ strictly contiguous revisions, including the `create-section` revision-zero to
 revision-one receipt. Every write is actor/request idempotent and protected by
 the relevant board or section optimistic revision.
 
-The writing URL carries the board and section identities as view context, not authority. The server rechecks that the requested section belongs to the same Nest and is linked to the exact open document before projecting any cards. The Writing Desk then shows a collapsible source rail with lane, purpose, notes, tags, exact source clock, and links back to the protected source view. It caps the inline rail at 100 cards for predictable rendering and routes larger browsing back to the full board.
+The writing URL carries the board and section identities as view context, not authority. The server rechecks that the requested section belongs to the same Nest and is linked to the exact open document before projecting any cards. The Writing Desk then shows a collapsible source rail with lane, purpose, notes, tags, exact source clock, and links back to the protected source view. Every card link retains the exact source-set or source-revision selector, board identity, and card hash so returning from prose focuses the originating decision instead of merely opening the surrounding board. It caps the inline rail at 100 cards for predictable rendering and routes larger browsing back to the full board.
 
 ## Reviewed master operation
 
