@@ -118,6 +118,9 @@ rm -f \
   "${state_dir}/source-revision" \
   "${state_dir}/media-worker.source-revision" \
   "${state_dir}/transcript-worker.source-revision" \
+  "${state_dir}/nest.runtime-revision" \
+  "${state_dir}/media-worker.runtime-revision" \
+  "${state_dir}/transcript-worker.runtime-revision" \
   "${state_dir}/transcript-worker.enabled"
 
 echo

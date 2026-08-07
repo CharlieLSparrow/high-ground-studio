@@ -77,6 +77,23 @@ quipsly_local_git_source_revision() {
   )
 }
 
+# Bind a service's non-secret runtime inputs to its source fingerprint. Values
+# are streamed into Git's hash function and are never written to the object
+# database or lifecycle state. Callers must pass only stable name=value pairs
+# and must not pass resolved secret values.
+quipsly_local_runtime_revision() {
+  local repo_root="$1"
+  shift
+
+  {
+    printf 'quipsly-local-runtime-v1\0'
+    while [[ "$#" -gt 0 ]]; do
+      printf '%s\0' "$1"
+      shift
+    done
+  } | git -C "${repo_root}" hash-object --stdin
+}
+
 quipsly_local_nest_source_revision() {
   local repo_root="$1"
   local local_env_file="${2:-}"

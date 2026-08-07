@@ -242,21 +242,49 @@ test("healthy ports cannot hide another worktree", () => {
 
 test("healthy Nest reloads when its exact application or schema source changes", () => {
   assert.match(stateHelper, /quipsly_local_git_source_revision/);
+  assert.match(stateHelper, /quipsly_local_runtime_revision/);
   assert.match(stateHelper, /quipsly_local_nest_source_revision/);
   assert.match(stateHelper, /apps\/quipsly/);
   assert.match(stateHelper, /prisma\/schema\.prisma/);
   assert.match(stateHelper, /packages\/quipsly-media-processing/);
   assert.match(stateHelper, /hash-object "\$\{local_env_file\}"/);
-  assert.match(up, /recorded_nest_source_revision/);
+  assert.match(up, /recorded_nest_runtime_revision/);
   assert.match(
     up,
-    /recorded_nest_source_revision}" == "\$\{local_nest_source_revision/,
+    /recorded_nest_runtime_revision}" == "\$\{local_nest_runtime_revision/,
   );
-  assert.match(up, /RELOAD %-23s source/);
+  assert.match(up, /RELOAD %-23s runtime/);
   assert.match(up, /wait_for_port_release 3012/);
   assert.match(up, /local_nest_source_revision.*source-revision/s);
+  assert.match(up, /local_nest_runtime_revision.*nest\.runtime-revision/s);
   assert.match(doctor, /Runtime source revision/);
   assert.match(doctor, /quipsly_local_nest_source_revision/);
+});
+
+test("runtime fingerprints change with non-secret service configuration", () => {
+  const fingerprint = (driveProject) =>
+    spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; quipsly_local_runtime_revision "$2" "source=abc" "drive-secret-project=$3"',
+        "quipsly-runtime-revision-test",
+        stateHelperPath,
+        process.cwd(),
+        driveProject,
+      ],
+      { encoding: "utf8" },
+    );
+
+  const disabled = fingerprint("");
+  const enabled = fingerprint("high-ground-odyssey");
+  const repeated = fingerprint("high-ground-odyssey");
+  assert.equal(disabled.status, 0, disabled.stderr);
+  assert.equal(enabled.status, 0, enabled.stderr);
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.notEqual(disabled.stdout, enabled.stdout);
+  assert.equal(enabled.stdout, repeated.stdout);
+  assert.doesNotMatch(enabled.stdout, /high-ground-odyssey/);
 });
 
 test("source fingerprints ignore unrelated commits but detect executable input drift", () => {
@@ -333,7 +361,7 @@ test("source fingerprints ignore unrelated commits but detect executable input d
   }
 });
 
-test("local workers reload when their executable source fingerprint changes", () => {
+test("local workers reload when executable source or runtime configuration changes", () => {
   assert.match(up, /local_worker_source_revision/);
   assert.match(
     up,
@@ -341,20 +369,30 @@ test("local workers reload when their executable source fingerprint changes", ()
   );
   assert.match(up, /media-worker\.source-revision/);
   assert.match(up, /transcript-worker\.source-revision/);
+  assert.match(up, /media-worker\.runtime-revision/);
+  assert.match(up, /transcript-worker\.runtime-revision/);
   assert.match(
     up,
-    /recorded_media_source_revision.*local_worker_source_revision/s,
+    /recorded_media_runtime_revision.*local_media_worker_runtime_revision/s,
   );
   assert.match(
     up,
-    /recorded_transcript_source_revision.*local_worker_source_revision/s,
+    /recorded_transcript_runtime_revision.*local_transcript_worker_runtime_revision/s,
   );
+  assert.match(up, /drive-secret-project=\$\{local_google_drive_secret_project\}/);
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT=\$\{local_spatial_vault_root\}/,
+  );
+  assert.doesNotMatch(up, /git rev-parse HEAD/);
   assert.match(
     up,
     /QUIPSLY_LOCAL_MEDIA_WORKER_BUILD_ID=\$\{local_worker_source_revision\}/,
   );
   assert.match(down, /media-worker\.source-revision/);
   assert.match(down, /transcript-worker\.source-revision/);
+  assert.match(down, /media-worker\.runtime-revision/);
+  assert.match(down, /transcript-worker\.runtime-revision/);
 });
 
 test("macOS worker startup waits for launchd readiness instead of racing a fixed delay", () => {

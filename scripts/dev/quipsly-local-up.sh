@@ -153,6 +153,7 @@ local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres
 local_media_root="${QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT:-$(node -p 'require("node:path").join(require("node:os").tmpdir(), "quipsly-media-ingest")')}"
 local_capture_vault_root="${QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT:-${local_media_root}/capture-vault}"
 local_capture_upload_origin="${QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN:-${nest_url}}"
+local_spatial_vault_root="${QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT:-}"
 docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 firebase_label="com.quipsly.local.firebase"
@@ -173,19 +174,18 @@ local_transcript_worker_available=0
 if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
   local_transcript_worker_available=1
 fi
-local_transcript_worker_build_id="${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-$(git rev-parse HEAD)}"
-if [[ -n "$(git status --porcelain=v1 --untracked-files=all -- scripts/dev/quipsly-local-transcript-worker.mjs)" ]]; then
-  local_transcript_worker_build_id="${local_transcript_worker_build_id}-dirty"
-fi
 worker_source_paths=(
   apps/quipsly-media-processor
   packages/quipsly-media-processing
+  scripts/dev/quipsly-local-up.sh
+  scripts/dev/quipsly-local-state.sh
   scripts/dev/quipsly-local-transcript-worker.mjs
   scripts/register-ts-extension-loader.mjs
 )
 local_worker_source_revision="$(
   quipsly_local_git_source_revision "${repo_root}" "${worker_source_paths[@]}"
 )"
+local_transcript_worker_build_id="${QUIPSLY_LOCAL_TRANSCRIPT_WORKER_BUILD_ID:-${local_worker_source_revision}}"
 local_google_drive_secret_project="${QUIPSLY_LOCAL_GOOGLE_DRIVE_SECRET_PROJECT:-}"
 local_gcloud_bin="${QUIPSLY_LOCAL_GCLOUD_BIN:-$(command -v gcloud 2>/dev/null || true)}"
 if [[ -n "${local_google_drive_secret_project}" ]]; then
@@ -221,6 +221,53 @@ elif [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 local_nest_source_revision="$(
   quipsly_local_nest_source_revision "${repo_root}" "${local_env_file}"
+)"
+local_env_revision="none"
+if [[ -n "${local_env_file}" ]]; then
+  local_env_revision="$(git -C "${repo_root}" hash-object "${local_env_file}")"
+fi
+local_node_bin="$(command -v node)"
+local_pnpm_bin="$(command -v pnpm)"
+local_nest_runtime_revision="$(
+  quipsly_local_runtime_revision "${repo_root}" \
+    "source=${local_nest_source_revision}" \
+    "node=${local_node_bin}" \
+    "pnpm=${local_pnpm_bin}" \
+    "env-path=${local_env_file}" \
+    "env-revision=${local_env_revision}" \
+    "database=${local_database_url}" \
+    "media-root=${local_media_root}" \
+    "capture-vault=${local_capture_vault_root}" \
+    "capture-origin=${local_capture_upload_origin}" \
+    "spatial-vault=${local_spatial_vault_root}" \
+    "transcript-worker=${local_transcript_worker_available}" \
+    "drive-secret-project=${local_google_drive_secret_project}" \
+    "gcloud=${local_gcloud_bin}"
+)"
+local_media_worker_runtime_revision="$(
+  quipsly_local_runtime_revision "${repo_root}" \
+    "source=${local_worker_source_revision}" \
+    "node=${local_node_bin}" \
+    "env-path=${local_env_file}" \
+    "env-revision=${local_env_revision}" \
+    "database=${local_database_url}" \
+    "media-root=${local_media_root}" \
+    "spatial-vault=${local_spatial_vault_root}" \
+    "drive-secret-project=${local_google_drive_secret_project}" \
+    "gcloud=${local_gcloud_bin}"
+)"
+local_transcript_worker_runtime_revision="$(
+  quipsly_local_runtime_revision "${repo_root}" \
+    "source=${local_worker_source_revision}" \
+    "node=${local_node_bin}" \
+    "database=${local_database_url}" \
+    "media-root=${local_media_root}" \
+    "capture-vault=${local_capture_vault_root}" \
+    "whisper=${local_whisper_executable}" \
+    "whisper-model=${local_whisper_model}" \
+    "whisper-device=${local_whisper_device}" \
+    "whisper-language=${local_whisper_language}" \
+    "build=${local_transcript_worker_build_id}"
 )"
 
 http_status() {
@@ -318,6 +365,9 @@ replace_macos_jobs() {
     "${state_dir}/transcript-worker.enabled" \
     "${state_dir}/media-worker.source-revision" \
     "${state_dir}/transcript-worker.source-revision" \
+    "${state_dir}/nest.runtime-revision" \
+    "${state_dir}/media-worker.runtime-revision" \
+    "${state_dir}/transcript-worker.runtime-revision" \
     "${state_dir}/repo-root" \
     "${state_dir}/source-revision"
 }
@@ -327,10 +377,8 @@ start_macos_job() {
   local label="$2"
   local mode="$3"
   local log_file="${state_dir}/${name}.log"
-  local node_bin pnpm_bin launcher_path
-  node_bin="$(command -v node)"
-  pnpm_bin="$(command -v pnpm)"
-  launcher_path="$(dirname "${pnpm_bin}"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  local launcher_path runtime_revision
+  launcher_path="$(dirname "${local_pnpm_bin}"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
   if launchctl_job_exists "${label}"; then
     launchctl remove "${label}"
@@ -349,13 +397,14 @@ start_macos_job() {
     -o "${log_file}" \
     -e "${log_file}" \
     -- /usr/bin/env \
-      "QUIPSLY_LOCAL_PNPM_BIN=${pnpm_bin}" \
-      "QUIPSLY_LOCAL_NODE_BIN=${node_bin}" \
+      "QUIPSLY_LOCAL_PNPM_BIN=${local_pnpm_bin}" \
+      "QUIPSLY_LOCAL_NODE_BIN=${local_node_bin}" \
       "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
       "QUIPSLY_LOCAL_DATABASE_URL=${local_database_url}" \
       "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT=${local_media_root}" \
       "QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT=${local_capture_vault_root}" \
       "QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN=${local_capture_upload_origin}" \
+      "QUIPSLY_LOCAL_SPATIAL_VAULT_ROOT=${local_spatial_vault_root}" \
       "QUIPSLY_LOCAL_WHISPER_EXECUTABLE=${local_whisper_executable}" \
       "QUIPSLY_LOCAL_WHISPER_MODEL=${local_whisper_model}" \
       "QUIPSLY_LOCAL_WHISPER_DEVICE=${local_whisper_device}" \
@@ -370,6 +419,23 @@ start_macos_job() {
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
   if [[ "${name}" == "media-worker" || "${name}" == "transcript-worker" ]]; then
     printf "%s\n" "${local_worker_source_revision}" >"${state_dir}/${name}.source-revision"
+  fi
+  case "${name}" in
+    nest)
+      runtime_revision="${local_nest_runtime_revision}"
+      ;;
+    media-worker)
+      runtime_revision="${local_media_worker_runtime_revision}"
+      ;;
+    transcript-worker)
+      runtime_revision="${local_transcript_worker_runtime_revision}"
+      ;;
+    *)
+      runtime_revision=""
+      ;;
+  esac
+  if [[ -n "${runtime_revision}" ]]; then
+    printf "%s\n" "${runtime_revision}" >"${state_dir}/${name}.runtime-revision"
   fi
 }
 
@@ -430,12 +496,12 @@ rm -f \
 if [[ -n "${local_whisper_executable}" && -x "${local_whisper_executable}" ]]; then
   printf "%s\n" "${local_whisper_executable}" >"${state_dir}/transcript-worker.enabled"
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    recorded_transcript_source_revision="$(sed -n '1p' "${state_dir}/transcript-worker.source-revision" 2>/dev/null || true)"
-    if launchctl_job_exists "${transcript_worker_label}" && [[ "${recorded_transcript_source_revision}" == "${local_worker_source_revision}" ]]; then
+    recorded_transcript_runtime_revision="$(sed -n '1p' "${state_dir}/transcript-worker.runtime-revision" 2>/dev/null || true)"
+    if launchctl_job_exists "${transcript_worker_label}" && [[ "${recorded_transcript_runtime_revision}" == "${local_transcript_worker_runtime_revision}" ]]; then
       printf "REUSE %-24s job %s\n" "Transcript worker" "${transcript_worker_label}"
     else
       if launchctl_job_exists "${transcript_worker_label}"; then
-        printf "RELOAD %-23s source %s -> %s\n" "Transcript worker" "${recorded_transcript_source_revision:-unknown}" "${local_worker_source_revision}"
+        printf "RELOAD %-23s runtime %s -> %s\n" "Transcript worker" "${recorded_transcript_runtime_revision:-unknown}" "${local_transcript_worker_runtime_revision}"
       fi
       start_macos_job "transcript-worker" "${transcript_worker_label}" "--run-transcript-worker"
     fi
@@ -480,12 +546,12 @@ fi
 
 rm -f "${state_dir}/media-worker.pid" "${state_dir}/media-worker.cwd"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  recorded_media_source_revision="$(sed -n '1p' "${state_dir}/media-worker.source-revision" 2>/dev/null || true)"
-  if launchctl_job_exists "${media_worker_label}" && [[ "${recorded_media_source_revision}" == "${local_worker_source_revision}" ]]; then
+  recorded_media_runtime_revision="$(sed -n '1p' "${state_dir}/media-worker.runtime-revision" 2>/dev/null || true)"
+  if launchctl_job_exists "${media_worker_label}" && [[ "${recorded_media_runtime_revision}" == "${local_media_worker_runtime_revision}" ]]; then
     printf "REUSE %-24s job %s\n" "Episode media worker" "${media_worker_label}"
   else
     if launchctl_job_exists "${media_worker_label}"; then
-      printf "RELOAD %-23s source %s -> %s\n" "Episode media worker" "${recorded_media_source_revision:-unknown}" "${local_worker_source_revision}"
+      printf "RELOAD %-23s runtime %s -> %s\n" "Episode media worker" "${recorded_media_runtime_revision:-unknown}" "${local_media_worker_runtime_revision}"
     fi
     start_macos_job "media-worker" "${media_worker_label}" "--run-media-worker"
   fi
@@ -563,15 +629,16 @@ if [[ "${nest_status}" == "200" && "${login_status}" == "200" ]]; then
     exit 1
   fi
   recorded_nest_source_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
-  if [[ "${recorded_nest_source_revision}" == "${local_nest_source_revision}" ]]; then
+  recorded_nest_runtime_revision="$(sed -n '1p' "${state_dir}/nest.runtime-revision" 2>/dev/null || true)"
+  if [[ "${recorded_nest_runtime_revision}" == "${local_nest_runtime_revision}" ]]; then
     printf "REUSE %-24s %s  source %s\n" "Quipsly Nest" "${nest_url}" "${nest_cwd}"
   elif [[ "$(uname -s)" == "Darwin" ]] \
     && launchctl_job_exists "${nest_label}" \
     && [[ "$(sed -n '1p' "${state_dir}/nest.label" 2>/dev/null || true)" == "${nest_label}" ]]; then
-    printf "RELOAD %-23s source %s -> %s\n" \
+    printf "RELOAD %-23s runtime %s -> %s\n" \
       "Quipsly Nest" \
-      "${recorded_nest_source_revision:-unknown}" \
-      "${local_nest_source_revision}"
+      "${recorded_nest_runtime_revision:-unknown}" \
+      "${local_nest_runtime_revision}"
     start_macos_job "nest" "${nest_label}" "--run-nest"
     wait_for_http "Nest health" "${nest_url%/}/api/health" "200" "${state_dir}/nest.log"
     wait_for_http \
@@ -630,6 +697,7 @@ wait_for_http \
 
 printf "%s\n" "${repo_root}" >"${state_dir}/repo-root"
 printf "%s\n" "${local_nest_source_revision}" >"${state_dir}/source-revision"
+printf "%s\n" "${local_nest_runtime_revision}" >"${state_dir}/nest.runtime-revision"
 if [[ -n "${local_env_file}" ]]; then
   printf "%s\n" "${local_env_file}" >"${state_dir}/nest-env-path"
 fi
