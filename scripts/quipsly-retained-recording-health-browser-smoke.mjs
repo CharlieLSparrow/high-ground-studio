@@ -62,6 +62,39 @@ async function main() {
     const readySignalGates = await readySourceCards.locator('li[data-recording-health-gate="signal"][data-recording-health-gate-state="READY"]').count();
     assert.equal(readyDecodeGates, 2, "Both selected recovery masters should expose a ready complete-decode gate.");
     assert.equal(readySignalGates, 2, "Both selected recovery masters should expose a ready useful-signal gate.");
+    const listeningNavigator = flightDeck.locator('section[data-flight-deck-listening="ready"]');
+    await listeningNavigator.getByRole("heading", { name: "Open the actual master" }).waitFor();
+    const auditionSources = listeningNavigator.locator("button[data-flight-deck-audition-source]");
+    const auditionSourceCount = await auditionSources.count();
+    assert.ok(auditionSourceCount >= 2, `Expected at least two protected retained sources, observed ${auditionSourceCount}.`);
+    const selectedSourceButton = auditionSources.filter({ hasText: "READY" }).first();
+    assert.equal(await selectedSourceButton.getAttribute("aria-pressed"), "true", "The Flight Deck should begin on a ready source when one exists.");
+    const firstMedia = listeningNavigator.locator("[data-flight-deck-audition-media]");
+    await firstMedia.waitFor();
+    const firstDuration = await firstMedia.evaluate((node) => new Promise((resolve, reject) => {
+      const media = /** @type {HTMLMediaElement} */ (node);
+      if (media.readyState >= 1 && Number.isFinite(media.duration) && media.duration > 0) return resolve(media.duration);
+      const timeout = window.setTimeout(() => reject(new Error("Protected retained source metadata did not load.")), 15_000);
+      media.addEventListener("loadedmetadata", () => { window.clearTimeout(timeout); resolve(media.duration); }, { once: true });
+      media.addEventListener("error", () => { window.clearTimeout(timeout); reject(new Error("Protected retained source failed browser decoding.")); }, { once: true });
+    }));
+    assert.ok(Number(firstDuration) > 10, "The selected retained source is too short for a ten-second audition.");
+    await listeningNavigator.getByRole("slider", { name: "Selected source time" }).fill("2");
+    await listeningNavigator.locator("button[data-flight-deck-ten-second-check]").click();
+    await listeningNavigator.getByRole("status").filter({ hasText: /bounded .*source check/i }).waitFor();
+    await page.waitForTimeout(750);
+    const firstPlaybackSeconds = await firstMedia.evaluate((node) => /** @type {HTMLMediaElement} */ (node).currentTime);
+    assert.ok(Number(firstPlaybackSeconds) >= 2, `Protected audition did not seek to the chosen source time: ${firstPlaybackSeconds}.`);
+    const firstSourceId = await firstMedia.getAttribute("data-flight-deck-audition-media");
+    const auditionSourceIds = await auditionSources.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-flight-deck-audition-source")));
+    const alternateSourceIndex = auditionSourceIds.findIndex((sourceId) => sourceId && sourceId !== firstSourceId);
+    assert.ok(alternateSourceIndex >= 0, "The retained navigator did not expose a second distinct source identity.");
+    await auditionSources.nth(alternateSourceIndex).click();
+    const secondMedia = listeningNavigator.locator("[data-flight-deck-audition-media]");
+    await secondMedia.waitFor();
+    const secondSourceId = await secondMedia.getAttribute("data-flight-deck-audition-media");
+    assert.notEqual(secondSourceId, firstSourceId, "Selecting another retained source did not change the protected media identity.");
+    await page.getByRole("heading", { name: "Listen where the evidence points" }).waitFor();
     assert.ok(await flightDeck.getByRole("link", { name: /Open source plan|Inspect source evidence|Open transcript evidence/ }).count() >= 1, "No evidence-specific next action is reachable from the Flight Deck.");
     const recoveryBoundaries = page.getByText("Audited recovery-replica boundary", { exact: true });
     await recoveryBoundaries.first().waitFor();
@@ -71,11 +104,12 @@ async function main() {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoHorizontalOverflow(flightDeck, "phone-width Audio Flight Deck");
+    await assertNoHorizontalOverflow(listeningNavigator, "phone-width source audition navigator");
     for (let index = 0; index < await recoveryBoundaries.count(); index += 1) {
       await assertNoHorizontalOverflow(recoveryBoundaries.nth(index).locator(".."), `phone-width recovery lineage ${index + 1}`);
     }
     if (screenshotPath) {
-      await flightDeck.scrollIntoViewIfNeeded();
+      await listeningNavigator.scrollIntoViewIfNeeded();
       await page.screenshot({ path: screenshotPath, fullPage: false });
     }
     assert.equal(pageErrors.length, 0, `The rendered Flight Deck raised browser exceptions: ${JSON.stringify(pageErrors)}`);
@@ -94,6 +128,11 @@ async function main() {
       independentlyRenderedGates: gateCount,
       readyDecodeGates,
       readySignalGates,
+      protectedAuditionSources: auditionSourceCount,
+      firstAuditionDurationSeconds: Number(firstDuration),
+      selectedPlaybackSeconds: Number(firstPlaybackSeconds),
+      sourceIdentitySwitched: true,
+      sharedClockNavigatorRendered: true,
       auditedRecoveryBoundaries: 2,
       desktopOverflow: false,
       phoneWidthOverflow: false,

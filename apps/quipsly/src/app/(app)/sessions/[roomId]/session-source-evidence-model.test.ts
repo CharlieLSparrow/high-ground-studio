@@ -546,11 +546,33 @@ describe("Session source evidence", () => {
         durableReplicaGeneration: "1742",
         originalSourceMediaUnchanged: true,
       },
+      protectedPlayback: {
+        sourceId: "studio-source-1",
+        url: "/api/ingest/media/studio-source-1",
+        kind: "video",
+      },
       issues: [],
     });
     expect(JSON.stringify(result)).not.toContain("actor-private-1");
     expect(JSON.stringify(result)).not.toContain("private@example.test");
     expect(JSON.stringify(result)).not.toContain("gs://private-import");
+  });
+
+  it("refuses to expose a promotion URL that is not the protected source route", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    (input.recordingAssets[0].localManifestJson as any).promotion.playbackUrl = "https://storage.example.test/private.wav";
+
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toBeNull();
+  });
+
+  it("refuses to project an unsafe protected-playback source identity", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    (input.recordingAssets[0].localManifestJson as any).promotion.sourceId = "../private-object";
+    (input.recordingAssets[0].localManifestJson as any).promotion.playbackUrl = "/api/ingest/media/../private-object";
+
+    expect(buildSessionSourceEvidence(input).sources[0].protectedPlayback).toBeNull();
   });
 
   it("joins a completed exact-byte signal receipt without mutating the recovery manifest", () => {

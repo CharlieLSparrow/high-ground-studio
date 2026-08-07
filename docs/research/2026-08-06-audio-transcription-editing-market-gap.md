@@ -5,7 +5,7 @@ Status: first primary-source pass; Quipsly capability audit complete; corpus-bac
 
 ## Implementation update · 2026-08-06
 
-The first recommendation from this research is now implemented as the Session Audio Flight Deck. It projects source-plan, immutable-byte, complete-decode, useful-signal, processing-release, and transcript-release gates without inventing a universal quality score. Its retained runs also led to a shared audited recovery-lineage verifier and an exact-byte join to canonical Studio analysis receipts. Recovery replicas can now prove their own bytes, full decode, and signal without borrowing native Capture boundaries or mutating the immutable Capture manifest. Architecture and retained-operation findings are recorded in [`docs/architecture/audio-flight-deck.md`](../architecture/audio-flight-deck.md).
+The first recommendation from this research is now implemented as the Session Audio Flight Deck. It projects source-plan, immutable-byte, complete-decode, useful-signal, processing-release, and transcript-release gates without inventing a universal quality score. Its retained runs also led to a shared audited recovery-lineage verifier, an exact-byte join to canonical Studio analysis receipts, protected source audition, and a source-clock scrubber beside recording health. Recovery replicas can now prove and audition their own bytes, full decode, and signal without borrowing native Capture boundaries, exposing private locators, or mutating the immutable Capture manifest. Architecture and retained-operation findings are recorded in [`docs/architecture/audio-flight-deck.md`](../architecture/audio-flight-deck.md).
 
 ## Executive finding
 

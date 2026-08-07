@@ -63,6 +63,21 @@ The Flight Deck appears in the Session **Recordings** workspace after capture re
 
 Every non-ready source includes one evidence-specific next action. Desktop and 390-pixel phone-width rendered checks must remain free of horizontal overflow.
 
+### Protected source audition
+
+The Flight Deck now includes a source-bound audition navigator instead of requiring creators to infer listenability from green gates. For every source with an authorized `/api/ingest/media/{sourceId}` route, it provides:
+
+- explicit source selection by `recordingAssetId`;
+- native audio or video controls over the protected route;
+- the complete-decode duration and a shared source-clock slider;
+- a bounded check of up to ten seconds from the selected time;
+- a compact complete-decode waveform when signal evidence exists; and
+- exact-time buttons for every signal observation.
+
+The navigator never exposes the private storage locator. Changing source selection does not reuse a media element identity, and client playback remains navigation rather than a proof-listen or approval receipt. A failed or absent protected route stays visibly unavailable while health evidence remains inspectable.
+
+The existing shared-clock attention navigator is also rendered in **Recordings**, not only **Transcript**. This makes transcript uncertainty, detector suggestions, repair candidates, mastering observations, and edit proposals discoverable beside source health while preserving their separate authorities.
+
 ## Retained-data finding
 
 The first read-only operation against the retained Capture-to-editor fixture exposed a reader/authority gap instead of hiding it:
@@ -97,11 +112,12 @@ The current slice is covered by:
 - a read-only local PostgreSQL operation over four retained sources;
 - a signed-in rendered Chrome operation over 24 gates at desktop and 390-pixel phone width, with zero browser exceptions and no horizontal overflow.
 - retained assertions that both selected recovery masters render ready decode and signal gates while historical originals remain review-only.
+- a retained browser operation that decodes the selected MV7i recovery master, seeks to two seconds, observes playback advance, switches to another `recordingAssetId`, renders the shared-clock navigator, and repeats responsive overflow checks.
 
 ## Next mature slices
 
 1. **Automatic decode coverage for every retention path** — recovery already queues complete decode; native Capture finalization and external-import release must prove the same durable, retry-visible behavior.
-2. **Flight Deck listening navigator** — route every signal observation to the exact source clock, A/B treatment preview, and explicit reviewer disposition.
+2. **Listening decisions** — attach explicit playback-reviewed dispositions to attention ranges without treating client navigation as proof that someone heard or understood them.
 3. **Qualified treatment proposals** — de-click, de-plosive, de-noise, de-reverb, level, and loudness proposals must show the detected problem, selected range, parameters, before/after preview, and reversible decision receipt.
 4. **Transcript evidence depth** — expose vocabulary/keyterm coverage, diarization uncertainty, source-clock alignment, and correction provenance without treating provider confidence as truth.
 5. **Delivery conformance** — connect proof-listened masters to platform-specific loudness, peak, codec, channel, and publication packet checks without changing the immutable source.

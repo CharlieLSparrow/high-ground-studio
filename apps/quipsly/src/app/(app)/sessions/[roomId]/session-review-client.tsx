@@ -2316,6 +2316,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
         <SessionRecordingHealthCard roomId={roomId} topology={readinessTopology} sourceEvidence={sourceEvidence} />
+        {sourceClockAttention ? <SessionSourceClockAttentionCard attention={sourceClockAttention} initialItemId={focusedAttentionId} /> : null}
         <SessionSourceEvidenceCard roomId={roomId} evidence={sourceEvidence} canReleaseHeldMedia={canReleaseHeldMedia} />
       </> : null}
 

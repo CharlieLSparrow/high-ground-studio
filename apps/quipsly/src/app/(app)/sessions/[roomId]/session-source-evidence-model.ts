@@ -14,6 +14,7 @@ type RecordingAssetEvidenceRow = {
   kind: unknown;
   status: unknown;
   byteSize: bigint | number | string | null;
+  durationSeconds?: number | string | null;
   storageBucket: string | null;
   storageObjectPath: string | null;
   checksum: string | null;
@@ -92,6 +93,12 @@ export type SessionSourceEvidence = {
       objectPath: string | null;
       verifiedAt: string | null;
     };
+    protectedPlayback?: {
+      sourceId: string;
+      url: string;
+      kind: "audio" | "video";
+      durationSeconds: number | null;
+    } | null;
     captureRuntime: {
       appVersion: string | null;
       appBuild: string | null;
@@ -308,6 +315,21 @@ function sourceRuntime(manifest: UnknownRecord) {
         },
       },
     } : {}),
+  };
+}
+
+function protectedPlayback(recording: RecordingAssetEvidenceRow) {
+  const manifest = object(recording.localManifestJson);
+  const promotion = object(manifest.promotion);
+  const sourceId = text(promotion.sourceId);
+  const url = text(promotion.playbackUrl);
+  if (!sourceId || !/^[A-Za-z0-9_-]{8,160}$/.test(sourceId) || url !== `/api/ingest/media/${sourceId}`) return null;
+  const durationSeconds = finiteNumber(recording.durationSeconds);
+  return {
+    sourceId,
+    url,
+    kind: String(recording.kind).includes("VIDEO") ? "video" as const : "audio" as const,
+    durationSeconds,
   };
 }
 
@@ -585,6 +607,7 @@ export function buildSessionSourceEvidence(input: {
           objectPath: bindingObjectPath ?? text(recording.storageObjectPath),
           verifiedAt: iso(recording.verifiedAt),
         },
+        protectedPlayback: protectedPlayback(recording),
         captureRuntime: sourceRuntime(manifest),
         analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),
         processingDisposition,
