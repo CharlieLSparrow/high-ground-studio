@@ -135,6 +135,10 @@ async function main() {
       spineSelection = "performed through rendered editor";
     }
     assert(before.body.plan?.ok === true, `Capture take remained blocked: ${JSON.stringify(before.body.plan?.issues)}`);
+    assert(before.body.plan?.cameraReadiness?.status === "NO_VIDEO_SOURCES", `Retained audio-only take did not expose its camera gap: ${JSON.stringify(before.body.plan?.cameraReadiness)}`);
+    const recordingSourcesLink = panel.getByRole("link", { name: "Open this Session’s recording sources", exact: true });
+    await recordingSourcesLink.waitFor({ timeout: 20_000 });
+    assert(await recordingSourcesLink.getAttribute("href") === `/sessions/${ROOM_ID}?mode=recordings`, "Camera readiness did not route to this exact Session's recording sources.");
 
     let materialization = "already current";
     if (before.body.plan.changed) {
@@ -279,6 +283,10 @@ async function main() {
         transcriptJobId: TRANSCRIPT_JOB_ID,
         roomWideEvaluationSuppressed: true,
         unavailableSourceStatus: 404,
+      },
+      cameraReadiness: {
+        status: "NO_VIDEO_SOURCES",
+        recordingSourcesHref: `/sessions/${ROOM_ID}?mode=recordings`,
       },
       provenance: "recording asset + media asset + imported source retained",
       sourceMediaMutated: false,

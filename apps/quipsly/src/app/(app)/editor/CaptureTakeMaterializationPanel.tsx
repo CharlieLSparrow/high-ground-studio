@@ -37,6 +37,17 @@ type MaterializationInspection = {
       recordingAssetId: string;
     } | null;
     speakerCameraMappingIds: string[];
+    cameraReadiness: {
+      status: "NO_VIDEO_SOURCES" | "SPEAKER_REVIEW_REQUIRED" | "CAMERA_IDENTITY_REQUIRED" | "PRIMARY_ANGLE_REQUIRED" | "READY";
+      videoSourceCount: number;
+      participantBoundVideoSourceCount: number;
+      unboundVideoSourceCount: number;
+      reviewedSpeakerCount: number;
+      attributedSpeakerCount: number;
+      mappedSpeakerCount: number;
+      participants: Array<{ participantId: string; label: string; cameraSourceCount: number; cameraLabels: string[]; status: "MISSING" | "AMBIGUOUS" | "MAPPED" }>;
+      nextAction: string;
+    } | null;
     issues: MaterializationIssue[];
     nextAction: string;
     changed: boolean;
@@ -160,6 +171,9 @@ export function CaptureTakeMaterializationPanel({
   const transcriptReviewBaseHref = inspection?.plan.roomId && inspection.plan.transcriptBinding?.recordingAssetId
     ? `/sessions/${encodeURIComponent(inspection.plan.roomId)}?mode=transcript&source=${encodeURIComponent(inspection.plan.transcriptBinding.recordingAssetId)}`
     : null;
+  const recordingSourcesHref = inspection?.plan.roomId
+    ? `/sessions/${encodeURIComponent(inspection.plan.roomId)}?mode=recordings`
+    : null;
 
   return (
     <section
@@ -243,6 +257,37 @@ export function CaptureTakeMaterializationPanel({
         </div>
       ) : null}
 
+      {inspection?.plan.cameraReadiness ? (
+        <section className="mt-3 rounded-xl border border-sky-200 bg-white p-3" aria-labelledby="capture-camera-readiness-title">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h4 id="capture-camera-readiness-title" className="font-black text-sky-950">Participant camera readiness</h4>
+              <p className="mt-1 text-[10px] font-bold leading-4 text-sky-900">{inspection.plan.cameraReadiness.nextAction}</p>
+            </div>
+            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-sky-900">
+              {inspection.plan.cameraReadiness.status.replaceAll("_", " ")}
+            </span>
+          </div>
+          <dl className="mt-2 grid grid-cols-3 gap-2 text-center text-[10px]">
+            <div className="rounded-lg bg-sky-50 p-2"><dt className="font-black text-sky-700">Video sources</dt><dd className="mt-1 text-base font-black text-sky-950">{inspection.plan.cameraReadiness.videoSourceCount}</dd></div>
+            <div className="rounded-lg bg-sky-50 p-2"><dt className="font-black text-sky-700">Speaker identities</dt><dd className="mt-1 text-base font-black text-sky-950">{inspection.plan.cameraReadiness.attributedSpeakerCount}/{inspection.plan.cameraReadiness.reviewedSpeakerCount}</dd></div>
+            <div className="rounded-lg bg-sky-50 p-2"><dt className="font-black text-sky-700">Camera maps</dt><dd className="mt-1 text-base font-black text-sky-950">{inspection.plan.cameraReadiness.mappedSpeakerCount}</dd></div>
+          </dl>
+          {inspection.plan.cameraReadiness.participants.length ? (
+            <ul className="mt-2 grid gap-2 sm:grid-cols-2" aria-label="Participant camera coverage">
+              {inspection.plan.cameraReadiness.participants.map((participant) => <li key={participant.participantId} className="rounded-lg border border-sky-100 bg-sky-50/60 px-3 py-2 text-[10px] font-bold text-sky-950"><span className="font-black">{participant.label}</span> · {participant.cameraSourceCount} camera{participant.cameraSourceCount === 1 ? "" : "s"} · {participant.status.toLowerCase()}</li>)}
+            </ul>
+          ) : null}
+          {inspection.plan.cameraReadiness.status === "NO_VIDEO_SOURCES" && recordingSourcesHref ? (
+            <Link href={recordingSourcesHref} className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-[10px] font-black text-sky-950 hover:bg-white">Open this Session’s recording sources</Link>
+          ) : inspection.plan.cameraReadiness.status === "SPEAKER_REVIEW_REQUIRED" && transcriptReviewBaseHref ? (
+            <Link href={`${transcriptReviewBaseHref}#transcript-correction-review`} className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-950 hover:bg-white">Review exact-source speakers</Link>
+          ) : inspection.plan.cameraReadiness.status !== "READY" ? (
+            <a href="#automated-edit-evidence" className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-[10px] font-black text-violet-950 hover:bg-white">Open speaker-camera mapping</a>
+          ) : null}
+        </section>
+      ) : null}
+
       {blockingIssues.length || warnings.length ? (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {blockingIssues.map((issue) => (
@@ -262,13 +307,15 @@ export function CaptureTakeMaterializationPanel({
                     ? "Review exact-source speaker identity"
                     : "Review exact-source transcript speakers"}
                 </Link>
-              ) : issue.code === "participant-camera-ambiguous" || issue.code === "participant-camera-missing" ? (
+              ) : issue.code === "participant-camera-ambiguous" ? (
                 <a
-                  href="#guided-sync-wizard"
+                  href="#automated-edit-evidence"
                   className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-sky-300 bg-white px-3 py-2 font-black text-sky-900 hover:bg-sky-50"
                 >
-                  Review participant cameras
+                  Choose the primary camera
                 </a>
+              ) : issue.code === "participant-camera-missing" && recordingSourcesHref ? (
+                <Link href={recordingSourcesHref} className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-sky-300 bg-white px-3 py-2 font-black text-sky-900 hover:bg-sky-50">Review missing camera sources</Link>
               ) : null}
             </div>
           ))}

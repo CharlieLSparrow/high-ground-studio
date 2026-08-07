@@ -2,6 +2,24 @@
 
 Date: 2026-08-06
 
+## Participant camera-readiness checkpoint
+
+- Capture-take inspection now projects an explicit camera-readiness ladder from
+  the selected immutable sources, reviewed transcript speaker identities, and
+  speaker-camera mappings: no video, speaker review required, camera identity
+  required, primary angle required, or ready. It exposes per-participant camera
+  coverage and never invents identity or a primary angle.
+- The Episode editor provides the matching recovery path: the exact Session
+  recording-source workspace for missing video, exact-source speaker review for
+  unresolved voices, and automated-edit evidence for primary-camera choices.
+  Existing missing/ambiguous camera warnings no longer send producers to the
+  unrelated Guided sync surface.
+- The retained audio-only Episode honestly reports `NO_VIDEO_SOURCES` while
+  both protected audio sources still play and pause. A synthetic two-camera
+  case reports `PRIMARY_ANGLE_REQUIRED`; focused tests, rendered operation, and
+  typecheck pass. See
+  `docs/coordination/2026-08-06-participant-camera-readiness.md`.
+
 ## Exact-source speaker-review handoff checkpoint
 
 - Capture-take warnings now distinguish a transcript with no provider

@@ -35,7 +35,10 @@ The take planner now distinguishes two speaker-review conditions:
   is valid.
 
 The editor links each condition to the matching exact-source review anchor.
-Participant-camera missing or ambiguity remains a separate Guided sync action.
+Participant-camera missing or ambiguity remains a separate camera-readiness
+action. Missing sources open the exact Session recording workspace; primary
+camera ambiguity opens automated-edit evidence. Neither is treated as an
+alignment problem.
 
 ## Retained rendered proof
 

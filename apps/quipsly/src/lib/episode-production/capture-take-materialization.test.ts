@@ -285,6 +285,12 @@ describe("Capture take materialization", () => {
     expect(withoutLabels.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "speaker-labels-unavailable", severity: "warning" }),
     ]));
+    expect(withoutLabels.cameraReadiness).toMatchObject({
+      status: "NO_VIDEO_SOURCES",
+      videoSourceCount: 0,
+      reviewedSpeakerCount: 0,
+      mappedSpeakerCount: 0,
+    });
     expect(unattributedCluster.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "speaker-attribution-incomplete", severity: "warning" }),
     ]));
@@ -309,6 +315,19 @@ describe("Capture take materialization", () => {
     expect(result.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "participant-camera-ambiguous" }),
     ]));
+    expect(result.cameraReadiness).toMatchObject({
+      status: "PRIMARY_ANGLE_REQUIRED",
+      videoSourceCount: 2,
+      participantBoundVideoSourceCount: 2,
+      reviewedSpeakerCount: 1,
+      attributedSpeakerCount: 1,
+      mappedSpeakerCount: 0,
+      participants: [expect.objectContaining({
+        label: "Homer",
+        cameraSourceCount: 2,
+        status: "AMBIGUOUS",
+      })],
+    });
   });
 
   it("preserves unrelated editorial decisions and replays the same materialization without churn", () => {

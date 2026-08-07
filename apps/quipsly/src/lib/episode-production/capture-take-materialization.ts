@@ -107,11 +107,30 @@ export type CaptureTakeMaterializationPlan = {
   sourceBindings: CaptureTakeMaterializationReceipt["sourceBindings"];
   transcriptBinding: CaptureTakeMaterializationReceipt["transcriptBinding"];
   speakerCameraMappingIds: string[];
+  cameraReadiness: CaptureTakeCameraReadiness | null;
   issues: CaptureTakeMaterializationIssue[];
   nextAction: string;
   changed: boolean;
   impact: CaptureTakeMaterializationImpact | null;
   boundaries: CaptureTakeMaterializationReceipt["boundaries"];
+};
+
+export type CaptureTakeCameraReadiness = {
+  status: "NO_VIDEO_SOURCES" | "SPEAKER_REVIEW_REQUIRED" | "CAMERA_IDENTITY_REQUIRED" | "PRIMARY_ANGLE_REQUIRED" | "READY";
+  videoSourceCount: number;
+  participantBoundVideoSourceCount: number;
+  unboundVideoSourceCount: number;
+  reviewedSpeakerCount: number;
+  attributedSpeakerCount: number;
+  mappedSpeakerCount: number;
+  participants: Array<{
+    participantId: string;
+    label: string;
+    cameraSourceCount: number;
+    cameraLabels: string[];
+    status: "MISSING" | "AMBIGUOUS" | "MAPPED";
+  }>;
+  nextAction: string;
 };
 
 export type CaptureTakeMaterializationImpact = {
@@ -476,6 +495,7 @@ export function planCaptureTakeMaterialization(input: {
     sourceBindings: [],
     transcriptBinding: null,
     speakerCameraMappingIds: [],
+    cameraReadiness: null,
     issues,
     nextAction,
     changed: false,
@@ -673,6 +693,57 @@ export function planCaptureTakeMaterialization(input: {
 
   const allMappings = [...preservedMappings, ...mapped.generated];
   const mappedSpeakerKeys = new Set(allMappings.map((mapping) => mapping.speakerKey));
+  const videoSources = sources.filter((source) => source.kind === "video");
+  const attributedSpeakers = new Map<string, { participantId: string; label: string }>();
+  for (const block of transcriptBlocks) {
+    if (!block.speakerParticipantId || !block.speaker) continue;
+    attributedSpeakers.set(canonicalSpeakerKey(block.speaker), {
+      participantId: block.speakerParticipantId,
+      label: block.speaker,
+    });
+  }
+  const cameraParticipants = [...attributedSpeakers.entries()].map(([speakerKey, participant]) => {
+    const cameras = videoSources.filter((source) => source.participant?.participantId === participant.participantId);
+    return {
+      participantId: participant.participantId,
+      label: participant.label,
+      cameraSourceCount: cameras.length,
+      cameraLabels: cameras.map((camera) => camera.originalName),
+      status: (mappedSpeakerKeys.has(speakerKey)
+        ? "MAPPED"
+        : cameras.length > 1
+          ? "AMBIGUOUS"
+          : "MISSING") as "MISSING" | "AMBIGUOUS" | "MAPPED",
+    };
+  });
+  const cameraReadinessStatus: CaptureTakeCameraReadiness["status"] = videoSources.length === 0
+    ? "NO_VIDEO_SOURCES"
+    : allSpeakerKeys.size === 0 || attributedSpeakerKeys.size !== allSpeakerKeys.size
+      ? "SPEAKER_REVIEW_REQUIRED"
+      : videoSources.some((source) => !source.participant?.participantId)
+        ? "CAMERA_IDENTITY_REQUIRED"
+        : [...allSpeakerKeys].some((speakerKey) => !mappedSpeakerKeys.has(speakerKey))
+          ? "PRIMARY_ANGLE_REQUIRED"
+          : "READY";
+  const cameraReadiness: CaptureTakeCameraReadiness = {
+    status: cameraReadinessStatus,
+    videoSourceCount: videoSources.length,
+    participantBoundVideoSourceCount: videoSources.filter((source) => source.participant?.participantId).length,
+    unboundVideoSourceCount: videoSources.filter((source) => !source.participant?.participantId).length,
+    reviewedSpeakerCount: allSpeakerKeys.size,
+    attributedSpeakerCount: attributedSpeakerKeys.size,
+    mappedSpeakerCount: [...allSpeakerKeys].filter((speakerKey) => mappedSpeakerKeys.has(speakerKey)).length,
+    participants: cameraParticipants,
+    nextAction: cameraReadinessStatus === "NO_VIDEO_SOURCES"
+      ? "Add or recover at least one participant camera source for this take. Audio editing can continue."
+      : cameraReadinessStatus === "SPEAKER_REVIEW_REQUIRED"
+        ? "Review transcript speaker identity against protected playback before assigning cameras."
+        : cameraReadinessStatus === "CAMERA_IDENTITY_REQUIRED"
+          ? "Identify the participant or purpose of every camera source before automatic switching."
+          : cameraReadinessStatus === "PRIMARY_ANGLE_REQUIRED"
+            ? "Choose a primary synchronized camera for every reviewed speaker."
+            : "Every reviewed speaker has an explicit synchronized camera mapping.",
+  };
   const speakerAttributionComplete = transcriptBlocks.length > 0
     && allSpeakerKeys.size > 0
     && attributedSpeakerKeys.size === allSpeakerKeys.size;
@@ -748,6 +819,7 @@ export function planCaptureTakeMaterialization(input: {
     sourceBindings,
     transcriptBinding,
     speakerCameraMappingIds: receipt.speakerCameraMappingIds,
+    cameraReadiness,
     issues,
     nextAction: assemblyReady
       ? "Review the deterministic camera assembly and audio treatment before approving an edit."

@@ -39,6 +39,17 @@ it("explains an evidence update before offering the conflict-safe write", async 
       ],
       transcriptBinding: { blockIds: ["turn-1", "turn-2", "turn-3", "turn-4"], speakerAttributionComplete: false, recordingAssetId: "audio-backup" },
       speakerCameraMappingIds: [],
+      cameraReadiness: {
+        status: "NO_VIDEO_SOURCES",
+        videoSourceCount: 0,
+        participantBoundVideoSourceCount: 0,
+        unboundVideoSourceCount: 0,
+        reviewedSpeakerCount: 1,
+        attributedSpeakerCount: 0,
+        mappedSpeakerCount: 0,
+        participants: [],
+        nextAction: "Add or recover at least one participant camera source for this take. Audio editing can continue.",
+      },
       issues: [{ code: "speaker-attribution-incomplete", severity: "warning", message: "A speaker still needs playback-reviewed identity." }],
       nextAction: "Resolve the remaining speaker/camera review warnings before automated camera assembly.",
       changed: true,
@@ -80,6 +91,9 @@ it("explains an evidence update before offering the conflict-safe write", async 
   expect(within(impact).getByText("1 clips · 2 turns preserved")).toBeInTheDocument();
   expect(within(impact).getByText("0 add · 1 manual preserved")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Update episode with current evidence" })).toBeEnabled();
+  expect(screen.getByRole("heading", { name: "Participant camera readiness" })).toBeInTheDocument();
+  expect(screen.getByText("NO VIDEO SOURCES")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open this Session’s recording sources" })).toHaveAttribute("href", "/sessions/room-9?mode=recordings");
   expect(screen.getByRole("link", { name: "Review exact-source speaker identity" })).toHaveAttribute(
     "href",
     "/sessions/room-9?mode=transcript&source=audio-backup#speaker-attribution-review",

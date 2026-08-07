@@ -58,6 +58,26 @@ A speaker is mapped to a camera only when a reviewed transcript participant has
 exactly one camera in the take with the same participant identity. Zero cameras
 or multiple cameras create visible review issues rather than a guess.
 
+### Participant camera readiness
+
+The planner also projects camera readiness from the selected take itself. This
+is evidence about what the editor can safely automate, not a second source of
+capture state:
+
+| State | Evidence | Next review |
+| --- | --- | --- |
+| `NO_VIDEO_SOURCES` | The selected take contains no video source. | Add or recover a camera in this Session; audio editing may continue. |
+| `SPEAKER_REVIEW_REQUIRED` | Video exists, but transcript speaker identity has not been playback-reviewed. | Review the exact transcript source. |
+| `CAMERA_IDENTITY_REQUIRED` | At least one video source is not bound to a participant or declared purpose. | Identify the camera source before switching. |
+| `PRIMARY_ANGLE_REQUIRED` | Reviewed speakers and cameras exist, but one speaker has zero or multiple eligible primary cameras. | Make an explicit mapping in automated-edit evidence. |
+| `READY` | Every reviewed speaker has an explicit synchronized camera mapping. | Review the deterministic assembly. |
+
+Counts retain the number of video sources, participant-bound and unbound
+sources, reviewed and attributed speakers, and completed mappings. Per-person
+rows expose missing, ambiguous, or mapped camera coverage. Audio-only episodes
+therefore remain useful without being described as camera-ready, while a
+multi-camera episode cannot silently select a primary angle.
+
 ## Write and replay behavior
 
 `GET /api/episode-production/capture-takes` inspects readiness. `POST` requires
@@ -102,12 +122,15 @@ Session projections deep-link a ready update to this panel. Only blocked source,
 spine, or alignment evidence routes back to Guided sync; an already materialized
 take routes to automated-edit evidence.
 
-Materialization warnings also carry evidence-bound resolution paths. Missing
+Materialization warnings and the camera-readiness card carry evidence-bound
+resolution paths. A take with no video opens the exact Session recording-source
+workspace. Missing
 provider diarization labels route to per-turn playback review for the exact
 RecordingAsset; an existing unattributed provider cluster routes to the
 cluster-identity review for that same source. Missing or ambiguous participant
-cameras route to Guided sync. The correction desk never falls back to the newest
-room transcript when a source was explicitly selected.
+cameras route to source recovery or explicit speaker-camera mapping instead of
+the unrelated synchronization wizard. The correction desk never falls back to
+the newest room transcript when a source was explicitly selected.
 
 After a successful operation, the editor consumes the returned canonical
 artifact, preserves stable `sourceId` through hydration, and suppresses no human
@@ -136,6 +159,10 @@ stale. The rendered update preview proved zero lanes created, two lanes reused,
 four transcript turns added, and three prior turns replaced. The guarded update
 then converged to `MATERIALIZED_MEDIA`; both protected recordings played and
 paused together, with no browser exception, source mutation, or publication.
+The same retained take now reports `NO_VIDEO_SOURCES` and links to its exact
+Session recording-source workspace. A synthetic two-camera fixture reports
+`PRIMARY_ANGLE_REQUIRED` rather than guessing which camera should represent the
+reviewed participant.
 
 The fixture is synthetic retained evidence, not the physical-device acceptance
 gate. The next real gate remains a new multi-device Capture session with actual
