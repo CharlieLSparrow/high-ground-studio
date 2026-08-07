@@ -160,8 +160,9 @@ reconciliation; they are useful browsing evidence but unsafe cursor identity.
 
 ## Next production slices
 
-1. Generate checksum-bound thumbnails and contact sheets as derivatives,
-   including sampled spherical views for 360 packages.
+1. Extend the now-operational checksum-bound 4x2 contact-sheet derivative into
+   duration-aware filmstrips and audio waveforms. Keep each derivative bound to
+   the exact source revision and exact collaboration-proxy generation.
 2. Add waveform/filmstrip navigation and keyboard range marking to the viewer.
 3. Add a freeform exploratory board that can deliberately commit an order to a
    durable binder, preserving both arrangements and their receipts.
@@ -172,6 +173,41 @@ reconciliation; they are useful browsing evidence but unsafe cursor identity.
 6. Activate a licensed Insta360 MediaSDK stitch executor only after approval of
    its provider, cost, retention, and minimum-capacity proposal. The executor
    must emit the existing exact-source stitch-master receipt.
+
+The first visual derivative is no longer a paper design. A retained operation
+generated and replayed a protected 1140x328 contact sheet with eight ordered
+source-time samples for the retained HGO Insta360 package. Quipsly verified the
+input proxy before and after generation and verified the output SHA-256, size,
+MIME type, dimensions, profile, and source/proxy binding. Signed-in Chrome then
+loaded the exact protected derivative in the 19-source Source Story library.
+
+## Product vocabulary without product silos
+
+The durable system should remain universal while each project presents a
+purpose-built lens:
+
+- **Source Room** is provider-neutral intake, health, search, and visual
+  browsing for Drive, local files, capture uploads, camera packages, and future
+  connectors.
+- **Collections and selects** are loose personal or shared discovery. They do
+  not imply story order and never copy source bytes.
+- **Source-backed cards** record an exact range, optional camera/view recipe,
+  synopsis, notes, tags, and provenance. The card is the stable bridge between
+  research, writing, collaboration, and editing.
+- **Boards and binders** organize the same cards spatially or sequentially.
+  Exploration remains reversible; committing an arrangement creates an
+  explicit revision rather than silently replacing another person's order.
+- **Episode timelines** are committed editorial placements over the same exact
+  decisions. Local and cloud editors consume the same timeline and derivative
+  graph; rendering location is an execution choice, not a different project.
+
+An Episode lens can call these clips, beats, script, and timeline. A coaching
+lens can call them session media, moments, notes, follow-ups, and plan. A
+research lens can call them sources, evidence, annotations, and manuscript.
+Those vocabularies, defaults, permissions, and suggested views may differ while
+the canonical source, card, document, task, conversation, and revision kernels
+remain shared. That is how Quipsly can feel more specialized than separate
+point tools without becoming a collection of incompatible databases.
 
 ## UX acceptance
 

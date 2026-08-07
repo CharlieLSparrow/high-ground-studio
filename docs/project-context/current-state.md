@@ -2,6 +2,32 @@
 
 Date: 2026-08-07
 
+## Checksum-bound source visual overview checkpoint
+
+- Source Story can now request a durable 4x2 JPEG contact sheet for a video
+  source without reading or rewriting its original media. The job is bound to
+  the exact source-revision identity, exact collaboration-proxy generation,
+  SHA-256, byte length, profile, and output locator.
+- The local media worker claims the job under a lease, re-verifies the proxy
+  before and after FFmpeg sampling, probes the generated JPEG, and records an
+  append-only `StudioMediaDerivative` plus a structured result receipt. Exact
+  replay returns the existing derivative instead of spending work twice.
+- The source-library projection exposes the ready overview and its current job
+  state. Source cards render the protected derivative as their thumbnail and
+  provide an explicit `Build 8-frame visual map` action when one is absent.
+- A retained HGO operation generated derivative
+  `svoderivative_3fa494b25aebd44ddb4dd6e6804c9b0f258cbeffce574a2a`
+  for the complete Insta360 package. Its 61,800-byte, 1140x328 JPEG contains
+  eight ordered source-time samples; its SHA-256 and dimensions match the
+  worker receipt; the input proxy remained byte-for-byte unchanged; and a
+  second request replayed the same derivative.
+- Signed-in Chrome operation loaded that protected image at its natural
+  1140x328 dimensions, rendered the checksum-bound status in the 19-source
+  library, and retained a 1920-pixel layout without horizontal overflow.
+- Media-contract tests, worker tests, PostgreSQL integration, TypeScript, both
+  media package builds, and the complete 194-page Quipsly production build
+  pass.
+
 ## Cursor-paged source library and durable collections checkpoint
 
 - Source Story no longer depends on three silent 500-row media windows. One
@@ -826,7 +852,7 @@ Date: 2026-08-07
   revision.
 - Nest and Capture also compare the complete editor and selected-record sets
   with that immutable revision. Unsaved changes show `Save edits before
-  release`, clear any prior confirmation, and keep release bound to the named
+release`, clear any prior confirmation, and keep release bound to the named
   saved revision instead of silently treating editor text as saved.
 - Signed-in rendered Nest operation saved revision 2 with four selected
   records, changed one disposable canonical task, read back the exact held
@@ -2561,7 +2587,7 @@ These should be treated as cleanup candidates later, not as authoritative produc
   camera master, and measured audio-capacity lanes.
 - A disposable local Firebase user selected canonical Session
   `cmrrvwyol0003foxlxju1kqt6` (`High Ground Odyssey Episode 8 production
-  rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
+rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Record, selected that exact Session from the virtualized list, verified
   consent, recorder, Guardian, and local-start surfaces, opened Session Truth,
   scrolled to and opened Live Room, and verified the provider/local-source
