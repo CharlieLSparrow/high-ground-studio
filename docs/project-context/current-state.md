@@ -2978,3 +2978,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   Firebase/Quipsly identities are removed after proof. This is a real
   separate-account boundary for this vertical slice, not yet a claim that
   every Quipsly surface has completed its privacy audit.
+- The Editor side of this retained journey is keyboard-operated: focus plus
+  Enter opens the card discussion, sends its message, opens and submits the
+  Work form, and follows the focused-task link. Playwright resolves the controls
+  through their accessible roles/names. This proves the core Episode 5
+  follow-through path is keyboard reachable; it does not substitute for the
+  remaining product-wide screen-reader, contrast, zoom, reduced-motion, and
+  physical-device accessibility review.

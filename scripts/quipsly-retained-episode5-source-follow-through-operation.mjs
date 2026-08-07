@@ -116,23 +116,32 @@ try {
   await page.goto(storyUrl, { waitUntil: "networkidle" });
   const cardSurface = page.locator(`#story-card-${card.id}`).first();
   await cardSurface.waitFor({ state: "visible" });
-  await cardSurface.getByRole("button", { name: `Open discussion for ${card.title}` }).click();
+  const discussionButton = cardSurface.getByRole("button", { name: `Open discussion for ${card.title}` });
+  await discussionButton.focus();
+  await page.keyboard.press("Enter");
   await page.getByRole("heading", { name: `${card.title} · discussion` }).waitFor();
   await page.getByPlaceholder("Discuss this exact source select…").fill(messageText);
-  await page.getByRole("button", { name: "Send collaboration message" }).click();
+  const sendMessageButton = page.getByRole("button", { name: "Send collaboration message" });
+  await sendMessageButton.focus();
+  await page.keyboard.press("Enter");
   await page.getByText(messageText, { exact: true }).waitFor();
 
-  await page.getByRole("button", { name: "Create follow-through task" }).click();
+  const createTaskButton = page.getByRole("button", { name: "Create follow-through task" });
+  await createTaskButton.focus();
+  await page.keyboard.press("Enter");
   const titleInput = page.getByRole("textbox", { name: "Task title" });
   await titleInput.fill(taskTitle);
   await page.getByRole("textbox", { name: /What does done look like/ }).fill(taskDetail);
-  await page.getByRole("button", { name: "Create Work task" }).click();
+  const submitTaskButton = page.getByRole("button", { name: "Create Work task" });
+  await submitTaskButton.focus();
+  await page.keyboard.press("Enter");
   await page.getByText(/Task saved in Work/).waitFor();
   const taskLink = page.getByRole("link", { name: "Open task" });
   const taskHref = await taskLink.getAttribute("href");
   taskId = taskHref ? new URL(taskHref, appOrigin).searchParams.get("task") : null;
   if (!taskId) throw new Error("The visible Work handoff did not return a canonical task identity.");
-  await taskLink.click();
+  await taskLink.focus();
+  await page.keyboard.press("Enter");
   await page.waitForURL((url) => url.pathname === "/work" && url.searchParams.get("task") === taskId);
   await page.getByRole("heading", { name: "Focused task" }).waitFor();
   await page.getByText("Exact source-card evidence", { exact: true }).waitFor();
@@ -225,6 +234,7 @@ try {
     sourceEvidenceReceiptCount: task.evidenceReceipts.length,
     inheritedTagCount: task.tagLinks.length,
     workDeepLinkFocused: true,
+    keyboardOperated: true,
     exactSourceReturnHref: returnHref,
     separateAccountPrivacy: {
       sourceStoryStatus: sourceStoryDenied.status,
