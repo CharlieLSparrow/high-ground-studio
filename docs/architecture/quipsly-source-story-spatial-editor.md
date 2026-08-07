@@ -154,6 +154,13 @@ The slice is covered at four boundaries:
 
 The retained High Ground Odyssey operation additionally proves the real source package remains unchanged, the authenticated Story page and API project the source set, and the unauthenticated derivative boundary returns not found.
 
+`pnpm quipsly:retained:story-binder` operates the section lifecycle through the
+authenticated application route against the retained High Ground Odyssey
+board. It deliberately keeps one productive editorial-spine section, creates
+and archives a separate empty QA section with retained writing, replays every
+request, renders both Story and Writing pages, and verifies that the signed-out
+shell contains none of the private binder content.
+
 ## Next production expansion
 
 The next automatic stitch runner should be a licensed Insta360 Desktop MediaSDK adapter on a documented Linux x64 or Windows x64 executor. It must emit the same stitch-master receipt and therefore does not change the editor, queue, worker, or derivative model.

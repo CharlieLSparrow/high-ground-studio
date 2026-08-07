@@ -18,6 +18,18 @@ Date: 2026-08-07
 - Contract and real PostgreSQL integration coverage exercises idempotent replay,
   request collisions, stale authority, exact-section order, occupied-section
   archive refusal, writing retention, and card-order independence.
+- The retained High Ground Odyssey board `52996a24-e0ba-4ad7-be07-7e9a481168fc`
+  now contains the productive section `Insta360 selects — editorial spine` at
+  binder position two with shared document
+  `a71e8df3-1829-412e-985c-a27828fc024e`. An isolated QA section completed
+  create, update, writing-link, and archive revisions 1–4; it disappeared from
+  the active projection while its document and receipts remained.
+- The operated rerun caught and repaired historical replay ordering: a valid
+  `open-section-writing` request now replays after a later archive, while a new
+  request against the archived section still fails closed. Authenticated Story
+  and Writing pages returned 200 with the expected binder context, while the
+  signed-out shell omitted the private section. Re-run with
+  `pnpm quipsly:retained:story-binder`.
 
 ## Source Story to Episode timeline checkpoint
 
