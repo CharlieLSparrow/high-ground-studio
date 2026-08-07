@@ -140,4 +140,53 @@ Operated locally as `render-dogfood@quipsly.test` against real retained High Gro
 4. Range playback originally sought the current player and ran past the out-point. Cross-asset audition now waits for the correct mounted player and enforces the exact range boundary for video and audio.
 5. A proxy attachment carries both the proxy output checksum and the original-behind-the-proxy checksum. The v1 lookup paired the original checksum with the proxy byte count. All v1 verification claims are now explicitly invalidated; v2 accepts only an output/direct-registration checksum whose declared byte count matches the exact `StudioMediaAsset`. The database fixture proves the proxy checksum is accepted while the tempting original checksum is rejected.
 
-The local database smoke covers request replay, request/slug collision, same-Nest asset and tag enforcement, rollback without partial rows, exact output-versus-original checksum binding, 360 range persistence, immutable ranges through reorder, stale revision rejection, append-only card history, and PostgreSQL range checks. The retained board and cards are deliberate dogfood evidence, not sample UI state. An explicit revision-rebind operation is the next required recovery slice before a corrected source can replace an invalidated revision on an existing card without deleting its history.
+The local database smoke covers request replay, request/slug collision, same-Nest asset and tag enforcement, rollback without partial rows, exact output-versus-original checksum binding, 360 range persistence, immutable ranges through reorder, stale revision rejection, append-only card history, and PostgreSQL range checks. The retained board and cards are deliberate dogfood evidence, not sample UI state.
+
+## Explicit source-rebind recovery
+
+A source-backed card can now move to a corrected, newly verified, relinked, or
+replacement source through one deliberate `rebind-card-source` operation. This
+is a change in card source intent, not a mutation of the old recording:
+
+1. the caller names the exact current card revision and current range ID;
+2. the replacement media must still belong to the same Nest;
+3. Quipsly resolves or creates the replacement immutable v2 source revision;
+4. it creates or reuses an immutable range over that exact revision;
+5. one serializable optimistic update changes only the card's range pointer and
+   revision;
+6. an append-only `rebind-source` card revision records the reason, old and new
+   range/revision/media IDs, source state, and explicit `sourceMutated:false`
+   and `placementsMutated:false` evidence.
+
+The card title, synopsis, notes, purpose, status, tags, stable ID, and every
+board placement remain unchanged. Board revision and ordering do not advance.
+The old range and old invalidated v1 revision remain queryable. UUID request
+replay converges only for the same normalized intent; reused request IDs,
+stale card revisions, and stale range pointers fail with conflicts.
+
+The story UI exposes two forms of the same operation:
+
+- **Re-check exact registered source** repairs a held card against the current
+  v2 verification rules while preserving its range and reframe recipe.
+- **Replace or relink source** requires a human reason and supports a different
+  registered asset/range, including loading the in/out marks currently visible
+  in the source viewer. A 360 recipe is retained only for an exact-current
+  range re-check; it is not silently applied to different source coordinates.
+
+Retained Episode 9 operation repaired both cards through the signed-in browser.
+`Be Curious clip — shared viewing cue` advanced from revision 1 to 2 and
+`Rendezvous proof: source handoff opens cleanly` advanced from revision 2 to 3.
+Both are now `checksum-bound` under
+`quipsly-media-source-verification-v2`; exact times remain
+`1.107004–4.263378` and `1.020478–4.007790`. Board revision remains 4 with sort
+orders 0 and 1. The old ranges `cmsiv4kzr00082kxlrnt39jk6` and
+`cmsiuzigq00022kxl45rmnha1` still exist with their original selectors and v1
+revision links.
+
+The expanded database suite proves request convergence, request-identity
+collision, stale-write refusal, old-range retention, prose/tag preservation,
+placement identity and order preservation, board revision preservation, exact
+replacement checksum binding, and a complete create/update/rebind revision
+sequence. The next coherent source slice is provider-neutral Drive attachment
+and capability refresh; timeline promotion should follow only after changed or
+revoked provider revisions can exercise this same recovery operation.

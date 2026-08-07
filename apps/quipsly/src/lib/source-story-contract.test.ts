@@ -1,6 +1,7 @@
 import {
   SourceStoryContractError,
   normalizeCreateSourceStoryCardInput,
+  normalizeRebindSourceStoryCardInput,
   stableSourceStoryJson,
 } from "./source-story-contract";
 
@@ -80,6 +81,43 @@ describe("source-story contract", () => {
     });
     expect(normalized.reframeRecipe?.keyframes).toHaveLength(2);
     expect(normalized.reframeRecipe?.stabilization).toBe("flowstate");
+  });
+
+  it("normalizes an explicit source rebind without accepting an implicit current range", () => {
+    expect(normalizeRebindSourceStoryCardInput({
+      projectId: "project_01",
+      cardId: "card_01",
+      expectedRevision: 3,
+      expectedSourceRangeId: "range_old",
+      replacementMediaAssetId: "asset_exact",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      startSeconds: 1.12345649,
+      endSeconds: 9.5,
+      reason: "  Rebind after exact bytes were registered.  ",
+    })).toEqual({
+      schema: "quipsly-source-story-v1",
+      projectId: "project_01",
+      cardId: "card_01",
+      expectedRevision: 3,
+      expectedSourceRangeId: "range_old",
+      replacementMediaAssetId: "asset_exact",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      startSeconds: 1.123456,
+      endSeconds: 9.5,
+      reason: "Rebind after exact bytes were registered.",
+      reframeRecipe: null,
+    });
+    expect(() => normalizeRebindSourceStoryCardInput({
+      projectId: "project_01",
+      cardId: "card_01",
+      expectedRevision: 3,
+      expectedSourceRangeId: "",
+      replacementMediaAssetId: "asset_exact",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      startSeconds: 1,
+      endSeconds: 2,
+      reason: "repair",
+    })).toThrow("expectedSourceRangeId is required");
   });
 
   it("rejects 360 keyframes outside the selected range or view envelope", () => {

@@ -8198,3 +8198,24 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
   behind the same manifest only when collaboration or scale requires it.
 - Architecture and retained evidence:
   `docs/coordination/2026-08-07-browser-edit-local-execution.md`.
+
+## 2026-08-07 source-to-story recovery checkpoint
+
+- Added one explicit, serializable source-rebind operation for a story card.
+  It creates a new immutable v2 source revision/range, updates only the card's
+  range pointer, and appends a `rebind-source` revision with the reason and
+  old/new identities. It does not rewrite or delete source bytes, the old
+  range, tags, prose, or storyboard placements.
+- The shared story UI can re-check a held registered source in one deliberate
+  action or replace/relink it to another registered asset and exact range. The
+  general form can load the current viewer's I/O marks and requires a reason;
+  a 360 recipe is not silently carried to different source coordinates.
+- Operated both retained Episode 9 cards through the signed-in local Nest. Both
+  now bind exact checksums under verification v2 while retaining their source
+  times, notes, tags, stable IDs, and order. Their card revisions advanced to 2
+  and 3; board revision stayed 4; both invalidated v1 ranges remain queryable.
+- Contract coverage passes 7/7 and local PostgreSQL coverage passes 6/6,
+  including idempotency, request collision, stale card/range rejection,
+  cross-Nest refusal, old-range retention, exact checksum binding, and
+  placement/board preservation. Strict TypeScript passes. Architecture and
+  evidence: `docs/coordination/2026-08-07-drive-source-to-story-architecture.md`.

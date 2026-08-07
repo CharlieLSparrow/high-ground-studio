@@ -15,6 +15,7 @@ import {
   createSourceStoryCard,
   createStoryBoard,
   readSourceStoryWorkspace,
+  rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
 } from "@/lib/server/source-story";
@@ -174,6 +175,25 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         purpose: purposeFrom(body.purpose),
         status: statusFrom(body.status),
         tagIds: stringArray(body.tagIds),
+      });
+    } else if (action === "rebind-card-source") {
+      operation = await rebindSourceStoryCard({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          cardId: text(body.cardId),
+          expectedRevision: Number(body.expectedRevision),
+          expectedSourceRangeId: text(body.expectedSourceRangeId),
+          replacementMediaAssetId: text(body.replacementMediaAssetId),
+          clientRequestId: text(body.clientRequestId),
+          startSeconds: Number(body.startSeconds),
+          endSeconds: Number(body.endSeconds),
+          reason: text(body.reason),
+          reframeRecipe: body.reframeRecipe && typeof body.reframeRecipe === "object"
+            ? body.reframeRecipe as StoryReframeRecipe
+            : null,
+        },
       });
     } else if (action === "reorder-board") {
       operation = await reorderStoryBoard({

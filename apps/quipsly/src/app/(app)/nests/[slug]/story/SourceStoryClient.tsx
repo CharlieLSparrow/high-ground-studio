@@ -14,6 +14,7 @@ import {
   FolderOpen,
   LayoutGrid,
   Loader2,
+  Link2,
   Play,
   Plus,
   Rotate3d,
@@ -496,6 +497,7 @@ export function SourceStoryClient({
                     {placement.card.sourceRange ? <button type="button" onClick={() => { const range = placement.card.sourceRange; const asset = range?.sourceRevision.mediaAsset; if (asset && range) playSourceRange(asset.id, range.startSeconds, range.endSeconds); }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950"><Play size={14} aria-hidden="true" />{formatClock(placement.card.sourceRange.startSeconds)}–{formatClock(placement.card.sourceRange.endSeconds)}</button> : null}
                     <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
                     {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
+                    {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
                     {canWrite ? <StoryCardEditor card={placement.card} tags={tags} pending={pending} mutate={mutate} /> : null}
                   </article>
                 ))}
@@ -508,6 +510,75 @@ export function SourceStoryClient({
         </aside>
       </div>
     </main>
+  );
+}
+
+function SourceRepairEditor({
+  card,
+  assets,
+  selectedAsset,
+  viewerInPoint,
+  viewerOutPoint,
+  pending,
+  mutate,
+}: {
+  card: SourceStoryCard;
+  assets: Asset[];
+  selectedAsset: Asset | null;
+  viewerInPoint: number | null;
+  viewerOutPoint: number | null;
+  pending: boolean;
+  mutate: (body: Record<string, unknown>, message: string) => Promise<SourceStoryWorkspace | null>;
+}) {
+  const range = card.sourceRange;
+  const currentAsset = range?.sourceRevision.mediaAsset ?? null;
+  const [assetId, setAssetId] = useState(currentAsset?.id ?? "");
+  const [startSeconds, setStartSeconds] = useState(range?.startSeconds ?? 0);
+  const [endSeconds, setEndSeconds] = useState(range?.endSeconds ?? 0);
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    setAssetId(currentAsset?.id ?? "");
+    setStartSeconds(range?.startSeconds ?? 0);
+    setEndSeconds(range?.endSeconds ?? 0);
+    setReason("");
+  }, [card.revision, currentAsset?.id, range?.endSeconds, range?.startSeconds]);
+
+  if (!range || !currentAsset) return null;
+  const exactCurrentSelection = assetId === currentAsset.id
+    && startSeconds === range.startSeconds
+    && endSeconds === range.endSeconds;
+  const canSubmit = Boolean(assetId && reason.trim() && Number.isFinite(startSeconds) && Number.isFinite(endSeconds) && endSeconds - startSeconds >= 0.05);
+  const rebind = (input: { replacementMediaAssetId: string; startSeconds: number; endSeconds: number; reason: string; preserveRecipe: boolean }, message: string) => mutate({
+    action: "rebind-card-source",
+    cardId: card.id,
+    expectedRevision: card.revision,
+    expectedSourceRangeId: range.id,
+    replacementMediaAssetId: input.replacementMediaAssetId,
+    clientRequestId: crypto.randomUUID(),
+    startSeconds: input.startSeconds,
+    endSeconds: input.endSeconds,
+    reason: input.reason,
+    reframeRecipe: input.preserveRecipe ? range.reframeRecipe : null,
+  }, message);
+
+  return (
+    <div className="mt-3">
+      {range.sourceRevision.sourceState === "identity-unverified" ? (
+        <button type="button" disabled={pending} onClick={() => void rebind({ replacementMediaAssetId: currentAsset.id, startSeconds: range.startSeconds, endSeconds: range.endSeconds, reason: "Rebind after exact-source verification policy update.", preserveRecipe: true }, `Rechecked ${card.title} against the exact registered source and preserved its prior source receipt.`)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-xs font-black text-amber-950 disabled:opacity-45"><Link2 size={15} aria-hidden="true" />Re-check exact registered source</button>
+      ) : null}
+      <details className="mt-2 rounded-xl border border-dashed border-[#d4c09e] bg-white p-3">
+        <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#76522c]">Replace or relink source…</summary>
+        <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">This creates a new immutable source range and one card revision. It keeps the card’s writing, tags, board position, and every prior source receipt.</p>
+        <div className="mt-3 grid gap-3">
+          <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Replacement registered source<select value={assetId} onChange={(event) => setAssetId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-xs font-bold">{assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.filename}</option>)}</select></label>
+          {selectedAsset && viewerInPoint !== null && viewerOutPoint !== null && viewerOutPoint > viewerInPoint ? <button type="button" onClick={() => { setAssetId(selectedAsset.id); setStartSeconds(viewerInPoint); setEndSeconds(viewerOutPoint); }} className="min-h-11 rounded-xl border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950">Load current viewer range · {formatClock(viewerInPoint)}–{formatClock(viewerOutPoint)}</button> : null}
+          <div className="grid grid-cols-2 gap-2"><label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Source in<input type="number" min="0" step="0.001" value={startSeconds} onChange={(event) => setStartSeconds(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 font-mono text-xs font-bold" /></label><label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Source out<input type="number" min="0" step="0.001" value={endSeconds} onChange={(event) => setEndSeconds(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 font-mono text-xs font-bold" /></label></div>
+          <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Why is the source changing?<textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} rows={2} placeholder="Corrected file, exact bytes verified, relinked storage, revised select…" className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-xs font-semibold normal-case tracking-normal" /></label>
+          <button type="button" disabled={pending || !canSubmit} onClick={() => void rebind({ replacementMediaAssetId: assetId, startSeconds, endSeconds, reason, preserveRecipe: exactCurrentSelection }, `Rebound ${card.title} to a new immutable source range as revision ${card.revision + 1}.`)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-4 text-xs font-black uppercase tracking-wide text-white disabled:opacity-45"><Link2 size={15} aria-hidden="true" />Create source rebind revision</button>
+        </div>
+      </details>
+    </div>
   );
 }
 

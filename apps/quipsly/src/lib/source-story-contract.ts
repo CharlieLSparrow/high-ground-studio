@@ -60,6 +60,19 @@ export type CreateSourceStoryCardInput = {
   reframeRecipe?: StoryReframeRecipe | null;
 };
 
+export type RebindSourceStoryCardInput = {
+  projectId: string;
+  cardId: string;
+  expectedRevision: number;
+  expectedSourceRangeId: string;
+  replacementMediaAssetId: string;
+  clientRequestId: string;
+  startSeconds: number;
+  endSeconds: number;
+  reason: string;
+  reframeRecipe?: StoryReframeRecipe | null;
+};
+
 export class SourceStoryContractError extends Error {
   readonly code: string;
 
@@ -106,6 +119,18 @@ function finiteSeconds(value: unknown, field: string) {
     throw new SourceStoryContractError("invalid-time", `${field} must be a finite source time between zero and seven days.`);
   }
   return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function normalizedRange(startValue: unknown, endValue: unknown) {
+  const startSeconds = finiteSeconds(startValue, "startSeconds");
+  const endSeconds = finiteSeconds(endValue, "endSeconds");
+  if (endSeconds <= startSeconds) {
+    throw new SourceStoryContractError("invalid-range", "The out point must be after the in point.");
+  }
+  if (endSeconds - startSeconds < 0.05) {
+    throw new SourceStoryContractError("range-too-short", "Select at least 0.05 seconds of source media.");
+  }
+  return { startSeconds, endSeconds };
 }
 
 function orderedUniqueIds(value: unknown) {
@@ -184,14 +209,7 @@ export function normalizeStoryReframeRecipe(
 }
 
 export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCardInput) {
-  const startSeconds = finiteSeconds(value.startSeconds, "startSeconds");
-  const endSeconds = finiteSeconds(value.endSeconds, "endSeconds");
-  if (endSeconds <= startSeconds) {
-    throw new SourceStoryContractError("invalid-range", "The out point must be after the in point.");
-  }
-  if (endSeconds - startSeconds < 0.05) {
-    throw new SourceStoryContractError("range-too-short", "Select at least 0.05 seconds of source media.");
-  }
+  const { startSeconds, endSeconds } = normalizedRange(value.startSeconds, value.endSeconds);
   const purpose = value.purpose ?? "select";
   if (!storyCardPurposes.includes(purpose)) {
     throw new SourceStoryContractError("invalid-purpose", "The story purpose is unsupported.");
@@ -220,6 +238,27 @@ export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCard
     groupKey: boardKey(value.groupKey, "groupKey", "unassigned"),
     laneKey: boardKey(value.laneKey, "laneKey", "story"),
     tagIds: orderedUniqueIds(value.tagIds),
+    reframeRecipe: normalizeStoryReframeRecipe(value.reframeRecipe, { startSeconds, endSeconds }),
+  };
+}
+
+export function normalizeRebindSourceStoryCardInput(value: RebindSourceStoryCardInput) {
+  const { startSeconds, endSeconds } = normalizedRange(value.startSeconds, value.endSeconds);
+  const expectedRevision = Number(value.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw new SourceStoryContractError("invalid-revision", "The current card revision is required.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    cardId: opaqueId(value.cardId, "cardId"),
+    expectedRevision,
+    expectedSourceRangeId: opaqueId(value.expectedSourceRangeId, "expectedSourceRangeId"),
+    replacementMediaAssetId: opaqueId(value.replacementMediaAssetId, "replacementMediaAssetId"),
+    clientRequestId: clientRequestId(value.clientRequestId),
+    startSeconds,
+    endSeconds,
+    reason: boundedText(value.reason, "Reason", 2_000, true),
     reframeRecipe: normalizeStoryReframeRecipe(value.reframeRecipe, { startSeconds, endSeconds }),
   };
 }

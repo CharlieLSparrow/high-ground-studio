@@ -9,6 +9,7 @@ import {
   createSourceStoryCard,
   createStoryBoard,
   readSourceStoryWorkspace,
+  rebindSourceStoryCard,
   reorderStoryBoard,
   updateSourceStoryCard,
 } from "./source-story";
@@ -451,5 +452,106 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       },
     })).rejects.toThrow();
     await expect(prisma.studioSourceRange.count({ where: { selectorSha256: "f".repeat(64) } })).resolves.toBe(0);
+  });
+
+  it("rebinds a card to a corrected immutable source while preserving prose, tags, placement, and history", async () => {
+    const placementBefore = await prisma.studioStoryBoardPlacement.findFirstOrThrow({
+      where: { boardId, cardId: firstCardId },
+      select: { id: true, boardId: true, cardId: true, groupKey: true, laneKey: true, sortOrder: true },
+    });
+    const oldRange = await prisma.studioSourceRange.findUniqueOrThrow({ where: { id: firstRangeId } });
+    const cardBefore = await prisma.studioStoryCard.findUniqueOrThrow({
+      where: { id: firstCardId },
+      include: { tags: { orderBy: { tagId: "asc" } } },
+    });
+    const clientRequestId = randomUUID();
+    const input = {
+      prisma,
+      actorUserId,
+      value: {
+        projectId,
+        cardId: firstCardId,
+        expectedRevision: 2,
+        expectedSourceRangeId: firstRangeId,
+        replacementMediaAssetId: secondAssetId,
+        clientRequestId,
+        startSeconds: 2.25,
+        endSeconds: 8.75,
+        reason: "The exact replacement source bytes are now registered.",
+      },
+    };
+    const rebound = await rebindSourceStoryCard(input);
+    expect(rebound).toMatchObject({
+      replayed: false,
+      previousSourceRangeId: firstRangeId,
+      card: { id: firstCardId, revision: 3 },
+    });
+    expect(rebound.card.sourceRangeId).not.toBe(firstRangeId);
+    await expect(rebindSourceStoryCard(input)).resolves.toMatchObject({
+      replayed: true,
+      previousSourceRangeId: firstRangeId,
+      card: { id: firstCardId, revision: 3, sourceRangeId: rebound.card.sourceRangeId },
+    });
+    await expect(rebindSourceStoryCard({
+      ...input,
+      value: { ...input.value, reason: "Different intent under a reused request identity." },
+    })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 3 });
+    await expect(rebindSourceStoryCard({
+      ...input,
+      value: { ...input.value, clientRequestId: randomUUID() },
+    })).rejects.toMatchObject({ code: "stale-card", currentRevision: 3 });
+
+    const [cardAfter, placementAfter, retainedOldRange, revisions, board] = await Promise.all([
+      prisma.studioStoryCard.findUniqueOrThrow({
+        where: { id: firstCardId },
+        include: {
+          tags: { orderBy: { tagId: "asc" } },
+          sourceRange: { include: { sourceRevision: true } },
+        },
+      }),
+      prisma.studioStoryBoardPlacement.findUniqueOrThrow({ where: { id: placementBefore.id } }),
+      prisma.studioSourceRange.findUniqueOrThrow({ where: { id: firstRangeId } }),
+      prisma.studioStoryCardRevision.findMany({
+        where: { cardId: firstCardId },
+        orderBy: { revision: "asc" },
+        select: { revision: true, operation: true, snapshotJson: true },
+      }),
+      prisma.studioStoryBoard.findUniqueOrThrow({ where: { id: boardId }, select: { revision: true } }),
+    ]);
+    expect(cardAfter).toMatchObject({
+      title: cardBefore.title,
+      synopsis: cardBefore.synopsis,
+      notes: cardBefore.notes,
+      purpose: cardBefore.purpose,
+      status: cardBefore.status,
+      sourceRange: {
+        startSeconds: 2.25,
+        endSeconds: 8.75,
+        sourceRevision: { sourceState: "checksum-bound", contentSha256: "a".repeat(64) },
+      },
+    });
+    expect(cardAfter.tags.map((tag) => tag.tagId)).toEqual(cardBefore.tags.map((tag) => tag.tagId));
+    expect(placementAfter).toMatchObject(placementBefore);
+    expect(retainedOldRange).toMatchObject({
+      id: oldRange.id,
+      sourceRevisionId: oldRange.sourceRevisionId,
+      startSeconds: oldRange.startSeconds,
+      endSeconds: oldRange.endSeconds,
+      selectorSha256: oldRange.selectorSha256,
+    });
+    expect(board.revision).toBe(4);
+    expect(revisions.map(({ revision, operation }) => ({ revision, operation }))).toEqual([
+      { revision: 1, operation: "create-card" },
+      { revision: 2, operation: "update-card" },
+      { revision: 3, operation: "rebind-source" },
+    ]);
+    expect(revisions[2]?.snapshotJson).toMatchObject({
+      sourceRebind: {
+        previousSourceRangeId: firstRangeId,
+        replacementSourceRangeId: rebound.card.sourceRangeId,
+        sourceMutated: false,
+        placementsMutated: false,
+      },
+    });
   });
 });

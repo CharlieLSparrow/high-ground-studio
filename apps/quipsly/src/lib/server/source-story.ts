@@ -8,10 +8,12 @@ import {
   SOURCE_STORY_SCHEMA_VERSION,
   SourceStoryContractError,
   normalizeCreateSourceStoryCardInput,
+  normalizeRebindSourceStoryCardInput,
   stableSourceStoryJson,
   storyCardPurposes,
   storyCardStatuses,
   type CreateSourceStoryCardInput,
+  type RebindSourceStoryCardInput,
   type StoryCardPurpose,
   type StoryCardStatus,
 } from "@/lib/source-story-contract";
@@ -721,6 +723,136 @@ export async function updateSourceStoryCard(input: {
     });
     const result = await tx.studioStoryCard.findUniqueOrThrow({ where: { id: card.id }, include: { tags: true } });
     return { card: result, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function rebindSourceStoryCard(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: RebindSourceStoryCardInput;
+}) {
+  const value = normalizeRebindSourceStoryCardInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryCardRevision.findUnique({
+      where: {
+        cardId_actorUserId_clientRequestId: {
+          cardId: value.cardId,
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      select: { revision: true, snapshotJson: true },
+    });
+    if (replay) {
+      if (storedRequestSha256(replay.snapshotJson) !== requestSha256) {
+        throw new SourceStoryConflictError(
+          "request-reuse-conflict",
+          "That saved request identity already applied a different source repair.",
+          replay.revision,
+        );
+      }
+      const card = await tx.studioStoryCard.findFirst({
+        where: { id: value.cardId, projectId: value.projectId },
+        include: { tags: true, sourceRange: true },
+      });
+      if (!card) throw new SourceStoryContractError("card-project-mismatch", "The story card is unavailable in this Nest.");
+      return { card, replayed: true, previousSourceRangeId: value.expectedSourceRangeId };
+    }
+
+    const card = await tx.studioStoryCard.findFirst({
+      where: { id: value.cardId, projectId: value.projectId, archivedAt: null },
+      include: { tags: true, sourceRange: true },
+    });
+    if (!card) throw new SourceStoryContractError("card-project-mismatch", "The story card is unavailable in this Nest.");
+    if (card.revision !== value.expectedRevision) {
+      throw new SourceStoryConflictError("stale-card", "This card changed on another surface.", card.revision);
+    }
+    if (card.sourceRangeId !== value.expectedSourceRangeId) {
+      throw new SourceStoryConflictError("stale-source-range", "This card's source changed on another surface.", card.revision);
+    }
+
+    const source = await ensureAssetRevision({
+      db: tx,
+      projectId: value.projectId,
+      mediaAssetId: value.replacementMediaAssetId,
+      actorUserId,
+    });
+    if (source.revision.durationSeconds !== null && value.endSeconds > source.revision.durationSeconds + 0.001) {
+      throw new SourceStoryContractError("range-past-source", "The out point is beyond the registered replacement source duration.");
+    }
+    const selectorJson = {
+      schema: "quipsly-media-time-selector-v1",
+      sourceRevisionId: source.revision.id,
+      sourceIdentitySha256: source.revision.identitySha256,
+      startSeconds: value.startSeconds,
+      endSeconds: value.endSeconds,
+      clock: "source",
+      reframeRecipe: value.reframeRecipe,
+    };
+    const selectorSha256 = sha256(stableSourceStoryJson(selectorJson));
+    const range = await tx.studioSourceRange.upsert({
+      where: {
+        sourceRevisionId_selectorSha256: {
+          sourceRevisionId: source.revision.id,
+          selectorSha256,
+        },
+      },
+      update: {},
+      create: {
+        projectId: value.projectId,
+        sourceRevisionId: source.revision.id,
+        selectorSha256,
+        startSeconds: value.startSeconds,
+        endSeconds: value.endSeconds,
+        selectorJson,
+        reframeRecipeJson: value.reframeRecipe ?? undefined,
+        createdByUserId: actorUserId,
+      },
+    });
+    if (range.id === card.sourceRangeId) {
+      throw new SourceStoryConflictError("source-already-current", "This exact source revision and range are already current.", card.revision);
+    }
+
+    const nextRevision = card.revision + 1;
+    const updated = await tx.studioStoryCard.updateMany({
+      where: { id: card.id, projectId: value.projectId, revision: card.revision, sourceRangeId: value.expectedSourceRangeId },
+      data: { sourceRangeId: range.id, revision: nextRevision, updatedByUserId: actorUserId },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-card", "This card changed on another surface.");
+
+    const tagIds = card.tags.map((link) => link.tagId).sort();
+    await tx.studioStoryCardRevision.create({
+      data: {
+        cardId: card.id,
+        revision: nextRevision,
+        operation: "rebind-source",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        snapshotJson: {
+          ...cardSnapshot({ ...card, sourceRangeId: range.id, revision: nextRevision, tagIds }),
+          requestSha256,
+          sourceRebind: {
+            schema: "quipsly-story-card-source-rebind-v1",
+            reason: value.reason,
+            previousSourceRangeId: card.sourceRangeId,
+            replacementSourceRangeId: range.id,
+            replacementSourceRevisionId: source.revision.id,
+            replacementMediaAssetId: source.asset.id,
+            replacementSourceState: source.revision.sourceState,
+            sourceMutated: false,
+            placementsMutated: false,
+          },
+        },
+      },
+    });
+    const result = await tx.studioStoryCard.findUniqueOrThrow({
+      where: { id: card.id },
+      include: { tags: true, sourceRange: true },
+    });
+    return { card: result, replayed: false, previousSourceRangeId: card.sourceRangeId };
   }, { isolationLevel: "Serializable" });
 }
 
