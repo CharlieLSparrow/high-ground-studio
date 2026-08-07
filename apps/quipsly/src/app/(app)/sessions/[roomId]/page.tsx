@@ -296,11 +296,36 @@ export default async function SessionReviewPage({
         updatedAt: true,
       },
     });
+    const promotedMediaAssetIds = [...new Set(room.recordingAssets
+      .map((recording: any) => cleanText(jsonObject(jsonObject(recording.localManifestJson).promotion).mediaAssetId))
+      .filter(Boolean))];
+    const audioSignalProfileJobs = room.project && promotedMediaAssetIds.length
+      ? await prisma.studioAssetProcessingJob.findMany({
+        where: {
+          projectId: room.project.id,
+          assetId: { in: promotedMediaAssetIds },
+          type: "audio-signal-profile",
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          assetId: true,
+          type: true,
+          status: true,
+          inputJson: true,
+          resultJson: true,
+          error: true,
+          completedAt: true,
+          updatedAt: true,
+        },
+      })
+      : [];
     const sourceEvidence = buildSessionSourceEvidence({
       roomId: room.id,
       recordingAssets: room.recordingAssets,
       finalizationReceipts,
       stateReceipts: room.stateReceipts,
+      audioSignalProfileJobs,
     });
     const promotedDetectorSources = room.project ? room.recordingAssets.flatMap((recording: any) => {
       const promotion = jsonObject(jsonObject(recording.localManifestJson).promotion);

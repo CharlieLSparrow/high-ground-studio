@@ -49,6 +49,19 @@ async function main() {
     assert.ok(sourceCount >= 4, `Expected retained current and historical source cards, observed ${sourceCount}.`);
     const gateCount = await flightDeck.locator("li[data-recording-health-gate]").count();
     assert.equal(gateCount, sourceCount * 6, "A rendered retained source lost an independently inspectable health gate.");
+    const readySources = await flightDeck.locator('li[data-recording-health-source="READY"]').count();
+    const reviewSources = await flightDeck.locator('li[data-recording-health-source="REVIEW"]').count();
+    const blockedSources = await flightDeck.locator('li[data-recording-health-source="BLOCKED"]').count();
+    const unknownSources = await flightDeck.locator('li[data-recording-health-source="UNKNOWN"]').count();
+    assert.equal(readySources, 2, "Both selected recovery masters should render READY after exact-source complete decoding.");
+    assert.equal(reviewSources, 2, "The two unplanned historical originals should remain explicit REVIEW sources.");
+    assert.equal(blockedSources, 0, "No retained source should render blocked after audited recovery.");
+    assert.equal(unknownSources, 0, "No retained source should retain unknown decode or signal gates after completed analysis projection.");
+    const readySourceCards = flightDeck.locator('li[data-recording-health-source="READY"]');
+    const readyDecodeGates = await readySourceCards.locator('li[data-recording-health-gate="decoded-media"][data-recording-health-gate-state="READY"]').count();
+    const readySignalGates = await readySourceCards.locator('li[data-recording-health-gate="signal"][data-recording-health-gate-state="READY"]').count();
+    assert.equal(readyDecodeGates, 2, "Both selected recovery masters should expose a ready complete-decode gate.");
+    assert.equal(readySignalGates, 2, "Both selected recovery masters should expose a ready useful-signal gate.");
     assert.ok(await flightDeck.getByRole("link", { name: /Open source plan|Inspect source evidence|Open transcript evidence/ }).count() >= 1, "No evidence-specific next action is reachable from the Flight Deck.");
     const recoveryBoundaries = page.getByText("Audited recovery-replica boundary", { exact: true });
     await recoveryBoundaries.first().waitFor();
@@ -77,7 +90,10 @@ async function main() {
       route: callbackPath,
       projectedState,
       retainedSourceCards: sourceCount,
+      sourceStates: { ready: readySources, review: reviewSources, blocked: blockedSources, unknown: unknownSources },
       independentlyRenderedGates: gateCount,
+      readyDecodeGates,
+      readySignalGates,
       auditedRecoveryBoundaries: 2,
       desktopOverflow: false,
       phoneWidthOverflow: false,

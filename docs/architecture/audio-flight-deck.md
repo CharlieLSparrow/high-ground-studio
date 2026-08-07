@@ -73,7 +73,18 @@ The first read-only operation against the retained Capture-to-editor fixture exp
 
 The recovery route already persisted sufficient lineage. A shared verifier now recognizes it as a third explicit authority: `AUDITED_RECOVERY_REPLICA`. It independently compares the recovery request, request SHA-256, immutable original, expected-source identity, imported-source hash and generation, durable-replica hash, bytes, bucket, path and generation, decision reason/time, authority confirmation, and finalization release. It exposes no actor identity or private source locator.
 
-After that repair, all four retained assets independently verify. Both selected recovery journeys are complete, and their Capture checkpoint is correctly **not applicable** rather than forged from the original. The Flight Deck now reports `REVIEW`: the historical originals remain visibly unplanned, while the selected replicas remain `UNKNOWN` at decode/signal because those measurements have not yet been projected onto the recovery replicas.
+After that repair, all four retained assets independently verify. Both selected recovery journeys are complete, and their Capture checkpoint is correctly **not applicable** rather than forged from the original.
+
+The next retained operation proved that both recovery replicas already owned completed `audio-signal-profile` jobs. The visibility defect was in the Session read model: it read capture-time `reportedSourceProfile` fields but did not join the canonical Studio processing receipt created by recovery. The repaired projection now:
+
+- resolves the promoted Studio media asset from the recovery manifest;
+- selects its latest signal-profile job;
+- validates the versioned job and completed result contracts;
+- binds the job to the recovery replica by Studio asset ID, SHA-256, and exact byte count;
+- keeps imported-source, durable-replica, and processing-source generations distinct rather than pretending they are the same object; and
+- exposes derived decode/signal evidence without mutating the immutable Capture manifest.
+
+The retained Episode 9 workspace now reports two selected recovery masters `READY`, two historical unplanned originals `REVIEW`, and zero blocked or unknown sources. Both selected masters completely decode as 48 kHz mono with signal present and no signal observations. The overall Session remains `REVIEW` because historical unplanned sources are intentionally visible.
 
 ## Verification contract
 
@@ -85,10 +96,11 @@ The current slice is covered by:
 - TypeScript 7-compatible application typecheck;
 - a read-only local PostgreSQL operation over four retained sources;
 - a signed-in rendered Chrome operation over 24 gates at desktop and 390-pixel phone width, with zero browser exceptions and no horizontal overflow.
+- retained assertions that both selected recovery masters render ready decode and signal gates while historical originals remain review-only.
 
 ## Next mature slices
 
-1. **Automatic decode coverage** — enqueue complete decode, waveform, broad-band frequency, and signal evidence immediately after exact-byte retention or audited recovery, with retry and failure visibility.
+1. **Automatic decode coverage for every retention path** — recovery already queues complete decode; native Capture finalization and external-import release must prove the same durable, retry-visible behavior.
 2. **Flight Deck listening navigator** — route every signal observation to the exact source clock, A/B treatment preview, and explicit reviewer disposition.
 3. **Qualified treatment proposals** — de-click, de-plosive, de-noise, de-reverb, level, and loudness proposals must show the detected problem, selected range, parameters, before/after preview, and reversible decision receipt.
 4. **Transcript evidence depth** — expose vocabulary/keyterm coverage, diarization uncertainty, source-clock alignment, and correction provenance without treating provider confidence as truth.

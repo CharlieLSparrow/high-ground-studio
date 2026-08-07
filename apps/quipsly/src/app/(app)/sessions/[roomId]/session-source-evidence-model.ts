@@ -1,5 +1,9 @@
 import { parseAudioSignalEvidence, type AudioTranscriptEvidence } from "@/lib/transcript-evidence";
 import { verifyCaptureRecoveryLineage } from "@/lib/episode-production/capture-recovery-lineage";
+import {
+  parseAudioSignalProfileJob,
+  parseAudioSignalProfileResult,
+} from "@high-ground/quipsly-media-processing";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -46,6 +50,18 @@ type StateReceiptEvidenceRow = {
   stateApplied: boolean;
   occurredAt: Date | string;
   receivedAt: Date | string;
+};
+
+type AudioSignalProfileJobRow = {
+  id: string;
+  assetId: string;
+  type: string;
+  status: string;
+  inputJson: unknown;
+  resultJson: unknown;
+  error: string | null;
+  completedAt: Date | string | null;
+  updatedAt: Date | string;
 };
 
 export type SessionSourceEvidenceStatus =
@@ -123,6 +139,29 @@ export type SessionSourceEvidence = {
         };
       };
     };
+    analysis?: {
+      jobId: string;
+      mediaAssetId: string;
+      status: "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed";
+      exactSourceBound: boolean;
+      completeDecode: boolean;
+      completedAt: string | null;
+      updatedAt: string | null;
+      media: {
+        container: string;
+        codec: string;
+        sampleRateHz: number;
+        channelCount: number;
+        durationSeconds: number;
+      } | null;
+      signal: AudioTranscriptEvidence["audio"]["signal"];
+      error: string | null;
+      boundaries: {
+        derivedEvidenceDoesNotMutateCaptureManifest: true;
+        exactBytesBoundByAssetHashAndSize: true;
+        sourceReplicaGenerationRemainsSeparate: true;
+      };
+    } | null;
     processingDisposition: string | null;
     transcriptDisposition: string | null;
     releaseAudit?: {
@@ -272,6 +311,72 @@ function sourceRuntime(manifest: UnknownRecord) {
   };
 }
 
+function audioSignalAnalysis(
+  recording: RecordingAssetEvidenceRow,
+  jobs: AudioSignalProfileJobRow[],
+) {
+  const manifest = object(recording.localManifestJson);
+  const mediaAssetId = text(object(manifest.promotion).mediaAssetId);
+  if (!mediaAssetId) return null;
+  const row = jobs.find((job) => job.assetId === mediaAssetId && job.type === "audio-signal-profile");
+  if (!row) return null;
+  const declaredStatus = ["queued", "processing", "output-ready", "completed", "blocked", "failed"].includes(row.status)
+    ? row.status as "queued" | "processing" | "output-ready" | "completed" | "blocked" | "failed"
+    : "failed";
+  let exactSourceBound = false;
+  let completeDecode = false;
+  let completedAt: string | null = null;
+  let media: {
+    container: string;
+    codec: string;
+    sampleRateHz: number;
+    channelCount: number;
+    durationSeconds: number;
+  } | null = null;
+  let signal: AudioTranscriptEvidence["audio"]["signal"] = null;
+  let integrityError: string | null = null;
+  try {
+    const contract = parseAudioSignalProfileJob(row.inputJson, row.id);
+    exactSourceBound = contract.source.assetId === mediaAssetId
+      && contract.source.sha256 === normalizedHash(recording.checksum)
+      && String(contract.source.sizeBytes) === scalarText(recording.byteSize);
+    if (!exactSourceBound) throw new Error("Complete-decode job is not bound to these exact retained bytes.");
+    if (declaredStatus === "completed") {
+      const result = parseAudioSignalProfileResult(object(row.resultJson).receipt, contract);
+      media = {
+        container: result.media.container,
+        codec: result.media.codec,
+        sampleRateHz: result.media.sampleRate,
+        channelCount: result.media.channelCount,
+        durationSeconds: result.media.durationSeconds,
+      };
+      signal = parseAudioSignalEvidence(result.audioSignal, { maximumWaveformPoints: 1_200 });
+      if (!signal || result.analyzer.completeDecode !== true) throw new Error("Complete-decode result cannot be projected into the shared signal model.");
+      completeDecode = true;
+      completedAt = iso(result.completedAt);
+    }
+  } catch (error) {
+    integrityError = error instanceof Error ? error.message : "Audio analysis evidence failed integrity validation.";
+  }
+  return {
+    jobId: row.id,
+    mediaAssetId,
+    status: integrityError ? "failed" as const : declaredStatus,
+    exactSourceBound,
+    completeDecode,
+    completedAt,
+    updatedAt: iso(row.updatedAt),
+    media,
+    signal,
+    error: integrityError ?? (text(row.error) ? "Complete decode failed; inspect the processing job for private diagnostics." : null),
+    boundaries: {
+      derivedEvidenceDoesNotMutateCaptureManifest: true as const,
+      exactBytesBoundByAssetHashAndSize: true as const,
+      sourceReplicaGenerationRemainsSeparate: true as const,
+    },
+  };
+}
+
 function sameValue(
   issues: string[],
   label: string,
@@ -328,6 +433,7 @@ export function buildSessionSourceEvidence(input: {
   recordingAssets: RecordingAssetEvidenceRow[];
   finalizationReceipts: FinalizationEvidenceRow[];
   stateReceipts: StateReceiptEvidenceRow[];
+  audioSignalProfileJobs?: AudioSignalProfileJobRow[];
 }): SessionSourceEvidence {
   const sources = input.recordingAssets
     .filter((row) => !isProviderReceiptSlot(row))
@@ -480,6 +586,7 @@ export function buildSessionSourceEvidence(input: {
           verifiedAt: iso(recording.verifiedAt),
         },
         captureRuntime: sourceRuntime(manifest),
+        analysis: audioSignalAnalysis(recording, input.audioSignalProfileJobs ?? []),
         processingDisposition,
         transcriptDisposition,
         releaseAudit: durableStaffRelease && releasedAt && releaseReason

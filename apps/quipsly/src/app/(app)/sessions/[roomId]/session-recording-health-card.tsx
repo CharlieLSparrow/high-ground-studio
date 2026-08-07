@@ -71,7 +71,7 @@ export function SessionRecordingHealthCard({ roomId, topology, sourceEvidence }:
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-wide ${stateTone(source.state)}`}>{stateIcon(source.state)}{source.state}</span>
           </div>
           <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-label={`${source.label} health gates`}>
-            {source.gates.map((gate) => <li key={gate.id} className={`rounded-xl border p-3 ${stateTone(gate.state)}`} data-recording-health-gate={gate.id}>
+            {source.gates.map((gate) => <li key={gate.id} className={`rounded-xl border p-3 ${stateTone(gate.state)}`} data-recording-health-gate={gate.id} data-recording-health-gate-state={gate.state}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[9px] font-black uppercase tracking-wide">{gate.label}</p>
                 {stateIcon(gate.state)}

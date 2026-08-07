@@ -211,6 +211,89 @@ describe("Session recording health", () => {
     ]));
   });
 
+  it("uses a completed exact-source derived scan when a recovery replica has no capture-time profile", () => {
+    const evidence = sourceEvidence({
+      sourceOrigin: "NEST_RECOVERY_REPLICA",
+      boundaryAuthority: "AUDITED_RECOVERY_REPLICA",
+      captureRuntime: {
+        appVersion: null,
+        appBuild: null,
+        deviceModel: null,
+        operatingSystem: null,
+        audioRoute: null,
+        audioFormat: {
+          container: null,
+          codec: null,
+          sampleRateHz: null,
+          channelCount: null,
+          hardwareSampleRateHz: null,
+          hardwareInputChannelCount: null,
+          decodedAudioTrackCount: null,
+          decodedSampleRateHz: null,
+          decodedChannelCount: null,
+          capturePipeline: null,
+          pauseTimelinePolicy: null,
+          signal: null,
+        },
+      },
+      analysis: {
+        jobId: "audio_signal_recovery_1",
+        mediaAssetId: "studio-media-1",
+        status: "completed",
+        exactSourceBound: true,
+        completeDecode: true,
+        completedAt: "2026-08-06T02:03:00.000Z",
+        updatedAt: "2026-08-06T02:03:00.000Z",
+        media: { container: "wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 1, durationSeconds: 2520 },
+        signal: sourceEvidence().sources[0]!.captureRuntime.audioFormat!.signal,
+        error: null,
+        boundaries: {
+          derivedEvidenceDoesNotMutateCaptureManifest: true,
+          exactBytesBoundByAssetHashAndSize: true,
+          sourceReplicaGenerationRemainsSeparate: true,
+        },
+      },
+    });
+
+    const health = buildSessionRecordingHealth({ topology: topology(), sourceEvidence: evidence });
+
+    expect(health.state).toBe("READY");
+    expect(health.sources[0]?.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "decoded-media", state: "READY", detail: expect.stringContaining("Complete wav decode") }),
+      expect.objectContaining({ id: "signal", state: "READY", detail: expect.stringContaining("Signal is present") }),
+    ]));
+  });
+
+  it("blocks a required master when derived analysis fails integrity validation", () => {
+    const evidence = sourceEvidence({
+      analysis: {
+        jobId: "audio_signal_wrong_bytes_1",
+        mediaAssetId: "studio-media-1",
+        status: "failed",
+        exactSourceBound: false,
+        completeDecode: false,
+        completedAt: null,
+        updatedAt: "2026-08-06T02:03:00.000Z",
+        media: null,
+        signal: null,
+        error: "Complete-decode job is not bound to these exact retained bytes.",
+        boundaries: {
+          derivedEvidenceDoesNotMutateCaptureManifest: true,
+          exactBytesBoundByAssetHashAndSize: true,
+          sourceReplicaGenerationRemainsSeparate: true,
+        },
+      },
+    });
+
+    const health = buildSessionRecordingHealth({ topology: topology(), sourceEvidence: evidence });
+
+    expect(health.state).toBe("BLOCKED");
+    expect(health.sources[0]?.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "decoded-media", state: "BLOCKED", detail: expect.stringContaining("not bound") }),
+      expect.objectContaining({ id: "signal", state: "BLOCKED", detail: expect.stringContaining("not bound") }),
+    ]));
+  });
+
   it("blocks a missing required planned master even when no file ever appeared", () => {
     const inputTopology = topology({ recordingAssetId: null, captureId: null, fulfillment: "missing", blocking: true });
     inputTopology.people[0]!.sources = [];

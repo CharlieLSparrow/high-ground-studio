@@ -141,6 +141,25 @@ function immutableGate(source: SessionReadinessSource | null, evidence: Evidence
 }
 
 function decodedMediaGate(evidence: EvidenceSource | null, sourceKind: string, required: boolean): SessionRecordingHealthGate {
+  const analysis = evidence?.analysis;
+  if (analysis?.status === "failed") return {
+    id: "decoded-media",
+    label: "Decoded media",
+    state: required ? "BLOCKED" : "REVIEW",
+    detail: analysis.error ?? "Complete-decode evidence failed integrity validation.",
+  };
+  if (analysis && !analysis.completeDecode) return {
+    id: "decoded-media",
+    label: "Decoded media",
+    state: "UNKNOWN",
+    detail: `Exact-source complete decode is ${analysis.status.replaceAll("-", " ")}; no result is claimed yet.`,
+  };
+  if (analysis?.completeDecode && analysis.media) return {
+    id: "decoded-media",
+    label: "Decoded media",
+    state: "READY",
+    detail: `Complete ${analysis.media.container} decode · ${Math.round(analysis.media.sampleRateHz)} Hz · ${analysis.media.channelCount} channel${analysis.media.channelCount === 1 ? "" : "s"} · ${analysis.media.durationSeconds.toFixed(2)} seconds.`,
+  };
   const audio = evidence?.captureRuntime.audioFormat;
   if (!audio || audio.decodedAudioTrackCount === null) return {
     id: "decoded-media",
@@ -171,7 +190,20 @@ function decodedMediaGate(evidence: EvidenceSource | null, sourceKind: string, r
 }
 
 function signalGate(evidence: EvidenceSource | null, sourceKind: string, required: boolean): SessionRecordingHealthGate {
-  const signal = evidence?.captureRuntime.audioFormat?.signal;
+  const analysis = evidence?.analysis;
+  if (analysis?.status === "failed") return {
+    id: "signal",
+    label: "Useful signal",
+    state: required ? "BLOCKED" : "REVIEW",
+    detail: analysis.error ?? "Signal evidence failed integrity validation.",
+  };
+  if (analysis && !analysis.completeDecode) return {
+    id: "signal",
+    label: "Useful signal",
+    state: "UNKNOWN",
+    detail: `Signal scan is ${analysis.status.replaceAll("-", " ")}; transcript confidence is not used as a proxy.`,
+  };
+  const signal = analysis?.signal ?? evidence?.captureRuntime.audioFormat?.signal;
   if (!signal) return {
     id: "signal",
     label: "Useful signal",

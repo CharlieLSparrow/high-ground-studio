@@ -1,3 +1,5 @@
+import { newAudioSignalProfileJob } from "@high-ground/quipsly-media-processing";
+
 import {
   buildSessionSourceEvidence,
   buildSessionSourceEvidenceReceipt,
@@ -176,6 +178,12 @@ function markAsAuditedRecoveryReplica(input: ReturnType<typeof fixture>) {
     exactBytesVerified: true,
     storageGeneration: "1742",
     storageVerification: { schema: "quipsly-capture-recovery-storage-verification-v1", verifiedAt: decidedAt, sizeBytes: 4096, sha256, generation: "1742" },
+    promotion: {
+      status: "promoted-to-studio-media",
+      mediaAssetId: "studio-media-asset-1",
+      sourceId: "studio-source-1",
+      playbackUrl: "/api/ingest/media/studio-source-1",
+    },
     captureSourceRecovery: {
       requestId,
       requestSha256,
@@ -220,6 +228,79 @@ function markAsAuditedRecoveryReplica(input: ReturnType<typeof fixture>) {
     },
   };
   input.stateReceipts = [];
+}
+
+function completedAudioSignalJob(sourceSha256 = sha256) {
+  const source = {
+    assetId: "studio-media-asset-1",
+    provider: "local" as const,
+    locator: "/retained/recovery.wav",
+    generation: `sha256:${sourceSha256}`,
+    sha256: sourceSha256,
+    sizeBytes: 4096,
+    contentType: "audio/wav",
+  };
+  const job = newAudioSignalProfileJob({
+    jobId: "audio_signal_recovery_fixture_1",
+    projectId: "project_fixture_1",
+    requestedByEmail: "producer@example.test",
+    queuedAt: "2026-08-02T20:01:00.000Z",
+    source,
+  });
+  const audioSignal = {
+    schemaVersion: 1 as const,
+    algorithm: "quipsly-audio-signal-window-v1" as const,
+    sampleRate: 48_000,
+    channelCount: 1,
+    analyzedFrameCount: 48_000,
+    durationSeconds: 1,
+    windowDurationSeconds: 1,
+    rmsDbfs: -18,
+    samplePeakDbfs: -3,
+    clippedFrameCount: 0,
+    clippedFrameFraction: 0,
+    nearSilentFrameFraction: 0,
+    leftRmsDbfs: -18,
+    rightRmsDbfs: null,
+    stereoBalanceDb: null,
+    signalStatus: "signal-present" as const,
+    thresholds: { clippingAmplitude: 0.999, nearSilenceDbfs: -72, possibleDropoutMinimumSeconds: 0.25, surroundingSignalDbfs: -45, stereoImbalanceDb: 12 },
+    waveform: [{ startSeconds: 0, durationSeconds: 1, rmsDbfs: -18, samplePeakDbfs: -3, clippedFrameCount: 0 }],
+    frequencyProfile: {
+      algorithm: "quipsly-audio-broad-band-rms-v1" as const,
+      completeDecode: true as const,
+      downmixPolicy: "ffmpeg-default-mono-v1" as const,
+      windowDurationSeconds: 1,
+      analyzedFrameCount: 48_000,
+      bands: [{ id: "speech" as const, label: "Speech", minimumHz: 500, maximumHz: 2_000 }],
+      overallBandRmsDbfs: [-20],
+      windows: [{ startSeconds: 0, durationSeconds: 1, bandRmsDbfs: [-20] }],
+      boundaries: { broadBandsAreNotARepairSpectrogram: true as const, measurementsAreNotEqDecisions: true as const, stereoIsDownmixedForFrequencyOverview: true as const },
+    },
+    observations: [],
+  };
+  return {
+    id: job.jobId,
+    assetId: source.assetId,
+    type: "audio-signal-profile",
+    status: "completed",
+    inputJson: job,
+    resultJson: { receipt: {
+      kind: "quipsly-audio-signal-profile-result-v1",
+      version: 1,
+      jobId: job.jobId,
+      completedAt: "2026-08-02T20:02:00.000Z",
+      source,
+      media: { container: "wav", codec: "pcm_s24le", sampleRate: 48_000, channelCount: 1, durationSeconds: 1 },
+      audioSignal,
+      analyzer: { algorithm: "quipsly-audio-signal-window-v1", ffmpegVersion: "ffmpeg fixture", completeDecode: true, maximumWindows: 1_200, frequencyAnalysis: { algorithm: "quipsly-audio-broad-band-rms-v1", maximumBands: 6, maximumWindows: 1_200, completeDecode: true } },
+      worker: { executionId: "execution_fixture_1", buildId: "fixture", imageDigest: null, attempt: 1 },
+      boundaries: { originalRemainsSourceTruth: true, analysisDoesNotChangeMedia: true, observationsRequireHumanInterpretation: true },
+    } },
+    error: null,
+    completedAt: new Date("2026-08-02T20:02:00.000Z"),
+    updatedAt: new Date("2026-08-02T20:02:00.000Z"),
+  };
 }
 
 describe("Session source evidence", () => {
@@ -470,6 +551,48 @@ describe("Session source evidence", () => {
     expect(JSON.stringify(result)).not.toContain("actor-private-1");
     expect(JSON.stringify(result)).not.toContain("private@example.test");
     expect(JSON.stringify(result)).not.toContain("gs://private-import");
+  });
+
+  it("joins a completed exact-byte signal receipt without mutating the recovery manifest", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    input.audioSignalProfileJobs = [completedAudioSignalJob()];
+
+    const result = buildSessionSourceEvidence(input);
+
+    expect(result.sources[0]).toMatchObject({
+      status: "VERIFIED_MATCH",
+      analysis: {
+        jobId: "audio_signal_recovery_fixture_1",
+        mediaAssetId: "studio-media-asset-1",
+        status: "completed",
+        exactSourceBound: true,
+        completeDecode: true,
+        completedAt: "2026-08-02T20:02:00.000Z",
+        media: { container: "wav", codec: "pcm_s24le", sampleRateHz: 48_000, channelCount: 1, durationSeconds: 1 },
+        signal: expect.objectContaining({ status: "signal-present", rmsDbfs: -18, samplePeakDbfs: -3 }),
+        error: null,
+      },
+    });
+    expect((input.recordingAssets[0].localManifestJson as any).reportedSourceProfile).toBeUndefined();
+  });
+
+  it("fails derived analysis closed when its job hash belongs to different bytes", () => {
+    const input = fixture();
+    markAsAuditedRecoveryReplica(input);
+    input.audioSignalProfileJobs = [completedAudioSignalJob("c".repeat(64))];
+
+    expect(buildSessionSourceEvidence(input).sources[0]).toMatchObject({
+      status: "VERIFIED_MATCH",
+      analysis: {
+        status: "failed",
+        exactSourceBound: false,
+        completeDecode: false,
+        media: null,
+        signal: null,
+        error: "Complete-decode job is not bound to these exact retained bytes.",
+      },
+    });
   });
 
   it("fails closed when an audited recovery replica drifts from durable storage", () => {
