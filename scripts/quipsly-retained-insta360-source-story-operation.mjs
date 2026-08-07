@@ -13,7 +13,7 @@ import { getAuth } from "firebase-admin/auth";
 
 import { attachVerifiedExternalMediaSource } from "../apps/quipsly/src/lib/server/external-media-source.ts";
 import { requestExternalSourceProxy } from "../apps/quipsly/src/lib/server/external-source-proxy.ts";
-import { createMediaSourceSet, createSourceStoryCard, createStoryBoard, promoteSourceStoryCardToEpisode, readSourceStoryWorkspace, withdrawSourceStoryTimelinePlacement } from "../apps/quipsly/src/lib/server/source-story.ts";
+import { arrangeStoryBoard, createMediaSourceSet, createSourceStoryCard, createStoryBoard, promoteSourceStoryCardToEpisode, readSourceStoryWorkspace, withdrawSourceStoryTimelinePlacement } from "../apps/quipsly/src/lib/server/source-story.ts";
 
 const databaseUrl = process.env.QUIPSLY_LOCAL_DATABASE_URL || process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio";
 const parsedDatabase = new URL(databaseUrl);
@@ -105,7 +105,97 @@ async function retainExactFile(filePath, metadata, actor, project, prisma) {
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, derivative, derivativeStat, episode, placementId }) {
+async function verifyArrangementMutationThroughApp({ prisma, project, createdBy, boardId, cardId }) {
+  const appOrigin = "http://127.0.0.1:3012";
+  const authOrigin = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099"}`;
+  const authUrl = new URL(authOrigin);
+  if (!["127.0.0.1", "localhost", "::1"].includes(authUrl.hostname)) throw new Error("Refusing retained route mutation against a non-loopback Firebase Auth host.");
+  const email = "source-story-retained-route@quipsly.test";
+  const password = `Local-only-${randomUUID()}!`;
+  const user = await prisma.user.upsert({
+    where: { primaryEmail: email },
+    update: { name: "Retained Source Story route operator" },
+    create: { primaryEmail: email, name: "Retained Source Story route operator" },
+    select: { id: true },
+  });
+  await prisma.studioProjectAccessGrant.upsert({
+    where: { projectId_email: { projectId: project.id, email } },
+    update: { role: "EDITOR", status: "ACTIVE" },
+    create: { projectId: project.id, email, role: "EDITOR", status: "ACTIVE", createdByUserId: createdBy.id, createdByEmail: actorEmail, note: "Loopback-only retained Source Story route acceptance." },
+  });
+  const clientRequestId = deterministicUuid(`${project.id}:${boardId}:authenticated-arrangement-route-v1`);
+  const existingOperation = await prisma.studioStoryBoardOperation.findUnique({
+    where: { boardId_actorUserId_clientRequestId: { boardId, actorUserId: user.id, clientRequestId } },
+  });
+  const currentBoard = await prisma.studioStoryBoard.findUniqueOrThrow({
+    where: { id: boardId },
+    include: { placements: { orderBy: { sortOrder: "asc" } } },
+  });
+  const recordedPlacements = existingOperation && Array.isArray(existingOperation.snapshotJson?.placements)
+    ? existingOperation.snapshotJson.placements
+    : currentBoard.placements.map((placement) => ({ cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey }));
+  const placements = recordedPlacements.map((placement) => ({ cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey }));
+  const requestBody = {
+    action: "arrange-board",
+    boardId,
+    expectedRevision: existingOperation?.previousRevision ?? currentBoard.revision,
+    clientRequestId,
+    placements,
+  };
+  let firebaseApp = null;
+  let cookie = null;
+  try {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = authUrl.host;
+    process.env.GCLOUD_PROJECT = "quipsly-reef";
+    process.env.GOOGLE_CLOUD_PROJECT = "quipsly-reef";
+    firebaseApp = initializeApp({ projectId: "quipsly-reef" }, `source-story-route-${randomUUID().slice(0, 8)}`);
+    const firebaseAuth = getAuth(firebaseApp);
+    const firebaseUid = "source-story-retained-route";
+    const existingFirebaseUser = await firebaseAuth.getUser(firebaseUid).catch(() => null);
+    if (existingFirebaseUser) await firebaseAuth.updateUser(firebaseUid, { email, emailVerified: true, password, displayName: "Retained Source Story route operator" });
+    else await firebaseAuth.createUser({ uid: firebaseUid, email, emailVerified: true, password, displayName: "Retained Source Story route operator" });
+    const signIn = await fetch(`${authOrigin}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-dogfood`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    const auth = await signIn.json().catch(() => ({}));
+    if (signIn.status !== 200 || !auth.idToken) throw new Error("The retained route operator could not sign in to the local Firebase emulator.");
+    const session = await fetch(`${appOrigin}/api/auth/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: auth.idToken }) });
+    const sessionBody = await session.json().catch(() => ({}));
+    const sessionCookie = session.headers.getSetCookie().filter((value) => value.startsWith("session=") && !value.startsWith("session=;")).at(-1);
+    cookie = sessionCookie ? sessionCookie.split(";")[0] : null;
+    if (session.status !== 200 || sessionBody.success !== true || !cookie) throw new Error("The retained route operator could not establish a first-party session.");
+    const mutate = () => fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "cache-control": "no-cache" },
+      body: JSON.stringify(requestBody),
+    });
+    const first = await mutate();
+    const firstBody = await first.json().catch(() => ({}));
+    const replay = await mutate();
+    const replayBody = await replay.json().catch(() => ({}));
+    const projectedBoard = firstBody?.workspace?.boards?.find((candidate) => candidate?.id === boardId);
+    const projectedPlacement = projectedBoard?.placements?.find((candidate) => candidate?.cardId === cardId);
+    if (first.status !== 200 || replay.status !== 200 || !projectedPlacement || replayBody?.operation?.replayed !== true) {
+      throw new Error(`The authenticated board-arrangement route failed retained replay acceptance (HTTP ${first.status}/${replay.status}).`);
+    }
+    return {
+      firstStatus: first.status,
+      firstReplayed: firstBody.operation?.replayed === true,
+      replayStatus: replay.status,
+      replayed: replayBody.operation.replayed,
+      revision: replayBody.operation.revision,
+      projectedSection: projectedPlacement.groupKey,
+      projectedLane: projectedPlacement.laneKey,
+    };
+  } finally {
+    if (cookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie } }).catch(() => undefined);
+    if (firebaseApp) await deleteApp(firebaseApp).catch(() => undefined);
+  }
+}
+
+async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, boardSection, boardLane, derivative, derivativeStat, episode, placementId }) {
   const appOrigin = "http://127.0.0.1:3012";
   const authOrigin = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099"}`;
   const authUrl = new URL(authOrigin);
@@ -184,6 +274,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ["source set", displayName],
       ["board", "Insta360 story selects"],
       ["source card", "Micro take · spatial composition proof"],
+      ["sectioned arrangement", "Episode Open"],
+      ["outline view", "Outline"],
       ["spatial render status", "Exact-source 360 render"],
       ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
       ["spatial master state", "5.7K render master not registered"],
@@ -205,8 +297,17 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     const projectedEpisode = Array.isArray(sourceStoryBody?.workspace?.episodes)
       ? sourceStoryBody.workspace.episodes.find((candidate) => candidate?.id === episode.id && candidate?.clipCount >= 1)
       : null;
-    if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode) {
+    const projectedBoard = Array.isArray(sourceStoryBody?.workspace?.boards)
+      ? sourceStoryBody.workspace.boards.find((candidate) => candidate?.id === boardId)
+      : null;
+    const projectedBoardPlacement = Array.isArray(projectedBoard?.placements)
+      ? projectedBoard.placements.find((candidate) => candidate?.card?.title === "Micro take · spatial composition proof")
+      : null;
+    if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode || !projectedBoardPlacement) {
       throw new Error(`The authenticated Source Story API did not project the retained Episode placement (HTTP ${sourceStoryReadback.status}).`);
+    }
+    if (projectedBoardPlacement.groupKey !== boardSection || projectedBoardPlacement.laneKey !== boardLane) {
+      throw new Error(`The authenticated Source Story API lost the retained board arrangement (${projectedBoardPlacement.groupKey}/${projectedBoardPlacement.laneKey}).`);
     }
     if (sourceStoryBody?.spatialRenderReadiness?.readiness?.status !== "manual-stitch-handoff" || sourceStoryBody?.spatialRenderReadiness?.readiness?.automaticReframeReady !== true) {
       throw new Error("The Source Story API did not report the locally operated spatial executor boundary.");
@@ -243,6 +344,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       pageStatus: page.status,
       sourceSetVisible: true,
       boardVisible: true,
+      boardSection: projectedBoardPlacement.groupKey,
+      boardLane: projectedBoardPlacement.laneKey,
       sourceCardVisible: true,
       timelinePlacementVisible: true,
       sourceStoryApiStatus: sourceStoryReadback.status,
@@ -393,6 +496,37 @@ try {
   }
   if (!card?.sourceRange || card.sourceRange.sourceSetId !== sourceSetResult.sourceSet.id) throw new Error("The story card did not retain its exact source-set identity.");
 
+  const arrangementRequestId = deterministicUuid(`${project.id}:${board.id}:retained-sectioned-arrangement-v1`);
+  const existingArrangement = await prisma.studioStoryBoardOperation.findUnique({
+    where: { boardId_actorUserId_clientRequestId: { boardId: board.id, actorUserId: actor.id, clientRequestId: arrangementRequestId } },
+  });
+  let arrangementReplayed = true;
+  if (!existingArrangement) {
+    const currentBoard = await prisma.studioStoryBoard.findUniqueOrThrow({
+      where: { id: board.id },
+      include: { placements: { orderBy: { sortOrder: "asc" } } },
+    });
+    const arrangement = await arrangeStoryBoard({
+      prisma,
+      actorUserId: actor.id,
+      value: {
+        projectId: project.id,
+        boardId: board.id,
+        expectedRevision: currentBoard.revision,
+        clientRequestId: arrangementRequestId,
+        placements: currentBoard.placements.map((placement) => placement.cardId === card.id
+          ? { cardId: placement.cardId, groupKey: "episode-open", laneKey: "b-roll" }
+          : { cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey }),
+      },
+    });
+    arrangementReplayed = arrangement.replayed;
+  }
+  const arrangedPlacement = await prisma.studioStoryBoardPlacement.findFirstOrThrow({ where: { boardId: board.id, cardId: card.id } });
+  if (!existingArrangement && (arrangedPlacement.groupKey !== "episode-open" || arrangedPlacement.laneKey !== "b-roll")) {
+    throw new Error("The retained Story card did not read back from its section and production lane.");
+  }
+  const arrangementRouteReadback = await verifyArrangementMutationThroughApp({ prisma, project, createdBy: actor, boardId: board.id, cardId: card.id });
+
   let episodeDocument = await prisma.studioDocument.findUnique({ where: { stableId: `source-story-spatial-promotion-dogfood-${project.id}` } });
   if (!episodeDocument) {
     episodeDocument = await prisma.studioDocument.create({
@@ -485,6 +619,9 @@ try {
     createdBy: actor,
     sourceSetId: sourceSetResult.sourceSet.id,
     boardId: board.id,
+    boardArrangementReplayed: arrangementReplayed,
+    boardSection: arrangedPlacement.groupKey,
+    boardLane: arrangedPlacement.laneKey,
     derivative,
     derivativeStat,
     episode,
@@ -502,6 +639,10 @@ try {
     sourceClockRevisionId: browse.sourceRevisionId,
     spatialDerivative: { id: derivative.id, widthPixels: derivative.widthPixels, heightPixels: derivative.heightPixels, durationSeconds: derivative.durationSeconds, sizeBytes: derivative.sizeBytes.toString(), contentSha256: derivative.contentSha256 },
     boardId: board.id,
+    boardArrangementReplayed: arrangementReplayed,
+    boardSection: arrangedPlacement.groupKey,
+    boardLane: arrangedPlacement.laneKey,
+    arrangementRouteReadback,
     cardId: card.id,
     episodeId: episode.id,
     episodeSlug: episode.slug,

@@ -10,6 +10,7 @@ import {
   type StoryCardPurpose,
   type StoryCardStatus,
   type MediaSourceSetMemberRole,
+  type StoryBoardPlacementIntent,
   type StoryReframeRecipe,
 } from "@/lib/source-story-contract";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/server/external-source-proxy";
 import {
   SourceStoryConflictError,
+  arrangeStoryBoard,
   createSourceStoryCard,
   createMediaSourceSet,
   createStoryBoard,
@@ -96,6 +98,21 @@ function sourceSetMembers(value: unknown) {
       role: text(member.role) as MediaSourceSetMemberRole,
       ordinal: member.ordinal === undefined ? undefined : Number(member.ordinal),
       requiredForRender: member.requiredForRender === undefined ? undefined : member.requiredForRender === true,
+    };
+  });
+}
+
+function boardPlacements(value: unknown): StoryBoardPlacementIntent[] {
+  if (!Array.isArray(value)) throw new SourceStoryContractError("invalid-board-arrangement", "The board arrangement is malformed.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new SourceStoryContractError("invalid-board-placement", "A board placement is malformed.");
+    }
+    const placement = item as Record<string, unknown>;
+    return {
+      cardId: text(placement.cardId),
+      groupKey: text(placement.groupKey) || undefined,
+      laneKey: text(placement.laneKey) || undefined,
     };
   });
 }
@@ -290,6 +307,18 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         expectedRevision: Number(body.expectedRevision),
         orderedCardIds: stringArray(body.orderedCardIds),
         clientRequestId: text(body.clientRequestId),
+      });
+    } else if (action === "arrange-board") {
+      operation = await arrangeStoryBoard({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          boardId: text(body.boardId),
+          expectedRevision: Number(body.expectedRevision),
+          clientRequestId: text(body.clientRequestId),
+          placements: boardPlacements(body.placements),
+        },
       });
     } else if (action === "promote-card-to-episode") {
       operation = await promoteSourceStoryCardToEpisode({

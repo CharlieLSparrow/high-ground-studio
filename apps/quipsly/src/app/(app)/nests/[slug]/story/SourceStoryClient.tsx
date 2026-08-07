@@ -107,6 +107,8 @@ type SourceStoryBoard = {
   }>;
 };
 
+type SourceStoryBoardPlacement = SourceStoryBoard["placements"][number];
+
 type SourceStoryWorkspace = {
   schema: "quipsly-source-story-v1";
   episodes: Array<{
@@ -304,6 +306,10 @@ function boardGroupLabel(value: string) {
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function boardKeyFromLabel(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+}
+
 function sourceHref(projectSlug: string, source: { kind: "asset" | "external" | "source-set"; id: string } | null, boardId: string | null) {
   const params = new URLSearchParams();
   if (source?.kind === "asset") params.set("asset", source.id);
@@ -362,6 +368,7 @@ export function SourceStoryClient({
   const [boardTitle, setBoardTitle] = useState("Main story");
   const [boardDescription, setBoardDescription] = useState("");
   const [boardEpisodeId, setBoardEpisodeId] = useState("");
+  const [boardView, setBoardView] = useState<"cards" | "outline">("cards");
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -430,8 +437,19 @@ export function SourceStoryClient({
       ? workspace.sourceSets.filter((sourceSet) => `${sourceSet.displayName} ${sourceSet.captureKey} ${sourceSet.kind} ${sourceSet.members.map((member) => member.sourceRevision.externalReference?.fileName ?? "").join(" ")}`.toLowerCase().includes(query))
       : workspace.sourceSets;
   }, [sourceQuery, workspace.sourceSets]);
-  const placedIds = useMemo(() => new Set(workspace.boards.flatMap((board) => board.placements.map((placement) => placement.cardId))), [workspace.boards]);
-  const unplacedCards = workspace.cards.filter((card) => !placedIds.has(card.id));
+  const selectedBoardCardIds = useMemo(() => new Set(selectedBoard?.placements.map((placement) => placement.cardId) ?? []), [selectedBoard]);
+  const cardsAvailableForBoard = workspace.cards.filter((card) => !selectedBoardCardIds.has(card.id));
+  const boardGroups = useMemo(() => {
+    if (!selectedBoard) return [];
+    const groups = new Map<string, SourceStoryBoardPlacement[]>();
+    for (const placement of selectedBoard.placements) {
+      const placements = groups.get(placement.groupKey) ?? [];
+      placements.push(placement);
+      groups.set(placement.groupKey, placements);
+    }
+    return [...groups.entries()].map(([groupKey, placements]) => ({ groupKey, placements }));
+  }, [selectedBoard]);
+  const boardGroupKeys = useMemo(() => boardGroups.map((group) => group.groupKey), [boardGroups]);
   const spatialStatus = spatialRenderReadiness.readiness.status;
 
   useEffect(() => {
@@ -697,18 +715,52 @@ export function SourceStoryClient({
 
   async function moveCard(cardId: string, direction: -1 | 1) {
     if (!selectedBoard) return;
-    const current = selectedBoard.placements.map((placement) => placement.cardId);
-    const index = current.indexOf(cardId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= current.length) return;
+    const current = selectedBoard.placements.map(({ cardId: currentCardId, groupKey: currentGroupKey, laneKey }) => ({ cardId: currentCardId, groupKey: currentGroupKey, laneKey }));
+    const index = current.findIndex((placement) => placement.cardId === cardId);
+    if (index < 0) return;
+    const groupKey = current[index]?.groupKey;
+    const siblingIndexes = current.flatMap((placement, placementIndex) => placement.groupKey === groupKey ? [placementIndex] : []);
+    const siblingIndex = siblingIndexes.indexOf(index);
+    const target = siblingIndexes[siblingIndex + direction];
+    if (target === undefined) return;
     [current[index], current[target]] = [current[target], current[index]];
-    await mutate({
-      action: "reorder-board",
+    await arrangeBoard(current, "Saved the shared board order.");
+  }
+
+  async function arrangeBoard(placements: Array<{ cardId: string; groupKey: string; laneKey: string }>, successMessage: string) {
+    if (!selectedBoard) return null;
+    return mutate({
+      action: "arrange-board",
       boardId: selectedBoard.id,
       expectedRevision: selectedBoard.revision,
-      orderedCardIds: current,
+      placements,
       clientRequestId: crypto.randomUUID(),
-    }, "Saved the shared board order.");
+    }, successMessage);
+  }
+
+  async function changeCardPlacement(cardId: string, next: { groupKey: string; laneKey: string }) {
+    if (!selectedBoard) return;
+    const placements = selectedBoard.placements.map((placement) => placement.cardId === cardId
+      ? { cardId: placement.cardId, ...next }
+      : { cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey });
+    await arrangeBoard(placements, `Moved the card to ${boardGroupLabel(next.groupKey)} · ${boardGroupLabel(next.laneKey)} without changing its source or writing.`);
+  }
+
+  async function unfileCard(cardId: string) {
+    if (!selectedBoard) return;
+    const placements = selectedBoard.placements
+      .filter((placement) => placement.cardId !== cardId)
+      .map((placement) => ({ cardId: placement.cardId, groupKey: placement.groupKey, laneKey: placement.laneKey }));
+    await arrangeBoard(placements, "Removed the card from this board. The card, source range, tags, revisions, and Episode placements remain intact.");
+  }
+
+  async function fileCard(cardId: string, placement: { groupKey: string; laneKey: string }) {
+    if (!selectedBoard) return;
+    const placements = [
+      ...selectedBoard.placements.map((current) => ({ cardId: current.cardId, groupKey: current.groupKey, laneKey: current.laneKey })),
+      { cardId, ...placement },
+    ];
+    await arrangeBoard(placements, `Filed the source card in ${selectedBoard.title} without copying or changing it.`);
   }
 
   const canMarkRange = Boolean(selectedViewerSource && /^(video|audio)\//.test(selectedViewerSource.mimeType ?? ""));
@@ -863,29 +915,101 @@ export function SourceStoryClient({
 
           {selectedBoard ? (
             <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm">
-              <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Shared arrangement · r{selectedBoard.revision}</p><h2 className="font-serif text-xl font-black">{selectedBoard.placements.length} placed card{selectedBoard.placements.length === 1 ? "" : "s"}</h2></div><span className="text-[10px] font-bold uppercase tracking-wide text-[#806a4d]">Up/down is keyboard-safe ordering</span></div>
-              <div className="mt-4 space-y-3">
-                {selectedBoard.placements.map((placement, index) => (
-                  <article key={placement.id} className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4">
-                    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{boardGroupLabel(placement.groupKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><h3 className="mt-1 font-serif text-lg font-black leading-snug">{placement.card.title}</h3></div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || index === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || index === selectedBoard.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div>
-                    {placement.card.synopsis ? <p className="mt-2 text-sm font-semibold leading-6 text-[#715f48]">{placement.card.synopsis}</p> : null}
-                    {placement.card.sourceRange ? <button type="button" disabled={!cardPlayback(placement.card)} onClick={() => { const range = placement.card.sourceRange; const source = cardPlayback(placement.card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950 disabled:cursor-not-allowed disabled:opacity-45"><Play size={14} aria-hidden="true" />{formatClock(placement.card.sourceRange.startSeconds)}–{formatClock(placement.card.sourceRange.endSeconds)}</button> : null}
-                    <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
-                    {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
-                    {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
-                    {canWrite ? <TimelinePromotionEditor card={placement.card} board={selectedBoard} boardPlacementId={placement.id} workspace={workspace} pending={pending} mutate={mutate} projectSlug={project.slug} /> : null}
-                    {canWrite ? <StoryCardEditor card={placement.card} tags={tags} pending={pending} mutate={mutate} /> : null}
-                  </article>
+              <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Shared arrangement · r{selectedBoard.revision}</p><h2 className="font-serif text-xl font-black">{selectedBoard.placements.length} placed card{selectedBoard.placements.length === 1 ? "" : "s"} · {boardGroups.length} section{boardGroups.length === 1 ? "" : "s"}</h2></div><div className="flex rounded-xl border border-[#d9c7a5] bg-[#fffaf0] p-1" aria-label="Board view"><button type="button" aria-pressed={boardView === "cards"} onClick={() => setBoardView("cards")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "cards" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Cards</button><button type="button" aria-pressed={boardView === "outline"} onClick={() => setBoardView("outline")} className={`min-h-11 rounded-lg px-3 text-[10px] font-black uppercase tracking-wide ${boardView === "outline" ? "bg-[#3e2f21] text-white" : "text-[#76522c]"}`}>Outline</button></div></div>
+              <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Sections and lanes belong to this board placement. Moving or unfiling a card never changes its writing, exact source range, use on another board, or Episode placement.</p>
+              <div className="mt-4 space-y-4">
+                {boardView === "outline" ? boardGroups.map((group) => <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffaf0] p-3"><div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-serif text-lg font-black">{boardGroupLabel(group.groupKey)}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"} · {formatClock(group.placements.reduce((total, placement) => total + Math.max(0, (placement.card.sourceRange?.endSeconds ?? 0) - (placement.card.sourceRange?.startSeconds ?? 0)), 0))}</p></div><ol className="mt-2 space-y-2">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return <li key={placement.id} className="rounded-xl border border-[#e2d2b6] bg-white p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1}. {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><p className="mt-1 font-black">{placement.card.title}</p>{placement.card.synopsis ? <p className="mt-1 text-xs font-semibold leading-5 text-[#715f48]">{placement.card.synopsis}</p> : null}</div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div></li>; })}</ol></section>) : boardGroups.map((group) => (
+                  <section key={group.groupKey} className="rounded-2xl border border-[#d9c7a5] bg-[#fffdf8] p-3" aria-labelledby={`story-section-${group.groupKey}`}>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[#eadfc9] pb-2"><h3 id={`story-section-${group.groupKey}`} className="font-serif text-lg font-black">{boardGroupLabel(group.groupKey)}</h3><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{group.placements.length} card{group.placements.length === 1 ? "" : "s"}</p></div>
+                    <div className="mt-3 space-y-3">{group.placements.map((placement, groupIndex) => { const index = selectedBoard.placements.findIndex((candidate) => candidate.id === placement.id); return (
+                      <article key={placement.id} className="rounded-2xl border border-[#e2d2b6] bg-[#fffaf0] p-4">
+                        <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wide text-[#987443]">{index + 1} · {boardGroupLabel(placement.laneKey)} · {placement.card.purpose.replaceAll("-", " ")}</p><h4 className="mt-1 font-serif text-lg font-black leading-snug">{placement.card.title}</h4></div>{canWrite ? <div className="flex shrink-0 gap-1"><button type="button" disabled={pending || groupIndex === 0} onClick={() => void moveCard(placement.cardId, -1)} aria-label={`Move ${placement.card.title} earlier in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowUp size={16} aria-hidden="true" /></button><button type="button" disabled={pending || groupIndex === group.placements.length - 1} onClick={() => void moveCard(placement.cardId, 1)} aria-label={`Move ${placement.card.title} later in ${boardGroupLabel(group.groupKey)}`} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-[#d9c7a5] bg-white disabled:opacity-35"><ArrowDown size={16} aria-hidden="true" /></button></div> : null}</div>
+                        {placement.card.synopsis ? <p className="mt-2 text-sm font-semibold leading-6 text-[#715f48]">{placement.card.synopsis}</p> : null}
+                        {placement.card.sourceRange ? <button type="button" disabled={!cardPlayback(placement.card)} onClick={() => { const range = placement.card.sourceRange; const source = cardPlayback(placement.card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 text-xs font-black text-sky-950 disabled:cursor-not-allowed disabled:opacity-45"><Play size={14} aria-hidden="true" />{formatClock(placement.card.sourceRange.startSeconds)}–{formatClock(placement.card.sourceRange.endSeconds)}</button> : null}
+                        <div className="mt-3 flex flex-wrap gap-1">{placement.card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[10px] font-bold text-sky-900">#{tag.label}</span>)}<span className="rounded-full border border-[#ded0b7] bg-white px-2 py-1 text-[10px] font-bold text-[#765f40]">{placement.card.status.replaceAll("-", " ")}</span>{placement.card.sourceRange?.reframeRecipe ? <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-900">360 recipe</span> : null}</div>
+                        {placement.card.sourceRange ? <p className="mt-3 text-[10px] font-bold leading-4 text-[#806a4d]">{sourceStateLabel(placement.card.sourceRange.sourceRevision.sourceState)} · selector {placement.card.sourceRange.selectorSha256.slice(0, 10)}…</p> : null}
+                        {canWrite ? <BoardPlacementEditor placement={placement} groupKeys={boardGroupKeys} pending={pending} onSave={(next) => changeCardPlacement(placement.cardId, next)} onUnfile={() => unfileCard(placement.cardId)} /> : null}
+                        {canWrite ? <SourceRepairEditor card={placement.card} assets={initialAssets} selectedAsset={selectedAsset} viewerInPoint={inPoint} viewerOutPoint={outPoint} pending={pending} mutate={mutate} /> : null}
+                        {canWrite ? <TimelinePromotionEditor card={placement.card} board={selectedBoard} boardPlacementId={placement.id} workspace={workspace} pending={pending} mutate={mutate} projectSlug={project.slug} /> : null}
+                        {canWrite ? <StoryCardEditor card={placement.card} tags={tags} pending={pending} mutate={mutate} /> : null}
+                      </article>
+                    ); })}</div>
+                  </section>
                 ))}
                 {!selectedBoard.placements.length ? <div className="rounded-2xl border border-dashed border-[#d9c7a5] p-6 text-center"><Clapperboard className="mx-auto text-[#9a7b55]" aria-hidden="true" /><p className="mt-3 font-serif text-xl font-black">This board is ready for its first real select.</p><p className="mt-2 text-sm font-semibold text-[#765f40]">Mark an exact source range, write the card, and save it to this board.</p></div> : null}
               </div>
             </section>
           ) : null}
 
-          {unplacedCards.length ? <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Unfiled source cards</p><div className="mt-3 space-y-2">{unplacedCards.map((card) => <article key={card.id} className="rounded-xl border border-[#e2d2b6] p-3"><p className="font-black">{card.title}</p>{card.sourceRange ? <button type="button" disabled={!cardPlayback(card)} onClick={() => { const range = card.sourceRange; const source = cardPlayback(card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs font-black text-sky-900 disabled:opacity-45"><Clock3 size={14} aria-hidden="true" />{formatClock(card.sourceRange.startSeconds)}–{formatClock(card.sourceRange.endSeconds)}</button> : null}</article>)}</div></section> : null}
+          {selectedBoard && cardsAvailableForBoard.length ? <section className="rounded-3xl border border-[#ddccb0] bg-white p-4 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#8a653d]">Available source cards</p><p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">A card can appear on more than one board. Filing it here reuses the same identity and exact source receipt.</p><div className="mt-3 space-y-2">{cardsAvailableForBoard.map((card) => <article key={card.id} className="rounded-xl border border-[#e2d2b6] p-3"><p className="font-black">{card.title}</p>{card.sourceRange ? <button type="button" disabled={!cardPlayback(card)} onClick={() => { const range = card.sourceRange; const source = cardPlayback(card); if (source && range) playSourceRange(source, range.startSeconds, range.endSeconds); }} className="mt-2 inline-flex min-h-11 items-center gap-2 text-xs font-black text-sky-900 disabled:opacity-45"><Clock3 size={14} aria-hidden="true" />{formatClock(card.sourceRange.startSeconds)}–{formatClock(card.sourceRange.endSeconds)}</button> : null}{canWrite ? <FileCardEditor card={card} groupKeys={boardGroupKeys} pending={pending} onFile={(next) => fileCard(card.id, next)} /> : null}</article>)}</div></section> : null}
         </aside>
       </div>
     </main>
+  );
+}
+
+const storyBoardLanes = ["story", "b-roll", "evidence", "audio", "graphics"] as const;
+
+function BoardPlacementEditor({
+  placement,
+  groupKeys,
+  pending,
+  onSave,
+  onUnfile,
+}: {
+  placement: SourceStoryBoardPlacement;
+  groupKeys: string[];
+  pending: boolean;
+  onSave: (next: { groupKey: string; laneKey: string }) => Promise<void>;
+  onUnfile: () => Promise<void>;
+}) {
+  const [groupKey, setGroupKey] = useState(boardGroupLabel(placement.groupKey));
+  const [laneKey, setLaneKey] = useState(placement.laneKey);
+  useEffect(() => {
+    setGroupKey(boardGroupLabel(placement.groupKey));
+    setLaneKey(placement.laneKey);
+  }, [placement.groupKey, placement.laneKey]);
+  const listId = `story-groups-${placement.id}`;
+  const dirty = boardKeyFromLabel(groupKey) !== placement.groupKey || laneKey !== placement.laneKey;
+  const lanes = storyBoardLanes.includes(laneKey as (typeof storyBoardLanes)[number])
+    ? storyBoardLanes
+    : [laneKey, ...storyBoardLanes];
+  return (
+    <details className="mt-3 rounded-xl border border-[#ded0b7] bg-white p-3">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-[#76522c]">Board position · {boardGroupLabel(placement.groupKey)} / {boardGroupLabel(placement.laneKey)}</summary>
+      <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">This changes only this board’s composition. The source-backed card remains available everywhere else.</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Section / beat<input list={listId} value={groupKey} onChange={(event) => setGroupKey(event.target.value)} maxLength={60} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] px-3 text-xs font-bold" /><datalist id={listId}>{groupKeys.map((key) => <option key={key} value={boardGroupLabel(key)} />)}</datalist></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Lane<select value={laneKey} onChange={(event) => setLaneKey(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-xs font-bold">{lanes.map((lane) => <option key={lane} value={lane}>{boardGroupLabel(lane)}</option>)}</select></label>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2"><button type="button" disabled={pending || !dirty || !groupKey.trim()} onClick={() => void onSave({ groupKey, laneKey })} className="min-h-11 rounded-xl bg-[#3e2f21] px-3 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40">Save board position</button><button type="button" disabled={pending} onClick={() => void onUnfile()} className="min-h-11 rounded-xl border border-rose-200 bg-rose-50 px-3 text-[10px] font-black uppercase tracking-wide text-rose-950 disabled:opacity-40">Unfile from this board</button></div>
+    </details>
+  );
+}
+
+function FileCardEditor({
+  card,
+  groupKeys,
+  pending,
+  onFile,
+}: {
+  card: SourceStoryCard;
+  groupKeys: string[];
+  pending: boolean;
+  onFile: (next: { groupKey: string; laneKey: string }) => Promise<void>;
+}) {
+  const [groupKey, setGroupKey] = useState(boardGroupLabel(groupKeys[0] ?? "unassigned"));
+  const [laneKey, setLaneKey] = useState("story");
+  const listId = `available-story-groups-${card.id}`;
+  return (
+    <details className="mt-2 rounded-xl border border-dashed border-[#d9c7a5] bg-[#fffaf0] p-2">
+      <summary className="cursor-pointer min-h-11 py-3 text-[10px] font-black uppercase tracking-wide text-[#76522c]">File on active board…</summary>
+      <div className="grid gap-2">
+        <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Section / beat<input list={listId} value={groupKey} onChange={(event) => setGroupKey(event.target.value)} maxLength={60} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-xs font-bold" /><datalist id={listId}>{groupKeys.map((key) => <option key={key} value={boardGroupLabel(key)} />)}</datalist></label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-[#76522c]">Lane<select value={laneKey} onChange={(event) => setLaneKey(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white px-3 text-xs font-bold">{storyBoardLanes.map((lane) => <option key={lane} value={lane}>{boardGroupLabel(lane)}</option>)}</select></label>
+        <button type="button" disabled={pending || !groupKey.trim()} onClick={() => void onFile({ groupKey, laneKey })} className="min-h-11 rounded-xl bg-[#3e2f21] px-3 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-40">File the existing card</button>
+      </div>
+    </details>
   );
 }
 

@@ -89,6 +89,20 @@ export type CreateSourceStoryCardInput = {
   reframeRecipe?: StoryReframeRecipe | null;
 };
 
+export type StoryBoardPlacementIntent = {
+  cardId: string;
+  groupKey?: string;
+  laneKey?: string;
+};
+
+export type ArrangeStoryBoardInput = {
+  projectId: string;
+  boardId: string;
+  expectedRevision: number;
+  clientRequestId: string;
+  placements: StoryBoardPlacementIntent[];
+};
+
 export type RebindSourceStoryCardInput = {
   projectId: string;
   cardId: string;
@@ -352,6 +366,32 @@ export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCard
     laneKey: boardKey(value.laneKey, "laneKey", "story"),
     tagIds: orderedUniqueIds(value.tagIds),
     reframeRecipe: normalizeStoryReframeRecipe(value.reframeRecipe, { startSeconds, endSeconds }),
+  };
+}
+
+export function normalizeArrangeStoryBoardInput(value: ArrangeStoryBoardInput) {
+  const expectedRevision = Number(value.expectedRevision);
+  if (!Number.isInteger(expectedRevision) || expectedRevision < 1) {
+    throw new SourceStoryContractError("invalid-revision", "The current board revision is required.");
+  }
+  if (!Array.isArray(value.placements) || value.placements.length > 2_000) {
+    throw new SourceStoryContractError("invalid-board-arrangement", "The board arrangement is malformed.");
+  }
+  const placements = value.placements.map((placement) => ({
+    cardId: opaqueId(placement.cardId, "cardId"),
+    groupKey: boardKey(placement.groupKey, "groupKey", "unassigned"),
+    laneKey: boardKey(placement.laneKey, "laneKey", "story"),
+  }));
+  if (new Set(placements.map((placement) => placement.cardId)).size !== placements.length) {
+    throw new SourceStoryContractError("duplicate-card", "A card may appear only once on a board.");
+  }
+  return {
+    schema: SOURCE_STORY_SCHEMA_VERSION,
+    projectId: opaqueId(value.projectId, "projectId"),
+    boardId: opaqueId(value.boardId, "boardId"),
+    expectedRevision,
+    clientRequestId: clientRequestId(value.clientRequestId),
+    placements,
   };
 }
 

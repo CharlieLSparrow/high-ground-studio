@@ -16,6 +16,7 @@ import {
 import {
   SOURCE_STORY_SCHEMA_VERSION,
   SourceStoryContractError,
+  normalizeArrangeStoryBoardInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
@@ -26,6 +27,7 @@ import {
   storyCardPurposes,
   storyCardStatuses,
   type CreateSourceStoryCardInput,
+  type ArrangeStoryBoardInput,
   type CreateMediaSourceSetInput,
   type RebindSourceStoryCardInput,
   type PromoteSourceStoryCardInput,
@@ -1121,6 +1123,121 @@ export async function reorderStoryBoard(input: {
         snapshotJson: {
           ...boardSnapshot({ ...board, revision: nextRevision, placements }),
           requestSha256,
+        },
+      },
+    });
+    return { revision: nextRevision, replayed: false };
+  }, { isolationLevel: "Serializable" });
+}
+
+export async function arrangeStoryBoard(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: ArrangeStoryBoardInput;
+}) {
+  const value = normalizeArrangeStoryBoardInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson({ ...value, actorUserId }));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioStoryBoardOperation.findUnique({
+      where: {
+        boardId_actorUserId_clientRequestId: {
+          boardId: value.boardId,
+          actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      include: { board: { select: { projectId: true } } },
+    });
+    if (replay) {
+      if (replay.board.projectId !== value.projectId) {
+        throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+      }
+      if (storedRequestSha256(replay.snapshotJson) !== requestSha256) {
+        throw new SourceStoryConflictError(
+          "request-reuse-conflict",
+          "That saved request identity already applied a different board arrangement.",
+          replay.revision,
+        );
+      }
+      return { revision: replay.revision, replayed: true };
+    }
+
+    const board = await tx.studioStoryBoard.findFirst({
+      where: { id: value.boardId, projectId: value.projectId, archivedAt: null },
+      include: { placements: { orderBy: [{ sortOrder: "asc" }, { cardId: "asc" }] } },
+    });
+    if (!board) throw new SourceStoryContractError("board-project-mismatch", "The board is unavailable in this Nest.");
+    if (board.revision !== value.expectedRevision) {
+      throw new SourceStoryConflictError("stale-board", "The board changed on another surface.", board.revision);
+    }
+
+    const desiredCardIds = value.placements.map((placement) => placement.cardId);
+    if (desiredCardIds.length) {
+      const cards = await tx.studioStoryCard.findMany({
+        where: { projectId: value.projectId, archivedAt: null, id: { in: desiredCardIds } },
+        select: { id: true },
+      });
+      if (cards.length !== desiredCardIds.length) {
+        throw new SourceStoryContractError("arrangement-card-scope", "At least one card is unavailable in this Nest.");
+      }
+    }
+
+    const currentByCardId = new Map(board.placements.map((placement) => [placement.cardId, placement]));
+    const desiredCardIdSet = new Set(desiredCardIds);
+    const removedCardIds = board.placements
+      .filter((placement) => !desiredCardIdSet.has(placement.cardId))
+      .map((placement) => placement.cardId);
+    if (removedCardIds.length) {
+      await tx.studioStoryBoardPlacement.deleteMany({
+        where: { boardId: board.id, cardId: { in: removedCardIds } },
+      });
+    }
+    for (const [sortOrder, placement] of value.placements.entries()) {
+      if (currentByCardId.has(placement.cardId)) {
+        await tx.studioStoryBoardPlacement.updateMany({
+          where: { boardId: board.id, cardId: placement.cardId },
+          data: { groupKey: placement.groupKey, laneKey: placement.laneKey, sortOrder },
+        });
+      } else {
+        await tx.studioStoryBoardPlacement.create({
+          data: {
+            boardId: board.id,
+            cardId: placement.cardId,
+            groupKey: placement.groupKey,
+            laneKey: placement.laneKey,
+            sortOrder,
+            createdByUserId: actorUserId,
+          },
+        });
+      }
+    }
+
+    const nextRevision = board.revision + 1;
+    const updated = await tx.studioStoryBoard.updateMany({
+      where: { id: board.id, revision: board.revision },
+      data: { revision: nextRevision, updatedByUserId: actorUserId },
+    });
+    if (updated.count !== 1) throw new SourceStoryConflictError("stale-board", "The board changed on another surface.");
+    const placements = value.placements.map((placement, sortOrder) => ({ ...placement, sortOrder }));
+    await tx.studioStoryBoardOperation.create({
+      data: {
+        boardId: board.id,
+        revision: nextRevision,
+        previousRevision: board.revision,
+        operation: "arrange-cards",
+        actorUserId,
+        clientRequestId: value.clientRequestId,
+        snapshotJson: {
+          ...boardSnapshot({ ...board, revision: nextRevision, placements }),
+          requestSha256,
+          previousPlacements: board.placements.map((placement) => ({
+            cardId: placement.cardId,
+            groupKey: placement.groupKey,
+            laneKey: placement.laneKey,
+            sortOrder: placement.sortOrder,
+          })),
         },
       },
     });

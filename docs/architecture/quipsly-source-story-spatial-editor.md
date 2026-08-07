@@ -44,6 +44,22 @@ Google Drive or another connected vault may remain the authority for ordinary so
 
 Every output remains non-public until the normal Episode review and publishing contracts approve it.
 
+## Story board arrangement
+
+`StudioStoryCard` owns the reusable writing and immutable source-range identity. `StudioStoryBoardPlacement` owns only one board's section, production lane, and order. A card may therefore appear on several boards without being copied, and removing it from one board does not archive the card or alter any Episode placement.
+
+The `arrange-board` operation replaces one board's complete placement projection in a single serializable transaction. It:
+
+- requires the exact current board revision;
+- accepts each card at most once and rechecks every card against the same Nest;
+- preserves placement identities for unchanged cards;
+- adds, moves, groups, lanes, orders, or removes placements without touching card or source rows;
+- records the exact previous and resulting arrangement in an append-only board operation;
+- is idempotent by actor and request identity;
+- fails stale or request-reuse conflicts instead of merging a collaborator's board silently.
+
+The web surface exposes both a detailed card view and a compact sectioned outline. Up/down controls remain keyboard-operable and move within a section. Section/lane changes, filing an existing card, and unfiling are explicit controls rather than drag-only interactions. A later drag surface must call the same operation and cannot introduce a second ordering truth.
+
 ## Reviewed master operation
 
 The current macOS path uses the installed Insta360 Studio application as an explicit reviewed handoff because Insta360's documented Desktop MediaSDK runner does not currently provide a supported macOS automation surface.

@@ -1,5 +1,6 @@
 import {
   SourceStoryContractError,
+  normalizeArrangeStoryBoardInput,
   normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
@@ -122,6 +123,36 @@ describe("source-story contract", () => {
       ...validInput(),
       expectedBoardRevision: null,
     })).toThrow("current board revision");
+  });
+
+  it("normalizes one exact board arrangement without changing card identity", () => {
+    expect(normalizeArrangeStoryBoardInput({
+      projectId: "project_01",
+      boardId: "board_01",
+      expectedRevision: 7,
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      placements: [
+        { cardId: "card_b", groupKey: "Act 2 / Turn", laneKey: "B-roll" },
+        { cardId: "card_a", groupKey: "Cold Open", laneKey: "Story" },
+      ],
+    })).toEqual({
+      schema: "quipsly-source-story-v1",
+      projectId: "project_01",
+      boardId: "board_01",
+      expectedRevision: 7,
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      placements: [
+        { cardId: "card_b", groupKey: "act-2-turn", laneKey: "b-roll" },
+        { cardId: "card_a", groupKey: "cold-open", laneKey: "story" },
+      ],
+    });
+    expect(() => normalizeArrangeStoryBoardInput({
+      projectId: "project_01",
+      boardId: "board_01",
+      expectedRevision: 7,
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      placements: [{ cardId: "card_a" }, { cardId: "card_a", groupKey: "payoff" }],
+    })).toThrow("only once");
   });
 
   it("rejects reversed, tiny, non-finite, and out-of-bound source ranges", () => {

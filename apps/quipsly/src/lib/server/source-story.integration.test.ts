@@ -12,6 +12,7 @@ import { normalizeEpisodeArtifact, timelineStateFromEpisodeArtifact } from "@/ap
 
 import {
   SourceStoryConflictError,
+  arrangeStoryBoard,
   createMediaSourceSet,
   createSourceStoryCard,
   createStoryBoard,
@@ -51,6 +52,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
   let boardId = "";
   let firstCardId = "";
   let secondCardId = "";
+  let thirdCardId = "";
   let firstRangeId = "";
   let spatialSourceSetId = "";
   let spatialSourceSetIdentitySha256 = "";
@@ -574,6 +576,96 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     expect(workspace.boards[0]?.placements.map((placement) => placement.cardId)).toEqual([secondCardId, firstCardId]);
   });
 
+  it("files, groups, lanes, orders, and unfiles cards in one revision without touching source truth", async () => {
+    const unfiled = await createSourceStoryCard({
+      prisma,
+      actorUserId,
+      actorEmail,
+      value: {
+        projectId,
+        mediaAssetId: secondAssetId,
+        clientRequestId: randomUUID(),
+        title: "Room texture for the transition",
+        synopsis: "A quiet visual bridge into the next section.",
+        purpose: "b-roll",
+        startSeconds: 44,
+        endSeconds: 48.25,
+        tagIds: [tagId],
+      },
+    });
+    thirdCardId = unfiled.card.id;
+    const sourceRangesBefore = await prisma.studioStoryCard.findMany({
+      where: { id: { in: [firstCardId, secondCardId, thirdCardId] } },
+      orderBy: { id: "asc" },
+      select: { id: true, sourceRangeId: true },
+    });
+    const clientRequestId = randomUUID();
+    const value = {
+      projectId,
+      boardId,
+      expectedRevision: 4,
+      clientRequestId,
+      placements: [
+        { cardId: firstCardId, groupKey: "Cold Open", laneKey: "Story" },
+        { cardId: thirdCardId, groupKey: "Act 1", laneKey: "B-roll" },
+      ],
+    };
+    await expect(arrangeStoryBoard({ prisma, actorUserId, value })).resolves.toEqual({ revision: 5, replayed: false });
+    await expect(arrangeStoryBoard({ prisma, actorUserId, value })).resolves.toEqual({ revision: 5, replayed: true });
+    await expect(arrangeStoryBoard({
+      prisma,
+      actorUserId,
+      value: { ...value, placements: [...value.placements].reverse() },
+    })).rejects.toMatchObject({ code: "request-reuse-conflict", currentRevision: 5 });
+    await expect(arrangeStoryBoard({
+      prisma,
+      actorUserId,
+      value: { ...value, clientRequestId: randomUUID() },
+    })).rejects.toMatchObject({ code: "stale-board", currentRevision: 5 });
+    await expect(arrangeStoryBoard({
+      prisma,
+      actorUserId,
+      value: {
+        ...value,
+        expectedRevision: 5,
+        clientRequestId: randomUUID(),
+        placements: [{ cardId: "card_from_another_nest", groupKey: "private", laneKey: "story" }],
+      },
+    })).rejects.toMatchObject({ code: "arrangement-card-scope" });
+
+    const [sourceRangesAfter, board, removedCard, operation] = await Promise.all([
+      prisma.studioStoryCard.findMany({
+        where: { id: { in: [firstCardId, secondCardId, thirdCardId] } },
+        orderBy: { id: "asc" },
+        select: { id: true, sourceRangeId: true },
+      }),
+      prisma.studioStoryBoard.findUniqueOrThrow({
+        where: { id: boardId },
+        include: { placements: { orderBy: { sortOrder: "asc" } } },
+      }),
+      prisma.studioStoryCard.findUnique({ where: { id: secondCardId }, select: { id: true, sourceRangeId: true } }),
+      prisma.studioStoryBoardOperation.findUniqueOrThrow({ where: { boardId_revision: { boardId, revision: 5 } } }),
+    ]);
+    expect(sourceRangesAfter).toEqual(sourceRangesBefore);
+    expect(removedCard).toMatchObject({ id: secondCardId, sourceRangeId: expect.any(String) });
+    expect(board.revision).toBe(5);
+    expect(board.placements.map(({ cardId, groupKey, laneKey, sortOrder }) => ({ cardId, groupKey, laneKey, sortOrder }))).toEqual([
+      { cardId: firstCardId, groupKey: "cold-open", laneKey: "story", sortOrder: 0 },
+      { cardId: thirdCardId, groupKey: "act-1", laneKey: "b-roll", sortOrder: 1 },
+    ]);
+    expect(operation).toMatchObject({ operation: "arrange-cards", revision: 5, previousRevision: 4 });
+    expect(operation.snapshotJson).toMatchObject({
+      placements: [
+        { cardId: firstCardId, groupKey: "cold-open", laneKey: "story", sortOrder: 0 },
+        { cardId: thirdCardId, groupKey: "act-1", laneKey: "b-roll", sortOrder: 1 },
+      ],
+      previousPlacements: expect.arrayContaining([
+        expect.objectContaining({ cardId: firstCardId }),
+        expect.objectContaining({ cardId: secondCardId }),
+      ]),
+    });
+  });
+
   it("revises prose and tags append-only while stale writes and invalid SQL ranges fail", async () => {
     const clientRequestId = randomUUID();
     const update = {
@@ -730,7 +822,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       endSeconds: oldRange.endSeconds,
       selectorSha256: oldRange.selectorSha256,
     });
-    expect(board.revision).toBe(4);
+    expect(board.revision).toBe(5);
     expect(revisions.map(({ revision, operation }) => ({ revision, operation }))).toEqual([
       { revision: 1, operation: "create-card" },
       { revision: 2, operation: "update-card" },
