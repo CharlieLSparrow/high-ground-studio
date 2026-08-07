@@ -31,12 +31,13 @@ it("explains an evidence update before offering the conflict-safe write", async 
     plan: {
       ok: true,
       status: "media-ready",
+      roomId: "room-9",
       sourceSetFingerprintSha256: "a".repeat(64),
       sourceBindings: [
         { recordingAssetId: "audio-spine", mediaAssetId: "media-spine", trackId: "A2", participant: null, cameraPosition: null, alignmentReviewId: null },
         { recordingAssetId: "audio-backup", mediaAssetId: "media-backup", trackId: "A3", participant: null, cameraPosition: null, alignmentReviewId: "alignment-1" },
       ],
-      transcriptBinding: { blockIds: ["turn-1", "turn-2", "turn-3", "turn-4"], speakerAttributionComplete: false },
+      transcriptBinding: { blockIds: ["turn-1", "turn-2", "turn-3", "turn-4"], speakerAttributionComplete: false, recordingAssetId: "audio-backup" },
       speakerCameraMappingIds: [],
       issues: [{ code: "speaker-attribution-incomplete", severity: "warning", message: "A speaker still needs playback-reviewed identity." }],
       nextAction: "Resolve the remaining speaker/camera review warnings before automated camera assembly.",
@@ -79,6 +80,10 @@ it("explains an evidence update before offering the conflict-safe write", async 
   expect(within(impact).getByText("1 clips · 2 turns preserved")).toBeInTheDocument();
   expect(within(impact).getByText("0 add · 1 manual preserved")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Update episode with current evidence" })).toBeEnabled();
+  expect(screen.getByRole("link", { name: "Review exact-source speaker identity" })).toHaveAttribute(
+    "href",
+    "/sessions/room-9?mode=transcript&source=audio-backup#speaker-attribution-review",
+  );
   expect(screen.getByText(/server rechecks its fingerprint before writing/i)).toBeInTheDocument();
   await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
 });

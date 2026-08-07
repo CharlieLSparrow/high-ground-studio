@@ -89,6 +89,7 @@ export async function GET(request: Request) {
     );
   }
   const roomId = text(new URL(request.url).searchParams.get("callRoomId"));
+  const recordingAssetId = text(new URL(request.url).searchParams.get("recordingAssetId")) || null;
   if (!roomId) {
     return NextResponse.json(
       { ok: false, error: "callRoomId is required." },
@@ -100,9 +101,20 @@ export async function GET(request: Request) {
       prisma: getPrismaClient() as any,
       roomId,
       actor: actorFromSession(session),
+      recordingAssetId,
     });
     let evaluation = null;
     try {
+      if (recordingAssetId) {
+        return NextResponse.json({
+          ...result,
+          evaluation: null,
+          focusedSource: {
+            recordingAssetId,
+            roomWideEvaluationSuppressed: true,
+          },
+        }, { headers: { "Cache-Control": "private, no-store" } });
+      }
       evaluation = await readTranscriptEvaluationReadiness({
         prisma: getPrismaClient() as any,
         roomId,

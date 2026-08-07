@@ -102,6 +102,13 @@ Session projections deep-link a ready update to this panel. Only blocked source,
 spine, or alignment evidence routes back to Guided sync; an already materialized
 take routes to automated-edit evidence.
 
+Materialization warnings also carry evidence-bound resolution paths. Missing
+provider diarization labels route to per-turn playback review for the exact
+RecordingAsset; an existing unattributed provider cluster routes to the
+cluster-identity review for that same source. Missing or ambiguous participant
+cameras route to Guided sync. The correction desk never falls back to the newest
+room transcript when a source was explicitly selected.
+
 After a successful operation, the editor consumes the returned canonical
 artifact, preserves stable `sourceId` through hydration, and suppresses no human
 edit. A recheck of an unchanged take renders a disabled **Take already

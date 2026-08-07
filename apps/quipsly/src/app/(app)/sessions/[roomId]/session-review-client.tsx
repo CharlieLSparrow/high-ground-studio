@@ -2368,6 +2368,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
         <TranscriptCorrectionDesk
           roomId={roomId}
+          recordingAssetId={focusedRecordingAssetId}
           canUseProjectTeamNotes={canUseProjectTeamNotes}
         />
       </>) : null}

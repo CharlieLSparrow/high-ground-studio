@@ -67,6 +67,11 @@ publication, and cleared the rendered QA session. A second full rendered replay
 reported **Take already materialized**, performed no new write, and repeated the
 two-source play/pause proof successfully.
 
+The remaining warning now links to the exact DJI transcript review surface.
+That route preserves the Session and RecordingAsset identities, suppresses
+room-wide scorecards, and fails closed rather than selecting another transcript.
+See `docs/coordination/2026-08-06-exact-source-speaker-review-handoff.md`.
+
 ## Verification
 
 ```bash

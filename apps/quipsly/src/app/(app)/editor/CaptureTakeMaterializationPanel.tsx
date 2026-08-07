@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 type MaterializationIssue = {
@@ -20,6 +21,7 @@ type MaterializationInspection = {
   plan: {
     ok: boolean;
     status: "blocked" | "media-ready" | "assembly-ready";
+    roomId: string;
     sourceSetFingerprintSha256: string;
     sourceBindings: Array<{
       recordingAssetId: string;
@@ -32,6 +34,7 @@ type MaterializationInspection = {
     transcriptBinding: {
       blockIds: string[];
       speakerAttributionComplete: boolean;
+      recordingAssetId: string;
     } | null;
     speakerCameraMappingIds: string[];
     issues: MaterializationIssue[];
@@ -154,6 +157,9 @@ export function CaptureTakeMaterializationPanel({
   const warnings = inspection?.plan.issues.filter((issue) => issue.severity === "warning") ?? [];
   const impact = inspection?.plan.impact ?? null;
   const isEvidenceUpdate = impact?.operation === "evidence-update";
+  const transcriptReviewBaseHref = inspection?.plan.roomId && inspection.plan.transcriptBinding?.recordingAssetId
+    ? `/sessions/${encodeURIComponent(inspection.plan.roomId)}?mode=transcript&source=${encodeURIComponent(inspection.plan.transcriptBinding.recordingAssetId)}`
+    : null;
 
   return (
     <section
@@ -247,6 +253,23 @@ export function CaptureTakeMaterializationPanel({
           {warnings.map((issue) => (
             <div key={`${issue.code}:${issue.recordingAssetId ?? "take"}`} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[10px] font-bold leading-4 text-sky-950">
               <span className="font-black">Can continue:</span> {issue.message}
+              {(issue.code === "speaker-attribution-incomplete" || issue.code === "speaker-labels-unavailable") && transcriptReviewBaseHref ? (
+                <Link
+                  href={`${transcriptReviewBaseHref}#${issue.code === "speaker-attribution-incomplete" ? "speaker-attribution-review" : "transcript-correction-review"}`}
+                  className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-indigo-300 bg-white px-3 py-2 font-black text-indigo-900 hover:bg-indigo-50"
+                >
+                  {issue.code === "speaker-attribution-incomplete"
+                    ? "Review exact-source speaker identity"
+                    : "Review exact-source transcript speakers"}
+                </Link>
+              ) : issue.code === "participant-camera-ambiguous" || issue.code === "participant-camera-missing" ? (
+                <a
+                  href="#guided-sync-wizard"
+                  className="mt-2 flex min-h-10 items-center justify-center rounded-lg border border-sky-300 bg-white px-3 py-2 font-black text-sky-900 hover:bg-sky-50"
+                >
+                  Review participant cameras
+                </a>
+              ) : null}
             </div>
           ))}
         </div>

@@ -14,6 +14,9 @@ const OPERATOR_EMAIL = "quipsly-media-ms8ct81g@example.test";
 const PROJECT_SLUG = "high-ground-odyssey-manuscript";
 const EPISODE_SLUG = "capture-sync-rendezvous-qa-20260805";
 const CAPTURE_GROUP_ID = "967f72b2-f762-4535-a337-e69b5676cad1";
+const ROOM_ID = "cmsfpfwrt000db9xld8ppuon4";
+const TRANSCRIPT_RECORDING_ASSET_ID = "cmsi2v4l4000rlqxl78h1w8t3";
+const TRANSCRIPT_JOB_ID = "cmsi6pqf7000uazxlrp1ytaea";
 const SPINE_MEDIA_ASSET_ID = "cmsi2ifcm000clqxl8r15z75f";
 const SPINE_LABEL = "mv7i-backup.mp3";
 const EXPECTED_PLAYBACK_URLS = [
@@ -225,6 +228,35 @@ async function main() {
     assert(pausedStates.length === EXPECTED_PLAYBACK_URLS.length && pausedStates.every(Boolean), "Pause did not stop both protected Capture sources.");
 
     await assertNoHorizontalOverflow(page.locator("body"), "materialized Capture playback editor");
+    const speakerReviewLink = panel.getByRole("link", { name: "Review exact-source transcript speakers", exact: true });
+    await speakerReviewLink.waitFor({ timeout: 20_000 });
+    const expectedSpeakerReviewPath = `/sessions/${ROOM_ID}?mode=transcript&source=${TRANSCRIPT_RECORDING_ASSET_ID}#transcript-correction-review`;
+    assert(await speakerReviewLink.getAttribute("href") === expectedSpeakerReviewPath, "The editor warning did not preserve the exact Session and RecordingAsset identity.");
+    const [correctionResponse] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === "/api/mobile/capture/transcripts/corrections"
+          && url.searchParams.get("callRoomId") === ROOM_ID
+          && url.searchParams.get("recordingAssetId") === TRANSCRIPT_RECORDING_ASSET_ID;
+      }),
+      speakerReviewLink.click(),
+    ]);
+    const correctionBody = await correctionResponse.json().catch(() => null);
+    assert(correctionResponse.status() === 200 && correctionBody?.transcriptJobId === TRANSCRIPT_JOB_ID, `Exact-source correction desk selected the wrong transcript: ${JSON.stringify(correctionBody)}`);
+    assert(correctionBody?.focusedSource?.recordingAssetId === TRANSCRIPT_RECORDING_ASSET_ID, "Correction readback lost exact-source focus.");
+    assert(correctionBody?.evaluation === null && correctionBody?.focusedSource?.roomWideEvaluationSuppressed === true, "Exact-source review mixed in a room-wide accuracy scorecard.");
+    const unavailableSourceURL = new URL("/api/mobile/capture/transcripts/corrections", baseURL);
+    unavailableSourceURL.searchParams.set("callRoomId", ROOM_ID);
+    unavailableSourceURL.searchParams.set("recordingAssetId", "recording-not-in-this-session");
+    const unavailableSourceResponse = await page.request.get(unavailableSourceURL.toString());
+    const unavailableSourceBody = await unavailableSourceResponse.json().catch(() => null);
+    assert(
+      unavailableSourceResponse.status() === 404 && unavailableSourceBody?.errorCode === "SOURCE_TRANSCRIPT_NOT_FOUND",
+      `An unavailable exact source did not fail closed: ${JSON.stringify({ status: unavailableSourceResponse.status(), body: unavailableSourceBody })}`,
+    );
+    await page.getByRole("heading", { name: "Listen, correct, preserve the source", exact: true }).waitFor({ timeout: 20_000 });
+    assert(new URL(page.url()).hash === "#transcript-correction-review", "Speaker review navigation lost its exact review anchor.");
+    await assertNoHorizontalOverflow(page.locator("body"), "exact-source speaker review");
     assert(pageErrors.length === 0, `Materialized playback raised browser exceptions: ${pageErrors.join(" | ")}`);
     await clearRenderedSession(page, baseURL, "retained-capture-playback-operator");
     sessionCleared = true;
@@ -241,6 +273,13 @@ async function main() {
       protectedRangeRead: "passed",
       remotionPlayback: playbackStates,
       pause: "passed",
+      exactSourceSpeakerReview: {
+        roomId: ROOM_ID,
+        recordingAssetId: TRANSCRIPT_RECORDING_ASSET_ID,
+        transcriptJobId: TRANSCRIPT_JOB_ID,
+        roomWideEvaluationSuppressed: true,
+        unavailableSourceStatus: 404,
+      },
       provenance: "recording asset + media asset + imported source retained",
       sourceMediaMutated: false,
       publicationStarted: false,

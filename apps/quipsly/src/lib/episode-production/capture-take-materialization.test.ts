@@ -255,6 +255,41 @@ describe("Capture take materialization", () => {
     ]);
   });
 
+  it("distinguishes missing diarization labels from an unattributed provider speaker cluster", () => {
+    const withoutLabels = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [source("audio-1", "audio")],
+      transcript: transcript({
+        segments: [{
+          ...transcript().segments[0],
+          speaker: null,
+          speakerAttribution: null,
+        }],
+      }),
+      actor,
+      materializedAt,
+    });
+    const unattributedCluster = planCaptureTakeMaterialization({
+      timeline: { clips: [], transcript: [] },
+      sources: [source("audio-1", "audio")],
+      transcript: transcript({
+        segments: [{
+          ...transcript().segments[0],
+          speakerAttribution: null,
+        }],
+      }),
+      actor,
+      materializedAt,
+    });
+
+    expect(withoutLabels.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "speaker-labels-unavailable", severity: "warning" }),
+    ]));
+    expect(unattributedCluster.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "speaker-attribution-incomplete", severity: "warning" }),
+    ]));
+  });
+
   it("never guesses between two cameras owned by the same reviewed participant", () => {
     const result = planCaptureTakeMaterialization({
       timeline: { clips: [], transcript: [] },

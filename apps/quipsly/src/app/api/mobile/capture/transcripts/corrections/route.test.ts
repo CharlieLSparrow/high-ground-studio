@@ -60,6 +60,26 @@ describe("transcript correction and accuracy-corpus route", () => {
     expect(readTranscriptEvaluationReadiness).toHaveBeenCalledWith(expect.objectContaining({ roomId: "room-1", actor: { id: "user-1", email: "producer@example.com", isStaff: false } }));
   });
 
+  it("keeps an exact-source correction desk bound to one RecordingAsset and suppresses room-wide scorecards", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({ ok: true, roomId: "room-1", transcriptJobId: "job-backup", segments: [] } as any);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      transcriptJobId: "job-backup",
+      evaluation: null,
+      focusedSource: { recordingAssetId: "asset-backup", roomWideEvaluationSuppressed: true },
+    });
+    expect(readTranscriptCorrectionDesk).toHaveBeenCalledWith(expect.objectContaining({
+      roomId: "room-1",
+      recordingAssetId: "asset-backup",
+    }));
+    expect(readTranscriptEvaluationReadiness).not.toHaveBeenCalled();
+    expect(readTranscriptEvaluationCandidates).not.toHaveBeenCalled();
+  });
+
   it("approves a classified evaluation window through an explicit idempotent operation", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
     jest.mocked(approveTranscriptEvaluationWindow).mockResolvedValue({ ok: true, idempotentReplay: false, window: { id: "window-1" } } as any);

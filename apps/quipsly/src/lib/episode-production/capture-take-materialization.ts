@@ -87,6 +87,7 @@ export type CaptureTakeMaterializationIssue = {
     | "materialized-source-lane-missing"
     | "transcript-source-missing"
     | "transcript-not-ready"
+    | "speaker-labels-unavailable"
     | "speaker-attribution-incomplete"
     | "participant-camera-ambiguous"
     | "participant-camera-missing";
@@ -664,7 +665,9 @@ export function planCaptureTakeMaterialization(input: {
       .filter((block) => block.speaker)
       .map((block) => canonicalSpeakerKey(block.speaker!)),
   );
-  if (transcriptBlocks.length > 0 && attributedSpeakerKeys.size !== allSpeakerKeys.size) {
+  if (transcriptBlocks.length > 0 && allSpeakerKeys.size === 0) {
+    issues.push({ code: "speaker-labels-unavailable", severity: "warning", message: "The canonical transcript has no provider speaker labels. Review speaker names against protected playback before camera automation." });
+  } else if (transcriptBlocks.length > 0 && attributedSpeakerKeys.size !== allSpeakerKeys.size) {
     issues.push({ code: "speaker-attribution-incomplete", severity: "warning", message: "At least one transcript speaker still needs playback-reviewed participant identity." });
   }
 

@@ -16,6 +16,15 @@ Speaker identity is intentionally separate from transcript word review:
 
 The Nest desk labels this action `Identify a voice once`, requires an actual Session participant, protected playback, a selected sample, and an explicit recognition acknowledgement. Every mapped segment states that the displayed identity does not claim its words were playback-reviewed. The iPhone shows the same `Voice identified from Session samples` boundary when it reads the canonical Session transcript.
 
+The Nest desk also supports exact-source focus. A `recordingAssetId` constrains
+the transcript query inside the already authorized Session and never falls back
+to the room's newest job. A missing or inaccessible source transcript returns
+404. Because accuracy-corpus scorecards are currently room-wide, they are
+suppressed in exact-source mode instead of being displayed beside a different
+job. Missing provider diarization labels are distinct from an unlabeled real
+participant: the former routes to playback-reviewed per-turn speaker correction,
+while the latter routes to cluster attribution.
+
 Quipsly Capture can now perform that review, not merely display it. Its `Identify voices once` section groups the immutable provider labels, offers one to three exact local-source samples, requires the reviewer to play and explicitly select at least one sample, and maps the cluster to an actual Session participant. The phone writes the intent to a separate account-partitioned, file-protected ledger before attempting the network mutation. Stable request IDs make retries idempotent; changed provider evidence is held for review instead of overwritten. Word corrections and voice identities have separate pending and held state, and the transcript toolbar reports only decisions for the currently open Session so an older Session cannot present a misleading badge.
 
 ## Storage and concurrency boundary

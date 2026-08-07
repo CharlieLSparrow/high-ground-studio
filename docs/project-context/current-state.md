@@ -2,6 +2,25 @@
 
 Date: 2026-08-06
 
+## Exact-source speaker-review handoff checkpoint
+
+- Capture-take warnings now distinguish a transcript with no provider
+  diarization labels from a provider cluster that merely lacks a reviewed real
+  participant identity. The first routes to per-turn protected-playback speaker
+  review; the second routes to `Identify a voice once`; camera missing or
+  ambiguity routes to Guided sync.
+- The correction desk now accepts an exact RecordingAsset identity at its
+  database query boundary. It does not fall back to the newest room transcript,
+  and a selected source with no accessible job returns 404. Room-wide accuracy
+  scorecards are suppressed while one source is focused so metrics from a
+  different job cannot appear beside it.
+- The retained rendered editor followed its warning into the DJI backup desk
+  and read back transcript job `cmsi6pqf7000uazxlrp1ytaea` for RecordingAsset
+  `cmsi2v4l4000rlqxl78h1w8t3`. The intended review surface rendered, a bogus
+  source failed closed with 404, no horizontal overflow or browser exception
+  occurred, and no media or publication state changed. See
+  `docs/coordination/2026-08-06-exact-source-speaker-review-handoff.md`.
+
 ## Conflict-safe Episode evidence update checkpoint
 
 - A ready Episode update now deep-links from its Session to the exact take

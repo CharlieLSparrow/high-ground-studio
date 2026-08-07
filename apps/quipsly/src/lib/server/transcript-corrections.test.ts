@@ -204,6 +204,43 @@ function speakerMutationHarness(options: { active?: any | null; replay?: any | n
 }
 
 describe("transcript correction desk", () => {
+  it("selects only the requested RecordingAsset transcript inside the accessible Session", async () => {
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom()),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      recordingAssetId: "asset-1",
+      actor,
+    });
+
+    expect(result.transcriptJobId).toBe("job-1");
+    expect(prisma.callRoom.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        transcriptJobs: expect.objectContaining({ where: { assetId: "asset-1" }, take: 1 }),
+      }),
+    }));
+  });
+
+  it("fails closed instead of falling back when an exact source has no accessible transcript", async () => {
+    const prisma = {
+      callRoom: { findFirst: jest.fn(async () => ({ ...accessibleRoom(), transcriptJobs: [] })) },
+    };
+
+    await expect(readTranscriptCorrectionDesk({
+      prisma,
+      roomId: "room-1",
+      recordingAssetId: "asset-outside-room",
+      actor,
+    })).rejects.toMatchObject({ status: 404, code: "SOURCE_TRANSCRIPT_NOT_FOUND" });
+  });
+
   it("applies one current speaker identity without claiming any turn's words were reviewed", async () => {
     const attribution = {
       id: "attribution-1",

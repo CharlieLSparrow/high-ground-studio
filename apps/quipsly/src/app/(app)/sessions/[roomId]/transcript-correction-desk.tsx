@@ -807,7 +807,7 @@ function SpeakerAttributionPanel({
 
   if (!groups.length) return null;
   return (
-    <section aria-labelledby="speaker-attribution-heading" className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
+    <section id="speaker-attribution-review" tabIndex={-1} aria-labelledby="speaker-attribution-heading" className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-sm">
       <p className="text-xs font-black uppercase tracking-[0.18em] text-indigo-800">Session-wide diarization</p>
       <h3 id="speaker-attribution-heading" className="mt-2 font-serif text-2xl font-black text-[#3d3122]">Identify a voice once</h3>
       <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-indigo-950">Play a representative turn, choose the real Session participant, and Quipsly will label every turn in that provider cluster. This identifies the voice only—it does not mark those words playback-reviewed.</p>
@@ -1343,9 +1343,11 @@ function CorrectionEditor({
 
 export function TranscriptCorrectionDesk({
   roomId,
+  recordingAssetId = null,
   canUseProjectTeamNotes = false,
 }: {
   roomId: string;
+  recordingAssetId?: string | null;
   canUseProjectTeamNotes?: boolean;
 }) {
   const [desk, setDesk] = useState<Desk | null>(null);
@@ -1364,7 +1366,9 @@ export function TranscriptCorrectionDesk({
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await fetch(`/api/mobile/capture/transcripts/corrections?callRoomId=${encodeURIComponent(roomId)}`, { cache: "no-store" });
+      const query = new URLSearchParams({ callRoomId: roomId });
+      if (recordingAssetId) query.set("recordingAssetId", recordingAssetId);
+      const response = await fetch(`/api/mobile/capture/transcripts/corrections?${query.toString()}`, { cache: "no-store" });
       const payload = await response.json() as Desk;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "The correction desk could not load.");
       setDesk(payload);
@@ -1374,7 +1378,7 @@ export function TranscriptCorrectionDesk({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [roomId]);
+  }, [recordingAssetId, roomId]);
 
   useEffect(() => { void load(false); }, [load]);
 
@@ -1392,8 +1396,9 @@ export function TranscriptCorrectionDesk({
   }, [desk?.transcriptStatus, load]);
 
   useEffect(() => {
-    if (!desk || typeof window === "undefined" || !window.location.hash.startsWith("#transcript-segment-")) return;
+    if (!desk || typeof window === "undefined") return;
     const targetId = window.location.hash.slice(1);
+    if (targetId !== "speaker-attribution-review" && targetId !== "transcript-correction-review" && !targetId.startsWith("transcript-segment-")) return;
     const frame = window.requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
       if (!target) return;
@@ -1522,7 +1527,7 @@ export function TranscriptCorrectionDesk({
   const reviewedSegmentCount = desk.segments.filter((segment) => segment.acceptedCorrection || segment.acceptedVerification).length;
 
   return (
-    <section aria-labelledby="transcript-correction-heading" className="space-y-5">
+    <section id="transcript-correction-review" tabIndex={-1} aria-labelledby="transcript-correction-heading" className="space-y-5">
       <div className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

@@ -335,7 +335,12 @@ function visibleTranscriptProposals(corrections: any[]) {
   });
 }
 
-async function loadAccessibleRoom(prisma: any, roomId: string, actor: TranscriptCorrectionActor) {
+async function loadAccessibleRoom(
+  prisma: any,
+  roomId: string,
+  actor: TranscriptCorrectionActor,
+  recordingAssetId?: string | null,
+) {
   const room = await prisma.callRoom.findFirst({
     where: accessibleRoomWhere(roomId, actor),
     select: {
@@ -354,6 +359,7 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
         },
       },
       transcriptJobs: {
+        ...(recordingAssetId ? { where: { assetId: recordingAssetId } } : {}),
         orderBy: { createdAt: "desc" },
         take: 1,
         select: {
@@ -470,9 +476,17 @@ export async function readTranscriptCorrectionDesk(input: {
   prisma: any;
   roomId: string;
   actor: TranscriptCorrectionActor;
+  recordingAssetId?: string | null;
 }) {
-  let room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor);
+  let room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor, input.recordingAssetId);
   let job = room.transcriptJobs[0] ?? null;
+  if (input.recordingAssetId && !job) {
+    throw new TranscriptCorrectionError(
+      "The selected recording has no accessible transcript in this Session.",
+      404,
+      "SOURCE_TRANSCRIPT_NOT_FOUND",
+    );
+  }
   if (
     job?.status === "RUNNING"
     && job.processingManifestObject
@@ -482,8 +496,15 @@ export async function readTranscriptCorrectionDesk(input: {
       transcriptJobId: job.id,
     });
     if (reconciliation.status !== "pending") {
-      room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor);
+      room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor, input.recordingAssetId);
       job = room.transcriptJobs[0] ?? null;
+      if (input.recordingAssetId && !job) {
+        throw new TranscriptCorrectionError(
+          "The selected recording transcript changed during reconciliation. Refresh its exact-source evidence.",
+          409,
+          "SOURCE_TRANSCRIPT_CHANGED",
+        );
+      }
     }
   }
   if (!job?.asset) {

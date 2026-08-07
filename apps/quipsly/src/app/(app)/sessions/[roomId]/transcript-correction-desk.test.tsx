@@ -167,6 +167,7 @@ describe("TranscriptCorrectionDesk", () => {
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     await screen.findByText("Identify a voice once");
+    expect(document.getElementById("speaker-attribution-review")).toBeInTheDocument();
     expect(screen.getByText(/does not mark those words playback-reviewed/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/^participant$/i), { target: { value: "participant-1" } });
     await act(async () => {
@@ -186,6 +187,19 @@ describe("TranscriptCorrectionDesk", () => {
       confirmedAgainstPlayback: true,
     });
     expect(await screen.findByText(/speaker is now identified as scott sparrow.*word review remains unchanged/i)).toBeInTheDocument();
+  });
+
+  it("loads an explicitly focused RecordingAsset without room-latest fallback", async () => {
+    const fetchMock = jest.fn(async () => ({ ok: true, json: async () => desk(true) }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" recordingAssetId="asset-backup" />);
+    await screen.findByText("Welcome, everybody.");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/mobile/capture/transcripts/corrections?callRoomId=room-1&recordingAssetId=asset-backup",
+      { cache: "no-store" },
+    );
   });
 
   it("keeps correction controls disabled when no protected playback exists", async () => {
