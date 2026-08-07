@@ -9,6 +9,12 @@ import {
   type EditActor,
 } from "@/lib/server/episode-edit-store";
 import { requireProjectAccess } from "@/lib/server/access";
+import { getPrismaClient } from "@/lib/prisma";
+import {
+  EpisodeRenderProofError,
+  queueEpisodeRenderProof,
+  registerEpisodeRenderProof,
+} from "@/lib/server/episode-render-proof";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +61,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
   if (!episodeSlug) return NextResponse.json({ error: "Choose an episode first." }, { status: 400 });
 
   try {
+    let operationResult: unknown = null;
     if (action === "open-episode") {
       await ensureEpisodeEditBranch(slug, episodeSlug, actor);
     } else if (action === "set-decision") {
@@ -83,16 +90,39 @@ export async function POST(request: NextRequest, context: { params: Promise<{ sl
         tags: Array.isArray(body.tags) ? body.tags.map(String) : [],
         actor,
       });
+    } else if (action === "queue-render-proof") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to queue a proof." }, { status: 400 });
+      operationResult = await queueEpisodeRenderProof({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        sequenceStartSeconds: Number(body.sequenceTime ?? 0),
+        expectedRevision: Number(body.expectedRevision ?? 0),
+        clientRequestId: String(body.clientRequestId ?? crypto.randomUUID()),
+        actor: { ...actor, email: actor.email },
+      });
+    } else if (action === "register-render-proof") {
+      if (!actor.email) return NextResponse.json({ error: "A verified account email is required to verify a proof." }, { status: 400 });
+      operationResult = await registerEpisodeRenderProof({
+        prisma: getPrismaClient(),
+        projectSlug: slug,
+        episodeSlug,
+        jobId: String(body.jobId ?? ""),
+        actor: { ...actor, email: actor.email },
+      });
     } else {
       return NextResponse.json({ error: "Unknown editor action." }, { status: 400 });
     }
-    return NextResponse.json(await loadEpisodeEditDesk(slug, episodeSlug, true, {
-      includeInspection: action === "open-episode",
+    return NextResponse.json({ ...await loadEpisodeEditDesk(slug, episodeSlug, true, {
+      includeInspection: action === "open-episode" || action === "queue-render-proof" || action === "register-render-proof",
       selectedMediaAssetId,
-    }), {
+    }), operationResult }, {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
+    if (error instanceof EpisodeRenderProofError) {
+      return NextResponse.json({ error: error.message, errorCode: error.code }, { status: error.status });
+    }
     if (error instanceof EpisodeEditConflict) {
       return NextResponse.json({
         error: "Another editor saved a newer change. The shared edit has been refreshed.",

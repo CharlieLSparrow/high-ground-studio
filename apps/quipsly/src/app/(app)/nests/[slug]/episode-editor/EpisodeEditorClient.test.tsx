@@ -85,6 +85,7 @@ const payload: EpisodeEditDeskPayload = {
   executionInspection: {
     browser: { status: "ready", detail: "Browser editing is ready." },
     native: { status: "available-unobserved", detail: "Native heartbeat is not connected." },
+    workers: [],
     jobs: [],
   },
   document: {
@@ -224,12 +225,85 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
           updatedAt: "2026-08-07T08:00:00.000Z",
           completedAt: "2026-08-07T08:01:00.000Z",
           error: null,
+          manifestSha256: null,
+          branchRevision: null,
+          proofStartSeconds: null,
+          proofEndSeconds: null,
+          playbackUrl: null,
         }],
       },
     }} />);
     expect(screen.getByText("episode program delivery")).toBeInTheDocument();
     expect(screen.getByText("local worker · local")).toBeInTheDocument();
     expect(screen.queryByText(/No render, proxy/)).not.toBeInTheDocument();
+  });
+
+  it("plays the highest edit revision even when an older proof has a newer maintenance timestamp", () => {
+    const { container } = render(<EpisodeEditorClient initialPayload={{
+      ...payload,
+      executionInspection: {
+        ...payload.executionInspection,
+        jobs: [
+          {
+            id: "proof-revision-1",
+            type: "episode-render-proof",
+            status: "completed",
+            lane: "local-worker",
+            provider: "local",
+            updatedAt: "2026-08-07T09:10:00.000Z",
+            completedAt: "2026-08-07T09:10:00.000Z",
+            error: null,
+            manifestSha256: "1".repeat(64),
+            branchRevision: 1,
+            proofStartSeconds: 0,
+            proofEndSeconds: 10,
+            playbackUrl: "/api/ingest/media/proof-revision-1",
+          },
+          {
+            id: "proof-revision-3",
+            type: "episode-render-proof",
+            status: "completed",
+            lane: "local-worker",
+            provider: "local",
+            updatedAt: "2026-08-07T03:22:00.000Z",
+            completedAt: "2026-08-07T03:22:00.000Z",
+            error: null,
+            manifestSha256: "3".repeat(64),
+            branchRevision: 3,
+            proofStartSeconds: 0,
+            proofEndSeconds: 10,
+            playbackUrl: "/api/ingest/media/proof-revision-3",
+          },
+        ],
+      },
+    }} />);
+
+    expect(screen.getByText("Verified local proof · revision 3")).toBeInTheDocument();
+    expect(container.querySelector("video")?.getAttribute("src")).toBe("/api/ingest/media/proof-revision-3");
+  });
+
+  it("enables a local proof render only when a current Mac worker is observed", () => {
+    const { rerender } = render(<EpisodeEditorClient initialPayload={payload} />);
+    expect(screen.getByRole("button", { name: "Render 10s proof here" })).toBeDisabled();
+    rerender(<EpisodeEditorClient key="worker-online" initialPayload={{
+      ...payload,
+      executionInspection: {
+        ...payload.executionInspection,
+        native: { status: "observed", detail: "This Mac is online at 24 fps." },
+        workers: [{
+          id: "worker-1",
+          label: "Wall-E.local",
+          executorKind: "local-mac",
+          status: "online",
+          buildId: "build-1",
+          lastHeartbeatAt: "2026-08-07T18:00:00.000Z",
+          jobTypes: ["episode-render-proof"],
+          renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
+        }],
+      },
+    }} />);
+    expect(screen.getByRole("button", { name: "Render 10s proof here" })).toBeEnabled();
+    expect(screen.getByText("this Mac online")).toBeInTheDocument();
   });
 
   it("makes ambiguous audio evidence actionable through exact source selection", async () => {

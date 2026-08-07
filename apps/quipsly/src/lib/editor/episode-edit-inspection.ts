@@ -1,5 +1,6 @@
 import type {
   EpisodeEditExecutionInspection,
+  EpisodeEditExecutionWorker,
   EpisodeEditProcessingJob,
   EpisodeEditTranscriptProjection,
   EpisodeEditTranscriptSegment,
@@ -161,6 +162,10 @@ export function projectEpisodeEditProcessingJob(row: {
   error: string | null;
 }): EpisodeEditProcessingJob {
   const provider = providerFrom(row.resultJson) ?? providerFrom(row.inputJson);
+  const input = record(row.inputJson);
+  const proof = record(input.proof);
+  const result = record(row.resultJson);
+  const registration = record(result.registration);
   return {
     id: row.id,
     type: row.type,
@@ -170,19 +175,57 @@ export function projectEpisodeEditProcessingJob(row: {
     updatedAt: row.updatedAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
     error: row.error,
+    manifestSha256: text(input.manifestSha256),
+    branchRevision: number(input.branchRevision),
+    proofStartSeconds: number(proof.sequenceStartSeconds),
+    proofEndSeconds: number(proof.sequenceEndSeconds),
+    playbackUrl: text(registration.playbackUrl),
   };
 }
 
-export function episodeEditExecutionInspection(jobs: EpisodeEditProcessingJob[]): EpisodeEditExecutionInspection {
+export function projectEpisodeEditExecutionWorker(row: {
+  id: string;
+  hostName: string;
+  status: string;
+  capabilities: unknown;
+  lastHeartbeatAt: Date | null;
+}, now = new Date()): EpisodeEditExecutionWorker | null {
+  const capabilities = record(row.capabilities);
+  if (capabilities.schema !== "quipsly-execution-worker-capabilities-v1") return null;
+  const heartbeatAge = row.lastHeartbeatAt ? now.getTime() - row.lastHeartbeatAt.getTime() : Number.POSITIVE_INFINITY;
+  const status = row.status === "online" && heartbeatAge <= 30_000
+    ? "online"
+    : heartbeatAge <= 5 * 60_000
+      ? "stale"
+      : "offline";
+  return {
+    id: row.id,
+    label: row.hostName.replace(/^quipsly-media-worker:/, ""),
+    executorKind: capabilities.executorKind === "local-mac" || capabilities.executorKind === "cloud"
+      ? capabilities.executorKind
+      : "unknown",
+    status,
+    buildId: text(capabilities.buildId),
+    lastHeartbeatAt: row.lastHeartbeatAt?.toISOString() ?? null,
+    jobTypes: Array.isArray(capabilities.jobTypes) ? capabilities.jobTypes.filter((value): value is string => typeof value === "string") : [],
+    renderProfiles: Array.isArray(capabilities.renderProfiles) ? capabilities.renderProfiles.filter((value): value is string => typeof value === "string") : [],
+  };
+}
+
+export function episodeEditExecutionInspection(jobs: EpisodeEditProcessingJob[], workers: EpisodeEditExecutionWorker[] = []): EpisodeEditExecutionInspection {
+  const nativeOnline = workers.some((worker) => worker.executorKind === "local-mac" && worker.status === "online" && worker.jobTypes.includes("episode-render-proof"));
   return {
     browser: {
       status: "ready",
       detail: "Shared cut decisions, transcript inspection, notes, and reviewed Episode-clock or source-clock evidence run in this browser workspace.",
     },
     native: {
-      status: "available-unobserved",
-      detail: "Advanced Studio can perform local heavy rendering. A live native-worker heartbeat is not connected to this workspace yet.",
+      status: nativeOnline ? "observed" : "available-unobserved",
+      detail: nativeOnline
+        ? "This Mac is online and can execute exact-source 1280×720, 24 fps Episode proof renders without cloud compute."
+        : "Advanced Studio can perform local heavy rendering, but no current exact-source worker heartbeat is visible.",
     },
+    workers,
     jobs,
   };
 }

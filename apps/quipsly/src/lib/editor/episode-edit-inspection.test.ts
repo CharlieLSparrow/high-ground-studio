@@ -1,5 +1,6 @@
 import {
   episodeEditExecutionInspection,
+  projectEpisodeEditExecutionWorker,
   projectEpisodeEditProcessingJob,
   projectEpisodeEditTranscript,
 } from "./episode-edit-inspection";
@@ -89,6 +90,27 @@ describe("Episode edit inspection projections", () => {
     expect(episodeEditExecutionInspection([job])).toEqual(expect.objectContaining({
       native: expect.objectContaining({ status: "available-unobserved", detail: expect.stringContaining("heartbeat") }),
       jobs: [job],
+    }));
+  });
+
+  it("treats only a current capability heartbeat as an observed local executor", () => {
+    const worker = projectEpisodeEditExecutionWorker({
+      id: "worker-1",
+      hostName: "quipsly-media-worker:Wall-E.local",
+      status: "online",
+      capabilities: {
+        schema: "quipsly-execution-worker-capabilities-v1",
+        executorKind: "local-mac",
+        buildId: "build-1",
+        jobTypes: ["episode-render-proof"],
+        renderProfiles: ["episode-edit-proof-1280x720-24fps-v1"],
+      },
+      lastHeartbeatAt: new Date("2026-08-07T18:00:00.000Z"),
+    }, new Date("2026-08-07T18:00:20.000Z"));
+    expect(worker).toEqual(expect.objectContaining({ status: "online", executorKind: "local-mac" }));
+    expect(episodeEditExecutionInspection([], worker ? [worker] : [])).toEqual(expect.objectContaining({
+      native: expect.objectContaining({ status: "observed", detail: expect.stringContaining("24 fps") }),
+      workers: [worker],
     }));
   });
 });

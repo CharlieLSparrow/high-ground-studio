@@ -19,11 +19,19 @@ export type EditSourceRole = "primary" | "secondary" | "clip" | "audio" | "refer
 
 export type ProgramEditSource = {
   id: string;
+  mediaAssetId?: string;
+  sourceId?: string;
+  recordingAssetId?: string;
   label: string;
   role: EditSourceRole;
+  kind?: "audio" | "video" | "unknown";
+  contentType?: string;
+  sourceSha256?: string;
+  storageGeneration?: string;
   playbackUrl?: string;
   proxyUrl?: string;
   offsetSeconds: number;
+  sourceStartSeconds?: number;
   durationSeconds: number;
   syncStatus?: string;
 };
@@ -161,6 +169,22 @@ export type EpisodeEditProcessingJob = {
   updatedAt: string;
   completedAt: string | null;
   error: string | null;
+  manifestSha256: string | null;
+  branchRevision: number | null;
+  proofStartSeconds: number | null;
+  proofEndSeconds: number | null;
+  playbackUrl: string | null;
+};
+
+export type EpisodeEditExecutionWorker = {
+  id: string;
+  label: string;
+  executorKind: "local-mac" | "cloud" | "unknown";
+  status: "online" | "stale" | "offline";
+  buildId: string | null;
+  lastHeartbeatAt: string | null;
+  jobTypes: string[];
+  renderProfiles: string[];
 };
 
 export type EpisodeEditMediaChoice = {
@@ -179,9 +203,10 @@ export type EpisodeEditExecutionInspection = {
     detail: string;
   };
   native: {
-    status: "available-unobserved";
+    status: "observed" | "available-unobserved";
     detail: string;
   };
+  workers: EpisodeEditExecutionWorker[];
   jobs: EpisodeEditProcessingJob[];
 };
 
@@ -258,7 +283,12 @@ export function sourceIDsForDecision(kind: ProgramDecisionKind, sources: Program
 } {
   const primary = sources.find((source) => source.role === "primary")?.id;
   const secondary = sources.find((source) => source.role === "secondary")?.id;
-  const clip = sources.find((source) => source.role === "clip")?.id;
+  // Imported participant cameras and other visual references are intentionally
+  // projected as `reference` until a human assigns a host. The Clips monitor
+  // already treats them as usable visual material, so clip-layout decisions
+  // must resolve the same way instead of silently producing an audio-only cut.
+  const clip = sources.find((source) => source.role === "clip")?.id
+    ?? sources.find((source) => source.role === "reference")?.id;
   const hosts = [primary, secondary].filter((value): value is string => Boolean(value));
   if (kind === "skip") return { sourceLaneIDs: [] };
   if (kind === "primary") return { sourceLaneIDs: primary ? [primary] : hosts.slice(0, 1) };

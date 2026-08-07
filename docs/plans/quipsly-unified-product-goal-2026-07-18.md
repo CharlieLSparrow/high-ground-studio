@@ -8175,3 +8175,26 @@ human or physical gate green.`, applied canonical tag `Episode sync`, saved
 - Full verification passes 399 suites / 2,085 tests, strict TypeScript, and an
   optimized 191-route build. Architecture and evidence:
   `docs/coordination/2026-08-07-canonical-episode-edit-handoff.md`.
+
+## 2026-08-07 browser edit + local execution checkpoint
+
+- Kept the Episode collaboration space as the canonical editor and made the
+  Mac an observed execution worker instead of a second source of edit truth.
+- Added a versioned exact-source proof manifest, durable leased local FFmpeg
+  worker, current capability heartbeat, independent server verification, and
+  protected in-workspace playback. Proofs are explicitly neither approved
+  masters nor publication media.
+- Operated the complete browser -> PostgreSQL -> local worker -> FFmpeg ->
+  independent registration -> browser playback path against the retained
+  Capture rendezvous Episode. Revision 3 rendered a real camera frame with two
+  exact audio inputs at 1280x720, 24 fps, H.264/AAC and played in the browser.
+- Real operation exposed and fixed four cross-boundary defects: timezone-less
+  raw SQL timestamps, reference-camera versus clip-role disagreement, legacy
+  placeholder versus measured proxy identity, and timestamp-first proof
+  selection instead of revision-first selection.
+- The result establishes the near-term cost model: shared browser editing is
+  cheap state and protected proxy playback; local rendering is the default
+  heavy executor when exact bytes are present; cloud execution can be added
+  behind the same manifest only when collaboration or scale requires it.
+- Architecture and retained evidence:
+  `docs/coordination/2026-08-07-browser-edit-local-execution.md`.

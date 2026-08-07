@@ -102,6 +102,7 @@ export default function EpisodeEditorClient({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRefs = useRef(new Map<string, HTMLVideoElement>());
   const clockRef = useRef<{ wall: number; sequence: number } | null>(null);
+  const registeringProofJobsRef = useRef(new Set<string>());
   const state = payload.state;
   const episode = payload.selectedEpisode;
   const duration = Math.max(1, state.durationSeconds);
@@ -150,6 +151,11 @@ export default function EpisodeEditorClient({
     : null;
   const selectedMediaChoice = payload.mediaChoices.find((choice) => choice.id === payload.selectedMediaAssetId)
     ?? (payload.mediaChoices.length === 1 ? payload.mediaChoices[0] : null);
+  const renderProofJobs = payload.executionInspection.jobs.filter((job) => job.type === "episode-render-proof");
+  const latestRenderProof = renderProofJobs.slice().sort((left, right) => (
+    (right.branchRevision ?? -1) - (left.branchRevision ?? -1)
+  ))[0] ?? null;
+  const localRenderWorkerOnline = payload.executionInspection.native.status === "observed";
 
   const reportSourcePlaybackFailure = useCallback((sourceId: string) => {
     setSourcePlaybackFailures((current) => current.includes(sourceId)
@@ -163,8 +169,9 @@ export default function EpisodeEditorClient({
         ? audioRefs.current.get(source.id)
         : videoRefs.current.get(source.id);
       if (!media) continue;
-      const sourceTime = time - source.offsetSeconds;
-      if (sourceTime >= 0 && (!source.durationSeconds || sourceTime <= source.durationSeconds)) {
+      const sourceTime = time - source.offsetSeconds + (source.sourceStartSeconds ?? 0);
+      const sourceEnd = (source.sourceStartSeconds ?? 0) + source.durationSeconds;
+      if (sourceTime >= (source.sourceStartSeconds ?? 0) && (!source.durationSeconds || sourceTime <= sourceEnd)) {
         if (Math.abs(media.currentTime - sourceTime) > 0.18) media.currentTime = sourceTime;
         if (shouldPlay && media.paused) void media.play().catch(() => reportSourcePlaybackFailure(source.id));
       } else if (!media.paused) {
@@ -341,7 +348,11 @@ export default function EpisodeEditorClient({
             signalInspection: current.signalInspection,
             executionInspection: current.executionInspection,
           });
-      setMessage(`Saved revision ${result.branch?.headRevision ?? 0}.`);
+      setMessage(body.action === "queue-render-proof"
+        ? `Frozen revision ${result.branch?.headRevision ?? 0}; this Mac is rendering the proof.`
+        : body.action === "register-render-proof"
+          ? "Proof bytes verified and ready to watch."
+          : `Saved revision ${result.branch?.headRevision ?? 0}.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The edit could not be saved.");
     } finally {
@@ -364,6 +375,21 @@ export default function EpisodeEditorClient({
       ? `Capture evidence is on the Episode clock · ${result.transcript.segmentCount} timed turns.`
       : "Capture sources are on the Episode clock; transcript evidence is still pending.");
   }, [episode, payload.projectSlug, payload.selectedMediaAssetId]);
+
+  useEffect(() => {
+    if (!episode || !latestRenderProof || !["queued", "processing", "output-ready"].includes(latestRenderProof.status)) return;
+    if (latestRenderProof.status === "output-ready") {
+      if (registeringProofJobsRef.current.has(latestRenderProof.id)) return;
+      registeringProofJobsRef.current.add(latestRenderProof.id);
+      void post({ action: "register-render-proof", jobId: latestRenderProof.id })
+        .finally(() => registeringProofJobsRef.current.delete(latestRenderProof.id));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void refreshCanonicalProjection().catch((error) => setMessage(error instanceof Error ? error.message : "Render status could not be refreshed."));
+    }, 2_000);
+    return () => window.clearTimeout(timer);
+  }, [episode, latestRenderProof, post, refreshCanonicalProjection]);
 
   const setDecision = useCallback((kind: ProgramDecisionKind) => {
     if (!payload.canEdit || !payload.branch) return;
@@ -866,7 +892,7 @@ export default function EpisodeEditorClient({
               <SourceMonitorCanvas source={monitor.source} videoRefs={videoRefs} />
               <div className="flex justify-between px-3 py-2 font-mono text-[10px] text-[#8fa094]">
                 <span className="truncate pr-2">{monitor.source?.label ?? "No source at this time"}</span>
-                <span>{monitor.source ? formatEditClock(playhead - monitor.source.offsetSeconds) : "--:--"}</span>
+                <span>{monitor.source ? formatEditClock(playhead - monitor.source.offsetSeconds + (monitor.source.sourceStartSeconds ?? 0)) : "--:--"}</span>
               </div>
             </article>
           ))}
@@ -880,11 +906,33 @@ export default function EpisodeEditorClient({
             <div className="mt-3 rounded-xl border border-[#405a49] bg-[#14231b] p-3">
               <div className="flex items-center justify-between gap-2">
                 <strong className="text-sm">Advanced Studio</strong>
-                <span className="rounded-full bg-[#26342c] px-2 py-1 text-[9px] font-black uppercase text-[#a7b6ab]">heartbeat unobserved</span>
+                <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${localRenderWorkerOnline ? "bg-emerald-900/70 text-emerald-100" : "bg-[#26342c] text-[#a7b6ab]"}`}>
+                  {localRenderWorkerOnline ? "this Mac online" : "heartbeat unobserved"}
+                </span>
               </div>
               <p className="mt-1 text-xs leading-5 text-[#8fa094]">{payload.executionInspection.native.detail}</p>
-              {episode ? <Link href={`/editor?project=${encodeURIComponent(payload.projectSlug)}&episode=${encodeURIComponent(episode.slug)}`} className="mt-2 inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!payload.canEdit || saving || !payload.branch || !localRenderWorkerOnline}
+                  onClick={() => void post({ action: "queue-render-proof", sequenceTime: playhead, expectedRevision: payload.branch?.headRevision ?? 0 })}
+                  className="inline-flex min-h-9 items-center rounded-lg bg-[#d8ad56] px-3 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Render 10s proof here
+                </button>
+                {episode ? <Link href={`/editor?project=${encodeURIComponent(payload.projectSlug)}&episode=${encodeURIComponent(episode.slug)}`} className="inline-flex min-h-9 items-center rounded-lg border border-[#587160] px-3 text-xs font-black text-[#e7c97d] hover:border-[#d8ad56]">Open Advanced Studio</Link> : null}
+              </div>
+              {!localRenderWorkerOnline ? <p className="mt-2 text-[11px] leading-4 text-amber-100/80">Start the local Quipsly stack or Advanced Studio worker to render without cloud compute. The browser edit remains fully usable.</p> : null}
             </div>
+            {latestRenderProof?.playbackUrl ? (
+              <div className="mt-3 overflow-hidden rounded-xl border border-emerald-500/30 bg-black">
+                <video controls playsInline preload="metadata" src={latestRenderProof.playbackUrl} className="aspect-video w-full bg-black" />
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[10px] text-emerald-100/80">
+                  <span>Verified local proof · revision {latestRenderProof.branchRevision ?? payload.branch?.headRevision ?? 0}</span>
+                  <span className="font-mono">{latestRenderProof.manifestSha256?.slice(0, 12)}</span>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-3 space-y-2">
               {payload.executionInspection.jobs.map((job) => (
                 <div key={job.id} className="rounded-xl bg-[#14231b] p-3 text-xs">
@@ -893,6 +941,7 @@ export default function EpisodeEditorClient({
                     <span className="shrink-0 rounded-full bg-[#26342c] px-2 py-1 text-[9px] font-black uppercase text-[#b7c4b8]">{job.status}</span>
                   </div>
                   <p className="mt-1 text-[#8fa094]">{job.lane.replaceAll("-", " ")}{job.provider ? ` · ${job.provider}` : " · provider not recorded"}</p>
+                  {job.proofStartSeconds !== null && job.proofEndSeconds !== null ? <p className="mt-1 font-mono text-[10px] text-[#d8ad56]">{formatEditClock(job.proofStartSeconds)} → {formatEditClock(job.proofEndSeconds)} · r{job.branchRevision ?? 0}</p> : null}
                   {job.error ? <p className="mt-1 line-clamp-3 text-rose-200">{job.error}</p> : null}
                 </div>
               ))}

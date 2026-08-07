@@ -65,6 +65,11 @@ import {
   newLocalEpisodeAudioMixRuntime,
   runOneLocalEpisodeAudioMixJob,
 } from "./local-episode-audio-mix-worker.js";
+import {
+  newLocalEpisodeRenderProofRuntime,
+  runOneLocalEpisodeRenderProofJob,
+} from "./local-episode-render-proof-worker.js";
+import { LocalExecutionPresence } from "./local-execution-presence.js";
 
 const { Pool } = pg;
 const JOB_TYPE = "asset-proxy";
@@ -557,11 +562,24 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
+  const episodeRenderProof = newLocalEpisodeRenderProofRuntime({
+    pool,
+    executionId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
+  const presence = new LocalExecutionPresence(pool, {
+    executionId,
+    buildId: options.buildId,
+  });
   let stopping = false;
   process.once("SIGTERM", () => { stopping = true; });
   process.once("SIGINT", () => { stopping = true; });
   try {
+    await presence.heartbeat(new Date(), true);
     do {
+      await presence.heartbeat();
       const proxyResult = await runOneLocalEpisodeProxyJob(store, transcoder, options);
       const masteryResult = proxyResult.disposition === "idle"
         ? await runOneLocalAudioMasteryJob(audioMastery.store, audioMastery.engine, audioMastery.options)
@@ -590,9 +608,12 @@ async function main() {
       const pairResult = alignmentResult.disposition === "idle"
         ? await runOneLocalAudioPairCorrelationJob(audioPairCorrelation.store, audioPairCorrelation.analyzer, audioPairCorrelation.options)
         : alignmentResult;
-      const result = pairResult.disposition === "idle"
+      const mixResult = pairResult.disposition === "idle"
         ? await runOneLocalEpisodeAudioMixJob(episodeAudioMix.store, episodeAudioMix.renderer, episodeAudioMix.mastery, episodeAudioMix.options)
         : pairResult;
+      const result = mixResult.disposition === "idle"
+        ? await runOneLocalEpisodeRenderProofJob(episodeRenderProof.store, episodeRenderProof.renderer, episodeRenderProof.options)
+        : mixResult;
       if (result.disposition !== "idle") {
         process.stdout.write(`${JSON.stringify({ at: new Date().toISOString(), ...result })}\n`);
       }
@@ -602,6 +623,7 @@ async function main() {
       }
     } while (!stopping);
   } finally {
+    await presence.offline().catch(() => undefined);
     await pool.end();
   }
 }
