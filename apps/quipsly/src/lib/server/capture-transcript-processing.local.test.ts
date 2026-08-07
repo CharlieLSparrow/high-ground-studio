@@ -3,6 +3,7 @@
 import {
   captureTranscriptSourceTopology,
   captureTranscriptProviderRequest,
+  captureTranscriptRoutingSummary,
   localCaptureTranscriptWorkerEnabled,
 } from "./capture-transcript-processing";
 
@@ -95,5 +96,61 @@ describe("local Capture transcript worker availability", () => {
       diarize: true,
       diarizeModel: "v2",
     });
+  });
+
+  it("projects a safe routing explanation without exposing provider payloads", () => {
+    const topology = {
+      kind: "participant-isolated" as const,
+      participantId: "participant-001",
+      participantLabel: "Scott Sparrow",
+    };
+    const provider = captureTranscriptProviderRequest({
+      topology,
+      model: "nova-3",
+      version: "latest",
+      language: "en-US",
+      terminology: null,
+    });
+    const routingPlan = {
+      kind: "quipsly-transcript-routing-plan-v1" as const,
+      version: 1 as const,
+      source: { sourceId: "recording-asset-001", sha256: "a".repeat(64), sizeBytes: 1024, topology },
+      speakerIdentityAuthority: { kind: "source-binding" as const, participantId: topology.participantId, participantLabel: topology.participantLabel },
+      primaryAttempt: {
+        role: "primary" as const,
+        provider: "deepgram" as const,
+        model: "nova-3@latest",
+        modelRevisionPolicy: "moving-latest" as const,
+        language: "en-US",
+        speakerAttribution: "source-binding" as const,
+        timingGranularity: "word" as const,
+        terminology: { mode: "none" as const, snapshotSha256: null },
+        configuration: { diarize: false },
+      },
+      comparisonAttempts: [],
+      boundaries: {
+        providerOutputIsImmutableEvidence: true as const,
+        providerSpeakerLabelsAreCandidates: true as const,
+        sourceBindingOutranksDiarization: true as const,
+        terminologyIsContextNotTruth: true as const,
+        humanCorrectionsRemainSeparate: true as const,
+        routingChangeRequiresMeasuredEvaluation: true as const,
+      },
+    };
+    const summary = captureTranscriptRoutingSummary({
+      routingPlan,
+      provider,
+    } as any);
+    expect(summary).toMatchObject({
+      sourceTopology: "participant-isolated",
+      participantLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      model: "nova-3@latest",
+      modelRevisionPolicy: "moving-latest",
+      diarizationRequested: false,
+      terminologyKeytermCount: 0,
+      manifestBacked: true,
+    });
+    expect(JSON.stringify(summary)).not.toContain("apiKey");
   });
 });

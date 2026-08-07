@@ -660,6 +660,27 @@ function transcriptProcessingSummary(job: any) {
   if (!job) return null;
   const result = object(job.resultJson);
   const control = object(result.processingControl);
+  const routing = object(control.routing);
+  const routingSummary = routing.schema === "quipsly-transcript-routing-summary-v1"
+    ? {
+        sourceTopology: text(routing.sourceTopology) || "unknown",
+        participantLabel: text(routing.participantLabel) || null,
+        speakerAuthority: text(routing.speakerAuthority) || "unresolved",
+        provider: text(routing.provider) || null,
+        model: text(routing.model) || null,
+        modelRevisionPolicy: text(routing.modelRevisionPolicy) || null,
+        language: text(routing.language) || null,
+        diarizationRequested: routing.diarizationRequested === true,
+        timingGranularity: text(routing.timingGranularity) || null,
+        terminologySnapshotSha256: text(routing.terminologySnapshotSha256) || null,
+        terminologyKeytermCount: Number.isSafeInteger(routing.terminologyKeytermCount)
+          ? Number(routing.terminologyKeytermCount)
+          : 0,
+        manifestBacked: routing.manifestBacked === true,
+        providerOutputRemainsImmutable:
+          routing.providerOutputRemainsImmutable === true,
+      }
+    : null;
   return {
     status: job.status,
     message: job.errorMessage ?? null,
@@ -676,6 +697,7 @@ function transcriptProcessingSummary(job: any) {
       && job.providerResponseObject,
     ),
     workerBuildId: job.workerBuildId ?? null,
+    routing: routingSummary,
   };
 }
 

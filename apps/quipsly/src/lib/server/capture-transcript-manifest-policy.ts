@@ -30,10 +30,12 @@ export function assertCaptureTranscriptManifestBinding(input: {
     === JSON.stringify(input.desired.source);
   const providerMatches = JSON.stringify(input.stored.provider)
     === JSON.stringify(input.desired.provider);
+  const routingMatches = JSON.stringify(input.stored.routingPlan || null)
+    === JSON.stringify(input.desired.routingPlan || null);
 
   if (
     !immutableSourceMatches
-    || (input.created && (!sourcePolicyMatches || !providerMatches))
+    || (input.created && (!sourcePolicyMatches || !providerMatches || !routingMatches))
   ) {
     throw new CaptureTranscriptOutboxError(
       "TRANSCRIPT_MANIFEST_BINDING_MISMATCH",

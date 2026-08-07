@@ -116,6 +116,21 @@ type Desk = {
     resultReceived: boolean;
     providerReceiptReceived: boolean;
     workerBuildId: string | null;
+    routing: null | {
+      sourceTopology: string;
+      participantLabel: string | null;
+      speakerAuthority: string;
+      provider: string | null;
+      model: string | null;
+      modelRevisionPolicy: string | null;
+      language: string | null;
+      diarizationRequested: boolean;
+      timingGranularity: string | null;
+      terminologySnapshotSha256: string | null;
+      terminologyKeytermCount: number;
+      manifestBacked: boolean;
+      providerOutputRemainsImmutable: boolean;
+    };
   };
   gate: { allowed: boolean; error?: string };
   recording: null | {
@@ -1560,6 +1575,27 @@ export function TranscriptCorrectionDesk({
               <span className={`rounded-full px-3 py-1.5 ${desk.processing.sourceBound ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>source bound</span>
               <span className={`rounded-full px-3 py-1.5 ${desk.processing.providerReceiptReceived ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700"}`}>provider receipt</span>
             </div>
+            {desk.processing.routing && (
+              <details className="sm:col-span-2 rounded-xl border border-indigo-200 bg-white p-4">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.14em] text-indigo-900">
+                  Why Quipsly chose this transcript route
+                </summary>
+                <p className="mt-2 text-sm font-semibold leading-relaxed text-indigo-950">
+                  {desk.processing.routing.sourceTopology === "participant-isolated"
+                    ? `${desk.processing.routing.participantLabel || "This participant"} owns this isolated source, so source identity outranks inferred diarization.`
+                    : desk.processing.routing.sourceTopology === "mixed-room"
+                      ? "This source contains a room mix, so provider speaker labels remain candidates until reviewed."
+                      : "The source has no verified participant ownership, so speaker identity remains unresolved until reviewed."}
+                </p>
+                <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg bg-indigo-50 p-3"><dt className="font-black uppercase tracking-wide text-indigo-700">Provider</dt><dd className="mt-1 font-bold text-indigo-950">{humanize(desk.processing.routing.provider || "unknown")}</dd></div>
+                  <div className="rounded-lg bg-indigo-50 p-3"><dt className="font-black uppercase tracking-wide text-indigo-700">Model receipt</dt><dd className="mt-1 font-bold text-indigo-950">{desk.processing.routing.model || "Not recorded"} · {humanize(desk.processing.routing.modelRevisionPolicy || "unknown")}</dd></div>
+                  <div className="rounded-lg bg-indigo-50 p-3"><dt className="font-black uppercase tracking-wide text-indigo-700">Speaker policy</dt><dd className="mt-1 font-bold text-indigo-950">{humanize(desk.processing.routing.speakerAuthority)} · diarization {desk.processing.routing.diarizationRequested ? "on" : "off"}</dd></div>
+                  <div className="rounded-lg bg-indigo-50 p-3"><dt className="font-black uppercase tracking-wide text-indigo-700">Vocabulary</dt><dd className="mt-1 font-bold text-indigo-950">{desk.processing.routing.terminologyKeytermCount > 0 ? `${desk.processing.routing.terminologyKeytermCount} frozen keyterms` : "No provider keyterms"}</dd></div>
+                </dl>
+                <p className="mt-3 text-[0.7rem] font-bold leading-relaxed text-indigo-800">Timing: {humanize(desk.processing.routing.timingGranularity || "unknown")} · Language: {desk.processing.routing.language || "provider default"} · Provider output remains immutable evidence; corrections and verified speaker identity are separate.</p>
+              </details>
+            )}
           </div>
         )}
         {!desk.gate.allowed ? (

@@ -3,7 +3,9 @@ import {
   type DeepgramTerminologyProjection,
 } from "./transcript-terminology.js";
 import {
+  parseTranscriptRoutingPlan,
   parseTranscriptSourceTopology,
+  type TranscriptRoutingPlan,
   type TranscriptSourceTopology,
 } from "./transcript-routing.js";
 
@@ -83,6 +85,8 @@ export type CaptureTranscriptManifest = {
   actorEmail: string;
   source: CaptureTranscriptSourceBinding;
   provider: CaptureTranscriptProviderRequest;
+  /** Missing on historical v1 manifests; new jobs persist the full decision receipt. */
+  routingPlan?: TranscriptRoutingPlan | null;
   status: CaptureTranscriptStatus;
   attemptCount: number;
   queuedAt: string;
@@ -246,6 +250,9 @@ export function parseCaptureTranscriptManifest(
   const status = normalizedText(row.status) as CaptureTranscriptStatus;
   const source = parseSource(row.source);
   const provider = parseProviderRequest(row.provider);
+  const routingPlan = row.routingPlan == null
+    ? null
+    : parseTranscriptRoutingPlan(row.routingPlan);
   const attemptCount = nonNegativeSafeInteger(row.attemptCount);
   const lease = row.lease == null ? null : parseLease(row.lease);
   const resultObjectName = row.resultObjectName == null
@@ -271,6 +278,7 @@ export function parseCaptureTranscriptManifest(
     || (status !== "completed" && resultObjectName)
     || (status === "failed-terminal" && !failure)
     || (status !== "failed-terminal" && failure)
+    || (routingPlan && !routingPlanMatchesManifest(routingPlan, source, provider))
   ) {
     throw new Error("Capture transcript manifest is invalid.");
   }
@@ -282,6 +290,7 @@ export function parseCaptureTranscriptManifest(
     actorEmail: normalizedText(row.actorEmail).toLowerCase(),
     source,
     provider,
+    routingPlan,
     status,
     attemptCount,
     queuedAt: normalizedText(row.queuedAt),
@@ -290,6 +299,25 @@ export function parseCaptureTranscriptManifest(
     resultObjectName,
     failure,
   };
+}
+
+function routingPlanMatchesManifest(
+  plan: TranscriptRoutingPlan,
+  source: CaptureTranscriptSourceBinding,
+  provider: CaptureTranscriptProviderRequest,
+) {
+  const expectedModel = `${provider.model}@${provider.version || "provider-default"}`;
+  const expectedTermSha = provider.terminology?.snapshotSha256 ?? null;
+  return plan.source.sourceId === source.recordingAssetId
+    && plan.source.sha256 === source.sha256
+    && plan.source.sizeBytes === source.sizeBytes
+    && JSON.stringify(plan.source.topology)
+      === JSON.stringify(source.topology || { kind: "unknown" })
+    && plan.primaryAttempt.provider === "deepgram"
+    && plan.primaryAttempt.model === expectedModel
+    && plan.primaryAttempt.language === (provider.language || "en-US")
+    && plan.primaryAttempt.configuration.diarize === provider.diarize
+    && plan.primaryAttempt.terminology.snapshotSha256 === expectedTermSha;
 }
 
 export function parseCaptureTranscriptResult(

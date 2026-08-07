@@ -9,6 +9,7 @@ import {
   buildCaptureTranscriptResultObjectName,
   compileDeepgramTerminologyKeyterms,
   newCaptureTranscriptManifest,
+  planTranscriptRouting,
   parseCaptureTranscriptManifest,
   parseCaptureTranscriptQueueReceipt,
   type CaptureTranscriptManifest,
@@ -178,6 +179,8 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
   const queuedAt = new Date().toISOString();
   const topology = captureTranscriptSourceTopology(job.asset);
   const providerModel = process.env.DEEPGRAM_MODEL?.trim() || "nova-3";
+  const providerVersion = process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest";
+  const language = normalizedLanguage(job.language) || "en-US";
   const terminologySnapshot = job.room?.projectId
     ? await compileStudioTranscriptTerminologySnapshot({
         prisma: input.prisma,
@@ -188,6 +191,28 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
   const terminology = terminologySnapshot && providerModel.startsWith("nova-3")
     ? compileDeepgramTerminologyKeyterms(terminologySnapshot)
     : null;
+  const routingPlan = planTranscriptRouting({
+    source: {
+      sourceId: job.asset.id,
+      sha256,
+      sizeBytes,
+      topology,
+    },
+    language,
+    cloudProcessing: "required",
+    providers: {
+      appleOnDeviceAvailable: false,
+      deepgramAvailable: true,
+      deepgramModel: providerModel,
+      deepgramModelVersion: providerVersion,
+      deepgramModelVersionPolicy: providerVersion === "latest"
+        ? "moving-latest"
+        : "pinned",
+      openAIAvailable: false,
+    },
+    terminologySnapshotSha256: terminology?.snapshotSha256 || null,
+    includeEvaluationComparisons: false,
+  });
   const desiredManifest = newCaptureTranscriptManifest({
     jobId: job.id,
     actorUserId: requiredText(input.actorUserId, "actor user"),
@@ -209,10 +234,11 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       // `latest` is made explicit until a measured standard-model revision is
       // selected from retained Quipsly reference windows. The raw response is
       // still retained for resolved model evidence and exact replay diagnosis.
-      version: process.env.DEEPGRAM_MODEL_VERSION?.trim() || "latest",
-      language: normalizedLanguage(job.language),
+      version: providerVersion,
+      language,
       terminology,
     }),
+    routingPlan,
     queuedAt,
     updatedAt: queuedAt,
   });
@@ -279,6 +305,7 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
     executionRequestedAt: text(priorControl.executionRequestedAt) || null,
     consentGateCheckedAt: queuedAt,
     reconciliationRequiresFreshConsentGate: true,
+    routing: captureTranscriptRoutingSummary(manifest),
   };
   await input.prisma.transcriptJob.update({
     where: { id: job.id },
@@ -403,6 +430,33 @@ export function captureTranscriptProviderRequest(input: {
     paragraphs: true,
     terminology: input.model.startsWith("nova-3") ? input.terminology : null,
   };
+}
+
+export function captureTranscriptRoutingSummary(
+  manifest: CaptureTranscriptManifest,
+) {
+  const plan = manifest.routingPlan;
+  if (!plan) return null;
+  const topology = plan.source.topology;
+  return {
+    schema: "quipsly-transcript-routing-summary-v1",
+    sourceTopology: topology.kind,
+    participantLabel: topology.kind === "participant-isolated"
+      ? topology.participantLabel
+      : null,
+    speakerAuthority: plan.speakerIdentityAuthority.kind,
+    provider: plan.primaryAttempt.provider,
+    model: plan.primaryAttempt.model,
+    modelRevisionPolicy: plan.primaryAttempt.modelRevisionPolicy,
+    language: plan.primaryAttempt.language,
+    diarizationRequested: plan.primaryAttempt.configuration.diarize === true,
+    timingGranularity: plan.primaryAttempt.timingGranularity,
+    terminologySnapshotSha256:
+      plan.primaryAttempt.terminology.snapshotSha256,
+    terminologyKeytermCount: manifest.provider.terminology?.keyterms.length ?? 0,
+    manifestBacked: true,
+    providerOutputRemainsImmutable: true,
+  } as const;
 }
 
 export function captureTranscriptWorkerEnabled() {

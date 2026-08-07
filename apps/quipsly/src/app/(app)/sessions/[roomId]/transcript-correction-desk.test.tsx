@@ -60,6 +60,7 @@ function desk(playback: boolean) {
       resultReceived: true,
       providerReceiptReceived: true,
       workerBuildId: "build-1",
+      routing: null,
     },
     gate: { allowed: true },
     recording: {
@@ -135,6 +136,34 @@ describe("TranscriptCorrectionDesk", () => {
       confirmedAgainstPlayback: true,
       playbackPositionSeconds: 3.66,
     });
+  });
+
+  it("explains source identity, model movement, diarization, and vocabulary from the manifest receipt", async () => {
+    const routed = desk(true);
+    (routed.processing as any).routing = {
+      sourceTopology: "participant-isolated",
+      participantLabel: "Scott Sparrow",
+      speakerAuthority: "source-binding",
+      provider: "deepgram",
+      model: "nova-3@latest",
+      modelRevisionPolicy: "moving-latest",
+      language: "en-US",
+      diarizationRequested: false,
+      timingGranularity: "word",
+      terminologySnapshotSha256: "b".repeat(64),
+      terminologyKeytermCount: 7,
+      manifestBacked: true,
+      providerOutputRemainsImmutable: true,
+    };
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => routed })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const summary = await screen.findByText("Why Quipsly chose this transcript route");
+    fireEvent.click(summary);
+    expect(screen.getByText(/scott sparrow owns this isolated source/i)).toBeInTheDocument();
+    expect(screen.getByText(/nova-3@latest.*moving latest/i)).toBeInTheDocument();
+    expect(screen.getByText(/source binding.*diarization off/i)).toBeInTheDocument();
+    expect(screen.getByText("7 frozen keyterms")).toBeInTheDocument();
   });
 
   it("identifies a diarized voice once without presenting its words as reviewed", async () => {

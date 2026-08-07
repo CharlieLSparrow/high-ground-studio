@@ -161,9 +161,12 @@ when a glossary changes.
 4. **Completed now:** evolve the Capture transcript manifest so `diarize` is
    topology-driven rather than structurally forced to `true`, while historical
    jobs still parse and replay their original provider request.
-5. Persist the complete routing plan beside new attempts and expose its
-   explanation in the
-   Transcript Quality Lab.
+5. **Completed now:** persist the complete validated routing plan beside new
+   Capture attempts and project its safe explanation into the Session transcript
+   desk: source topology, speaker authority, provider/model revision policy,
+   diarization, timing, language, and frozen keyterm count. Historical attempts
+   without this receipt remain valid and are honestly shown without an invented
+   explanation.
 6. Build a retained two-person HGO and coaching reference corpus with clean,
    overlap, names, acronyms, noisy/mobile, and external-mic windows.
 7. Compare routing candidates on word error, speaker error, critical-entity
