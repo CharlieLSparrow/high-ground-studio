@@ -35,7 +35,10 @@ The current product decision is:
 
 Specialized research belongs beside these documents. For example,
 [`2026-08-05-audible-event-map-architecture.md`](./2026-08-05-audible-event-map-architecture.md)
-defines the current audio-event evidence and human-review boundary.
+defines the current audio-event evidence and human-review boundary, while
+[`2026-08-06-transcript-routing-terminology-speaker-memory.md`](./2026-08-06-transcript-routing-terminology-speaker-memory.md)
+defines topology-first provider routing, terminology projections, and speaker
+identity authority.
 
 ## Current capability frontier
 
