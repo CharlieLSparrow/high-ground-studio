@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { requireProjectAccess } from "@/lib/server/access";
-import { ensureEpisodeEditBranch, loadEpisodeEditDesk, type EditActor } from "@/lib/server/episode-edit-store";
-import EpisodeEditorClient from "./EpisodeEditorClient";
+import { redirect } from "next/navigation";
+import { projectAccessErrorCode, requireProjectAccess } from "@/lib/server/access";
+import { loadEpisodeEditDesk } from "@/lib/server/episode-edit-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,26 +14,23 @@ export default async function SharedEpisodeEditorPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
-  const readAccess = await requireProjectAccess(slug, "read");
+  await requireProjectAccess(slug, "read");
   let canEdit = false;
   try {
     await requireProjectAccess(slug, "write");
     canEdit = true;
-  } catch {
-    canEdit = false;
+  } catch (error) {
+    if (projectAccessErrorCode(error) === "FORBIDDEN") {
+      canEdit = false;
+    } else {
+      throw error;
+    }
   }
 
-  let payload = await loadEpisodeEditDesk(slug, query.episode, canEdit);
-  if (canEdit && payload.selectedEpisode && !payload.branch) {
-    const user = readAccess.user as { id?: string; primaryEmail?: string; displayName?: string | null };
-    const actor: EditActor = {
-      userId: user.id,
-      email: user.primaryEmail,
-      label: user.displayName ?? user.primaryEmail,
-      type: "human",
-    };
-    await ensureEpisodeEditBranch(slug, payload.selectedEpisode.slug, actor);
-    payload = await loadEpisodeEditDesk(slug, payload.selectedEpisode.slug, canEdit);
+  const payload = await loadEpisodeEditDesk(slug, query.episode, canEdit);
+
+  if (payload.selectedEpisode) {
+    redirect(`/nests/${encodeURIComponent(slug)}/episodes/${encodeURIComponent(payload.selectedEpisode.slug)}?mode=edit`);
   }
 
   if (!payload.selectedEpisode) {
@@ -49,5 +46,5 @@ export default async function SharedEpisodeEditorPage({
     );
   }
 
-  return <EpisodeEditorClient initialPayload={payload} />;
+  return null;
 }

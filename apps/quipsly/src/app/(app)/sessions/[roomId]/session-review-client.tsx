@@ -1721,7 +1721,7 @@ function SessionCollaborationScopes({
           <p className="mt-2 text-xs font-semibold leading-5 text-[#765f40]">Chat and transcripts preserve conversation and can propose next steps. Only reviewed notes, goals, tasks, calendar commitments, editor handoffs, and delivery receipts become canonical work.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link href={sessionWorkspaceHref(roomId, "work")} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase text-amber-950">{episode ? "Episode work" : experience.kind === "coaching" ? "Goals & commitments" : experience.kind === "research" ? "Findings & tasks" : "Decisions & tasks"}</Link>
-            {episodeHref ? <Link href={`/nests/${encodeURIComponent(context.project!.slug)}/episode-editor?episode=${encodeURIComponent(context.episode!.slug)}`} className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Episode editor</Link> : null}
+            {episodeHref ? <Link href={`${episodeHref}?mode=edit`} className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Episode editor</Link> : null}
             <Link href="/schedule" className="rounded-full border border-amber-300 px-3 py-2 text-[10px] font-black uppercase text-amber-950">Calendar</Link>
           </div>
         </article>

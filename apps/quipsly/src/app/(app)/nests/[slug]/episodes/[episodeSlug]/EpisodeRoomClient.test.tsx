@@ -107,17 +107,17 @@ describe("EpisodeRoomClient shared writing", () => {
 
     render(<EpisodeRoomClient initialPayload={initialPayload} />);
 
-    expect(screen.getByRole("link", { name: "Write" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Plan & collaborate" })).toHaveAttribute(
       "href",
-      "/create?project=high-ground-odyssey&document=document-episode-5",
+      "/nests/high-ground-odyssey/episodes/episode-5",
     );
-    expect(screen.getByRole("link", { name: "Edit timeline" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Record" })).toHaveAttribute(
       "href",
-      "/editor?project=high-ground-odyssey&episode=episode-5",
+      "/nests/high-ground-odyssey/episodes/episode-5?mode=record#record",
     );
-    expect(screen.getByRole("link", { name: "Live cut" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute(
       "href",
-      "/nests/high-ground-odyssey/episode-editor?episode=episode-5",
+      "/nests/high-ground-odyssey/episodes/episode-5?mode=edit",
     );
     expect(screen.getByText("Original run-of-show sentence.")).toBeInTheDocument();
 

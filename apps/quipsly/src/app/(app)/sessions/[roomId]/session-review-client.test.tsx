@@ -392,7 +392,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("heading", { name: "Episode Room · The Swear Jar" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open exact Episode Room" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4");
     expect(screen.getByRole("link", { name: "Episode thread" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4#episode-thread");
-    expect(screen.getByRole("link", { name: "Episode editor" })).toHaveAttribute("href", "/nests/high-ground/episode-editor?episode=episode-4");
+    expect(screen.getByRole("link", { name: "Episode editor" })).toHaveAttribute("href", "/nests/high-ground/episodes/episode-4?mode=edit");
     expect(screen.getByText("Relationship history · 1")).toBeInTheDocument();
     expect(screen.getByText(/authorized collaborator · no external side effects/)).toBeInTheDocument();
   });

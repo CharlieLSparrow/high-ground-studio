@@ -61,6 +61,7 @@ import type {
 
 import EpisodeRoomChat from "./EpisodeRoomChat";
 import EpisodeProductionRunway from "./EpisodeProductionRunway";
+import { EpisodeWorkspaceNav, type EpisodeWorkspaceMode } from "./EpisodeWorkspaceNav";
 
 type RoomResponse = {
   ok: boolean;
@@ -170,8 +171,10 @@ function isNativePlayable(clip: EpisodeRoomClip) {
 
 export default function EpisodeRoomClient({
   initialPayload,
+  initialMode = "plan",
 }: {
   initialPayload: EpisodeRoomDeskPayload;
+  initialMode?: Exclude<EpisodeWorkspaceMode, "edit">;
 }) {
   const [room, setRoom] = useState(initialPayload.room);
   const roomRef = useRef(initialPayload.room);
@@ -764,23 +767,9 @@ export default function EpisodeRoomClient({
                 One room for the script, clips you watch together, the recording clock, editorial alignment, and the conversation that carries the episode to publish.
               </p>
             </div>
-            <nav aria-label="Episode workflow" className="flex flex-wrap gap-2">
-              <Link href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(initialPayload.episode.documentId)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
-                <FileText size={15} /> Write
-              </Link>
-              <Link href={recordingSession ? "#record" : `/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#d8ad56]/10 px-4 text-xs font-black text-[#f6d68f] hover:border-[#f6d68f]">
-                <Clock3 size={15} /> Record
-              </Link>
-              <Link href={`/editor?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
-                <Scissors size={15} /> Edit timeline
-              </Link>
-              <Link href={`/nests/${encodeURIComponent(projectSlug)}/episode-editor?episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
-                <Gauge size={15} /> Live cut
-              </Link>
-              <Link href={`/publishing?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
-                <ExternalLink size={15} /> Publish
-              </Link>
-            </nav>
+            <div className="w-full xl:max-w-3xl">
+              <EpisodeWorkspaceNav projectSlug={projectSlug} episodeSlug={episodeSlug} activeMode={initialMode} recordingRoomId={recordingSession?.id} />
+            </div>
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[#30483d] pt-4 text-[11px] font-bold text-[#aab9af]">

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { notFound } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/server/access";
+import { ensureEpisodeEditBranch, loadEpisodeEditDesk } from "@/lib/server/episode-edit-store";
 import { loadEpisodeRoomDesk } from "@/lib/server/episode-room-store";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
@@ -21,21 +22,47 @@ jest.mock("@/lib/server/access", () => ({
 jest.mock("@/lib/server/episode-room-store", () => ({
   loadEpisodeRoomDesk: jest.fn(),
 }));
+jest.mock("@/lib/server/episode-edit-store", () => ({
+  ensureEpisodeEditBranch: jest.fn(),
+  loadEpisodeEditDesk: jest.fn(),
+}));
 jest.mock("@/lib/server/quipsly-session", () => ({
   getQuipslySession: jest.fn(),
 }));
 jest.mock("./EpisodeRoomClient", () => function EpisodeRoomClientStub({
   initialPayload,
+  initialMode,
 }: {
   initialPayload: { canEdit: boolean };
+  initialMode?: string;
 }) {
-  return <div>{initialPayload.canEdit ? "Editable room" : "View-only room"}</div>;
+  return <div>{initialPayload.canEdit ? "Editable room" : "View-only room"} · {initialMode || "plan"}</div>;
+});
+jest.mock("../../episode-editor/EpisodeEditorClient", () => function EpisodeEditorClientStub({
+  projectName,
+  canonicalWorkspace,
+  recordingRoomId,
+}: {
+  projectName?: string;
+  canonicalWorkspace?: boolean;
+  recordingRoomId?: string | null;
+}) {
+  return <div>{canonicalWorkspace ? "Canonical editor" : "Legacy editor"} · {projectName} · {recordingRoomId || "no recording"}</div>;
 });
 
 const payload = {
   project: { id: "project-1", slug: "high-ground", name: "High Ground" },
   episode: { id: "episode-4", slug: "episode-4", title: "Episode 4" },
+  room: { session: { recordingRoomId: "room-4" } },
+  recordingSessions: [],
   canEdit: true,
+};
+
+const editPayload = {
+  projectSlug: "high-ground",
+  episodes: [{ id: "episode-4", slug: "episode-4", title: "Episode 4" }],
+  selectedEpisode: { id: "episode-4", slug: "episode-4", title: "Episode 4" },
+  branch: { id: "branch-4", headRevision: 3 },
 };
 
 describe("EpisodeRoomPage access failures", () => {
@@ -50,6 +77,8 @@ describe("EpisodeRoomPage access failures", () => {
       },
     } as never);
     jest.mocked(loadEpisodeRoomDesk).mockResolvedValue(payload as never);
+    jest.mocked(loadEpisodeEditDesk).mockResolvedValue(editPayload as never);
+    jest.mocked(ensureEpisodeEditBranch).mockResolvedValue(undefined as never);
   });
 
   it("maps a missing private Nest to not found instead of a server error", async () => {
@@ -77,7 +106,7 @@ describe("EpisodeRoomPage access failures", () => {
       params: Promise.resolve({ slug: "high-ground", episodeSlug: "episode-4" }),
     }));
 
-    expect(screen.getByText("View-only room")).toBeInTheDocument();
+    expect(screen.getByText(/View-only room/)).toBeInTheDocument();
     expect(loadEpisodeRoomDesk).toHaveBeenCalledWith(
       "high-ground",
       "episode-4",
@@ -95,5 +124,39 @@ describe("EpisodeRoomPage access failures", () => {
       params: Promise.resolve({ slug: "high-ground", episodeSlug: "episode-4" }),
     })).rejects.toThrow("database connection failed");
     expect(loadEpisodeRoomDesk).not.toHaveBeenCalled();
+  });
+
+  it("loads the canonical shared edit branch inside the exact Episode workspace", async () => {
+    render(await EpisodeRoomPage({
+      params: Promise.resolve({ slug: "high-ground", episodeSlug: "episode-4" }),
+      searchParams: Promise.resolve({ mode: "edit" }),
+    }));
+
+    expect(loadEpisodeEditDesk).toHaveBeenCalledWith("high-ground", "episode-4", true);
+    expect(ensureEpisodeEditBranch).not.toHaveBeenCalled();
+    expect(screen.getByText("Canonical editor · High Ground · room-4")).toBeInTheDocument();
+  });
+
+  it("materializes a missing edit branch with attributable human provenance", async () => {
+    jest.mocked(loadEpisodeEditDesk)
+      .mockResolvedValueOnce({ ...editPayload, branch: null } as never)
+      .mockResolvedValueOnce(editPayload as never);
+
+    render(await EpisodeRoomPage({
+      params: Promise.resolve({ slug: "high-ground", episodeSlug: "episode-4" }),
+      searchParams: Promise.resolve({ mode: "edit" }),
+    }));
+
+    expect(ensureEpisodeEditBranch).toHaveBeenCalledWith(
+      "high-ground",
+      "episode-4",
+      expect.objectContaining({
+        userId: "user-1",
+        email: "editor@example.com",
+        label: "Editor",
+        type: "human",
+      }),
+    );
+    expect(loadEpisodeEditDesk).toHaveBeenCalledTimes(2);
   });
 });

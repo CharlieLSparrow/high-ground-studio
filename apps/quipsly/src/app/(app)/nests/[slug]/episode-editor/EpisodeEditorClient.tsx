@@ -9,6 +9,7 @@ import {
   type ProgramDecisionKind,
   type ProgramEditSource,
 } from "@/lib/editor/program-edit-contract";
+import { EpisodeWorkspaceNav } from "../episodes/[episodeSlug]/EpisodeWorkspaceNav";
 
 const decisionColors: Record<ProgramDecisionKind, string> = {
   primary: "#3ea7b4",
@@ -68,7 +69,17 @@ function SourceMonitorCanvas({
   return <canvas ref={canvasRef} width={640} height={360} className="aspect-video w-full bg-black" />;
 }
 
-export default function EpisodeEditorClient({ initialPayload }: { initialPayload: EpisodeEditDeskPayload }) {
+export default function EpisodeEditorClient({
+  initialPayload,
+  projectName,
+  canonicalWorkspace = false,
+  recordingRoomId,
+}: {
+  initialPayload: EpisodeEditDeskPayload;
+  projectName?: string;
+  canonicalWorkspace?: boolean;
+  recordingRoomId?: string | null;
+}) {
   const [payload, setPayload] = useState(initialPayload);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -328,6 +339,10 @@ export default function EpisodeEditorClient({ initialPayload }: { initialPayload
     setPlayhead(0);
     const selected = payload.episodes.find((item) => item.slug === episodeSlug);
     if (!selected) return;
+    if (canonicalWorkspace) {
+      window.location.assign(`/nests/${encodeURIComponent(payload.projectSlug)}/episodes/${encodeURIComponent(selected.slug)}?mode=edit`);
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch(
@@ -396,8 +411,8 @@ export default function EpisodeEditorClient({ initialPayload }: { initialPayload
       <header className="sticky top-0 z-30 border-b border-[#293d32] bg-[#0a1510]/95 px-5 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-4">
           <div className="mr-auto">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#d8ad56]">High Ground Odyssey</p>
-            <h1 className="font-serif text-2xl">Shared episode editor</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#d8ad56]">{projectName || payload.projectSlug.replaceAll("-", " ")}</p>
+            <h1 className="font-serif text-2xl">{episode?.title || "Shared episode editor"}</h1>
           </div>
           <label className="flex items-center gap-2 text-sm text-[#b7c4b8]">
             Episode
@@ -416,6 +431,7 @@ export default function EpisodeEditorClient({ initialPayload }: { initialPayload
           <div className={`rounded-full px-3 py-2 text-xs font-bold ${saving ? "bg-[#745c2d]" : "bg-[#244b34]"}`}>
             {message}
           </div>
+          {episode ? <div className="w-full border-t border-[#293d32] pt-3"><EpisodeWorkspaceNav projectSlug={payload.projectSlug} episodeSlug={episode.slug} activeMode="edit" recordingRoomId={recordingRoomId} /></div> : null}
         </div>
       </header>
 

@@ -89,6 +89,27 @@ describe("EpisodeEditorClient Shared Watch lane", () => {
     })).toBeInTheDocument();
   });
 
+  it("renders the editor as one mode of the canonical Episode workspace", () => {
+    render(<EpisodeEditorClient
+      initialPayload={payload}
+      projectName="High Ground Odyssey"
+      canonicalWorkspace
+      recordingRoomId="call-room-1"
+    />);
+
+    expect(screen.getByRole("heading", { name: "Episode 4 Part 2" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Episode workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Plan & collaborate" })).toHaveAttribute(
+      "href",
+      "/nests/high-ground-odyssey/episodes/episode-4-part-2",
+    );
+    expect(screen.getByRole("link", { name: "Review & finish" })).toHaveAttribute(
+      "href",
+      "/sessions/call-room-1?mode=outputs",
+    );
+  });
+
   it("holds a derivative that crosses the protected baseline", () => {
     render(<EpisodeEditorClient initialPayload={{
       ...payload,

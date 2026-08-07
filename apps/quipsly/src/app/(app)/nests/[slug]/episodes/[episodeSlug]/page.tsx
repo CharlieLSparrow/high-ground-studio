@@ -2,19 +2,29 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { projectAccessErrorCode, requireProjectAccess } from "@/lib/server/access";
+import { ensureEpisodeEditBranch, loadEpisodeEditDesk, type EditActor } from "@/lib/server/episode-edit-store";
 import { loadEpisodeRoomDesk } from "@/lib/server/episode-room-store";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
+import EpisodeEditorClient from "../../episode-editor/EpisodeEditorClient";
 import EpisodeRoomClient from "./EpisodeRoomClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function EpisodeRoomPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; episodeSlug: string }>;
+  searchParams?: Promise<{ mode?: string }>;
 }) {
   const { slug, episodeSlug } = await params;
+  const requestedMode = (await searchParams)?.mode;
+  const mode = requestedMode === "edit"
+    ? "edit"
+    : requestedMode === "record"
+      ? "record"
+      : "plan";
   try {
     await requireProjectAccess(slug, "read");
   } catch (error) {
@@ -65,5 +75,31 @@ export default async function EpisodeRoomPage({
     );
   }
 
-  return <EpisodeRoomClient initialPayload={payload} />;
+  if (mode === "edit") {
+    let editPayload = await loadEpisodeEditDesk(slug, episodeSlug, canEdit);
+    if (canEdit && editPayload.selectedEpisode && !editPayload.branch) {
+      const actor: EditActor = {
+        userId: session?.user.id,
+        email: session?.user.primaryEmail,
+        label: session?.user.name || session?.user.primaryEmail || "Quipsly collaborator",
+        type: "human",
+      };
+      await ensureEpisodeEditBranch(slug, editPayload.selectedEpisode.slug, actor);
+      editPayload = await loadEpisodeEditDesk(slug, editPayload.selectedEpisode.slug, canEdit);
+    }
+
+    const recordingRoomId = payload.room.session?.recordingRoomId
+      || payload.recordingSessions.find((recording) => recording.status === "RECORDING")?.id
+      || payload.recordingSessions[0]?.id
+      || null;
+
+    return <EpisodeEditorClient
+      initialPayload={editPayload}
+      projectName={payload.project.name}
+      canonicalWorkspace
+      recordingRoomId={recordingRoomId}
+    />;
+  }
+
+  return <EpisodeRoomClient initialPayload={payload} initialMode={mode} />;
 }

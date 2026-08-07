@@ -3,6 +3,19 @@
 Status: accepted direction, incremental delivery
 Date: 2026-08-06
 
+## Delivered foundation · 2026-08-07
+
+The first consolidation slice is live in the product source:
+
+- `/nests/{project}/episodes/{episode}` is the canonical Episode workspace;
+- `?mode=record` opens recording in that identity and `?mode=edit` loads the existing canonical shared edit branch;
+- Plan, Record, Edit, Audio, Review & finish, and Publish use one persistent Episode navigation model;
+- the previous `/nests/{project}/episode-editor` route is a compatibility entrance that redirects old bookmarks to the canonical Episode URL;
+- no iframe, duplicate timeline state, or alternate browser-only schema was introduced;
+- the advanced Studio and native editor remain execution surfaces for precision media work while this Episode surface grows toward the full transcript, waveform, multitrack, and review experience.
+
+This is intentionally a product-boundary migration, not a visual rebrand. Existing `ProgramEditState`, protected sync baselines, optimistic revisions, actor provenance, and editor APIs remain authoritative.
+
 ## Decision
 
 The Episode collaboration space is the primary editing product. Recording, transcript editing, media review, timeline work, comments, finishing decisions, and publishing preparation must feel like one workspace at one stable Episode URL.
