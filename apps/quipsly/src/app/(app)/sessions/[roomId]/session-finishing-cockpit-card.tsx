@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Clock3, Database
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import type { SessionReadinessTopology } from "./session-readiness-topology";
 import { buildSessionFinishingCockpit, type SessionFinishingEvidence } from "./session-finishing-cockpit";
-import { buildSessionSourceJourneyProjection, type SessionSourceJourneyCheckpoint } from "./session-source-journey";
+import { buildSessionSourceJourneyProjection, type SessionSourceJourney, type SessionSourceJourneyCheckpoint } from "./session-source-journey";
 
 type Props = {
   roomId: string;
@@ -39,6 +39,25 @@ function timestamp(value: string | null) {
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return null;
   return parsed.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function checkpointAction(input: {
+  roomId: string;
+  journey: SessionSourceJourney;
+  checkpoint: SessionSourceJourneyCheckpoint;
+  editorHref: string | null;
+}) {
+  if (input.checkpoint.state === "COMPLETE" || input.checkpoint.state === "NOT_APPLICABLE") return null;
+  const room = encodeURIComponent(input.roomId);
+  if (input.checkpoint.id === "plan") return { label: "Open source plan", href: `/sessions/${room}?mode=recordings#session-recording-plan-heading` };
+  if (input.checkpoint.id === "capture") return { label: "Inspect capture receipts", href: `/sessions/${room}?mode=recordings#capture-receipt-heading` };
+  if (input.checkpoint.id === "retention") return { label: "Inspect retained bytes", href: `/sessions/${room}?mode=recordings#source-evidence-heading` };
+  if (input.checkpoint.id === "transcript" && input.journey.recordingAssetId) return {
+    label: input.checkpoint.state === "HELD" ? "Repair this transcript" : "Open this transcript",
+    href: `/sessions/${room}?mode=transcript&source=${encodeURIComponent(input.journey.recordingAssetId)}`,
+  };
+  if (input.checkpoint.id === "assembly" && input.editorHref) return { label: "Open selected take", href: input.editorHref };
+  return null;
 }
 
 export function SessionFinishingCockpitCard(props: Props) {
@@ -108,7 +127,9 @@ export function SessionFinishingCockpitCard(props: Props) {
           </div>
           <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-bold leading-5 text-slate-700">{journey.summary}</p>
           <ol className="mt-3 grid gap-2 md:grid-cols-5" aria-label={`${journey.label} source checkpoints`}>
-            {journey.checkpoints.map((checkpoint) => <li key={checkpoint.id} className={`rounded-xl border p-3 ${checkpointTone(checkpoint.state)}`}>
+            {journey.checkpoints.map((checkpoint) => {
+              const action = checkpointAction({ roomId: props.roomId, journey, checkpoint, editorHref: props.finishingEvidence.assembly?.editorHref ?? null });
+              return <li key={checkpoint.id} className={`rounded-xl border p-3 ${checkpointTone(checkpoint.state)}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-[9px] font-black uppercase tracking-wide">{checkpoint.label}</p>
                 {checkpoint.state === "COMPLETE" ? <CheckCircle2 size={14} aria-hidden="true" /> : checkpoint.state === "HELD" ? <ShieldAlert size={14} aria-hidden="true" /> : <Clock3 size={14} aria-hidden="true" />}
@@ -116,7 +137,9 @@ export function SessionFinishingCockpitCard(props: Props) {
               <p className="mt-1 text-[9px] font-black uppercase tracking-wide opacity-70">{checkpointStateLabel(checkpoint.state)}</p>
               <p className="mt-2 text-[10px] font-semibold leading-4">{checkpoint.detail}</p>
               {timestamp(checkpoint.at) ? <time className="mt-2 block text-[9px] font-bold opacity-70" dateTime={checkpoint.at ?? undefined}>{timestamp(checkpoint.at)}</time> : null}
-            </li>)}
+              {action ? <Link href={action.href} className="mt-3 inline-flex min-h-10 items-center gap-1 rounded-full border border-current bg-white/70 px-3 py-2 text-[9px] font-black uppercase tracking-wide hover:underline">{action.label}<ArrowRight size={11} aria-hidden="true" /></Link> : null}
+            </li>;
+            })}
           </ol>
           <details className="mt-3 text-[10px] font-semibold text-slate-600">
             <summary className="cursor-pointer font-black uppercase tracking-wide text-sky-800">Evidence identities</summary>

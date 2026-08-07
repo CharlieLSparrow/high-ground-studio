@@ -165,4 +165,25 @@ describe("Session finishing cockpit card", () => {
     expect(within(journey).getByText("asset-mv7i")).toBeInTheDocument();
     expect(within(journey).getByRole("list", { name: "Charlie clean microphone master source checkpoints" })).toBeInTheDocument();
   });
+
+  it("routes an incomplete transcript checkpoint to its exact RecordingAsset", () => {
+    render(<SessionFinishingCockpitCard
+      roomId="episode-9-room"
+      topology={topology}
+      sourceEvidence={sourceEvidence}
+      contentReadiness={{ status: "substantial", captureAssetCount: 1, substantialRecordingCount: 1 }}
+      studioHandoff={{ recordings: [{ status: "ATTACHED" }] }}
+      finishingEvidence={{
+        transcriptJobs: [],
+        outputs: [],
+        analyzedSourceCount: 0,
+        assembly: undefined,
+      }}
+    />);
+
+    expect(screen.getByRole("link", { name: "Open this transcript" })).toHaveAttribute(
+      "href",
+      "/sessions/episode-9-room?mode=transcript&source=asset-mv7i",
+    );
+  });
 });

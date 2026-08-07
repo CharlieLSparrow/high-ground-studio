@@ -388,6 +388,7 @@ function packetBoundaries() {
 
 function packetSafeActions(input: {
   latestTranscriptJob: any;
+  selectedRecordingAsset: any;
   summary: any;
   highlights: any[];
   actionCandidates: any[];
@@ -397,6 +398,7 @@ function packetSafeActions(input: {
 }) {
   const transcriptCompleted = input.transcriptProcessingAllowed && input.latestTranscriptJob?.status === "COMPLETED";
   const transcriptRunning = input.latestTranscriptJob?.status === "RUNNING";
+  const sourceAvailable = Boolean(input.selectedRecordingAsset?.id ?? input.latestTranscriptJob?.asset?.id);
   const packetReady = Boolean(input.summary);
 
   return [
@@ -432,12 +434,14 @@ function packetSafeActions(input: {
     },
     {
       id: "repair-transcript-first",
-      label: "Repair transcript first",
-      enabled: input.transcriptProcessingAllowed && Boolean(input.latestTranscriptJob?.id) && !transcriptCompleted,
+      label: input.latestTranscriptJob?.id ? "Repair transcript first" : "Start source-bound transcript",
+      enabled: input.transcriptProcessingAllowed && sourceAvailable && !transcriptCompleted,
       risk: "medium",
       why: input.latestTranscriptJob?.id
         ? `Transcript status is ${input.latestTranscriptJob.status || "unknown"}, so packet output would be incomplete or misleading.`
-        : "No transcript job exists yet.",
+        : sourceAvailable
+          ? "This released source has no transcript job yet. Start one from its exact RecordingAsset identity."
+          : "No transcript job or selected RecordingAsset exists yet.",
       boundary:
         "Transcript repair changes derived transcript evidence only. It must preserve recording asset truth and remain inspectable.",
     },
@@ -590,6 +594,8 @@ export async function GET(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor: SessionAccessActor = session.user;
   const roomId = await resolveRoomIdFromRequest(prisma, request, actor);
+  const requestUrl = new URL(request.url);
+  const requestedRecordingAssetId = text(requestUrl.searchParams.get("recordingAssetId"));
 
   if (roomId === "") {
     return NextResponse.json(
@@ -605,7 +611,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const [room, notes, actionItems, latestTranscriptJob] = await Promise.all([
+  const [room, notes, actionItems, selectedRecordingAsset, latestTranscriptJob] = await Promise.all([
     prisma.callRoom.findUnique({
       where: { id: roomId },
       select: {
@@ -671,8 +677,28 @@ export async function GET(request: Request) {
         createdAt: true,
       },
     }),
+    requestedRecordingAssetId
+      ? prisma.recordingAsset.findFirst({
+          where: { id: requestedRecordingAssetId, roomId },
+          select: {
+            id: true,
+            roomId: true,
+            fileName: true,
+            status: true,
+            kind: true,
+            checksum: true,
+            byteSize: true,
+            storageBucket: true,
+            storageObjectPath: true,
+            localManifestJson: true,
+          },
+        })
+      : Promise.resolve(null),
     prisma.transcriptJob.findFirst({
-      where: { roomId },
+      where: {
+        roomId,
+        ...(requestedRecordingAssetId ? { assetId: requestedRecordingAssetId } : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         asset: {
@@ -709,10 +735,18 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  const transcriptGate = latestTranscriptJob?.asset
+  if (requestedRecordingAssetId && !selectedRecordingAsset) {
+    return NextResponse.json(
+      { ok: false, error: "This recording source is not part of the accessible Session." },
+      { status: 404 },
+    );
+  }
+
+  const selectedTranscriptAsset = selectedRecordingAsset ?? latestTranscriptJob?.asset ?? null;
+  const transcriptGate = selectedTranscriptAsset
     ? await mobileCaptureTranscriptProcessingGate({
         prisma,
-        recordingAsset: latestTranscriptJob.asset,
+        recordingAsset: selectedTranscriptAsset,
       })
     : {
         allowed: false as const,
@@ -720,7 +754,7 @@ export async function GET(request: Request) {
         error: "Transcript processing requires bound recording asset evidence.",
       };
   const transcriptProcessingAllowed = transcriptGate.allowed;
-  const transcriptHeld = Boolean(latestTranscriptJob?.asset) && !transcriptProcessingAllowed;
+  const transcriptHeld = Boolean(selectedTranscriptAsset) && !transcriptProcessingAllowed;
   const packetNotes = transcriptProcessingAllowed
     ? notes.filter((note: any) => {
         const source = sourceJson(note.sourceJson);
@@ -756,6 +790,7 @@ export async function GET(request: Request) {
   const openActionItems = packetActionItems.filter((item: any) => item.status === "OPEN");
   const safeActions = packetSafeActions({
     latestTranscriptJob,
+    selectedRecordingAsset: selectedTranscriptAsset,
     summary,
     highlights,
     actionCandidates,
@@ -924,6 +959,15 @@ export async function GET(request: Request) {
                 kind: latestTranscriptJob.asset.kind,
               }
             : null,
+        }
+      : null,
+    selectedRecordingAsset: selectedTranscriptAsset
+      ? {
+          id: selectedTranscriptAsset.id,
+          fileName: selectedTranscriptAsset.fileName,
+          status: selectedTranscriptAsset.status,
+          kind: selectedTranscriptAsset.kind,
+          explicitlySelected: Boolean(requestedRecordingAssetId),
         }
       : null,
     transcriptProcessingGate: transcriptProcessingAllowed

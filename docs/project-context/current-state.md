@@ -21,6 +21,22 @@ Date: 2026-08-06
   browser rejected loopback navigation under its URL policy. See
   `docs/coordination/2026-08-06-session-source-journey-flight-recorder.md`.
 
+## Exact-source transcript recovery checkpoint
+
+- Every incomplete Transcript checkpoint in the Source Journey now opens the
+  transcript workspace with its exact RecordingAsset identity. The packet read
+  rechecks Session access, constrains the selected source to that room, and
+  selects only transcript jobs for that asset instead of silently falling back
+  to the newest transcript in the room.
+- A released source with no prior job now exposes the existing durable
+  source-bound start action. Opening or replaying the focused workspace remains
+  side-effect free; starting provider work still requires an explicit button.
+- A real local HTTP operation focused retained DJI recovery asset
+  `cmsi2v4l4000rlqxl78h1w8t3`: it had zero jobs before and after two reads,
+  exposed the bounded start action, replayed stably, and returned 404 for a
+  source outside the room. No provider job was enqueued. See
+  `docs/coordination/2026-08-06-exact-source-transcript-recovery.md`.
+
 ## Obvious-depth feature portfolio decision
 
 - Current primary-source market research and the repository's operated depth

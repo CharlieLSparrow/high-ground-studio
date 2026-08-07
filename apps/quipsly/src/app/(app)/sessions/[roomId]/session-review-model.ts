@@ -166,6 +166,13 @@ export type SessionReviewPacket = {
     segmentCount: number;
     asset: { id: string; fileName: string | null; status: string; kind: string } | null;
   } | null;
+  selectedRecordingAsset?: {
+    id: string;
+    fileName: string | null;
+    status: string;
+    kind: string;
+    explicitlySelected: boolean;
+  } | null;
   transcriptProcessingGate?: { allowed: boolean; errorCode?: string; error?: string; explicitReleaseRequired?: boolean };
   packet?: {
     status: string;

@@ -517,6 +517,55 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/Transcription started from the released immutable source/i);
   });
 
+  it("starts the first transcript job for the exact source selected by the source journey", async () => {
+    const sourceOnly = packetReadyToBuild();
+    sourceOnly.transcriptJob = null;
+    sourceOnly.selectedRecordingAsset = {
+      id: "asset-recovered-2",
+      fileName: "DJI backup delayed.wav",
+      status: "VERIFIED",
+      kind: "LOCAL_AUDIO",
+      explicitlySelected: true,
+    };
+    sourceOnly.packet = {
+      ...sourceOnly.packet!,
+      status: "NOT_READY",
+      safeActions: [{
+        id: "repair-transcript-first",
+        label: "Start source-bound transcript",
+        enabled: true,
+        risk: "medium",
+        why: "This released source has no transcript job yet.",
+        boundary: "Creates derived transcript evidence only.",
+      }],
+    };
+    const running = JSON.parse(JSON.stringify(sourceOnly)) as SessionReviewPacket;
+    running.transcriptJob = {
+      id: "job-recovered-2",
+      status: "RUNNING",
+      provider: "pending",
+      segmentCount: 0,
+      asset: { id: "asset-recovered-2", fileName: "DJI backup delayed.wav", status: "VERIFIED", kind: "LOCAL_AUDIO" },
+    };
+    running.packet!.safeActions = [];
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(sourceOnly))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, status: "RUNNING", transcriptJobId: "job-recovered-2" }, 202))
+      .mockResolvedValueOnce(jsonResponse(running));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Episode 9" mode="transcript" focusedRecordingAssetId="asset-recovered-2" consentSnapshot={{ total: 2, granted: 2, transcriptionPermitted: 2 }} />);
+
+    expect(await screen.findByText("Focused RecordingAsset · asset-recovered-2")).toBeInTheDocument();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/mobile/capture/transcripts/packet?callRoomId=room-1&recordingAssetId=asset-recovered-2");
+    await user.click(screen.getByRole("button", { name: "Start transcription" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ recordingAssetId: "asset-recovered-2" });
+    expect(await screen.findByText("Running")).toBeInTheDocument();
+  });
+
   it("persists source-grounded packet lane review without creating downstream work", async () => {
     const reviewed = packet();
     reviewed.packet!.reviewLanes![0] = {

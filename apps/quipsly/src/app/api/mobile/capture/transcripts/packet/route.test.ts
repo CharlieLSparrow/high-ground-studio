@@ -6,7 +6,11 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
-import { buildPacketGoalCandidates, buildPacketNoteCandidates } from "./route-implementation";
+import { getPrismaClient } from "@/lib/prisma";
+import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+
+import { buildPacketGoalCandidates, buildPacketNoteCandidates, GET } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {
@@ -472,5 +476,90 @@ describe("packet note candidates", () => {
       suggestedBody: sourceText,
       sourceSpan: { segmentIds: ["segment-1", "segment-2"] },
     });
+  });
+});
+
+describe("packet source selection", () => {
+  const actor = { id: "producer-1", primaryEmail: "producer@example.test", isStaff: false };
+  const recording = {
+    id: "asset-recovered-2",
+    roomId: "room-1",
+    fileName: "DJI backup delayed.wav",
+    status: "VERIFIED",
+    kind: "LOCAL_AUDIO",
+    checksum: "a".repeat(64),
+    byteSize: 1024n,
+    storageBucket: "quipsly-local",
+    storageObjectPath: "room-1/dji.wav",
+    localManifestJson: {},
+  };
+
+  function packetReadPrisma(selectedRecordingAsset: typeof recording | null) {
+    return {
+      callRoom: {
+        findFirst: jest.fn().mockResolvedValue({ id: "room-1" }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "room-1",
+          title: "Episode 9",
+          purpose: "PODCAST",
+          status: "ENDED",
+          scheduledStart: null,
+          scheduledEnd: null,
+          projectId: null,
+          project: null,
+          tagLinks: [],
+          booking: null,
+        }),
+      },
+      coachingNote: { findMany: jest.fn().mockResolvedValue([]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+      recordingAsset: { findFirst: jest.fn().mockResolvedValue(selectedRecordingAsset) },
+      transcriptJob: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: actor } as any);
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
+  });
+
+  it("returns an access-checked selected source and enables its first transcript job", async () => {
+    const prisma = packetReadPrisma(recording);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/packet?callRoomId=room-1&recordingAssetId=asset-recovered-2"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prisma.recordingAsset.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "asset-recovered-2", roomId: "room-1" },
+    }));
+    expect(prisma.transcriptJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { roomId: "room-1", assetId: "asset-recovered-2" },
+    }));
+    expect(payload.selectedRecordingAsset).toEqual({
+      id: "asset-recovered-2",
+      fileName: "DJI backup delayed.wav",
+      status: "VERIFIED",
+      kind: "LOCAL_AUDIO",
+      explicitlySelected: true,
+    });
+    expect(payload.transcriptJob).toBeNull();
+    expect(payload.packet.safeActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "repair-transcript-first", label: "Start source-bound transcript", enabled: true }),
+    ]));
+    expect(mobileCaptureTranscriptProcessingGate).toHaveBeenCalledWith({ prisma, recordingAsset: recording });
+  });
+
+  it("fails closed when a requested source is not in the accessible Session", async () => {
+    const prisma = packetReadPrisma(null);
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/transcripts/packet?callRoomId=room-1&recordingAssetId=asset-from-other-room"));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ ok: false, error: expect.stringMatching(/not part of the accessible Session/i) });
+    expect(mobileCaptureTranscriptProcessingGate).not.toHaveBeenCalled();
   });
 });

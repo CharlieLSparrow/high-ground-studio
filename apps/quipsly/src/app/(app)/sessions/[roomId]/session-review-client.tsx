@@ -1857,7 +1857,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canManageSourcePlan = false, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, versionedOutputGraph = null, sourceClockAttention = null, focusedAttentionId = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", joinedFromInvitation = false, preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, audibleEventSources = [], readinessTopology = EMPTY_SESSION_READINESS_TOPOLOGY, canManageSourcePlan = false, canReleaseHeldMedia = false, sessionTaxonomy = null, studioHandoff = null, finishingEvidence = { transcriptJobs: [], outputs: [], analyzedSourceCount: 0 }, versionedOutputGraph = null, sourceClockAttention = null, focusedAttentionId = null, focusedRecordingAssetId = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null, collaborationContext = { project: null, episode: null, engagement: null, binding: "STANDALONE" } }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -1877,6 +1877,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   versionedOutputGraph?: SessionVersionedOutputGraph | null;
   sourceClockAttention?: SessionSourceClockAttention | null;
   focusedAttentionId?: string | null;
+  focusedRecordingAssetId?: string | null;
   sessionNotes?: SessionWorkspaceNote[];
   canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
@@ -1896,7 +1897,9 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     setLoading(true);
     setMessage(null);
     try {
-      const response = await fetch(`/api/mobile/capture/transcripts/packet?callRoomId=${encodeURIComponent(roomId)}`, { cache: "no-store" });
+      const packetParams = new URLSearchParams({ callRoomId: roomId });
+      if (focusedRecordingAssetId) packetParams.set("recordingAssetId", focusedRecordingAssetId);
+      const response = await fetch(`/api/mobile/capture/transcripts/packet?${packetParams.toString()}`, { cache: "no-store" });
       const body = await response.json() as SessionReviewPacket;
       if (!response.ok || !body.ok) throw new Error(body.error || "Quipsly could not read this session packet.");
       setPacket(body);
@@ -1906,7 +1909,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
     } finally {
       setLoading(false);
     }
-  }, [roomId]);
+  }, [focusedRecordingAssetId, roomId]);
 
   useEffect(() => {
     if (mode !== "transcript") {
@@ -1942,11 +1945,10 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
   async function runTranscript() {
     const transcriptJobId = packet?.transcriptJob?.id;
-    if (!transcriptJobId) return;
-    const retryFromRecording = packet?.transcriptJob?.status === "FAILED";
-    const recordingAssetId = packet?.transcriptJob?.asset?.id;
-    if (retryFromRecording && !recordingAssetId) {
-      setMessage("This failed transcript has no immutable recording binding to retry from.");
+    const recordingAssetId = packet?.transcriptJob?.asset?.id ?? packet?.selectedRecordingAsset?.id;
+    const runFromRecording = !transcriptJobId || packet?.transcriptJob?.status === "FAILED";
+    if (runFromRecording && !recordingAssetId) {
+      setMessage("This transcript action has no immutable recording binding.");
       return;
     }
     setRunningTranscript(true);
@@ -1955,7 +1957,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       const response = await fetch("/api/mobile/capture/transcripts/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(retryFromRecording ? { recordingAssetId } : { transcriptJobId }),
+        body: JSON.stringify(runFromRecording ? { recordingAssetId } : { transcriptJobId }),
       });
       const body = await response.json() as {
         ok?: boolean;
@@ -2308,7 +2310,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       {mode === "transcript" ? (loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the Session’s transcript evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript workspace is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved Session was not changed.</p></section> : <>
         <section className="grid gap-4 lg:grid-cols-3" aria-label="Session evidence status">
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><ShieldCheck className="text-sky-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Consent & release</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : packet.transcriptProcessingGate?.allowed ? "RELEASED" : "NOT_READY")}`}>{held ? "Transcript held" : packet.transcriptProcessingGate?.allowed ? "Release evidence verified" : "Release not ready"}</p><p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">{held ? packet.transcriptProcessingGate?.error : "Packet review reads only released transcript evidence; recording and consent are not changed here."}</p><p className="mt-2 text-xs font-bold text-[#8a7354]">{consentSnapshot.granted}/{consentSnapshot.total} persisted consent record(s) granted · {consentSnapshot.transcriptionPermitted} permit transcription</p></div>
-          <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><FileAudio className="text-violet-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Transcript</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.transcriptJob?.status)}`}>{humanize(packet.transcriptJob?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.transcriptJob?.segmentCount ?? 0} persisted segment(s) · {packet.transcriptJob?.asset?.fileName || "no bound recording asset"}</p>{packet.packet?.safeActions?.find((action) => action.id === "repair-transcript-first" && action.enabled) ? <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3"><button type="button" onClick={() => void runTranscript()} disabled={runningTranscript || loading} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{runningTranscript ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Mic2 size={15} aria-hidden="true" />}{runningTranscript ? "Starting durable worker…" : packet.transcriptJob?.status === "FAILED" ? "Retry transcription" : "Start transcription"}</button><p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">Runs only the released, source-bound transcript job. It creates derived text—not notes, tasks, goals, or client delivery.</p></div> : null}</div>
+          <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><FileAudio className="text-violet-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Transcript</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.transcriptJob?.status || (packet.selectedRecordingAsset ? "NOT_STARTED" : undefined))}`}>{humanize(packet.transcriptJob?.status || (packet.selectedRecordingAsset ? "NOT_STARTED" : undefined))}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.transcriptJob?.segmentCount ?? 0} persisted segment(s) · {packet.transcriptJob?.asset?.fileName || packet.selectedRecordingAsset?.fileName || "no bound recording asset"}</p>{packet.selectedRecordingAsset?.explicitlySelected ? <p className="mt-2 break-all font-mono text-[10px] font-bold text-violet-800">Focused RecordingAsset · {packet.selectedRecordingAsset.id}</p> : null}{packet.packet?.safeActions?.find((action) => action.id === "repair-transcript-first" && action.enabled) ? <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3"><button type="button" onClick={() => void runTranscript()} disabled={runningTranscript || loading} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-violet-800 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50">{runningTranscript ? <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> : <Mic2 size={15} aria-hidden="true" />}{runningTranscript ? "Starting durable worker…" : packet.transcriptJob?.status === "FAILED" ? "Retry transcription" : "Start transcription"}</button><p className="mt-2 text-[10px] font-bold leading-4 text-violet-900">Runs only the released, source-bound transcript job. It creates derived text—not notes, tasks, goals, or client delivery.</p></div> : null}</div>
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><MessageSquareText className="text-emerald-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Packet</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.packet?.status)}`}>{humanize(packet.packet?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.packet?.nextAction}</p></div>
         </section>
 
