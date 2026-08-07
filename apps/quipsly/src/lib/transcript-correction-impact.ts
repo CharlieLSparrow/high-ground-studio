@@ -5,6 +5,9 @@ export type TranscriptImpactArtifact = {
   kind: TranscriptImpactArtifactKind;
   label: string;
   status: string | null;
+  href: string;
+  updatedAt: string;
+  canAcknowledge: boolean;
   evidence: unknown[];
 };
 
@@ -15,14 +18,31 @@ export type TranscriptSegmentImpact = {
   artifactKind: TranscriptImpactArtifactKind;
   label: string;
   status: string | null;
+  href: string;
+  artifactUpdatedAt: string;
+  canAcknowledge: boolean;
   state: TranscriptImpactState;
   evidenceSnapshotCount: number;
+  priorTextSnapshot: string | null;
+  currentTextSnapshot: string;
+  priorSpeakerLabelSnapshot: string | null;
+  currentSpeakerLabel: string | null;
+  evidenceCorrectionId: string | null;
+  currentCorrectionId: string | null;
+  changes: {
+    text: "changed" | "unchanged" | "unknown";
+    speaker: "changed" | "unchanged" | "unknown";
+    correctionReceipt: "changed" | "unchanged" | "unknown";
+  };
 };
 
 type CorrectionSnapshot = {
   segmentId: string;
   acceptedCorrectionId: string | null;
   correctionSnapshotPresent: boolean;
+  effectiveTextSnapshot: string | null;
+  effectiveSpeakerLabelSnapshot: string | null;
+  specificity: "exact-segment" | "span-summary";
 };
 
 function text(value: unknown) {
@@ -71,11 +91,19 @@ export function transcriptCorrectionSnapshots(
         "acceptedCorrectionId",
       );
       const acceptedCorrectionId = text(row.acceptedCorrectionId) || null;
+      const effectiveTextSnapshot = text(row.effectiveTextSnapshot) || null;
+      const effectiveSpeakerLabelSnapshot = text(row.effectiveSpeakerLabelSnapshot) || null;
+      const specificity = ids.size === 1
+        ? "exact-segment" as const
+        : "span-summary" as const;
       for (const segmentId of ids) {
         snapshots.push({
           segmentId,
           acceptedCorrectionId,
           correctionSnapshotPresent,
+          effectiveTextSnapshot,
+          effectiveSpeakerLabelSnapshot,
+          specificity,
         });
       }
     }
@@ -89,12 +117,15 @@ export function transcriptCorrectionSnapshots(
 
 export function buildTranscriptCorrectionImpact(input: {
   transcriptJobId: string;
-  segments: Array<{ id: string; acceptedCorrectionId: string | null }>;
+  segments: Array<{
+    id: string;
+    acceptedCorrectionId: string | null;
+    text: string;
+    speakerLabel: string | null;
+  }>;
   artifacts: TranscriptImpactArtifact[];
 }) {
-  const currentCorrectionBySegment = new Map(
-    input.segments.map((segment) => [segment.id, segment.acceptedCorrectionId]),
-  );
+  const currentSegmentById = new Map(input.segments.map((segment) => [segment.id, segment]));
   const impactsBySegment = new Map<string, TranscriptSegmentImpact[]>();
 
   for (const artifact of input.artifacts) {
@@ -102,26 +133,54 @@ export function buildTranscriptCorrectionImpact(input: {
       transcriptCorrectionSnapshots(evidence, input.transcriptJobId));
     const snapshotsBySegment = new Map<string, CorrectionSnapshot[]>();
     for (const snapshot of snapshots) {
-      if (!currentCorrectionBySegment.has(snapshot.segmentId)) continue;
+      if (!currentSegmentById.has(snapshot.segmentId)) continue;
       const existing = snapshotsBySegment.get(snapshot.segmentId) ?? [];
       existing.push(snapshot);
       snapshotsBySegment.set(snapshot.segmentId, existing);
     }
     for (const [segmentId, segmentSnapshots] of snapshotsBySegment) {
-      const currentCorrectionId = currentCorrectionBySegment.get(segmentId) ?? null;
+      const currentSegment = currentSegmentById.get(segmentId)!;
+      const currentCorrectionId = currentSegment.acceptedCorrectionId;
       const versioned = segmentSnapshots.filter((snapshot) => snapshot.correctionSnapshotPresent);
       const state: TranscriptImpactState = versioned.length === 0
         ? "snapshot-unavailable"
         : versioned.some((snapshot) => snapshot.acceptedCorrectionId === currentCorrectionId)
           ? "current"
           : "needs-review";
+      const comparisonCandidates = state === "current"
+        ? versioned.filter((snapshot) => snapshot.acceptedCorrectionId === currentCorrectionId)
+        : versioned;
+      const comparison = [...comparisonCandidates].sort((left, right) =>
+        snapshotComparisonRank(left) - snapshotComparisonRank(right))[0] ?? null;
+      const priorTextSnapshot = comparison?.effectiveTextSnapshot ?? null;
+      const priorSpeakerLabelSnapshot = comparison?.effectiveSpeakerLabelSnapshot ?? null;
       const impact: TranscriptSegmentImpact = {
         artifactId: artifact.id,
         artifactKind: artifact.kind,
         label: artifact.label,
         status: artifact.status,
+        href: artifact.href,
+        artifactUpdatedAt: artifact.updatedAt,
+        canAcknowledge: artifact.canAcknowledge,
         state,
         evidenceSnapshotCount: segmentSnapshots.length,
+        priorTextSnapshot,
+        currentTextSnapshot: currentSegment.text,
+        priorSpeakerLabelSnapshot,
+        currentSpeakerLabel: currentSegment.speakerLabel,
+        evidenceCorrectionId: comparison?.correctionSnapshotPresent
+          ? comparison.acceptedCorrectionId
+          : null,
+        currentCorrectionId,
+        changes: {
+          text: comparisonState(priorTextSnapshot, currentSegment.text),
+          speaker: comparisonState(priorSpeakerLabelSnapshot, currentSegment.speakerLabel),
+          correctionReceipt: comparison
+            ? comparison.acceptedCorrectionId === currentCorrectionId
+              ? "unchanged"
+              : "changed"
+            : "unknown",
+        },
       };
       const existing = impactsBySegment.get(segmentId) ?? [];
       existing.push(impact);
@@ -137,6 +196,20 @@ export function buildTranscriptCorrectionImpact(input: {
   }
 
   return impactsBySegment;
+}
+
+function snapshotComparisonRank(snapshot: CorrectionSnapshot) {
+  return (snapshot.specificity === "exact-segment" ? 0 : 10)
+    + (snapshot.effectiveTextSnapshot ? 0 : 2)
+    + (snapshot.effectiveSpeakerLabelSnapshot ? 0 : 1);
+}
+
+function comparisonState(
+  prior: string | null,
+  current: string | null,
+): "changed" | "unchanged" | "unknown" {
+  if (prior == null || current == null) return "unknown";
+  return prior === current ? "unchanged" : "changed";
 }
 
 function impactStateRank(state: TranscriptImpactState) {

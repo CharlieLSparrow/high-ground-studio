@@ -2,7 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
+import { acknowledgeTranscriptCorrectionImpact, readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 import { approveTranscriptEvaluationWindow, readTranscriptEvaluationReadiness } from "@/lib/server/transcript-evaluation-windows";
 import { readTranscriptEvaluationCandidates } from "@/lib/server/transcript-evaluation-candidates";
 
@@ -15,6 +15,7 @@ jest.mock("@/lib/server/transcript-corrections", () => {
     constructor(message: string, public status: number, public code: string) { super(message); }
   }
   return {
+    acknowledgeTranscriptCorrectionImpact: jest.fn(),
     attributeTranscriptSpeaker: jest.fn(),
     confirmTranscriptSegmentAsIs: jest.fn(),
     createTranscriptCorrection: jest.fn(),
@@ -104,6 +105,38 @@ describe("transcript correction and accuracy-corpus route", () => {
       conditions: ["normal-exchange"],
       sourcePlaybackEvidence: expect.objectContaining({ schema: "quipsly-complete-source-playback-v1", playbackSourceId: "source-1" }),
       actor: { id: "user-1", email: "producer@example.com", isStaff: false },
+    }));
+  });
+
+  it("routes an explicit owner-confirmed downstream impact resolution", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(session as any);
+    jest.mocked(acknowledgeTranscriptCorrectionImpact).mockResolvedValue({ ok: true, idempotentReplay: false } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/corrections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        operation: "acknowledge-transcript-impact",
+        roomId: "room-1",
+        transcriptJobId: "job-1",
+        segmentId: "segment-1",
+        artifactKind: "task",
+        artifactId: "task-1",
+        clientRequestId: "impact-review-task-1",
+        expectedArtifactUpdatedAt: "2026-08-06T18:00:00.000Z",
+        expectedAcceptedCorrectionId: "correction-1",
+        expectedEffectiveText: "Publish on Thursday.",
+        expectedEffectiveSpeakerLabel: "Charlie",
+        confirmedContentStillValid: true,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(acknowledgeTranscriptCorrectionImpact).toHaveBeenCalledWith(expect.objectContaining({
+      prisma: { marker: "prisma" },
+      actor: { id: "user-1", email: "producer@example.com", isStaff: false },
+      artifactKind: "task",
+      artifactId: "task-1",
+      expectedEffectiveText: "Publish on Thursday.",
+      confirmedContentStillValid: true,
     }));
   });
 });

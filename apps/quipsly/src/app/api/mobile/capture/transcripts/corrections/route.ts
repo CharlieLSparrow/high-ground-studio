@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
+  acknowledgeTranscriptCorrectionImpact,
   attributeTranscriptSpeaker,
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
@@ -160,6 +161,31 @@ export async function POST(request: Request) {
   const prisma = getPrismaClient() as any;
   const actor = actorFromSession(session);
   try {
+    if (operation === "acknowledge-transcript-impact") {
+      const artifactKind = text(input.artifactKind);
+      if (!['note', 'task', 'goal', 'follow-up'].includes(artifactKind)) {
+        return NextResponse.json(
+          { ok: false, error: "Linked item kind must be note, task, goal, or follow-up." },
+          { status: 400, headers: { "Cache-Control": "private, no-store" } },
+        );
+      }
+      const result = await acknowledgeTranscriptCorrectionImpact({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        transcriptJobId: text(input.transcriptJobId),
+        segmentId: text(input.segmentId),
+        artifactKind: artifactKind as "note" | "task" | "goal" | "follow-up",
+        artifactId: text(input.artifactId),
+        clientRequestId: text(input.clientRequestId),
+        expectedArtifactUpdatedAt: text(input.expectedArtifactUpdatedAt),
+        expectedAcceptedCorrectionId: nullableText(input.expectedAcceptedCorrectionId),
+        expectedEffectiveText: typeof input.expectedEffectiveText === "string" ? input.expectedEffectiveText : "",
+        expectedEffectiveSpeakerLabel: nullableText(input.expectedEffectiveSpeakerLabel),
+        confirmedContentStillValid: input.confirmedContentStillValid === true,
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
     if (operation === "approve-evaluation-window") {
       const result = await approveTranscriptEvaluationWindow({
         prisma,

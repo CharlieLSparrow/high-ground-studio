@@ -9,11 +9,13 @@ import { createHash } from "node:crypto";
 
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import {
+  acknowledgeTranscriptCorrectionImpact,
   attributeTranscriptSpeaker,
   confirmTranscriptSegmentAsIs,
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
   TRANSCRIPT_CORRECTION_SCHEMA,
+  TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA,
   TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA,
   TranscriptCorrectionError,
 } from "./transcript-corrections";
@@ -203,7 +205,134 @@ function speakerMutationHarness(options: { active?: any | null; replay?: any | n
   return { prisma, tx };
 }
 
+function impactReviewHarness(options: { artifactUpdatedAt?: Date; artifact?: any | null; active?: any | null } = {}) {
+  const artifactUpdatedAt = options.artifactUpdatedAt ?? new Date("2026-08-06T18:00:00.000Z");
+  const active = options.active === undefined ? {
+    id: "correction-current",
+    correctedText: "We should ship the proof watch on Thursday.",
+    correctedSpeakerLabel: providerSpeakerLabel,
+  } : options.active;
+  const artifact = options.artifact === undefined ? {
+    id: "task-1",
+    roomId: "room-1",
+    title: "Publish the delivery plan",
+    status: "OPEN",
+    assignedUserId: actor.id,
+    updatedAt: artifactUpdatedAt,
+    sourceJson: {
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      acceptedCorrectionId: null,
+      effectiveTextSnapshot: providerText,
+      effectiveSpeakerLabelSnapshot: providerSpeakerLabel,
+    },
+    evidenceReceipts: [],
+  } : options.artifact;
+  const receiptCreate = jest.fn(async ({ data }: any) => ({ ...data, createdAt: new Date() }));
+  const state = {
+    callRoom: {
+      findFirst: jest.fn(async () => accessibleRoom()),
+      findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+    },
+    mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    transcriptCorrection: { findFirst: jest.fn(async () => active) },
+    transcriptSpeakerAttribution: { findFirst: jest.fn(async () => null) },
+    actionItem: { findFirst: jest.fn(async () => artifact) },
+  };
+  const tx = {
+    ...state,
+    $queryRaw: jest.fn(async () => [{ lock: null }]),
+    actionItemEvidenceReceipt: { create: receiptCreate },
+  };
+  const prisma = {
+    ...state,
+    $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+  };
+  return { prisma, tx, receiptCreate, artifactUpdatedAt };
+}
+
 describe("transcript correction desk", () => {
+  it("appends an owner-only keep-as-written receipt after exact correction comparison", async () => {
+    const { prisma, tx, receiptCreate, artifactUpdatedAt } = impactReviewHarness();
+    const result = await acknowledgeTranscriptCorrectionImpact({
+      prisma,
+      actor,
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      artifactKind: "task",
+      artifactId: "task-1",
+      clientRequestId: "impact-review-task-1",
+      expectedArtifactUpdatedAt: artifactUpdatedAt.toISOString(),
+      expectedAcceptedCorrectionId: "correction-current",
+      expectedEffectiveText: "We should ship the proof watch on Thursday.",
+      expectedEffectiveSpeakerLabel: providerSpeakerLabel,
+      confirmedContentStillValid: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      receipt: {
+        schema: TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA,
+        decision: "KEEP_CONTENT",
+        artifactKind: "task",
+        artifactId: "task-1",
+        acceptedCorrectionId: "correction-current",
+        effectiveTextSnapshot: "We should ship the proof watch on Thursday.",
+        boundaries: { contentChanged: false, externalDelivery: false, publication: false },
+      },
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(receiptCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
+      id: "impact-review-task-1",
+      actionItemId: "task-1",
+      actorUserId: actor.id,
+      kind: "TRANSCRIPT_CORRECTION_IMPACT_REVIEW",
+      evidenceJson: expect.objectContaining({ schema: TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA }),
+    }) });
+  });
+
+  it("fails before mutation when the linked item changed during comparison", async () => {
+    const { prisma } = impactReviewHarness();
+    await expect(acknowledgeTranscriptCorrectionImpact({
+      prisma,
+      actor,
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      artifactKind: "task",
+      artifactId: "task-1",
+      clientRequestId: "impact-review-stale",
+      expectedArtifactUpdatedAt: "2026-08-06T17:59:00.000Z",
+      expectedAcceptedCorrectionId: "correction-current",
+      expectedEffectiveText: "We should ship the proof watch on Thursday.",
+      expectedEffectiveSpeakerLabel: providerSpeakerLabel,
+      confirmedContentStillValid: true,
+    })).rejects.toMatchObject({ status: 409, code: "STALE_IMPACT_ARTIFACT" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("requires current ownership before resolving downstream transcript impact", async () => {
+    const { prisma, artifactUpdatedAt } = impactReviewHarness({ artifact: null });
+    await expect(acknowledgeTranscriptCorrectionImpact({
+      prisma,
+      actor,
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      artifactKind: "task",
+      artifactId: "task-1",
+      clientRequestId: "impact-review-not-owner",
+      expectedArtifactUpdatedAt: artifactUpdatedAt.toISOString(),
+      expectedAcceptedCorrectionId: "correction-current",
+      expectedEffectiveText: "We should ship the proof watch on Thursday.",
+      expectedEffectiveSpeakerLabel: providerSpeakerLabel,
+      confirmedContentStillValid: true,
+    })).rejects.toMatchObject({ status: 403, code: "IMPACT_REVIEW_OWNER_REQUIRED" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("selects only the requested RecordingAsset transcript inside the accessible Session", async () => {
     const prisma = {
       callRoom: {

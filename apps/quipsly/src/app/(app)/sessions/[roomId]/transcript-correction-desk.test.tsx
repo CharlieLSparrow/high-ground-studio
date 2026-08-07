@@ -177,20 +177,41 @@ describe("TranscriptCorrectionDesk", () => {
           artifactKind: "note",
           label: "Episode delivery plan",
           status: "SESSION_SHARED",
+          href: "/sessions/room-1?mode=notes#session-note-note-1",
+          artifactUpdatedAt: "2026-08-06T18:00:00.000Z",
+          canAcknowledge: true,
           state: "needs-review",
           evidenceSnapshotCount: 1,
+          priorTextSnapshot: "Publish on Wednesday.",
+          currentTextSnapshot: "Publish on Thursday.",
+          priorSpeakerLabelSnapshot: "Charlie",
+          currentSpeakerLabel: "Charlie",
+          evidenceCorrectionId: null,
+          currentCorrectionId: "correction-1",
+          changes: { text: "changed", speaker: "unchanged", correctionReceipt: "changed" },
         },
         {
           artifactId: "task-1",
           artifactKind: "task",
           label: "Fix chapter title",
           status: "OPEN",
+          href: "/work?task=task-1",
+          artifactUpdatedAt: "2026-08-06T18:01:00.000Z",
+          canAcknowledge: true,
           state: "current",
           evidenceSnapshotCount: 2,
+          priorTextSnapshot: "Welcome, everybody.",
+          currentTextSnapshot: "Welcome, everybody.",
+          priorSpeakerLabelSnapshot: "Speaker",
+          currentSpeakerLabel: "Speaker",
+          evidenceCorrectionId: null,
+          currentCorrectionId: null,
+          changes: { text: "unchanged", speaker: "unchanged", correctionReceipt: "unchanged" },
         },
       ],
     }];
-    global.fetch = jest.fn(async () => ({ ok: true, json: async () => impacted })) as unknown as typeof fetch;
+    const fetchMock = jest.fn(async (..._args: any[]) => ({ ok: true, json: async () => impacted }));
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     render(<TranscriptCorrectionDesk roomId="room-1" />);
     const summary = await screen.findByText("Downstream evidence · 2 linked items");
@@ -199,7 +220,26 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/task · fix chapter title/i)).toBeInTheDocument();
     expect(screen.getByText("review after correction")).toBeInTheDocument();
     expect(screen.getByText("current evidence")).toBeInTheDocument();
+    expect(screen.getByText("Publish on Wednesday.")).toBeInTheDocument();
+    expect(screen.getByText("Publish on Thursday.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /note · episode delivery plan/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
     expect(screen.getByText(/automatic regeneration is off/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /read the corrected source/i }));
+    fireEvent.click(screen.getByRole("button", { name: /keep item as written/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      operation: "acknowledge-transcript-impact",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      segmentId: "segment-1",
+      artifactKind: "note",
+      artifactId: "note-1",
+      expectedArtifactUpdatedAt: "2026-08-06T18:00:00.000Z",
+      expectedAcceptedCorrectionId: "correction-1",
+      expectedEffectiveText: "Publish on Thursday.",
+      expectedEffectiveSpeakerLabel: "Charlie",
+      confirmedContentStillValid: true,
+    });
   });
 
   it("identifies a diarized voice once without presenting its words as reviewed", async () => {

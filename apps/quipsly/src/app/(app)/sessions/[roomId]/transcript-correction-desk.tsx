@@ -104,8 +104,22 @@ type Segment = {
     artifactKind: "note" | "task" | "goal" | "follow-up";
     label: string;
     status: string | null;
+    href: string;
+    artifactUpdatedAt: string;
+    canAcknowledge: boolean;
     state: "current" | "needs-review" | "snapshot-unavailable";
     evidenceSnapshotCount: number;
+    priorTextSnapshot: string | null;
+    currentTextSnapshot: string;
+    priorSpeakerLabelSnapshot: string | null;
+    currentSpeakerLabel: string | null;
+    evidenceCorrectionId: string | null;
+    currentCorrectionId: string | null;
+    changes: {
+      text: "changed" | "unchanged" | "unknown";
+      speaker: "changed" | "unchanged" | "unknown";
+      correctionReceipt: "changed" | "unchanged" | "unknown";
+    };
   }>;
 };
 
@@ -951,8 +965,90 @@ function ProposalReview({
   );
 }
 
+function ImpactReviewResolution({
+  roomId,
+  transcriptJobId,
+  segment,
+  impact,
+  disabled,
+  onSaved,
+}: {
+  roomId: string;
+  transcriptJobId: string;
+  segment: Segment;
+  impact: NonNullable<Segment["downstreamImpacts"]>[number];
+  disabled: boolean;
+  onSaved: (message: string) => Promise<void>;
+}) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [clientRequestId] = useState(() => requestId(`impact-${segment.id}-${impact.artifactKind}-${impact.artifactId}`));
+
+  async function keepAsWritten() {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/transcripts/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "acknowledge-transcript-impact",
+          roomId,
+          transcriptJobId,
+          segmentId: segment.id,
+          artifactKind: impact.artifactKind,
+          artifactId: impact.artifactId,
+          clientRequestId,
+          expectedArtifactUpdatedAt: impact.artifactUpdatedAt,
+          expectedAcceptedCorrectionId: impact.currentCorrectionId,
+          expectedEffectiveText: impact.currentTextSnapshot,
+          expectedEffectiveSpeakerLabel: impact.currentSpeakerLabel,
+          confirmedContentStillValid: confirmed,
+        }),
+      });
+      const body = await response.json() as { ok?: boolean; error?: string; idempotentReplay?: boolean };
+      if (!response.ok || !body.ok) throw new Error(body.error || "The linked-item review was not saved.");
+      await onSaved(body.idempotentReplay
+        ? "This linked item was already reviewed against the current transcript; no duplicate receipt was created."
+        : `Kept ${impact.artifactKind} as written and attached a current transcript review receipt. Its content was not changed.`);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "The linked-item review was not saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-amber-200 bg-white p-3">
+      <label className="flex items-start gap-3 text-xs font-bold leading-relaxed text-amber-950">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)}
+          disabled={disabled || saving}
+          className="mt-0.5 size-4 accent-amber-800"
+        />
+        <span>I read the corrected source and this item still says what I intend.</span>
+      </label>
+      {error && <p role="alert" className="mt-2 flex items-start gap-2 text-xs font-bold text-rose-800"><CircleAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />{error}</p>}
+      <button
+        type="button"
+        onClick={() => void keepAsWritten()}
+        disabled={disabled || saving || !confirmed}
+        className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-full bg-amber-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50"
+      >
+        {saving ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={14} aria-hidden="true" />}
+        Keep item as written
+      </button>
+      <p className="mt-2 text-[0.68rem] font-semibold text-amber-800">This appends a review receipt. It does not rewrite the item, transcript, recording, or delivery state.</p>
+    </div>
+  );
+}
+
 function CorrectionEditor({
   roomId,
+  transcriptJobId,
   segment,
   canUseProjectTeamNotes,
   playbackReady,
@@ -963,6 +1059,7 @@ function CorrectionEditor({
   onSaved,
 }: {
   roomId: string;
+  transcriptJobId: string;
   segment: Segment;
   canUseProjectTeamNotes: boolean;
   playbackReady: boolean;
@@ -1256,12 +1353,42 @@ function CorrectionEditor({
             {segment.downstreamImpacts?.map((impact) => (
               <li key={`${impact.artifactKind}-${impact.artifactId}`} className={`rounded-lg border p-3 text-xs font-bold leading-relaxed ${impact.state === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : impact.state === "current" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-800"}`}>
                 <span className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-black">{humanize(impact.artifactKind)} · {impact.label}</span>
+                  <Link href={impact.href} className="font-black underline decoration-current/30 underline-offset-2 hover:decoration-current">{humanize(impact.artifactKind)} · {impact.label}</Link>
                   <span className="rounded-full bg-white/80 px-2 py-1 text-[0.65rem] font-black uppercase tracking-wide">
                     {impact.state === "needs-review" ? "review after correction" : impact.state === "current" ? "current evidence" : "legacy snapshot"}
                   </span>
                 </span>
                 {impact.status && <span className="mt-1 block text-[0.68rem] uppercase tracking-wide opacity-75">{humanize(impact.status)}</span>}
+                {impact.state === "needs-review" && (impact.changes.text === "changed" || impact.changes.speaker === "changed") && (
+                  <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                    <div className="rounded-lg border border-amber-200 bg-white p-3">
+                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-amber-800">Evidence captured by this item</p>
+                      <p className="mt-1 font-semibold text-amber-950">{impact.priorTextSnapshot || "Exact text snapshot unavailable."}</p>
+                      {impact.priorSpeakerLabelSnapshot && <p className="mt-1 text-[0.68rem] text-amber-800">Speaker: {impact.priorSpeakerLabelSnapshot}</p>}
+                    </div>
+                    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                      <p className="text-[0.65rem] font-black uppercase tracking-wide text-emerald-800">Current reviewed transcript</p>
+                      <p className="mt-1 font-semibold text-emerald-950">{impact.currentTextSnapshot}</p>
+                      {impact.currentSpeakerLabel && <p className="mt-1 text-[0.68rem] text-emerald-800">Speaker: {impact.currentSpeakerLabel}</p>}
+                    </div>
+                  </div>
+                )}
+                {impact.state === "needs-review" && impact.changes.text !== "changed" && impact.changes.speaker !== "changed" && (
+                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">The accepted correction receipt changed, but the preserved words and speaker are either unchanged or unavailable. Review the linked item before carrying the new evidence forward.</p>
+                )}
+                {impact.state === "needs-review" && impact.canAcknowledge && (
+                  <ImpactReviewResolution
+                    roomId={roomId}
+                    transcriptJobId={transcriptJobId}
+                    segment={segment}
+                    impact={impact}
+                    disabled={busy}
+                    onSaved={onSaved}
+                  />
+                )}
+                {impact.state === "needs-review" && !impact.canAcknowledge && (
+                  <p className="mt-2 rounded-lg bg-white p-2 text-[0.7rem] font-semibold">Open the linked item to review it. Only its current owner can attach a keep-as-written receipt.</p>
+                )}
               </li>
             ))}
           </ul>
@@ -1732,6 +1859,7 @@ export function TranscriptCorrectionDesk({
             <CorrectionEditor
               key={segment.id}
               roomId={roomId}
+              transcriptJobId={desk.transcriptJobId!}
               segment={segment}
               canUseProjectTeamNotes={canUseProjectTeamNotes}
               playbackReady={playbackReady}

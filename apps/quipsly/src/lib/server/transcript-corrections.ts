@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { acquirePrismaAdvisoryTransactionLock } from "./prisma-advisory-lock.js";
@@ -17,6 +17,9 @@ import {
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
 export const TRANSCRIPT_SPEAKER_ATTRIBUTION_SCHEMA = "quipsly-transcript-speaker-attribution-v1";
+export const TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA = "quipsly-transcript-correction-impact-review-v1";
+
+type TranscriptImpactArtifactKind = "note" | "task" | "goal" | "follow-up";
 
 export type TranscriptCorrectionActor = {
   id: string;
@@ -381,7 +384,14 @@ async function loadAccessibleRoom(
           title: true,
           kind: true,
           visibility: true,
+          authorUserId: true,
+          updatedAt: true,
           sourceJson: true,
+          revisions: {
+            where: { operation: "transcript-correction-impact-reviewed-no-content-change" },
+            orderBy: { revision: "desc" },
+            select: { snapshotJson: true },
+          },
         },
       },
       actionItems: {
@@ -390,6 +400,8 @@ async function loadAccessibleRoom(
           id: true,
           title: true,
           status: true,
+          assignedUserId: true,
+          updatedAt: true,
           sourceJson: true,
           evidenceReceipts: {
             orderBy: { occurredAt: "desc" },
@@ -404,6 +416,8 @@ async function loadAccessibleRoom(
           id: true,
           title: true,
           status: true,
+          ownerUserId: true,
+          updatedAt: true,
           sourceJson: true,
           progressReceipts: {
             orderBy: { occurredAt: "desc" },
@@ -424,7 +438,14 @@ async function loadAccessibleRoom(
           title: true,
           kind: true,
           status: true,
+          createdByUserId: true,
+          updatedAt: true,
           sourceManifestJson: true,
+          revisions: {
+            where: { operation: "transcript-correction-impact-reviewed-no-content-change" },
+            orderBy: { revision: "desc" },
+            select: { snapshotJson: true },
+          },
         },
       },
       transcriptJobs: {
@@ -669,8 +690,10 @@ export async function readTranscriptCorrectionDesk(input: {
     segments: projectedSegments.map((segment: any) => ({
       id: segment.id,
       acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+      text: segment.text,
+      speakerLabel: segment.speakerLabel,
     })),
-    artifacts: roomTranscriptImpactArtifacts(room),
+    artifacts: roomTranscriptImpactArtifacts(room, input.actor),
   });
   const segmentsWithImpacts = projectedSegments.map((segment: any) => ({
     ...segment,
@@ -708,20 +731,29 @@ export async function readTranscriptCorrectionDesk(input: {
   };
 }
 
-function roomTranscriptImpactArtifacts(room: any): TranscriptImpactArtifact[] {
+function roomTranscriptImpactArtifacts(
+  room: any,
+  actor: TranscriptCorrectionActor,
+): TranscriptImpactArtifact[] {
   return [
     ...(room.notes ?? []).map((note: any) => ({
       id: text(note.id),
       kind: "note" as const,
       label: text(note.title) || `${text(note.kind).toLowerCase().replaceAll("_", " ")} note`,
       status: text(note.visibility) || null,
-      evidence: [note.sourceJson],
+      href: `/sessions/${encodeURIComponent(room.id)}?mode=notes#session-note-${encodeURIComponent(note.id)}`,
+      updatedAt: note.updatedAt instanceof Date ? note.updatedAt.toISOString() : text(note.updatedAt),
+      canAcknowledge: note.authorUserId === actor.id,
+      evidence: [note.sourceJson, ...(note.revisions ?? []).map((revision: any) => revision.snapshotJson)],
     })),
     ...(room.actionItems ?? []).map((item: any) => ({
       id: text(item.id),
       kind: "task" as const,
       label: text(item.title) || "Untitled task",
       status: text(item.status) || null,
+      href: `/work?task=${encodeURIComponent(item.id)}`,
+      updatedAt: item.updatedAt instanceof Date ? item.updatedAt.toISOString() : text(item.updatedAt),
+      canAcknowledge: item.assignedUserId === actor.id,
       evidence: [item.sourceJson, ...(item.evidenceReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
     })),
     ...(room.goals ?? []).map((goal: any) => ({
@@ -729,6 +761,9 @@ function roomTranscriptImpactArtifacts(room: any): TranscriptImpactArtifact[] {
       kind: "goal" as const,
       label: text(goal.title) || "Untitled goal",
       status: text(goal.status) || null,
+      href: `/work?goal=${encodeURIComponent(goal.id)}`,
+      updatedAt: goal.updatedAt instanceof Date ? goal.updatedAt.toISOString() : text(goal.updatedAt),
+      canAcknowledge: goal.ownerUserId === actor.id,
       evidence: [goal.sourceJson, ...(goal.progressReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
     })),
     ...(room.outputs ?? []).map((output: any) => ({
@@ -736,9 +771,210 @@ function roomTranscriptImpactArtifacts(room: any): TranscriptImpactArtifact[] {
       kind: "follow-up" as const,
       label: text(output.title) || `${text(output.kind).toLowerCase().replaceAll("_", " ")} output`,
       status: text(output.status) || null,
-      evidence: [output.sourceManifestJson],
+      href: `/sessions/${encodeURIComponent(room.id)}?mode=outputs#follow-up-notes-${encodeURIComponent(output.id)}`,
+      updatedAt: output.updatedAt instanceof Date ? output.updatedAt.toISOString() : text(output.updatedAt),
+      canAcknowledge: output.createdByUserId === actor.id,
+      evidence: [output.sourceManifestJson, ...(output.revisions ?? []).map((revision: any) => revision.snapshotJson)],
     })),
   ].filter((artifact) => artifact.id);
+}
+
+function impactArtifactSelect(kind: TranscriptImpactArtifactKind) {
+  if (kind === "note") {
+    return {
+      id: true,
+      roomId: true,
+      title: true,
+      kind: true,
+      visibility: true,
+      authorUserId: true,
+      updatedAt: true,
+      sourceJson: true,
+      revisions: {
+        where: { operation: "transcript-correction-impact-reviewed-no-content-change" },
+        orderBy: { revision: "desc" },
+        select: { snapshotJson: true },
+      },
+    };
+  }
+  if (kind === "task") {
+    return {
+      id: true,
+      roomId: true,
+      title: true,
+      status: true,
+      assignedUserId: true,
+      updatedAt: true,
+      sourceJson: true,
+      evidenceReceipts: {
+        orderBy: { occurredAt: "desc" },
+        select: { evidenceJson: true },
+      },
+    };
+  }
+  if (kind === "goal") {
+    return {
+      id: true,
+      roomId: true,
+      title: true,
+      status: true,
+      ownerUserId: true,
+      updatedAt: true,
+      sourceJson: true,
+      progressReceipts: {
+        orderBy: { occurredAt: "desc" },
+        select: { evidenceJson: true },
+      },
+    };
+  }
+  return {
+    id: true,
+    roomId: true,
+    title: true,
+    kind: true,
+    status: true,
+    createdByUserId: true,
+    recipientUserId: true,
+    updatedAt: true,
+    sourceManifestJson: true,
+    contentSha256: true,
+    revision: true,
+    revisions: {
+      where: { operation: "transcript-correction-impact-reviewed-no-content-change" },
+      orderBy: { revision: "desc" },
+      select: { snapshotJson: true },
+    },
+  };
+}
+
+async function loadOwnedImpactArtifact(prisma: any, input: {
+  roomId: string;
+  artifactId: string;
+  artifactKind: TranscriptImpactArtifactKind;
+  actor: TranscriptCorrectionActor;
+}) {
+  const where = { id: input.artifactId, roomId: input.roomId };
+  if (input.artifactKind === "note") {
+    return prisma.coachingNote.findFirst({
+      where: { ...where, authorUserId: input.actor.id },
+      select: impactArtifactSelect("note"),
+    });
+  }
+  if (input.artifactKind === "task") {
+    return prisma.actionItem.findFirst({
+      where: { ...where, assignedUserId: input.actor.id },
+      select: impactArtifactSelect("task"),
+    });
+  }
+  if (input.artifactKind === "goal") {
+    return prisma.goal.findFirst({
+      where: { ...where, ownerUserId: input.actor.id },
+      select: impactArtifactSelect("goal"),
+    });
+  }
+  return prisma.sessionOutput.findFirst({
+    where: { ...where, createdByUserId: input.actor.id },
+    select: impactArtifactSelect("follow-up"),
+  });
+}
+
+function ownedImpactArtifactProjection(
+  roomId: string,
+  artifactKind: TranscriptImpactArtifactKind,
+  artifact: any,
+): TranscriptImpactArtifact {
+  if (artifactKind === "note") {
+    return {
+      id: artifact.id,
+      kind: "note",
+      label: text(artifact.title) || `${text(artifact.kind).toLowerCase().replaceAll("_", " ")} note`,
+      status: text(artifact.visibility) || null,
+      href: `/sessions/${encodeURIComponent(roomId)}?mode=notes#session-note-${encodeURIComponent(artifact.id)}`,
+      updatedAt: artifact.updatedAt instanceof Date ? artifact.updatedAt.toISOString() : text(artifact.updatedAt),
+      canAcknowledge: true,
+      evidence: [artifact.sourceJson, ...(artifact.revisions ?? []).map((revision: any) => revision.snapshotJson)],
+    };
+  }
+  if (artifactKind === "task") {
+    return {
+      id: artifact.id,
+      kind: "task",
+      label: text(artifact.title) || "Untitled task",
+      status: text(artifact.status) || null,
+      href: `/work?task=${encodeURIComponent(artifact.id)}`,
+      updatedAt: artifact.updatedAt instanceof Date ? artifact.updatedAt.toISOString() : text(artifact.updatedAt),
+      canAcknowledge: true,
+      evidence: [artifact.sourceJson, ...(artifact.evidenceReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
+    };
+  }
+  if (artifactKind === "goal") {
+    return {
+      id: artifact.id,
+      kind: "goal",
+      label: text(artifact.title) || "Untitled goal",
+      status: text(artifact.status) || null,
+      href: `/work?goal=${encodeURIComponent(artifact.id)}`,
+      updatedAt: artifact.updatedAt instanceof Date ? artifact.updatedAt.toISOString() : text(artifact.updatedAt),
+      canAcknowledge: true,
+      evidence: [artifact.sourceJson, ...(artifact.progressReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
+    };
+  }
+  return {
+    id: artifact.id,
+    kind: "follow-up",
+    label: text(artifact.title) || `${text(artifact.kind).toLowerCase().replaceAll("_", " ")} output`,
+    status: text(artifact.status) || null,
+    href: `/sessions/${encodeURIComponent(roomId)}?mode=outputs#follow-up-notes-${encodeURIComponent(artifact.id)}`,
+    updatedAt: artifact.updatedAt instanceof Date ? artifact.updatedAt.toISOString() : text(artifact.updatedAt),
+    canAcknowledge: true,
+    evidence: [artifact.sourceManifestJson, ...(artifact.revisions ?? []).map((revision: any) => revision.snapshotJson)],
+  };
+}
+
+function impactReviewReceipt(value: unknown, clientRequestId: string): Record<string, unknown> | null {
+  let visited = 0;
+  function visit(candidate: unknown, depth: number): Record<string, unknown> | null {
+    if (candidate == null || depth > 24 || visited >= 20_000) return null;
+    visited += 1;
+    if (Array.isArray(candidate)) {
+      for (const child of candidate) {
+        const found = visit(child, depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (typeof candidate !== "object") return null;
+    const row = candidate as Record<string, unknown>;
+    if (row.schema === TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA && text(row.clientRequestId) === clientRequestId) {
+      return row;
+    }
+    for (const child of Object.values(row)) {
+      const found = visit(child, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  return visit(value, 0);
+}
+
+function impactReviewReceiptMatches(receipt: Record<string, unknown>, input: {
+  roomId: string;
+  transcriptJobId: string;
+  segmentId: string;
+  artifactKind: TranscriptImpactArtifactKind;
+  artifactId: string;
+  acceptedCorrectionId: string | null;
+  effectiveText: string;
+  effectiveSpeakerLabel: string | null;
+}) {
+  return text(receipt.roomId) === input.roomId
+    && text(receipt.transcriptJobId) === input.transcriptJobId
+    && text(receipt.segmentId) === input.segmentId
+    && text(receipt.artifactKind) === input.artifactKind
+    && text(receipt.artifactId) === input.artifactId
+    && (text(receipt.acceptedCorrectionId) || null) === input.acceptedCorrectionId
+    && text(receipt.effectiveTextSnapshot) === input.effectiveText
+    && (text(receipt.effectiveSpeakerLabelSnapshot) || null) === input.effectiveSpeakerLabel;
 }
 
 function buildTranscriptEvidence(job: any, segments: AudioTranscriptEvidenceSegment[], groups: any[]) {
@@ -1370,6 +1606,259 @@ export async function confirmTranscriptSegmentAsIs(input: {
   });
 
   return { ok: true, idempotentReplay: saved.idempotentReplay, verification: publicVerification(saved.verification), boundaries: transcriptCorrectionBoundaries() };
+}
+
+export async function acknowledgeTranscriptCorrectionImpact(input: {
+  prisma: any;
+  actor: TranscriptCorrectionActor;
+  roomId: string;
+  transcriptJobId: string;
+  segmentId: string;
+  artifactKind: TranscriptImpactArtifactKind;
+  artifactId: string;
+  clientRequestId: string;
+  expectedArtifactUpdatedAt: string;
+  expectedAcceptedCorrectionId?: string | null;
+  expectedEffectiveText: string;
+  expectedEffectiveSpeakerLabel?: string | null;
+  confirmedContentStillValid?: boolean;
+}) {
+  const roomId = text(input.roomId);
+  const transcriptJobId = text(input.transcriptJobId);
+  const segmentId = text(input.segmentId);
+  const artifactId = text(input.artifactId);
+  const clientRequestId = text(input.clientRequestId);
+  const artifactKind = input.artifactKind;
+  const expectedArtifactUpdatedAt = text(input.expectedArtifactUpdatedAt);
+  const expectedEffectiveText = typeof input.expectedEffectiveText === "string" ? input.expectedEffectiveText.trim() : "";
+  const expectedEffectiveSpeakerLabel = text(input.expectedEffectiveSpeakerLabel) || null;
+  const expectedAcceptedCorrectionId = text(input.expectedAcceptedCorrectionId) || null;
+  if (
+    !roomId || !transcriptJobId || !segmentId || !artifactId || !clientRequestId
+    || clientRequestId.length > 200
+    || !["note", "task", "goal", "follow-up"].includes(artifactKind)
+    || !expectedEffectiveText || !expectedArtifactUpdatedAt
+    || Number.isNaN(Date.parse(expectedArtifactUpdatedAt))
+  ) {
+    throw new TranscriptCorrectionError(
+      "A current transcript, linked item, bounded request id, and exact review snapshot are required.",
+      400,
+      "INVALID_IMPACT_REVIEW",
+    );
+  }
+  if (input.confirmedContentStillValid !== true) {
+    throw new TranscriptCorrectionError(
+      "Confirm that the linked item still says what you intend after reading the corrected source.",
+      409,
+      "IMPACT_REVIEW_NOT_CONFIRMED",
+    );
+  }
+
+  async function loadCurrentState(prisma: any) {
+    const evidence = await loadMutationEvidence(prisma, { roomId, segmentId, actor: input.actor });
+    if (evidence.job.id !== transcriptJobId) {
+      throw new TranscriptCorrectionError(
+        "The Session now has a different current transcript. Refresh before reviewing linked work.",
+        409,
+        "STALE_TRANSCRIPT_JOB",
+      );
+    }
+    const active = await prisma.transcriptCorrection.findFirst({
+      where: { segmentId, status: "accepted" },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, correctedText: true, correctedSpeakerLabel: true },
+    });
+    const attribution = evidence.segment.speakerLabel
+      ? await prisma.transcriptSpeakerAttribution.findFirst({
+          where: { transcriptJobId, providerSpeakerLabel: evidence.segment.speakerLabel, status: "active" },
+          orderBy: { updatedAt: "desc" },
+          select: { participantDisplaySnapshot: true },
+        })
+      : null;
+    const effectiveText = text(active?.correctedText) || evidence.segment.text;
+    const effectiveSpeakerLabel = text(active?.correctedSpeakerLabel)
+      || text(attribution?.participantDisplaySnapshot)
+      || text(evidence.segment.speakerLabel)
+      || null;
+    const artifact = await loadOwnedImpactArtifact(prisma, { roomId, artifactId, artifactKind, actor: input.actor });
+    if (!artifact) {
+      throw new TranscriptCorrectionError(
+        "Only the current owner can resolve this linked item's transcript review.",
+        403,
+        "IMPACT_REVIEW_OWNER_REQUIRED",
+      );
+    }
+    return {
+      evidence,
+      active,
+      effectiveText,
+      effectiveSpeakerLabel,
+      artifact,
+      projection: ownedImpactArtifactProjection(roomId, artifactKind, artifact),
+    };
+  }
+
+  function assertExpectedState(state: Awaited<ReturnType<typeof loadCurrentState>>) {
+    const replay = state.projection.evidence
+      .map((value) => impactReviewReceipt(value, clientRequestId))
+      .find(Boolean) ?? null;
+    const identity = {
+      roomId,
+      transcriptJobId,
+      segmentId,
+      artifactKind,
+      artifactId,
+      acceptedCorrectionId: state.active?.id ?? null,
+      effectiveText: state.effectiveText,
+      effectiveSpeakerLabel: state.effectiveSpeakerLabel,
+    };
+    if (replay) {
+      if (!impactReviewReceiptMatches(replay, identity)) {
+        throw new TranscriptCorrectionError(
+          "That request id is already bound to a different transcript impact review.",
+          409,
+          "IDEMPOTENCY_CONFLICT",
+        );
+      }
+      return { replay, impact: null };
+    }
+    const artifactUpdatedAt = state.artifact.updatedAt instanceof Date
+      ? state.artifact.updatedAt.toISOString()
+      : text(state.artifact.updatedAt);
+    if (artifactUpdatedAt !== new Date(expectedArtifactUpdatedAt).toISOString()) {
+      throw new TranscriptCorrectionError(
+        "The linked item changed while you were reviewing it. Refresh and compare it again.",
+        409,
+        "STALE_IMPACT_ARTIFACT",
+      );
+    }
+    if (
+      (state.active?.id ?? null) !== expectedAcceptedCorrectionId
+      || state.effectiveText !== expectedEffectiveText
+      || state.effectiveSpeakerLabel !== expectedEffectiveSpeakerLabel
+    ) {
+      throw new TranscriptCorrectionError(
+        "The reviewed transcript changed while you were comparing it. Refresh before keeping the linked item.",
+        409,
+        "STALE_IMPACT_TRANSCRIPT",
+      );
+    }
+    const impact = buildTranscriptCorrectionImpact({
+      transcriptJobId,
+      segments: [{
+        id: segmentId,
+        acceptedCorrectionId: state.active?.id ?? null,
+        text: state.effectiveText,
+        speakerLabel: state.effectiveSpeakerLabel,
+      }],
+      artifacts: [state.projection],
+    }).get(segmentId)?.[0] ?? null;
+    if (!impact || impact.state !== "needs-review") {
+      throw new TranscriptCorrectionError(
+        impact?.state === "current"
+          ? "This linked item already carries current transcript evidence."
+          : "Quipsly cannot safely resolve this legacy item until its exact transcript snapshot is available.",
+        409,
+        impact?.state === "current" ? "IMPACT_ALREADY_CURRENT" : "IMPACT_SNAPSHOT_UNAVAILABLE",
+      );
+    }
+    return { replay: null, impact };
+  }
+
+  const initial = await loadCurrentState(input.prisma);
+  const initialCheck = assertExpectedState(initial);
+  if (initialCheck.replay) {
+    return {
+      ok: true,
+      idempotentReplay: true,
+      receipt: initialCheck.replay,
+      artifact: initial.projection,
+      boundaries: transcriptCorrectionBoundaries(),
+    };
+  }
+
+  const reviewedAt = new Date();
+  const result = await input.prisma.$transaction(async (tx: any) => {
+    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-job-packet-source:${transcriptJobId}`);
+    await acquirePrismaAdvisoryTransactionLock(tx, `transcript-impact:${artifactKind}:${artifactId}`);
+    const current = await loadCurrentState(tx);
+    const currentCheck = assertExpectedState(current);
+    if (currentCheck.replay) {
+      return { idempotentReplay: true, receipt: currentCheck.replay, artifact: current.projection };
+    }
+    const receipt = {
+      schema: TRANSCRIPT_CORRECTION_IMPACT_REVIEW_SCHEMA,
+      clientRequestId,
+      roomId,
+      transcriptJobId,
+      segmentId,
+      artifactKind,
+      artifactId,
+      acceptedCorrectionId: current.active?.id ?? null,
+      effectiveTextSnapshot: current.effectiveText,
+      effectiveSpeakerLabelSnapshot: current.effectiveSpeakerLabel,
+      reviewedByUserId: input.actor.id,
+      reviewedAt: reviewedAt.toISOString(),
+      decision: "KEEP_CONTENT",
+      boundaries: { contentChanged: false, canonicalSourceChanged: false, externalDelivery: false, publication: false },
+    };
+    if (artifactKind === "note") {
+      const latest = await tx.coachingNoteRevision.findFirst({
+        where: { noteId: artifactId },
+        orderBy: { revision: "desc" },
+        select: { revision: true },
+      });
+      await tx.coachingNoteRevision.create({
+        data: {
+          noteId: artifactId,
+          revision: (latest?.revision ?? 0) + 1,
+          operation: "transcript-correction-impact-reviewed-no-content-change",
+          actorUserId: input.actor.id,
+          snapshotJson: receipt,
+        },
+      });
+    } else if (artifactKind === "task") {
+      await tx.actionItemEvidenceReceipt.create({
+        data: {
+          id: clientRequestId,
+          actionItemId: artifactId,
+          actorUserId: input.actor.id,
+          kind: "TRANSCRIPT_CORRECTION_IMPACT_REVIEW",
+          note: "Owner reviewed corrected transcript evidence and kept task content unchanged.",
+          evidenceJson: receipt,
+          occurredAt: reviewedAt,
+        },
+      });
+    } else if (artifactKind === "goal") {
+      await tx.goalProgressReceipt.create({
+        data: {
+          id: clientRequestId,
+          goalId: artifactId,
+          actorUserId: input.actor.id,
+          kind: "TRANSCRIPT_CORRECTION_IMPACT_REVIEW",
+          progressPercent: null,
+          note: "Owner reviewed corrected transcript evidence and kept goal content unchanged.",
+          evidenceJson: receipt,
+          occurredAt: reviewedAt,
+        },
+      });
+    } else {
+      const nextRevision = Number(current.artifact.revision) + 1;
+      await tx.sessionOutput.update({ where: { id: artifactId }, data: { revision: nextRevision } });
+      await tx.sessionOutputRevision.create({
+        data: {
+          id: randomUUID(),
+          outputId: artifactId,
+          revision: nextRevision,
+          operation: "transcript-correction-impact-reviewed-no-content-change",
+          actorUserId: input.actor.id,
+          snapshotJson: receipt,
+        },
+      });
+    }
+    return { idempotentReplay: false, receipt, artifact: current.projection };
+  });
+  return { ok: true, ...result, boundaries: transcriptCorrectionBoundaries() };
 }
 
 export async function createTranscriptCorrection(input: {
