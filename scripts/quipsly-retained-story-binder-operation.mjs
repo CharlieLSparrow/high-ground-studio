@@ -214,15 +214,20 @@ try {
   });
   const storyUrl = `${appOrigin}/nests/${encodeURIComponent(project.slug)}/story?board=${encodeURIComponent(board.id)}`;
   const writingUrl = `${appOrigin}/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(productiveWriting.documentId)}&storyBoard=${encodeURIComponent(board.id)}&storySection=${encodeURIComponent(productiveCreated.section.key)}`;
-  const [storyPage, writingPage, deniedStoryPage] = await Promise.all([
+  const [storyPage, writingPage, deniedStoryPage, workspaceResponse] = await Promise.all([
     fetch(storyUrl, { headers: { cookie, "cache-control": "no-cache" } }),
     fetch(writingUrl, { headers: { cookie, "cache-control": "no-cache" } }),
     fetch(storyUrl, { redirect: "manual", headers: { "cache-control": "no-cache" } }),
+    fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, { headers: { cookie, "cache-control": "no-cache" } }),
   ]);
   const [storyHtml, writingHtml, deniedStoryHtml] = await Promise.all([storyPage.text(), writingPage.text(), deniedStoryPage.text()]);
-  const storyEvidence = [productiveTitle, productiveSynopsis, "Add an empty section or story beat", "Section details and lifecycle"];
+  const workspacePayload = await workspaceResponse.json().catch(() => ({}));
+  const storyEvidence = [productiveTitle, productiveSynopsis, "Add an empty section or story beat", "Section details and lifecycle", "Source bin", "Working", "Attention", "Browse ready", "Render ready", "Exact selects", "Group, filter, and sort"];
   const writingEvidence = ["Source-to-story writing context", productiveTitle];
   if (storyPage.status !== 200 || storyEvidence.some((value) => !storyHtml.includes(value))) throw new Error("The retained Story page did not render the complete binder controls and productive section.");
+  const sourceInventoryWindow = workspacePayload?.workspace?.sourceInventoryWindow;
+  const retainedSpatialPackage = workspacePayload?.workspace?.sourceSets?.find((sourceSet) => sourceSet?.displayName?.includes("Insta360"));
+  if (workspaceResponse.status !== 200 || !sourceInventoryWindow || !retainedSpatialPackage) throw new Error("The authenticated Source bin did not project retained inventory capacity and the Insta360 package.");
   if (writingPage.status !== 200 || writingEvidence.some((value) => !writingHtml.includes(value))) throw new Error("The retained writing page did not render its binder context.");
   if (!finalProductive || finalProductive.document?.id !== productiveWriting.documentId) throw new Error("The productive section lost its writing document in the final projection.");
   if (!archivedQa.archivedAt || !archivedQa.document || finalBoard.sections.some((section) => section.id === archivedQa.id)) throw new Error("The QA section did not archive while retaining its writing.");
@@ -256,6 +261,14 @@ try {
       absentFromActiveProjection: true,
     },
     appReadback: { storyPageStatus: storyPage.status, writingPageStatus: writingPage.status, signedOutStatus: deniedStoryPage.status, signedOutShell: deniedByShell },
+    sourceBin: {
+      sourceSetId: retainedSpatialPackage.id,
+      sourceSetName: retainedSpatialPackage.displayName,
+      completeness: retainedSpatialPackage.completeness,
+      collaborationProxyReady: Boolean(retainedSpatialPackage.sourceClockRevision?.collaborationProxy),
+      spatialStitchMasterReady: Boolean(retainedSpatialPackage.sourceClockRevision?.spatialStitchMaster),
+      inventoryWindow: sourceInventoryWindow,
+    },
   }, null, 2));
 } finally {
   if (cookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie } }).catch(() => undefined);

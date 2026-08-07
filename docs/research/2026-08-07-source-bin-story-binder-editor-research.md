@@ -175,3 +175,12 @@ The next retained-media operation should prove that Homer can:
 7. open the section's shared writing with the source card beside it; and
 8. promote the same immutable decision into an Episode timeline without
    changing the source, card, or prose.
+
+The current retained operation proves steps 1–3 and 5–8 across the application
+and database boundaries. A signed-in disposable operator opened 19 retained
+sources, switched to the 4-source Working collection and List view, saw the
+complete Insta360 package and ready collaboration proxy, retained its existing
+exact select and board use, opened the durable binder and writing context, and
+kept the signed-out shell private. Step 4 was already proved by the retained
+spatial-card operation; the next combined usability rehearsal should perform
+all eight steps consecutively as Homer rather than as separate QA operations.

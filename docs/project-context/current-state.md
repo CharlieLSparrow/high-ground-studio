@@ -2,6 +2,33 @@
 
 Date: 2026-08-07
 
+## Source bin checkpoint
+
+- Source Story now opens with a package-aware Source bin rather than three
+  disconnected media lists. It projects Working, All, and Attention
+  collections; thumbnail and list views; source-date/type/location grouping;
+  media and readiness filters; search and sorting; and exact select, chosen,
+  and board-use counts.
+- Working is derived from durable story-card and board use rather than a second
+  manually synchronized folder. Browse readiness is distinct from final-render
+  readiness, and a multi-file Insta360 take remains one item with expandable
+  package health and exact-member roles.
+- The client renders at most 60 source items before an explicit reveal and uses
+  rendering containment. The server now reports loaded and total source counts;
+  if any current 500-row database window is exceeded, the UI says exactly what
+  is retained versus loaded instead of silently dropping sources. Cursor-paged
+  server search is the next scale boundary.
+- The retained authenticated High Ground Odyssey readback projects 19 source
+  items, 4 working sources, 4 exact selects, 1 complete Insta360 package, and a
+  ready spatial browse proxy. Browser operation selected Working and List,
+  reduced the visible source cards from 19 to 4, and kept the viewer, binder,
+  and writing controls legible in the same desktop workspace. The final stitch
+  master remains honestly pending.
+- The source projection tests, 13-case PostgreSQL Source Story suite,
+  TypeScript, and full 194-page production build pass. Research and architecture
+  rationale are recorded in
+  `docs/research/2026-08-07-source-bin-story-binder-editor-research.md`.
+
 ## Source Story binder checkpoint
 
 - Source Story now has first-class durable binder controls: create an empty
