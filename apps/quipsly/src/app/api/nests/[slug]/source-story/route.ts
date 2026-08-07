@@ -31,6 +31,11 @@ import {
   requestGoogleDriveSourceMaterialization,
 } from "@/lib/server/google-drive-source-materialization";
 import {
+  GoogleDriveSourceConformError,
+  planGoogleDriveSourceUnitConform,
+  requestGoogleDriveSourceUnitConform,
+} from "@/lib/server/google-drive-source-conform";
+import {
   SourceVisualOverviewRequestError,
   requestSourceVisualOverview,
 } from "@/lib/server/source-visual-overview";
@@ -219,6 +224,12 @@ function errorResponse(error: unknown) {
       { status: error.status },
     );
   }
+  if (error instanceof GoogleDriveSourceConformError) {
+    return NextResponse.json(
+      { error: error.message, errorCode: error.code },
+      { status: error.status },
+    );
+  }
   if (error instanceof SourceVisualOverviewRequestError) {
     return NextResponse.json(
       { error: error.message, errorCode: error.code },
@@ -359,6 +370,24 @@ export async function POST(
         actorUserId: actor.userId,
         actorEmail: actor.email,
         clientRequestId: text(body.clientRequestId),
+        retryFailed: body.retryFailed === true,
+      });
+    } else if (action === "plan-google-drive-source-conform") {
+      operation = await planGoogleDriveSourceUnitConform({
+        prisma,
+        projectId: actor.projectId,
+        sourceUnitId: text(body.sourceUnitId),
+        actorUserId: actor.userId,
+      });
+    } else if (action === "prepare-google-drive-source-conform") {
+      operation = await requestGoogleDriveSourceUnitConform({
+        prisma,
+        projectId: actor.projectId,
+        sourceUnitId: text(body.sourceUnitId),
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        clientRequestId: text(body.clientRequestId),
+        expectedRemainingBytes: text(body.expectedRemainingBytes),
         retryFailed: body.retryFailed === true,
       });
     } else if (action === "request-source-visual-overview") {

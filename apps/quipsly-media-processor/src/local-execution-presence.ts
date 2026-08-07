@@ -1,10 +1,12 @@
 import { hostname } from "node:os";
+import { statfs } from "node:fs/promises";
 
 import pg from "pg";
 
 const { Pool } = pg;
 
-export const LOCAL_EXECUTION_WORKER_CAPABILITY_SCHEMA = "quipsly-execution-worker-capabilities-v1" as const;
+export const LOCAL_EXECUTION_WORKER_CAPABILITY_SCHEMA =
+  "quipsly-execution-worker-capabilities-v1" as const;
 
 export class LocalExecutionPresence {
   private lastWrittenAt = 0;
@@ -14,6 +16,8 @@ export class LocalExecutionPresence {
     private readonly input: {
       executionId: string;
       buildId: string;
+      localMediaRoot: string;
+      storageReserveBytes?: number;
       heartbeatIntervalMs?: number;
     },
   ) {}
@@ -22,6 +26,7 @@ export class LocalExecutionPresence {
     const interval = this.input.heartbeatIntervalMs ?? 10_000;
     if (!force && now.getTime() - this.lastWrittenAt < interval) return false;
     const hostName = `quipsly-media-worker:${hostname()}`.slice(0, 220);
+    const storage = await this.storageSnapshot(now);
     const capabilities = {
       schema: LOCAL_EXECUTION_WORKER_CAPABILITY_SCHEMA,
       executorKind: "local-mac",
@@ -42,6 +47,9 @@ export class LocalExecutionPresence {
         "audio-pair-correlation",
         "episode-audio-mix",
         "episode-render-proof",
+        "google-drive-source-materialization",
+        "source-visual-overview",
+        "source-audio-navigation",
       ],
       renderProfiles: [
         "episode-edit-proof-1280x720-24fps-v1",
@@ -49,6 +57,7 @@ export class LocalExecutionPresence {
       ],
       localOnly: true,
       directDatabaseLease: true,
+      storage,
     };
     await this.pool.query({
       text: `
@@ -61,7 +70,12 @@ export class LocalExecutionPresence {
           "lastHeartbeatAt"=EXCLUDED."lastHeartbeatAt",
           "updatedAt"=EXCLUDED."updatedAt"
       `,
-      values: [`execution_worker_${stableHostId(hostName)}`, hostName, "loopback", JSON.stringify(capabilities)],
+      values: [
+        `execution_worker_${stableHostId(hostName)}`,
+        hostName,
+        "loopback",
+        JSON.stringify(capabilities),
+      ],
     });
     this.lastWrittenAt = now.getTime();
     return true;
@@ -73,6 +87,36 @@ export class LocalExecutionPresence {
       text: `UPDATE "AgentNode" SET "status"='offline',"updatedAt"=timezone('UTC', now()) WHERE "hostName"=$1`,
       values: [hostName],
     });
+  }
+
+  private async storageSnapshot(now: Date) {
+    const reserveBytes = Math.max(
+      0,
+      this.input.storageReserveBytes ?? 5 * 1024 * 1024 * 1024,
+    );
+    try {
+      const details = await statfs(this.input.localMediaRoot);
+      const availableBytes = details.bavail * details.bsize;
+      return {
+        schema: "quipsly-local-media-storage-v1",
+        status: "measured",
+        availableBytes,
+        reserveBytes,
+        safeAvailableBytes: Math.max(0, availableBytes - reserveBytes),
+        measuredAt: now.toISOString(),
+        pathWithheld: true,
+      };
+    } catch {
+      return {
+        schema: "quipsly-local-media-storage-v1",
+        status: "unavailable",
+        availableBytes: null,
+        reserveBytes,
+        safeAvailableBytes: null,
+        measuredAt: now.toISOString(),
+        pathWithheld: true,
+      };
+    }
   }
 }
 

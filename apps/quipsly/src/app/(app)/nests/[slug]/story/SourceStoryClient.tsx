@@ -489,13 +489,67 @@ type ViewerSource = {
   sourceSetId?: string;
 };
 
+type GoogleDriveConformPlan = {
+  schema: "quipsly-google-drive-source-conform-plan-v1";
+  sourceUnit: {
+    id: string;
+    title: string;
+    captureKey: string | null;
+  };
+  status:
+    | "render-ready"
+    | "held"
+    | "ready-to-bind"
+    | "preparing"
+    | "needs-preparation";
+  holds: string[];
+  storage: {
+    totalBytes: string;
+    originalBytes: string;
+    cachedBytes: string;
+    remainingBytes: string;
+    executor: {
+      status: "measured" | "unavailable";
+      safeAvailableBytes: string | null;
+      availableBytes: string | null;
+      reserveBytes: string | null;
+      measuredAt: string | null;
+      localPathWithheld: true;
+    };
+  };
+  members: Array<{
+    referenceId: string;
+    sourceRevisionId: string;
+    name: string;
+    role: "browse-proxy" | "primary-original" | "secondary-original";
+    channel: string | null;
+    sizeBytes: string;
+    durationSeconds: number | null;
+    sourceState: string;
+    exactReplicaReady: boolean;
+    materializationJob: null | {
+      id: string;
+      status: string;
+      failureCode: string | null;
+      transferredBytes: number | null;
+      totalBytes: number | null;
+      updatedAt: string;
+    };
+  }>;
+  sourceSet: null | {
+    id: string;
+    identitySha256: string;
+    completeness: string;
+  };
+};
+
 type ApiPayload = {
   ok?: boolean;
   error?: string;
   errorCode?: string;
   currentRevision?: number | null;
   workspace?: SourceStoryWorkspace;
-  operation?: { document?: { id?: string } };
+  operation?: { document?: { id?: string } } | GoogleDriveConformPlan;
 };
 
 type SpatialRenderReadinessReport = {
@@ -995,6 +1049,13 @@ export function SourceStoryClient({
   const [sectionSynopsis, setSectionSynopsis] = useState("");
   const [boardView, setBoardView] = useState<"cards" | "outline">("cards");
   const [pending, setPending] = useState(false);
+  const [conformPending, setConformPending] = useState(false);
+  const [conformSourceUnitId, setConformSourceUnitId] = useState<string | null>(
+    null,
+  );
+  const [conformPlan, setConformPlan] = useState<GoogleDriveConformPlan | null>(
+    null,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -1834,6 +1895,69 @@ export function SourceStoryClient({
     );
   }
 
+  async function inspectOrPrepareDriveConform(
+    sourceUnitId: string,
+    options: {
+      prepare?: boolean;
+      expectedRemainingBytes?: string;
+      retryFailed?: boolean;
+    } = {},
+  ) {
+    setConformPending(true);
+    setError(null);
+    setMessage(null);
+    setConformSourceUnitId(sourceUnitId);
+    try {
+      const response = await fetch(
+        `/api/nests/${encodeURIComponent(project.slug)}/source-story`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: options.prepare
+              ? "prepare-google-drive-source-conform"
+              : "plan-google-drive-source-conform",
+            sourceUnitId,
+            clientRequestId: options.prepare ? crypto.randomUUID() : undefined,
+            expectedRemainingBytes: options.expectedRemainingBytes,
+            retryFailed: options.retryFailed === true,
+          }),
+        },
+      );
+      const payload = (await response.json()) as ApiPayload;
+      if (!response.ok || !payload.operation) {
+        throw new Error(
+          payload.error || "Final render preflight could not be refreshed.",
+        );
+      }
+      const plan = payload.operation as GoogleDriveConformPlan;
+      if (plan.schema !== "quipsly-google-drive-source-conform-plan-v1") {
+        throw new Error("Final render preflight returned an invalid receipt.");
+      }
+      setConformPlan(plan);
+      if (payload.workspace) {
+        setWorkspace((current) =>
+          reconcileWorkspaceInventory(current, payload.workspace!),
+        );
+      }
+      setMessage(
+        plan.status === "render-ready"
+          ? "This camera package is exact, complete, and ready for the editor."
+          : options.prepare
+            ? "Exact camera files are queued for this Mac. You can leave and return; verified progress is retained."
+            : "Final render preflight refreshed without downloading media.",
+      );
+    } catch (conformError) {
+      setError(
+        conformError instanceof Error
+          ? conformError.message
+          : "Final render preflight could not be refreshed.",
+      );
+    } finally {
+      setConformPending(false);
+    }
+  }
+
   async function requestVisualOverview(
     sourceRevisionId: string,
     label: string,
@@ -2080,7 +2204,10 @@ export function SourceStoryClient({
       setWorkspace((current) =>
         reconcileWorkspaceInventory(current, payload.workspace!),
       );
-      const documentId = payload.operation?.document?.id;
+      const documentId =
+        payload.operation && "document" in payload.operation
+          ? payload.operation.document?.id
+          : undefined;
       if (!documentId)
         throw new Error(
           "The section writing page was saved, but its document identity was not returned.",
@@ -2625,6 +2752,10 @@ export function SourceStoryClient({
                     const job = externalSource?.latestSourceRevision?.proxyJob;
                     const materializationJob =
                       externalSource?.latestSourceRevision?.materializationJob;
+                    const driveConformPlan =
+                      externalSource?.sourceUnit?.id === conformSourceUnitId
+                        ? conformPlan
+                        : null;
                     const visualRevision =
                       sourceSet?.sourceClockRevision ??
                       externalSource?.latestSourceRevision ??
@@ -2798,6 +2929,196 @@ export function SourceStoryClient({
                               Quipsly works from the LRV here. INSV originals
                               stay in Drive until final conform or export.
                             </p>
+                            {driveConformPlan ? (
+                              <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-violet-950">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="font-black uppercase tracking-wide">
+                                    Final render preflight
+                                  </p>
+                                  <span className="rounded-full bg-white px-2 py-1 font-black">
+                                    {driveConformPlan.status.replaceAll(
+                                      "-",
+                                      " ",
+                                    )}
+                                  </span>
+                                </div>
+                                <dl className="mt-2 grid grid-cols-2 gap-2">
+                                  <div className="rounded-lg bg-white p-2">
+                                    <dt className="font-bold text-violet-700">
+                                      Still to copy
+                                    </dt>
+                                    <dd className="mt-1 text-xs font-black">
+                                      {formatBytes(
+                                        driveConformPlan.storage.remainingBytes,
+                                      )}
+                                    </dd>
+                                  </div>
+                                  <div className="rounded-lg bg-white p-2">
+                                    <dt className="font-bold text-violet-700">
+                                      Exact on this Mac
+                                    </dt>
+                                    <dd className="mt-1 text-xs font-black">
+                                      {formatBytes(
+                                        driveConformPlan.storage.cachedBytes,
+                                      )}
+                                    </dd>
+                                  </div>
+                                </dl>
+                                <p className="mt-2 rounded-lg border border-violet-200 bg-white p-2 font-semibold leading-4">
+                                  {driveConformPlan.storage.executor.status ===
+                                  "measured"
+                                    ? `${formatBytes(
+                                        driveConformPlan.storage.executor
+                                          .safeAvailableBytes,
+                                      )} safely available on the active Mac after its ${formatBytes(
+                                        driveConformPlan.storage.executor
+                                          .reserveBytes,
+                                      )} reserve.`
+                                    : "No fresh Mac storage reading is available yet. The worker will still refuse any transfer that would cross its safety reserve."}
+                                </p>
+                                {driveConformPlan.holds.length ? (
+                                  <ul className="mt-2 space-y-1 rounded-lg border border-amber-200 bg-amber-50 p-2 font-semibold text-amber-950">
+                                    {driveConformPlan.holds.map((hold) => (
+                                      <li key={hold}>• {hold}</li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                                <ul className="mt-2 space-y-1">
+                                  {driveConformPlan.members.map((member) => {
+                                    const job = member.materializationJob;
+                                    const percent =
+                                      job?.transferredBytes !== null &&
+                                      job?.totalBytes
+                                        ? Math.min(
+                                            100,
+                                            Math.round(
+                                              (job.transferredBytes /
+                                                job.totalBytes) *
+                                                100,
+                                            ),
+                                          )
+                                        : null;
+                                    return (
+                                      <li
+                                        key={member.sourceRevisionId}
+                                        className="flex items-center justify-between gap-2 rounded-lg bg-white p-2"
+                                      >
+                                        <span className="min-w-0">
+                                          <span className="block truncate font-black">
+                                            {member.role.replaceAll("-", " ")}
+                                          </span>
+                                          <span className="block truncate font-mono text-[8px] text-violet-700">
+                                            {member.name} ·{" "}
+                                            {formatBytes(member.sizeBytes)}
+                                          </span>
+                                        </span>
+                                        <span className="shrink-0 font-black">
+                                          {member.exactReplicaReady
+                                            ? "Exact ✓"
+                                            : percent !== null
+                                              ? `${percent}%`
+                                              : job?.status === "failed"
+                                                ? "Needs retry"
+                                                : job
+                                                  ? job.status
+                                                  : "In Drive"}
+                                        </span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                                {driveConformPlan.status === "render-ready" &&
+                                driveConformPlan.sourceSet ? (
+                                  <button
+                                    type="button"
+                                    disabled={pending || conformPending}
+                                    onClick={() =>
+                                      chooseSourceSet(
+                                        driveConformPlan.sourceSet!.id,
+                                      )
+                                    }
+                                    className="mt-3 min-h-11 w-full rounded-xl bg-emerald-900 px-3 font-black text-white disabled:opacity-45"
+                                  >
+                                    Open render-ready package
+                                  </button>
+                                ) : driveConformPlan.status === "held" ? (
+                                  <button
+                                    type="button"
+                                    disabled={conformPending}
+                                    onClick={() =>
+                                      void inspectOrPrepareDriveConform(
+                                        externalSource.sourceUnit!.id,
+                                      )
+                                    }
+                                    className="mt-3 min-h-11 w-full rounded-xl border border-violet-300 bg-white px-3 font-black disabled:opacity-45"
+                                  >
+                                    Refresh preflight
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      pending || conformPending || !canWrite
+                                    }
+                                    onClick={() =>
+                                      void inspectOrPrepareDriveConform(
+                                        externalSource.sourceUnit!.id,
+                                        {
+                                          prepare: true,
+                                          expectedRemainingBytes:
+                                            driveConformPlan.storage
+                                              .remainingBytes,
+                                          retryFailed: true,
+                                        },
+                                      )
+                                    }
+                                    className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-violet-950 px-3 font-black text-white disabled:opacity-45"
+                                  >
+                                    {conformPending ? (
+                                      <Loader2
+                                        size={14}
+                                        className="animate-spin"
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <FolderOpen
+                                        size={14}
+                                        aria-hidden="true"
+                                      />
+                                    )}
+                                    {driveConformPlan.storage.remainingBytes ===
+                                    "0"
+                                      ? "Finalize exact camera package"
+                                      : `Prepare ${formatBytes(
+                                          driveConformPlan.storage
+                                            .remainingBytes,
+                                        )} on this Mac`}
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={conformPending || !canWrite}
+                                onClick={() =>
+                                  void inspectOrPrepareDriveConform(
+                                    externalSource.sourceUnit!.id,
+                                  )
+                                }
+                                className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 font-black text-violet-950 disabled:opacity-45"
+                              >
+                                {conformPending ? (
+                                  <Loader2
+                                    size={14}
+                                    className="animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <FolderOpen size={14} aria-hidden="true" />
+                                )}
+                                Check final render storage
+                              </button>
+                            )}
                           </details>
                         ) : null}
                         {sourceSet?.sourceClockRevision.collaborationProxy ? (

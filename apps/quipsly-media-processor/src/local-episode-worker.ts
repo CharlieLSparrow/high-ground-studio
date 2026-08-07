@@ -695,6 +695,9 @@ async function main() {
   const presence = new LocalExecutionPresence(pool, {
     executionId,
     buildId: options.buildId,
+    localMediaRoot,
+    storageReserveBytes:
+      Number(process.env.QUIPSLY_DRIVE_CACHE_MIN_FREE_BYTES) || undefined,
   });
   const externalSourceProxy = newLocalExternalSourceProxyRuntime({
     pool,
@@ -703,14 +706,13 @@ async function main() {
     leaseMs: options.leaseMs,
     buildId: options.buildId,
   });
-  const googleDriveMaterialization =
-    newLocalGoogleDriveMaterializationRuntime({
-      pool,
-      executionId,
-      localMediaRoot,
-      leaseMs: options.leaseMs,
-      buildId: options.buildId,
-    });
+  const googleDriveMaterialization = newLocalGoogleDriveMaterializationRuntime({
+    pool,
+    executionId,
+    localMediaRoot,
+    leaseMs: options.leaseMs,
+    buildId: options.buildId,
+  });
   const sourceVisualOverview = newLocalSourceVisualOverviewRuntime({
     pool,
     executionId,
