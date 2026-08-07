@@ -25,6 +25,87 @@ import {
 import { createHgoEpisodeDraftShellAction, type HgoSourceKey } from "../nests/[slug]/actions";
 import DocumentSafetyPanel from "./DocumentSafetyPanel";
 import DocumentTagEditor from "./DocumentTagEditor";
+import { Clapperboard, Clock3, Play } from "lucide-react";
+
+export type StoryWritingContext = {
+  boardId: string;
+  boardTitle: string;
+  sectionId: string;
+  sectionKey: string;
+  sectionTitle: string;
+  sectionSynopsis: string;
+  boardHref: string;
+  totalCardCount: number;
+  cards: Array<{
+    id: string;
+    placementId: string;
+    title: string;
+    synopsis: string;
+    notes: string;
+    purpose: string;
+    status: string;
+    laneKey: string;
+    sortOrder: number;
+    startSeconds: number | null;
+    endSeconds: number | null;
+    tags: Array<{ id: string; label: string; slug: string }>;
+    sourceHref: string;
+  }>;
+};
+
+function storyClock(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "--:--";
+  const seconds = Math.max(0, value);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const body = `${String(minutes).padStart(2, "0")}:${(seconds % 60).toFixed(2).padStart(5, "0")}`;
+  return hours ? `${hours}:${body}` : body;
+}
+
+function storyLabel(value: string) {
+  return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function StoryWritingContextPanel({ context }: { context: StoryWritingContext }) {
+  const duration = context.cards.reduce((total, card) => total + Math.max(0, (card.endSeconds ?? 0) - (card.startSeconds ?? 0)), 0);
+  return (
+    <details open className="mb-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4 shadow-sm">
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-800">Source-to-story writing context</p>
+            <h2 className="mt-1 font-serif text-xl font-black text-violet-950">{context.sectionTitle}</h2>
+            <p className="mt-1 text-xs font-semibold text-violet-900/75">{context.boardTitle} · {context.totalCardCount} source card{context.totalCardCount === 1 ? "" : "s"} · {storyClock(duration)}</p>
+          </div>
+          <span className="rounded-full border border-violet-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-violet-800">Show / hide source cards</span>
+        </div>
+      </summary>
+      <div className="mt-3 flex justify-end"><Link href={context.boardHref} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-violet-950"><Clapperboard size={15} aria-hidden="true" /> Open full source board</Link></div>
+      {context.sectionSynopsis ? <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-violet-950/80">{context.sectionSynopsis}</p> : null}
+      <p className="mt-3 text-xs font-semibold leading-5 text-violet-950/70">These cards remain source-backed planning evidence. Writing here never changes their in/out points, notes, tags, or use on another board.</p>
+      <div className="mt-3 flex snap-x gap-3 overflow-x-auto pb-2">
+        {context.cards.map((card, index) => (
+          <article key={card.placementId} className="min-w-[17rem] max-w-sm snap-start rounded-2xl border border-violet-200 bg-white p-4">
+            <p className="text-[10px] font-black uppercase tracking-wide text-violet-700">{index + 1} · {storyLabel(card.laneKey)} · {storyLabel(card.purpose)}</p>
+            <h3 className="mt-1 font-serif text-lg font-black leading-snug text-[#342618]">{card.title}</h3>
+            {card.synopsis ? <p className="mt-2 line-clamp-3 text-xs font-semibold leading-5 text-[#6b5b45]">{card.synopsis}</p> : null}
+            {card.notes ? <p className="mt-2 line-clamp-2 rounded-lg bg-[#fffaf0] px-2 py-1.5 text-[11px] leading-4 text-[#765f40]">Note: {card.notes}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-900"><Clock3 size={12} aria-hidden="true" />{storyClock(card.startSeconds)}–{storyClock(card.endSeconds)}</span>
+              <span className="rounded-full border border-[#ded0b7] bg-[#fffaf0] px-2 py-1 text-[10px] font-black text-[#765f40]">{storyLabel(card.status)}</span>
+              {card.tags.map((tag) => <span key={tag.id} className="rounded-full border border-violet-200 px-2 py-1 text-[10px] font-bold text-violet-900">#{tag.label}</span>)}
+            </div>
+            <Link href={card.sourceHref} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-violet-950 px-3 text-[10px] font-black uppercase tracking-wide text-white">
+              <Play size={14} aria-hidden="true" /> Open source select
+            </Link>
+          </article>
+        ))}
+        {!context.cards.length ? <div className="w-full rounded-xl border border-dashed border-violet-300 bg-white p-5 text-center text-xs font-semibold text-violet-900">This durable section is ready for writing before its first source card is filed.</div> : null}
+      </div>
+      {context.totalCardCount > context.cards.length ? <p className="mt-2 text-xs font-semibold text-violet-900">Showing the first {context.cards.length} cards here for a responsive writing surface. Open the full source board to browse all {context.totalCardCount}.</p> : null}
+    </details>
+  );
+}
 
 export const DEFAULT_VIEW: ViewDefinition = {
   id: "default",
@@ -202,6 +283,7 @@ export default function Workspace({
   availableProjects = [],
   isDefaultFallback = false,
   initialFocusBlockId,
+  storyWritingContext = null,
 }: {
   initialBlocks: Block[],
   initialViews: ViewDefinition[],
@@ -223,6 +305,7 @@ export default function Workspace({
   availableProjects?: { slug: string; name: string; nestKind?: string }[],
   isDefaultFallback?: boolean,
   initialFocusBlockId?: string,
+  storyWritingContext?: StoryWritingContext | null,
 }) {
   const [activeView, setActiveView] = useState<ViewDefinition>(DEFAULT_VIEW);
   const [documentBlocks, setDocumentBlocks] = useState(initialBlocks);
@@ -657,6 +740,7 @@ export default function Workspace({
               projectSlug={activeProjectSlug}
               saveState={saveState}
             />
+            {storyWritingContext ? <StoryWritingContextPanel context={storyWritingContext} /> : null}
             {activeHgoSourceKey ? (
               <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

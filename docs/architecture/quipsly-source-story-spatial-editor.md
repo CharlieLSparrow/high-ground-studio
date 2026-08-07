@@ -76,6 +76,8 @@ The ownership boundary is deliberate:
 
 The web surface links directly from both Cards and Outline views into the canonical writing page. It does not copy card synopsis/notes into prose or create a second editor state. Source cards remain visible evidence and planning material alongside the document rather than being destructively converted into paragraphs.
 
+The writing URL carries the board and section identities as view context, not authority. The server rechecks that the requested section belongs to the same Nest and is linked to the exact open document before projecting any cards. The Writing Desk then shows a collapsible source rail with lane, purpose, notes, tags, exact source clock, and links back to the protected source view. It caps the inline rail at 100 cards for predictable rendering and routes larger browsing back to the full board.
+
 ## Reviewed master operation
 
 The current macOS path uses the installed Insta360 Studio application as an explicit reviewed handoff because Insta360's documented Desktop MediaSDK runner does not currently provide a supported macOS automation surface.

@@ -12,6 +12,7 @@ import { isUserManagementAdminEmail } from "@/lib/server/user-management";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { resolveInitialFocusBlockId } from "./block-focus";
+import type { StoryWritingContext } from "./Workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ function notebookSectionLabelFromSource(sourceLabel?: string | null, title?: str
 export default async function CreatePage({
   searchParams
 }: {
-  searchParams: Promise<{ project?: string; document?: string; block?: string; scope?: string | string[] }>
+  searchParams: Promise<{ project?: string; document?: string; block?: string; scope?: string | string[]; storyBoard?: string; storySection?: string }>
 }) {
   const params = await searchParams;
   const isDefaultFallback = typeof params?.project !== "string";
@@ -181,6 +182,106 @@ export default async function CreatePage({
     state.documentTitle,
   );
   const initialFocusBlockId = resolveInitialFocusBlockId(state.blocks, params?.block);
+  let storyWritingContext: StoryWritingContext | null = null;
+  const requestedStoryBoardId = typeof params.storyBoard === "string" ? params.storyBoard : "";
+  const requestedStorySectionKey = typeof params.storySection === "string" ? params.storySection : "";
+  if (requestedStoryBoardId && requestedStorySectionKey && state.documentId) {
+    const prisma = getPrismaClient();
+    const section = await prisma.studioStoryBoardSection.findFirst({
+      where: {
+        boardId: requestedStoryBoardId,
+        key: requestedStorySectionKey,
+        documentId: state.documentId,
+        archivedAt: null,
+        board: { projectId: state.projectId, archivedAt: null },
+      },
+      select: {
+        id: true,
+        key: true,
+        title: true,
+        synopsis: true,
+        board: {
+          select: {
+            id: true,
+            title: true,
+            _count: { select: { placements: { where: { groupKey: requestedStorySectionKey } } } },
+            placements: {
+              where: { groupKey: requestedStorySectionKey },
+              orderBy: { sortOrder: "asc" },
+              take: 100,
+              select: {
+                id: true,
+                laneKey: true,
+                sortOrder: true,
+                card: {
+                  select: {
+                    id: true,
+                    title: true,
+                    synopsis: true,
+                    notes: true,
+                    purpose: true,
+                    status: true,
+                    tags: { select: { tag: { select: { id: true, label: true, slug: true, isActive: true } } } },
+                    sourceRange: {
+                      select: {
+                        startSeconds: true,
+                        endSeconds: true,
+                        sourceSet: { select: { id: true } },
+                        sourceRevision: {
+                          select: {
+                            mediaAsset: { select: { id: true } },
+                            externalReference: { select: { id: true } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (section) {
+      const boardHref = `/nests/${encodeURIComponent(projectSlug)}/story?board=${encodeURIComponent(section.board.id)}`;
+      storyWritingContext = {
+        boardId: section.board.id,
+        boardTitle: section.board.title,
+        sectionId: section.id,
+        sectionKey: section.key,
+        sectionTitle: section.title,
+        sectionSynopsis: section.synopsis,
+        boardHref,
+        totalCardCount: section.board._count.placements,
+        cards: section.board.placements.map((placement) => {
+          const range = placement.card.sourceRange;
+          const sourceQuery = range?.sourceSet?.id
+            ? `set=${encodeURIComponent(range.sourceSet.id)}`
+            : range?.sourceRevision.mediaAsset?.id
+              ? `asset=${encodeURIComponent(range.sourceRevision.mediaAsset.id)}`
+              : range?.sourceRevision.externalReference?.id
+                ? `external=${encodeURIComponent(range.sourceRevision.externalReference.id)}`
+                : "";
+          return {
+            id: placement.card.id,
+            placementId: placement.id,
+            title: placement.card.title,
+            synopsis: placement.card.synopsis.slice(0, 2_000),
+            notes: placement.card.notes.slice(0, 1_200),
+            purpose: placement.card.purpose,
+            status: placement.card.status,
+            laneKey: placement.laneKey,
+            sortOrder: placement.sortOrder,
+            startSeconds: range?.startSeconds ?? null,
+            endSeconds: range?.endSeconds ?? null,
+            tags: placement.card.tags.filter((link) => link.tag.isActive).map((link) => ({ id: link.tag.id, label: link.tag.label, slug: link.tag.slug })),
+            sourceHref: sourceQuery ? `${boardHref}&${sourceQuery}` : boardHref,
+          };
+        }),
+      };
+    }
+  }
 
   return <Workspace
     initialBlocks={state.blocks}
@@ -203,5 +304,6 @@ export default async function CreatePage({
     linkedProjects={state.linkedProjects}
     isDefaultFallback={isDefaultFallback}
     initialFocusBlockId={initialFocusBlockId}
+    storyWritingContext={storyWritingContext}
   />;
 }

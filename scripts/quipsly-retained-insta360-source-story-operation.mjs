@@ -225,7 +225,7 @@ async function verifyArrangementMutationThroughApp({ prisma, project, createdBy,
   }
 }
 
-async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, boardSection, boardLane, derivative, derivativeStat, episode, placementId }) {
+async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sourceSetId, boardId, boardSection, boardLane, writingDocumentId, derivative, derivativeStat, episode, placementId }) {
   const appOrigin = "http://127.0.0.1:3012";
   const authOrigin = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099"}`;
   const authUrl = new URL(authOrigin);
@@ -283,8 +283,10 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
     if (session.status !== 200 || sessionBody.success !== true || !cookie) throw new Error("The disposable Source Story reader could not establish a first-party session.");
     const derivativeUrl = `${appOrigin}/api/media/derivatives/${encodeURIComponent(derivative.id)}`;
     const storyUrl = `${appOrigin}/nests/${encodeURIComponent(project.slug)}/story?set=${encodeURIComponent(sourceSetId)}&board=${encodeURIComponent(boardId)}`;
-    const [page, sourceStoryReadback, editorPage, episodeReadback, range, rangeTail, invalidRange, denied, head] = await Promise.all([
+    const writingUrl = `${appOrigin}/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(writingDocumentId)}&storyBoard=${encodeURIComponent(boardId)}&storySection=${encodeURIComponent(boardSection)}`;
+    const [page, writingPage, sourceStoryReadback, editorPage, episodeReadback, range, rangeTail, invalidRange, denied, head] = await Promise.all([
       fetch(storyUrl, { redirect: "manual", headers: { cookie, "cache-control": "no-cache" } }),
+      fetch(writingUrl, { redirect: "manual", headers: { cookie, "cache-control": "no-cache" } }),
       fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, { headers: { cookie, "cache-control": "no-cache" } }),
       fetch(`${appOrigin}/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episode.slug)}`, { redirect: "manual", headers: { cookie, "cache-control": "no-cache" } }),
       fetch(`${appOrigin}/api/episode-production`, { method: "POST", headers: { cookie, "content-type": "application/json", "cache-control": "no-cache" }, body: JSON.stringify({ action: "ensure", projectSlug: project.slug, episodeSlug: episode.slug }) }),
@@ -295,6 +297,7 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       fetch(derivativeUrl, { method: "HEAD", headers: { cookie, "cache-control": "no-cache" } }),
     ]);
     const html = await page.text();
+    const writingHtml = await writingPage.text();
     const sourceStoryBody = await sourceStoryReadback.json().catch(() => ({}));
     const editorHtml = await editorPage.text();
     const episodeBody = await episodeReadback.json().catch(() => ({}));
@@ -317,6 +320,11 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
           ? "not-found"
           : "unknown-shell";
       throw new Error(`The retained Insta360 Source-to-Story page failed canonical render readback (HTTP ${page.status}; redirect ${page.headers.get("location") || "none"}; page ${pageKind}; ${html.length} bytes; missing ${missingPageEvidence.join(", ") || "no named evidence"}).`);
+    }
+    const missingWritingEvidence = ["Source-to-story writing context", "Episode Open", "Micro take · spatial composition proof", "Open source select"]
+      .filter((evidence) => !writingHtml.includes(evidence));
+    if (writingPage.status !== 200 || missingWritingEvidence.length > 0) {
+      throw new Error(`The retained section Writing Desk failed source-context readback (HTTP ${writingPage.status}; missing ${missingWritingEvidence.join(", ") || "no named evidence"}).`);
     }
     if (editorPage.status !== 200 || editorHtml.includes("Welcome back") || editorHtml.includes("Sign in to Quipsly")) {
       throw new Error(`The retained Source-to-Story editor shell failed authenticated readback (HTTP ${editorPage.status}; ${editorHtml.length} bytes).`);
@@ -379,6 +387,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       sourceCardVisible: true,
       timelinePlacementVisible: true,
       sourceStoryApiStatus: sourceStoryReadback.status,
+      writingPageStatus: writingPage.status,
+      writingContextVisible: true,
       spatialRenderStatus: sourceStoryBody.spatialRenderReadiness.readiness.status,
       automaticReframeReady: sourceStoryBody.spatialRenderReadiness.readiness.automaticReframeReady,
       editorPageStatus: editorPage.status,
@@ -652,6 +662,7 @@ try {
     boardArrangementReplayed: arrangementReplayed,
     boardSection: arrangedPlacement.groupKey,
     boardLane: arrangedPlacement.laneKey,
+    writingDocumentId: arrangementRouteReadback.writingDocumentId,
     derivative,
     derivativeStat,
     episode,
