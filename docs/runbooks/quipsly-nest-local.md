@@ -265,7 +265,9 @@ pnpm quipsly:retained:episode5-source-follow-through
 The operation refuses non-loopback Nest, Auth, or database targets. It creates
 a disposable Firebase/Quipsly Editor, posts through the visible card thread,
 creates Work through the visible form, opens the focused task, verifies its
-exact-source return link and database evidence, and then proves cleanup. It
+exact-source return link and database evidence, then creates a separate
+signed-in account and requires 404 source/thread responses plus a non-leaking
+Work unavailable state before proving cleanup. It
 does not replace a human Homer usability rehearsal or authorize any external
 message, calendar, render, upload, or publication.
 

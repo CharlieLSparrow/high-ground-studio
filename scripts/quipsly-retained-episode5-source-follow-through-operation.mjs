@@ -40,6 +40,10 @@ let taskId = null;
 let messageId = null;
 let threadId = null;
 let removeThread = false;
+let outsiderUserId = null;
+let outsiderFirebaseApp = null;
+let outsiderFirebaseUid = null;
+let outsiderSessionCookie = null;
 
 try {
   const [project, card] = await Promise.all([
@@ -161,6 +165,53 @@ try {
     || !messageId
   ) throw new Error("The browser journey did not retain its exact collaboration and Work evidence.");
 
+  const outsiderEmail = `episode5-outsider-${suffix}@quipsly.test`;
+  const outsiderPassword = `Local-only-${randomUUID()}!`;
+  const outsider = await prisma.user.create({ data: { primaryEmail: outsiderEmail, name: "Episode 5 privacy outsider" }, select: { id: true } });
+  outsiderUserId = outsider.id;
+  outsiderFirebaseApp = initializeApp({ projectId: "quipsly-reef" }, `episode5-outsider-${suffix}`);
+  const outsiderFirebaseUser = await getAuth(outsiderFirebaseApp).createUser({
+    uid: `episode5-outsider-${suffix}`,
+    email: outsiderEmail,
+    emailVerified: true,
+    password: outsiderPassword,
+    displayName: "Episode 5 privacy outsider",
+  });
+  outsiderFirebaseUid = outsiderFirebaseUser.uid;
+  const outsiderSignIn = await fetch(`${authOrigin}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-dogfood`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: outsiderEmail, password: outsiderPassword, returnSecureToken: true }),
+  });
+  const outsiderSignInBody = await outsiderSignIn.json().catch(() => ({}));
+  if (outsiderSignIn.status !== 200 || !outsiderSignInBody.idToken) throw new Error("The privacy outsider could not sign in.");
+  const outsiderSession = await fetch(`${appOrigin}/api/auth/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken: outsiderSignInBody.idToken }),
+  });
+  const outsiderSessionBody = await outsiderSession.json().catch(() => ({}));
+  const outsiderSetCookie = outsiderSession.headers.getSetCookie().find((value) => value.startsWith("session=") && !value.startsWith("session=;"));
+  outsiderSessionCookie = outsiderSetCookie?.split(";")[0] ?? null;
+  if (outsiderSession.status !== 200 || outsiderSessionBody.success !== true || !outsiderSessionCookie) {
+    throw new Error("The privacy outsider could not establish a first-party session.");
+  }
+  const [sourceStoryDenied, discussionDenied] = await Promise.all([
+    fetch(`${appOrigin}/api/nests/${encodeURIComponent(project.slug)}/source-story`, { headers: { cookie: outsiderSessionCookie, "cache-control": "no-cache" } }),
+    fetch(`${appOrigin}/api/nest-chat?projectSlug=${encodeURIComponent(project.slug)}&threadKey=${encodeURIComponent(threadKey)}`, { headers: { cookie: outsiderSessionCookie, "cache-control": "no-cache" } }),
+  ]);
+  const [outsiderCookieName, ...outsiderCookieValueParts] = outsiderSessionCookie.split("=");
+  const outsiderContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: "light" });
+  await outsiderContext.addCookies([{ name: outsiderCookieName, value: outsiderCookieValueParts.join("="), url: appOrigin, httpOnly: true, sameSite: "Lax" }]);
+  const outsiderPage = await outsiderContext.newPage();
+  await outsiderPage.goto(`${appOrigin}/work?task=${encodeURIComponent(taskId)}`, { waitUntil: "networkidle" });
+  await outsiderPage.getByRole("alert", { name: "Task unavailable" }).waitFor();
+  const outsiderTaskTitleCount = await outsiderPage.getByText(taskTitle, { exact: true }).count();
+  await outsiderContext.close();
+  if (sourceStoryDenied.status !== 404 || discussionDenied.status !== 404 || outsiderTaskTitleCount !== 0) {
+    throw new Error(`The separate-account privacy boundary failed (source ${sourceStoryDenied.status}; discussion ${discussionDenied.status}; leaked task titles ${outsiderTaskTitleCount}).`);
+  }
+
   console.log(JSON.stringify({
     schema: "quipsly-retained-episode5-source-follow-through-v1",
     projectSlug: project.slug,
@@ -175,6 +226,12 @@ try {
     inheritedTagCount: task.tagLinks.length,
     workDeepLinkFocused: true,
     exactSourceReturnHref: returnHref,
+    separateAccountPrivacy: {
+      sourceStoryStatus: sourceStoryDenied.status,
+      discussionStatus: discussionDenied.status,
+      taskUnavailableVisible: true,
+      taskTitleLeaked: false,
+    },
     externalSideEffects: false,
     disposableArtifactsRemovedAfterProof: true,
   }, null, 2));
@@ -184,9 +241,13 @@ try {
   if (messageId) await prisma.studioNestChatMessage.deleteMany({ where: { id: messageId } });
   if (removeThread && threadId) await prisma.studioNestChatThread.deleteMany({ where: { id: threadId } });
   if (sessionCookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie: sessionCookie } }).catch(() => undefined);
+  if (outsiderSessionCookie) await fetch(`${appOrigin}/api/auth/session`, { method: "DELETE", headers: { cookie: outsiderSessionCookie } }).catch(() => undefined);
   if (firebaseApp && firebaseUid) await getAuth(firebaseApp).deleteUser(firebaseUid).catch(() => undefined);
+  if (outsiderFirebaseApp && outsiderFirebaseUid) await getAuth(outsiderFirebaseApp).deleteUser(outsiderFirebaseUid).catch(() => undefined);
   if (firebaseApp) await deleteApp(firebaseApp).catch(() => undefined);
+  if (outsiderFirebaseApp) await deleteApp(outsiderFirebaseApp).catch(() => undefined);
   if (grantId) await prisma.studioProjectAccessGrant.deleteMany({ where: { id: grantId } });
   if (userId) await prisma.user.deleteMany({ where: { id: userId } });
+  if (outsiderUserId) await prisma.user.deleteMany({ where: { id: outsiderUserId } });
   await prisma.$disconnect();
 }

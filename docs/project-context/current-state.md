@@ -2971,3 +2971,10 @@ rehearsal`) in an iPhone 17 Pro simulator. The signed-in UI acceptance opened
   verified the return URL retained source set, board, and card identity. Final
   database readback found zero disposable users, QA tasks, QA messages, and QA
   threads; the operation declares and proves zero external side effects.
+- That same retained journey now creates a second signed-in account with no
+  Nest grant while the private message and task still exist. Source Story and
+  the card thread each return HTTP 404, Work renders its explicit **Task
+  unavailable** state, and the private task title appears zero times. Both
+  Firebase/Quipsly identities are removed after proof. This is a real
+  separate-account boundary for this vertical slice, not yet a claim that
+  every Quipsly surface has completed its privacy audit.
