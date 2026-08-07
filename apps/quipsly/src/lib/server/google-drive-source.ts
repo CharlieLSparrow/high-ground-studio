@@ -42,6 +42,7 @@ type GoogleDriveFileList = {
 
 const GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const MAX_FOLDER_ITEMS = 5_000;
+const MAX_PICKER_FILES = 200;
 
 export class GoogleDriveSourceError extends Error {
   constructor(
@@ -187,6 +188,35 @@ function folderItem(file: GoogleDriveFile): GoogleDriveFolderMediaItem {
   };
 }
 
+function selectedFolderItem(
+  file: VerifiedExternalMediaFile,
+): GoogleDriveFolderMediaItem {
+  return {
+    id: file.externalFileId,
+    name: file.fileName,
+    mimeType: file.mimeType ?? null,
+    sizeBytes:
+      file.sizeBytes === null || file.sizeBytes === undefined
+        ? null
+        : String(file.sizeBytes),
+    headRevisionId: file.headRevisionKey ?? null,
+    md5Checksum: file.checksumMd5 ?? null,
+    resourceKey: file.resourceKey ?? null,
+    createdTime:
+      file.providerCreatedAt instanceof Date
+        ? file.providerCreatedAt.toISOString()
+        : (file.providerCreatedAt ?? null),
+    modifiedTime:
+      file.providerModifiedAt instanceof Date
+        ? file.providerModifiedAt.toISOString()
+        : (file.providerModifiedAt ?? null),
+    driveId: file.sharedDriveId ?? null,
+    canDownload: file.canDownload,
+    canCopy: file.canCopy,
+    canReadRevisions: file.canReadRevisions,
+  };
+}
+
 function stableUuid(value: string) {
   const hex = createHash("sha256")
     .update(value)
@@ -317,13 +347,12 @@ async function listGoogleDriveFolderChildren(input: {
   return files;
 }
 
-export async function verifyGoogleDriveFile(input: {
+async function readGoogleDriveFileMetadata(input: {
   accessToken: string;
-  connectionId: string;
   externalFileId: string;
   selectedResourceKey?: string | null;
   fetchImpl?: typeof fetch;
-}): Promise<VerifiedExternalMediaFile> {
+}) {
   const selectedFileId = fileId(
     input.externalFileId,
     "The selected Drive file",
@@ -349,11 +378,26 @@ export async function verifyGoogleDriveFile(input: {
   const file = (await response
     .json()
     .catch(() => null)) as GoogleDriveFile | null;
-  return verifiedFile({
+  return {
     file: file ?? {},
-    expectedId: selectedFileId,
-    connectionId: input.connectionId,
+    selectedFileId,
     selectedResourceKey,
+  };
+}
+
+export async function verifyGoogleDriveFile(input: {
+  accessToken: string;
+  connectionId: string;
+  externalFileId: string;
+  selectedResourceKey?: string | null;
+  fetchImpl?: typeof fetch;
+}): Promise<VerifiedExternalMediaFile> {
+  const metadata = await readGoogleDriveFileMetadata(input);
+  return verifiedFile({
+    file: metadata.file,
+    expectedId: metadata.selectedFileId,
+    connectionId: input.connectionId,
+    selectedResourceKey: metadata.selectedResourceKey,
   });
 }
 
@@ -486,6 +530,112 @@ export async function readGoogleDriveMediaFolder(input: {
   };
 }
 
+export async function readGoogleDriveMediaSelection(input: {
+  accessToken: string;
+  connectionId: string;
+  selections: Array<{
+    externalFileId: string;
+    resourceKey?: string | null;
+  }>;
+  fetchImpl?: typeof fetch;
+}) {
+  if (!input.selections.length) {
+    throw new GoogleDriveSourceError(
+      "Choose at least one Insta360 INSV or LRV file.",
+      "drive-selection-empty",
+      400,
+    );
+  }
+  if (input.selections.length > MAX_PICKER_FILES) {
+    throw new GoogleDriveSourceError(
+      `Choose no more than ${MAX_PICKER_FILES} files at once. Attach another batch after this one finishes.`,
+      "drive-selection-too-large",
+      409,
+    );
+  }
+  const uniqueSelections = new Map<
+    string,
+    { externalFileId: string; resourceKey: string | null }
+  >();
+  for (const selection of input.selections) {
+    const externalFileId = fileId(
+      selection.externalFileId,
+      "A selected Drive file",
+    );
+    const selectedResourceKey = resourceKey(selection.resourceKey);
+    const current = uniqueSelections.get(externalFileId);
+    if (
+      current &&
+      current.resourceKey &&
+      selectedResourceKey &&
+      current.resourceKey !== selectedResourceKey
+    ) {
+      throw new GoogleDriveSourceError(
+        "Google Picker returned conflicting identities for one selected file.",
+        "drive-selection-conflict",
+        400,
+      );
+    }
+    uniqueSelections.set(externalFileId, {
+      externalFileId,
+      resourceKey: current?.resourceKey ?? selectedResourceKey,
+    });
+  }
+
+  const selectedFiles = new Map<string, GoogleDriveFolderMediaItem[]>();
+  const selections = [...uniqueSelections.values()];
+  for (let index = 0; index < selections.length; index += 8) {
+    const window = selections.slice(index, index + 8);
+    const verified = await Promise.all(
+      window.map((selection) =>
+        readGoogleDriveFileMetadata({
+          accessToken: input.accessToken,
+          externalFileId: selection.externalFileId,
+          selectedResourceKey: selection.resourceKey,
+          fetchImpl: input.fetchImpl,
+        }),
+      ),
+    );
+    for (const metadata of verified) {
+      const exact = verifiedFile({
+        file: metadata.file,
+        expectedId: metadata.selectedFileId,
+        connectionId: input.connectionId,
+        selectedResourceKey: metadata.selectedResourceKey,
+      });
+      const parentKey =
+        metadata.file.parents?.filter(Boolean).sort()[0] ??
+        `picker:unparented:${input.connectionId}`;
+      const group = selectedFiles.get(parentKey) ?? [];
+      group.push(selectedFolderItem(exact));
+      selectedFiles.set(parentKey, group);
+    }
+  }
+
+  const batches = [...selectedFiles.entries()].map(([parentId, files], index) =>
+    planGoogleDriveMediaFolder({
+      folderId: parentId,
+      folderName:
+        selectedFiles.size === 1
+          ? "Selected Insta360 files"
+          : `Selected Insta360 files ${index + 1}`,
+      files,
+    }),
+  );
+  if (!batches.some((batch) => batch.segments.length)) {
+    throw new GoogleDriveSourceError(
+      "None of those files match an Insta360 INSV or LRV camera segment. Choose the original and low-resolution companion files together.",
+      "drive-selection-no-insta360-media",
+      409,
+    );
+  }
+  return planGoogleDriveMediaLibrary({
+    rootFolderId: `picker:${input.connectionId}`,
+    rootFolderName: "Google Picker selection",
+    batches,
+  });
+}
+
 export async function inspectGoogleDriveFolderForNest(input: {
   prisma: PrismaClient;
   actorUserId: string;
@@ -536,21 +686,45 @@ export async function attachGoogleDriveFolderToNest(input: {
     folderId: input.folderId,
     selectedResourceKey: input.resourceKey,
   });
+  return attachGoogleDriveMediaPlanToNest({
+    ...input,
+    connectionId: access.connection.id,
+    plan: folder.plan,
+    sourceIdentity: (batch) => batch.folder.id,
+    sourceUrl: (batch) =>
+      `https://drive.google.com/drive/folders/${encodeURIComponent(batch.folder.id)}`,
+  });
+}
+
+async function attachGoogleDriveMediaPlanToNest(input: {
+  prisma: PrismaClient;
+  projectId: string;
+  actorUserId: string;
+  actorEmail: string;
+  connectionId: string;
+  clientRequestId: string;
+  plan: GoogleDriveMediaLibraryPlan;
+  sourceIdentity(batch: GoogleDriveMediaLibraryPlan["batches"][number]): string;
+  sourceUrl(
+    batch: GoogleDriveMediaLibraryPlan["batches"][number],
+    segment: GoogleDriveMediaLibraryPlan["batches"][number]["segments"][number],
+  ): string;
+}) {
   const attached: Array<{
     referenceId: string;
     sourceRevisionId: string;
     sourceUnitId: string;
     replayed: boolean;
   }> = [];
-  for (const batch of folder.plan.batches) {
+  for (const batch of input.plan.batches) {
     for (const segment of batch.segments.filter(
       (candidate) => candidate.members.length > 0,
     )) {
-      const slug = sourceUnitSlug(batch.folder.id, segment.key);
+      const slug = sourceUnitSlug(input.sourceIdentity(batch), segment.key);
       const metadata = {
         schema: "quipsly-google-drive-insta360-segment-v1",
         provider: "google-drive",
-        libraryRootName: folder.plan.root.name,
+        libraryRootName: input.plan.root.name,
         folderName: batch.folder.name,
         captureBatchKey: batch.folder.captureBatchKey,
         captureKey: segment.captureKey,
@@ -578,7 +752,7 @@ export async function attachGoogleDriveFolderToNest(input: {
           slug,
           kind: "insta360-drive-segment",
           title: segment.displayName,
-          sourceUrl: `https://drive.google.com/drive/folders/${encodeURIComponent(batch.folder.id)}`,
+          sourceUrl: input.sourceUrl(batch, segment),
           capturedAt: new Date(segment.capturedAt),
           metadataJson: metadata,
           createdByEmail: input.actorEmail,
@@ -592,7 +766,7 @@ export async function attachGoogleDriveFolderToNest(input: {
             actorUserId: input.actorUserId,
             actorEmail: input.actorEmail,
             sourceUnitId: sourceUnit.id,
-            connectionId: access.connection.id,
+            connectionId: input.connectionId,
             clientRequestId: stableUuid(
               `${input.clientRequestId}:${member.id}`,
             ),
@@ -617,7 +791,7 @@ export async function attachGoogleDriveFolderToNest(input: {
                   },
                 },
                 expectedId: member.id,
-                connectionId: access.connection.id,
+                connectionId: input.connectionId,
                 selectedResourceKey: member.resourceKey,
               }),
               mediaProjection:
@@ -646,11 +820,54 @@ export async function attachGoogleDriveFolderToNest(input: {
     }
   }
   return {
-    plan: publicGoogleDriveMediaPackagePlan(folder.plan),
+    plan: publicGoogleDriveMediaPackagePlan(input.plan),
     attachedCount: attached.length,
     sourceUnitCount: new Set(attached.map((value) => value.sourceUnitId)).size,
     replayedCount: attached.filter((value) => value.replayed).length,
   };
+}
+
+export async function attachGoogleDriveFilesToNest(input: {
+  prisma: PrismaClient;
+  projectId: string;
+  actorUserId: string;
+  actorEmail: string;
+  connectionId: string;
+  selections: Array<{
+    externalFileId: string;
+    resourceKey?: string | null;
+  }>;
+  clientRequestId: string;
+  requestUrl: string;
+  environment?: NodeJS.ProcessEnv;
+}) {
+  const access = await getGoogleDriveAccess({
+    prisma: input.prisma,
+    userId: input.actorUserId,
+    connectionId: input.connectionId,
+    requestUrl: input.requestUrl,
+    environment: input.environment,
+  });
+  const plan = await readGoogleDriveMediaSelection({
+    accessToken: access.accessToken,
+    connectionId: access.connection.id,
+    selections: input.selections,
+  });
+  return attachGoogleDriveMediaPlanToNest({
+    ...input,
+    connectionId: access.connection.id,
+    plan,
+    sourceIdentity: (batch) => batch.folder.id,
+    sourceUrl: (_batch, segment) => {
+      const browse = segment.members.find(
+        (member) => member.role === "browse-proxy",
+      );
+      const member = browse ?? segment.members[0];
+      return member
+        ? `https://drive.google.com/file/d/${encodeURIComponent(member.id)}/view`
+        : "https://drive.google.com/drive/my-drive";
+    },
+  });
 }
 
 export async function attachGoogleDriveFileToNest(input: {

@@ -17,6 +17,7 @@ import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readines
 import { requireSourceStoryAccess } from "@/lib/server/source-story-access";
 import {
   attachGoogleDriveFolderToNest,
+  attachGoogleDriveFilesToNest,
   attachGoogleDriveFileToNest,
   googleDriveSourceErrorResponse,
   inspectGoogleDriveFolderForNest,
@@ -90,6 +91,28 @@ function stringArray(value: unknown) {
     );
   }
   return value as string[];
+}
+
+function googleDriveSelections(value: unknown) {
+  if (!Array.isArray(value)) {
+    throw new SourceStoryContractError(
+      "invalid-drive-selection",
+      "The selected Drive file list is malformed.",
+    );
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new SourceStoryContractError(
+        "invalid-drive-selection",
+        "A selected Drive file identity is malformed.",
+      );
+    }
+    const selection = item as Record<string, unknown>;
+    return {
+      externalFileId: text(selection.externalFileId),
+      resourceKey: text(selection.resourceKey) || null,
+    };
+  });
 }
 
 function sourceSetMembers(value: unknown) {
@@ -281,6 +304,17 @@ export async function POST(
         connectionId: text(body.connectionId),
         externalFileId: text(body.externalFileId),
         resourceKey: text(body.resourceKey) || null,
+        clientRequestId: text(body.clientRequestId),
+        requestUrl: request.url,
+      });
+    } else if (action === "attach-google-drive-files") {
+      operation = await attachGoogleDriveFilesToNest({
+        prisma,
+        projectId: actor.projectId,
+        actorUserId: actor.userId,
+        actorEmail: actor.email,
+        connectionId: text(body.connectionId),
+        selections: googleDriveSelections(body.selections),
         clientRequestId: text(body.clientRequestId),
         requestUrl: request.url,
       });

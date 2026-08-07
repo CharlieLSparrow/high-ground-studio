@@ -281,6 +281,51 @@ export function GoogleDriveSourcePicker({
     return attached;
   }
 
+  async function attach360Documents(
+    connectionId: string,
+    documents: PickerDocument[],
+  ) {
+    const selections = documents
+      .filter((document) => Boolean(document.id))
+      .map((document) => ({
+        externalFileId: document.id!,
+        resourceKey: document.resourceKey ?? null,
+      }));
+    if (!selections.length)
+      throw new Error("Google Picker did not return a file identity.");
+    const response = await fetch(
+      `/api/nests/${encodeURIComponent(projectSlug)}/source-story`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "attach-google-drive-files",
+          connectionId,
+          selections,
+          clientRequestId: crypto.randomUUID(),
+        }),
+      },
+    );
+    const payload = (await response.json()) as {
+      error?: string;
+      operation?: {
+        attachedCount?: number;
+        sourceUnitCount?: number;
+        plan?: FolderPlan;
+      };
+    };
+    if (!response.ok)
+      throw new Error(
+        payload.error || "Those Insta360 files could not be attached.",
+      );
+    await onAttached();
+    return {
+      attachedCount: payload.operation?.attachedCount ?? 0,
+      sourceUnitCount: payload.operation?.sourceUnitCount ?? 0,
+      plan: payload.operation?.plan ?? null,
+    };
+  }
+
   async function inspectFolder(connectionId: string, document: PickerDocument) {
     if (!document.id)
       throw new Error("Google Picker did not return a folder identity.");
@@ -310,7 +355,7 @@ export function GoogleDriveSourcePicker({
     return payload.operation.plan;
   }
 
-  async function browseDrive(mode: "files" | "folder") {
+  async function browseDrive(mode: "files" | "folder" | "360-files") {
     if (!selectedConnectionId) return;
     setPending(true);
     setError(null);
@@ -348,7 +393,7 @@ export function GoogleDriveSourcePicker({
           accessToken: token.accessToken!,
           apiKey: token.apiKey!,
           appId: token.appId!,
-          mode,
+          mode: mode === "folder" ? "folder" : "files",
           callback: (data) => {
             const action = data[picker.Response.ACTION];
             if (action === picker.Action.CANCEL) {
@@ -375,16 +420,25 @@ export function GoogleDriveSourcePicker({
             const operation =
               mode === "folder"
                 ? inspectFolder(token.connectionId!, documents[0] ?? {})
-                : attachDocuments(token.connectionId!, documents);
+                : mode === "360-files"
+                  ? attach360Documents(token.connectionId!, documents)
+                  : attachDocuments(token.connectionId!, documents);
             void operation
               .then((result) => {
                 if (typeof result === "number") {
                   setMessage(
                     `Attached ${result} Drive source${result === 1 ? "" : "s"}. Originals remain in Drive.`,
                   );
-                } else {
+                } else if ("root" in result) {
                   setMessage(
-                    `Inspected ${result.root.name}: ${result.readySegmentCount} segment${result.readySegmentCount === 1 ? "" : "s"} ready, ${result.heldSegmentCount} held.`,
+                    result.totalFiles === 0
+                      ? `Google shared the ${result.root.name} folder identity but not its contents. Use “Choose 360 files” and select the matching INSV and LRV files; Quipsly will group them automatically.`
+                      : `Inspected ${result.root.name}: ${result.readySegmentCount} segment${result.readySegmentCount === 1 ? "" : "s"} ready, ${result.heldSegmentCount} held.`,
+                  );
+                } else {
+                  setFolderPlan(result.plan);
+                  setMessage(
+                    `Grouped ${result.attachedCount} exact Drive file${result.attachedCount === 1 ? "" : "s"} into ${result.sourceUnitCount} camera segment${result.sourceUnitCount === 1 ? "" : "s"}. Originals remain in Drive.`,
                   );
                 }
                 resolve();
@@ -582,13 +636,27 @@ export function GoogleDriveSourcePicker({
             <button
               type="button"
               disabled={!canWrite || pending || !pickerConfigured}
-              onClick={() => void browseDrive("files")}
+              onClick={() => void browseDrive("360-files")}
               className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-teal-300 bg-white px-3 text-sm font-black text-teal-950 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FileVideo2 size={16} aria-hidden="true" />
-              Choose files
+              Choose 360 files
+            </button>
+            <button
+              type="button"
+              disabled={!canWrite || pending || !pickerConfigured}
+              onClick={() => void browseDrive("files")}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 text-xs font-black text-teal-900 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2 xl:col-span-1 2xl:col-span-2"
+            >
+              <FileVideo2 size={15} aria-hidden="true" />
+              Choose other Drive files
             </button>
           </div>
+          <p className="text-[10px] font-semibold leading-4 text-[#5f684f]">
+            Start with the folder. If Google keeps its descendants private,
+            choose the matching <code>VID_…insv</code> and <code>LRV_…lrv</code>{" "}
+            files instead; Quipsly groups them into camera segments for you.
+          </p>
           {folderPlan ? (
             <section
               aria-label="Insta360 folder inspection"
@@ -612,6 +680,13 @@ export function GoogleDriveSourcePicker({
                   {folderPlan.status}
                 </span>
               </div>
+              {folderPlan.totalFiles === 0 ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold leading-4 text-amber-950">
+                  Google exposed the selected folder but not its children. No
+                  broader Drive permission is required: use “Choose 360 files”
+                  above and select the INSV/LRV companions explicitly.
+                </p>
+              ) : null}
               <div className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-1">
                 {folderPlan.batches.flatMap((batch) =>
                   batch.segments.map((segment) => (

@@ -2,6 +2,7 @@
 
 import {
   readGoogleDriveMediaFolder,
+  readGoogleDriveMediaSelection,
   verifyGoogleDriveFile,
 } from "./google-drive-source";
 
@@ -212,6 +213,110 @@ describe("Google Drive file verification", () => {
       }),
     ).rejects.toMatchObject({
       code: "drive-folder-requires-package-workflow",
+      status: 409,
+    });
+  });
+
+  it("groups explicitly selected INSV and LRV files without relying on inherited folder scope", async () => {
+    const fetchMock = jest.fn(
+      async (url: string | URL | Request, _init?: RequestInit) => {
+        const id = new URL(String(url)).pathname.split("/").pop();
+        const files = {
+          insv_01: {
+            id: "insv_01",
+            name: "VID_20260402_080506_00_001.insv",
+            mimeType: "video/3gpp",
+            size: "29871493438",
+            md5Checksum: "a".repeat(32),
+            capabilities: { canDownload: true, canReadRevisions: true },
+          },
+          lrv_01: {
+            id: "lrv_01",
+            name: "LRV_20260402_080506_01_001.lrv",
+            mimeType: "video/3gpp",
+            size: "1911738680",
+            md5Checksum: "b".repeat(32),
+            capabilities: { canDownload: true, canReadRevisions: true },
+          },
+        } as const;
+        return new Response(JSON.stringify(files[id as keyof typeof files]), {
+          status: files[id as keyof typeof files] ? 200 : 404,
+        });
+      },
+    );
+    const fetchImpl = fetchMock as typeof fetch;
+
+    const plan = await readGoogleDriveMediaSelection({
+      accessToken: "token",
+      connectionId: "connection_01",
+      selections: [
+        { externalFileId: "insv_01", resourceKey: "insv_resource" },
+        { externalFileId: "lrv_01", resourceKey: "lrv_resource" },
+      ],
+      fetchImpl,
+    });
+
+    expect(plan).toMatchObject({
+      root: { name: "Google Picker selection" },
+      status: "ready",
+      readySegmentCount: 1,
+      heldSegmentCount: 0,
+      batches: [
+        expect.objectContaining({
+          segments: [
+            expect.objectContaining({
+              segment: "001",
+              status: "ready-to-attach",
+              members: expect.arrayContaining([
+                expect.objectContaining({
+                  id: "insv_01",
+                  role: "primary-original",
+                }),
+                expect.objectContaining({
+                  id: "lrv_01",
+                  role: "browse-proxy",
+                }),
+              ]),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => call[1]?.headers)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          "X-Goog-Drive-Resource-Keys": "insv_01/insv_resource",
+        }),
+        expect.objectContaining({
+          "X-Goog-Drive-Resource-Keys": "lrv_01/lrv_resource",
+        }),
+      ]),
+    );
+  });
+
+  it("rejects a selected-file package that contains no recognized Insta360 media", async () => {
+    await expect(
+      readGoogleDriveMediaSelection({
+        accessToken: "token",
+        connectionId: "connection_01",
+        selections: [{ externalFileId: "notes_01" }],
+        fetchImpl: jest.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                id: "notes_01",
+                name: "notes.txt",
+                mimeType: "text/plain",
+                size: "12",
+                capabilities: { canDownload: true },
+              }),
+              { status: 200 },
+            ),
+        ) as typeof fetch,
+      }),
+    ).rejects.toMatchObject({
+      code: "drive-selection-no-insta360-media",
       status: 409,
     });
   });

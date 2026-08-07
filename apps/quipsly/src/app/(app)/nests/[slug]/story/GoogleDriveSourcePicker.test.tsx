@@ -65,10 +65,16 @@ describe("Google Drive source picker entry", () => {
       screen.getByRole("button", { name: /choose 360 folder/i }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: /choose files/i }),
+      screen.getByRole("button", { name: /choose 360 files/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /choose other drive files/i }),
     ).toBeDisabled();
     expect(
       screen.getByText(/browser key still needs deployment configuration/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/quipsly groups them into camera segments/i),
     ).toBeInTheDocument();
   });
 });
