@@ -6,6 +6,7 @@ export * from "./audio-mastery-review.js";
 export * from "./audio-delivery.js";
 export * from "./episode-program-delivery.js";
 export * from "./episode-render-proof.js";
+export * from "./spatial-render.js";
 export * from "./external-source-proxy.js";
 export * from "./audio-diagnosis-evaluation.js";
 export * from "./audio-signal-diagnosis.js";

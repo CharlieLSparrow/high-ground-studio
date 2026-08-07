@@ -490,3 +490,56 @@ This proves organization and edit-intent continuity. Full-quality Insta360
 stitching/stabilization through a versioned local executor, long-source
 performance, mobile arrangement UX, and a cloud cost proposal remain separate
 delivery gates.
+
+## Versioned spatial render executor
+
+The executor boundary is now explicit and split at the format boundary rather
+than hidden behind one ambiguous “render” button:
+
+1. `insta360-mediasdk-v3` consumes only the complete, checksum-verified INSV
+   package. It performs official stitching and FlowState stabilization and
+   produces a reusable 5760x2880 2:1 equirectangular master. The stage is cached
+   by source-set identity and stitch profile, not by a browser proxy.
+2. `ffmpeg-v360-frame-commanded-v1` trims that master on the retained source
+   clock and produces a flat proof or 4K24 edit source. It samples the reversible
+   recipe once per output frame and sends runtime yaw, pitch, roll, and horizontal
+   FOV commands to a named `v360` filter. Hold, linear, and eased transitions are
+   deterministic; angles take the shortest path across the seam.
+
+The shared `quipsly-spatial-render-job-v1` contract binds project, Episode,
+timeline placement/fingerprint, exact source set and members, checksums,
+selection, recipe, both targets, profile, actor, request identity, and a
+canonical manifest digest. It refuses LRV members, checksum-unbound generations,
+incomplete primary-original identity, target aliasing, and boundary weakening.
+Results remain non-published derivatives and require complete decode.
+
+The official [Insta360 Desktop MediaSDK](https://github.com/Insta360Develop/MediaSDK-Cpp)
+documents raw INSV-to-MP4 stitching, FlowState, direction lock, multiple stitch
+algorithms, and a 2:1 output requirement. Its documented desktop platforms are
+Windows x64 and Ubuntu 22.04 x64; it requires an SDK application/license and GPU
+for current 3.x releases. The official [SDK guide](https://onlinemanual.insta360.com/developer/en-us/resource/sdk)
+also describes MediaSDK as the stitching/export layer. FFmpeg's official
+[`v360` documentation](https://ffmpeg.org/ffmpeg-filters.html#v360) supports
+equirectangular-to-flat conversion, yaw/pitch/roll/FOV, and runtime commands.
+
+The actual development Mac reports:
+
+- macOS arm64;
+- Insta360 Studio 5.9.9 installed;
+- FFmpeg 8.1.1 with `v360` and runtime-controllable yaw, pitch, roll, and FOV;
+- no approved MediaSDK adapter, license, or model pack.
+
+Therefore the truthful current product state is `manual-stitch-handoff`:
+Insta360 Studio creates one reviewed full-resolution stabilized 2:1 master,
+Quipsly verifies and registers that derivative, and the automatic Quipsly
+reframe stage applies the saved Story intent. Installing the GUI is not treated
+as a supported automation API, and internal app binaries are not invoked as an
+undocumented CLI. A future licensed Linux x64 worker can replace only the stitch
+handoff without changing cards, Episode clips, recipes, or reframe execution.
+
+The FFmpeg integration test generated a real equirectangular video/audio
+fixture, issued 96 view commands over 24 output frames, rendered H.264/AAC at
+1280x720/24, probed the exact stream shape, and completed a full decode. The
+retained High Ground Odyssey operation also read the readiness state through an
+authenticated Source Story page/API while re-proving original hashes, protected
+range playback, outsider denial, Episode identity, and idempotent placement.

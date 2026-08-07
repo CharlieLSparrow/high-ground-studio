@@ -27,6 +27,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { SpatialExecutorProbe, SpatialExecutorReadiness } from "@high-ground/quipsly-media-processing";
 
 import { storyCardPurposes, storyCardStatuses, type StoryReframeKeyframe } from "@/lib/source-story-contract";
 
@@ -243,6 +244,17 @@ type ApiPayload = {
   workspace?: SourceStoryWorkspace;
 };
 
+type SpatialRenderReadinessReport = {
+  checkedAt: string;
+  probe: SpatialExecutorProbe;
+  readiness: SpatialExecutorReadiness;
+  executorContract: {
+    stitch: "insta360-mediasdk-v3";
+    reframe: "ffmpeg-v360-frame-commanded-v1";
+    automaticSdkPlatforms: ["linux-x64", "windows-x64"];
+  };
+};
+
 function formatClock(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "--:--.--";
   const seconds = Math.max(0, value);
@@ -295,6 +307,7 @@ export function SourceStoryClient({
   tags,
   episodes,
   initialWorkspace,
+  spatialRenderReadiness,
   initialAssetId,
   initialExternalReferenceId,
   initialSourceSetId,
@@ -306,6 +319,7 @@ export function SourceStoryClient({
   tags: Tag[];
   episodes: Episode[];
   initialWorkspace: SourceStoryWorkspace;
+  spatialRenderReadiness: SpatialRenderReadinessReport;
   initialAssetId: string | null;
   initialExternalReferenceId: string | null;
   initialSourceSetId: string | null;
@@ -405,6 +419,7 @@ export function SourceStoryClient({
   }, [sourceQuery, workspace.sourceSets]);
   const placedIds = useMemo(() => new Set(workspace.boards.flatMap((board) => board.placements.map((placement) => placement.cardId))), [workspace.boards]);
   const unplacedCards = workspace.cards.filter((card) => !placedIds.has(card.id));
+  const spatialStatus = spatialRenderReadiness.readiness.status;
 
   useEffect(() => {
     if (!selectedBoardId && workspace.boards[0]) setSelectedBoardId(workspace.boards[0].id);
@@ -700,9 +715,32 @@ export function SourceStoryClient({
             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-2 text-teal-900">{workspace.externalSources.length} vault source{workspace.externalSources.length === 1 ? "" : "s"}</span>
             <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-fuchsia-900">{workspace.sourceSets.length} camera set{workspace.sourceSets.length === 1 ? "" : "s"}</span>
             <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-violet-900">{workspace.boards.length} boards</span>
+            <span className={`rounded-full border px-3 py-2 ${spatialStatus === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : spatialStatus === "manual-stitch-handoff" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-rose-200 bg-rose-50 text-rose-950"}`}>360 render · {spatialStatus === "ready" ? "automatic" : spatialStatus === "manual-stitch-handoff" ? "Studio handoff" : "blocked"}</span>
           </div>
         </div>
       </header>
+
+      <section className="border-b border-[#ddccb0] bg-[#fffaf0] px-4 py-3 md:px-6" aria-label="Spatial render readiness">
+        <div className="mx-auto flex max-w-[1800px] flex-wrap items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3">
+          <div className="flex min-w-0 gap-3">
+            {spatialStatus === "ready" ? <Check className="mt-0.5 shrink-0 text-emerald-700" size={18} aria-hidden="true" /> : <Rotate3d className="mt-0.5 shrink-0 text-amber-700" size={18} aria-hidden="true" />}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8a653d]">Exact-source 360 render</p>
+              <p className="mt-1 text-sm font-black text-[#3d3122]">{spatialStatus === "ready" ? "Official stitch and Quipsly reframe engines are ready." : spatialStatus === "manual-stitch-handoff" ? "Quipsly can reframe automatically after one reviewed Insta360 Studio master export." : "The saved 360 edit remains safe, but a render engine needs attention."}</p>
+              <p className="mt-1 max-w-4xl text-xs font-semibold leading-5 text-[#765f40]">{spatialRenderReadiness.readiness.nextAction} The LRV browse proxy is never accepted as final render media.</p>
+            </div>
+          </div>
+          <details className="max-w-xl text-xs font-semibold text-[#684f32]">
+            <summary className="cursor-pointer min-h-11 rounded-xl border border-[#ddccb0] px-3 py-3 text-[10px] font-black uppercase tracking-wide">Engine details</summary>
+            <div className="mt-2 rounded-xl bg-[#f7f2e9] p-3 leading-5">
+              <p>Insta360 Studio: {spatialRenderReadiness.probe.insta360Studio.available ? spatialRenderReadiness.probe.insta360Studio.version ?? "installed" : "not installed"}</p>
+              <p>Official automatic MediaSDK adapter: {spatialRenderReadiness.readiness.automaticStitchReady ? "ready" : "not ready on this executor"}</p>
+              <p>Quipsly FFmpeg v360 reframe: {spatialRenderReadiness.readiness.automaticReframeReady ? spatialRenderReadiness.probe.ffmpeg.version ?? "ready" : "not ready"}</p>
+              {spatialRenderReadiness.readiness.blockers.length ? <ul className="mt-2 list-disc pl-5">{spatialRenderReadiness.readiness.blockers.map((blocker) => <li key={blocker.code}>{blocker.message}</li>)}</ul> : null}
+            </div>
+          </details>
+        </div>
+      </section>
 
       {(message || error) ? (
         <div className={`mx-auto mt-3 flex max-w-[1800px] items-start gap-2 rounded-2xl border px-4 py-3 text-sm font-bold ${error ? "border-rose-200 bg-rose-50 text-rose-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`} role={error ? "alert" : "status"}>

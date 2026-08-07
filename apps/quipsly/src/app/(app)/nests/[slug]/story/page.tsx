@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { readSourceStoryWorkspace } from "@/lib/server/source-story";
+import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import {
   findStudioProjectForAccess,
   normalizeAccessEmail,
@@ -38,7 +39,7 @@ export default async function SourceStoryPage({
   const canWrite = Boolean(access.role && roleAllowsAction(access.role, "write"));
 
   try {
-    const [assets, tags, episodes, workspace] = await Promise.all([
+    const [assets, tags, episodes, workspace, spatialRenderReadiness] = await Promise.all([
       prisma.studioMediaAsset.findMany({
         where: {
           OR: [
@@ -77,6 +78,7 @@ export default async function SourceStoryPage({
         select: { id: true, slug: true, title: true, status: true },
       }),
       readSourceStoryWorkspace(prisma, project.id),
+      readSpatialRenderReadiness(),
     ]);
     const requestedAssetId = typeof query.asset === "string" ? query.asset : null;
     const requestedExternalReferenceId = typeof query.external === "string" ? query.external : null;
@@ -107,6 +109,7 @@ export default async function SourceStoryPage({
         tags={tags}
         episodes={episodes}
         initialWorkspace={workspace}
+        spatialRenderReadiness={spatialRenderReadiness}
         initialAssetId={selectedAssetId}
         initialExternalReferenceId={selectedExternalReferenceId}
         initialSourceSetId={selectedSourceSetId}

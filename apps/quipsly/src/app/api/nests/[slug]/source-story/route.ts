@@ -11,6 +11,7 @@ import {
   type StoryReframeRecipe,
 } from "@/lib/source-story-contract";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { readSpatialRenderReadiness } from "@/lib/server/spatial-render-readiness";
 import {
   attachGoogleDriveFileToNest,
   googleDriveSourceErrorResponse,
@@ -139,8 +140,11 @@ export async function GET(request: Request, context: { params: Promise<{ slug: s
   try {
     const { slug } = await context.params;
     const actor = await requireAccess(request, slug, "read");
-    const workspace = await readSourceStoryWorkspace(getPrismaClient(), actor.projectId);
-    return NextResponse.json(jsonSafe({ ok: true, workspace }), { headers: { "Cache-Control": "no-store" } });
+    const [workspace, spatialRenderReadiness] = await Promise.all([
+      readSourceStoryWorkspace(getPrismaClient(), actor.projectId),
+      readSpatialRenderReadiness(),
+    ]);
+    return NextResponse.json(jsonSafe({ ok: true, workspace, spatialRenderReadiness }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return errorResponse(error);
   }

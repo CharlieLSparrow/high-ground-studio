@@ -35,6 +35,24 @@ Date: 2026-08-07
 
 ## Insta360 source-to-story checkpoint
 
+- Spatial rendering now has a versioned two-stage contract. Raw `.insv`
+  packages must first pass through an official Insta360 MediaSDK stitch into a
+  checksum-bound 5760x2880 equirectangular master; Quipsly then applies the
+  retained source-time yaw, pitch, roll, and FOV recipe through an FFmpeg
+  `v360` frame-commanded renderer. The contract rejects `.lrv` browse media as
+  final render input and keeps render results unpublished.
+- The Quipsly reframe stage is executable and tested: FFmpeg 8.1.1 rendered a
+  1280x720/24 proof with AAC audio using 96 runtime view commands over 24
+  frames, then completed a full decode/readback. Eased interpolation and the
+  short angular path across positive/negative 180 degrees are deterministic.
+- The operated Mac readiness boundary is visible in Source Story: Insta360
+  Studio 5.9.9 and automatic Quipsly reframing are ready, while the documented
+  Desktop MediaSDK runner is not supported on macOS arm64. The UI therefore
+  reports `Studio handoff`, instructs the creator to export one reviewed 2:1
+  stabilized master, and never implies that the installed GUI is an automation
+  API. A licensed Linux x64 or Windows x64 MediaSDK adapter remains required for
+  completely automatic raw stitching.
+
 - Source to Story now treats a multi-file camera take as one immutable package
   instead of showing creators a loose pile of `.insv` and `.lrv` files. Exact
   members keep their own checksums, byte counts, roles, render requirements,
@@ -57,7 +75,7 @@ Date: 2026-08-07
   identity/grant were removed after proof. This operation also caught and
   repaired a full-range YUV proxy defect, a stale generated Prisma client in the
   running app, and hard-delete ordering for restrictive immutable-source links.
-- Source Story contracts, seven-case local database smoke, worker tests, Prisma
+- Source Story contracts, eight-case local database smoke, worker tests, Prisma
   validation/status, the media-worker build, Quipsly typecheck, and the full
   194-page production build pass. See
   `docs/coordination/2026-08-07-drive-source-to-story-architecture.md`.

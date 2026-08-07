@@ -184,6 +184,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       ["source set", displayName],
       ["board", "Insta360 story selects"],
       ["source card", "Micro take · spatial composition proof"],
+      ["spatial render status", "Exact-source 360 render"],
+      ["spatial render handoff", "Quipsly can reframe automatically after one reviewed Insta360 Studio master export."],
     ].filter(([, evidence]) => !html.includes(evidence)).map(([label]) => label);
     if (page.status !== 200 || missingPageEvidence.length > 0) {
       const pageKind = html.includes("Sign in") || html.includes("Welcome back")
@@ -204,6 +206,9 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       : null;
     if (sourceStoryReadback.status !== 200 || !projectedPlacement || !projectedEpisode) {
       throw new Error(`The authenticated Source Story API did not project the retained Episode placement (HTTP ${sourceStoryReadback.status}).`);
+    }
+    if (sourceStoryBody?.spatialRenderReadiness?.readiness?.status !== "manual-stitch-handoff" || sourceStoryBody?.spatialRenderReadiness?.readiness?.automaticReframeReady !== true) {
+      throw new Error("The Source Story API did not report the locally operated spatial executor boundary.");
     }
     const promotedClip = Array.isArray(episodeBody?.timelineJson?.timelineClips)
       ? episodeBody.timelineJson.timelineClips.find((clip) => clip?.sourceStory?.placementId === placementId)
@@ -240,6 +245,8 @@ async function verifyAuthenticatedAppBoundary({ prisma, project, createdBy, sour
       sourceCardVisible: true,
       timelinePlacementVisible: true,
       sourceStoryApiStatus: sourceStoryReadback.status,
+      spatialRenderStatus: sourceStoryBody.spatialRenderReadiness.readiness.status,
+      automaticReframeReady: sourceStoryBody.spatialRenderReadiness.readiness.automaticReframeReady,
       editorPageStatus: editorPage.status,
       canonicalEpisodeStatus: episodeReadback.status,
       canonicalPlacementId: promotedClip.sourceStory.placementId,
