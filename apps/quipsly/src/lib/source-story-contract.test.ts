@@ -1,5 +1,6 @@
 import {
   SourceStoryContractError,
+  normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
   stableSourceStoryJson,
@@ -30,6 +31,9 @@ describe("source-story contract", () => {
       schema: "quipsly-source-story-v1",
       projectId: "project_01",
       mediaAssetId: "asset_01",
+      sourceRevisionId: null,
+      sourceSetId: null,
+      externalReferenceId: null,
       boardId: "board_01",
       expectedBoardRevision: 4,
       clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
@@ -44,6 +48,73 @@ describe("source-story contract", () => {
       tagIds: ["tag_a", "tag_b"],
       reframeRecipe: null,
     });
+  });
+
+  it("normalizes one complete camera package around an explicit source clock", () => {
+    expect(normalizeCreateMediaSourceSetInput({
+      projectId: "project_01",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      kind: "insta360-360",
+      captureKey: "  VID_20250711_222639_037  ",
+      displayName: "  Homer walk-through  ",
+      sourceClockRevisionId: "revision_lrv",
+      members: [
+        { sourceRevisionId: "revision_lrv", role: "browse-proxy", requiredForRender: false },
+        { sourceRevisionId: "revision_insv", role: "primary-original", requiredForRender: true },
+      ],
+      metadata: { camera: "Insta360" },
+    })).toEqual({
+      projectId: "project_01",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      kind: "insta360-360",
+      captureKey: "VID_20250711_222639_037",
+      displayName: "Homer walk-through",
+      sourceClockRevisionId: "revision_lrv",
+      members: [
+        { sourceRevisionId: "revision_lrv", role: "browse-proxy", ordinal: 0, requiredForRender: false },
+        { sourceRevisionId: "revision_insv", role: "primary-original", ordinal: 0, requiredForRender: true },
+      ],
+      metadata: { camera: "Insta360" },
+    });
+  });
+
+  it("refuses incomplete or ambiguous camera-package identity", () => {
+    const value = {
+      projectId: "project_01",
+      clientRequestId: "2c55e4c6-82e4-4c98-a95f-28f9895fe7ad",
+      kind: "insta360-360" as const,
+      captureKey: "VID_037",
+      displayName: "Homer walk-through",
+      sourceClockRevisionId: "revision_lrv",
+      members: [
+        { sourceRevisionId: "revision_lrv", role: "browse-proxy" as const },
+        { sourceRevisionId: "revision_insv", role: "primary-original" as const },
+      ],
+    };
+    expect(() => normalizeCreateMediaSourceSetInput({ ...value, sourceClockRevisionId: "revision_missing" }))
+      .toThrow("viewing clock revision must be a member");
+    expect(() => normalizeCreateMediaSourceSetInput({ ...value, members: [value.members[0], value.members[0]] }))
+      .toThrow("cannot appear twice");
+  });
+
+  it("binds a story card to a complete package and its exact viewing clock", () => {
+    const normalized = normalizeCreateSourceStoryCardInput({
+      ...validInput(),
+      mediaAssetId: null,
+      sourceRevisionId: "revision_lrv",
+      sourceSetId: "source_set_01",
+      externalReferenceId: "external_reference_01",
+    });
+    expect(normalized).toMatchObject({
+      mediaAssetId: null,
+      sourceRevisionId: "revision_lrv",
+      sourceSetId: "source_set_01",
+      externalReferenceId: "external_reference_01",
+    });
+    expect(() => normalizeCreateSourceStoryCardInput({
+      ...validInput(),
+      sourceSetId: "source_set_01",
+    })).toThrow("requires its exact source-clock revision");
   });
 
   it("requires optimistic board authority before placement", () => {

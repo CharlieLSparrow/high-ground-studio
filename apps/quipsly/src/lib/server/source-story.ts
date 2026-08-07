@@ -7,12 +7,14 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import {
   SOURCE_STORY_SCHEMA_VERSION,
   SourceStoryContractError,
+  normalizeCreateMediaSourceSetInput,
   normalizeCreateSourceStoryCardInput,
   normalizeRebindSourceStoryCardInput,
   stableSourceStoryJson,
   storyCardPurposes,
   storyCardStatuses,
   type CreateSourceStoryCardInput,
+  type CreateMediaSourceSetInput,
   type RebindSourceStoryCardInput,
   type StoryCardPurpose,
   type StoryCardStatus,
@@ -32,6 +34,133 @@ export class SourceStoryConflictError extends Error {
     this.code = code;
     this.currentRevision = currentRevision;
   }
+}
+
+export async function createMediaSourceSet(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  value: CreateMediaSourceSetInput;
+}) {
+  const value = normalizeCreateMediaSourceSetInput(input.value);
+  const actorUserId = cleanId(input.actorUserId, "actorUserId");
+  const requestSha256 = sha256(stableSourceStoryJson(value));
+
+  return input.prisma.$transaction(async (tx) => {
+    const replay = await tx.studioMediaSourceSet.findUnique({
+      where: {
+        projectId_createdByUserId_clientRequestId: {
+          projectId: value.projectId,
+          createdByUserId: actorUserId,
+          clientRequestId: value.clientRequestId,
+        },
+      },
+      include: { members: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] } },
+    });
+    if (replay) {
+      const metadata = jsonRecord(replay.metadataJson);
+      if (metadata?.requestSha256 !== requestSha256) {
+        throw new SourceStoryConflictError("request-reuse-conflict", "That request identity already created a different source set.");
+      }
+      return { sourceSet: replay, replayed: true };
+    }
+
+    const revisions = await tx.studioMediaSourceRevision.findMany({
+      where: { projectId: value.projectId, id: { in: value.members.map((member) => member.sourceRevisionId) } },
+      select: {
+        id: true,
+        identitySha256: true,
+        contentSha256: true,
+        sizeBytes: true,
+        durationSeconds: true,
+        sourceState: true,
+      },
+    });
+    if (revisions.length !== value.members.length) {
+      throw new SourceStoryContractError("source-set-project-mismatch", "At least one source-set member is unavailable in this Nest.");
+    }
+    const revisionById = new Map(revisions.map((revision) => [revision.id, revision]));
+    const clock = revisionById.get(value.sourceClockRevisionId);
+    if (!clock) throw new SourceStoryContractError("source-clock-mismatch", "The source clock is unavailable in this Nest.");
+    if (!clock.durationSeconds || clock.durationSeconds <= 0) {
+      throw new SourceStoryContractError("source-clock-duration-missing", "The source clock needs verified duration before it can drive selections.");
+    }
+    const browseMember = value.members.find((member) => member.role === "browse-proxy");
+    if (value.kind === "insta360-360" && (!browseMember || browseMember.sourceRevisionId !== value.sourceClockRevisionId)) {
+      throw new SourceStoryContractError("insta360-browse-clock-required", "An Insta360 set must use its equirectangular browse member as the source clock.");
+    }
+    if (value.kind === "insta360-360" && !value.members.some((member) => member.role === "primary-original")) {
+      throw new SourceStoryContractError("insta360-original-required", "An Insta360 set requires at least one exact original member.");
+    }
+    for (const member of value.members) {
+      const revision = revisionById.get(member.sourceRevisionId)!;
+      if (!revision.contentSha256 || !revision.sizeBytes || revision.sizeBytes <= BigInt(0)) {
+        throw new SourceStoryContractError("source-set-member-unverified", "Every source-set member needs an exact checksum and byte count.");
+      }
+    }
+
+    const identityManifest = {
+      schema: "quipsly-media-source-set-v1",
+      projectId: value.projectId,
+      kind: value.kind,
+      captureKey: value.captureKey,
+      sourceClockRevisionId: value.sourceClockRevisionId,
+      members: value.members.map((member) => {
+        const revision = revisionById.get(member.sourceRevisionId)!;
+        return {
+          ...member,
+          revisionIdentitySha256: revision.identitySha256,
+          contentSha256: revision.contentSha256,
+          sizeBytes: revision.sizeBytes!.toString(),
+        };
+      }),
+    };
+    const identitySha256 = sha256(stableSourceStoryJson(identityManifest));
+    const existing = await tx.studioMediaSourceSet.findUnique({
+      where: { projectId_identitySha256: { projectId: value.projectId, identitySha256 } },
+      include: { members: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] } },
+    });
+    if (existing) return { sourceSet: existing, replayed: true };
+
+    const sourceSet = await tx.studioMediaSourceSet.create({
+      data: {
+        projectId: value.projectId,
+        kind: value.kind,
+        captureKey: value.captureKey,
+        displayName: value.displayName,
+        identitySha256,
+        sourceClockRevisionId: value.sourceClockRevisionId,
+        completeness: "complete",
+        metadataJson: {
+          schema: "quipsly-media-source-set-metadata-v1",
+          requestSha256,
+          manifest: identityManifest,
+          descriptive: value.metadata as Prisma.InputJsonValue,
+        },
+        clientRequestId: value.clientRequestId,
+        createdByUserId: actorUserId,
+        members: {
+          create: value.members.map((member) => {
+            const revision = revisionById.get(member.sourceRevisionId)!;
+            return {
+              sourceRevisionId: member.sourceRevisionId,
+              role: member.role,
+              ordinal: member.ordinal,
+              requiredForRender: member.requiredForRender,
+              memberIdentitySha256: sha256(stableSourceStoryJson({
+                setIdentitySha256: identitySha256,
+                ...member,
+                revisionIdentitySha256: revision.identitySha256,
+                contentSha256: revision.contentSha256,
+              })),
+              metadataJson: { sourceState: revision.sourceState },
+            };
+          }),
+        },
+      },
+      include: { members: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] } },
+    });
+    return { sourceSet, replayed: false };
+  }, { isolationLevel: "Serializable" });
 }
 
 function sha256(value: string) {
@@ -520,11 +649,25 @@ export async function createSourceStoryCard(input: {
     if (source.revision.durationSeconds !== null && value.endSeconds > source.revision.durationSeconds + 0.001) {
       throw new SourceStoryContractError("range-past-source", "The out point is beyond the registered source duration.");
     }
+    const sourceSet = value.sourceSetId ? await tx.studioMediaSourceSet.findFirst({
+      where: {
+        id: value.sourceSetId,
+        projectId: value.projectId,
+        sourceClockRevisionId: source.revision.id,
+        members: { some: { sourceRevisionId: source.revision.id } },
+      },
+      select: { id: true, identitySha256: true, kind: true, completeness: true },
+    }) : null;
+    if (value.sourceSetId && !sourceSet) {
+      throw new SourceStoryContractError("source-set-clock-mismatch", "That source set does not use this exact revision as its viewing clock.");
+    }
 
     const selectorJson = {
       schema: "quipsly-media-time-selector-v1",
       sourceRevisionId: source.revision.id,
       sourceIdentitySha256: source.revision.identitySha256,
+      sourceSetId: sourceSet?.id ?? null,
+      sourceSetIdentitySha256: sourceSet?.identitySha256 ?? null,
       startSeconds: value.startSeconds,
       endSeconds: value.endSeconds,
       clock: "source",
@@ -542,6 +685,7 @@ export async function createSourceStoryCard(input: {
       create: {
         projectId: value.projectId,
         sourceRevisionId: source.revision.id,
+        sourceSetId: sourceSet?.id ?? null,
         selectorSha256,
         startSeconds: value.startSeconds,
         endSeconds: value.endSeconds,
@@ -983,7 +1127,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
     framesPerSecond: true,
     createdAt: true,
   } as const;
-  const [boards, cards, externalSources, externalProxyJobs] = await Promise.all([
+  const [boards, cards, externalSources, externalProxyJobs, sourceSets] = await Promise.all([
     prisma.studioStoryBoard.findMany({
       where: { projectId, archivedAt: null },
       orderBy: [{ updatedAt: "desc" }, { title: "asc" }],
@@ -996,6 +1140,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
                 tags: { include: { tag: { select: { id: true, label: true, slug: true, isActive: true } } } },
                 sourceRange: {
                   include: {
+                    sourceSet: { select: { id: true, kind: true, captureKey: true, displayName: true, identitySha256: true, completeness: true } },
                     sourceRevision: {
                       include: {
                         mediaAsset: { select: { id: true, filename: true, url: true, mimeType: true, duration: true, thumbnailUrl: true } },
@@ -1018,6 +1163,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
         tags: { include: { tag: { select: { id: true, label: true, slug: true, isActive: true } } } },
         sourceRange: {
           include: {
+            sourceSet: { select: { id: true, kind: true, captureKey: true, displayName: true, identitySha256: true, completeness: true } },
             sourceRevision: {
               include: {
                 mediaAsset: { select: { id: true, filename: true, url: true, mimeType: true, duration: true, thumbnailUrl: true } },
@@ -1071,6 +1217,51 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       orderBy: { updatedAt: "desc" },
       take: 500,
       select: { id: true, status: true, inputJson: true, resultJson: true, error: true, updatedAt: true },
+    }),
+    prisma.studioMediaSourceSet.findMany({
+      where: { projectId },
+      orderBy: [{ createdAt: "desc" }, { displayName: "asc" }],
+      take: 500,
+      select: {
+        id: true,
+        kind: true,
+        captureKey: true,
+        displayName: true,
+        identitySha256: true,
+        completeness: true,
+        createdAt: true,
+        sourceClockRevision: {
+          select: {
+            id: true,
+            durationSeconds: true,
+            widthPixels: true,
+            heightPixels: true,
+            framesPerSecond: true,
+            externalReference: { select: { id: true, fileName: true, provider: true } },
+            derivatives: { where: { kind: "collaboration-proxy", status: "ready" }, orderBy: { createdAt: "desc" }, take: 1, select: derivativeSelect },
+          },
+        },
+        members: {
+          orderBy: [{ role: "asc" }, { ordinal: "asc" }],
+          select: {
+            id: true,
+            role: true,
+            ordinal: true,
+            requiredForRender: true,
+            memberIdentitySha256: true,
+            sourceRevision: {
+              select: {
+                id: true,
+                contentSha256: true,
+                sizeBytes: true,
+                durationSeconds: true,
+                sourceState: true,
+                externalReference: { select: { id: true, provider: true, fileName: true, mimeType: true, accessState: true } },
+              },
+            },
+          },
+        },
+      },
     }),
   ]);
   const publicDerivative = (derivative: {
@@ -1126,6 +1317,7 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
       endSeconds: card.sourceRange.endSeconds,
       selectorSha256: card.sourceRange.selectorSha256,
       reframeRecipe: card.sourceRange.reframeRecipeJson,
+      sourceSet: card.sourceRange.sourceSet,
       sourceRevision: {
         id: card.sourceRange.sourceRevision.id,
         revisionKey: card.sourceRange.sourceRevision.revisionKey,
@@ -1148,6 +1340,31 @@ export async function readSourceStoryWorkspace(prisma: PrismaClient, projectId: 
   const cardById = new Map(cards.map((card) => [card.id, card]));
   return {
     schema: SOURCE_STORY_SCHEMA_VERSION,
+    sourceSets: sourceSets.map((sourceSet) => ({
+      id: sourceSet.id,
+      kind: sourceSet.kind,
+      captureKey: sourceSet.captureKey,
+      displayName: sourceSet.displayName,
+      identitySha256: sourceSet.identitySha256,
+      completeness: sourceSet.completeness,
+      createdAt: sourceSet.createdAt.toISOString(),
+      sourceClockRevision: {
+        id: sourceSet.sourceClockRevision.id,
+        durationSeconds: sourceSet.sourceClockRevision.durationSeconds,
+        widthPixels: sourceSet.sourceClockRevision.widthPixels,
+        heightPixels: sourceSet.sourceClockRevision.heightPixels,
+        framesPerSecond: sourceSet.sourceClockRevision.framesPerSecond,
+        externalReference: sourceSet.sourceClockRevision.externalReference,
+        collaborationProxy: publicDerivative(sourceSet.sourceClockRevision.derivatives[0]),
+      },
+      members: sourceSet.members.map((member) => ({
+        ...member,
+        sourceRevision: {
+          ...member.sourceRevision,
+          sizeBytes: member.sourceRevision.sizeBytes?.toString() ?? null,
+        },
+      })),
+    })),
     externalSources: externalSources.map(({ revisions, ...source }) => ({
       ...source,
       sizeBytes: source.sizeBytes?.toString() ?? null,

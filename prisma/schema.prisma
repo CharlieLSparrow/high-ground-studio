@@ -884,6 +884,7 @@ model User {
   mediaProviderConnections          StudioMediaProviderConnection[]             @relation("StudioMediaProviderConnectionUser")
   mediaProviderOperationsAuthored   StudioMediaProviderConnectionOperation[]    @relation("StudioMediaProviderConnectionOperationActor")
   mediaSourceRevisionsCreated       StudioMediaSourceRevision[]                 @relation("StudioMediaSourceRevisionCreatedBy")
+  mediaSourceSetsCreated            StudioMediaSourceSet[]                      @relation("StudioMediaSourceSetCreatedBy")
   sourceRangesCreated               StudioSourceRange[]                         @relation("StudioSourceRangeCreatedBy")
   storyCardsCreated                 StudioStoryCard[]                           @relation("StudioStoryCardCreatedBy")
   storyCardsUpdated                 StudioStoryCard[]                           @relation("StudioStoryCardUpdatedBy")
@@ -3011,12 +3012,12 @@ model TranscriptEvaluationCandidate {
   completedAt              DateTime
   createdAt                DateTime @default(now())
 
-  window      TranscriptEvaluationWindow                  @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_window_fkey")
-  policy      TranscriptProviderPolicyReceipt             @relation(fields: [policyReceiptId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_policy_fkey")
-  submittedBy User                                        @relation("TranscriptEvaluationCandidateSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_actor_fkey")
-  corrections TranscriptEvaluationCorrectionObservation[]
-  baselineRunWindows    TranscriptEvaluationRunWindow[] @relation("TranscriptEvaluationRunBaselineCandidate")
-  terminologyRunWindows TranscriptEvaluationRunWindow[] @relation("TranscriptEvaluationRunTerminologyCandidate")
+  window                TranscriptEvaluationWindow                  @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_window_fkey")
+  policy                TranscriptProviderPolicyReceipt             @relation(fields: [policyReceiptId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_policy_fkey")
+  submittedBy           User                                        @relation("TranscriptEvaluationCandidateSubmitter", fields: [submittedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalCandidate_actor_fkey")
+  corrections           TranscriptEvaluationCorrectionObservation[]
+  baselineRunWindows    TranscriptEvaluationRunWindow[]             @relation("TranscriptEvaluationRunBaselineCandidate")
+  terminologyRunWindows TranscriptEvaluationRunWindow[]             @relation("TranscriptEvaluationRunTerminologyCandidate")
 
   @@unique([submittedByUserId, clientRequestId], map: "TranscriptEvalCandidate_actor_request_key")
   @@unique([windowId, runKey], map: "TranscriptEvalCandidate_window_run_key")
@@ -3028,39 +3029,39 @@ model TranscriptEvaluationCandidate {
 // owns the observable control plane; provider credentials remain in the worker
 // environment and are never persisted here or accepted by the web route.
 model TranscriptEvaluationRun {
-  id                       String                        @id @default(cuid())
-  requestId                String                        @db.Uuid
-  requestSha256            String
-  roomId                   String
-  requestedByUserId        String
-  runKey                   String                        @unique(map: "TranscriptEvalRun_run_key")
-  comparisonKey            String                        @unique(map: "TranscriptEvalRun_comparison_key")
-  experimentKind           String                        @default("terminology")
-  providerKey              String
-  providerName             String
-  model                    String
-  adapterVersion           String
-  language                 String?
-  corpusRevisionSha256     String
-  status                   TranscriptEvaluationRunStatus @default(QUEUED)
-  requestConfigJson        Json                          @default("{}")
-  resultJson               Json                          @default("{}")
-  attemptCount             Int                           @default(0)
-  maxAttempts              Int                           @default(3)
-  leaseToken               String?                       @db.Uuid
-  leaseOwner               String?
-  leaseExpiresAt           DateTime?
-  lastHeartbeatAt          DateTime?
-  startedAt                DateTime?
-  completedAt              DateTime?
-  failedAt                 DateTime?
-  errorCode                String?
-  errorMessage             String?
-  createdAt                DateTime                      @default(now())
-  updatedAt                DateTime                      @updatedAt
+  id                   String                        @id @default(cuid())
+  requestId            String                        @db.Uuid
+  requestSha256        String
+  roomId               String
+  requestedByUserId    String
+  runKey               String                        @unique(map: "TranscriptEvalRun_run_key")
+  comparisonKey        String                        @unique(map: "TranscriptEvalRun_comparison_key")
+  experimentKind       String                        @default("terminology")
+  providerKey          String
+  providerName         String
+  model                String
+  adapterVersion       String
+  language             String?
+  corpusRevisionSha256 String
+  status               TranscriptEvaluationRunStatus @default(QUEUED)
+  requestConfigJson    Json                          @default("{}")
+  resultJson           Json                          @default("{}")
+  attemptCount         Int                           @default(0)
+  maxAttempts          Int                           @default(3)
+  leaseToken           String?                       @db.Uuid
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?
+  lastHeartbeatAt      DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  failedAt             DateTime?
+  errorCode            String?
+  errorMessage         String?
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
 
-  room        CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_room_fkey")
-  requestedBy User                           @relation("TranscriptEvaluationRunRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_requester_fkey")
+  room        CallRoom                        @relation(fields: [roomId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_room_fkey")
+  requestedBy User                            @relation("TranscriptEvaluationRunRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict, map: "TranscriptEvalRun_requester_fkey")
   windows     TranscriptEvaluationRunWindow[]
 
   @@unique([requestedByUserId, requestId], map: "TranscriptEvalRun_requester_request_key")
@@ -3073,26 +3074,26 @@ model TranscriptEvaluationRun {
 // are fixed before execution, making partial completion and crash replay
 // explicit rather than inferred from an operator's local files.
 model TranscriptEvaluationRunWindow {
-  id                             String                              @id @default(cuid())
-  runId                          String
-  windowId                       String
-  ordinal                        Int
-  status                         TranscriptEvaluationRunWindowStatus @default(QUEUED)
-  baselineRunKey                 String                              @unique(map: "TranscriptEvalRunWindow_baseline_key")
-  terminologyRunKey              String                              @unique(map: "TranscriptEvalRunWindow_term_key")
-  baselineCandidateId            String?
-  terminologyCandidateId         String?
-  derivativeSha256               String?
-  startedAt                      DateTime?
-  completedAt                    DateTime?
-  failedAt                       DateTime?
-  errorCode                      String?
-  errorMessage                   String?
-  createdAt                      DateTime                            @default(now())
-  updatedAt                      DateTime                            @updatedAt
+  id                     String                              @id @default(cuid())
+  runId                  String
+  windowId               String
+  ordinal                Int
+  status                 TranscriptEvaluationRunWindowStatus @default(QUEUED)
+  baselineRunKey         String                              @unique(map: "TranscriptEvalRunWindow_baseline_key")
+  terminologyRunKey      String                              @unique(map: "TranscriptEvalRunWindow_term_key")
+  baselineCandidateId    String?
+  terminologyCandidateId String?
+  derivativeSha256       String?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  failedAt               DateTime?
+  errorCode              String?
+  errorMessage           String?
+  createdAt              DateTime                            @default(now())
+  updatedAt              DateTime                            @updatedAt
 
-  run                  TranscriptEvaluationRun       @relation(fields: [runId], references: [id], onDelete: Cascade, map: "TranscriptEvalRunWindow_run_fkey")
-  window               TranscriptEvaluationWindow    @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_window_fkey")
+  run                  TranscriptEvaluationRun        @relation(fields: [runId], references: [id], onDelete: Cascade, map: "TranscriptEvalRunWindow_run_fkey")
+  window               TranscriptEvaluationWindow     @relation(fields: [windowId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_window_fkey")
   baselineCandidate    TranscriptEvaluationCandidate? @relation("TranscriptEvaluationRunBaselineCandidate", fields: [baselineCandidateId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_baseline_candidate_fkey")
   terminologyCandidate TranscriptEvaluationCandidate? @relation("TranscriptEvaluationRunTerminologyCandidate", fields: [terminologyCandidateId], references: [id], onDelete: Restrict, map: "TranscriptEvalRunWindow_term_candidate_fkey")
 
@@ -3867,61 +3868,62 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace                 StudioWorkspace                          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents                 StudioDocument[]
-  tags                      StudioTag[]
-  tagAliases                StudioTagAlias[]
-  tagCandidates             StudioTagCandidate[]
-  tagMergeReceipts          StudioTagMergeReceipt[]
-  viewDefinitions           StudioViewDefinition[]
-  knowledgeNodes            StudioKnowledgeNode[]
-  manuscript                StudioManuscript?                        @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets               StudioMediaAsset[]
-  mediaBins                 MediaBin[]
-  episodeProductions        StudioEpisodeProduction[]
-  scenes                    Scene[]
-  shootDays                 ShootDay[]
-  storyEntities             StoryEntity[]
-  storyBibleActions         StoryBibleAction[]
-  storyboards               StudioStoryboard[]
-  chatThreads               StudioNestChatThread[]
-  chatMessages              StudioNestChatMessage[]
-  accessGrants              StudioProjectAccessGrant[]
-  nestInvites               StudioNestInvite[]
-  assetAttachments          StudioAssetAttachment[]
-  assetProcessingJobs       StudioAssetProcessingJob[]
-  audioMasterReviews        StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  workspace                     StudioWorkspace                             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents                     StudioDocument[]
+  tags                          StudioTag[]
+  tagAliases                    StudioTagAlias[]
+  tagCandidates                 StudioTagCandidate[]
+  tagMergeReceipts              StudioTagMergeReceipt[]
+  viewDefinitions               StudioViewDefinition[]
+  knowledgeNodes                StudioKnowledgeNode[]
+  manuscript                    StudioManuscript?                           @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets                   StudioMediaAsset[]
+  mediaBins                     MediaBin[]
+  episodeProductions            StudioEpisodeProduction[]
+  scenes                        Scene[]
+  shootDays                     ShootDay[]
+  storyEntities                 StoryEntity[]
+  storyBibleActions             StoryBibleAction[]
+  storyboards                   StudioStoryboard[]
+  chatThreads                   StudioNestChatThread[]
+  chatMessages                  StudioNestChatMessage[]
+  accessGrants                  StudioProjectAccessGrant[]
+  nestInvites                   StudioNestInvite[]
+  assetAttachments              StudioAssetAttachment[]
+  assetProcessingJobs           StudioAssetProcessingJob[]
+  audioMasterReviews            StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions         StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews          StudioAudioDeliveryReviewReceipt[]
   episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
-  episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
-  episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
-  episodeOutputSelections   StudioEpisodeOutputSelectionReceipt[]
-  episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
-  episodeAudioAnalyses      StudioEpisodeAudioAnalysisReceipt[]
-  episodeAudioReviews       StudioEpisodeAudioReviewReceipt[]
-  sourceUnits               StudioSourceUnit[]
-  personalSourceFilings     StudioPersonalSourceFiling[]
-  sourceAnnotations         StudioSourceAnnotation[]
-  sourceAnnotationUses      StudioSourceAnnotationUse[]
-  externalMediaReferences   StudioExternalMediaReference[]
-  mediaSourceRevisions      StudioMediaSourceRevision[]
-  sourceRanges              StudioSourceRange[]
-  storyCards                StudioStoryCard[]
-  storyBoards               StudioStoryBoard[]
-  mediaDerivatives          StudioMediaDerivative[]
-  documentOperations        StudioDocumentOperation[]
-  productionRooms           StudioProductionRoom[]
-  outputPackets             StudioOutputPacket[]
-  publishedArtifacts        StudioPublishedArtifact[]
-  workflowJobs              StudioWorkflowJob[]
-  goals                     Goal[]
-  actionItems               ActionItem[]
-  taskRecurrenceSeries      TaskRecurrenceSeries[]
-  callRooms                 CallRoom[]
-  coachingEngagements       CoachingEngagement[]
-  calendarConnections       CalendarConnection[]
-  calendarCollections       CalendarCollection[]
+  episodeAudioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
+  episodeAudioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
+  episodeOutputSelections       StudioEpisodeOutputSelectionReceipt[]
+  episodeAudioDecisions         StudioEpisodeAudioTrackDecisionReceipt[]
+  episodeAudioAnalyses          StudioEpisodeAudioAnalysisReceipt[]
+  episodeAudioReviews           StudioEpisodeAudioReviewReceipt[]
+  sourceUnits                   StudioSourceUnit[]
+  personalSourceFilings         StudioPersonalSourceFiling[]
+  sourceAnnotations             StudioSourceAnnotation[]
+  sourceAnnotationUses          StudioSourceAnnotationUse[]
+  externalMediaReferences       StudioExternalMediaReference[]
+  mediaSourceRevisions          StudioMediaSourceRevision[]
+  mediaSourceSets               StudioMediaSourceSet[]
+  sourceRanges                  StudioSourceRange[]
+  storyCards                    StudioStoryCard[]
+  storyBoards                   StudioStoryBoard[]
+  mediaDerivatives              StudioMediaDerivative[]
+  documentOperations            StudioDocumentOperation[]
+  productionRooms               StudioProductionRoom[]
+  outputPackets                 StudioOutputPacket[]
+  publishedArtifacts            StudioPublishedArtifact[]
+  workflowJobs                  StudioWorkflowJob[]
+  goals                         Goal[]
+  actionItems                   ActionItem[]
+  taskRecurrenceSeries          TaskRecurrenceSeries[]
+  callRooms                     CallRoom[]
+  coachingEngagements           CoachingEngagement[]
+  calendarConnections           CalendarConnection[]
+  calendarCollections           CalendarCollection[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -4024,22 +4026,22 @@ model StudioEpisodeProduction {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  project             StudioProject                            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document            StudioDocument                           @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  milestones          StudioEpisodeMilestone[]
-  editProposalSets    StudioEpisodeEditProposalSet[]
-  editReviewReceipts  StudioEpisodeEditReviewReceipt[]
-  transcriptJobs      TranscriptJob[]
-  recordingRooms      CallRoom[]
-  outputPackets       StudioOutputPacket[]
-  outputSelections    StudioEpisodeOutputSelectionReceipt[]
-  audioTrackDecisions StudioEpisodeAudioTrackDecisionReceipt[]
-  audioAnalyses       StudioEpisodeAudioAnalysisReceipt[]
-  audioReviews        StudioEpisodeAudioReviewReceipt[]
-  audioMixReviews     StudioEpisodeAudioMixReviewReceipt[]
-  audioMixPromotions  StudioEpisodeAudioMixPromotionReceipt[]
+  project                StudioProject                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document               StudioDocument                              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  milestones             StudioEpisodeMilestone[]
+  editProposalSets       StudioEpisodeEditProposalSet[]
+  editReviewReceipts     StudioEpisodeEditReviewReceipt[]
+  transcriptJobs         TranscriptJob[]
+  recordingRooms         CallRoom[]
+  outputPackets          StudioOutputPacket[]
+  outputSelections       StudioEpisodeOutputSelectionReceipt[]
+  audioTrackDecisions    StudioEpisodeAudioTrackDecisionReceipt[]
+  audioAnalyses          StudioEpisodeAudioAnalysisReceipt[]
+  audioReviews           StudioEpisodeAudioReviewReceipt[]
+  audioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
+  audioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
   programDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
-  storyBoards         StudioStoryBoard[]
+  storyBoards            StudioStoryBoard[]
 
   @@unique([projectId, slug])
   @@index([documentId])
@@ -4263,15 +4265,15 @@ model StudioAssetProcessingJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project                   StudioProject?                          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset                     StudioMediaAsset                        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  audioMasterReviews        StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  project                       StudioProject?                              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset                         StudioMediaAsset                            @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  audioMasterReviews            StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions         StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews          StudioAudioDeliveryReviewReceipt[]
   episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
-  episodeAudioMixReviews    StudioEpisodeAudioMixReviewReceipt[]
-  episodeAudioMixPromotions StudioEpisodeAudioMixPromotionReceipt[]
-  dialogueRepairAuditions   StudioDialogueRepairAuditionReceipt[]
+  episodeAudioMixReviews        StudioEpisodeAudioMixReviewReceipt[]
+  episodeAudioMixPromotions     StudioEpisodeAudioMixPromotionReceipt[]
+  dialogueRepairAuditions       StudioDialogueRepairAuditionReceipt[]
 
   @@index([assetId, status, createdAt])
   @@index([projectId, status])
@@ -4408,10 +4410,10 @@ model StudioEpisodeAudioMixPromotionReceipt {
   occurredAt               DateTime
   createdAt                DateTime                            @default(now())
 
-  project           StudioProject                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  episodeProduction StudioEpisodeProduction             @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
-  mixJob            StudioAssetProcessingJob            @relation(fields: [mixJobId], references: [id], onDelete: Cascade)
-  reviewReceipt     StudioEpisodeAudioMixReviewReceipt? @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
+  project           StudioProject                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  episodeProduction StudioEpisodeProduction                     @relation(fields: [episodeProductionId], references: [id], onDelete: Cascade)
+  mixJob            StudioAssetProcessingJob                    @relation(fields: [mixJobId], references: [id], onDelete: Cascade)
+  reviewReceipt     StudioEpisodeAudioMixReviewReceipt?         @relation(fields: [reviewReceiptId], references: [id], onDelete: Restrict)
   deliveryReviews   StudioEpisodeProgramDeliveryReviewReceipt[]
 
   @@unique([projectId, actorEmail, clientRequestId], map: "StudioEpisodeMixPromotion_project_actor_request_key")
@@ -4749,13 +4751,13 @@ model StudioSourceUnit {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document             StudioDocument?             @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  asset                StudioMediaAsset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  annotations          StudioSourceAnnotation[]
-  personalSourceFiling StudioPersonalSourceFiling?
+  project                 StudioProject                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document                StudioDocument?                @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  asset                   StudioMediaAsset?              @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  annotations             StudioSourceAnnotation[]
+  personalSourceFiling    StudioPersonalSourceFiling?
   externalMediaReferences StudioExternalMediaReference[]
-  mediaSourceRevisions StudioMediaSourceRevision[]
+  mediaSourceRevisions    StudioMediaSourceRevision[]
 
   @@unique([projectId, slug])
   @@index([projectId, kind])
@@ -4861,10 +4863,10 @@ model StudioExternalMediaReference {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  project    StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceUnit StudioSourceUnit?           @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  project    StudioProject                           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceUnit StudioSourceUnit?                       @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
   connection StudioMediaProviderConnection?          @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  importedBy User                        @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
+  importedBy User                                    @relation("StudioExternalMediaReferenceImportedBy", fields: [importedByUserId], references: [id], onDelete: Restrict)
   revisions  StudioMediaSourceRevision[]
   operations StudioExternalMediaReferenceOperation[]
 
@@ -4893,8 +4895,8 @@ model StudioExternalMediaReferenceOperation {
   reference StudioExternalMediaReference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
   actor     User                         @relation("StudioExternalMediaReferenceOperationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
 
-  @@index([referenceId, revision])
   @@unique([referenceId, actorUserId, clientRequestId])
+  @@index([referenceId, revision])
   @@index([actorUserId, createdAt])
 }
 
@@ -4915,6 +4917,8 @@ model StudioMediaSourceRevision {
   widthPixels         Int?
   heightPixels        Int?
   framesPerSecond     Float?
+  mediaProjection     String    @default("flat")
+  projectionJson      Json      @default("{}")
   sourceState         String    @default("available")
   providerModifiedAt  DateTime?
   verifiedAt          DateTime?
@@ -4923,19 +4927,73 @@ model StudioMediaSourceRevision {
   createdByUserId     String
   createdAt           DateTime  @default(now())
 
-  project           StudioProject                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  externalReference StudioExternalMediaReference? @relation(fields: [externalReferenceId], references: [id], onDelete: Restrict)
-  mediaAsset        StudioMediaAsset?             @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
-  sourceUnit        StudioSourceUnit?             @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
-  createdBy         User                          @relation("StudioMediaSourceRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  ranges            StudioSourceRange[]
-  derivatives       StudioMediaDerivative[]
+  project            StudioProject                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  externalReference  StudioExternalMediaReference? @relation(fields: [externalReferenceId], references: [id], onDelete: Restrict)
+  mediaAsset         StudioMediaAsset?             @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  sourceUnit         StudioSourceUnit?             @relation(fields: [sourceUnitId], references: [id], onDelete: SetNull)
+  createdBy          User                          @relation("StudioMediaSourceRevisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  ranges             StudioSourceRange[]
+  derivatives        StudioMediaDerivative[]
+  sourceSetMembers   StudioMediaSourceSetMember[]  @relation("StudioMediaSourceSetMemberRevision")
+  clockForSourceSets StudioMediaSourceSet[]        @relation("StudioMediaSourceSetClockRevision")
 
   @@unique([projectId, identitySha256])
   @@unique([externalReferenceId, revisionKey])
   @@index([projectId, sourceState, createdAt])
   @@index([mediaAssetId, createdAt])
   @@index([sourceUnitId])
+}
+
+// One immutable logical camera take may require several exact files. An
+// Insta360 take, for example, can include paired lens originals and one or more
+// low-resolution browse files. The set binds those revisions without turning
+// a proxy into an original or requiring the browser to decode proprietary
+// camera media.
+model StudioMediaSourceSet {
+  id                    String   @id @default(cuid())
+  projectId             String
+  kind                  String
+  captureKey            String
+  displayName           String
+  identitySha256        String
+  sourceClockRevisionId String
+  completeness          String   @default("complete")
+  metadataJson          Json     @default("{}")
+  clientRequestId       String
+  createdByUserId       String
+  createdAt             DateTime @default(now())
+
+  project             StudioProject                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceClockRevision StudioMediaSourceRevision    @relation("StudioMediaSourceSetClockRevision", fields: [sourceClockRevisionId], references: [id], onDelete: Restrict)
+  createdBy           User                         @relation("StudioMediaSourceSetCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  members             StudioMediaSourceSetMember[]
+  ranges              StudioSourceRange[]
+
+  @@unique([projectId, identitySha256])
+  @@unique([projectId, createdByUserId, clientRequestId])
+  @@index([projectId, captureKey, createdAt])
+  @@index([sourceClockRevisionId])
+}
+
+// Membership is immutable and role-bearing. Every member still resolves to an
+// exact source revision with its own checksum and provider provenance.
+model StudioMediaSourceSetMember {
+  id                   String   @id @default(cuid())
+  sourceSetId          String
+  sourceRevisionId     String
+  role                 String
+  ordinal              Int      @default(0)
+  requiredForRender    Boolean  @default(true)
+  memberIdentitySha256 String
+  metadataJson         Json     @default("{}")
+  createdAt            DateTime @default(now())
+
+  sourceSet      StudioMediaSourceSet      @relation(fields: [sourceSetId], references: [id], onDelete: Cascade)
+  sourceRevision StudioMediaSourceRevision @relation("StudioMediaSourceSetMemberRevision", fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceSetId, sourceRevisionId])
+  @@unique([sourceSetId, role, ordinal])
+  @@index([sourceRevisionId])
 }
 
 // A retained derivative is append-only evidence produced from one exact source
@@ -4979,6 +5037,7 @@ model StudioSourceRange {
   id                String   @id @default(cuid())
   projectId         String
   sourceRevisionId  String
+  sourceSetId       String?
   selectorSha256    String
   startSeconds      Float
   endSeconds        Float
@@ -4989,11 +5048,13 @@ model StudioSourceRange {
 
   project        StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceRevision StudioMediaSourceRevision @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  sourceSet      StudioMediaSourceSet?     @relation(fields: [sourceSetId], references: [id], onDelete: Restrict)
   createdBy      User                      @relation("StudioSourceRangeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   storyCards     StudioStoryCard[]
 
   @@unique([sourceRevisionId, selectorSha256])
   @@index([projectId, createdAt])
+  @@index([sourceSetId])
 }
 
 // The source-backed index card is Quipsly's reusable unit of story intent.
@@ -5627,10 +5688,10 @@ model StudioWorkflowJob {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  project        StudioProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  asset          StudioMediaAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  productionRoom StudioProductionRoom? @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
-  outputPacket   StudioOutputPacket?   @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
+  project         StudioProject?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  asset           StudioMediaAsset?      @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  productionRoom  StudioProductionRoom?  @relation(fields: [productionRoomId], references: [id], onDelete: SetNull)
+  outputPacket    StudioOutputPacket?    @relation(fields: [outputPacketId], references: [id], onDelete: SetNull)
   mediaDerivative StudioMediaDerivative?
 
   @@index([projectId, status, createdAt])
@@ -6476,29 +6537,29 @@ model StudioMediaAsset {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects                  StudioProject[]
-  mediaBin                  MediaBin?                                @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
-  clips                     MediaClip[]
-  mediaTags                 StudioMediaTag[]
-  assetAttachments          StudioAssetAttachment[]
-  variants                  StudioAssetVariant[]
-  processingJobs            StudioAssetProcessingJob[]
-  audioMasterReviews        StudioAudioMasterReviewReceipt[]
-  audioMasterPromotions     StudioAudioMasterPromotionReceipt[]
-  audioDeliveryReviews      StudioAudioDeliveryReviewReceipt[]
+  projects                      StudioProject[]
+  mediaBin                      MediaBin?                                   @relation(fields: [mediaBinId], references: [id], onDelete: SetNull)
+  clips                         MediaClip[]
+  mediaTags                     StudioMediaTag[]
+  assetAttachments              StudioAssetAttachment[]
+  variants                      StudioAssetVariant[]
+  processingJobs                StudioAssetProcessingJob[]
+  audioMasterReviews            StudioAudioMasterReviewReceipt[]
+  audioMasterPromotions         StudioAudioMasterPromotionReceipt[]
+  audioDeliveryReviews          StudioAudioDeliveryReviewReceipt[]
   episodeProgramDeliveryReviews StudioEpisodeProgramDeliveryReviewReceipt[]
-  episodeAudioDecisions     StudioEpisodeAudioTrackDecisionReceipt[]
-  dialogueRepairCandidates  StudioDialogueRepairCandidate[]
-  dialogueRepairReviews     StudioDialogueRepairReviewReceipt[]
-  dialogueRepairAuditions   StudioDialogueRepairAuditionReceipt[]
-  audibleEventAnalyses      StudioAudibleEventAnalysisReceipt[]
-  audibleEventReviews       StudioAudibleEventReviewReceipt[]
-  audibleEventTruthReceipts StudioAudibleEventTruthReceipt[]
-  sourceUnits               StudioSourceUnit[]
-  workflowJobs              StudioWorkflowJob[]
-  transcriptJobs            TranscriptJob[]
-  transcriptVerifications   TranscriptSegmentVerification[]
-  mediaSourceRevisions      StudioMediaSourceRevision[]
+  episodeAudioDecisions         StudioEpisodeAudioTrackDecisionReceipt[]
+  dialogueRepairCandidates      StudioDialogueRepairCandidate[]
+  dialogueRepairReviews         StudioDialogueRepairReviewReceipt[]
+  dialogueRepairAuditions       StudioDialogueRepairAuditionReceipt[]
+  audibleEventAnalyses          StudioAudibleEventAnalysisReceipt[]
+  audibleEventReviews           StudioAudibleEventReviewReceipt[]
+  audibleEventTruthReceipts     StudioAudibleEventTruthReceipt[]
+  sourceUnits                   StudioSourceUnit[]
+  workflowJobs                  StudioWorkflowJob[]
+  transcriptJobs                TranscriptJob[]
+  transcriptVerifications       TranscriptSegmentVerification[]
+  mediaSourceRevisions          StudioMediaSourceRevision[]
 
   @@index([createdAt])
   @@index([mediaBinId])

@@ -7,6 +7,7 @@ import {
   storyCardStatuses,
   type StoryCardPurpose,
   type StoryCardStatus,
+  type MediaSourceSetMemberRole,
   type StoryReframeRecipe,
 } from "@/lib/source-story-contract";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -21,6 +22,7 @@ import {
 import {
   SourceStoryConflictError,
   createSourceStoryCard,
+  createMediaSourceSet,
   createStoryBoard,
   readSourceStoryWorkspace,
   rebindSourceStoryCard,
@@ -74,6 +76,22 @@ function stringArray(value: unknown) {
     throw new SourceStoryContractError("invalid-list", "The supplied identity list is malformed.");
   }
   return value as string[];
+}
+
+function sourceSetMembers(value: unknown) {
+  if (!Array.isArray(value)) throw new SourceStoryContractError("invalid-source-set-members", "The source-set member list is malformed.");
+  return value.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new SourceStoryContractError("invalid-source-set-member", "A source-set member is malformed.");
+    }
+    const member = item as Record<string, unknown>;
+    return {
+      sourceRevisionId: text(member.sourceRevisionId),
+      role: text(member.role) as MediaSourceSetMemberRole,
+      ordinal: member.ordinal === undefined ? undefined : Number(member.ordinal),
+      requiredForRender: member.requiredForRender === undefined ? undefined : member.requiredForRender === true,
+    };
+  });
 }
 
 function statusFrom(value: unknown): StoryCardStatus {
@@ -158,6 +176,23 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         clientRequestId: text(body.clientRequestId),
         retryFailed: body.retryFailed === true,
       });
+    } else if (action === "create-source-set") {
+      operation = await createMediaSourceSet({
+        prisma,
+        actorUserId: actor.userId,
+        value: {
+          projectId: actor.projectId,
+          clientRequestId: text(body.clientRequestId),
+          kind: text(body.kind) as "insta360-360" | "camera-package",
+          captureKey: text(body.captureKey),
+          displayName: text(body.displayName),
+          sourceClockRevisionId: text(body.sourceClockRevisionId),
+          members: sourceSetMembers(body.members),
+          metadata: body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+            ? body.metadata as Record<string, unknown>
+            : {},
+        },
+      });
     } else if (action === "create-board") {
       operation = await createStoryBoard({
         prisma,
@@ -179,6 +214,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
           projectId: actor.projectId,
           mediaAssetId: text(body.mediaAssetId) || null,
           sourceRevisionId: text(body.sourceRevisionId) || null,
+          sourceSetId: text(body.sourceSetId) || null,
           externalReferenceId: text(body.externalReferenceId) || null,
           boardId: text(body.boardId) || null,
           expectedBoardRevision: body.expectedBoardRevision === null || body.expectedBoardRevision === undefined

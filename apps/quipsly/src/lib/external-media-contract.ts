@@ -29,6 +29,12 @@ export type VerifiedExternalMediaFile = {
   headRevisionKey?: string | null;
   checksumSha256?: string | null;
   checksumMd5?: string | null;
+  durationSeconds?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
+  framesPerSecond?: number | null;
+  mediaProjection?: "flat" | "equirectangular" | "dual-fisheye";
+  projectionMetadata?: Record<string, unknown>;
   providerCreatedAt?: string | Date | null;
   providerModifiedAt?: string | Date | null;
   accessState: ExternalMediaAccessState;
@@ -111,6 +117,14 @@ function date(value: unknown, field: string) {
   return parsed;
 }
 
+function finiteMediaNumber(value: unknown, field: string, integer = false) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || (integer && !Number.isInteger(value))) {
+    throw new ExternalMediaContractError("invalid-media-metadata", `${field} must be a positive ${integer ? "integer" : "number"}.`);
+  }
+  return value;
+}
+
 export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedExternalMediaInput) {
   const file = value.verifiedFile;
   if (!externalMediaAccessStates.includes(file.accessState)) {
@@ -131,6 +145,9 @@ export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedE
   }
   if (file.capabilityState === "downloadable" && (!file.canDownload || file.accessState !== "available")) {
     throw new ExternalMediaContractError("capability-contradiction", "Downloadable media must have available access and download capability.");
+  }
+  if (file.mediaProjection && !(["flat", "equirectangular", "dual-fisheye"] as const).includes(file.mediaProjection)) {
+    throw new ExternalMediaContractError("invalid-media-projection", "The media projection is unsupported.");
   }
   const provider = opaqueId(file.provider.toLowerCase(), "provider");
   const localPath = text(file.localPath, "localPath", 4_096) || null;
@@ -164,6 +181,14 @@ export function normalizeAttachVerifiedExternalMediaInput(value: AttachVerifiedE
       headRevisionKey: file.headRevisionKey ? opaqueId(file.headRevisionKey, "headRevisionKey") : null,
       checksumSha256: checksum(file.checksumSha256, "checksumSha256", 64),
       checksumMd5: checksum(file.checksumMd5, "checksumMd5", 32),
+      durationSeconds: finiteMediaNumber(file.durationSeconds, "durationSeconds"),
+      widthPixels: finiteMediaNumber(file.widthPixels, "widthPixels", true),
+      heightPixels: finiteMediaNumber(file.heightPixels, "heightPixels", true),
+      framesPerSecond: finiteMediaNumber(file.framesPerSecond, "framesPerSecond"),
+      mediaProjection: file.mediaProjection ?? "flat",
+      projectionMetadata: file.projectionMetadata && typeof file.projectionMetadata === "object" && !Array.isArray(file.projectionMetadata)
+        ? file.projectionMetadata
+        : {},
       providerCreatedAt: date(file.providerCreatedAt, "providerCreatedAt"),
       providerModifiedAt: date(file.providerModifiedAt, "providerModifiedAt"),
       accessState: file.accessState,

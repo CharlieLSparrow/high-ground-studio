@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 
 import {
   SourceStoryConflictError,
+  createMediaSourceSet,
   createSourceStoryCard,
   createStoryBoard,
   readSourceStoryWorkspace,
@@ -154,6 +155,10 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
 
   afterAll(async () => {
     try {
+      // Source-set membership deliberately restricts deleting an exact source
+      // revision in isolation. Remove the package aggregate before deleting
+      // the disposable Nest so the test exercises the production lifecycle.
+      if (projectId) await prisma.studioMediaSourceSet.deleteMany({ where: { projectId } });
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
       await prisma.studioMediaAsset.deleteMany({
         where: { id: { in: [firstAssetId, secondAssetId, otherAssetId].filter(Boolean) } },
@@ -191,6 +196,74 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     })).rejects.toMatchObject({ code: "board-slug-conflict", currentRevision: 1 });
     await expect(prisma.studioStoryBoard.count({ where: { projectId } })).resolves.toBe(1);
     await expect(prisma.studioStoryBoardOperation.count({ where: { boardId } })).resolves.toBe(1);
+  });
+
+  it("retains a complete multi-file camera package as one immutable source set", async () => {
+    const [originalRevision, browseRevision] = await Promise.all([
+      prisma.studioMediaSourceRevision.create({
+        data: {
+          projectId,
+          mediaAssetId: firstAssetId,
+          revisionKey: `insv:${nonce}`,
+          identitySha256: "c".repeat(63) + "1",
+          contentSha256: "d".repeat(64),
+          sizeBytes: BigInt(4_200_000_000),
+          durationSeconds: 120,
+          widthPixels: 3840,
+          heightPixels: 3840,
+          framesPerSecond: 29.97,
+          mediaProjection: "dual-fisheye",
+          sourceState: "checksum-bound",
+          createdByUserId: actorUserId,
+        },
+      }),
+      prisma.studioMediaSourceRevision.create({
+        data: {
+          projectId,
+          mediaAssetId: secondAssetId,
+          revisionKey: `lrv:${nonce}`,
+          identitySha256: "c".repeat(63) + "2",
+          contentSha256: "e".repeat(64),
+          sizeBytes: BigInt(110_000_000),
+          durationSeconds: 120,
+          widthPixels: 1920,
+          heightPixels: 960,
+          framesPerSecond: 29.97,
+          mediaProjection: "equirectangular",
+          sourceState: "checksum-bound",
+          createdByUserId: actorUserId,
+        },
+      }),
+    ]);
+    const value = {
+      projectId,
+      clientRequestId: randomUUID(),
+      kind: "insta360-360" as const,
+      captureKey: `VID_${nonce}`,
+      displayName: "Homer walk-through package",
+      sourceClockRevisionId: browseRevision.id,
+      members: [
+        { sourceRevisionId: originalRevision.id, role: "primary-original" as const, requiredForRender: true },
+        { sourceRevisionId: browseRevision.id, role: "browse-proxy" as const, requiredForRender: false },
+      ],
+      metadata: { cameraFamily: "Insta360" },
+    };
+    const created = await createMediaSourceSet({ prisma, actorUserId, value });
+    expect(created).toMatchObject({ replayed: false, sourceSet: { completeness: "complete", sourceClockRevisionId: browseRevision.id } });
+    await expect(createMediaSourceSet({ prisma, actorUserId, value })).resolves.toMatchObject({
+      replayed: true,
+      sourceSet: { id: created.sourceSet.id },
+    });
+    const workspace = await readSourceStoryWorkspace(prisma, projectId);
+    expect(workspace.sourceSets).toContainEqual(expect.objectContaining({
+      id: created.sourceSet.id,
+      displayName: "Homer walk-through package",
+      sourceClockRevision: expect.objectContaining({ id: browseRevision.id, widthPixels: 1920, heightPixels: 960 }),
+      members: expect.arrayContaining([
+        expect.objectContaining({ role: "primary-original", requiredForRender: true }),
+        expect.objectContaining({ role: "browse-proxy", requiredForRender: false }),
+      ]),
+    }));
   });
 
   it("persists one exact 360 range, source identity, tags, placement, and replay receipt", async () => {
@@ -258,7 +331,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
     });
     await expect(prisma.studioStoryCard.count({ where: { projectId } })).resolves.toBe(1);
     await expect(prisma.studioSourceRange.count({ where: { projectId } })).resolves.toBe(1);
-    await expect(prisma.studioMediaSourceRevision.count({ where: { projectId } })).resolves.toBe(1);
+    await expect(prisma.studioMediaSourceRevision.count({ where: { projectId } })).resolves.toBe(3);
   });
 
   it("rolls back cross-Nest source and tag attempts without leaving partial rows", async () => {
@@ -291,7 +364,7 @@ runLocalDatabaseSmoke("source-backed story workspace local database smoke", () =
       },
     })).rejects.toMatchObject({ code: "invalid-tag-scope" });
     await expect(prisma.studioStoryCard.count({ where: { projectId } })).resolves.toBe(cardCount);
-    await expect(prisma.studioMediaSourceRevision.count({ where: { projectId, mediaAssetId: secondAssetId } })).resolves.toBe(0);
+    await expect(prisma.studioMediaSourceRevision.count({ where: { projectId, mediaAssetId: secondAssetId } })).resolves.toBe(1);
   });
 
   it("reorders cards without mutating either immutable source range", async () => {

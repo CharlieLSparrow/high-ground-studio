@@ -339,3 +339,99 @@ reference revision untouched. The retained local operation proved the first
 observation stayed at r4 and an exact retry replayed it instead of creating
 another receipt. Changed provider capability or byte/revision evidence still
 advances the reference and must satisfy optimistic revision authority.
+
+## Complete Insta360 packages and spatial selects
+
+The next slice closes the gap between a generic external video and the camera
+package Homer actually needs to organize. An Insta360 take is not modeled as one
+filename. Official Studio guidance says a complete 360 package may include a
+master `.insv` plus `.lrv` proxy and that all members should be imported
+together. The official Desktop MediaSDK likewise describes one input as up to
+two camera-file paths and exports a 2:1 panorama. Quipsly now represents that
+truth explicitly:
+
+- `StudioMediaSourceSet` is one immutable logical take with a stable package
+  identity, capture key, display name, completeness, and exact viewing clock.
+- `StudioMediaSourceSetMember` binds 2–32 exact source revisions with role,
+  ordinal, render requirement, and membership identity. Current roles include
+  primary/secondary originals, browse proxy, audio sidecar, and metadata
+  sidecar.
+- Every member must already have an exact SHA-256 and positive byte count. An
+  Insta360 package must contain a primary original and must use its browse member
+  as the viewing clock. A Story Card stores both that package identity and the
+  exact clock revision, so neither file replacement nor proxy regeneration can
+  move its selection.
+- Source revisions now record `flat`, `equirectangular`, or `dual-fisheye`
+  projection plus bounded projection metadata. These are immutable revision
+  facts, not labels inferred later from filenames.
+
+The creator-facing library collapses package members into one camera take. The
+exact file inventory remains discoverable under **Package contents**, including
+which files are render-required and which exist only for browsing. This avoids
+the false choice between a simple UX and source transparency.
+
+The interactive viewer follows the standard WebGL equirectangular model:
+Three.js `VideoTexture` maps the protected video onto an inward-facing
+`SphereGeometry`, and `WebGLRenderer` draws the camera view. Drag, mouse wheel,
+arrow keys, plus/minus, playback, scrubbing, and reset are explicit controls.
+At any source time the creator can add a reframe keyframe containing pan, tilt,
+roll, field of view, interpolation, stabilization, horizon lock, and target
+aspect ratio. This is edit intent only; the original bytes and browse derivative
+remain unchanged.
+
+Official implementation references:
+
+- [Insta360 Desktop MediaSDK](https://github.com/Insta360Develop/Desktop-MediaSDK-Cpp)
+- [Insta360 complete-file import guidance](https://onlinemanual.insta360.com/studio/en-us/troubleshooting/file-import-issue/media-import-issue)
+- [Three.js VideoTexture](https://threejs.org/docs/pages/VideoTexture.html),
+  [SphereGeometry](https://threejs.org/docs/pages/SphereGeometry.html), and
+  [WebGLRenderer](https://threejs.org/docs/pages/WebGLRenderer.html)
+
+### Real retained package proof
+
+The operated package is intentionally tiny but real:
+
+- original `VID_20250711_222639_00_037.insv`: 21,549,387 bytes, two 3840x3840
+  HEVC tracks, 24 fps, SHA-256
+  `df4834771a4cf1d8f460e10b6607b9809588bd6ca67183aebc4277febcf67277`;
+- browse `LRV_20250711_222639_01_037.lrv`: 14,209,349 bytes, 1664x832
+  equirectangular H.264, 24 fps, SHA-256
+  `8e8ba0acc54cdd0e0258587132937d1c4fcf1facccc3a4be0de6f8f204a29971`;
+- verified collaboration derivative: 960x480 H.264/AAC, 30,884 bytes,
+  SHA-256
+  `e6032ecb68d78c65103d7a328a274163b1b73c43ce974f0629ff54ecf299263a`;
+- board `Homer's Insta360 story selects`, card
+  `Micro take · spatial composition proof`, source range `0.05–0.35`, two
+  retained spatial keyframes.
+
+The operation rehashed both originals after proxying, verified the derivative
+receipt against the produced bytes, and checked that no source or execution path
+entered the browser projection. A disposable Firebase-emulator user with only a
+read-only project grant then opened the canonical story page. Authenticated
+first/suffix ranges returned 206, an impossible range returned 416, HEAD returned
+the exact byte count, and an unauthenticated range returned 404. The temporary
+identity and grant were removed in `finally`, so access proof does not rely on a
+privileged developer session or a retained secret.
+
+Operating this slice uncovered three boundary defects:
+
+1. Insta360's full-range YUV browse file could remain `yuvj420p` even when the
+   output pixel format requested `yuv420p`; the worker then rejected its own
+   derivative. The scale pipeline now explicitly converts output range to TV
+   before formatting, and the real file produces verified `yuv420p` output.
+2. The long-running local Next process held a Prisma client generated before the
+   two migrations. Direct database operations passed while the page lacked the
+   new delegate. Restarting the managed local service after client generation
+   made the same authenticated page proof pass; this must become an explicit
+   local activation gate whenever schema/client generation changes.
+3. Restrictive member-to-revision links correctly prevent deleting one exact
+   package member, but account erasure must delete story cards, ranges, and
+   source sets before deleting the owning Nest. The hard-delete executor now
+   uses that explicit order instead of weakening immutable-source integrity.
+
+This is not yet Insta360-quality stitching or a final 360 renderer. The browser
+works against a camera-generated equirectangular browse carrier; final-quality
+stitching, FlowState execution, optical metadata, and export remain executor
+adapter work. The next product slice should promote selected cards into a
+project timeline while preserving this package/reframe identity, then add the
+native Insta360 render adapter and long-form library indexing.

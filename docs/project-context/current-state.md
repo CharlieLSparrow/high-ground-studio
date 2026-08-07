@@ -1,6 +1,35 @@
 # Current State
 
-Date: 2026-08-06
+Date: 2026-08-07
+
+## Insta360 source-to-story checkpoint
+
+- Source to Story now treats a multi-file camera take as one immutable package
+  instead of showing creators a loose pile of `.insv` and `.lrv` files. Exact
+  members keep their own checksums, byte counts, roles, render requirements,
+  projection metadata, and provider provenance; one explicit browse member owns
+  the package source clock.
+- The Nest story workspace groups complete Insta360 packages, exposes their
+  contents on demand, and provides an interactive equirectangular viewer with
+  drag, keyboard, wheel, scrub, play/pause, and reset controls. A creator can
+  mark source-clock ranges and save source-time pan, tilt, FOV, aspect-ratio,
+  stabilization, and horizon intent as reversible reframe keyframes.
+- The real retained High Ground Odyssey package
+  `VID_20250711_222639_00_037.insv` plus
+  `LRV_20250711_222639_01_037.lrv` produced one 960x480 verified browse
+  derivative and a source-backed card with two spatial keyframes. Both originals
+  retained their pre-operation SHA-256 values; no local path entered the client
+  projection.
+- A disposable verified read-only collaborator opened the canonical page over
+  the live local app. Protected first and suffix byte ranges returned 206,
+  invalid range returned 416, an unauthenticated request returned 404, and the
+  identity/grant were removed after proof. This operation also caught and
+  repaired a full-range YUV proxy defect, a stale generated Prisma client in the
+  running app, and hard-delete ordering for restrictive immutable-source links.
+- Source Story contracts, seven-case local database smoke, worker tests, Prisma
+  validation/status, the media-worker build, Quipsly typecheck, and the full
+  194-page production build pass. See
+  `docs/coordination/2026-08-07-drive-source-to-story-architecture.md`.
 
 ## Participant camera-readiness checkpoint
 

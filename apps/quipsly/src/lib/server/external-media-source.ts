@@ -35,6 +35,10 @@ function sha256(value: unknown) {
   return createHash("sha256").update(stableJson(value)).digest("hex");
 }
 
+function inputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
+}
+
 function safeSnapshot(input: ReturnType<typeof normalizeAttachVerifiedExternalMediaInput>, referenceId: string, revision: number, sourceRevisionId: string) {
   const file = input.verifiedFile;
   return {
@@ -55,6 +59,12 @@ function safeSnapshot(input: ReturnType<typeof normalizeAttachVerifiedExternalMe
     checksumMd5: file.checksumMd5,
     providerCreatedAt: file.providerCreatedAt?.toISOString() ?? null,
     providerModifiedAt: file.providerModifiedAt?.toISOString() ?? null,
+    durationSeconds: file.durationSeconds,
+    widthPixels: file.widthPixels,
+    heightPixels: file.heightPixels,
+    framesPerSecond: file.framesPerSecond,
+    mediaProjection: file.mediaProjection,
+    projectionMetadata: inputJson(file.projectionMetadata),
     accessState: file.accessState,
     capabilityState: file.capabilityState,
     canDownload: file.canDownload,
@@ -133,6 +143,12 @@ async function ensureProviderRevision(
     checksumSha256: file.checksumSha256,
     checksumMd5: file.checksumMd5,
     providerModifiedAt: file.providerModifiedAt?.toISOString() ?? null,
+    durationSeconds: file.durationSeconds,
+    widthPixels: file.widthPixels,
+    heightPixels: file.heightPixels,
+    framesPerSecond: file.framesPerSecond,
+    mediaProjection: file.mediaProjection,
+    projectionMetadata: inputJson(file.projectionMetadata),
   };
   const identitySha256 = sha256(identity);
   const revisionKey = file.headRevisionKey ?? `metadata:${identitySha256.slice(0, 24)}`;
@@ -153,6 +169,12 @@ async function ensureProviderRevision(
       identitySha256,
       contentSha256: file.checksumSha256,
       sizeBytes: file.sizeBytes,
+      durationSeconds: file.durationSeconds,
+      widthPixels: file.widthPixels,
+      heightPixels: file.heightPixels,
+      framesPerSecond: file.framesPerSecond,
+      mediaProjection: file.mediaProjection,
+      projectionJson: inputJson(file.projectionMetadata),
       sourceState,
       providerModifiedAt: file.providerModifiedAt,
       verifiedAt: new Date(),

@@ -19,15 +19,17 @@ import {
   Play,
   Plus,
   Rotate3d,
+  Video,
   Save,
   Search,
   Tags,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { storyCardPurposes, storyCardStatuses } from "@/lib/source-story-contract";
+import { storyCardPurposes, storyCardStatuses, type StoryReframeKeyframe } from "@/lib/source-story-contract";
 
 import { GoogleDriveSourcePicker } from "./GoogleDriveSourcePicker";
+import { EquirectangularVideoViewer, type SpatialView } from "./EquirectangularVideoViewer";
 
 type Asset = {
   id: string;
@@ -65,6 +67,7 @@ type SourceStoryCard = {
     endSeconds: number;
     selectorSha256: string;
     reframeRecipe: unknown;
+    sourceSet: null | { id: string; kind: string; captureKey: string; displayName: string; identitySha256: string; completeness: string };
     sourceRevision: {
       id: string;
       revisionKey: string;
@@ -103,6 +106,7 @@ type SourceStoryBoard = {
 
 type SourceStoryWorkspace = {
   schema: "quipsly-source-story-v1";
+  sourceSets: MediaSourceSet[];
   externalSources: Array<{
     id: string;
     provider: string;
@@ -136,6 +140,40 @@ type SourceStoryWorkspace = {
   boards: SourceStoryBoard[];
 };
 
+type MediaSourceSet = {
+  id: string;
+  kind: string;
+  captureKey: string;
+  displayName: string;
+  identitySha256: string;
+  completeness: string;
+  createdAt: string;
+  sourceClockRevision: {
+    id: string;
+    durationSeconds: number | null;
+    widthPixels: number | null;
+    heightPixels: number | null;
+    framesPerSecond: number | null;
+    externalReference: null | { id: string; fileName: string; provider: string };
+    collaborationProxy: MediaDerivative | null;
+  };
+  members: Array<{
+    id: string;
+    role: string;
+    ordinal: number;
+    requiredForRender: boolean;
+    memberIdentitySha256: string;
+    sourceRevision: {
+      id: string;
+      contentSha256: string | null;
+      sizeBytes: string | null;
+      durationSeconds: number | null;
+      sourceState: string;
+      externalReference: null | { id: string; provider: string; fileName: string; mimeType: string | null; accessState: string };
+    };
+  }>;
+};
+
 type MediaDerivative = {
   id: string;
   kind: string;
@@ -152,13 +190,17 @@ type MediaDerivative = {
 
 type ViewerSource = {
   key: string;
-  kind: "asset" | "external";
+  kind: "asset" | "external" | "source-set";
   id: string;
   filename: string;
   url: string;
   mimeType: string | null;
   duration: number | null;
   thumbnailUrl: string | null;
+  is360: boolean;
+  sourceRevisionId?: string;
+  externalReferenceId?: string;
+  sourceSetId?: string;
 };
 
 type ApiPayload = {
@@ -205,10 +247,11 @@ function boardGroupLabel(value: string) {
   return value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function sourceHref(projectSlug: string, source: { kind: "asset" | "external"; id: string } | null, boardId: string | null) {
+function sourceHref(projectSlug: string, source: { kind: "asset" | "external" | "source-set"; id: string } | null, boardId: string | null) {
   const params = new URLSearchParams();
   if (source?.kind === "asset") params.set("asset", source.id);
   if (source?.kind === "external") params.set("external", source.id);
+  if (source?.kind === "source-set") params.set("set", source.id);
   if (boardId) params.set("board", boardId);
   return `/nests/${encodeURIComponent(projectSlug)}/story?${params.toString()}`;
 }
@@ -222,6 +265,7 @@ export function SourceStoryClient({
   initialWorkspace,
   initialAssetId,
   initialExternalReferenceId,
+  initialSourceSetId,
   initialBoardId,
 }: {
   project: { id: string; slug: string; name: string };
@@ -232,6 +276,7 @@ export function SourceStoryClient({
   initialWorkspace: SourceStoryWorkspace;
   initialAssetId: string | null;
   initialExternalReferenceId: string | null;
+  initialSourceSetId: string | null;
   initialBoardId: string | null;
 }) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
@@ -240,6 +285,7 @@ export function SourceStoryClient({
   const [workspace, setWorkspace] = useState(initialWorkspace);
   const [selectedAssetId, setSelectedAssetId] = useState(initialAssetId);
   const [selectedExternalReferenceId, setSelectedExternalReferenceId] = useState<string | null>(initialExternalReferenceId);
+  const [selectedSourceSetId, setSelectedSourceSetId] = useState<string | null>(initialSourceSetId);
   const [selectedBoardId, setSelectedBoardId] = useState(initialBoardId);
   const [sourceQuery, setSourceQuery] = useState("");
   const [inPoint, setInPoint] = useState<number | null>(null);
@@ -250,7 +296,10 @@ export function SourceStoryClient({
   const [purpose, setPurpose] = useState("select");
   const [groupKey, setGroupKey] = useState("unassigned");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [preserve360, setPreserve360] = useState(false);
+  const [preserve360, setPreserve360] = useState(Boolean(initialSourceSetId));
+  const [spatialView, setSpatialView] = useState<SpatialView>({ panDegrees: 0, tiltDegrees: 0, fieldOfViewDegrees: 75 });
+  const [reframeKeyframes, setReframeKeyframes] = useState<StoryReframeKeyframe[]>([]);
+  const [reframeAspectRatio, setReframeAspectRatio] = useState<"16:9" | "9:16" | "1:1" | "4:5">("16:9");
   const [boardTitle, setBoardTitle] = useState("Main story");
   const [boardDescription, setBoardDescription] = useState("");
   const [boardEpisodeId, setBoardEpisodeId] = useState("");
@@ -260,8 +309,23 @@ export function SourceStoryClient({
 
   const selectedAsset = initialAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const selectedExternalSource = workspace.externalSources.find((source) => source.id === selectedExternalReferenceId) ?? null;
+  const selectedSourceSet = workspace.sourceSets.find((sourceSet) => sourceSet.id === selectedSourceSetId) ?? null;
   const selectedExternalProxy = selectedExternalSource?.latestSourceRevision?.collaborationProxy ?? null;
-  const selectedViewerSource: ViewerSource | null = selectedExternalSource && selectedExternalProxy ? {
+  const selectedSourceSetProxy = selectedSourceSet?.sourceClockRevision.collaborationProxy ?? null;
+  const selectedViewerSource: ViewerSource | null = selectedSourceSet && selectedSourceSetProxy && selectedSourceSet.sourceClockRevision.externalReference ? {
+    key: `source-set:${selectedSourceSet.id}`,
+    kind: "source-set",
+    id: selectedSourceSet.id,
+    filename: selectedSourceSet.displayName,
+    url: selectedSourceSetProxy.playbackUrl,
+    mimeType: selectedSourceSetProxy.mimeType,
+    duration: selectedSourceSetProxy.durationSeconds ?? selectedSourceSet.sourceClockRevision.durationSeconds,
+    thumbnailUrl: null,
+    is360: selectedSourceSet.kind === "insta360-360",
+    sourceRevisionId: selectedSourceSet.sourceClockRevision.id,
+    externalReferenceId: selectedSourceSet.sourceClockRevision.externalReference.id,
+    sourceSetId: selectedSourceSet.id,
+  } : selectedExternalSource && selectedExternalProxy ? {
     key: `external:${selectedExternalSource.id}`,
     kind: "external",
     id: selectedExternalSource.id,
@@ -270,6 +334,9 @@ export function SourceStoryClient({
     mimeType: selectedExternalProxy.mimeType,
     duration: selectedExternalProxy.durationSeconds,
     thumbnailUrl: null,
+    is360: false,
+    sourceRevisionId: selectedExternalSource.latestSourceRevision?.id,
+    externalReferenceId: selectedExternalSource.id,
   } : selectedAsset ? {
     key: `asset:${selectedAsset.id}`,
     kind: "asset",
@@ -279,6 +346,7 @@ export function SourceStoryClient({
     mimeType: selectedAsset.mimeType,
     duration: selectedAsset.duration,
     thumbnailUrl: selectedAsset.thumbnailUrl,
+    is360: false,
   } : null;
   const selectedBoard = workspace.boards.find((board) => board.id === selectedBoardId) ?? workspace.boards[0] ?? null;
   const filteredAssets = useMemo(() => {
@@ -287,12 +355,22 @@ export function SourceStoryClient({
       ? initialAssets.filter((asset) => `${asset.filename} ${asset.mimeType ?? ""} ${asset.resolution ?? ""}`.toLowerCase().includes(query))
       : initialAssets;
   }, [initialAssets, sourceQuery]);
+  const packagedRevisionIds = useMemo(() => new Set(
+    workspace.sourceSets.flatMap((sourceSet) => sourceSet.members.map((member) => member.sourceRevision.id)),
+  ), [workspace.sourceSets]);
   const filteredExternalSources = useMemo(() => {
     const query = sourceQuery.trim().toLowerCase();
+    const standaloneSources = workspace.externalSources.filter((source) => !source.latestSourceRevision || !packagedRevisionIds.has(source.latestSourceRevision.id));
     return query
-      ? workspace.externalSources.filter((source) => `${source.fileName} ${source.provider} ${source.mimeType ?? ""}`.toLowerCase().includes(query))
-      : workspace.externalSources;
-  }, [sourceQuery, workspace.externalSources]);
+      ? standaloneSources.filter((source) => `${source.fileName} ${source.provider} ${source.mimeType ?? ""}`.toLowerCase().includes(query))
+      : standaloneSources;
+  }, [packagedRevisionIds, sourceQuery, workspace.externalSources]);
+  const filteredSourceSets = useMemo(() => {
+    const query = sourceQuery.trim().toLowerCase();
+    return query
+      ? workspace.sourceSets.filter((sourceSet) => `${sourceSet.displayName} ${sourceSet.captureKey} ${sourceSet.kind} ${sourceSet.members.map((member) => member.sourceRevision.externalReference?.fileName ?? "").join(" ")}`.toLowerCase().includes(query))
+      : workspace.sourceSets;
+  }, [sourceQuery, workspace.sourceSets]);
   const placedIds = useMemo(() => new Set(workspace.boards.flatMap((board) => board.placements.map((placement) => placement.cardId))), [workspace.boards]);
   const unplacedCards = workspace.cards.filter((card) => !placedIds.has(card.id));
 
@@ -388,6 +466,7 @@ export function SourceStoryClient({
     mediaRef.current?.pause();
     setSelectedAssetId(assetId);
     setSelectedExternalReferenceId(null);
+    setSelectedSourceSetId(null);
     setInPoint(null);
     setOutPoint(null);
     setMessage(null);
@@ -404,6 +483,7 @@ export function SourceStoryClient({
     mediaRef.current?.pause();
     setSelectedAssetId(null);
     setSelectedExternalReferenceId(referenceId);
+    setSelectedSourceSetId(null);
     setInPoint(null);
     setOutPoint(null);
     setMessage(null);
@@ -411,14 +491,33 @@ export function SourceStoryClient({
     window.history.replaceState(null, "", sourceHref(project.slug, { kind: "external", id: referenceId }, selectedBoard?.id ?? null));
   }
 
-  function playSourceRange(source: { kind: "asset" | "external"; id: string }, startSeconds: number, endSeconds: number) {
+  function chooseSourceSet(
+    sourceSetId: string,
+    pendingPlayback: { sourceKey: string; startSeconds: number; endSeconds: number } | null = null,
+  ) {
+    pendingPlaybackRef.current = pendingPlayback;
+    playbackBoundaryRef.current = null;
+    mediaRef.current?.pause();
+    setSelectedAssetId(null);
+    setSelectedExternalReferenceId(null);
+    setSelectedSourceSetId(sourceSetId);
+    setInPoint(null);
+    setOutPoint(null);
+    setPreserve360(true);
+    setReframeKeyframes([]);
+    setSpatialView({ panDegrees: 0, tiltDegrees: 0, fieldOfViewDegrees: 75 });
+    setMessage(null);
+    setError(null);
+    window.history.replaceState(null, "", sourceHref(project.slug, { kind: "source-set", id: sourceSetId }, selectedBoard?.id ?? null));
+  }
+
+  function playSourceRange(source: { kind: "asset" | "external" | "source-set"; id: string }, startSeconds: number, endSeconds: number) {
     const sourceKey = `${source.kind}:${source.id}`;
     const playback = { sourceKey, startSeconds, endSeconds };
     if (selectedViewerSource?.key !== sourceKey || !mediaRef.current) {
       if (source.kind === "asset") chooseAsset(source.id, playback);
-      else {
-        chooseExternalSource(source.id, playback);
-      }
+      else if (source.kind === "external") chooseExternalSource(source.id, playback);
+      else chooseSourceSet(source.id, playback);
       return;
     }
     playbackBoundaryRef.current = endSeconds;
@@ -455,8 +554,9 @@ export function SourceStoryClient({
       action: "create-card",
       clientRequestId: crypto.randomUUID(),
       mediaAssetId: selectedViewerSource.kind === "asset" ? selectedViewerSource.id : null,
-      sourceRevisionId: selectedViewerSource.kind === "external" ? selectedExternalSource?.latestSourceRevision?.id ?? null : null,
-      externalReferenceId: selectedViewerSource.kind === "external" ? selectedExternalSource?.id ?? null : null,
+      sourceRevisionId: selectedViewerSource.kind !== "asset" ? selectedViewerSource.sourceRevisionId ?? null : null,
+      sourceSetId: selectedViewerSource.kind === "source-set" ? selectedViewerSource.sourceSetId ?? null : null,
+      externalReferenceId: selectedViewerSource.kind !== "asset" ? selectedViewerSource.externalReferenceId ?? null : null,
       boardId: board?.id ?? null,
       expectedBoardRevision: board?.revision ?? null,
       title,
@@ -471,10 +571,10 @@ export function SourceStoryClient({
       reframeRecipe: preserve360 ? {
         schema: "quipsly-360-reframe-v1",
         projection: "equirectangular",
-        aspectRatio: "16:9",
+        aspectRatio: reframeAspectRatio,
         stabilization: "source",
         horizonLock: true,
-        keyframes: [],
+        keyframes: reframeKeyframes,
       } : null,
     }, board ? `Saved the source-backed card to ${board.title}.` : "Saved an unfiled source-backed card.");
     if (next) {
@@ -485,7 +585,29 @@ export function SourceStoryClient({
       setOutPoint(null);
       setSelectedTagIds([]);
       setPreserve360(false);
+      setReframeKeyframes([]);
     }
+  }
+
+  function captureReframeKeyframe() {
+    const media = mediaRef.current;
+    if (!media || inPoint === null || outPoint === null || media.currentTime < inPoint || media.currentTime > outPoint) {
+      setError("Set an in and out point, then place the playhead inside that range before saving a camera view.");
+      return;
+    }
+    const next: StoryReframeKeyframe = {
+      sourceSeconds: Math.round(media.currentTime * 1_000_000) / 1_000_000,
+      panDegrees: Math.round(spatialView.panDegrees * 1000) / 1000,
+      tiltDegrees: Math.round(spatialView.tiltDegrees * 1000) / 1000,
+      rollDegrees: 0,
+      fieldOfViewDegrees: Math.round(spatialView.fieldOfViewDegrees * 1000) / 1000,
+      interpolation: "ease",
+    };
+    setReframeKeyframes((current) => [...current.filter((keyframe) => Math.abs(keyframe.sourceSeconds - next.sourceSeconds) > 0.0005), next]
+      .sort((left, right) => left.sourceSeconds - right.sourceSeconds));
+    setPreserve360(true);
+    setError(null);
+    setMessage(`Saved a non-destructive camera view at ${formatClock(next.sourceSeconds)}. The source remains full 360°.`);
   }
 
   async function requestProxy(source: SourceStoryWorkspace["externalSources"][number], retryFailed = false) {
@@ -522,6 +644,7 @@ export function SourceStoryClient({
     const range = card.sourceRange;
     if (!range) return null;
     if (range.sourceRevision.mediaAsset) return { kind: "asset" as const, id: range.sourceRevision.mediaAsset.id };
+    if (range.sourceSet) return { kind: "source-set" as const, id: range.sourceSet.id };
     if (range.sourceRevision.externalReference && range.sourceRevision.collaborationProxy) {
       return { kind: "external" as const, id: range.sourceRevision.externalReference.id };
     }
@@ -543,6 +666,7 @@ export function SourceStoryClient({
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">Originals remain unchanged</span>
             <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-sky-900">{workspace.cards.length} cards</span>
             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-2 text-teal-900">{workspace.externalSources.length} vault source{workspace.externalSources.length === 1 ? "" : "s"}</span>
+            <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-fuchsia-900">{workspace.sourceSets.length} camera set{workspace.sourceSets.length === 1 ? "" : "s"}</span>
             <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-violet-900">{workspace.boards.length} boards</span>
           </div>
         </div>
@@ -562,6 +686,7 @@ export function SourceStoryClient({
           <GoogleDriveSourcePicker projectSlug={project.slug} canWrite={canWrite} onAttached={refreshWorkspace} />
           <label className="relative mt-4 block"><span className="sr-only">Search source media</span><Search size={16} className="absolute left-3 top-3.5 text-[#927b5b]" aria-hidden="true" /><input value={sourceQuery} onChange={(event) => setSourceQuery(event.target.value)} placeholder="Search media…" className="min-h-11 w-full rounded-xl border border-[#d9c7a5] bg-white pl-9 pr-3 text-sm font-semibold outline-none focus-visible:ring-4 focus-visible:ring-sky-100" /></label>
           <div className="mt-3 max-h-[68vh] space-y-2 overflow-y-auto pr-1">
+            {filteredSourceSets.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-900"><Rotate3d size={13} aria-hidden="true" />360° camera sets</p>{filteredSourceSets.map((sourceSet) => { const selected = sourceSet.id === selectedSourceSet?.id; const proxy = sourceSet.sourceClockRevision.collaborationProxy; const originalCount = sourceSet.members.filter((member) => member.role.includes("original")).length; return <article key={sourceSet.id} className={`mb-2 rounded-2xl border p-3 ${selected ? "border-fuchsia-800 bg-fuchsia-100" : "border-fuchsia-200 bg-fuchsia-50/60"}`}><button type="button" disabled={!proxy} onClick={() => chooseSourceSet(sourceSet.id)} aria-pressed={selected} className="w-full text-left disabled:cursor-not-allowed"><p className="line-clamp-2 text-sm font-black leading-5">{sourceSet.displayName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-fuchsia-900">{sourceSet.kind.replaceAll("-", " ")} · {sourceSet.completeness}</p><div className="mt-2 flex flex-wrap gap-1"><span className="rounded-full border border-fuchsia-200 bg-white px-2 py-1 text-[10px] font-black text-fuchsia-950">{originalCount} exact original{originalCount === 1 ? "" : "s"}</span><span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-950">{proxy ? `Spatial browse ready · ${formatClock(proxy.durationSeconds)}` : "Browse proxy required"}</span></div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">Set {sourceSet.identitySha256.slice(0, 10)}… · clocked by {sourceSet.sourceClockRevision.externalReference?.fileName ?? "retained source"}</p></button><details className="mt-2 rounded-xl border border-fuchsia-200 bg-white/70 px-3 py-2 text-[10px]"><summary className="cursor-pointer font-black uppercase tracking-wide text-fuchsia-950">Package contents · {sourceSet.members.length}</summary><ul className="mt-2 space-y-1 text-[#765f40]">{sourceSet.members.map((member) => <li key={member.id} className="break-all"><span className="font-black text-fuchsia-950">{member.role.replaceAll("-", " ")}</span> · {member.sourceRevision.externalReference?.fileName ?? member.sourceRevision.id}{member.requiredForRender ? " · render required" : " · browse only"}</li>)}</ul></details>{proxy ? <button type="button" onClick={() => chooseSourceSet(sourceSet.id)} className="mt-2 min-h-11 w-full rounded-xl bg-fuchsia-900 px-3 text-xs font-black text-white">Look around and mark selects</button> : null}</article>; })}</div> : null}
             {filteredExternalSources.length ? <div className="pb-1"><p className="mb-2 flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#76522c]"><Cloud size={13} aria-hidden="true" />Connected vault</p>{filteredExternalSources.map((source) => { const health = externalSourceHealth(source.accessState, source.capabilityState); const revision = source.latestSourceRevision; const proxy = revision?.collaborationProxy; const job = revision?.proxyJob; const selected = source.id === selectedExternalSource?.id; return <article key={source.id} className={`mb-2 rounded-2xl border p-3 ${selected ? "border-teal-800 bg-teal-100" : "border-teal-200 bg-teal-50/60"}`}><button type="button" onClick={() => chooseExternalSource(source.id)} aria-pressed={selected} className="w-full text-left"><p className="line-clamp-2 text-sm font-black leading-5">{source.fileName}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-teal-900">{source.provider.replaceAll("-", " ")} · reference r{source.revision}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-full border px-2 py-1 text-[10px] font-black ${health.tone}`}>{health.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[10px] font-bold text-teal-900">{formatBytes(source.sizeBytes)}</span>{proxy ? <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-950">Proxy ready · {formatClock(proxy.durationSeconds)}</span> : null}</div><p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">{revision ? `${sourceStateLabel(revision.sourceState)} · ${revision.revisionKey}` : "No immutable provider revision retained yet."}</p></button>{proxy ? <button type="button" onClick={() => chooseExternalSource(source.id)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white">Open verified proxy</button> : job && ["queued", "processing"].includes(job.status) ? <p role="status" className="mt-2 flex min-h-11 items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-black text-sky-950"><Loader2 size={14} className="animate-spin" aria-hidden="true" />{job.status === "processing" ? "Generating verified proxy…" : "Proxy queued on this Mac…"}</p> : job?.status === "failed" ? <button type="button" disabled={pending || !canWrite} onClick={() => void requestProxy(source, true)} className="mt-2 min-h-11 w-full rounded-xl border border-rose-300 bg-white px-3 text-xs font-black text-rose-950 disabled:opacity-45">Retry proxy · {job.failureCode ?? "worker failure"}</button> : source.provider === "local-file-vault" ? <button type="button" disabled={pending || !canWrite || !revision} onClick={() => void requestProxy(source)} className="mt-2 min-h-11 w-full rounded-xl bg-teal-900 px-3 text-xs font-black text-white disabled:opacity-45">Create lightweight proxy</button> : <p className="mt-2 text-[10px] font-semibold leading-4 text-[#765f40]">The source is attached. Drive proxy execution activates with the approved cloud connection; Quipsly will not pull the original before then.</p>}</article>; })}</div> : null}
             {filteredAssets.map((asset) => {
               const selected = asset.id === selectedAsset?.id;
@@ -577,18 +702,20 @@ export function SourceStoryClient({
                 </button>
               );
             })}
-            {!filteredAssets.length && !filteredExternalSources.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">No attached source matches this search.</p> : null}
+            {!filteredAssets.length && !filteredExternalSources.length && !filteredSourceSets.length ? <p className="rounded-2xl border border-dashed border-[#d9c7a5] p-5 text-sm font-semibold text-[#765f40]">No attached source matches this search.</p> : null}
           </div>
         </aside>
 
         <section className="min-w-0 space-y-4" aria-label="Source viewer">
           <div className="overflow-hidden rounded-3xl border border-[#29231d] bg-[#171513] shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3 text-white">
-              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bd91]">Viewer</p><h2 className="truncate font-serif text-xl font-black">{selectedViewerSource?.filename ?? selectedExternalSource?.fileName ?? "Choose a source"}</h2></div>
+              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bd91]">{selectedViewerSource?.is360 ? "Spatial 360° viewer" : "Viewer"}</p><h2 className="truncate font-serif text-xl font-black">{selectedViewerSource?.filename ?? selectedSourceSet?.displayName ?? selectedExternalSource?.fileName ?? "Choose a source"}</h2></div>
               {(selectedViewerSource || selectedExternalSource) ? <span className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wide">{selectedViewerSource?.mimeType ?? selectedExternalSource?.mimeType ?? "Unknown media"}</span> : null}
             </div>
             <div className="grid min-h-[360px] place-items-center bg-black md:min-h-[500px]">
-              {!selectedViewerSource ? <p className="px-6 text-center font-semibold text-zinc-400">{selectedExternalSource ? "This source is safely attached. Create its lightweight collaboration proxy to scrub and mark ranges without editing the original." : "Attach or choose project media to begin."}</p> : selectedViewerSource.mimeType?.startsWith("video/") ? (
+              {!selectedViewerSource ? <p className="px-6 text-center font-semibold text-zinc-400">{selectedExternalSource || selectedSourceSet ? "This source is safely attached. Create its lightweight collaboration proxy to scrub and mark ranges without editing the original." : "Attach or choose project media to begin."}</p> : selectedViewerSource.is360 ? (
+                <EquirectangularVideoViewer key={selectedViewerSource.key} ref={(node) => { mediaRef.current = node; }} src={selectedViewerSource.url} title={selectedViewerSource.filename} onViewChange={setSpatialView} onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} />
+              ) : selectedViewerSource.mimeType?.startsWith("video/") ? (
                 <video key={selectedViewerSource.key} ref={(node) => { mediaRef.current = node; }} src={selectedViewerSource.url} poster={selectedViewerSource.thumbnailUrl ?? undefined} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="max-h-[70vh] w-full" />
               ) : selectedViewerSource.mimeType?.startsWith("audio/") ? (
                 <div className="w-full max-w-3xl px-6"><div className="mb-8 grid place-items-center"><Film size={64} className="text-[#d8bd91]" aria-hidden="true" /></div><audio key={selectedViewerSource.key} ref={(node) => { mediaRef.current = node; }} src={selectedViewerSource.url} controls preload="metadata" onTimeUpdate={stopAtSourceRangeBoundary} onEnded={() => { playbackBoundaryRef.current = null; }} className="w-full" /></div>
@@ -623,7 +750,7 @@ export function SourceStoryClient({
                 </div>
                 <label><span className="text-xs font-black uppercase tracking-wide text-[#76522c]">Working notes</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={50000} rows={3} placeholder="Writing, edit, camera, research, or collaboration notes…" className="mt-1 w-full rounded-xl border border-[#d9c7a5] p-3 text-sm font-semibold leading-6" /></label>
                 {tags.length ? <fieldset><legend className="flex items-center gap-1 text-xs font-black uppercase tracking-wide text-[#76522c]"><Tags size={14} aria-hidden="true" />Project tags</legend><div className="mt-2 flex flex-wrap gap-2">{tags.map((tag) => { const active = selectedTagIds.includes(tag.id); return <button key={tag.id} type="button" aria-pressed={active} onClick={() => setSelectedTagIds((current) => active ? current.filter((id) => id !== tag.id) : [...current, tag.id])} className={`min-h-11 rounded-full border px-3 text-xs font-black ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-200 bg-sky-50 text-sky-950"}`}>#{tag.label}</button>; })}</div></fieldset> : null}
-                <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3"><input type="checkbox" checked={preserve360} onChange={(event) => setPreserve360(event.target.checked)} className="h-5 w-5" /><Rotate3d size={18} className="text-violet-800" aria-hidden="true" /><span><span className="block text-sm font-black text-violet-950">This range uses 360° source intent</span><span className="block text-xs font-semibold text-violet-900">Preserve the full sphere and an empty, non-destructive reframe recipe. View keyframes come later; this does not claim a reframed render exists.</span></span></label>
+                {selectedViewerSource?.is360 ? <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4" aria-label="Non-destructive 360 reframing"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="flex items-center gap-2 text-sm font-black text-violet-950"><Rotate3d size={18} aria-hidden="true" />Non-destructive camera direction</p><p className="mt-1 max-w-xl text-xs font-semibold leading-5 text-violet-900">Look around above, pause on a useful composition, then save that view. Quipsly stores camera instructions against source time; the complete sphere and every original remain unchanged.</p></div><label className="text-[10px] font-black uppercase tracking-wide text-violet-900">Output frame<select value={reframeAspectRatio} onChange={(event) => setReframeAspectRatio(event.target.value as typeof reframeAspectRatio)} className="mt-1 min-h-11 rounded-xl border border-violet-200 bg-white px-3 text-xs font-black"><option value="16:9">16:9 landscape</option><option value="9:16">9:16 vertical</option><option value="1:1">1:1 square</option><option value="4:5">4:5 portrait</option></select></label></div><div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" disabled={inPoint === null || outPoint === null} onClick={captureReframeKeyframe} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-900 px-4 text-xs font-black text-white disabled:opacity-45"><Video size={15} aria-hidden="true" />Save current view at playhead</button><span className="rounded-full border border-violet-200 bg-white px-3 py-2 font-mono text-[10px] font-bold text-violet-950">pan {spatialView.panDegrees.toFixed(1)}° · tilt {spatialView.tiltDegrees.toFixed(1)}° · FOV {spatialView.fieldOfViewDegrees.toFixed(0)}°</span></div>{reframeKeyframes.length ? <ol className="mt-3 grid gap-2">{reframeKeyframes.map((keyframe, index) => <li key={`${keyframe.sourceSeconds}:${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2"><span className="text-xs font-black text-violet-950">{formatClock(keyframe.sourceSeconds)} · pan {keyframe.panDegrees.toFixed(1)}° · tilt {keyframe.tiltDegrees.toFixed(1)}° · FOV {keyframe.fieldOfViewDegrees.toFixed(0)}°</span><button type="button" onClick={() => setReframeKeyframes((current) => current.filter((_, candidate) => candidate !== index))} className="min-h-11 rounded-full border border-rose-200 px-3 text-[10px] font-black uppercase tracking-wide text-rose-900">Remove</button></li>)}</ol> : <p className="mt-3 text-xs font-semibold text-violet-900">No camera views saved yet. The range will still preserve the complete 360° sphere.</p>}</section> : <label className="flex min-h-12 items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-3"><input type="checkbox" checked={preserve360} onChange={(event) => setPreserve360(event.target.checked)} className="h-5 w-5" /><Rotate3d size={18} className="text-violet-800" aria-hidden="true" /><span><span className="block text-sm font-black text-violet-950">This file is an equirectangular 360° source</span><span className="block text-xs font-semibold text-violet-900">Use only when the source is a complete sphere. Quipsly will preserve an explicit non-destructive reframe recipe.</span></span></label>}
                 <button type="button" disabled={!rangeReady || pending || !selectedViewerSource} onClick={() => void createCard()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#3e2f21] px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-45">{pending ? <Loader2 className="animate-spin" size={18} aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}Save source-backed card</button>
               </div>
             )}

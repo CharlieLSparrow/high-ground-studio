@@ -25,7 +25,7 @@ export default async function SourceStoryPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; board?: string | string[] }>;
+  searchParams: Promise<{ asset?: string | string[]; external?: string | string[]; set?: string | string[]; board?: string | string[] }>;
 }) {
   const [{ slug }, query, session] = await Promise.all([params, searchParams, getQuipslySession()]);
   if (!session?.user.id) redirect(`/login?callbackUrl=${encodeURIComponent(`/nests/${slug}/story`)}`);
@@ -80,11 +80,15 @@ export default async function SourceStoryPage({
     ]);
     const requestedAssetId = typeof query.asset === "string" ? query.asset : null;
     const requestedExternalReferenceId = typeof query.external === "string" ? query.external : null;
+    const requestedSourceSetId = typeof query.set === "string" ? query.set : null;
+    const selectedSourceSetId = workspace.sourceSets.some((sourceSet) => sourceSet.id === requestedSourceSetId)
+      ? requestedSourceSetId
+      : null;
     const selectedExternalReferenceId = workspace.externalSources.some((source) => source.id === requestedExternalReferenceId)
-      ? requestedExternalReferenceId
+      && !selectedSourceSetId ? requestedExternalReferenceId
       : null;
     const requestedBoardId = typeof query.board === "string" ? query.board : null;
-    const selectedAssetId = selectedExternalReferenceId ? null : assets.some((asset) => asset.id === requestedAssetId)
+    const selectedAssetId = selectedExternalReferenceId || selectedSourceSetId ? null : assets.some((asset) => asset.id === requestedAssetId)
       ? requestedAssetId
       : assets[0]?.id ?? null;
     const selectedBoardId = workspace.boards.some((board) => board.id === requestedBoardId)
@@ -105,6 +109,7 @@ export default async function SourceStoryPage({
         initialWorkspace={workspace}
         initialAssetId={selectedAssetId}
         initialExternalReferenceId={selectedExternalReferenceId}
+        initialSourceSetId={selectedSourceSetId}
         initialBoardId={selectedBoardId}
       />
     );

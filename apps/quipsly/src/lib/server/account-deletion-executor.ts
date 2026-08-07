@@ -397,6 +397,19 @@ export async function executeAccountDeletion(input: {
           where: { email: { in: emails } },
         });
         if (homeProjectIds.length > 0) {
+          // Immutable source relations use RESTRICT so no code path can orphan
+          // a story card or silently turn a complete camera package into a
+          // partial one. Account erasure is the exceptional hard-delete path:
+          // remove dependants in an explicit, auditable order before the Nest.
+          await tx.studioStoryCard.deleteMany({
+            where: { projectId: { in: homeProjectIds } },
+          });
+          await tx.studioSourceRange.deleteMany({
+            where: { projectId: { in: homeProjectIds } },
+          });
+          await tx.studioMediaSourceSet.deleteMany({
+            where: { projectId: { in: homeProjectIds } },
+          });
           await tx.studioProject.deleteMany({
             where: { id: { in: homeProjectIds } },
           });

@@ -127,6 +127,7 @@
     "quipsly:studio-transcript:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-studio-source-transcript.test.mjs",
     "quipsly:retained:studio-transcript": "QUIPSLY_RETAINED_STUDIO_TRANSCRIPT_OPERATION=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-studio-source-transcript-operation.mjs",
     "quipsly:retained:external-media-source": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-external-media-source-operation.mjs",
+    "quipsly:retained:insta360-source-story": "node --experimental-transform-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-retained-insta360-source-story-operation.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:retained:native-weekly-plan": "node scripts/quipsly-retained-native-weekly-plan-operation.mjs",
     "quipsly:retained:production-native-project": "node scripts/quipsly-retained-production-native-project-operation.mjs",

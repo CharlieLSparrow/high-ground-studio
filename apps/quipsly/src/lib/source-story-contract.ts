@@ -42,10 +42,37 @@ export type StoryReframeRecipe = {
   keyframes: StoryReframeKeyframe[];
 };
 
+export const mediaSourceSetMemberRoles = [
+  "primary-original",
+  "secondary-original",
+  "browse-proxy",
+  "audio-sidecar",
+  "metadata-sidecar",
+] as const;
+
+export type MediaSourceSetMemberRole = (typeof mediaSourceSetMemberRoles)[number];
+
+export type CreateMediaSourceSetInput = {
+  projectId: string;
+  clientRequestId: string;
+  kind: "insta360-360" | "camera-package";
+  captureKey: string;
+  displayName: string;
+  sourceClockRevisionId: string;
+  members: Array<{
+    sourceRevisionId: string;
+    role: MediaSourceSetMemberRole;
+    ordinal?: number;
+    requiredForRender?: boolean;
+  }>;
+  metadata?: Record<string, unknown>;
+};
+
 export type CreateSourceStoryCardInput = {
   projectId: string;
   mediaAssetId?: string | null;
   sourceRevisionId?: string | null;
+  sourceSetId?: string | null;
   externalReferenceId?: string | null;
   boardId?: string | null;
   expectedBoardRevision?: number | null;
@@ -143,6 +170,50 @@ function orderedUniqueIds(value: unknown) {
   return [...new Set(value.map((item) => opaqueId(item, "tagId")))].sort();
 }
 
+export function normalizeCreateMediaSourceSetInput(value: CreateMediaSourceSetInput) {
+  const projectId = opaqueId(value.projectId, "projectId");
+  const requestId = clientRequestId(value.clientRequestId);
+  const kind = value.kind;
+  if (!(kind === "insta360-360" || kind === "camera-package")) {
+    throw new SourceStoryContractError("invalid-source-set-kind", "The source-set kind is unsupported.");
+  }
+  const captureKey = boundedText(value.captureKey, "captureKey", 200, true);
+  const displayName = boundedText(value.displayName, "displayName", 300, true);
+  const sourceClockRevisionId = opaqueId(value.sourceClockRevisionId, "sourceClockRevisionId");
+  if (!Array.isArray(value.members) || value.members.length < 2 || value.members.length > 32) {
+    throw new SourceStoryContractError("invalid-source-set-members", "A source set requires between 2 and 32 exact members.");
+  }
+  const members = value.members.map((member, index) => {
+    const role = member.role;
+    if (!mediaSourceSetMemberRoles.includes(role)) {
+      throw new SourceStoryContractError("invalid-source-set-role", `Source member ${index + 1} has an unsupported role.`);
+    }
+    const ordinal = member.ordinal ?? 0;
+    if (!Number.isInteger(ordinal) || ordinal < 0 || ordinal > 31) {
+      throw new SourceStoryContractError("invalid-source-set-ordinal", `Source member ${index + 1} has an invalid ordinal.`);
+    }
+    return {
+      sourceRevisionId: opaqueId(member.sourceRevisionId, "sourceRevisionId"),
+      role,
+      ordinal,
+      requiredForRender: member.requiredForRender ?? role !== "browse-proxy",
+    };
+  }).sort((left, right) => left.role.localeCompare(right.role) || left.ordinal - right.ordinal || left.sourceRevisionId.localeCompare(right.sourceRevisionId));
+  if (new Set(members.map((member) => member.sourceRevisionId)).size !== members.length) {
+    throw new SourceStoryContractError("duplicate-source-set-member", "A source revision cannot appear twice in one source set.");
+  }
+  if (new Set(members.map((member) => `${member.role}:${member.ordinal}`)).size !== members.length) {
+    throw new SourceStoryContractError("duplicate-source-set-role", "Each source-set role and ordinal must be unique.");
+  }
+  if (!members.some((member) => member.sourceRevisionId === sourceClockRevisionId)) {
+    throw new SourceStoryContractError("missing-source-clock-member", "The viewing clock revision must be a member of the source set.");
+  }
+  const metadata = value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata)
+    ? value.metadata
+    : {};
+  return { projectId, clientRequestId: requestId, kind, captureKey, displayName, sourceClockRevisionId, members, metadata };
+}
+
 function boardKey(value: unknown, field: string, fallback: string) {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   const key = (normalized || fallback)
@@ -226,12 +297,16 @@ export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCard
   }
   const mediaAssetId = value.mediaAssetId ? opaqueId(value.mediaAssetId, "mediaAssetId") : null;
   const sourceRevisionId = value.sourceRevisionId ? opaqueId(value.sourceRevisionId, "sourceRevisionId") : null;
+  const sourceSetId = value.sourceSetId ? opaqueId(value.sourceSetId, "sourceSetId") : null;
   const externalReferenceId = value.externalReferenceId ? opaqueId(value.externalReferenceId, "externalReferenceId") : null;
   if (Boolean(mediaAssetId) === Boolean(sourceRevisionId)) {
     throw new SourceStoryContractError("invalid-source-binding", "Choose exactly one registered asset or external source revision.");
   }
   if (sourceRevisionId && !externalReferenceId) {
     throw new SourceStoryContractError("missing-external-reference", "An external source revision requires its retained vault reference.");
+  }
+  if (sourceSetId && !sourceRevisionId) {
+    throw new SourceStoryContractError("orphan-source-set", "A multi-file source set requires its exact source-clock revision.");
   }
   if (mediaAssetId && externalReferenceId) {
     throw new SourceStoryContractError("unexpected-external-reference", "A registered asset cannot claim an external vault reference.");
@@ -241,6 +316,7 @@ export function normalizeCreateSourceStoryCardInput(value: CreateSourceStoryCard
     projectId: opaqueId(value.projectId, "projectId"),
     mediaAssetId,
     sourceRevisionId,
+    sourceSetId,
     externalReferenceId,
     boardId,
     expectedBoardRevision,
