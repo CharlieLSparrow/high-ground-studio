@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 import { buildAudioTranscriptEvidence } from "@/lib/transcript-evidence";
 
-const segment = {
+const segment: any = {
   id: "segment-1",
   speakerLabel: "Speaker",
   providerSpeakerLabel: "Speaker",
@@ -43,6 +43,7 @@ const segment = {
   acceptedVerification: null,
   proposals: [],
   correctionHistory: [],
+  downstreamImpacts: [],
 };
 
 function desk(playback: boolean) {
@@ -164,6 +165,41 @@ describe("TranscriptCorrectionDesk", () => {
     expect(screen.getByText(/nova-3@latest.*moving latest/i)).toBeInTheDocument();
     expect(screen.getByText(/source binding.*diarization off/i)).toBeInTheDocument();
     expect(screen.getByText("7 frozen keyterms")).toBeInTheDocument();
+  });
+
+  it("shows source-linked work that needs deliberate review after a correction", async () => {
+    const impacted = desk(true);
+    impacted.segments = [{
+      ...segment,
+      downstreamImpacts: [
+        {
+          artifactId: "note-1",
+          artifactKind: "note",
+          label: "Episode delivery plan",
+          status: "SESSION_SHARED",
+          state: "needs-review",
+          evidenceSnapshotCount: 1,
+        },
+        {
+          artifactId: "task-1",
+          artifactKind: "task",
+          label: "Fix chapter title",
+          status: "OPEN",
+          state: "current",
+          evidenceSnapshotCount: 2,
+        },
+      ],
+    }];
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => impacted })) as unknown as typeof fetch;
+
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    const summary = await screen.findByText("Downstream evidence · 2 linked items");
+    fireEvent.click(summary);
+    expect(screen.getByText(/note · episode delivery plan/i)).toBeInTheDocument();
+    expect(screen.getByText(/task · fix chapter title/i)).toBeInTheDocument();
+    expect(screen.getByText("review after correction")).toBeInTheDocument();
+    expect(screen.getByText("current evidence")).toBeInTheDocument();
+    expect(screen.getByText(/automatic regeneration is off/i)).toBeInTheDocument();
   });
 
   it("identifies a diarized voice once without presenting its words as reviewed", async () => {

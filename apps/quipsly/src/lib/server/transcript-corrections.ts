@@ -9,6 +9,10 @@ import {
   buildAudioTranscriptEvidence,
   type AudioTranscriptEvidenceSegment,
 } from "@/lib/transcript-evidence";
+import {
+  buildTranscriptCorrectionImpact,
+  type TranscriptImpactArtifact,
+} from "@/lib/transcript-correction-impact";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 export const TRANSCRIPT_SEGMENT_VERIFICATION_SCHEMA = "quipsly-transcript-segment-verification-v1";
@@ -358,6 +362,71 @@ async function loadAccessibleRoom(
           user: { select: { name: true, primaryEmail: true } },
         },
       },
+      notes: {
+        where: {
+          OR: [
+            { authorUserId: actor.id },
+            {
+              visibility: {
+                in: actor.isStaff
+                  ? ["SESSION_SHARED", "CLIENT_SAFE", "PROJECT_TEAM"]
+                  : ["SESSION_SHARED", "CLIENT_SAFE"],
+              },
+            },
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          visibility: true,
+          sourceJson: true,
+        },
+      },
+      actionItems: {
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          sourceJson: true,
+          evidenceReceipts: {
+            orderBy: { occurredAt: "desc" },
+            select: { evidenceJson: true },
+          },
+        },
+      },
+      goals: {
+        where: { ownerUserId: actor.id },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          sourceJson: true,
+          progressReceipts: {
+            orderBy: { occurredAt: "desc" },
+            select: { evidenceJson: true },
+          },
+        },
+      },
+      outputs: {
+        where: {
+          OR: [
+            { createdByUserId: actor.id },
+            { recipientUserId: actor.id },
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          status: true,
+          sourceManifestJson: true,
+        },
+      },
       transcriptJobs: {
         ...(recordingAssetId ? { where: { assetId: recordingAssetId } } : {}),
         orderBy: { createdAt: "desc" },
@@ -595,6 +664,18 @@ export async function readTranscriptCorrectionDesk(input: {
       correctionHistory: segment.corrections.map(publicCorrection),
     };
   });
+  const impactsBySegment = buildTranscriptCorrectionImpact({
+    transcriptJobId: job.id,
+    segments: projectedSegments.map((segment: any) => ({
+      id: segment.id,
+      acceptedCorrectionId: segment.acceptedCorrection?.id ?? null,
+    })),
+    artifacts: roomTranscriptImpactArtifacts(room),
+  });
+  const segmentsWithImpacts = projectedSegments.map((segment: any) => ({
+    ...segment,
+    downstreamImpacts: impactsBySegment.get(segment.id) ?? [],
+  }));
 
   return {
     ok: true,
@@ -615,10 +696,49 @@ export async function readTranscriptCorrectionDesk(input: {
       isCurrentActor: participant.userId === input.actor.id,
     })),
     speakerGroups: projectedSpeakerGroups,
-    segments: projectedSegments,
+    segments: segmentsWithImpacts,
     evidence: buildTranscriptEvidence(job, projectedSegments, projectedSpeakerGroups),
+    impactCoverage: {
+      schema: "quipsly-transcript-correction-impact-coverage-v1",
+      kinds: ["note", "task", "goal", "follow-up"],
+      source: "canonical-provenance-projection",
+      automaticRegeneration: false,
+    },
     boundaries: transcriptCorrectionBoundaries(),
   };
+}
+
+function roomTranscriptImpactArtifacts(room: any): TranscriptImpactArtifact[] {
+  return [
+    ...(room.notes ?? []).map((note: any) => ({
+      id: text(note.id),
+      kind: "note" as const,
+      label: text(note.title) || `${text(note.kind).toLowerCase().replaceAll("_", " ")} note`,
+      status: text(note.visibility) || null,
+      evidence: [note.sourceJson],
+    })),
+    ...(room.actionItems ?? []).map((item: any) => ({
+      id: text(item.id),
+      kind: "task" as const,
+      label: text(item.title) || "Untitled task",
+      status: text(item.status) || null,
+      evidence: [item.sourceJson, ...(item.evidenceReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
+    })),
+    ...(room.goals ?? []).map((goal: any) => ({
+      id: text(goal.id),
+      kind: "goal" as const,
+      label: text(goal.title) || "Untitled goal",
+      status: text(goal.status) || null,
+      evidence: [goal.sourceJson, ...(goal.progressReceipts ?? []).map((receipt: any) => receipt.evidenceJson)],
+    })),
+    ...(room.outputs ?? []).map((output: any) => ({
+      id: text(output.id),
+      kind: "follow-up" as const,
+      label: text(output.title) || `${text(output.kind).toLowerCase().replaceAll("_", " ")} output`,
+      status: text(output.status) || null,
+      evidence: [output.sourceManifestJson],
+    })),
+  ].filter((artifact) => artifact.id);
 }
 
 function buildTranscriptEvidence(job: any, segments: AudioTranscriptEvidenceSegment[], groups: any[]) {

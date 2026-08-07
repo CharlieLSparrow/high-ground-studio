@@ -228,6 +228,69 @@ describe("transcript correction desk", () => {
     }));
   });
 
+  it("projects correction impact from accessible canonical provenance without exposing private notes", async () => {
+    const accepted = correctionRecord({
+      id: "correction-current",
+      segmentId: "segment-1",
+      origin: "human",
+      status: "accepted",
+      correctedText: "We should ship the proof watch on Thursday.",
+      correctedSpeakerLabel: providerSpeakerLabel,
+      reviewedAt: new Date("2026-08-06T18:00:00.000Z"),
+      reason: "Corrected the delivery day.",
+    });
+    const prisma = {
+      callRoom: {
+        findFirst: jest.fn(async () => ({
+          ...accessibleRoom({ corrections: [accepted] }),
+          notes: [{
+            id: "note-1",
+            title: "Delivery plan",
+            kind: "DECISION",
+            visibility: "SESSION_SHARED",
+            sourceJson: {
+              transcriptJobId: "job-1",
+              segmentId: "segment-1",
+              acceptedCorrectionId: null,
+            },
+          }],
+          actionItems: [],
+          goals: [],
+          outputs: [],
+        })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
+    };
+
+    const result = await readTranscriptCorrectionDesk({ prisma, roomId: "room-1", actor });
+
+    expect(result.segments[0].downstreamImpacts).toEqual([
+      expect.objectContaining({
+        artifactId: "note-1",
+        artifactKind: "note",
+        label: "Delivery plan",
+        state: "needs-review",
+      }),
+    ]);
+    expect(result.impactCoverage).toMatchObject({
+      source: "canonical-provenance-projection",
+      automaticRegeneration: false,
+    });
+    expect(prisma.callRoom.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        notes: expect.objectContaining({
+          where: {
+            OR: [
+              { authorUserId: actor.id },
+              { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+            ],
+          },
+        }),
+      }),
+    }));
+  });
+
   it("fails closed instead of falling back when an exact source has no accessible transcript", async () => {
     const prisma = {
       callRoom: { findFirst: jest.fn(async () => ({ ...accessibleRoom(), transcriptJobs: [] })) },

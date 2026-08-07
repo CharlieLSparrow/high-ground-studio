@@ -99,6 +99,14 @@ type Segment = {
   speakerAttribution: SpeakerAttribution | null;
   proposals: Correction[];
   correctionHistory: Correction[];
+  downstreamImpacts?: Array<{
+    artifactId: string;
+    artifactKind: "note" | "task" | "goal" | "follow-up";
+    label: string;
+    status: string | null;
+    state: "current" | "needs-review" | "snapshot-unavailable";
+    evidenceSnapshotCount: number;
+  }>;
 };
 
 type Desk = {
@@ -158,6 +166,12 @@ type Desk = {
   speakerGroups: SpeakerGroup[];
   segments: Segment[];
   evidence?: AudioTranscriptEvidence;
+  impactCoverage?: {
+    schema: string;
+    kinds: Array<"note" | "task" | "goal" | "follow-up">;
+    source: "canonical-provenance-projection";
+    automaticRegeneration: false;
+  };
   evaluation?: null | {
     schema: string;
     eligible: boolean;
@@ -1228,6 +1242,36 @@ function CorrectionEditor({
           <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-indigo-800"><ShieldCheck size={15} aria-hidden="true" />Voice identified from Session samples</p>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-indigo-950">Provider {segment.providerSpeakerLabel} is displayed as {segment.speakerAttribution.attributedLabel}. This speaker identity does not claim the words in this turn were playback-reviewed.</p>
         </div>
+      )}
+
+      {(segment.downstreamImpacts?.length ?? 0) > 0 && (
+        <details className="mt-4 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-4">
+          <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-fuchsia-900">
+            Downstream evidence · {segment.downstreamImpacts?.length} linked item{segment.downstreamImpacts?.length === 1 ? "" : "s"}
+          </summary>
+          <p className="mt-2 text-xs font-semibold leading-relaxed text-fuchsia-950">
+            Quipsly found these items through their canonical transcript provenance. Corrections never silently rewrite notes, tasks, goals, or follow-ups.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {segment.downstreamImpacts?.map((impact) => (
+              <li key={`${impact.artifactKind}-${impact.artifactId}`} className={`rounded-lg border p-3 text-xs font-bold leading-relaxed ${impact.state === "needs-review" ? "border-amber-300 bg-amber-50 text-amber-950" : impact.state === "current" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-white text-slate-800"}`}>
+                <span className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-black">{humanize(impact.artifactKind)} · {impact.label}</span>
+                  <span className="rounded-full bg-white/80 px-2 py-1 text-[0.65rem] font-black uppercase tracking-wide">
+                    {impact.state === "needs-review" ? "review after correction" : impact.state === "current" ? "current evidence" : "legacy snapshot"}
+                  </span>
+                </span>
+                {impact.status && <span className="mt-1 block text-[0.68rem] uppercase tracking-wide opacity-75">{humanize(impact.status)}</span>}
+              </li>
+            ))}
+          </ul>
+          {segment.downstreamImpacts?.some((impact) => impact.state === "needs-review") && (
+            <p role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-white p-3 text-xs font-black leading-relaxed text-amber-950">
+              <TriangleAlert size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+              A source correction changed after linked work captured its wording. The work remains preserved and needs a deliberate review; automatic regeneration is off.
+            </p>
+          )}
+        </details>
       )}
 
       {segment.proposals.map((proposal) => (
